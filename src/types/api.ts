@@ -40,6 +40,59 @@ export interface HealthPayload {
   };
 }
 
+/**
+ * A staff user, as returned by /api/auth/login, /api/auth/me and /api/users.
+ * The backend never returns `passwordHash` — see user.model.js. Fields the
+ * profile UI does not yet touch (commissionRate, availability) are omitted
+ * rather than typed loosely; add them when a screen needs them.
+ */
+export interface User {
+  _id: string;
+  tenantId: string;
+  email: string;
+  fullName: string;
+  phone: string | null;
+  roleId: string | null;
+  allBranches: boolean;
+  branchAccess: string[];
+  status: "active" | "suspended";
+  emailVerifiedAt: string | null;
+  lastLoginAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** The session context returned alongside the user. */
+export interface SessionContext {
+  currentBranchId: string | null;
+  /** Present on login, omitted by /me. */
+  expiresAt?: string;
+}
+
+/** Payload of POST /api/auth/login. */
+export interface LoginPayload {
+  user: User;
+  session: SessionContext;
+}
+
+/** Payload of GET /api/auth/me. */
+export interface MePayload {
+  user: User;
+  session: SessionContext;
+}
+
+/** Generic message payloads (forgot-password, reset-password, logout). */
+export interface MessagePayload {
+  message: string;
+}
+
+/** Fields the profile screen may edit via PATCH /api/users/:id. */
+export interface UpdateProfileInput {
+  fullName?: string;
+  email?: string;
+  phone?: string | null;
+}
+
 /** Shape of a paginated list response, for future list endpoints. */
 export interface Paginated<T> {
   items: T[];

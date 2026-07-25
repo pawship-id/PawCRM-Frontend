@@ -1,26 +1,68 @@
 @import "tailwindcss";
 
+/**
+ * The single source of truth for the PawShip brand palette.
+ *
+ * Colors are sampled from the logo and declared ONCE here as Tailwind v4 theme
+ * tokens. Every component consumes them through utilities (`bg-primary`,
+ * `text-primary`, `border-secondary`, ...). To rebrand, change a value here and
+ * nothing else — no component hard-codes a hex.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Surface + text neutrals */
+  --background: #fff7f4; /* warm off-white so the coral reads as brand, not alert */
+  --foreground: #3f342f; /* soft near-black with a warm cast */
+  --muted: #8a7a72; /* secondary text */
+  --surface: #ffffff; /* cards, inputs */
+  --border: #f0e2da; /* hairlines on the warm background */
+
+  /* Brand — coral (the "Paw"/"ship" wordmark) */
+  --primary: #ef8a78;
+  --primary-hover: #e5745f;
+  --primary-foreground: #ffffff;
+
+  /* Brand — peach (the paw pad + the three dots) */
+  --secondary: #f5b77c;
+  --secondary-hover: #f0a45c;
+  --secondary-foreground: #5b3a2e;
+
+  /* Feedback */
+  --danger: #d64545;
+  --danger-foreground: #ffffff;
+  --success: #3f9d6f;
 }
 
+/**
+ * Expose the variables above to Tailwind's utility generator. `@theme inline`
+ * means `bg-primary`, `text-muted`, `ring-primary`, etc. all resolve to the
+ * :root variables, so a runtime theme swap (or a future dark mode) only has to
+ * reassign the variables.
+ */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-hover: var(--secondary-hover);
+  --color-secondary-foreground: var(--secondary-foreground);
+
+  --color-danger: var(--danger);
+  --color-danger-foreground: var(--danger-foreground);
+  --color-success: var(--success);
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }

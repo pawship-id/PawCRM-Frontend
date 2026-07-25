@@ -1,22 +1,20 @@
-import { render, screen } from "@testing-library/react";
 import Home from "@/app/page";
 
+const redirect = jest.fn();
+jest.mock("next/navigation", () => ({
+  redirect: (path: string) => redirect(path),
+}));
+
 /**
- * Smoke test for the component testing setup: proves next/jest, the SWC
- * transform, JSX, the @/ alias and jest-dom matchers are all wired up.
+ * The root route is now a bare redirect to /login (no landing UI yet). This
+ * also keeps the smoke coverage that next/jest, the SWC transform and the @/
+ * alias are wired up.
  */
 describe("Home page", () => {
-  it("renders the application name", () => {
-    render(<Home />);
+  beforeEach(() => redirect.mockClear());
 
-    expect(
-      screen.getByRole("heading", { level: 1, name: "PawCRM" }),
-    ).toBeInTheDocument();
-  });
-
-  it("renders inside a main landmark", () => {
-    render(<Home />);
-
-    expect(screen.getByRole("main")).toBeInTheDocument();
+  it("redirects to the login route", () => {
+    Home();
+    expect(redirect).toHaveBeenCalledWith("/login");
   });
 });
