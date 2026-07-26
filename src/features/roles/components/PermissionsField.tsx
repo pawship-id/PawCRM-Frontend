@@ -25,6 +25,13 @@ function humanize(token: string): string {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1).toLowerCase();
 }
 
+/**
+ * `read` is the prerequisite for every other action: you cannot update, delete
+ * or otherwise touch a feature you cannot see. So granting any action implies
+ * `read`, and revoking `read` revokes the whole feature.
+ */
+const READ_ACTION = "read";
+
 export function PermissionsField({
   catalog,
   selection,
@@ -49,11 +56,27 @@ export function PermissionsField({
     onChange(next);
   }
 
-  function toggleAction(feature: string, action: string, checked: boolean) {
+  function toggleAction(
+    feature: string,
+    available: string[],
+    action: string,
+    checked: boolean,
+  ) {
     const current = selection[feature] ?? [];
-    const actions = checked
-      ? [...current, action]
-      : current.filter((a) => a !== action);
+    let actions: string[];
+
+    if (checked) {
+      // Granting any action pulls in `read` too — nothing is usable without it.
+      const next = new Set([...current, action]);
+      if (available.includes(READ_ACTION)) next.add(READ_ACTION);
+      actions = [...next];
+    } else if (action === READ_ACTION) {
+      // Revoking `read` revokes access entirely, so clear the whole feature.
+      actions = [];
+    } else {
+      actions = current.filter((a) => a !== action);
+    }
+
     setFeatureActions(feature, actions);
   }
 
@@ -115,7 +138,12 @@ export function PermissionsField({
                         checked={selected.includes(action)}
                         disabled={disabled}
                         onCheckedChange={(checked) =>
-                          toggleAction(feature, action, checked === true)
+                          toggleAction(
+                            feature,
+                            available,
+                            action,
+                            checked === true,
+                          )
                         }
                       />
                       <Label
@@ -138,6 +166,13 @@ export function PermissionsField({
           </p>
         )}
       </div>
+
+      {catalog.length > 0 && !disabled && (
+        <p className="text-xs text-muted">
+          “Read” is required for access — choosing any other action selects it
+          automatically, and clearing it clears the whole feature.
+        </p>
+      )}
 
       {error && (
         <p id={errorId} role="alert" className="text-xs text-danger">
