@@ -41,6 +41,7 @@ describe("filterNavItems", () => {
       "User",
       "Branch",
       "Roles",
+      "Audit Log",
     ]);
   });
 

@@ -161,6 +161,17 @@ export function RolesIcon(props: IconProps) {
   );
 }
 
+/** Audit log — a document with a checkmark, for the security trail. */
+export function AuditLogIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+      <path d="M14 3v5h5" />
+      <path d="M9 14l2 2 3.5-3.5" />
+    </Base>
+  );
+}
+
 /** Sidebar collapse/expand toggle (panel with a rail). */
 export function PanelLeftIcon(props: IconProps) {
   return (

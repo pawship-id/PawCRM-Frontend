@@ -9,6 +9,7 @@ import {
   UsersIcon,
   BranchIcon,
   RolesIcon,
+  AuditLogIcon,
 } from "@/components/icons";
 import type {
   Action,
@@ -84,6 +85,12 @@ export const NAV_ITEMS: NavItem[] = [
         href: "/dashboard/master/roles",
         icon: RolesIcon,
         permission: { feature: "roles", action: "read" },
+      },
+      {
+        label: "Audit Log",
+        href: "/dashboard/master/audit-logs",
+        icon: AuditLogIcon,
+        permission: { feature: "auditLogs", action: "read" },
       },
     ],
   },

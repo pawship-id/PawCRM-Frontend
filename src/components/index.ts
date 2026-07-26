@@ -4,6 +4,7 @@ export { TextField } from "./TextField";
 export { Alert } from "./Alert";
 export { Card } from "./Card";
 export { Spinner } from "./Spinner";
+export { HighlightText } from "./HighlightText";
 export { Pagination } from "./Pagination";
 export { ConfirmDialog } from "./ConfirmDialog";
 export type { ConfirmDialogProps } from "./ConfirmDialog";

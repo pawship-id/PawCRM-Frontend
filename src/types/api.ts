@@ -316,6 +316,68 @@ export interface UpdateBranchInput {
   isActive?: boolean;
 }
 
+/**
+ * The actor (and branch) references the audit-log list endpoint populates.
+ *
+ * The backend returns `userId`/`branchId` as populated subdocuments — a small
+ * display projection, never the whole user/branch — so the screen can show WHO
+ * acted and WHERE without a second lookup. `fullName` is the user model's name
+ * field (there is no separate `name`). Either can be null: a user deleted since
+ * the event, or an action with no branch context (see auditLog.model.js).
+ */
+export interface AuditLogActor {
+  _id: string;
+  fullName: string;
+  email: string;
+}
+
+export interface AuditLogBranchRef {
+  _id: string;
+  name: string;
+}
+
+/**
+ * One immutable audit-trail record, as returned by GET /api/audit-logs.
+ *
+ * The trail answers "who did what, from where, and when" for security-sensitive
+ * events (login, failed_login, account_locked, logout_all today; sensitive
+ * business events later). It is READ-ONLY — records are appended by the backend
+ * and never edited or deleted, so there is no `deletedAt` and no mutation input
+ * type. `action` and `entityType` are an open vocabulary of lowercase slugs, not
+ * a fixed enum. `metadata` is free-form context whose shape varies by action
+ * (`{ reason }`, `{ lockedUntil }`, `{ revokedCount }`, …).
+ */
+export interface AuditLog {
+  _id: string;
+  tenantId: string;
+  /** The actor; populated to a display projection, or null if the user is gone. */
+  userId: AuditLogActor | null;
+  /** The branch context, populated; null for tenant-level actions. */
+  branchId: AuditLogBranchRef | null;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Query parameters accepted by GET /api/audit-logs. All optional. */
+export interface AuditLogListQuery {
+  page?: number;
+  limit?: number;
+  /** Narrow to one kind of event, e.g. "failed_login". */
+  action?: string;
+  /** Narrow to one kind of target, e.g. "user" / "session". */
+  entityType?: string;
+  /** Narrow to one actor. */
+  userId?: string;
+  /** Free-text over action / ipAddress. */
+  search?: string;
+}
+
 /** Narrows an ApiResponse to its success branch. */
 export function isApiSuccess<T>(
   response: ApiResponse<T>,

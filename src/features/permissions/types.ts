@@ -26,6 +26,9 @@ export const PERMISSION_CATALOG = {
     "unlock",
   ],
   roles: ["create", "read", "update", "delete", "restore"],
+  // The audit trail is read-only (mirrors the backend catalog): records are
+  // system-appended and never edited or deleted, so `read` is the only action.
+  auditLogs: ["read"],
 } as const;
 
 /** A permission feature — a module the RBAC catalog gates. */

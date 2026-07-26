@@ -13,6 +13,35 @@ Branch: `feature/project-initialization`.
 
 ### Added
 
+**Audit Log (Master Data → Audit Log)** — a read-only, paginated, filterable view
+of the tenant's security audit trail. Gated on the new `auditLogs:read`
+permission; the nav item and page hide without it. Reuses the master-data list
+pattern (toolbar + table + pager) with no row actions, since the trail is
+immutable.
+
+- `features/audit-logs/`: `AuditLogsScreen`, `AuditLogsToolbar` (search + action
+  filter + refresh), read-only `AuditLogsTable` (populated actor, tinted
+  `AuditActionBadge`, metadata summary), `useAuditLogs` hook, and the action
+  vocabulary in `constants.ts`
+- `services/auditLog.service.ts` — `list(query)` → `GET /api/audit-logs`
+- `types/api.ts`: `AuditLog`, `AuditLogActor`, `AuditLogBranchRef`,
+  `AuditLogListQuery`
+- `auditLogs: ["read"]` added to `PERMISSION_CATALOG`; nav item + `AuditLogIcon`;
+  route `app/(dashboard)/dashboard/master/audit-logs/page.tsx` behind
+  `<RequirePermission feature="auditLogs">`
+- Search highlight: matched characters in the Action / IP cells are wrapped in a
+  yellow `<mark>` via the new shared `HighlightText` component, so it is clear why
+  each row was returned. Backend search is a case-insensitive substring match
+  over `action` / `ipAddress`, so a few characters is enough.
+- Tests: `auditLog.service`, `AuditLogsTable`, `HighlightText`; `nav.test` updated
+
+**Numbered pagination** — the shared `Pagination` component now renders page
+numbers (`1 2 3 …`) with a windowed range and ellipses, flanked by
+Previous / Next, instead of Prev/Next alone — easier to jump around once a list
+has many pages. Backward compatible (same props), so every list screen (users,
+roles, branches, audit log) picks it up automatically. Windowing logic is the
+pure `getPageItems(current, total)`, unit-tested in `Pagination.test.tsx`.
+
 **Permission gating (RBAC-aware UI)** — frontend-only. Navigation, buttons and
 pages hide when the signed-in user's role lacks the matching permission. A UX
 guard, not a security boundary; the backend still authorizes every request. No
