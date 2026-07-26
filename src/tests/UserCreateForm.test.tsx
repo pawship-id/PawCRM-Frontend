@@ -25,7 +25,7 @@ function page<T>(items: T[]): PageResult<T> {
   return { items, pagination: { page: 1, limit: 100, total: items.length, totalPages: 1 } };
 }
 
-const ROLES: Role[] = [{ _id: "r1", name: "Manager" }];
+const ROLES: Role[] = [{ _id: "r1", name: "Manager", permissions: [] }];
 const BRANCHES: Branch[] = [
   {
     _id: "b1",

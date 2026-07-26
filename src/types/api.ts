@@ -169,15 +169,82 @@ export interface UpdateUserInput {
 }
 
 /**
- * A role, as returned by GET /api/roles. Only the fields the user screens need
- * (the role picker + labels) are typed; the backend carries more (permissions,
- * isSystem, ...) that no screen touches yet.
+ * A single stored permission grant: one feature and the actions granted on it.
+ * Mirrors the backend's `{ feature, actions }` subdocument (role.model.js) and
+ * the entries GET /api/roles/catalog returns. The vocabulary of valid features
+ * and actions is the catalog — see PermissionCatalog.
+ */
+export interface PermissionGrant {
+  feature: string;
+  actions: string[];
+}
+
+/**
+ * The RBAC permission catalog, as returned by GET /api/roles/catalog. The
+ * catalog lives in backend code (config/permissionCatalog.js), so the client
+ * fetches it rather than hard-coding a copy that could drift. `features` is an
+ * array of `{ feature, actions }` — every feature and the actions it supports.
+ */
+export interface PermissionCatalog {
+  features: PermissionGrant[];
+}
+
+/**
+ * A role, as returned by GET /api/roles and GET /api/roles/:id.
+ *
+ * `permissions` is the array of grants the role confers. `isSystem` (a seeded
+ * baseline role — cannot be deleted) and `isSuperAdmin` (bypasses every
+ * permission check) are SERVER-OWNED: read them, never send them — the backend
+ * strips both from any create/update payload. The user-screen role picker only
+ * reads `_id`/`name`, so those fields stay effectively required while the rest
+ * describe the role master-data screens.
  */
 export interface Role {
   _id: string;
+  tenantId?: string;
   name: string;
   description?: string | null;
+  permissions: PermissionGrant[];
+  isSystem?: boolean;
   isSuperAdmin?: boolean;
+  /** Soft-delete marker; non-null means deleted (restorable), null means live. */
+  deletedAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** Query parameters accepted by GET /api/roles. All optional. */
+export interface RoleListQuery {
+  page?: number;
+  limit?: number;
+  isSystem?: boolean;
+  isSuperAdmin?: boolean;
+  /** Free-text over name / description. */
+  search?: string;
+  /** Include soft-deleted roles (default false on the backend). */
+  includeDeleted?: boolean;
+}
+
+/**
+ * Body of POST /api/roles. Only `name` is required; a role with no grants yet is
+ * legitimate. `tenantId`, `isSystem` and `isSuperAdmin` are derived/owned by the
+ * server and never sent from here.
+ */
+export interface CreateRoleInput {
+  name: string;
+  description?: string | null;
+  permissions?: PermissionGrant[];
+}
+
+/**
+ * Body of PATCH /api/roles/:id — every field optional, but the backend rejects
+ * an empty body (send at least one). `permissions` REPLACES the grant set
+ * wholesale, so send the complete array, not a delta.
+ */
+export interface UpdateRoleInput {
+  name?: string;
+  description?: string | null;
+  permissions?: PermissionGrant[];
 }
 
 /**

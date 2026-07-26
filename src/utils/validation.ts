@@ -14,6 +14,8 @@ export const FULL_NAME_MAX_LENGTH = 120;
 export const RESET_TOKEN_LENGTH = 64;
 export const BRANCH_NAME_MAX_LENGTH = 120;
 export const BRANCH_ADDRESS_MAX_LENGTH = 255;
+export const ROLE_NAME_MAX_LENGTH = 80;
+export const ROLE_DESCRIPTION_MAX_LENGTH = 255;
 
 // Deliberately permissive, matching the backend's { tlds: false } stance.
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -74,6 +76,22 @@ export function validateAddress(value: string): string | undefined {
   const address = value.trim();
   if (!address) return undefined;
   if (address.length > BRANCH_ADDRESS_MAX_LENGTH) return "Address is too long";
+  return undefined;
+}
+
+export function validateRoleName(value: string): string | undefined {
+  const name = value.trim();
+  if (!name) return "Role name is required";
+  if (name.length > ROLE_NAME_MAX_LENGTH) return "Role name is too long";
+  return undefined;
+}
+
+/** Description is optional and clearable. */
+export function validateRoleDescription(value: string): string | undefined {
+  const description = value.trim();
+  if (!description) return undefined;
+  if (description.length > ROLE_DESCRIPTION_MAX_LENGTH)
+    return "Description is too long";
   return undefined;
 }
 
