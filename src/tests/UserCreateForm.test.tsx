@@ -26,7 +26,19 @@ function page<T>(items: T[]): PageResult<T> {
 }
 
 const ROLES: Role[] = [{ _id: "r1", name: "Manager" }];
-const BRANCHES: Branch[] = [{ _id: "b1", name: "Jakarta", isActive: true }];
+const BRANCHES: Branch[] = [
+  {
+    _id: "b1",
+    tenantId: "t1",
+    name: "Jakarta",
+    address: null,
+    phone: null,
+    isActive: true,
+    deletedAt: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  },
+];
 
 async function renderForm() {
   jest.spyOn(roleService, "list").mockResolvedValue(page(ROLES));

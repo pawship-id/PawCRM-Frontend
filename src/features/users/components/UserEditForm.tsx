@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { Alert, Button, Card, Spinner, TextField } from "@/components";
+import { Alert, Button, Card, Spinner, TextField, ConfirmDialog } from "@/components";
 import { ApiError } from "@/services/api-error";
 import { userService } from "@/services/user.service";
 import { swalToast } from "@/lib/swal";
@@ -21,7 +21,6 @@ import { useLookups } from "../hooks/useLookups";
 import { RoleSelect } from "./RoleSelect";
 import { BranchScopeField } from "./BranchScopeField";
 import { StatusBadge } from "./StatusBadge";
-import { ConfirmDialog } from "./ConfirmDialog";
 
 function isLocked(user: User): boolean {
   if (!user.lockedUntil) return false;

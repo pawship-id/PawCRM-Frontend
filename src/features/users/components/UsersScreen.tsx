@@ -2,13 +2,12 @@
 
 import { useMemo } from "react";
 
-import { Alert, Spinner } from "@/components";
+import { Alert, Spinner, Pagination } from "@/components";
 
 import { useUsers } from "../hooks/useUsers";
 import { useLookups } from "../hooks/useLookups";
 import { UsersToolbar } from "./UsersToolbar";
 import { UsersTable } from "./UsersTable";
-import { Pagination } from "./Pagination";
 
 /**
  * The Master Data → User list screen. Owns the list query (useUsers) and the
@@ -54,6 +53,7 @@ export function UsersScreen() {
             page={pagination.page}
             totalPages={pagination.totalPages}
             total={pagination.total}
+            unit="user"
             onPageChange={(page) => setQuery({ page })}
           />
         </>

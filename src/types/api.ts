@@ -181,14 +181,56 @@ export interface Role {
 }
 
 /**
- * A branch, as returned by GET /api/branches. Subset used by the branch-scope
- * picker and labels.
+ * A branch, as returned by GET /api/branches. A tenant's physical location.
+ *
+ * `isActive` (temporarily closed vs. open) and `deletedAt` (removed, restorable)
+ * are ORTHOGONAL axes — see branch.model.js. The branch master-data screens read
+ * every field below; the user branch-scope picker only needs `_id`/`name`.
  */
 export interface Branch {
   _id: string;
+  tenantId: string;
+  name: string;
+  address: string | null;
+  phone: string | null;
+  isActive: boolean;
+  /** Soft-delete marker; non-null means deleted (restorable), null means live. */
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Query parameters accepted by GET /api/branches. All optional. */
+export interface BranchListQuery {
+  page?: number;
+  limit?: number;
+  isActive?: boolean;
+  /** Free-text over name / address. */
+  search?: string;
+  /** Include soft-deleted branches (default false on the backend). */
+  includeDeleted?: boolean;
+}
+
+/**
+ * Body of POST /api/branches. Only `name` is required; `tenantId` is derived
+ * from the session, never sent from here.
+ */
+export interface CreateBranchInput {
   name: string;
   address?: string | null;
-  isActive: boolean;
+  phone?: string | null;
+  isActive?: boolean;
+}
+
+/**
+ * Body of PATCH /api/branches/:id — every field optional, but the backend
+ * rejects an empty body (send only what changed, at least one field).
+ */
+export interface UpdateBranchInput {
+  name?: string;
+  address?: string | null;
+  phone?: string | null;
+  isActive?: boolean;
 }
 
 /** Narrows an ApiResponse to its success branch. */

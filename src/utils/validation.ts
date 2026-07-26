@@ -12,6 +12,8 @@ export const PASSWORD_MIN_LENGTH = 8;
 export const PASSWORD_MAX_LENGTH = 128;
 export const FULL_NAME_MAX_LENGTH = 120;
 export const RESET_TOKEN_LENGTH = 64;
+export const BRANCH_NAME_MAX_LENGTH = 120;
+export const BRANCH_ADDRESS_MAX_LENGTH = 255;
 
 // Deliberately permissive, matching the backend's { tlds: false } stance.
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -57,6 +59,21 @@ export function validatePhone(value: string): string | undefined {
   if (!phone) return undefined;
   if (!PHONE_PATTERN.test(phone))
     return "Only digits, spaces and + ( ) - . are allowed";
+  return undefined;
+}
+
+export function validateBranchName(value: string): string | undefined {
+  const name = value.trim();
+  if (!name) return "Branch name is required";
+  if (name.length > BRANCH_NAME_MAX_LENGTH) return "Branch name is too long";
+  return undefined;
+}
+
+/** Address is optional and clearable. */
+export function validateAddress(value: string): string | undefined {
+  const address = value.trim();
+  if (!address) return undefined;
+  if (address.length > BRANCH_ADDRESS_MAX_LENGTH) return "Address is too long";
   return undefined;
 }
 

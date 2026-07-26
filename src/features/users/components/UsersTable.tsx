@@ -7,6 +7,7 @@ import { Pencil, Trash2, RotateCcw, Lock } from "lucide-react";
 import { ApiError } from "@/services/api-error";
 import { userService } from "@/services/user.service";
 import { swalToast } from "@/lib/swal";
+import { ConfirmDialog } from "@/components";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -19,7 +20,6 @@ import {
 import type { User } from "@/types/api";
 
 import { StatusBadge } from "./StatusBadge";
-import { ConfirmDialog } from "./ConfirmDialog";
 
 /** A user is locked when lockedUntil is set to a still-future instant. */
 function isLocked(user: User): boolean {

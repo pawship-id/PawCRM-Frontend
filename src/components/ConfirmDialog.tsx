@@ -2,8 +2,9 @@
 
 import type { ReactNode } from "react";
 
-import { Alert, Spinner } from "@/components";
-import { Button } from "@/components/ui/button";
+import { Alert } from "./Alert";
+import { Spinner } from "./Spinner";
+import { Button } from "./ui/button";
 import {
   Dialog,
   DialogContent,
@@ -11,11 +12,11 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from "@/components/ui/dialog";
+} from "./ui/dialog";
 
 /**
- * A confirm dialog for the destructive/irreversible row actions (delete,
- * restore, unlock), built on the shadcn/ui Dialog.
+ * A confirm dialog for the destructive/irreversible actions (delete, restore,
+ * unlock) across master-data screens, built on the shadcn/ui Dialog.
  *
  * Radix provides the accessibility the previous hand-rolled version implemented
  * manually — focus trap, Escape-to-close, outside-click, and the labelled
