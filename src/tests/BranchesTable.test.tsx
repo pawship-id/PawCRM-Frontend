@@ -82,6 +82,93 @@ describe("BranchesTable", () => {
     expect(onChanged).toHaveBeenCalled();
   });
 
+  it("hides the Actions column when the role has no branch actions", () => {
+    // Read-only role: no update/delete/restore, so the whole column disappears.
+    renderWithAuth(
+      <BranchesTable
+        branches={[makeBranch()]}
+        loading={false}
+        onChanged={jest.fn()}
+      />,
+      { isSuperAdmin: false, permissions: [{ feature: "branches", actions: ["read"] }] },
+    );
+
+    expect(
+      screen.queryByRole("columnheader", { name: /actions/i }),
+    ).not.toBeInTheDocument();
+    // Edit renders as a link (Button asChild → <a>); delete as a button.
+    expect(
+      screen.queryByRole("link", { name: /edit/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /delete/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the Actions column when at least one action is permitted", () => {
+    renderWithAuth(
+      <BranchesTable
+        branches={[makeBranch()]}
+        loading={false}
+        onChanged={jest.fn()}
+      />,
+      {
+        isSuperAdmin: false,
+        permissions: [{ feature: "branches", actions: ["read", "update"] }],
+      },
+    );
+
+    expect(
+      screen.getByRole("columnheader", { name: /actions/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /edit/i })).toBeInTheDocument();
+    // Delete not granted → its button stays hidden even though the column shows.
+    expect(
+      screen.queryByRole("button", { name: /delete/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("hides Actions for a restore-only role when no row is deleted", () => {
+    // read + restore, but every listed branch is live → only Edit/Delete would
+    // apply (both lacked) → no button on any row → column hidden.
+    renderWithAuth(
+      <BranchesTable
+        branches={[makeBranch()]}
+        loading={false}
+        onChanged={jest.fn()}
+      />,
+      {
+        isSuperAdmin: false,
+        permissions: [{ feature: "branches", actions: ["read", "restore"] }],
+      },
+    );
+
+    expect(
+      screen.queryByRole("columnheader", { name: /actions/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows Actions for a restore-only role once a deleted row is listed", () => {
+    // Same role, but a deleted branch is present (show-deleted on) → its Restore
+    // button applies → the column appears.
+    renderWithAuth(
+      <BranchesTable
+        branches={[makeBranch({ deletedAt: "2026-02-01T00:00:00.000Z" })]}
+        loading={false}
+        onChanged={jest.fn()}
+      />,
+      {
+        isSuperAdmin: false,
+        permissions: [{ feature: "branches", actions: ["read", "restore"] }],
+      },
+    );
+
+    expect(
+      screen.getByRole("columnheader", { name: /actions/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /restore/i })).toBeInTheDocument();
+  });
+
   it("offers restore for a deleted branch", () => {
     renderWithAuth(
       <BranchesTable

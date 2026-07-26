@@ -17,7 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Can } from "@/features/permissions";
+import { Can, usePermissions } from "@/features/permissions";
 import type { Branch } from "@/types/api";
 
 import { BranchStatusBadge } from "./BranchStatusBadge";
@@ -45,6 +45,17 @@ export function BranchesTable({
   const [pending, setPending] = useState<PendingAction>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const { can } = usePermissions();
+
+  // Show the Actions column only when at least one CURRENTLY-LISTED row would
+  // render a button — so a restore-only role sees the column while "show
+  // deleted" is on (deleted rows → Restore) but not while it is off (live rows
+  // → Edit/Delete, which that role lacks). Mirrors the per-button gating below.
+  const rowHasActions = (branch: Branch) =>
+    branch.deletedAt !== null
+      ? can("branches", "restore")
+      : can("branches", "update") || can("branches", "delete");
+  const showActions = branches.some(rowHasActions);
 
   function closeDialog() {
     if (busy) return;
@@ -92,7 +103,9 @@ export function BranchesTable({
               <TableHead>Address</TableHead>
               <TableHead>Phone</TableHead>
               <TableHead>State</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              {showActions && (
+                <TableHead className="text-right">Actions</TableHead>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -121,6 +134,7 @@ export function BranchesTable({
                       deleted={deleted}
                     />
                   </TableCell>
+                  {showActions && (
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">
                       {deleted ? (
@@ -165,6 +179,7 @@ export function BranchesTable({
                       )}
                     </div>
                   </TableCell>
+                  )}
                 </TableRow>
               );
             })}

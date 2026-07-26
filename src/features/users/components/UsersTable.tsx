@@ -17,7 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Can } from "@/features/permissions";
+import { Can, usePermissions } from "@/features/permissions";
 import type { User } from "@/types/api";
 
 import { StatusBadge } from "./StatusBadge";
@@ -64,6 +64,22 @@ export function UsersTable({
   const [pending, setPending] = useState<PendingAction>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const { can } = usePermissions();
+
+  // Show the Actions column only when at least one CURRENTLY-LISTED row would
+  // render a button — so a restore-only role sees the column while "show
+  // deleted" is on (deleted rows → Restore) but not while it is off (live rows
+  // → Edit/Delete/Unlock). Unlock is offered only for a locked live user,
+  // mirroring the per-button gating below.
+  const rowHasActions = (user: User) => {
+    if (user.deletedAt !== null) return can("users", "restore");
+    return (
+      can("users", "update") ||
+      can("users", "delete") ||
+      (isLocked(user) && can("users", "unlock"))
+    );
+  };
+  const showActions = users.some(rowHasActions);
 
   function closeDialog() {
     if (busy) return;
@@ -118,7 +134,9 @@ export function UsersTable({
               <TableHead>Role</TableHead>
               <TableHead>Branch access</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              {showActions && (
+                <TableHead className="text-right">Actions</TableHead>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -153,6 +171,7 @@ export function UsersTable({
                       )}
                     </div>
                   </TableCell>
+                  {showActions && (
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">
                       {deleted ? (
@@ -211,6 +230,7 @@ export function UsersTable({
                       )}
                     </div>
                   </TableCell>
+                  )}
                 </TableRow>
               );
             })}
