@@ -152,6 +152,17 @@ export function BranchIcon(props: IconProps) {
   );
 }
 
+/** Customer — a single person with a contact tag, for the customer directory. */
+export function CustomerIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <circle cx="9" cy="8" r="3.25" />
+      <path d="M3.5 19a5.5 5.5 0 0 1 11 0" />
+      <path d="M15.5 8.5h5M18 6v5" />
+    </Base>
+  );
+}
+
 export function RolesIcon(props: IconProps) {
   return (
     <Base {...props}>

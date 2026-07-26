@@ -317,6 +317,75 @@ export interface UpdateBranchInput {
 }
 
 /**
+ * A customer's VIP tier — a closed enum mirroring VIP_TIERS in
+ * customer.model.js. Most customers have none, so the field is nullable and the
+ * screens treat `null` as "no tier".
+ */
+export type VipTier = "bronze" | "silver" | "gold" | "platinum";
+
+/**
+ * A customer, as returned by GET /api/customers. A person a tenant does business
+ * with (pet owner, buyer, client).
+ *
+ * `email` is unique PER TENANT (never globally) and optional — a walk-in may be
+ * recorded with just a name. `deletedAt` is the soft-delete axis (removed,
+ * restorable). `createdBy` and `sv` are server-owned audit/versioning fields the
+ * UI does not edit; they are omitted here rather than typed loosely — add them
+ * when a screen needs them. Mirrors the Branch shape, minus the `isActive` axis
+ * (a customer has no open/closed state).
+ */
+export interface Customer {
+  _id: string;
+  tenantId: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  vipTier: VipTier | null;
+  /** Soft-delete marker; non-null means deleted (restorable), null means live. */
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Query parameters accepted by GET /api/customers. All optional. */
+export interface CustomerListQuery {
+  page?: number;
+  limit?: number;
+  vipTier?: VipTier;
+  /** Free-text over name / email / phone. */
+  search?: string;
+  /** Include soft-deleted customers (default false on the backend). */
+  includeDeleted?: boolean;
+}
+
+/**
+ * Body of POST /api/customers. Only `name` is required; `tenantId` and
+ * `createdBy` are derived from the session, never sent from here. The nullable
+ * fields accept `null` to leave them unset.
+ */
+export interface CreateCustomerInput {
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  vipTier?: VipTier | null;
+}
+
+/**
+ * Body of PATCH /api/customers/:id — every field optional, but the backend
+ * rejects an empty body (send only what changed, at least one field). A field
+ * set to `null`/"" clears it.
+ */
+export interface UpdateCustomerInput {
+  name?: string;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  vipTier?: VipTier | null;
+}
+
+/**
  * The actor (and branch) references the audit-log list endpoint populates.
  *
  * The backend returns `userId`/`branchId` as populated subdocuments — a small

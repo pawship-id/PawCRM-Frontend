@@ -14,6 +14,10 @@ export const FULL_NAME_MAX_LENGTH = 120;
 export const RESET_TOKEN_LENGTH = 64;
 export const BRANCH_NAME_MAX_LENGTH = 120;
 export const BRANCH_ADDRESS_MAX_LENGTH = 255;
+export const CUSTOMER_NAME_MAX_LENGTH = 120;
+export const CUSTOMER_EMAIL_MAX_LENGTH = 254;
+export const CUSTOMER_PHONE_MAX_LENGTH = 32;
+export const CUSTOMER_ADDRESS_MAX_LENGTH = 255;
 export const ROLE_NAME_MAX_LENGTH = 80;
 export const ROLE_DESCRIPTION_MAX_LENGTH = 255;
 
@@ -76,6 +80,40 @@ export function validateAddress(value: string): string | undefined {
   const address = value.trim();
   if (!address) return undefined;
   if (address.length > BRANCH_ADDRESS_MAX_LENGTH) return "Address is too long";
+  return undefined;
+}
+
+export function validateCustomerName(value: string): string | undefined {
+  const name = value.trim();
+  if (!name) return "Customer name is required";
+  if (name.length > CUSTOMER_NAME_MAX_LENGTH) return "Customer name is too long";
+  return undefined;
+}
+
+/** Email is optional for a customer (a walk-in may be recorded with only a name). */
+export function validateOptionalEmail(value: string): string | undefined {
+  const email = value.trim();
+  if (!email) return undefined;
+  if (email.length > CUSTOMER_EMAIL_MAX_LENGTH) return "Email is too long";
+  if (!EMAIL_PATTERN.test(email)) return "Enter a valid email address";
+  return undefined;
+}
+
+/** Phone is optional and clearable; mirrors the backend's 32-char limit. */
+export function validateCustomerPhone(value: string): string | undefined {
+  const phone = value.trim();
+  if (!phone) return undefined;
+  if (phone.length > CUSTOMER_PHONE_MAX_LENGTH) return "Phone is too long";
+  if (!PHONE_PATTERN.test(phone))
+    return "Only digits, spaces and + ( ) - . are allowed";
+  return undefined;
+}
+
+/** Address is optional and clearable. */
+export function validateCustomerAddress(value: string): string | undefined {
+  const address = value.trim();
+  if (!address) return undefined;
+  if (address.length > CUSTOMER_ADDRESS_MAX_LENGTH) return "Address is too long";
   return undefined;
 }
 

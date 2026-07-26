@@ -40,6 +40,7 @@ describe("filterNavItems", () => {
     expect(master?.children?.map((c) => c.label)).toEqual([
       "User",
       "Branch",
+      "Customer",
       "Roles",
       "Audit Log",
     ]);

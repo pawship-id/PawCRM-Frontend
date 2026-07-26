@@ -13,6 +13,33 @@ Branch: `feature/project-initialization`.
 
 ### Added
 
+**Customer management (Master Data → Customer)** — CRUD for the people a tenant
+does business with (pet owners, buyers, clients), against the existing
+`/api/customers` API. See `docs/features/customer-management.md`.
+
+- Routes: `/dashboard/master/customers` (list), `/customers/new` (create),
+  `/customers/[id]` (edit) — mirrors the branches routes
+- `features/customers/` module: `CustomersScreen`, `CustomersToolbar` (search +
+  VIP-tier filter + show-deleted), `CustomersTable` (name/email/phone, VIP +
+  status badges, delete/restore row actions), `CustomerCreateForm`,
+  `CustomerEditForm` (details + danger-zone), `VipTierSelect`,
+  `CustomerVipBadge` / `CustomerStatusBadge`, and the `useCustomers` hook
+- `services/customer.service.ts` — `list/getById/create/update/remove/restore`
+- `types/api.ts`: `VipTier`, `Customer`, `CustomerListQuery`,
+  `CreateCustomerInput`, `UpdateCustomerInput`
+- Validation: `validateCustomerName`, `validateOptionalEmail`,
+  `validateCustomerPhone`, `validateCustomerAddress`
+- Gated on a new `customers` permission; nav item + `CustomerIcon`; pages behind
+  `<RequirePermission feature="customers">`
+- **Backend (permission wiring only, no business-logic change):** added
+  `customers` to the RBAC catalog (`config/permissionCatalog.js`), gated every
+  `/api/customers` route with `requirePermission("customers", …)` (mirroring
+  `/api/audit-logs`), and granted the new permission to the seeded **Manager**
+  (all actions) and **Staff** (read) roles. `PERMISSION_CATALOG` in the frontend
+  hand-synced to match.
+- Tests: `CustomerCreateForm.test.tsx`; `nav.test` updated; backend
+  `customer.api.test.js` updated for the new gate (all 646 backend tests pass)
+
 **Audit Log (Master Data → Audit Log)** — a read-only, paginated, filterable view
 of the tenant's security audit trail. Gated on the new `auditLogs:read`
 permission; the nav item and page hide without it. Reuses the master-data list

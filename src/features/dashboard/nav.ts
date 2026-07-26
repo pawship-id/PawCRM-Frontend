@@ -8,6 +8,7 @@ import {
   MasterDataIcon,
   UsersIcon,
   BranchIcon,
+  CustomerIcon,
   RolesIcon,
   AuditLogIcon,
 } from "@/components/icons";
@@ -79,6 +80,12 @@ export const NAV_ITEMS: NavItem[] = [
         href: "/dashboard/master/branches",
         icon: BranchIcon,
         permission: { feature: "branches", action: "read" },
+      },
+      {
+        label: "Customer",
+        href: "/dashboard/master/customers",
+        icon: CustomerIcon,
+        permission: { feature: "customers", action: "read" },
       },
       {
         label: "Roles",

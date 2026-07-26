@@ -15,6 +15,7 @@
 export const PERMISSION_CATALOG = {
   tenants: ["create", "read", "update", "delete", "restore"],
   branches: ["create", "read", "update", "delete", "restore"],
+  customers: ["create", "read", "update", "delete", "restore"],
   users: [
     "create",
     "read",
