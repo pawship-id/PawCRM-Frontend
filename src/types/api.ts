@@ -58,6 +58,14 @@ export interface User {
   status: "active" | "suspended";
   emailVerifiedAt: string | null;
   lastLoginAt: string | null;
+  /**
+   * When set to a future time, the account is locked out of sign-in; the user
+   * admin screen offers an Unlock action. The list/read endpoints project this
+   * (they exclude only __v and passwordHash), so it is safe to rely on here.
+   */
+  lockedUntil: string | null;
+  /** Soft-delete marker; non-null means deleted (restorable), null means live. */
+  deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -99,6 +107,88 @@ export interface Paginated<T> {
   page: number;
   limit: number;
   total: number;
+}
+
+/**
+ * The paginated list envelope the backend actually returns from its list
+ * endpoints (GET /api/users, /api/roles, /api/branches): the page metadata is
+ * nested under `pagination`, unlike the flat `Paginated<T>` above. Use this for
+ * real list calls; `Paginated<T>` predates the endpoints and stays for now.
+ */
+export interface PageResult<T> {
+  items: T[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+/** Query parameters accepted by GET /api/users. All optional. */
+export interface UserListQuery {
+  page?: number;
+  limit?: number;
+  status?: User["status"];
+  roleId?: string;
+  branchId?: string;
+  /** Free-text over fullName / email / phone. */
+  search?: string;
+  /** Include soft-deleted users (default false on the backend). */
+  includeDeleted?: boolean;
+}
+
+/**
+ * Body of POST /api/users. The backend requires a branch scope: either
+ * `allBranches: true` OR a non-empty `branchAccess`. `tenantId` is derived from
+ * the session, never sent from here.
+ */
+export interface CreateUserInput {
+  email: string;
+  password: string;
+  fullName: string;
+  phone?: string | null;
+  roleId?: string | null;
+  allBranches?: boolean;
+  branchAccess?: string[];
+  status?: User["status"];
+}
+
+/**
+ * Body of PATCH /api/users/:id — every field optional (send only what changed).
+ * Password and status have their own dedicated endpoints and are not accepted
+ * here.
+ */
+export interface UpdateUserInput {
+  fullName?: string;
+  email?: string;
+  phone?: string | null;
+  roleId?: string | null;
+  allBranches?: boolean;
+  branchAccess?: string[];
+}
+
+/**
+ * A role, as returned by GET /api/roles. Only the fields the user screens need
+ * (the role picker + labels) are typed; the backend carries more (permissions,
+ * isSystem, ...) that no screen touches yet.
+ */
+export interface Role {
+  _id: string;
+  name: string;
+  description?: string | null;
+  isSuperAdmin?: boolean;
+}
+
+/**
+ * A branch, as returned by GET /api/branches. Subset used by the branch-scope
+ * picker and labels.
+ */
+export interface Branch {
+  _id: string;
+  name: string;
+  address?: string | null;
+  isActive: boolean;
 }
 
 /** Narrows an ApiResponse to its success branch. */

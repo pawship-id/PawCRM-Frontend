@@ -1,7 +1,20 @@
-import type { HTMLAttributes, ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 
-/** A surface panel — the container for forms and profile sections. */
-export interface CardProps extends Omit<HTMLAttributes<HTMLDivElement>, "title"> {
+import { cn } from "@/lib/utils";
+import {
+  Card as UICard,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+} from "./ui/card";
+
+/**
+ * A surface panel, backed by the shadcn/ui Card. Keeps the project's
+ * `title` / `description` prop API (rather than the shadcn header sub-components)
+ * so existing call sites — `<Card title="Account">…</Card>` — are unchanged.
+ */
+export interface CardProps extends Omit<ComponentProps<"div">, "title"> {
   title?: ReactNode;
   description?: ReactNode;
   children: ReactNode;
@@ -15,24 +28,14 @@ export function Card({
   ...props
 }: CardProps) {
   return (
-    <div
-      {...props}
-      className={[
-        "rounded-2xl border border-border bg-surface p-6 shadow-sm",
-        className ?? "",
-      ].join(" ")}
-    >
+    <UICard className={cn(className)} {...props}>
       {(title || description) && (
-        <div className="mb-5">
-          {title && (
-            <h2 className="text-lg font-semibold text-foreground">{title}</h2>
-          )}
-          {description && (
-            <p className="mt-1 text-sm text-muted">{description}</p>
-          )}
-        </div>
+        <CardHeader>
+          {title && <CardTitle className="text-lg">{title}</CardTitle>}
+          {description && <CardDescription>{description}</CardDescription>}
+        </CardHeader>
       )}
-      {children}
-    </div>
+      <CardContent>{children}</CardContent>
+    </UICard>
   );
 }

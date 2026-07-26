@@ -7,6 +7,62 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+Branch: `feature/project-initialization`.
+
+### Added
+
+**User management (Master Data → User)** — frontend CRUD for staff users against
+the existing `/api/users` API. No backend changes. See
+`docs/features/user-management.md`.
+
+- Routes: `/dashboard/master/users` (list), `/users/new` (create),
+  `/users/[id]` (edit) — the app's first dynamic route segment
+- `features/users/` module: `UsersScreen`, `UsersToolbar`, `UsersTable`,
+  `Pagination`, `UserCreateForm`, `UserEditForm`, `RoleSelect`,
+  `BranchScopeField`, `StatusBadge`, `ConfirmDialog`, plus `useUsers` and
+  `useLookups` hooks
+- List with search, status filter, "show deleted" toggle and pagination; create
+  with role picker + branch-scope picker; edit with status toggle, admin
+  password reset, and delete / restore / unlock
+- `services/user.service.ts` extended with `list`, `getById`, `create`,
+  `update`, `setStatus`, `unlock`, `remove`, `restore`
+- `services/role.service.ts`, `services/branch.service.ts` — read-only lookups
+- `types/api.ts`: `PageResult<T>`, `UserListQuery`, `CreateUserInput`,
+  `UpdateUserInput`, `Role`, `Branch`; `User` gained `lockedUntil`, `deletedAt`
+**shadcn/ui component system** — the shared UI primitives and the user
+management screens now render on [shadcn/ui](https://ui.shadcn.com/) (Radix +
+CVA + Tailwind).
+
+- Added `components/ui/*` (button, input, label, card, alert, badge, dialog,
+  select, checkbox, radio-group, table), `lib/utils.ts` (`cn`), and
+  `components.json`
+- The `@/components` primitives (`Button`, `TextField`, `Card`, `Alert`) are now
+  thin adapters over shadcn/ui, keeping their existing prop APIs so every call
+  site (auth, profile, dashboard) is unchanged while the markup/styling comes
+  from shadcn
+- Users feature rebuilt on shadcn: `Table` (list), `Dialog` (confirmations),
+  `Select` (role + status filter), `RadioGroup`/`Checkbox` (branch scope),
+  `Badge` (status); icons switched to `lucide-react`
+- `styles/globals.css` gained shadcn's semantic tokens (card/popover/muted-
+  foreground/accent/destructive/input/ring), mapped onto the existing PawShip
+  palette — additive, so the original tokens keep their meaning
+- Dependencies added: `radix-ui`, `class-variance-authority`, `clsx`,
+  `tailwind-merge`, `lucide-react`, and `tw-animate-css` (dev)
+- `jest.setup.ts` polyfills `ResizeObserver` and pointer-capture/`scrollIntoView`
+  so the Radix-based components render under jsdom
+
+### Verified
+
+- `npm test` — 57/57 passing (11 suites)
+- `npm run type-check` — clean
+- `npm run lint` — clean
+- `npm run build` — succeeds; `/dashboard/master/users/[id]` server-rendered on
+  demand, list and `/new` prerendered
+
+---
+
 ## [0.1.0] — 2026-07-21
 
 Project foundation. Branch: `feature/project-initialization`.

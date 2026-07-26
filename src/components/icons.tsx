@@ -170,3 +170,4 @@ export function PanelLeftIcon(props: IconProps) {
     </Base>
   );
 }
+

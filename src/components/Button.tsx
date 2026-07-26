@@ -1,25 +1,30 @@
-import type { ButtonHTMLAttributes } from "react";
+import type { ComponentProps } from "react";
+
+import { cn } from "@/lib/utils";
+import { Button as UIButton } from "./ui/button";
 import { Spinner } from "./Spinner";
 
 /**
- * The one button. Variants map onto the brand tokens, so a palette change in
- * globals.css restyles every button with no edit here.
+ * App-facing button, backed by the shadcn/ui Button.
+ *
+ * Keeps the project's existing API (`variant: primary|secondary|ghost`,
+ * `loading`, `fullWidth`) so every call site stays unchanged while the actual
+ * markup and styling now come from shadcn. The variant names map onto shadcn's:
+ * primary -> default. For shadcn-only variants (outline, destructive, link) use
+ * the underlying `@/components/ui/button` directly.
  */
-export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+export interface ButtonProps extends ComponentProps<"button"> {
   variant?: "primary" | "secondary" | "ghost";
   /** Shows a spinner and disables the button. */
   loading?: boolean;
   fullWidth?: boolean;
 }
 
-const VARIANTS: Record<NonNullable<ButtonProps["variant"]>, string> = {
-  primary:
-    "bg-primary text-primary-foreground hover:bg-primary-hover focus-visible:ring-primary",
-  secondary:
-    "bg-secondary text-secondary-foreground hover:bg-secondary-hover focus-visible:ring-secondary",
-  ghost:
-    "bg-transparent text-primary hover:bg-primary/10 focus-visible:ring-primary",
-};
+const VARIANT_MAP = {
+  primary: "default",
+  secondary: "secondary",
+  ghost: "ghost",
+} as const;
 
 export function Button({
   variant = "primary",
@@ -31,21 +36,14 @@ export function Button({
   ...props
 }: ButtonProps) {
   return (
-    <button
-      {...props}
+    <UIButton
+      variant={VARIANT_MAP[variant]}
       disabled={disabled || loading}
-      className={[
-        "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5",
-        "text-sm font-semibold transition-colors",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-        "disabled:cursor-not-allowed disabled:opacity-60",
-        fullWidth ? "w-full" : "",
-        VARIANTS[variant],
-        className ?? "",
-      ].join(" ")}
+      className={cn(fullWidth && "w-full", className)}
+      {...props}
     >
       {loading && <Spinner size={16} />}
       {children}
-    </button>
+    </UIButton>
   );
 }

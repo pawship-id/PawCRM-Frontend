@@ -1,16 +1,20 @@
 import { useId } from "react";
-import type { InputHTMLAttributes, ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
+
+import { cn } from "@/lib/utils";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
 
 /**
- * A labelled text input with inline error and optional hint.
+ * A labelled text input with inline error and optional hint, composed from the
+ * shadcn/ui Input and Label.
  *
- * Accessibility is the point: the label is programmatically tied to the input,
- * the error is announced via aria-describedby + role="alert", and aria-invalid
- * flips when there is an error — so screen readers and the styling stay in sync
- * without test IDs.
+ * The project's form ergonomics are preserved: one component owns the label,
+ * the error (red + aria-invalid + role="alert", announced via aria-describedby)
+ * and the hint, so forms keep binding `error={fieldErrors.x}` exactly as before.
  */
 export interface TextFieldProps
-  extends Omit<InputHTMLAttributes<HTMLInputElement>, "id"> {
+  extends Omit<ComponentProps<"input">, "id"> {
   label: string;
   /** Backend or client validation message; renders red + sets aria-invalid. */
   error?: string;
@@ -31,26 +35,20 @@ export function TextField({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium text-foreground">
+      <Label htmlFor={id}>
         {label}
         {required && <span className="text-danger"> *</span>}
-      </label>
-      <input
+      </Label>
+      <Input
         {...props}
         id={id}
         required={required}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? errorId : hint ? hintId : undefined}
-        className={[
-          "w-full rounded-lg border bg-surface px-3.5 py-2.5 text-sm text-foreground",
-          "placeholder:text-muted/70 transition-colors",
-          "focus:outline-none focus:ring-2 focus:ring-offset-0",
-          error
-            ? "border-danger focus:ring-danger/40"
-            : "border-border focus:border-primary focus:ring-primary/30",
-          "disabled:cursor-not-allowed disabled:opacity-60",
-          className ?? "",
-        ].join(" ")}
+        className={cn(
+          error && "border-danger focus-visible:ring-danger/40",
+          className,
+        )}
       />
       {error ? (
         <p id={errorId} role="alert" className="text-xs text-danger">
