@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { Logo } from "@/components";
 import { CloseIcon, ChevronDownIcon } from "@/components/icons";
+import { usePermissions } from "@/features/permissions";
 import {
   NAV_ITEMS,
+  filterNavItems,
   isActive,
   isActiveHref,
   type NavItem,
@@ -38,6 +40,11 @@ interface SidebarProps {
  */
 export function Sidebar({ open, collapsed, onClose, onExpand }: SidebarProps) {
   const pathname = usePathname();
+  const { can } = usePermissions();
+
+  // Hide sections the current role cannot use. Recomputed only when the grant
+  // set changes (can is memoized by usePermissions).
+  const items = useMemo(() => filterNavItems(NAV_ITEMS, can), [can]);
 
   return (
     <>
@@ -90,7 +97,7 @@ export function Sidebar({ open, collapsed, onClose, onExpand }: SidebarProps) {
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-3">
-          {NAV_ITEMS.map((item) =>
+          {items.map((item) =>
             item.children ? (
               <NavGroup
                 key={item.label}

@@ -17,6 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Can } from "@/features/permissions";
 import type { Role } from "@/types/api";
 
 import { RoleStatusBadge } from "./RoleStatusBadge";
@@ -129,34 +130,42 @@ export function RolesTable({
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">
                       {deleted ? (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setPending({ kind: "restore", role })}
-                        >
-                          <RotateCcw className="size-4" />
-                          Restore
-                        </Button>
+                        <Can feature="roles" action="restore">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() =>
+                              setPending({ kind: "restore", role })
+                            }
+                          >
+                            <RotateCcw className="size-4" />
+                            Restore
+                          </Button>
+                        </Can>
                       ) : (
                         <>
-                          <Button variant="ghost" size="sm" asChild>
-                            <Link href={`/dashboard/master/roles/${role._id}`}>
-                              <Pencil className="size-4" />
-                              Edit
-                            </Link>
-                          </Button>
-                          {!role.isSystem && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-danger hover:bg-danger/10 hover:text-danger"
-                              onClick={() =>
-                                setPending({ kind: "delete", role })
-                              }
-                            >
-                              <Trash2 className="size-4" />
-                              Delete
+                          <Can feature="roles" action="update">
+                            <Button variant="ghost" size="sm" asChild>
+                              <Link href={`/dashboard/master/roles/${role._id}`}>
+                                <Pencil className="size-4" />
+                                Edit
+                              </Link>
                             </Button>
+                          </Can>
+                          {!role.isSystem && (
+                            <Can feature="roles" action="delete">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-danger hover:bg-danger/10 hover:text-danger"
+                                onClick={() =>
+                                  setPending({ kind: "delete", role })
+                                }
+                              >
+                                <Trash2 className="size-4" />
+                                Delete
+                              </Button>
+                            </Can>
                           )}
                         </>
                       )}

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Can } from "@/features/permissions";
 import type { RolesQuery } from "../hooks/useRoles";
 
 /**
@@ -51,12 +52,14 @@ export function RolesToolbar({
         </div>
       </div>
 
-      <Button asChild>
-        <Link href="/dashboard/master/roles/new">
-          <Plus className="size-4" />
-          New role
-        </Link>
-      </Button>
+      <Can feature="roles" action="create">
+        <Button asChild>
+          <Link href="/dashboard/master/roles/new">
+            <Plus className="size-4" />
+            New role
+          </Link>
+        </Button>
+      </Can>
     </div>
   );
 }

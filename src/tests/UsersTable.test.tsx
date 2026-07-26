@@ -1,6 +1,7 @@
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+import { renderWithAuth } from "./helpers/renderWithAuth";
 import { UsersTable } from "@/features/users/components/UsersTable";
 import { userService } from "@/services/user.service";
 import type { User } from "@/types/api";
@@ -41,7 +42,7 @@ describe("UsersTable", () => {
   afterEach(() => jest.restoreAllMocks());
 
   it("renders a row with the resolved role name and status", () => {
-    render(
+    renderWithAuth(
       <UsersTable
         users={[makeUser()]}
         roleNames={ROLE_NAMES}
@@ -57,7 +58,7 @@ describe("UsersTable", () => {
   });
 
   it("shows the empty state when there are no users", () => {
-    render(
+    renderWithAuth(
       <UsersTable
         users={[]}
         roleNames={{}}
@@ -76,7 +77,7 @@ describe("UsersTable", () => {
       .mockResolvedValue({ deleted: true });
     const onChanged = jest.fn();
 
-    render(
+    renderWithAuth(
       <UsersTable
         users={[makeUser()]}
         roleNames={ROLE_NAMES}
@@ -97,7 +98,7 @@ describe("UsersTable", () => {
   });
 
   it("offers restore for a deleted user", () => {
-    render(
+    renderWithAuth(
       <UsersTable
         users={[makeUser({ deletedAt: "2026-02-01T00:00:00.000Z" })]}
         roleNames={ROLE_NAMES}

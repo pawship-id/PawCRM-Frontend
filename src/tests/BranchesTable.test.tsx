@@ -1,6 +1,7 @@
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+import { renderWithAuth } from "./helpers/renderWithAuth";
 import { BranchesTable } from "@/features/branches/components/BranchesTable";
 import { branchService } from "@/services/branch.service";
 import type { Branch } from "@/types/api";
@@ -33,7 +34,7 @@ describe("BranchesTable", () => {
   afterEach(() => jest.restoreAllMocks());
 
   it("renders a row with the name, contact and state", () => {
-    render(
+    renderWithAuth(
       <BranchesTable
         branches={[makeBranch()]}
         loading={false}
@@ -48,7 +49,7 @@ describe("BranchesTable", () => {
   });
 
   it("shows the empty state when there are no branches", () => {
-    render(
+    renderWithAuth(
       <BranchesTable branches={[]} loading={false} onChanged={jest.fn()} />,
     );
     expect(
@@ -62,7 +63,7 @@ describe("BranchesTable", () => {
       .mockResolvedValue({} as never);
     const onChanged = jest.fn();
 
-    render(
+    renderWithAuth(
       <BranchesTable
         branches={[makeBranch()]}
         loading={false}
@@ -82,7 +83,7 @@ describe("BranchesTable", () => {
   });
 
   it("offers restore for a deleted branch", () => {
-    render(
+    renderWithAuth(
       <BranchesTable
         branches={[makeBranch({ deletedAt: "2026-02-01T00:00:00.000Z" })]}
         loading={false}

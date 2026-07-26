@@ -77,14 +77,30 @@ export interface SessionContext {
   expiresAt?: string;
 }
 
+/**
+ * The effective RBAC context of the signed-in user, returned alongside the user
+ * by /api/auth/login and /api/auth/me. The frontend gates navigation, buttons
+ * and pages on this — never as a security boundary (the backend still owns
+ * enforcement), only so a user is not shown actions their role cannot perform.
+ *
+ * `permissions` is the flattened grant set of the user's role (the same
+ * `[{ feature, actions }]` shape a role stores). `isSuperAdmin` mirrors the
+ * role's bypass flag: when true, every permission check passes regardless of the
+ * grants. A user with no role (`roleId: null`) has an empty `permissions` array.
+ */
+export interface AuthPermissions {
+  permissions: PermissionGrant[];
+  isSuperAdmin: boolean;
+}
+
 /** Payload of POST /api/auth/login. */
-export interface LoginPayload {
+export interface LoginPayload extends AuthPermissions {
   user: User;
   session: SessionContext;
 }
 
 /** Payload of GET /api/auth/me. */
-export interface MePayload {
+export interface MePayload extends AuthPermissions {
   user: User;
   session: SessionContext;
 }

@@ -10,6 +10,11 @@ import {
   BranchIcon,
   RolesIcon,
 } from "@/components/icons";
+import type {
+  Action,
+  Feature,
+  PermissionRequirement,
+} from "@/features/permissions";
 
 type Icon = ComponentType<SVGProps<SVGSVGElement>>;
 
@@ -25,6 +30,12 @@ export interface NavChild {
   label: string;
   href: string;
   icon: Icon;
+  /**
+   * The permission a user must hold for this link to appear. Omitted means
+   * "always visible" — sections without a catalog feature yet (Booking, POS…)
+   * carry no requirement.
+   */
+  permission?: PermissionRequirement;
 }
 
 export interface NavItem {
@@ -39,6 +50,11 @@ export interface NavItem {
    * its prefix with every other section, so only it needs an exact match.
    */
   exact?: boolean;
+  /**
+   * The permission a leaf must hold to appear. Omitted means always visible. A
+   * GROUP needs no requirement of its own: it shows when it has a visible child.
+   */
+  permission?: PermissionRequirement;
 }
 
 export const NAV_ITEMS: NavItem[] = [
@@ -51,12 +67,51 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Master Data",
     icon: MasterDataIcon,
     children: [
-      { label: "User", href: "/dashboard/master/users", icon: UsersIcon },
-      { label: "Branch", href: "/dashboard/master/branches", icon: BranchIcon },
-      { label: "Roles", href: "/dashboard/master/roles", icon: RolesIcon },
+      {
+        label: "User",
+        href: "/dashboard/master/users",
+        icon: UsersIcon,
+        permission: { feature: "users", action: "read" },
+      },
+      {
+        label: "Branch",
+        href: "/dashboard/master/branches",
+        icon: BranchIcon,
+        permission: { feature: "branches", action: "read" },
+      },
+      {
+        label: "Roles",
+        href: "/dashboard/master/roles",
+        icon: RolesIcon,
+        permission: { feature: "roles", action: "read" },
+      },
     ],
   },
 ];
+
+/** Predicate matching usePermissions().can — lets the filter stay pure/testable. */
+export type CanFn = (feature: Feature, action: Action) => boolean;
+
+/**
+ * Narrows NAV_ITEMS to what `can` permits: a leaf is dropped when its
+ * `permission` is not granted; a group keeps only its permitted children and is
+ * itself dropped when none remain. Items with no `permission` always pass. Pure
+ * — the Sidebar memoizes it against the current `can`.
+ */
+export function filterNavItems(items: NavItem[], can: CanFn): NavItem[] {
+  const allowed = (req?: PermissionRequirement) =>
+    !req || can(req.feature, req.action);
+
+  return items.reduce<NavItem[]>((visible, item) => {
+    if (item.children) {
+      const children = item.children.filter((child) => allowed(child.permission));
+      if (children.length > 0) visible.push({ ...item, children });
+    } else if (allowed(item.permission)) {
+      visible.push(item);
+    }
+    return visible;
+  }, []);
+}
 
 /** Whether a leaf route is the active one for the given pathname. */
 export function isActiveHref(

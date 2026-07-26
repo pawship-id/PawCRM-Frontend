@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Can } from "@/features/permissions";
 import type { BranchesQuery } from "../hooks/useBranches";
 
 /**
@@ -83,12 +84,14 @@ export function BranchesToolbar({
         </div>
       </div>
 
-      <Button asChild>
-        <Link href="/dashboard/master/branches/new">
-          <Plus className="size-4" />
-          New branch
-        </Link>
-      </Button>
+      <Can feature="branches" action="create">
+        <Button asChild>
+          <Link href="/dashboard/master/branches/new">
+            <Plus className="size-4" />
+            New branch
+          </Link>
+        </Button>
+      </Can>
     </div>
   );
 }

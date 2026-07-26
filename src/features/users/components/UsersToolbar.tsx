@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Can } from "@/features/permissions";
 import type { UsersQuery } from "../hooks/useUsers";
 
 /**
@@ -79,12 +80,14 @@ export function UsersToolbar({
         </div>
       </div>
 
-      <Button asChild>
-        <Link href="/dashboard/master/users/new">
-          <Plus className="size-4" />
-          New user
-        </Link>
-      </Button>
+      <Can feature="users" action="create">
+        <Button asChild>
+          <Link href="/dashboard/master/users/new">
+            <Plus className="size-4" />
+            New user
+          </Link>
+        </Button>
+      </Can>
     </div>
   );
 }

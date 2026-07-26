@@ -17,6 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Can } from "@/features/permissions";
 import type { Branch } from "@/types/api";
 
 import { BranchStatusBadge } from "./BranchStatusBadge";
@@ -123,35 +124,43 @@ export function BranchesTable({
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">
                       {deleted ? (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setPending({ kind: "restore", branch })}
-                        >
-                          <RotateCcw className="size-4" />
-                          Restore
-                        </Button>
-                      ) : (
-                        <>
-                          <Button variant="ghost" size="sm" asChild>
-                            <Link
-                              href={`/dashboard/master/branches/${branch._id}`}
-                            >
-                              <Pencil className="size-4" />
-                              Edit
-                            </Link>
-                          </Button>
+                        <Can feature="branches" action="restore">
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="text-danger hover:bg-danger/10 hover:text-danger"
                             onClick={() =>
-                              setPending({ kind: "delete", branch })
+                              setPending({ kind: "restore", branch })
                             }
                           >
-                            <Trash2 className="size-4" />
-                            Delete
+                            <RotateCcw className="size-4" />
+                            Restore
                           </Button>
+                        </Can>
+                      ) : (
+                        <>
+                          <Can feature="branches" action="update">
+                            <Button variant="ghost" size="sm" asChild>
+                              <Link
+                                href={`/dashboard/master/branches/${branch._id}`}
+                              >
+                                <Pencil className="size-4" />
+                                Edit
+                              </Link>
+                            </Button>
+                          </Can>
+                          <Can feature="branches" action="delete">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-danger hover:bg-danger/10 hover:text-danger"
+                              onClick={() =>
+                                setPending({ kind: "delete", branch })
+                              }
+                            >
+                              <Trash2 className="size-4" />
+                              Delete
+                            </Button>
+                          </Can>
                         </>
                       )}
                     </div>

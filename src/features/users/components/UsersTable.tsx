@@ -17,6 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Can } from "@/features/permissions";
 import type { User } from "@/types/api";
 
 import { StatusBadge } from "./StatusBadge";
@@ -155,45 +156,57 @@ export function UsersTable({
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">
                       {deleted ? (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setPending({ kind: "restore", user })}
-                        >
-                          <RotateCcw className="size-4" />
-                          Restore
-                        </Button>
-                      ) : (
-                        <>
-                          {locked && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() =>
-                                setPending({ kind: "unlock", user })
-                              }
-                            >
-                              <Lock className="size-4" />
-                              Unlock
-                            </Button>
-                          )}
-                          <Button variant="ghost" size="sm" asChild>
-                            <Link
-                              href={`/dashboard/master/users/${user._id}`}
-                            >
-                              <Pencil className="size-4" />
-                              Edit
-                            </Link>
-                          </Button>
+                        <Can feature="users" action="restore">
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="text-danger hover:bg-danger/10 hover:text-danger"
-                            onClick={() => setPending({ kind: "delete", user })}
+                            onClick={() =>
+                              setPending({ kind: "restore", user })
+                            }
                           >
-                            <Trash2 className="size-4" />
-                            Delete
+                            <RotateCcw className="size-4" />
+                            Restore
                           </Button>
+                        </Can>
+                      ) : (
+                        <>
+                          {locked && (
+                            <Can feature="users" action="unlock">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  setPending({ kind: "unlock", user })
+                                }
+                              >
+                                <Lock className="size-4" />
+                                Unlock
+                              </Button>
+                            </Can>
+                          )}
+                          <Can feature="users" action="update">
+                            <Button variant="ghost" size="sm" asChild>
+                              <Link
+                                href={`/dashboard/master/users/${user._id}`}
+                              >
+                                <Pencil className="size-4" />
+                                Edit
+                              </Link>
+                            </Button>
+                          </Can>
+                          <Can feature="users" action="delete">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-danger hover:bg-danger/10 hover:text-danger"
+                              onClick={() =>
+                                setPending({ kind: "delete", user })
+                              }
+                            >
+                              <Trash2 className="size-4" />
+                              Delete
+                            </Button>
+                          </Can>
                         </>
                       )}
                     </div>

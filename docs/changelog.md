@@ -13,6 +13,22 @@ Branch: `feature/project-initialization`.
 
 ### Added
 
+**Permission gating (RBAC-aware UI)** — frontend-only. Navigation, buttons and
+pages hide when the signed-in user's role lacks the matching permission. A UX
+guard, not a security boundary; the backend still authorizes every request. No
+backend changes. See `docs/features/permission-gating.md`.
+
+- `features/permissions/` module: `usePermissions` (`can` / `canAny` / `canAll`
+  + super-admin bypass), `<Can>` render gate, `<RequirePermission>` page guard
+  with an Access-denied panel, and the `PERMISSION_CATALOG` / `Feature` /
+  `Action` vocabulary (mirrors the backend catalog)
+- Grants read from the auth payload: `AuthProvider` now holds `permissions` +
+  `isSuperAdmin` from `/api/auth/login` and `/api/auth/me`
+- `types/api.ts`: `AuthPermissions`; `LoginPayload` / `MePayload` extended
+- Sidebar hides Master Data children (and the group when empty) via
+  `filterNavItems`; Master create buttons, row actions and routes gated
+- Tests: `nav.test.ts`, `permissions.test.tsx`, `tests/helpers/renderWithAuth`
+
 **User management (Master Data → User)** — frontend CRUD for staff users against
 the existing `/api/users` API. No backend changes. See
 `docs/features/user-management.md`.
