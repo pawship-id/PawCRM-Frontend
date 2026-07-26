@@ -71,6 +71,22 @@ describe("UsersTable", () => {
     ).toBeInTheDocument();
   });
 
+  it("highlights the search term in the name cell", () => {
+    renderWithAuth(
+      <UsersTable
+        users={[makeUser()]}
+        roleNames={ROLE_NAMES}
+        loading={false}
+        onChanged={jest.fn()}
+        search="ana"
+      />,
+    );
+
+    // "Ana" within "Ana Diaz" is wrapped in a <mark>.
+    const mark = screen.getByText("Ana");
+    expect(mark.tagName).toBe("MARK");
+  });
+
   it("confirms and deletes a user, then refetches", async () => {
     const remove = jest
       .spyOn(userService, "remove")

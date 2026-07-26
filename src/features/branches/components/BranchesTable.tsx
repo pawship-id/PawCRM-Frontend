@@ -7,7 +7,7 @@ import { Pencil, Trash2, RotateCcw } from "lucide-react";
 import { ApiError } from "@/services/api-error";
 import { branchService } from "@/services/branch.service";
 import { swalToast } from "@/lib/swal";
-import { ConfirmDialog } from "@/components";
+import { ConfirmDialog, HighlightText } from "@/components";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -37,10 +37,13 @@ export function BranchesTable({
   branches,
   loading,
   onChanged,
+  search,
 }: {
   branches: Branch[];
   loading: boolean;
   onChanged: () => void;
+  /** Active search term, highlighted in the searchable cells (name, address). */
+  search?: string;
 }) {
   const [pending, setPending] = useState<PendingAction>(null);
   const [busy, setBusy] = useState(false);
@@ -115,12 +118,16 @@ export function BranchesTable({
                 <TableRow key={branch._id}>
                   <TableCell>
                     <div className="font-medium text-foreground">
-                      {branch.name}
+                      <HighlightText text={branch.name} query={search} />
                     </div>
                   </TableCell>
                   <TableCell>
                     <span className="text-muted-foreground">
-                      {branch.address ?? "—"}
+                      {branch.address ? (
+                        <HighlightText text={branch.address} query={search} />
+                      ) : (
+                        "—"
+                      )}
                     </span>
                   </TableCell>
                   <TableCell>

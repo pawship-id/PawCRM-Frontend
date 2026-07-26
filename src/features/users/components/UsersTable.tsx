@@ -7,7 +7,7 @@ import { Pencil, Trash2, RotateCcw, Lock } from "lucide-react";
 import { ApiError } from "@/services/api-error";
 import { userService } from "@/services/user.service";
 import { swalToast } from "@/lib/swal";
-import { ConfirmDialog } from "@/components";
+import { ConfirmDialog, HighlightText } from "@/components";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -55,11 +55,14 @@ export function UsersTable({
   roleNames,
   loading,
   onChanged,
+  search,
 }: {
   users: User[];
   roleNames: Record<string, string>;
   loading: boolean;
   onChanged: () => void;
+  /** Active search term, highlighted in the searchable cells (name, email). */
+  search?: string;
 }) {
   const [pending, setPending] = useState<PendingAction>(null);
   const [busy, setBusy] = useState(false);
@@ -147,10 +150,10 @@ export function UsersTable({
                 <TableRow key={user._id}>
                   <TableCell>
                     <div className="font-medium text-foreground">
-                      {user.fullName}
+                      <HighlightText text={user.fullName} query={search} />
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      {user.email}
+                      <HighlightText text={user.email} query={search} />
                     </div>
                   </TableCell>
                   <TableCell>

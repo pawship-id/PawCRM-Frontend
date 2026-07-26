@@ -35,6 +35,12 @@ immutable.
   over `action` / `ipAddress`, so a few characters is enough.
 - Tests: `auditLog.service`, `AuditLogsTable`, `HighlightText`; `nav.test` updated
 
+**Search highlight extended to master data** — the same yellow `HighlightText`
+now marks the matched characters in the Users (name, email), Roles (name,
+description) and Branches (name, address) tables, paired with the backend's
+substring search so typing a few characters highlights exactly what matched.
+Each list screen passes its active `search` term down to the table.
+
 **Numbered pagination** — the shared `Pagination` component now renders page
 numbers (`1 2 3 …`) with a windowed range and ellipses, flanked by
 Previous / Next, instead of Prev/Next alone — easier to jump around once a list

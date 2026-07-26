@@ -48,6 +48,7 @@ export function UsersScreen() {
             roleNames={roleNames}
             loading={loading}
             onChanged={refetch}
+            search={query.search}
           />
           <Pagination
             page={pagination.page}

@@ -38,6 +38,7 @@ export function BranchesScreen() {
             branches={branches}
             loading={loading}
             onChanged={refetch}
+            search={query.search}
           />
           <Pagination
             page={pagination.page}

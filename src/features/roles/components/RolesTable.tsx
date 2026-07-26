@@ -7,7 +7,7 @@ import { Pencil, Trash2, RotateCcw } from "lucide-react";
 import { ApiError } from "@/services/api-error";
 import { roleService } from "@/services/role.service";
 import { swalToast } from "@/lib/swal";
-import { ConfirmDialog } from "@/components";
+import { ConfirmDialog, HighlightText } from "@/components";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -51,10 +51,13 @@ export function RolesTable({
   roles,
   loading,
   onChanged,
+  search,
 }: {
   roles: Role[];
   loading: boolean;
   onChanged: () => void;
+  /** Active search term, highlighted in the searchable cells (name, description). */
+  search?: string;
 }) {
   const [pending, setPending] = useState<PendingAction>(null);
   const [busy, setBusy] = useState(false);
@@ -129,11 +132,11 @@ export function RolesTable({
                 <TableRow key={role._id}>
                   <TableCell>
                     <div className="font-medium text-foreground">
-                      {role.name}
+                      <HighlightText text={role.name} query={search} />
                     </div>
                     {role.description && (
                       <div className="text-xs text-muted-foreground">
-                        {role.description}
+                        <HighlightText text={role.description} query={search} />
                       </div>
                     )}
                   </TableCell>

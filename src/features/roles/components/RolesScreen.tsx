@@ -34,7 +34,12 @@ export function RolesScreen() {
         </div>
       ) : (
         <>
-          <RolesTable roles={roles} loading={loading} onChanged={refetch} />
+          <RolesTable
+            roles={roles}
+            loading={loading}
+            onChanged={refetch}
+            search={query.search}
+          />
           <Pagination
             page={pagination.page}
             totalPages={pagination.totalPages}
