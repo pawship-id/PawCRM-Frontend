@@ -183,6 +183,49 @@ export function AuditLogIcon(props: IconProps) {
   );
 }
 
+/** Keuangan (Finance) — a wallet with a coin. */
+export function FinanceIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <rect x="3" y="6" width="18" height="13" rx="2" />
+      <path d="M3 10h18" />
+      <circle cx="16.5" cy="14.5" r="1.5" />
+    </Base>
+  );
+}
+
+/** E-commerce Sync — a shopping bag with a sync arrow loop. */
+export function EcommerceSyncIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M6 8h12l-1 11a2 2 0 0 1-2 1.8H9A2 2 0 0 1 7 19z" />
+      <path d="M9 8V6a3 3 0 0 1 6 0v2" />
+      <path d="M9.5 13.5a2.5 2.5 0 0 1 4.3-1.2M14.5 14.5a2.5 2.5 0 0 1-4.3 1.2" />
+    </Base>
+  );
+}
+
+/** Reports — a bar chart on a page. */
+export function ReportsIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <rect x="4" y="3" width="16" height="18" rx="2" />
+      <path d="M8 15v2M12 11v6M16 8v9" />
+    </Base>
+  );
+}
+
+/** Hotel — a building with a bell, for pet boarding. */
+export function HotelIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M4 21V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v15" />
+      <path d="M16 10h2a2 2 0 0 1 2 2v9M3 21h18" />
+      <path d="M8 8h.01M12 8h.01M8 12h.01M12 12h.01M9 21v-3.5h4V21" />
+    </Base>
+  );
+}
+
 /** Sidebar collapse/expand toggle (panel with a rail). */
 export function PanelLeftIcon(props: IconProps) {
   return (

@@ -11,6 +11,10 @@ import {
   CustomerIcon,
   RolesIcon,
   AuditLogIcon,
+  FinanceIcon,
+  EcommerceSyncIcon,
+  ReportsIcon,
+  HotelIcon,
 } from "@/components/icons";
 import type {
   Action,
@@ -65,6 +69,14 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Inventory", href: "/dashboard/inventory", icon: InventoryIcon },
   { label: "POS", href: "/dashboard/pos", icon: PosIcon },
   { label: "Sales & Invoice", href: "/dashboard/sales", icon: SalesIcon },
+  { label: "Keuangan", href: "/dashboard/keuangan", icon: FinanceIcon },
+  {
+    label: "E-commerce Sync",
+    href: "/dashboard/ecommerce-sync",
+    icon: EcommerceSyncIcon,
+  },
+  { label: "Reports", href: "/dashboard/reports", icon: ReportsIcon },
+  { label: "Hotel", href: "/dashboard/hotel", icon: HotelIcon },
   {
     label: "Master Data",
     icon: MasterDataIcon,
