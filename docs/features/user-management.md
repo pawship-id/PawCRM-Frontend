@@ -17,11 +17,11 @@ Under **Dashboard → Master Data → User** an admin can:
 
 ## Routes
 
-| Route | File | Screen |
-|---|---|---|
-| `/dashboard/master/users` | `app/(dashboard)/dashboard/master/users/page.tsx` | List (`UsersScreen`) |
-| `/dashboard/master/users/new` | `.../users/new/page.tsx` | Create (`UserCreateForm`) |
-| `/dashboard/master/users/[id]` | `.../users/[id]/page.tsx` | Edit (`UserEditForm`) |
+| Route                          | File                                              | Screen                    |
+| ------------------------------ | ------------------------------------------------- | ------------------------- |
+| `/dashboard/master/users`      | `app/(dashboard)/dashboard/master/users/page.tsx` | List (`UsersScreen`)      |
+| `/dashboard/master/users/new`  | `.../users/new/page.tsx`                          | Create (`UserCreateForm`) |
+| `/dashboard/master/users/[id]` | `.../users/[id]/page.tsx`                         | Edit (`UserEditForm`)     |
 
 The `[id]` route is the app's first dynamic segment. In Next 16 `params` is a
 Promise, so the page is an async Server Component that awaits it and passes the
