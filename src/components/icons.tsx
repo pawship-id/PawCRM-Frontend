@@ -10,7 +10,10 @@ import type { SVGProps } from "react";
 
 type IconProps = SVGProps<SVGSVGElement>;
 
-function Base({ children, ...props }: IconProps & { children: React.ReactNode }) {
+function Base({
+  children,
+  ...props
+}: IconProps & { children: React.ReactNode }) {
   return (
     <svg
       width="20"
@@ -236,3 +239,59 @@ export function PanelLeftIcon(props: IconProps) {
   );
 }
 
+/* --------------------------------------------------------------- Inventory */
+
+/** Product & variants — a boxed item with a price tag. */
+export function ProductIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M3.5 8.5 12 4l8.5 4.5v7L12 20l-8.5-4.5z" />
+      <path d="M3.5 8.5 12 13l8.5-4.5" />
+      <circle cx="12" cy="9.5" r="1" />
+    </Base>
+  );
+}
+
+/** Stock card — a ledger with movement lines. */
+export function StockCardIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <rect x="4" y="3.5" width="16" height="17" rx="2" />
+      <path d="M8 8.5h8M8 12h5M8 15.5h8" />
+    </Base>
+  );
+}
+
+/** Batch & expiry — stacked lots with a clock. */
+export function BatchIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M3.5 7 9 4.5 14.5 7 9 9.5z" />
+      <path d="M3.5 12 9 14.5 14.5 12M3.5 16.5 9 19l5.5-2.5" />
+      <circle cx="18" cy="16" r="4" />
+      <path d="M18 14.5V16l1 1" />
+    </Base>
+  );
+}
+
+/** Stock opname — a clipboard with a check. */
+export function OpnameIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <rect x="5" y="4.5" width="14" height="16" rx="2" />
+      <path d="M9 4.5V3.5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1" />
+      <path d="M9 13l2 2 4-4" />
+    </Base>
+  );
+}
+
+/** Transfer — goods moving between two locations. */
+export function TransferIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M3 9h13l-3-3M21 15H8l3 3" />
+      <rect x="2.5" y="3.5" width="4" height="4" rx="1" />
+      <rect x="17.5" y="16.5" width="4" height="4" rx="1" />
+    </Base>
+  );
+}

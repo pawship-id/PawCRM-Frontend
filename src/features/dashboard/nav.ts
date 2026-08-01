@@ -15,6 +15,11 @@ import {
   EcommerceSyncIcon,
   ReportsIcon,
   HotelIcon,
+  ProductIcon,
+  StockCardIcon,
+  BatchIcon,
+  OpnameIcon,
+  TransferIcon,
 } from "@/components/icons";
 import type {
   Action,
@@ -66,7 +71,52 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: DashboardIcon, exact: true },
   { label: "Booking", href: "/dashboard/booking", icon: BookingIcon },
-  { label: "Inventory", href: "/dashboard/inventory", icon: InventoryIcon },
+  /**
+   * Inventory is a GROUP rather than a leaf: the module has five screens that
+   * split cleanly into master data (products) and stock activity (the other
+   * four), and burying them behind one landing page made the daily screens two
+   * clicks away instead of one.
+   *
+   * Ordered by how the data flows rather than alphabetically — you define a
+   * product, then watch its card, then manage its lots, then count it, then
+   * move it. A reader learning the module top-down learns it in the right order.
+   */
+  {
+    label: "Inventory",
+    icon: InventoryIcon,
+    children: [
+      {
+        label: "Produk & Varian",
+        href: "/dashboard/inventory/products",
+        icon: ProductIcon,
+        permission: { feature: "products", action: "read" },
+      },
+      {
+        label: "Kartu Stok",
+        href: "/dashboard/inventory/stock-card",
+        icon: StockCardIcon,
+        permission: { feature: "stockMovements", action: "read" },
+      },
+      {
+        label: "Batch & Expired",
+        href: "/dashboard/inventory/batches",
+        icon: BatchIcon,
+        permission: { feature: "productBatches", action: "read" },
+      },
+      {
+        label: "Stok Opname",
+        href: "/dashboard/inventory/opname",
+        icon: OpnameIcon,
+        permission: { feature: "stockMovements", action: "create" },
+      },
+      {
+        label: "Transfer Stok",
+        href: "/dashboard/inventory/transfers",
+        icon: TransferIcon,
+        permission: { feature: "stockMovements", action: "create" },
+      },
+    ],
+  },
   { label: "POS", href: "/dashboard/pos", icon: PosIcon },
   { label: "Sales & Invoice", href: "/dashboard/sales", icon: SalesIcon },
   { label: "Keuangan", href: "/dashboard/keuangan", icon: FinanceIcon },

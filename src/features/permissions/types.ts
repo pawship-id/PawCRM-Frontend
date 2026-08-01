@@ -15,6 +15,22 @@
 export const PERMISSION_CATALOG = {
   tenants: ["create", "read", "update", "delete", "restore"],
   branches: ["create", "read", "update", "delete", "restore"],
+  warehouses: ["create", "read", "update", "delete", "restore"],
+  businessLines: ["create", "read", "update", "delete", "restore"],
+  categories: ["create", "read", "update", "delete", "restore"],
+  products: ["create", "read", "update", "delete", "restore"],
+  // The stock ledger is append-only, so it has no `update`, `delete` or
+  // `restore` — those endpoints do not exist. A wrong movement is corrected by
+  // posting a reversing adjustment, which `create` already covers.
+  stockMovements: ["create", "read"],
+  // Batches are born from movements and never written directly, so `read` is
+  // the only action this feature will ever grant.
+  productBatches: ["read"],
+  chartOfAccounts: ["create", "read", "update", "delete", "restore"],
+  // A posted journal entry is immutable: no delete, no restore. `reverse` is
+  // its own action because correcting the ledger is a different privilege from
+  // relabelling an entry.
+  journalEntries: ["create", "read", "update", "reverse"],
   customers: ["create", "read", "update", "delete", "restore"],
   users: [
     "create",
