@@ -317,6 +317,58 @@ export interface UpdateBranchInput {
 }
 
 /**
+ * What a category is FOR. One value today, and the field exists anyway because
+ * finance categories used to share this collection and the backend kept the
+ * discriminator when they moved to the chart of accounts — see
+ * category.model.js. Nothing in the UI offers a choice; every category the
+ * frontend creates is a product category.
+ */
+export type CategoryKind = "product";
+
+/**
+ * A product category — the label a product is filed under.
+ *
+ * Nothing but a name, which is the point: grouping is all a category does. It
+ * carries no price, no stock and no rules, so the only thing that can be wrong
+ * with one is what it is called.
+ */
+export interface Category {
+  _id: string;
+  tenantId: string;
+  kind: CategoryKind;
+  name: string;
+  /** Soft-delete marker; non-null means deleted (restorable), null means live. */
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Query parameters accepted by GET /api/categories. All optional. */
+export interface CategoryListQuery {
+  page?: number;
+  limit?: number;
+  kind?: CategoryKind;
+  /** Free-text over the name. */
+  search?: string;
+  /** Include soft-deleted categories (default false on the backend). */
+  includeDeleted?: boolean;
+}
+
+/** Body of POST /api/categories. `kind` defaults to "product" server-side. */
+export interface CreateCategoryInput {
+  name: string;
+  kind?: CategoryKind;
+}
+
+/**
+ * Body of PATCH /api/categories/:id. `name` is the only editable field, and the
+ * backend rejects an empty body — so in practice it is required here too.
+ */
+export interface UpdateCategoryInput {
+  name?: string;
+}
+
+/**
  * A customer's VIP tier — a closed enum mirroring VIP_TIERS in
  * customer.model.js. Most customers have none, so the field is nullable and the
  * screens treat `null` as "no tier".

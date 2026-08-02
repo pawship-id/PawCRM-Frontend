@@ -252,6 +252,16 @@ export function ProductIcon(props: IconProps) {
   );
 }
 
+/** Category — a folder tab, the label products are filed under. */
+export function CategoryIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M3.5 7a1.5 1.5 0 0 1 1.5-1.5h3.8a1.5 1.5 0 0 1 1.2.6l1 1.4H19a1.5 1.5 0 0 1 1.5 1.5v8.5a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5z" />
+      <path d="M3.5 11.5h17" />
+    </Base>
+  );
+}
+
 /** Stock card — a ledger with movement lines. */
 export function StockCardIcon(props: IconProps) {
   return (

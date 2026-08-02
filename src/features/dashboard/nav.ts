@@ -16,6 +16,7 @@ import {
   ReportsIcon,
   HotelIcon,
   ProductIcon,
+  CategoryIcon,
   StockCardIcon,
   BatchIcon,
   OpnameIcon,
@@ -95,6 +96,15 @@ export const NAV_ITEMS: NavItem[] = [
         href: "/dashboard/inventory/products",
         icon: ProductIcon,
         permission: { feature: "products", action: "read" },
+      },
+      {
+        // Directly under products, and above the stock screens, because it is
+        // the other half of the catalogue rather than an activity: you cannot
+        // file a product without one.
+        label: "Kategori",
+        href: "/dashboard/inventory/categories",
+        icon: CategoryIcon,
+        permission: { feature: "categories", action: "read" },
       },
       {
         label: "Kartu Stok",
