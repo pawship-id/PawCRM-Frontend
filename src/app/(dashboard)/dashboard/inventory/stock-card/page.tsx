@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
+import { Breadcrumb } from "@/components";
 import { StockCardScreen } from "@/features/inventory";
 
 export const metadata: Metadata = { title: "Kartu stok · PawShip" };
@@ -9,12 +9,12 @@ export default function StockCardPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <Link
-          href="/dashboard/inventory"
-          className="text-xs text-muted hover:text-foreground"
-        >
-          ← Inventory
-        </Link>
+        <Breadcrumb
+          items={[
+            { label: "Inventory", href: "/dashboard/inventory" },
+            { label: "Kartu stok & batch" },
+          ]}
+        />
         <h1 className="mt-1 text-2xl font-semibold text-foreground">
           Kartu stok &amp; batch
         </h1>

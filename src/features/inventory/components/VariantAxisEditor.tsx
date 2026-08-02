@@ -8,9 +8,31 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { VariantAxis } from "@/types/inventory";
 
-/** Two axes, matching the backend cap — "Ukuran × Rasa" is the shape in use. */
-const MAX_AXES = 2;
-const MAX_VALUES = 20;
+/**
+ * The backend's caps, mirrored — `MAX_VARIANT_AXES` and `MAX_AXIS_VALUES` in
+ * product.model.js.
+ *
+ * Mirrored rather than merely guessed at: a form that offers less than the API
+ * accepts is a feature the user cannot reach and has no way to discover, and one
+ * that offers more turns a considered limit into a 400 after the work is typed.
+ */
+const MAX_AXES = 10;
+const MAX_VALUES = 50;
+
+/**
+ * Names pre-filled for the first few axes, in order, and NOTHING past them.
+ *
+ * The suggestions run out on purpose. "Ukuran × Rasa × Warna × Motif" covers
+ * what a pet shop actually sells, and by the fifth axis there is no name this
+ * form could guess that would be better than the one the user has in mind. A
+ * made-up default there — "Atribut 5" — is worse than an empty box: it reads as
+ * a real label, so it survives to the POS as one.
+ *
+ * An empty name is not silently acceptable either. The API requires one on
+ * every axis, so the form refuses to save until it is filled — see
+ * ProductForm's validate().
+ */
+const AXIS_NAME_SUGGESTIONS = ["Ukuran", "Rasa", "Warna", "Motif"];
 
 /**
  * The axis editor for a variant family: name the axes, list their values, and
@@ -63,6 +85,39 @@ export function VariantAxisEditor({
     });
   }
 
+  function addAxis() {
+    const used = new Set(axes.map((axis) => axis.name.trim().toLowerCase()));
+    // Empty once the suggestions are exhausted — see AXIS_NAME_SUGGESTIONS.
+    const name =
+      AXIS_NAME_SUGGESTIONS.find(
+        (candidate) => !used.has(candidate.toLowerCase()),
+      ) ?? "";
+
+    onChange([...axes, { name, values: [] }]);
+  }
+
+  /**
+   * Drops one axis, and shifts the half-typed values along with it.
+   *
+   * `drafts` is keyed by POSITION, so removing the middle of three axes would
+   * otherwise leave the third axis's unsubmitted text sitting in the second's
+   * box — a value about to be committed to the wrong attribute. Re-keying is
+   * what keeps the draft attached to the axis it was typed for.
+   */
+  function removeAxis(index: number) {
+    onChange(axes.filter((_axis, i) => i !== index));
+
+    setDrafts((prev) => {
+      const next: Record<number, string> = {};
+      Object.entries(prev).forEach(([key, value]) => {
+        const position = Number(key);
+        if (position < index) next[position] = value;
+        else if (position > index) next[position - 1] = value;
+      });
+      return next;
+    });
+  }
+
   return (
     <div className="flex flex-col gap-4 rounded-lg border border-border bg-surface p-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -76,9 +131,9 @@ export function VariantAxisEditor({
             variant="secondary"
             size="sm"
             className="ml-auto"
-            onClick={() => onChange([...axes, { name: "Rasa", values: [] }])}
+            onClick={addAxis}
           >
-            + Atribut kedua
+            + Atribut
           </Button>
         )}
       </div>
@@ -117,13 +172,17 @@ export function VariantAxisEditor({
               />
             </div>
 
-            {index === 1 && (
+            {/* Every axis but the first. A parent with no axes describes no
+                combinations at all, so the API requires at least one and the
+                form does not offer to remove the last. */}
+            {index > 0 && (
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
                 className="text-danger"
-                onClick={() => onChange(axes.slice(0, 1))}
+                aria-label={`Hapus atribut ${axis.name || index + 1}`}
+                onClick={() => removeAxis(index)}
               >
                 Hapus atribut
               </Button>

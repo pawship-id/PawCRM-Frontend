@@ -1043,6 +1043,40 @@ export function bundleAvailability(
   );
 }
 
+/**
+ * The component that caps the availability above — what to restock to move the
+ * number.
+ *
+ * Worth surfacing because the cap is rarely the component a user is looking at.
+ * A package of 3 kibble and 1 vitamin, with 14 kibble and 2 vitamins, makes 2;
+ * somebody reading "2" next to a shelf of 14 kibble has no way to guess it is
+ * the vitamin holding it back. Null when the bundle has no components.
+ */
+export function bundleLimitedBy(
+  productId: string,
+  warehouseId: string,
+): Product | null {
+  const bundle = state.products.find((p) => p._id === productId);
+  const components = bundle?.bundleConfig?.components ?? [];
+
+  let lowest: bigint | null = null;
+  let limiting: string | null = null;
+
+  for (const component of components) {
+    const per = toMinor(component.qty) ?? 0n;
+    const have =
+      toMinor(qtyOnHand(component.componentProductId ?? "", warehouseId)) ?? 0n;
+    const possible = per > 0n && have > 0n ? have / per : 0n;
+
+    if (lowest === null || possible < lowest) {
+      lowest = possible;
+      limiting = component.componentProductId ?? null;
+    }
+  }
+
+  return state.products.find((p) => p._id === limiting) ?? null;
+}
+
 const SCALE = 10n ** 4n;
 
 /**
@@ -1129,12 +1163,24 @@ export interface SaveProductInput {
     barcode?: string;
     sellPrice?: string;
     minStock?: number;
+    /**
+     * Opening stock for THIS variant. Per row rather than one number for the
+     * family, because a parent holds no stock of its own — 12 of the 1kg and 3
+     * of the 3kg is the only shape the answer comes in.
+     */
+    openingQty?: string;
+    openingCost?: string;
   }>;
   /** On a bundle. */
   bundleConfig?: Product["bundleConfig"];
-  /** Opening stock, standalone only — posts an inbound adjustment on create. */
+  /**
+   * Opening stock for a STANDALONE. A parent carries its own per variant above,
+   * and a bundle takes none at all — it holds no stock, so there is nothing to
+   * open a balance on.
+   */
   openingQty?: string;
   openingCost?: string;
+  /** Where every opening quantity in this save lands. Shared by the variants. */
   openingWarehouseId?: string;
 }
 
@@ -1194,6 +1240,16 @@ export function saveProduct(input: SaveProductInput): Product {
     ? state.products.map((p) => (p._id === base._id ? base : p))
     : [...state.products, base];
 
+  /**
+   * Products created by this save that carry an opening quantity.
+   *
+   * Collected rather than posted inline because a variant's row has to EXIST in
+   * `state.products` before an adjustment against it can compute a weighted
+   * average — posting mid-loop would price the second variant against a
+   * catalogue that does not yet contain the first.
+   */
+  const opening: Array<{ product: Product; qty: string; cost?: string }> = [];
+
   if (base.productType === "parent") {
     const axisNames = (input.variantAxes ?? [])
       .filter((axis) => axis.values.length > 0)
@@ -1234,21 +1290,49 @@ export function saveProduct(input: SaveProductInput): Product {
       state.products = previous
         ? state.products.map((p) => (p._id === row._id ? row : p))
         : [...state.products, row];
+
+      // Only a variant this save BROUGHT INTO EXISTENCE. Re-saving a family to
+      // fix a price must not top the shelves up a second time, and `previous`
+      // is what tells the two apart.
+      if (!previous && variant.openingQty) {
+        opening.push({
+          product: row,
+          qty: variant.openingQty,
+          cost: variant.openingCost,
+        });
+      }
     }
   }
 
-  // Opening stock, entered on the create form rather than as a separate errand.
-  // It posts an ordinary inbound adjustment, so the ledger explains where the
-  // first quantity came from instead of it simply existing.
-  if (!existing && input.openingQty && (toMinor(input.openingQty) ?? 0n) > 0n) {
+  if (base.productType === "standalone" && !existing && input.openingQty) {
+    opening.push({
+      product: base,
+      qty: input.openingQty,
+      cost: input.openingCost,
+    });
+  }
+
+  /**
+   * Opening stock, entered on the create form rather than as a separate errand.
+   *
+   * It posts an ordinary inbound adjustment — the same call the Adjustment
+   * screen makes — so the stock card explains where the first quantity came
+   * from instead of it simply existing. There is no "opening balance" movement
+   * type to reach for: the backend's ledger calls this an `adjustment`, and
+   * inventing a second vocabulary here would put the prototype out of step with
+   * the API it stands in for.
+   */
+  for (const item of opening) {
+    if ((toMinor(item.qty) ?? 0n) <= 0n) continue;
+
     postAdjustment({
       operation: "adjustment",
-      productId: base._id,
+      productId: item.product._id,
       warehouseId: input.openingWarehouseId ?? state.warehouses[0]._id,
-      qty: input.openingQty,
-      costPerUnit: input.openingCost,
-      batchCode: base.hasExpiry ? "OPENING" : undefined,
-      expiryDate: base.hasExpiry ? dayOffset(180) : undefined,
+      qty: item.qty,
+      costPerUnit: item.cost,
+      batchCode: item.product.hasExpiry ? "OPENING" : undefined,
+      expiryDate: item.product.hasExpiry ? dayOffset(180) : undefined,
     });
   }
 

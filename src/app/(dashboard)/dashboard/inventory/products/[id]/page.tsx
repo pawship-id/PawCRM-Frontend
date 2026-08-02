@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
+import { Breadcrumb } from "@/components";
 import { ProductForm } from "@/features/inventory";
 
 export const metadata: Metadata = { title: "Edit produk · PawShip" };
@@ -19,12 +19,13 @@ export default async function EditProductPage({
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <Link
-          href="/dashboard/inventory/products"
-          className="text-xs text-muted hover:text-foreground"
-        >
-          ← Produk &amp; Varian
-        </Link>
+        <Breadcrumb
+          items={[
+            { label: "Inventory", href: "/dashboard/inventory" },
+            { label: "Produk & Varian", href: "/dashboard/inventory/products" },
+            { label: "Edit produk" },
+          ]}
+        />
         <h1 className="mt-1 text-2xl font-semibold text-foreground">
           Edit produk
         </h1>

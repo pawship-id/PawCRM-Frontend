@@ -3,6 +3,7 @@
 import { Fragment, useMemo, useState } from "react";
 import Link from "next/link";
 
+import { Breadcrumb } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -134,7 +135,15 @@ export function ProductsScreen() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">Produk &amp; Varian</h1>
+          <Breadcrumb
+            items={[
+              { label: "Inventory", href: "/dashboard/inventory" },
+              { label: "Produk & Varian" },
+            ]}
+          />
+          <h1 className="mt-1 text-2xl font-semibold text-foreground">
+            Produk &amp; Varian
+          </h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">
             Produk biasa, produk dengan varian dua tingkat (ukuran × rasa), dan
             bundle. Produk induk tidak menyimpan stok — stoknya ada di varian.
@@ -308,7 +317,23 @@ export function ProductsScreen() {
                     >
                       {formatQty(stock)}
                       {product.productType === "bundle" && (
-                        <span className="ml-1 text-[11px] text-muted">bisa dibuat</span>
+                        <>
+                          <span className="ml-1 text-[11px] text-muted">bisa dibuat</span>
+                          {/* The cap is rarely the component the user is
+                              looking at, so it is named rather than left to be
+                              worked out from the component list. */}
+                          {(() => {
+                            const limiting = demo.bundleLimitedBy(
+                              product._id,
+                              warehouseId,
+                            );
+                            return limiting ? (
+                              <span className="block text-[11px] font-normal text-muted">
+                                dibatasi {limiting.name}
+                              </span>
+                            ) : null;
+                          })()}
+                        </>
                       )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-right">

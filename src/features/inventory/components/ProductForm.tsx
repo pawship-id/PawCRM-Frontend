@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
 import { formatMoney, isDecimal, isPositive, multiplyDecimals, sumDecimals, toMinor } from "@/utils/decimal";
@@ -38,6 +39,8 @@ interface VariantRow {
   barcode: string;
   sellPrice: string;
   minStock: string;
+  openingQty: string;
+  openingCost: string;
 }
 
 const MODES: Array<{ value: Mode; label: string; hint: string }> = [
@@ -79,6 +82,18 @@ const MODES: Array<{ value: Mode; label: string; hint: string }> = [
  * moment somebody defines a product is the moment they know how many are on the
  * shelf; sending them to another screen to say so is how catalogues end up full
  * of items with no stock and no cost basis.
+ *
+ * IT IS BEHIND A SWITCH, DEFAULTED OFF, and that is not timidity about the
+ * feature. Filling it in writes a stock movement that cannot be edited or
+ * deleted afterwards — the ledger is append-only, so a mistyped 100 is corrected
+ * by a second movement of -90 and both stay on the stock card forever. It also
+ * locks the product against deletion, since a product still holding stock cannot
+ * be removed. A field that quietly did all that whenever somebody typed in it
+ * would be a trap; a switch makes it a decision. Somebody cataloguing items
+ * ahead of a delivery just leaves it off.
+ *
+ * A BUNDLE NEVER GETS THE SWITCH. It holds no stock of its own — how many are
+ * available is derived from its components — so there is no balance to open.
  */
 export function ProductForm({ productId }: { productId?: string }) {
   const router = useRouter();
@@ -108,6 +123,7 @@ export function ProductForm({ productId }: { productId?: string }) {
   const [minStock, setMinStock] = useState(String(existing?.minStock ?? 0));
   const [hasExpiry, setHasExpiry] = useState(existing?.hasExpiry ?? false);
 
+  const [openingEnabled, setOpeningEnabled] = useState(false);
   const [openingQty, setOpeningQty] = useState("");
   const [openingCost, setOpeningCost] = useState("");
   const [openingWarehouseId, setOpeningWarehouseId] = useState(warehouses[0]._id);
@@ -164,9 +180,32 @@ export function ProductForm({ productId }: { productId?: string }) {
         barcode: override.barcode ?? previous?.barcode ?? "",
         sellPrice: override.sellPrice ?? previous?.sellPrice ?? "",
         minStock: override.minStock ?? String(previous?.minStock ?? 0),
+        // No `previous` fallback: opening stock is a one-off event at creation,
+        // not a property of the variant. A row that already exists has whatever
+        // stock its movements gave it, and this form is not where that changes.
+        openingQty: override.openingQty ?? "",
+        openingCost: override.openingCost ?? "",
       };
     });
   }, [axes, sku, existingVariants, variantOverrides]);
+
+  /**
+   * Whether this save can open a stock balance at all.
+   *
+   * Create only — an existing product's quantity moves through the stock
+   * screens, where the movement gets a reason. And never a bundle, which holds
+   * no stock to open.
+   */
+  const canOpenStock = !existing && mode !== "bundle";
+
+  /**
+   * Whether this save actually WILL open one.
+   *
+   * Both halves, everywhere it is used: switching a standalone to bundle mode
+   * with the switch left on must not send an opening quantity the backend would
+   * refuse, and the switch's own state is not enough to know that.
+   */
+  const openingStockOn = canOpenStock && openingEnabled;
 
   const componentHpp = sumDecimals(
     components.map((component) => {
@@ -204,18 +243,79 @@ export function ProductForm({ productId }: { productId?: string }) {
     if (mode === "standalone") {
       if (sellPrice.trim() === "") next.sellPrice = "Harga jual wajib diisi.";
       else if (!isDecimal(sellPrice)) next.sellPrice = "Gunakan angka, maksimal 4 desimal.";
-      if (openingQty.trim() !== "" && !isDecimal(openingQty)) {
-        next.openingQty = "Gunakan angka, maksimal 4 desimal.";
-      }
     }
 
     if (mode === "variants") {
-      if (variantRows.length === 0) {
+      /**
+       * The axis rules, checked here rather than left to the API.
+       *
+       * All three mirror what the backend enforces, and all three matter more
+       * now that an axis past the fourth arrives with an EMPTY name: a blank is
+       * the normal state of a new axis, so it has to be caught before the save
+       * instead of coming back as a 400 on a form the user has already filled.
+       *
+       * The duplicate check is case-insensitive because an axis name becomes a
+       * key in `variantAttributes` — "Ukuran" and "ukuran" would be two keys
+       * rendering as one label, and the variant would describe only one of them.
+       */
+      const names = axes.map((axis) => axis.name.trim());
+      const lowered = names.map((name) => name.toLowerCase());
+      const duplicate = lowered.find(
+        (name, index) => name !== "" && lowered.indexOf(name) !== index,
+      );
+      // Named by position, since the thing they are missing IS the name.
+      const unnamed = names
+        .map((name, index) => (name === "" ? index + 1 : null))
+        .filter((position): position is number => position !== null);
+      const valueless = axes
+        .filter((axis) => axis.values.length === 0)
+        .map((axis) => axis.name.trim())
+        .filter(Boolean);
+
+      if (unnamed.length > 0) {
+        next.axes = `Atribut ke-${unnamed.join(", ke-")} belum punya nama.`;
+      } else if (duplicate) {
+        next.axes = `Nama atribut tidak boleh kembar: "${duplicate}".`;
+      } else if (valueless.length > 0) {
+        next.axes = `Atribut ${valueless.join(", ")} belum punya nilai — hapus atribut itu, atau isi nilainya.`;
+      } else if (variantRows.length === 0) {
         next.axes = "Isi minimal satu nilai atribut supaya varian bisa dibuat.";
       }
+
       const skus = variantRows.map((row) => row.sku.trim().toUpperCase());
       if (new Set(skus).size !== skus.length) {
         next.axes = "Ada SKU varian yang kembar — setiap varian butuh SKU sendiri.";
+      }
+    }
+
+    /**
+     * Opening stock, checked only when the switch is on.
+     *
+     * A stale number left in a field the user then switched off must not block
+     * the save: they said they did not want it, and refusing to save over a
+     * value that will be discarded anyway is the form arguing with them.
+     */
+    if (openingStockOn) {
+      if (mode === "standalone") {
+        if (openingQty.trim() !== "" && !isDecimal(openingQty)) {
+          next.openingQty = "Gunakan angka, maksimal 4 desimal.";
+        }
+        if (openingCost.trim() !== "" && !isDecimal(openingCost)) {
+          next.openingCost = "Gunakan angka, maksimal 4 desimal.";
+        }
+      }
+
+      if (mode === "variants") {
+        const malformed = variantRows.filter(
+          (row) =>
+            (row.openingQty.trim() !== "" && !isDecimal(row.openingQty)) ||
+            (row.openingCost.trim() !== "" && !isDecimal(row.openingCost)),
+        );
+        if (malformed.length > 0) {
+          next.openingVariants = `Angka tidak valid pada varian ${malformed
+            .map((row) => row.combo.join(" / "))
+            .join(", ")} — maksimal 4 desimal.`;
+        }
       }
     }
 
@@ -263,6 +363,8 @@ export function ProductForm({ productId }: { productId?: string }) {
                 barcode: row.barcode || undefined,
                 sellPrice: row.sellPrice || undefined,
                 minStock: Number(row.minStock) || 0,
+                openingQty: openingStockOn ? row.openingQty || undefined : undefined,
+                openingCost: openingStockOn ? row.openingCost || undefined : undefined,
               }))
             : undefined,
         bundleConfig:
@@ -273,8 +375,12 @@ export function ProductForm({ productId }: { productId?: string }) {
                 components,
               }
             : undefined,
-        openingQty: mode === "standalone" && openingQty.trim() !== "" ? openingQty : undefined,
-        openingCost: openingCost.trim() !== "" ? openingCost : undefined,
+        openingQty:
+          openingStockOn && mode === "standalone" && openingQty.trim() !== ""
+            ? openingQty
+            : undefined,
+        openingCost:
+          openingStockOn && openingCost.trim() !== "" ? openingCost : undefined,
         openingWarehouseId,
       });
 
@@ -326,11 +432,10 @@ export function ProductForm({ productId }: { productId?: string }) {
       {/* ---------------------------------------------------------- common */}
       <Card title="Informasi produk">
         <div className="flex flex-col gap-4">
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2">
             <TextField
               label="Nama produk"
               name="name"
-              className="sm:col-span-2"
               value={name}
               onChange={(event) => setName(event.target.value)}
               error={fieldErrors.name}
@@ -354,7 +459,11 @@ export function ProductForm({ productId }: { productId?: string }) {
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="category">Kategori</Label>
               <Select value={categoryId} onValueChange={setCategoryId}>
-                <SelectTrigger id="category" aria-label="Kategori">
+                {/* w-full: the shadcn trigger defaults to `w-fit`, which is
+                    right for a toolbar filter and wrong in a form grid — it
+                    leaves the control narrower than the inputs beside it, and
+                    the width then jumps with whichever category is selected. */}
+                <SelectTrigger id="category" aria-label="Kategori" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -415,7 +524,7 @@ export function ProductForm({ productId }: { productId?: string }) {
       {mode === "standalone" && (
         <Card title="Harga & stok">
           <div className="flex flex-col gap-4">
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2">
               <TextField
                 label="Harga jual"
                 name="sellPrice"
@@ -435,55 +544,6 @@ export function ProductForm({ productId }: { productId?: string }) {
                 hint="Ambang alert restock. 0 = tidak dialerti."
               />
             </div>
-
-            {!existing && (
-              <div className="grid gap-4 rounded-lg border border-secondary/40 bg-secondary/10 p-4 sm:grid-cols-3">
-                <div className="sm:col-span-3">
-                  <p className="text-xs font-medium text-secondary-foreground">
-                    Stok awal — opsional, tapi ini tempat paling wajar mengisinya
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted">
-                    Tercatat sebagai penyesuaian masuk, jadi kartu stok bisa
-                    menjelaskan dari mana kuantitas pertama datang — bukan
-                    sekadar ada begitu saja. Harga beli membentuk HPP awal.
-                  </p>
-                </div>
-                <TextField
-                  label="Jumlah stok awal"
-                  name="openingQty"
-                  inputMode="decimal"
-                  value={openingQty}
-                  onChange={(event) => setOpeningQty(event.target.value)}
-                  error={fieldErrors.openingQty}
-                  placeholder="0"
-                />
-                <TextField
-                  label="Harga beli per unit"
-                  name="openingCost"
-                  inputMode="decimal"
-                  value={openingCost}
-                  onChange={(event) => setOpeningCost(event.target.value)}
-                  placeholder="44000"
-                />
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="openingWarehouse">Masuk ke gudang</Label>
-                  <Select value={openingWarehouseId} onValueChange={setOpeningWarehouseId}>
-                    <SelectTrigger id="openingWarehouse" aria-label="Masuk ke gudang">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {warehouses
-                        .filter((warehouse) => warehouse.isActive)
-                        .map((warehouse) => (
-                          <SelectItem key={warehouse._id} value={warehouse._id}>
-                            {warehouse.name}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            )}
 
             <p className="text-xs text-muted">
               HPP tidak diisi manual. Ia terbentuk sendiri dari penerimaan barang
@@ -532,8 +592,8 @@ export function ProductForm({ productId }: { productId?: string }) {
                       <th className="px-2 py-2 text-left font-medium">Varian</th>
                       <th className="px-2 py-2 text-left font-medium">SKU</th>
                       <th className="px-2 py-2 text-left font-medium">Barcode</th>
-                      <th className="px-2 py-2 text-right font-medium">Harga jual</th>
-                      <th className="px-2 py-2 text-right font-medium">Min stok</th>
+                      <th className="px-2 py-2 text-left font-medium">Harga jual</th>
+                      <th className="px-2 py-2 text-left font-medium">Min stok</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -576,7 +636,7 @@ export function ProductForm({ productId }: { productId?: string }) {
                             onChange={(event) =>
                               setVariantField(row.combo, "sellPrice", event.target.value)
                             }
-                            className="text-right font-mono"
+                            className="font-mono"
                           />
                         </td>
                         <td className="px-2 py-2">
@@ -587,7 +647,7 @@ export function ProductForm({ productId }: { productId?: string }) {
                             onChange={(event) =>
                               setVariantField(row.combo, "minStock", event.target.value)
                             }
-                            className="ml-auto max-w-20 text-right font-mono"
+                            className="max-w-20 font-mono"
                           />
                         </td>
                       </tr>
@@ -611,7 +671,15 @@ export function ProductForm({ productId }: { productId?: string }) {
                   value={pricingMode}
                   onValueChange={(value) => setPricingMode(value as BundlePricingMode)}
                 >
-                  <SelectTrigger id="pricingMode" aria-label="Mode harga">
+                  {/* w-full for the same reason as the category select: the
+                      shadcn trigger defaults to `w-fit`, so it sits narrower
+                      than the price field beside it and its width jumps between
+                      "Tetap — saya isi manual" and "Otomatis". */}
+                  <SelectTrigger
+                    id="pricingMode"
+                    aria-label="Mode harga"
+                    className="w-full"
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -671,6 +739,168 @@ export function ProductForm({ productId }: { productId?: string }) {
             per komponen di kartu stok.
           </p>
         </>
+      )}
+
+      {/* ----------------------------------------------------- opening stock */}
+      {canOpenStock && (
+        <Card
+          title={
+            <span className="flex flex-wrap items-center justify-between gap-3">
+              <span>Isi stok awal sekarang?</span>
+              <span className="flex items-center gap-2">
+                <Switch
+                  id="openingEnabled"
+                  checked={openingEnabled}
+                  onCheckedChange={setOpeningEnabled}
+                  aria-label="Isi stok awal sekarang"
+                />
+                <Label htmlFor="openingEnabled" className="text-sm font-normal">
+                  {openingEnabled ? "Ya" : "Tidak"}
+                </Label>
+              </span>
+            </span>
+          }
+        >
+          {!openingEnabled ? (
+            <p className="text-sm text-muted">
+              Produk dibuat tanpa stok. Kuantitasnya bisa diisi kapan saja lewat{" "}
+              <b>Penyesuaian Stok</b> — pilih ini kalau barangnya belum datang,
+              atau kalau kamu sedang mendaftarkan katalog lebih dulu.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-4">
+              {/* Not an Alert: this is not an error, and it must be read before
+                  the fields below rather than after a failed save. */}
+              <div className="rounded-lg border border-secondary/40 bg-secondary/15 px-4 py-3 text-sm text-secondary-foreground">
+                Stok awal tercatat sebagai <b>penyesuaian masuk</b> di kartu
+                stok, jadi ada jejak dari mana kuantitas pertama datang.{" "}
+                <b>Baris itu tidak bisa dihapus atau diedit</b> — salah angka
+                dikoreksi dengan penyesuaian lagi, dan keduanya tetap terlihat.
+                Produk yang sudah memegang stok juga tidak bisa dihapus.
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="openingWarehouse">Masuk ke gudang</Label>
+                  <Select value={openingWarehouseId} onValueChange={setOpeningWarehouseId}>
+                    <SelectTrigger
+                      id="openingWarehouse"
+                      aria-label="Masuk ke gudang"
+                      className="w-full"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {warehouses
+                        .filter((warehouse) => warehouse.isActive)
+                        .map((warehouse) => (
+                          <SelectItem key={warehouse._id} value={warehouse._id}>
+                            {warehouse.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  {mode === "variants" && (
+                    <p className="text-xs text-muted">
+                      Berlaku untuk semua varian di bawah.
+                    </p>
+                  )}
+                </div>
+
+                {mode === "standalone" && (
+                  <>
+                    <TextField
+                      label="Jumlah stok awal"
+                      name="openingQty"
+                      inputMode="decimal"
+                      value={openingQty}
+                      onChange={(event) => setOpeningQty(event.target.value)}
+                      error={fieldErrors.openingQty}
+                      placeholder="0"
+                    />
+                    <TextField
+                      label="Harga beli per unit"
+                      name="openingCost"
+                      inputMode="decimal"
+                      value={openingCost}
+                      onChange={(event) => setOpeningCost(event.target.value)}
+                      error={fieldErrors.openingCost}
+                      hint="Membentuk HPP awal. Kosongkan kalau belum tahu."
+                      placeholder="44000"
+                    />
+                  </>
+                )}
+              </div>
+
+              {/* A parent holds no stock of its own — its variants do — so the
+                  quantity is asked per row and never once for the family. */}
+              {mode === "variants" &&
+                (variantRows.length === 0 ? (
+                  <p className="text-sm text-muted">
+                    Isi nilai atribut dulu — stok awal diisi per varian, karena
+                    induk tidak memegang stok sendiri.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border text-[10px] uppercase tracking-widest text-muted">
+                          <th className="px-2 py-2 text-left font-medium">Varian</th>
+                          <th className="px-2 py-2 text-left font-medium">Stok awal</th>
+                          <th className="px-2 py-2 text-left font-medium">
+                            Harga beli / unit
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {variantRows.map((row) => (
+                          <tr key={row.combo.join("|")} className="border-b border-border/60">
+                            <td className="px-2 py-2 font-medium">
+                              {row.combo.join(" / ")}
+                            </td>
+                            <td className="px-2 py-2">
+                              <Input
+                                aria-label={`Stok awal ${row.combo.join(" ")}`}
+                                inputMode="decimal"
+                                value={row.openingQty}
+                                onChange={(event) =>
+                                  setVariantField(row.combo, "openingQty", event.target.value)
+                                }
+                                placeholder="0"
+                                className="max-w-24 font-mono"
+                              />
+                            </td>
+                            <td className="px-2 py-2">
+                              <Input
+                                aria-label={`Harga beli ${row.combo.join(" ")}`}
+                                inputMode="decimal"
+                                value={row.openingCost}
+                                onChange={(event) =>
+                                  setVariantField(row.combo, "openingCost", event.target.value)
+                                }
+                                placeholder="opsional"
+                                className="max-w-32 font-mono"
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <p className="mt-2 text-xs text-muted">
+                      Varian yang dikosongkan dibuat tanpa stok. Tidak semua
+                      harus diisi.
+                    </p>
+                  </div>
+                ))}
+
+              {fieldErrors.openingVariants && (
+                <p role="alert" className="text-xs text-danger">
+                  {fieldErrors.openingVariants}
+                </p>
+              )}
+            </div>
+          )}
+        </Card>
       )}
 
       <div className="flex flex-wrap gap-2">

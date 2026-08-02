@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
+import { Breadcrumb } from "@/components";
 import { StockAdjustmentForm } from "@/features/inventory";
 
 export const metadata: Metadata = {
@@ -11,12 +11,12 @@ export default function StockAdjustmentsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <Link
-          href="/dashboard/inventory"
-          className="text-xs text-muted hover:text-foreground"
-        >
-          ← Inventory
-        </Link>
+        <Breadcrumb
+          items={[
+            { label: "Inventory", href: "/dashboard/inventory" },
+            { label: "Stok awal & penyesuaian" },
+          ]}
+        />
         <h1 className="mt-1 text-2xl font-semibold text-foreground">
           Stok awal &amp; penyesuaian
         </h1>

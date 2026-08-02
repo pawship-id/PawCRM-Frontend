@@ -72,6 +72,27 @@ describe("ProductsScreen", () => {
     expect(screen.getAllByText("bisa dibuat").length).toBeGreaterThan(0);
   });
 
+  it("names the component that caps a bundle's availability", () => {
+    render(<ProductsScreen />);
+
+    // The cap is rarely the component being looked at — "2 available" beside a
+    // shelf of 14 makes no sense until the scarce one is named.
+    expect(screen.getAllByText(/^dibatasi /).length).toBeGreaterThan(0);
+  });
+
+  it("says where it sits, with the current page not linking to itself", () => {
+    render(<ProductsScreen />);
+
+    const trail = screen.getByRole("navigation", { name: "Breadcrumb" });
+    expect(within(trail).getByRole("link", { name: "Inventory" })).toHaveAttribute(
+      "href",
+      "/dashboard/inventory",
+    );
+    expect(
+      within(trail).queryByRole("link", { name: "Produk & Varian" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("links to the create form", () => {
     render(<ProductsScreen />);
 
@@ -85,6 +106,21 @@ describe("ProductsScreen", () => {
 describe("ProductForm — standalone", () => {
   it("offers opening stock on create, where the user actually knows it", () => {
     render(<ProductForm />);
+
+    expect(
+      screen.getByLabelText("Isi stok awal sekarang"),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the quantity fields hidden until the switch is on", async () => {
+    const user = userEvent.setup();
+    render(<ProductForm />);
+
+    // Off by default: filling this in writes a movement that cannot be undone,
+    // so it has to be a decision rather than a field somebody wanders into.
+    expect(screen.queryByLabelText(/Jumlah stok awal/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Isi stok awal sekarang"));
 
     expect(screen.getByLabelText(/Jumlah stok awal/)).toBeInTheDocument();
     expect(screen.getByLabelText(/Harga beli per unit/)).toBeInTheDocument();
@@ -120,6 +156,7 @@ describe("ProductForm — standalone", () => {
     await user.type(screen.getByLabelText(/Nama produk/), "Sisir Kutu");
     await user.type(screen.getByLabelText("SKU *"), "SISIR-01");
     await user.type(screen.getByLabelText(/Harga jual/), "25000");
+    await user.click(screen.getByLabelText("Isi stok awal sekarang"));
     await user.type(screen.getByLabelText(/Jumlah stok awal/), "10");
     await user.type(screen.getByLabelText(/Harga beli per unit/), "15000");
     await user.click(screen.getByRole("button", { name: "Simpan produk" }));
@@ -133,6 +170,48 @@ describe("ProductForm — standalone", () => {
     expect(demo.qtyOnHand(created!._id, "wh_utama")).toBe("10.0000");
     expect(created!.hppAvg).toBe("15000.0000");
     expect(push).toHaveBeenCalledWith("/dashboard/inventory/products");
+  });
+
+  it("creates the product with no stock at all when the switch is left off", async () => {
+    const user = userEvent.setup();
+    render(<ProductForm />);
+
+    await user.type(screen.getByLabelText(/Nama produk/), "Sisir Kutu");
+    await user.type(screen.getByLabelText("SKU *"), "SISIR-01");
+    await user.type(screen.getByLabelText(/Harga jual/), "25000");
+    await user.click(screen.getByRole("button", { name: "Simpan produk" }));
+
+    const created = demo
+      .getState()
+      .products.find((product) => product.sku === "SISIR-01");
+    expect(created).toBeDefined();
+    expect(demo.qtyOnHand(created!._id, "wh_utama")).toBe("0.0000");
+    // No cost basis either: nothing was received, so there is nothing to
+    // average. It arrives with the first real goods receipt.
+    expect(created!.hppAvg).toBeNull();
+    expect(demo.movementsFor(created!._id, "wh_utama")).toHaveLength(0);
+  });
+
+  it("discards a quantity typed and then switched back off", async () => {
+    const user = userEvent.setup();
+    render(<ProductForm />);
+
+    await user.type(screen.getByLabelText(/Nama produk/), "Sisir Kutu");
+    await user.type(screen.getByLabelText("SKU *"), "SISIR-01");
+    await user.type(screen.getByLabelText(/Harga jual/), "25000");
+
+    const toggle = screen.getByLabelText("Isi stok awal sekarang");
+    await user.click(toggle);
+    await user.type(screen.getByLabelText(/Jumlah stok awal/), "10");
+    // Changed their mind. The switch is the answer, not the leftover text.
+    await user.click(toggle);
+
+    await user.click(screen.getByRole("button", { name: "Simpan produk" }));
+
+    const created = demo
+      .getState()
+      .products.find((product) => product.sku === "SISIR-01");
+    expect(demo.qtyOnHand(created!._id, "wh_utama")).toBe("0.0000");
   });
 });
 
@@ -167,12 +246,137 @@ describe("ProductForm — variants", () => {
     await user.type(first, "S{Enter}");
     await user.type(first, "M{Enter}");
 
-    await user.click(screen.getByRole("button", { name: "+ Atribut kedua" }));
+    await user.click(screen.getByRole("button", { name: "+ Atribut" }));
     const inputs = screen.getAllByLabelText(/Tambah nilai/);
     await user.type(inputs[1], "Merah{Enter}");
     await user.type(inputs[1], "Biru{Enter}");
 
     expect(screen.getByText("4 kombinasi")).toBeInTheDocument();
+  });
+
+  it("goes past two axes, which is what the API accepts", async () => {
+    const user = userEvent.setup();
+    render(<ProductForm />);
+
+    await user.click(screen.getByRole("button", { name: "Punya varian" }));
+    await user.type(screen.getByLabelText("SKU *"), "KAOS");
+
+    await user.type(screen.getByLabelText(/Tambah nilai/), "S{Enter}");
+    await user.click(screen.getByRole("button", { name: "+ Atribut" }));
+    await user.type(screen.getAllByLabelText(/Tambah nilai/)[1], "Merah{Enter}");
+    await user.click(screen.getByRole("button", { name: "+ Atribut" }));
+    await user.type(screen.getAllByLabelText(/Tambah nilai/)[2], "Katun{Enter}");
+
+    expect(screen.getByText("1 kombinasi")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("KAOS-S-MERAH-KATUN")).toBeInTheDocument();
+  });
+
+  it("stops offering another axis at the tenth, where the API stops", async () => {
+    const user = userEvent.setup();
+    render(<ProductForm />);
+
+    await user.click(screen.getByRole("button", { name: "Punya varian" }));
+
+    // One axis exists already, so nine more reach the cap.
+    for (let i = 0; i < 9; i += 1) {
+      await user.click(screen.getByRole("button", { name: "+ Atribut" }));
+    }
+
+    expect(screen.getByLabelText("Nama atribut 10")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "+ Atribut" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("leaves the name blank once the suggestions run out", async () => {
+    const user = userEvent.setup();
+    render(<ProductForm />);
+
+    await user.click(screen.getByRole("button", { name: "Punya varian" }));
+    for (let i = 0; i < 4; i += 1) {
+      await user.click(screen.getByRole("button", { name: "+ Atribut" }));
+    }
+
+    expect(screen.getByLabelText("Nama atribut 4")).toHaveValue("Motif");
+    // A made-up "Atribut 5" would read as a real label and survive to the POS
+    // as one. An empty box asks the question instead.
+    expect(screen.getByLabelText("Nama atribut 5")).toHaveValue("");
+  });
+
+  it("refuses to save an axis with no name", async () => {
+    const user = userEvent.setup();
+    render(<ProductForm />);
+
+    await user.click(screen.getByRole("button", { name: "Punya varian" }));
+    await user.type(screen.getByLabelText(/Nama produk/), "Kaos Anjing");
+    await user.type(screen.getByLabelText("SKU *"), "KAOS");
+    await user.type(screen.getByLabelText(/Tambah nilai/), "S{Enter}");
+
+    for (let i = 0; i < 4; i += 1) {
+      await user.click(screen.getByRole("button", { name: "+ Atribut" }));
+    }
+    await user.type(screen.getAllByLabelText(/Tambah nilai/)[4], "X{Enter}");
+
+    await user.click(screen.getByRole("button", { name: "Simpan produk" }));
+
+    // The API requires a name on every axis, so it is caught here rather than
+    // coming back as a 400 on a form the user has already filled.
+    expect(screen.getByText(/Atribut ke-5 belum punya nama/)).toBeInTheDocument();
+  });
+
+  it("refuses two axes that share a name, whatever the casing", async () => {
+    const user = userEvent.setup();
+    render(<ProductForm />);
+
+    await user.click(screen.getByRole("button", { name: "Punya varian" }));
+    await user.type(screen.getByLabelText(/Nama produk/), "Kaos Anjing");
+    await user.type(screen.getByLabelText("SKU *"), "KAOS");
+    await user.type(screen.getByLabelText(/Tambah nilai/), "S{Enter}");
+
+    await user.click(screen.getByRole("button", { name: "+ Atribut" }));
+    await user.clear(screen.getByLabelText("Nama atribut 2"));
+    await user.type(screen.getByLabelText("Nama atribut 2"), "ukuran");
+    await user.type(screen.getAllByLabelText(/Tambah nilai/)[1], "M{Enter}");
+
+    await user.click(screen.getByRole("button", { name: "Simpan produk" }));
+
+    // An axis name is a key in variantAttributes: "Ukuran" and "ukuran" would
+    // be two keys rendering as one label.
+    expect(
+      screen.getByText(/Nama atribut tidak boleh kembar/),
+    ).toBeInTheDocument();
+  });
+
+  it("removes the axis that was asked for, not the last one", async () => {
+    const user = userEvent.setup();
+    render(<ProductForm />);
+
+    await user.click(screen.getByRole("button", { name: "Punya varian" }));
+    await user.type(screen.getByLabelText("SKU *"), "KAOS");
+
+    await user.type(screen.getByLabelText(/Tambah nilai/), "S{Enter}");
+    await user.click(screen.getByRole("button", { name: "+ Atribut" }));
+    await user.type(screen.getAllByLabelText(/Tambah nilai/)[1], "Merah{Enter}");
+    await user.click(screen.getByRole("button", { name: "+ Atribut" }));
+    await user.type(screen.getAllByLabelText(/Tambah nilai/)[2], "Katun{Enter}");
+
+    // Drop the MIDDLE one. Slicing to the first axis would have taken the third
+    // away with it and left "Ukuran" alone.
+    await user.click(screen.getByRole("button", { name: /Hapus atribut Rasa/ }));
+
+    expect(screen.getByDisplayValue("KAOS-S-KATUN")).toBeInTheDocument();
+  });
+
+  it("never offers to remove the only axis", async () => {
+    const user = userEvent.setup();
+    render(<ProductForm />);
+
+    await user.click(screen.getByRole("button", { name: "Punya varian" }));
+
+    // A parent with no axes describes no combinations, so the API requires one.
+    expect(
+      screen.queryByRole("button", { name: /Hapus atribut/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("derives a variant SKU from the parent SKU and the combination", async () => {
@@ -201,6 +405,56 @@ describe("ProductForm — variants", () => {
     expect(screen.getByRole("button", { name: "Produk biasa" })).toBeDisabled();
     expect(screen.getByText(/Tipe produk dikunci setelah dibuat/)).toBeInTheDocument();
   });
+
+  it("asks for opening stock per variant, never once for the family", async () => {
+    const user = userEvent.setup();
+    render(<ProductForm />);
+
+    await user.click(screen.getByRole("button", { name: "Punya varian" }));
+    await user.type(screen.getByLabelText("SKU *"), "KAOS");
+    const values = screen.getByLabelText(/Tambah nilai/);
+    await user.type(values, "S{Enter}");
+    await user.type(values, "M{Enter}");
+
+    await user.click(screen.getByLabelText("Isi stok awal sekarang"));
+
+    // A parent holds no stock of its own, so there is no single field for it —
+    // one row per variant, and the backend would reject anything else.
+    expect(screen.getByLabelText("Stok awal S")).toBeInTheDocument();
+    expect(screen.getByLabelText("Stok awal M")).toBeInTheDocument();
+  });
+
+  it("opens each variant's balance separately, leaving blanks at zero", async () => {
+    const user = userEvent.setup();
+    render(<ProductForm />);
+
+    await user.click(screen.getByRole("button", { name: "Punya varian" }));
+    await user.type(screen.getByLabelText(/Nama produk/), "Kaos Anjing");
+    await user.type(screen.getByLabelText("SKU *"), "KAOS");
+    const values = screen.getByLabelText(/Tambah nilai/);
+    await user.type(values, "S{Enter}");
+    await user.type(values, "M{Enter}");
+
+    await user.click(screen.getByLabelText("Isi stok awal sekarang"));
+    await user.type(screen.getByLabelText("Stok awal S"), "12");
+    await user.type(screen.getByLabelText("Harga beli S"), "20000");
+    // M deliberately left blank — not every size arrives in the first delivery.
+    await user.click(screen.getByRole("button", { name: "Simpan produk" }));
+
+    const products = demo.getState().products;
+    const small = products.find((product) => product.sku === "KAOS-S");
+    const medium = products.find((product) => product.sku === "KAOS-M");
+
+    expect(demo.qtyOnHand(small!._id, "wh_utama")).toBe("12.0000");
+    expect(small!.hppAvg).toBe("20000.0000");
+    expect(demo.qtyOnHand(medium!._id, "wh_utama")).toBe("0.0000");
+    expect(demo.movementsFor(medium!._id, "wh_utama")).toHaveLength(0);
+
+    // The parent itself never receives a movement: it is an abstraction, and a
+    // quantity against it would belong to no shelf.
+    const parent = products.find((product) => product.sku === "KAOS");
+    expect(demo.movementsFor(parent!._id, "wh_utama")).toHaveLength(0);
+  });
 });
 
 describe("ProductForm — bundle", () => {
@@ -217,6 +471,19 @@ describe("ProductForm — bundle", () => {
     expect(
       screen.getByText("Bundle butuh minimal satu komponen."),
     ).toBeInTheDocument();
+  });
+
+  it("offers no opening stock at all — a bundle holds none", async () => {
+    const user = userEvent.setup();
+    render(<ProductForm />);
+
+    await user.click(screen.getByRole("button", { name: /Bundle/ }));
+
+    // Not merely hidden fields: the whole question is absent, because there is
+    // no balance to open. Availability comes from the components.
+    expect(
+      screen.queryByLabelText("Isi stok awal sekarang"),
+    ).not.toBeInTheDocument();
   });
 
   it("hides the fixed-price field under automatic pricing", async () => {

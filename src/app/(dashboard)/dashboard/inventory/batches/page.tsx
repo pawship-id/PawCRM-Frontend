@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { Breadcrumb } from "@/components";
 import { BatchesScreen } from "@/features/inventory";
 
 export const metadata: Metadata = { title: "Batch & Expired · PawShip" };
@@ -8,7 +9,13 @@ export default function BatchesPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">
+        <Breadcrumb
+          items={[
+            { label: "Inventory", href: "/dashboard/inventory" },
+            { label: "Batch & Expired" },
+          ]}
+        />
+        <h1 className="mt-1 text-2xl font-semibold text-foreground">
           Batch &amp; Expired
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">

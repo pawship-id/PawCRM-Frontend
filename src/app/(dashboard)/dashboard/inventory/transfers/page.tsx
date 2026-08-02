@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
+import { Breadcrumb } from "@/components";
 import { StockTransferForm } from "@/features/inventory";
 
 export const metadata: Metadata = { title: "Transfer stok · PawShip" };
@@ -9,12 +9,12 @@ export default function StockTransfersPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <Link
-          href="/dashboard/inventory"
-          className="text-xs text-muted hover:text-foreground"
-        >
-          ← Inventory
-        </Link>
+        <Breadcrumb
+          items={[
+            { label: "Inventory", href: "/dashboard/inventory" },
+            { label: "Transfer stok" },
+          ]}
+        />
         <h1 className="mt-1 text-2xl font-semibold text-foreground">
           Transfer stok antar gudang
         </h1>

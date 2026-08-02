@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
+import { Breadcrumb } from "@/components";
 import { OpnameSheet } from "@/features/inventory";
 
 export const metadata: Metadata = { title: "Lembar opname · PawShip" };
@@ -15,12 +15,13 @@ export default async function OpnameSheetPage({
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <Link
-          href="/dashboard/inventory/opname"
-          className="text-xs text-muted hover:text-foreground"
-        >
-          ← Stok Opname
-        </Link>
+        <Breadcrumb
+          items={[
+            { label: "Inventory", href: "/dashboard/inventory" },
+            { label: "Stok Opname", href: "/dashboard/inventory/opname" },
+            { label: "Lembar penghitungan" },
+          ]}
+        />
         <h1 className="mt-1 text-2xl font-semibold text-foreground">
           Lembar penghitungan
         </h1>
