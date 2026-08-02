@@ -20,6 +20,11 @@ import {
   BatchIcon,
   OpnameIcon,
   TransferIcon,
+  PurchasingIcon,
+  SupplierIcon,
+  ReceiptIcon,
+  PayableIcon,
+  PurchaseReturnIcon,
 } from "@/components/icons";
 import type {
   Action,
@@ -114,6 +119,47 @@ export const NAV_ITEMS: NavItem[] = [
         href: "/dashboard/inventory/transfers",
         icon: TransferIcon,
         permission: { feature: "stockMovements", action: "create" },
+      },
+    ],
+  },
+  /**
+   * Purchasing — the supply side, ordered the way a purchase actually unfolds:
+   * you set up a supplier, receive their goods, owe them money, and sometimes
+   * send some of it back.
+   *
+   * Kept separate from Inventory rather than folded into it, because the two
+   * answer different questions and are usually done by different people. Stock
+   * screens ask "what do we have"; these ask "who did we buy it from and what do
+   * we still owe". They meet at exactly one point — a goods receipt raises stock
+   * — and that seam is thin enough not to justify one menu.
+   */
+  {
+    label: "Purchasing",
+    icon: PurchasingIcon,
+    children: [
+      {
+        label: "Supplier",
+        href: "/dashboard/purchasing/suppliers",
+        icon: SupplierIcon,
+        permission: { feature: "suppliers", action: "read" },
+      },
+      {
+        label: "Penerimaan Barang",
+        href: "/dashboard/purchasing/receipts",
+        icon: ReceiptIcon,
+        permission: { feature: "goodsReceipts", action: "read" },
+      },
+      {
+        label: "Utang Supplier",
+        href: "/dashboard/purchasing/payables",
+        icon: PayableIcon,
+        permission: { feature: "purchaseInvoices", action: "read" },
+      },
+      {
+        label: "Retur ke Supplier",
+        href: "/dashboard/purchasing/returns",
+        icon: PurchaseReturnIcon,
+        permission: { feature: "purchaseReturns", action: "read" },
       },
     ],
   },

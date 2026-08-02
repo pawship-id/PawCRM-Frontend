@@ -295,3 +295,59 @@ export function TransferIcon(props: IconProps) {
     </Base>
   );
 }
+
+/* -------------------------------------------------------------- Purchasing */
+
+/** Purchasing — a shopping bag with a downward arrow (goods coming in). */
+export function PurchasingIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M5 8h14l-1.2 11a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8z" />
+      <path d="M9 8V5.5a3 3 0 0 1 6 0V8" />
+    </Base>
+  );
+}
+
+/** Supplier — a storefront. */
+export function SupplierIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M3.5 9.5 5 4.5h14l1.5 5" />
+      <path d="M4.5 9.5v10h15v-10" />
+      <path d="M3.5 9.5a2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 2 0" />
+      <path d="M9.5 19.5v-5h5v5" />
+    </Base>
+  );
+}
+
+/** Goods receipt — a box with an inbound arrow. */
+export function ReceiptIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M4 10.5 12 6.5l8 4v7l-8 4-8-4z" />
+      <path d="M12 2.5v5m0 0-2-2m2 2 2-2" />
+    </Base>
+  );
+}
+
+/** Payables — a banknote with a clock, for "owed and due". */
+export function PayableIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <rect x="2.5" y="6" width="15" height="9" rx="1.5" />
+      <circle cx="10" cy="10.5" r="2" />
+      <circle cx="17.5" cy="16.5" r="4" />
+      <path d="M17.5 15v1.5l1 1" />
+    </Base>
+  );
+}
+
+/** Purchase return — goods going back out. */
+export function PurchaseReturnIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M4 10.5 12 6.5l8 4v7l-8 4-8-4z" />
+      <path d="M12 7.5v-5m0 0-2 2m2-2 2 2" />
+    </Base>
+  );
+}

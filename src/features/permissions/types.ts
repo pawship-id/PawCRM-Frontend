@@ -26,6 +26,17 @@ export const PERMISSION_CATALOG = {
   // Batches are born from movements and never written directly, so `read` is
   // the only action this feature will ever grant.
   productBatches: ["read"],
+  suppliers: ["create", "read", "update", "delete", "restore"],
+  // A goods receipt raises stock and creates a payable, so there is no `update`
+  // and no `delete`: correcting one means returning the goods, which is its own
+  // document with its own reversal of the weighted average.
+  goodsReceipts: ["create", "read"],
+  // Payables are created BY a receipt, never by hand — hence no `create`.
+  // `pay` is its own action rather than part of `update`: recording money
+  // leaving the business is a materially different privilege from relabelling
+  // an invoice.
+  purchaseInvoices: ["read", "update", "pay"],
+  purchaseReturns: ["create", "read"],
   chartOfAccounts: ["create", "read", "update", "delete", "restore"],
   // A posted journal entry is immutable: no delete, no restore. `reverse` is
   // its own action because correcting the ledger is a different privilege from

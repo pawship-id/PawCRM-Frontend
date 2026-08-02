@@ -19,6 +19,20 @@ import type {
   StockWarehouse,
   VariantAxis,
 } from "@/types/inventory";
+import type {
+  GoodsReceipt,
+  GoodsReceiptItem,
+  PurchaseInvoice,
+  PurchaseReturn,
+  PurchaseReturnItem,
+  ReverseHppPreview,
+  SaveSupplierInput,
+  SubmitPaymentInput,
+  SubmitPurchaseReturnInput,
+  SubmitReceiptInput,
+  Supplier,
+  SupplierPayment,
+} from "@/types/purchasing";
 
 /**
  * An in-memory stand-in for the Inventory API, for the prototype screens.
@@ -78,6 +92,13 @@ export interface DemoState {
   movements: StockMovement[];
   opnames: Opname[];
   opnameItems: OpnameItem[];
+  suppliers: Supplier[];
+  receipts: GoodsReceipt[];
+  receiptItems: GoodsReceiptItem[];
+  invoices: PurchaseInvoice[];
+  payments: SupplierPayment[];
+  purchaseReturns: PurchaseReturn[];
+  purchaseReturnItems: PurchaseReturnItem[];
 }
 
 let sequence = 0;
@@ -305,6 +326,48 @@ function seed(): DemoState {
     },
   ];
 
+  const suppliers: Supplier[] = [
+    {
+      _id: "sup_sps",
+      name: "PT Sumber Pakan Sejahtera",
+      supplierType: "beli_putus",
+      picName: "Pak Hendra",
+      phone: "031-8877-221",
+      email: "sales@sumberpakan.co.id",
+      address: "Jl. Rungkut Industri 21, Surabaya",
+      npwp: "01.234.567.8-609.000",
+      paymentTermDays: 30,
+      notes: null,
+      isActive: true,
+    },
+    {
+      _id: "sup_anugerah",
+      name: "CV Anugerah Petshop",
+      supplierType: "konsinyasi",
+      picName: "Bu Lina",
+      phone: "0812-5566-7788",
+      email: "lina@anugerahpet.id",
+      address: "Jl. Kapas Krampung 5, Surabaya",
+      npwp: null,
+      paymentTermDays: 0,
+      notes: "Titip barang, bayar setelah laku.",
+      isActive: true,
+    },
+    {
+      _id: "sup_vetindo",
+      name: "PT Vetindo Farma",
+      supplierType: "both",
+      picName: "Dr. Ratna",
+      phone: "031-5544-100",
+      email: "order@vetindo.co.id",
+      address: "Jl. Raya Darmo 190, Surabaya",
+      npwp: "02.999.111.4-609.000",
+      paymentTermDays: 14,
+      notes: null,
+      isActive: true,
+    },
+  ];
+
   const movements: StockMovement[] = [
     mv(
       "prd_rc3kg",
@@ -446,6 +509,13 @@ function seed(): DemoState {
     movements,
     opnames: [],
     opnameItems: [],
+    suppliers,
+    receipts: [],
+    receiptItems: [],
+    invoices: [],
+    payments: [],
+    purchaseReturns: [],
+    purchaseReturnItems: [],
   };
 }
 
@@ -492,6 +562,13 @@ export function getState(): DemoState {
     movements: [...state.movements],
     opnames: [...state.opnames],
     opnameItems: [...state.opnameItems],
+    suppliers: [...state.suppliers],
+    receipts: [...state.receipts],
+    receiptItems: [...state.receiptItems],
+    invoices: [...state.invoices],
+    payments: [...state.payments],
+    purchaseReturns: [...state.purchaseReturns],
+    purchaseReturnItems: [...state.purchaseReturnItems],
   };
 }
 
@@ -1389,10 +1466,617 @@ export function submitOpname(
  * and the reason it lives here rather than being retyped in three screens.
  */
 export function canHoldStock(product: Product): boolean {
-  return product.productType === "standalone" || product.productType === "variant";
+  return (
+    product.productType === "standalone" || product.productType === "variant"
+  );
 }
 
 /** The first product a stock screen can legitimately default to. */
 export function firstStockProduct(products: Product[]): Product | undefined {
   return products.find(canHoldStock);
+}
+
+/* ============================================================== PURCHASING */
+
+/**
+ * Purchasing lives in this module rather than its own because it SHARES state
+ * with inventory — a goods receipt writes stock movements, creates lots and
+ * moves the weighted average. Splitting the two would mean two modules mutating
+ * one set of arrays, which is the bug this file exists to avoid.
+ *
+ * THE DIVISION OF LABOUR, and it mirrors what the backend will do: purchasing
+ * owns the DOCUMENT (who supplied it, what it cost, what is owed) and delegates
+ * the stock consequences. Receiving does not reimplement FEFO, batch creation or
+ * the average — it calls the same paths an adjustment does.
+ */
+
+const ACCOUNT_TAX_IN = { code: "1301", name: "PPN Masukan" };
+const ACCOUNT_PAYABLE = { code: "2101", name: "Utang Supplier" };
+const ACCOUNT_CASH = { code: "1101", name: "Kas" };
+const ACCOUNT_BANK = { code: "1102", name: "Bank" };
+
+let documentSequence = 0;
+
+/** `GR-260802-001` — a human-facing running number, reset per prefix. */
+function nextDocumentNumber(prefix: string): string {
+  documentSequence += 1;
+  const stamp = new Date().toISOString().slice(2, 10).replace(/-/g, "");
+  return `${prefix}-${stamp}-${String(documentSequence).padStart(3, "0")}`;
+}
+
+export function suppliersOf(): Supplier[] {
+  return state.suppliers;
+}
+
+export function receiptItemsOf(receiptId: string): GoodsReceiptItem[] {
+  return state.receiptItems.filter((item) => item.receiptId === receiptId);
+}
+
+export function receiptsOfSupplier(supplierId: string): GoodsReceipt[] {
+  return state.receipts.filter((receipt) => receipt.supplierId === supplierId);
+}
+
+export function purchaseReturnItemsOf(returnId: string): PurchaseReturnItem[] {
+  return state.purchaseReturnItems.filter((item) => item.returnId === returnId);
+}
+
+/** What is still owed on one invoice. */
+export function outstandingOf(invoice: PurchaseInvoice): string {
+  return toDecimalString(
+    (toMinor(invoice.total) ?? 0n) - (toMinor(invoice.paidAmount) ?? 0n),
+  );
+}
+
+/** What is still owed to one supplier, across every unpaid invoice. */
+export function supplierOutstanding(supplierId: string): string {
+  const total = state.invoices
+    .filter(
+      (invoice) =>
+        invoice.supplierId === supplierId && invoice.status !== "paid",
+    )
+    .reduce<bigint>(
+      (acc, invoice) => acc + (toMinor(outstandingOf(invoice)) ?? 0n),
+      0n,
+    );
+  return toDecimalString(total);
+}
+
+/**
+ * How much of a receipt line has already gone back.
+ *
+ * Caps the return form so the same delivery cannot be returned twice — which
+ * would credit the supplier for goods they were only ever sent once, and reverse
+ * the weighted average twice over.
+ */
+export function returnedQtyOf(receiptItemId: string): string {
+  const total = state.purchaseReturnItems
+    .filter((item) => item.originalReceiptItemId === receiptItemId)
+    .reduce<bigint>((acc, item) => acc + (toMinor(item.qty) ?? 0n), 0n);
+  return toDecimalString(total);
+}
+
+/* --------------------------------------------------------------- suppliers */
+
+export function saveSupplier(input: SaveSupplierInput): Supplier {
+  const existing = input.id
+    ? state.suppliers.find((supplier) => supplier._id === input.id)
+    : undefined;
+
+  const supplier: Supplier = {
+    _id: existing?._id ?? nextId("sup"),
+    name: input.name.trim(),
+    supplierType: input.supplierType,
+    picName: input.picName?.trim() || null,
+    phone: input.phone?.trim() || null,
+    email: input.email?.trim() || null,
+    address: input.address?.trim() || null,
+    npwp: input.npwp?.trim() || null,
+    paymentTermDays: input.paymentTermDays,
+    notes: input.notes?.trim() || null,
+    isActive: existing?.isActive ?? true,
+  };
+
+  state.suppliers = existing
+    ? state.suppliers.map((s) => (s._id === supplier._id ? supplier : s))
+    : [...state.suppliers, supplier];
+
+  return supplier;
+}
+
+/**
+ * Removes a supplier, or refuses when its purchase history would be orphaned.
+ *
+ * A supplier that has ever delivered is deactivated rather than deleted: the
+ * receipts that formed the current HPP point at it, and removing it would leave
+ * every one of those unable to say where the goods came from.
+ */
+export function deleteSupplier(supplierId: string): {
+  ok: boolean;
+  reason?: string;
+} {
+  const supplier = state.suppliers.find((s) => s._id === supplierId);
+  if (!supplier) return { ok: false, reason: "Supplier tidak ditemukan." };
+
+  const receipts = receiptsOfSupplier(supplierId);
+  if (receipts.length > 0) {
+    return {
+      ok: false,
+      reason: `Supplier ini punya ${receipts.length} penerimaan barang. Menghapusnya akan memutus jejak pembelian dan HPP — nonaktifkan saja.`,
+    };
+  }
+
+  state.suppliers = state.suppliers.filter((s) => s._id !== supplierId);
+  return { ok: true };
+}
+
+export function toggleSupplierActive(supplierId: string): void {
+  state.suppliers = state.suppliers.map((supplier) =>
+    supplier._id === supplierId
+      ? { ...supplier, isActive: !supplier.isActive }
+      : supplier,
+  );
+}
+
+/* --------------------------------------------------------- goods receipts */
+
+/**
+ * Records goods arriving — and this is the first real CALLER of the stock
+ * gateway rather than a second implementation of it.
+ *
+ * WHAT HAPPENS, in order, and why the order matters:
+ *   1. every line posts an inbound movement, which creates the lot (when the
+ *      product expires or the goods are consigned) and recomputes the weighted
+ *      average from the price actually paid;
+ *   2. the receipt document is written, linking those lines;
+ *   3. an OUTRIGHT purchase creates a payable and posts the ledger.
+ *
+ * CONSIGNMENT DOES NEITHER (3). The goods sit in the warehouse but belong to the
+ * supplier until they sell, so nothing has been bought: no payable, no journal.
+ * The stock still moves — it is physically there and a customer can buy it —
+ * which is exactly why the two halves are separable at all.
+ *
+ * `costPerUnit` on a consignment line is the HPP entered by hand: there was no
+ * purchase to derive a cost from, and a margin report needs some number.
+ */
+export function submitReceipt(input: SubmitReceiptInput): GoodsReceipt {
+  if (input.items.length === 0) {
+    throw new Error("Penerimaan butuh minimal satu barang.");
+  }
+
+  const supplier = state.suppliers.find((s) => s._id === input.supplierId);
+  if (!supplier) throw new Error("Supplier tidak ditemukan.");
+
+  const receiptId = nextId("gr");
+  const consignment = input.receiptType === "konsinyasi";
+  const lines: GoodsReceiptItem[] = [];
+  let subtotal = 0n;
+
+  for (const line of input.items) {
+    const qty = toMinor(line.qty);
+    const cost = toMinor(line.costPerUnit);
+    if (qty === null || qty <= 0n)
+      throw new Error("Qty setiap barang harus lebih dari nol.");
+    if (cost === null || cost < 0n) throw new Error("Harga beli tidak valid.");
+
+    // The gateway does the stock work: lot creation, the weighted average, and
+    // the movement row. Purchasing only says what arrived and what it cost.
+    const [movement] = postAdjustment({
+      operation: "adjustment",
+      productId: line.productId,
+      warehouseId: input.warehouseId,
+      qty: line.qty,
+      costPerUnit: line.costPerUnit,
+      batchCode: line.batchCode,
+      expiryDate: line.expiryDate,
+      isConsignment: consignment,
+    });
+
+    // Re-stamped as a receipt: the movement was posted through the adjustment
+    // path, but the DOCUMENT behind it is a goods receipt, and a stock card that
+    // called this "penyesuaian" would hide where the goods came from.
+    state.movements = state.movements.map((m) =>
+      m._id === movement._id
+        ? {
+            ...m,
+            movementType: "receipt" as MovementType,
+            reference: { type: "goods_receipt" as const, id: receiptId },
+          }
+        : m,
+    );
+
+    const lineSubtotal = divideRound(qty * cost, SCALE);
+    subtotal += lineSubtotal;
+
+    lines.push({
+      _id: nextId("gri"),
+      receiptId,
+      productId: line.productId,
+      batchId: movement.batchId,
+      qty: toDecimalString(qty),
+      costPerUnit: toDecimalString(cost),
+      subtotal: toDecimalString(lineSubtotal),
+    });
+  }
+
+  const tax = consignment ? 0n : (toMinor(input.taxAmount ?? "0") ?? 0n);
+
+  const receipt: GoodsReceipt = {
+    _id: receiptId,
+    receiptNumber: nextDocumentNumber("GR"),
+    supplierId: input.supplierId,
+    warehouseId: input.warehouseId,
+    receiptDate: input.receiptDate,
+    receiptType: input.receiptType,
+    totalAmount: toDecimalString(subtotal),
+    taxAmount: toDecimalString(tax),
+    invoiceId: null,
+    notes: input.notes?.trim() || null,
+    createdBy: "u1",
+    createdAt: new Date().toISOString(),
+  };
+
+  state.receiptItems = [...state.receiptItems, ...lines];
+
+  if (!consignment) {
+    const due = new Date(input.receiptDate);
+    due.setDate(due.getDate() + supplier.paymentTermDays);
+
+    const invoice: PurchaseInvoice = {
+      _id: nextId("pi"),
+      invoiceNumber: input.invoiceNumber?.trim() || nextDocumentNumber("PI"),
+      supplierId: input.supplierId,
+      goodsReceiptId: receiptId,
+      invoiceDate: input.receiptDate,
+      dueDate: due.toISOString().slice(0, 10),
+      subtotal: toDecimalString(subtotal),
+      taxAmount: toDecimalString(tax),
+      total: toDecimalString(subtotal + tax),
+      paidAmount: "0.0000",
+      status: "unpaid",
+    };
+
+    state.invoices = [invoice, ...state.invoices];
+    receipt.invoiceId = invoice._id;
+  }
+
+  state.receipts = [receipt, ...state.receipts];
+  return receipt;
+}
+
+/** The double entry an outright receipt posts. Consignment posts nothing. */
+export function previewReceiptJournal(
+  subtotal: string,
+  tax: string,
+  consignment: boolean,
+): JournalLine[] {
+  if (consignment) return [];
+
+  const sub = toMinor(subtotal) ?? 0n;
+  const taxMinor = toMinor(tax) ?? 0n;
+  if (sub === 0n && taxMinor === 0n) return [];
+
+  const lines: JournalLine[] = [
+    {
+      accountCode: ACCOUNT.inventory.code,
+      accountName: ACCOUNT.inventory.name,
+      debit: toDecimalString(sub),
+      credit: null,
+    },
+  ];
+
+  // PPN is an asset the tenant reclaims, not part of what the goods cost — so
+  // it goes to 1301 rather than inflating the inventory value and, through it,
+  // every margin computed from HPP.
+  if (taxMinor > 0n) {
+    lines.push({
+      accountCode: ACCOUNT_TAX_IN.code,
+      accountName: ACCOUNT_TAX_IN.name,
+      debit: toDecimalString(taxMinor),
+      credit: null,
+    });
+  }
+
+  lines.push({
+    accountCode: ACCOUNT_PAYABLE.code,
+    accountName: ACCOUNT_PAYABLE.name,
+    debit: null,
+    credit: toDecimalString(sub + taxMinor),
+  });
+
+  return lines;
+}
+
+/* ---------------------------------------------------------------- payments */
+
+/** Cash and QRIS leave the till; transfer and giro leave the bank. */
+export function cashAccountFor(method: SubmitPaymentInput["method"]) {
+  return method === "cash" || method === "qris" ? ACCOUNT_CASH : ACCOUNT_BANK;
+}
+
+export function previewPaymentJournal(
+  amount: string,
+  method: SubmitPaymentInput["method"],
+): JournalLine[] {
+  const value = toMinor(amount) ?? 0n;
+  if (value <= 0n) return [];
+
+  const cash = cashAccountFor(method);
+  return [
+    {
+      accountCode: ACCOUNT_PAYABLE.code,
+      accountName: ACCOUNT_PAYABLE.name,
+      debit: toDecimalString(value),
+      credit: null,
+    },
+    {
+      accountCode: cash.code,
+      accountName: cash.name,
+      debit: null,
+      credit: toDecimalString(value),
+    },
+  ];
+}
+
+/**
+ * Records a payment against one invoice. Partial payments are ordinary — a
+ * tenant paying half now and half next month is the common case, not an edge
+ * one, so the status is derived from the running total rather than toggled.
+ */
+export function submitPayment(input: SubmitPaymentInput): SupplierPayment {
+  const invoice = state.invoices.find((i) => i._id === input.invoiceId);
+  if (!invoice) throw new Error("Faktur tidak ditemukan.");
+
+  const amount = toMinor(input.amount);
+  if (amount === null || amount <= 0n)
+    throw new Error("Jumlah pembayaran harus lebih dari nol.");
+
+  const outstanding = toMinor(outstandingOf(invoice)) ?? 0n;
+  if (amount > outstanding) {
+    throw new Error(
+      `Jumlah melebihi sisa tagihan ${toDecimalString(outstanding)}.`,
+    );
+  }
+
+  const paid = (toMinor(invoice.paidAmount) ?? 0n) + amount;
+  const total = toMinor(invoice.total) ?? 0n;
+
+  state.invoices = state.invoices.map((i) =>
+    i._id === invoice._id
+      ? {
+          ...i,
+          paidAmount: toDecimalString(paid),
+          status: paid <= 0n ? "unpaid" : paid >= total ? "paid" : "partial",
+        }
+      : i,
+  );
+
+  const payment: SupplierPayment = {
+    _id: nextId("pay"),
+    supplierId: invoice.supplierId,
+    invoiceId: invoice._id,
+    paymentDate: input.paymentDate,
+    amount: toDecimalString(amount),
+    method: input.method,
+    referenceNumber: input.referenceNumber?.trim() || null,
+    notes: input.notes?.trim() || null,
+    createdBy: "u1",
+  };
+
+  state.payments = [payment, ...state.payments];
+  return payment;
+}
+
+export function paymentsOf(invoiceId: string): SupplierPayment[] {
+  return state.payments.filter((payment) => payment.invoiceId === invoiceId);
+}
+
+/* --------------------------------------------------------- purchase return */
+
+/**
+ * The REVERSE weighted average: what the remaining stock is worth once goods
+ * bought at a known price go back.
+ *
+ *   newAvg = (qty × avg − qtyReturned × ORIGINAL price) ÷ (qty − qtyReturned)
+ *
+ * THE ORIGINAL PRICE, NOT THE RUNNING AVERAGE, and this is the whole reason a
+ * return is tied to its receipt line. Reversing at today's average would take
+ * out a different amount of value than was ever put in, and the stock left
+ * behind would be valued at a number nobody paid.
+ *
+ * The counter-intuitive consequence, worth showing the user: returning goods
+ * that were CHEAPER than the average makes the remaining stock more expensive.
+ * That is arithmetically correct — the cheap units are gone — but it looks like
+ * a bug the first time somebody sees HPP rise after a return.
+ *
+ * Null when the return empties the stock: there is nothing left to carry a cost.
+ */
+export function previewReverseHpp(
+  productId: string,
+  qtyReturned: string,
+  originalCost: string,
+  isConsignmentLot: boolean,
+): ReverseHppPreview | null {
+  const product = state.products.find((p) => p._id === productId);
+  if (!product) return null;
+
+  const qtyBefore = toMinor(totalQty(productId)) ?? 0n;
+  const avgBefore = toMinor(product.hppAvg ?? "0") ?? 0n;
+  const returned = toMinor(qtyReturned) ?? 0n;
+  const cost = toMinor(originalCost) ?? 0n;
+  const qtyAfter = qtyBefore - returned;
+
+  const base: ReverseHppPreview = {
+    productName: product.name,
+    qtyBefore: toDecimalString(qtyBefore),
+    hppBefore: product.hppAvg,
+    qtyReturned: toDecimalString(returned),
+    originalCost: toDecimalString(cost),
+    qtyAfter: toDecimalString(qtyAfter),
+    hppAfter: product.hppAvg,
+    skipped: isConsignmentLot,
+  };
+
+  // A consignment lot carries the supplier's own cost and never contributed to
+  // the average, so taking it back must not disturb it either.
+  if (isConsignmentLot) return base;
+
+  if (qtyAfter <= 0n) return { ...base, hppAfter: null };
+
+  const remainingValue = avgBefore * qtyBefore - cost * returned;
+  return {
+    ...base,
+    hppAfter: toDecimalString(divideRound(remainingValue, qtyAfter)),
+  };
+}
+
+/**
+ * Sends goods back to the supplier.
+ *
+ * Three things move together: stock leaves, the weighted average is reversed at
+ * the original price, and the payable shrinks. The invoice reduction is what
+ * keeps the supplier statement and the ledger agreeing — a return that lowered
+ * the stock but not the debt would have the tenant paying for goods it no longer
+ * holds.
+ */
+export function submitPurchaseReturn(
+  input: SubmitPurchaseReturnInput,
+): PurchaseReturn {
+  const receipt = state.receipts.find((r) => r._id === input.originalReceiptId);
+  if (!receipt) throw new Error("Penerimaan asal tidak ditemukan.");
+  if (input.items.length === 0)
+    throw new Error("Pilih minimal satu barang untuk diretur.");
+
+  const returnId = nextId("pr");
+  const now = new Date().toISOString();
+  const lines: PurchaseReturnItem[] = [];
+  let total = 0n;
+
+  for (const line of input.items) {
+    const receiptItem = state.receiptItems.find(
+      (item) => item._id === line.originalReceiptItemId,
+    );
+    if (!receiptItem) throw new Error("Baris penerimaan tidak ditemukan.");
+
+    const qty = toMinor(line.qty);
+    if (qty === null || qty <= 0n) continue;
+
+    const already = toMinor(returnedQtyOf(receiptItem._id)) ?? 0n;
+    const received = toMinor(receiptItem.qty) ?? 0n;
+    if (already + qty > received) {
+      throw new Error(
+        `Qty retur melebihi yang diterima untuk salah satu barang.`,
+      );
+    }
+
+    const batch = receiptItem.batchId
+      ? state.batches.find((b) => b._id === receiptItem.batchId)
+      : undefined;
+    const consignmentLot = batch?.isConsignment === true;
+
+    // Reverse the average at the ORIGINAL price — see previewReverseHpp.
+    const preview = previewReverseHpp(
+      receiptItem.productId,
+      toDecimalString(qty),
+      receiptItem.costPerUnit,
+      consignmentLot,
+    );
+    if (preview && !preview.skipped) {
+      state.products = state.products.map((p) =>
+        p._id === receiptItem.productId
+          ? { ...p, hppAvg: preview.hppAfter }
+          : p,
+      );
+    }
+
+    // Stock leaves from the lot it arrived on, not by FEFO: these specific goods
+    // are going back to the supplier who sent them.
+    if (receiptItem.batchId) {
+      applyToBatch(receiptItem.batchId, `-${toDecimalString(qty)}`);
+    }
+
+    state.movements = [
+      mv(
+        receiptItem.productId,
+        receipt.warehouseId,
+        "purchase_return",
+        toDecimalString(-qty),
+        state.products.find((p) => p._id === receiptItem.productId)?.hppAvg ??
+          null,
+        receiptItem.batchId,
+        { type: "purchase_return", id: returnId },
+        now,
+      ),
+      ...state.movements,
+    ];
+
+    const subtotal = divideRound(
+      qty * (toMinor(receiptItem.costPerUnit) ?? 0n),
+      SCALE,
+    );
+    total += subtotal;
+
+    lines.push({
+      _id: nextId("pri"),
+      returnId,
+      productId: receiptItem.productId,
+      batchId: receiptItem.batchId,
+      originalReceiptItemId: receiptItem._id,
+      qty: toDecimalString(qty),
+      costPerUnit: receiptItem.costPerUnit,
+      subtotal: toDecimalString(subtotal),
+      reason: line.reason,
+    });
+  }
+
+  const purchaseReturn: PurchaseReturn = {
+    _id: returnId,
+    returnNumber: nextDocumentNumber("PR"),
+    supplierId: receipt.supplierId,
+    warehouseId: receipt.warehouseId,
+    originalReceiptId: receipt._id,
+    returnDate: input.returnDate,
+    totalAmount: toDecimalString(total),
+    createdBy: "u1",
+    createdAt: now,
+  };
+
+  state.purchaseReturnItems = [...state.purchaseReturnItems, ...lines];
+  state.purchaseReturns = [purchaseReturn, ...state.purchaseReturns];
+
+  // The debt shrinks by what went back, so the statement and the ledger agree.
+  state.invoices = state.invoices.map((invoice) => {
+    if (invoice.goodsReceiptId !== receipt._id) return invoice;
+
+    const newTotal = (toMinor(invoice.total) ?? 0n) - total;
+    const paid = toMinor(invoice.paidAmount) ?? 0n;
+
+    return {
+      ...invoice,
+      subtotal: toDecimalString((toMinor(invoice.subtotal) ?? 0n) - total),
+      total: toDecimalString(newTotal),
+      status: paid <= 0n ? "unpaid" : paid >= newTotal ? "paid" : "partial",
+    };
+  });
+
+  return purchaseReturn;
+}
+
+export function previewReturnJournal(total: string): JournalLine[] {
+  const value = toMinor(total) ?? 0n;
+  if (value <= 0n) return [];
+
+  return [
+    {
+      accountCode: ACCOUNT_PAYABLE.code,
+      accountName: ACCOUNT_PAYABLE.name,
+      debit: toDecimalString(value),
+      credit: null,
+    },
+    {
+      accountCode: ACCOUNT.inventory.code,
+      accountName: ACCOUNT.inventory.name,
+      debit: null,
+      credit: toDecimalString(value),
+    },
+  ];
 }
