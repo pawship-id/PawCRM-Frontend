@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { Alert, Button, Card, TextField } from "@/components";
+import { Alert, Button, Card, Spinner, TextField } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -16,23 +16,47 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { productService } from "@/services/product.service";
+import { ApiError } from "@/services/api-error";
 import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
-import { formatMoney, isDecimal, isPositive, multiplyDecimals, sumDecimals, toMinor } from "@/utils/decimal";
+import {
+  formatMoney,
+  isDecimal,
+  isPositive,
+  multiplyDecimals,
+  sumDecimals,
+  toMinor,
+} from "@/utils/decimal";
+import type { Category } from "@/types/api";
 import type {
   BundleComponent,
   BundlePricingMode,
+  CreateFamilyVariantInput,
+  CreateProductInput,
+  OpeningStockInput,
+  Product,
+  StockWarehouse,
+  UpdateProductInput,
   VariantAxis,
 } from "@/types/inventory";
 
-import * as demo from "../data/demoStore";
-import { useInventoryDemo } from "../hooks/useInventoryDemo";
+import { useBundleCandidates } from "../hooks/useBundleCandidates";
+import { useCatalogLookups } from "../hooks/useCatalogLookups";
+import { useProductDetail } from "../hooks/useProductDetail";
+import {
+  attributesFor,
+  defaultVariantSku,
+  matchVariant,
+  variantCombinations,
+} from "../utils/catalogue";
 import { BundleComponentEditor } from "./BundleComponentEditor";
 import { VariantAxisEditor } from "./VariantAxisEditor";
 
 type Mode = "standalone" | "variants" | "bundle";
 
 interface VariantRow {
+  /** Set when this combination is already a stored variant. */
   id?: string;
   combo: string[];
   sku: string;
@@ -62,6 +86,49 @@ const MODES: Array<{ value: Mode; label: string; hint: string }> = [
 ];
 
 /**
+ * The create/edit screen for a catalogue product.
+ *
+ * A LOADER AROUND THE FORM, and the split is not ceremony: every field below
+ * initialises from the product being edited, and `useState` reads its initial
+ * value once. Rendering the fields only after the product (and, for a parent,
+ * its variants) has arrived is what lets that stay true — the alternative is an
+ * effect that copies server data into state and a race about which wins.
+ */
+export function ProductForm({ productId }: { productId?: string }) {
+  const detail = useProductDetail(productId);
+  const lookups = useCatalogLookups();
+
+  if (detail.loading || lookups.loading) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
+        <Spinner /> Memuat…
+      </div>
+    );
+  }
+
+  if (detail.error) return <Alert variant="error">{detail.error}</Alert>;
+  if (lookups.error) return <Alert variant="error">{lookups.error}</Alert>;
+
+  if (lookups.categories.length === 0) {
+    return (
+      <Alert variant="error">
+        Belum ada kategori produk. Buat satu dulu di Inventory → Kategori — setiap
+        produk harus difilekan di bawah kategori.
+      </Alert>
+    );
+  }
+
+  return (
+    <ProductFormFields
+      existing={detail.product ?? undefined}
+      existingVariants={detail.variants}
+      categories={lookups.categories}
+      warehouses={lookups.warehouses}
+    />
+  );
+}
+
+/**
  * Create or edit a catalogue product, in whichever of its three shapes.
  *
  * ONE FORM, THREE SHAPES, and they are genuinely different things rather than a
@@ -69,8 +136,9 @@ const MODES: Array<{ value: Mode; label: string; hint: string }> = [
  *
  *   standalone — owns its price, its stock and its reorder threshold.
  *   variants   — the form edits a FAMILY. It writes a parent plus one row per
- *                axis combination, because a parent with no variants is a POS
- *                tile that expands into nothing.
+ *                axis combination, in ONE request that the API commits as one
+ *                transaction, because a parent with no variants is a POS tile
+ *                that expands into nothing.
  *   bundle     — owns no stock at all. Its availability is derived from the
  *                components, and its cost is their sum.
  *
@@ -81,7 +149,8 @@ const MODES: Array<{ value: Mode; label: string; hint: string }> = [
  * OPENING STOCK LIVES HERE, on create, rather than as a separate errand. The
  * moment somebody defines a product is the moment they know how many are on the
  * shelf; sending them to another screen to say so is how catalogues end up full
- * of items with no stock and no cost basis.
+ * of items with no stock and no cost basis. It travels in the same request and
+ * is posted to the stock ledger by the API.
  *
  * IT IS BEHIND A SWITCH, DEFAULTED OFF, and that is not timidity about the
  * feature. Filling it in writes a stock movement that cannot be edited or
@@ -95,15 +164,18 @@ const MODES: Array<{ value: Mode; label: string; hint: string }> = [
  * A BUNDLE NEVER GETS THE SWITCH. It holds no stock of its own — how many are
  * available is derived from its components — so there is no balance to open.
  */
-export function ProductForm({ productId }: { productId?: string }) {
+function ProductFormFields({
+  existing,
+  existingVariants,
+  categories,
+  warehouses,
+}: {
+  existing?: Product;
+  existingVariants: Product[];
+  categories: Category[];
+  warehouses: StockWarehouse[];
+}) {
   const router = useRouter();
-  const { products, categories, warehouses, sync } = useInventoryDemo();
-
-  const existing = productId ? products.find((p) => p._id === productId) : undefined;
-  const existingVariants = useMemo(
-    () => (existing ? demo.variantsOf(existing._id) : []),
-    [existing],
-  );
 
   const [mode, setMode] = useState<Mode>(() => {
     if (!existing) return "standalone";
@@ -114,9 +186,14 @@ export function ProductForm({ productId }: { productId?: string }) {
         : "standalone";
   });
 
+  const bundleCandidates = useBundleCandidates(mode === "bundle");
+  const products = bundleCandidates.products;
+
   const [name, setName] = useState(existing?.name ?? "");
   const [sku, setSku] = useState(existing?.sku ?? "");
-  const [categoryId, setCategoryId] = useState(existing?.categoryId ?? categories[0]._id);
+  const [categoryId, setCategoryId] = useState(
+    existing?.categoryId ?? categories[0]._id,
+  );
   const [unit, setUnit] = useState(existing?.unit ?? "pcs");
   const [barcode, setBarcode] = useState(existing?.barcode ?? "");
   const [sellPrice, setSellPrice] = useState(existing?.sellPrice ?? "");
@@ -126,22 +203,34 @@ export function ProductForm({ productId }: { productId?: string }) {
   const [openingEnabled, setOpeningEnabled] = useState(false);
   const [openingQty, setOpeningQty] = useState("");
   const [openingCost, setOpeningCost] = useState("");
-  const [openingWarehouseId, setOpeningWarehouseId] = useState(warehouses[0]._id);
+  const [openingWarehouseId, setOpeningWarehouseId] = useState(
+    warehouses[0]?._id ?? "",
+  );
+  const [openingBatchCode, setOpeningBatchCode] = useState("");
+  const [openingExpiryDate, setOpeningExpiryDate] = useState("");
 
   const [axes, setAxes] = useState<VariantAxis[]>(
-    existing?.variantAxes?.length ? existing.variantAxes : [{ name: "Ukuran", values: [] }],
+    existing?.variantAxes?.length
+      ? existing.variantAxes
+      : [{ name: "Ukuran", values: [] }],
   );
-  const [variantOverrides, setVariantOverrides] = useState<Record<string, Partial<VariantRow>>>({});
+  const [variantOverrides, setVariantOverrides] = useState<
+    Record<string, Partial<VariantRow>>
+  >({});
 
   const [pricingMode, setPricingMode] = useState<BundlePricingMode>(
     existing?.bundleConfig?.pricingMode ?? "fixed",
   );
-  const [fixedPrice, setFixedPrice] = useState(existing?.bundleConfig?.fixedPrice ?? "");
+  const [fixedPrice, setFixedPrice] = useState(
+    existing?.bundleConfig?.fixedPrice ?? "",
+  );
   const [components, setComponents] = useState<BundleComponent[]>(
     existing?.bundleConfig?.components ?? [],
   );
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  /** Per-row API refusals, keyed by combination — see applyApiError. */
+  const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -161,22 +250,15 @@ export function ProductForm({ productId }: { productId?: string }) {
    * row when there is one so an edit does not wipe prices somebody set.
    */
   const variantRows: VariantRow[] = useMemo(() => {
-    const base = (sku || "SKU").toUpperCase();
-
-    return demo.variantCombinations(axes).map((combo) => {
+    return variantCombinations(axes).map((combo) => {
       const key = combo.join("|");
-      const previous = existingVariants.find(
-        (variant) => Object.values(variant.variantAttributes ?? {}).join("|") === key,
-      );
+      const previous = matchVariant(existingVariants, axes, combo);
       const override = variantOverrides[key] ?? {};
 
       return {
         id: previous?._id,
         combo,
-        sku:
-          override.sku ??
-          previous?.sku ??
-          `${base}-${combo.map((v) => v.toUpperCase().replace(/\s+/g, "")).join("-")}`,
+        sku: override.sku ?? previous?.sku ?? defaultVariantSku(sku, combo),
         barcode: override.barcode ?? previous?.barcode ?? "",
         sellPrice: override.sellPrice ?? previous?.sellPrice ?? "",
         minStock: override.minStock ?? String(previous?.minStock ?? 0),
@@ -221,28 +303,31 @@ export function ProductForm({ productId }: { productId?: string }) {
     (toMinor(fixedPrice) ?? 0n) < (toMinor(componentHpp) ?? 0n) &&
     (toMinor(componentHpp) ?? 0n) > 0n;
 
-  function setVariantField(combo: string[], field: keyof VariantRow, value: string) {
+  function setVariantField(
+    combo: string[],
+    field: keyof VariantRow,
+    value: string,
+  ) {
     const key = combo.join("|");
-    setVariantOverrides((prev) => ({ ...prev, [key]: { ...prev[key], [field]: value } }));
+    setVariantOverrides((prev) => ({
+      ...prev,
+      [key]: { ...prev[key], [field]: value },
+    }));
   }
 
   function validate(): boolean {
     const next: Record<string, string> = {};
 
     if (name.trim() === "") next.name = "Nama produk wajib diisi.";
+    // Uniqueness is NOT checked here. Only the server knows what is taken, and
+    // it answers with the field — see applyApiError.
     if (sku.trim() === "") next.sku = "SKU wajib diisi.";
-    else if (
-      products.some(
-        (product) => product.sku === sku.trim().toUpperCase() && product._id !== existing?._id,
-      )
-    ) {
-      next.sku = `SKU ${sku.trim().toUpperCase()} sudah dipakai produk lain.`;
-    }
     if (unit.trim() === "") next.unit = "Satuan wajib diisi.";
 
     if (mode === "standalone") {
       if (sellPrice.trim() === "") next.sellPrice = "Harga jual wajib diisi.";
-      else if (!isDecimal(sellPrice)) next.sellPrice = "Gunakan angka, maksimal 4 desimal.";
+      else if (!isDecimal(sellPrice))
+        next.sellPrice = "Gunakan angka, maksimal 4 desimal.";
     }
 
     if (mode === "variants") {
@@ -286,6 +371,18 @@ export function ProductForm({ productId }: { productId?: string }) {
       if (new Set(skus).size !== skus.length) {
         next.axes = "Ada SKU varian yang kembar — setiap varian butuh SKU sendiri.";
       }
+
+      // Every variant is sold directly, so every variant needs a price — the
+      // API requires it per row, and a blank here would come back as a 400 on
+      // a table the user has already filled in.
+      const priceless = variantRows.filter(
+        (row) => row.sellPrice.trim() === "" || !isDecimal(row.sellPrice),
+      );
+      if (priceless.length > 0) {
+        next.variantPrices = `Harga jual belum benar pada varian ${priceless
+          .map((row) => row.combo.join(" / "))
+          .join(", ")}.`;
+      }
     }
 
     /**
@@ -296,6 +393,11 @@ export function ProductForm({ productId }: { productId?: string }) {
      * value that will be discarded anyway is the form arguing with them.
      */
     if (openingStockOn) {
+      if (warehouses.length === 0) {
+        next.openingWarehouse =
+          "Belum ada gudang aktif — stok awal tidak bisa dicatat.";
+      }
+
       if (mode === "standalone") {
         if (openingQty.trim() !== "" && !isDecimal(openingQty)) {
           next.openingQty = "Gunakan angka, maksimal 4 desimal.";
@@ -317,16 +419,38 @@ export function ProductForm({ productId }: { productId?: string }) {
             .join(", ")} — maksimal 4 desimal.`;
         }
       }
+
+      /**
+       * A lot has to be named for goods that expire.
+       *
+       * The promise `hasExpiry` makes is that every receipt can be picked FEFO
+       * and reported on before it turns — which needs a batch code and a date.
+       * The API refuses the movement without them, so asking here keeps the
+       * refusal on the field instead of on a saved product.
+       */
+      if (hasExpiry && opensAnyStock()) {
+        if (openingBatchCode.trim() === "") {
+          next.openingBatchCode =
+            "Produk kedaluwarsa: kode batch wajib diisi untuk stok awal.";
+        }
+        if (openingExpiryDate.trim() === "") {
+          next.openingExpiryDate =
+            "Produk kedaluwarsa: tanggal kedaluwarsa wajib diisi untuk stok awal.";
+        }
+      }
     }
 
     if (mode === "bundle") {
-      if (components.length === 0) next.components = "Bundle butuh minimal satu komponen.";
+      if (components.length === 0)
+        next.components = "Bundle butuh minimal satu komponen.";
       if (components.some((component) => !isPositive(component.qty))) {
         next.components = "Qty setiap komponen harus lebih dari nol.";
       }
       if (pricingMode === "fixed") {
-        if (fixedPrice.trim() === "") next.fixedPrice = "Harga bundle wajib diisi.";
-        else if (!isDecimal(fixedPrice)) next.fixedPrice = "Gunakan angka, maksimal 4 desimal.";
+        if (fixedPrice.trim() === "")
+          next.fixedPrice = "Harga bundle wajib diisi.";
+        else if (!isDecimal(fixedPrice))
+          next.fixedPrice = "Gunakan angka, maksimal 4 desimal.";
       }
     }
 
@@ -334,65 +458,286 @@ export function ProductForm({ productId }: { productId?: string }) {
     return Object.keys(next).length === 0;
   }
 
-  function handleSubmit(event: React.FormEvent) {
+  /** Whether anything at all will be sent as an opening balance. */
+  function opensAnyStock(): boolean {
+    if (!openingStockOn) return false;
+    if (mode === "standalone") return openingQty.trim() !== "";
+    return variantRows.some((row) => row.openingQty.trim() !== "");
+  }
+
+  /** The opening-stock instruction for one quantity, or undefined for none. */
+  function openingStockFor(
+    qty: string,
+    cost: string,
+  ): OpeningStockInput | undefined {
+    if (!openingStockOn || qty.trim() === "") return undefined;
+
+    return {
+      warehouseId: openingWarehouseId,
+      qty: qty.trim(),
+      ...(cost.trim() !== "" ? { costPerUnit: cost.trim() } : {}),
+      ...(hasExpiry
+        ? {
+            batchCode: openingBatchCode.trim(),
+            expiryDate: openingExpiryDate.trim(),
+          }
+        : {}),
+    };
+  }
+
+  /** The create payload for whichever shape the form is in. */
+  function buildCreateInput(): CreateProductInput {
+    const base = {
+      sku: sku.trim().toUpperCase(),
+      name: name.trim(),
+      categoryId,
+      unit: unit.trim(),
+    };
+
+    if (mode === "bundle") {
+      return {
+        ...base,
+        productType: "bundle",
+        ...(barcode.trim() ? { barcode: barcode.trim() } : {}),
+        bundleConfig: {
+          pricingMode,
+          ...(pricingMode === "fixed" ? { fixedPrice: fixedPrice.trim() } : {}),
+          components: components.map((component) => ({
+            componentProductId: component.componentProductId as string,
+            qty: component.qty,
+          })),
+        },
+      };
+    }
+
+    if (mode === "variants") {
+      const variants: CreateFamilyVariantInput[] = variantRows.map((row) => ({
+        sku: row.sku.trim().toUpperCase(),
+        variantAttributes: attributesFor(axes, row.combo),
+        sellPrice: row.sellPrice.trim(),
+        ...(row.barcode.trim() ? { barcode: row.barcode.trim() } : {}),
+        minStock: Number(row.minStock) || 0,
+        ...(openingStockFor(row.openingQty, row.openingCost)
+          ? { openingStock: openingStockFor(row.openingQty, row.openingCost) }
+          : {}),
+      }));
+
+      return {
+        ...base,
+        productType: "parent",
+        hasExpiry,
+        // Trimmed here rather than in the editor: a half-typed axis is a normal
+        // state to be in while filling the form, and only a submit has to care.
+        variantAxes: axes
+          .filter((axis) => axis.values.length > 0)
+          .map((axis) => ({ name: axis.name.trim(), values: axis.values })),
+        ...(variants.length > 0 ? { variants } : {}),
+      };
+    }
+
+    return {
+      ...base,
+      sellPrice: sellPrice.trim(),
+      minStock: Number(minStock) || 0,
+      hasExpiry,
+      ...(barcode.trim() ? { barcode: barcode.trim() } : {}),
+      ...(openingStockFor(openingQty, openingCost)
+        ? { openingStock: openingStockFor(openingQty, openingCost) }
+        : {}),
+    };
+  }
+
+  /**
+   * What changed on the product itself.
+   *
+   * ONLY THE DIFFERENCE IS SENT. The API rejects an empty patch, and a field
+   * echoed back unchanged is a field that can collide with itself — re-sending
+   * an untouched SKU makes the uniqueness check answer about the product's own
+   * row.
+   */
+  function buildPatch(product: Product): UpdateProductInput {
+    const patch: UpdateProductInput = {};
+
+    if (name.trim() !== product.name) patch.name = name.trim();
+    if (sku.trim().toUpperCase() !== product.sku)
+      patch.sku = sku.trim().toUpperCase();
+    if (categoryId !== product.categoryId && mode !== "variants")
+      patch.categoryId = categoryId;
+    if (unit.trim() !== product.unit) patch.unit = unit.trim();
+
+    if (mode !== "variants") {
+      const nextBarcode = barcode.trim();
+      if (nextBarcode !== (product.barcode ?? "")) {
+        // "" is how the API is told to CLEAR one — see the validation layer.
+        patch.barcode = nextBarcode;
+      }
+    }
+
+    if (mode === "standalone") {
+      if (toMinor(sellPrice) !== toMinor(product.sellPrice ?? ""))
+        patch.sellPrice = sellPrice.trim();
+      if ((Number(minStock) || 0) !== product.minStock)
+        patch.minStock = Number(minStock) || 0;
+    }
+
+    if (mode !== "bundle" && hasExpiry !== product.hasExpiry) {
+      patch.hasExpiry = hasExpiry;
+    }
+
+    if (mode === "variants") {
+      const before = JSON.stringify(
+        product.variantAxes.map((axis) => [axis.name, axis.values]),
+      );
+      const after = JSON.stringify(
+        axes
+          .filter((axis) => axis.values.length > 0)
+          .map((axis) => [axis.name.trim(), axis.values]),
+      );
+      if (before !== after) {
+        patch.variantAxes = axes
+          .filter((axis) => axis.values.length > 0)
+          .map((axis) => ({ name: axis.name.trim(), values: axis.values }));
+      }
+    }
+
+    if (mode === "bundle") {
+      patch.bundleConfig = {
+        pricingMode,
+        ...(pricingMode === "fixed" ? { fixedPrice: fixedPrice.trim() } : {}),
+        components: components.map((component) => ({
+          componentProductId: component.componentProductId as string,
+          qty: component.qty,
+        })),
+      };
+    }
+
+    return patch;
+  }
+
+  /**
+   * Binds an API refusal to the field that caused it.
+   *
+   * The backend answers a 400 and a 409 alike with `details: [{ field, message }]`
+   * — including inside a family, where the field is `variants.3.sku`. Those are
+   * routed to the row rather than dumped above the table, because a form of
+   * twelve variants is exactly where "SKU already exists" with no row attached
+   * is useless.
+   */
+  function applyApiError(error: ApiError) {
+    const fields = error.fieldErrors;
+    const own: Record<string, string> = {};
+    const rows: Record<string, string> = {};
+
+    Object.entries(fields).forEach(([field, message]) => {
+      const match = /^variants\.(\d+)\./.exec(field);
+      if (match) {
+        const row = variantRows[Number(match[1])];
+        if (row) rows[row.combo.join("|")] = message;
+        return;
+      }
+      own[field] = message;
+    });
+
+    setFieldErrors((prev) => ({ ...prev, ...own }));
+    setRowErrors(rows);
+    setFormError(error.message);
+  }
+
+  /**
+   * Saving a FAMILY on edit is a diff, not a rewrite.
+   *
+   * The parent is created with its variants in one request, but afterwards the
+   * rows have independent lives — one gets a new price, one is added when the
+   * tenant starts stocking a size. So each row is compared with what is stored:
+   * changed rows are patched, new combinations are created against the parent,
+   * and untouched rows are not sent at all.
+   *
+   * A combination that DISAPPEARED is not deleted here. Removing an axis value
+   * is refused by the API while a live variant sits on it (the editor locks
+   * those values), and deleting a variant is its own decision — made on the
+   * list, where its stock and history are visible.
+   */
+  async function saveFamily(product: Product) {
+    for (const row of variantRows) {
+      if (row.id) {
+        const previous = existingVariants.find((v) => v._id === row.id);
+        if (!previous) continue;
+
+        const patch: UpdateProductInput = {};
+        if (row.sku.trim().toUpperCase() !== previous.sku)
+          patch.sku = row.sku.trim().toUpperCase();
+        if (row.barcode.trim() !== (previous.barcode ?? ""))
+          patch.barcode = row.barcode.trim();
+        if (toMinor(row.sellPrice) !== toMinor(previous.sellPrice ?? ""))
+          patch.sellPrice = row.sellPrice.trim();
+        if ((Number(row.minStock) || 0) !== previous.minStock)
+          patch.minStock = Number(row.minStock) || 0;
+
+        if (Object.keys(patch).length > 0) {
+          await productService.update(row.id, patch);
+        }
+        continue;
+      }
+
+      await productService.create({
+        productType: "variant",
+        parentId: product._id,
+        sku: row.sku.trim().toUpperCase(),
+        name: `${name.trim()} — ${row.combo.join(" / ")}`,
+        variantAttributes: attributesFor(axes, row.combo),
+        sellPrice: row.sellPrice.trim(),
+        ...(row.barcode.trim() ? { barcode: row.barcode.trim() } : {}),
+        minStock: Number(row.minStock) || 0,
+      });
+    }
+  }
+
+  async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setFormError(null);
+    setRowErrors({});
     if (!validate()) return;
 
     setSaving(true);
-    try {
-      const saved = demo.saveProduct({
-        id: existing?._id,
-        sku,
-        name,
-        productType:
-          mode === "variants" ? "parent" : mode === "bundle" ? "bundle" : "standalone",
-        categoryId,
-        unit,
-        barcode: mode === "variants" ? undefined : barcode,
-        sellPrice: mode === "standalone" ? sellPrice : undefined,
-        minStock: mode === "standalone" ? Number(minStock) || 0 : undefined,
-        hasExpiry: mode === "bundle" ? false : hasExpiry,
-        variantAxes: mode === "variants" ? axes : undefined,
-        variants:
-          mode === "variants"
-            ? variantRows.map((row) => ({
-                id: row.id,
-                combo: row.combo,
-                sku: row.sku,
-                barcode: row.barcode || undefined,
-                sellPrice: row.sellPrice || undefined,
-                minStock: Number(row.minStock) || 0,
-                openingQty: openingStockOn ? row.openingQty || undefined : undefined,
-                openingCost: openingStockOn ? row.openingCost || undefined : undefined,
-              }))
-            : undefined,
-        bundleConfig:
-          mode === "bundle"
-            ? {
-                pricingMode,
-                fixedPrice: pricingMode === "fixed" ? fixedPrice : null,
-                components,
-              }
-            : undefined,
-        openingQty:
-          openingStockOn && mode === "standalone" && openingQty.trim() !== ""
-            ? openingQty
-            : undefined,
-        openingCost:
-          openingStockOn && openingCost.trim() !== "" ? openingCost : undefined,
-        openingWarehouseId,
-      });
 
-      sync();
+    try {
+      if (existing) {
+        const patch = buildPatch(existing);
+        if (Object.keys(patch).length > 0) {
+          await productService.update(existing._id, patch);
+        }
+        if (mode === "variants") await saveFamily(existing);
+
+        swalToast("Perubahan disimpan.");
+      } else {
+        const created = await productService.create(buildCreateInput());
+
+        /**
+         * The create succeeded; the opening stock may not have.
+         *
+         * The API commits the products before it posts to the ledger, so a
+         * failure there comes back on a 201 rather than as an error. Saying so
+         * is the whole point — the user is about to leave this screen believing
+         * they entered a quantity.
+         */
+        if (created.openingStock && !created.openingStock.posted) {
+          swalToast(
+            `${created.name} dibuat, tapi stok awal belum tercatat: ${
+              created.openingStock.error ?? "gagal"
+            }. Catat lewat Penyesuaian Stok.`,
+          );
+        } else {
+          swalToast(`${created.name} dibuat.`);
+        }
+      }
+
       router.push("/dashboard/inventory/products");
-      swalToast(
-        existing ? "Perubahan disimpan." : `${saved.name} dibuat.`,
-      );
     } catch (error) {
-      setFormError(
-        error instanceof Error ? error.message : "Terjadi kesalahan. Coba lagi.",
-      );
+      if (error instanceof ApiError) {
+        applyApiError(error);
+      } else {
+        setFormError("Terjadi kesalahan. Coba lagi.");
+      }
       setSaving(false);
     }
   }
@@ -463,7 +808,11 @@ export function ProductForm({ productId }: { productId?: string }) {
                     right for a toolbar filter and wrong in a form grid — it
                     leaves the control narrower than the inputs beside it, and
                     the width then jumps with whichever category is selected. */}
-                <SelectTrigger id="category" aria-label="Kategori" className="w-full">
+                <SelectTrigger
+                  id="category"
+                  aria-label="Kategori"
+                  className="w-full"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -474,6 +823,11 @@ export function ProductForm({ productId }: { productId?: string }) {
                   ))}
                 </SelectContent>
               </Select>
+              {mode === "variants" && (
+                <p className="text-xs text-muted">
+                  Varian mewarisi kategori ini dari induknya.
+                </p>
+              )}
             </div>
 
             <TextField
@@ -492,6 +846,7 @@ export function ProductForm({ productId }: { productId?: string }) {
                 name="barcode"
                 value={barcode}
                 onChange={(event) => setBarcode(event.target.value)}
+                error={fieldErrors.barcode}
                 hint="Opsional, unik per tenant"
                 placeholder="899…"
                 className="font-mono"
@@ -512,7 +867,8 @@ export function ProductForm({ productId }: { productId?: string }) {
                   Kalau dicentang, setiap penerimaan <b>wajib</b> mengisi kode
                   batch dan tanggal kedaluwarsa — itulah yang membuat FEFO dan
                   laporan expired bisa bekerja.
-                  {mode === "variants" && " Varian mewarisi setelan ini dari induknya."}
+                  {mode === "variants" &&
+                    " Varian mewarisi setelan ini dari induknya."}
                 </p>
               </div>
             </div>
@@ -556,7 +912,11 @@ export function ProductForm({ productId }: { productId?: string }) {
       {/* -------------------------------------------------------- variants */}
       {mode === "variants" && (
         <>
-          <VariantAxisEditor axes={axes} onChange={setAxes} lockedValues={lockedValues} />
+          <VariantAxisEditor
+            axes={axes}
+            onChange={setAxes}
+            lockedValues={lockedValues}
+          />
           {fieldErrors.axes && (
             <p role="alert" className="text-xs text-danger">
               {fieldErrors.axes}
@@ -588,73 +948,110 @@ export function ProductForm({ productId }: { productId?: string }) {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-border text-[10px] uppercase tracking-widest text-muted">
+                    <tr className="border-b border-border text-[10px] tracking-widest text-muted uppercase">
                       <th className="px-2 py-2 text-left font-medium">Varian</th>
                       <th className="px-2 py-2 text-left font-medium">SKU</th>
                       <th className="px-2 py-2 text-left font-medium">Barcode</th>
-                      <th className="px-2 py-2 text-left font-medium">Harga jual</th>
-                      <th className="px-2 py-2 text-left font-medium">Min stok</th>
+                      <th className="px-2 py-2 text-left font-medium">
+                        Harga jual
+                      </th>
+                      <th className="px-2 py-2 text-left font-medium">
+                        Min stok
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {variantRows.map((row) => (
-                      <tr key={row.combo.join("|")} className="border-b border-border/60">
-                        <td className="px-2 py-2 font-medium">
-                          {row.combo.join(" / ")}
-                          {row.id && (
-                            <Badge variant="outline" className="ml-2">
-                              sudah ada
-                            </Badge>
-                          )}
-                        </td>
-                        <td className="px-2 py-2">
-                          <Input
-                            aria-label={`SKU ${row.combo.join(" ")}`}
-                            value={row.sku}
-                            onChange={(event) =>
-                              setVariantField(row.combo, "sku", event.target.value.toUpperCase())
-                            }
-                            className="font-mono text-xs"
-                          />
-                        </td>
-                        <td className="px-2 py-2">
-                          <Input
-                            aria-label={`Barcode ${row.combo.join(" ")}`}
-                            value={row.barcode}
-                            onChange={(event) =>
-                              setVariantField(row.combo, "barcode", event.target.value)
-                            }
-                            placeholder="opsional"
-                            className="font-mono text-xs"
-                          />
-                        </td>
-                        <td className="px-2 py-2">
-                          <Input
-                            aria-label={`Harga ${row.combo.join(" ")}`}
-                            inputMode="decimal"
-                            value={row.sellPrice}
-                            onChange={(event) =>
-                              setVariantField(row.combo, "sellPrice", event.target.value)
-                            }
-                            className="font-mono"
-                          />
-                        </td>
-                        <td className="px-2 py-2">
-                          <Input
-                            aria-label={`Min stok ${row.combo.join(" ")}`}
-                            inputMode="numeric"
-                            value={row.minStock}
-                            onChange={(event) =>
-                              setVariantField(row.combo, "minStock", event.target.value)
-                            }
-                            className="max-w-20 font-mono"
-                          />
-                        </td>
-                      </tr>
-                    ))}
+                    {variantRows.map((row) => {
+                      const rowError = rowErrors[row.combo.join("|")];
+
+                      return (
+                        <tr
+                          key={row.combo.join("|")}
+                          className="border-b border-border/60"
+                        >
+                          <td className="px-2 py-2 font-medium">
+                            {row.combo.join(" / ")}
+                            {row.id && (
+                              <Badge variant="outline" className="ml-2">
+                                sudah ada
+                              </Badge>
+                            )}
+                            {rowError && (
+                              <p role="alert" className="text-xs text-danger">
+                                {rowError}
+                              </p>
+                            )}
+                          </td>
+                          <td className="px-2 py-2">
+                            <Input
+                              aria-label={`SKU ${row.combo.join(" ")}`}
+                              value={row.sku}
+                              onChange={(event) =>
+                                setVariantField(
+                                  row.combo,
+                                  "sku",
+                                  event.target.value.toUpperCase(),
+                                )
+                              }
+                              className="font-mono text-xs"
+                            />
+                          </td>
+                          <td className="px-2 py-2">
+                            <Input
+                              aria-label={`Barcode ${row.combo.join(" ")}`}
+                              value={row.barcode}
+                              onChange={(event) =>
+                                setVariantField(
+                                  row.combo,
+                                  "barcode",
+                                  event.target.value,
+                                )
+                              }
+                              placeholder="opsional"
+                              className="font-mono text-xs"
+                            />
+                          </td>
+                          <td className="px-2 py-2">
+                            <Input
+                              aria-label={`Harga ${row.combo.join(" ")}`}
+                              inputMode="decimal"
+                              value={row.sellPrice}
+                              onChange={(event) =>
+                                setVariantField(
+                                  row.combo,
+                                  "sellPrice",
+                                  event.target.value,
+                                )
+                              }
+                              className="font-mono"
+                            />
+                          </td>
+                          <td className="px-2 py-2">
+                            <Input
+                              aria-label={`Min stok ${row.combo.join(" ")}`}
+                              inputMode="numeric"
+                              value={row.minStock}
+                              onChange={(event) =>
+                                setVariantField(
+                                  row.combo,
+                                  "minStock",
+                                  event.target.value,
+                                )
+                              }
+                              className="max-w-20 font-mono"
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
+            )}
+            {fieldErrors.variantPrices && (
+              <p role="alert" className="mt-2 text-xs text-danger">
+                {fieldErrors.variantPrices}
+              </p>
             )}
           </Card>
         </>
@@ -669,7 +1066,9 @@ export function ProductForm({ productId }: { productId?: string }) {
                 <Label htmlFor="pricingMode">Mode harga</Label>
                 <Select
                   value={pricingMode}
-                  onValueChange={(value) => setPricingMode(value as BundlePricingMode)}
+                  onValueChange={(value) =>
+                    setPricingMode(value as BundlePricingMode)
+                  }
                 >
                   {/* w-full for the same reason as the category select: the
                       shadcn trigger defaults to `w-fit`, so it sits narrower
@@ -711,6 +1110,10 @@ export function ProductForm({ productId }: { productId?: string }) {
             </div>
           </Card>
 
+          {bundleCandidates.error && (
+            <Alert variant="error">{bundleCandidates.error}</Alert>
+          )}
+
           <BundleComponentEditor
             components={components}
             products={products}
@@ -735,8 +1138,9 @@ export function ProductForm({ productId }: { productId?: string }) {
 
           <p className="text-xs text-muted">
             Bundle tidak menyimpan stok sendiri. Saat terjual, komponennya yang
-            berkurang — satu baris <span className="font-mono">bundle_consume</span>{" "}
-            per komponen di kartu stok.
+            berkurang — satu baris{" "}
+            <span className="font-mono">bundle_consume</span> per komponen di
+            kartu stok.
           </p>
         </>
       )}
@@ -779,25 +1183,32 @@ export function ProductForm({ productId }: { productId?: string }) {
                 Produk yang sudah memegang stok juga tidak bisa dihapus.
               </div>
 
+              {fieldErrors.openingWarehouse && (
+                <p role="alert" className="text-xs text-danger">
+                  {fieldErrors.openingWarehouse}
+                </p>
+              )}
+
               <div className="grid gap-4 sm:grid-cols-3">
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="openingWarehouse">Masuk ke gudang</Label>
-                  <Select value={openingWarehouseId} onValueChange={setOpeningWarehouseId}>
+                  <Select
+                    value={openingWarehouseId}
+                    onValueChange={setOpeningWarehouseId}
+                  >
                     <SelectTrigger
                       id="openingWarehouse"
                       aria-label="Masuk ke gudang"
                       className="w-full"
                     >
-                      <SelectValue />
+                      <SelectValue placeholder="Pilih gudang" />
                     </SelectTrigger>
                     <SelectContent>
-                      {warehouses
-                        .filter((warehouse) => warehouse.isActive)
-                        .map((warehouse) => (
-                          <SelectItem key={warehouse._id} value={warehouse._id}>
-                            {warehouse.name}
-                          </SelectItem>
-                        ))}
+                      {warehouses.map((warehouse) => (
+                        <SelectItem key={warehouse._id} value={warehouse._id}>
+                          {warehouse.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   {mode === "variants" && (
@@ -832,6 +1243,36 @@ export function ProductForm({ productId }: { productId?: string }) {
                 )}
               </div>
 
+              {/* The lot these opening goods belong to. One code and one date
+                  for the whole entry, including a family's — an opening balance
+                  is entered in one sitting for goods that arrived together, and
+                  a batch column per variant row would ask twelve times for the
+                  same answer. */}
+              {hasExpiry && (
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <TextField
+                    label="Kode batch"
+                    name="openingBatchCode"
+                    value={openingBatchCode}
+                    onChange={(event) => setOpeningBatchCode(event.target.value)}
+                    error={fieldErrors.openingBatchCode}
+                    hint="Wajib untuk produk kedaluwarsa."
+                    placeholder="B-2026-08"
+                    className="font-mono"
+                  />
+                  <TextField
+                    label="Tanggal kedaluwarsa"
+                    name="openingExpiryDate"
+                    type="date"
+                    value={openingExpiryDate}
+                    onChange={(event) =>
+                      setOpeningExpiryDate(event.target.value)
+                    }
+                    error={fieldErrors.openingExpiryDate}
+                  />
+                </div>
+              )}
+
               {/* A parent holds no stock of its own — its variants do — so the
                   quantity is asked per row and never once for the family. */}
               {mode === "variants" &&
@@ -844,9 +1285,13 @@ export function ProductForm({ productId }: { productId?: string }) {
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="border-b border-border text-[10px] uppercase tracking-widest text-muted">
-                          <th className="px-2 py-2 text-left font-medium">Varian</th>
-                          <th className="px-2 py-2 text-left font-medium">Stok awal</th>
+                        <tr className="border-b border-border text-[10px] tracking-widest text-muted uppercase">
+                          <th className="px-2 py-2 text-left font-medium">
+                            Varian
+                          </th>
+                          <th className="px-2 py-2 text-left font-medium">
+                            Stok awal
+                          </th>
                           <th className="px-2 py-2 text-left font-medium">
                             Harga beli / unit
                           </th>
@@ -854,7 +1299,10 @@ export function ProductForm({ productId }: { productId?: string }) {
                       </thead>
                       <tbody>
                         {variantRows.map((row) => (
-                          <tr key={row.combo.join("|")} className="border-b border-border/60">
+                          <tr
+                            key={row.combo.join("|")}
+                            className="border-b border-border/60"
+                          >
                             <td className="px-2 py-2 font-medium">
                               {row.combo.join(" / ")}
                             </td>
@@ -864,7 +1312,11 @@ export function ProductForm({ productId }: { productId?: string }) {
                                 inputMode="decimal"
                                 value={row.openingQty}
                                 onChange={(event) =>
-                                  setVariantField(row.combo, "openingQty", event.target.value)
+                                  setVariantField(
+                                    row.combo,
+                                    "openingQty",
+                                    event.target.value,
+                                  )
                                 }
                                 placeholder="0"
                                 className="max-w-24 font-mono"
@@ -876,7 +1328,11 @@ export function ProductForm({ productId }: { productId?: string }) {
                                 inputMode="decimal"
                                 value={row.openingCost}
                                 onChange={(event) =>
-                                  setVariantField(row.combo, "openingCost", event.target.value)
+                                  setVariantField(
+                                    row.combo,
+                                    "openingCost",
+                                    event.target.value,
+                                  )
                                 }
                                 placeholder="opsional"
                                 className="max-w-32 font-mono"
@@ -905,7 +1361,11 @@ export function ProductForm({ productId }: { productId?: string }) {
 
       <div className="flex flex-wrap gap-2">
         <Button type="submit" disabled={saving}>
-          {saving ? "Menyimpan…" : existing ? "Simpan perubahan" : "Simpan produk"}
+          {saving
+            ? "Menyimpan…"
+            : existing
+              ? "Simpan perubahan"
+              : "Simpan produk"}
         </Button>
         <Button
           type="button"

@@ -7,6 +7,68 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Product & Variant management
+
+Branch: `feature/inventory-purchasing`.
+
+The catalogue screens leave the demo store and run against `/api/products`. See
+`docs/features/product-management.md`.
+
+### Added
+
+- `services/product.service.ts` —
+  `list/getById/listVariants/getByBarcode/lowStock/create/update/remove/restore`
+- `services/warehouse.service.ts` — `list`, for the stock-column and
+  opening-stock pickers
+- `features/inventory/hooks/` — `useProducts` (list query state),
+  `useProductVariants` (lazy, cached per-parent expand), `useProductDetail` (the
+  edit screen's product + family), `useCatalogLookups` (categories + active
+  warehouses), `useBundleCandidates` (component picker, bundle mode only)
+- `features/inventory/utils/catalogue.ts` — the pure helpers both screens share:
+  `qtyAt`, `stockOf`, `limitedByAt`, `variantCombinations`, `attributesFor`,
+  `defaultVariantSku`, `matchVariant`
+- `features/inventory/components/` — `ProductsToolbar` and `ProductsTable`, split
+  out of `ProductsScreen` the way the customers and branches screens are
+- `types/inventory.ts` — the request/response contract: `ProductStockRow`,
+  `BundleAvailabilityRow`, `ProductListQuery`, `OpeningStockInput`,
+  `CreateFamilyVariantInput`, the `CreateProductInput` discriminated union,
+  `UpdateProductInput`, `CreatedProduct`, `OpeningStockReport`
+- Tests: `ProductsScreen.test.tsx` (11) and `ProductForm.test.tsx` (15), both
+  against mocked services
+
+### Changed
+
+- **`ProductsScreen`** now lists from the API with server pagination, asking for
+  `excludeVariants=true` so a family is one row and `total` counts what is shown.
+  A parent's variants are fetched when its row is expanded, and cached. The
+  warehouse selector re-reads quantities already on the page rather than
+  refetching. Delete and restore run through `ConfirmDialog` and surface the
+  backend's refusal verbatim — it names which guard stopped it
+- **`ProductForm`** now loads its product (and, for a parent, its variants)
+  before rendering, and saves through the API: a family goes in ONE request
+  carrying `variants[]`; an edit sends only the fields that changed and creates
+  only the combinations that are new. `openingStock` travels with the create, per
+  variant, and a `posted: false` on a successful create is reported to the user
+  rather than swallowed. Field-level refusals (`400` and `409` alike) bind to
+  their inputs, and row-scoped ones to the variant row
+- **`BundleComponentEditor`** is fed by the API instead of the demo store
+- The three product routes are behind `<RequirePermission feature="products">`,
+  and every row action behind `<Can>`
+- `demoStore` products carry `stockByWarehouse: []`, matching the API shape now
+  that `Product` is the API's type. The demo store still backs the stock card,
+  batches, opname and transfer screens
+- `tests/InventoryCatalogue.test.tsx` keeps the demo-backed batch/opname
+  coverage; the catalogue cases moved to the two new files
+
+### Requires (backend, same branch)
+
+`POST /api/products` accepting `variants[]` + `openingStock`, `excludeVariants`
+on the list with parent-surfacing search, `variantCount`/`variantStock` on a
+parent, `bundleAvailability` on a bundle, and `details[]` on a `409`. See the
+backend changelog `[0.19.0]`.
+
+---
+
 ## [Unreleased]
 
 Branch: `feature/project-initialization`.

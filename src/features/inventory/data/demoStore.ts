@@ -163,6 +163,11 @@ function seed(): DemoState {
     sellPrice: null,
     hppAvg: null,
     isActive: true,
+    // The API assembles this per read from `productstocks`; this store keeps its
+    // quantities in `state.stock` and answers them through qtyOnHand(), so the
+    // field is present and empty rather than absent — a demo product is not a
+    // product with unknown stock.
+    stockByWarehouse: [],
     ...partial,
   });
 
@@ -1223,6 +1228,8 @@ export function saveProduct(input: SaveProductInput): Product {
         : (existing?.minStock ?? 0),
     hasExpiry:
       input.productType === "bundle" ? false : (input.hasExpiry ?? false),
+    // See the fixture builder: quantities live in `state.stock`, not here.
+    stockByWarehouse: [],
     categoryId: input.categoryId,
     unit: input.unit.trim(),
     // A parent carries no price; a bundle's mirrors its fixed price.
@@ -1282,6 +1289,7 @@ export function saveProduct(input: SaveProductInput): Product {
         hasExpiry: base.hasExpiry,
         categoryId: base.categoryId,
         unit: base.unit,
+        stockByWarehouse: [],
         sellPrice: variant.sellPrice ?? null,
         hppAvg: previous?.hppAvg ?? null,
         isActive: previous?.isActive ?? true,

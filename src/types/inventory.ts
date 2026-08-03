@@ -244,6 +244,215 @@ export interface Product {
   /** Decimal string. Server-owned cache; null on `parent` and `bundle`. */
   hppAvg: string | null;
   isActive: boolean;
+  /** Soft-delete marker; non-null means deleted (restorable), null means live. */
+  deletedAt?: string | null;
+
+  /**
+   * Assembled per read from `productstocks`, never stored on the product.
+   *
+   * ALWAYS `[]` on a `parent` and a `bundle`, and that is the backend's answer
+   * rather than a missing value: a parent's stock is its variants' (see
+   * `variantStock`) and a bundle holds none at all (see `bundleAvailability`).
+   */
+  stockByWarehouse: ProductStockRow[];
+
+  /** On a `parent` only — how many LIVE variants it has. */
+  variantCount?: number;
+  /**
+   * On a `parent` only — its variants' quantities summed PER WAREHOUSE.
+   * A warehouse where no variant has a row is absent, not zero.
+   */
+  variantStock?: ProductStockRow[];
+  /** On a `bundle` only — whole bundles assemblable per warehouse. */
+  bundleAvailability?: BundleAvailabilityRow[];
+}
+
+/** One warehouse's quantity of one product. `qty` is a decimal string. */
+export interface ProductStockRow {
+  warehouseId: string;
+  qty: string;
+}
+
+/** How many whole bundles one warehouse can assemble, and what caps it. */
+export interface BundleAvailabilityRow {
+  warehouseId: string;
+  /** Decimal string, whole bundles only — 14 pcs at 3 each is "4.0000". */
+  qty: string;
+  /** The scarcest component's product id — what to restock. */
+  limitedBy: string | null;
+}
+
+/* ------------------------------------------------- catalogue requests (v2.2) */
+
+/**
+ * GET /api/products.
+ *
+ * `excludeVariants` and `productType` are MUTUALLY EXCLUSIVE — the backend
+ * returns 400 for the pair, because they select rows the same way. The list
+ * hook sends one or the other, never both.
+ */
+export interface ProductListQuery {
+  page?: number;
+  limit?: number;
+  search?: string;
+  categoryId?: string;
+  productType?: ProductType;
+  parentId?: string;
+  isActive?: boolean;
+  /** Top-level rows only; a matched variant surfaces its parent. */
+  excludeVariants?: boolean;
+  includeDeleted?: boolean;
+}
+
+/** GET /api/products/:id/variants — the parent and every variant of it. */
+export interface ProductVariantsResult {
+  parent: Product;
+  items: Product[];
+}
+
+/**
+ * The quantity a product is born holding, sent WITH the create.
+ *
+ * Omitted entirely for a product that starts with none — a zero is refused by
+ * the backend, because an opening balance brings goods on and a movement
+ * recording that nothing happened is a row every stock card has to explain.
+ */
+export interface OpeningStockInput {
+  warehouseId: string;
+  /** Decimal string, must be > 0. */
+  qty: string;
+  /** Seeds `hppAvg`. Without it the goods arrive with no cost basis. */
+  costPerUnit?: string;
+  /** Both REQUIRED by the backend when the product has `hasExpiry: true`. */
+  batchCode?: string;
+  expiryDate?: string;
+  isConsignment?: boolean;
+}
+
+/** One row of a parent's `variants[]` on create. */
+export interface CreateFamilyVariantInput {
+  sku: string;
+  /** Optional — the backend names it after the parent and its values. */
+  name?: string;
+  variantAttributes: Record<string, string>;
+  sellPrice: string;
+  barcode?: string;
+  minStock?: number;
+  isActive?: boolean;
+  openingStock?: OpeningStockInput;
+}
+
+interface CreateProductBase {
+  sku: string;
+  name: string;
+  categoryId: string;
+  unit: string;
+  isActive?: boolean;
+}
+
+/**
+ * The create payloads, one per shape.
+ *
+ * A discriminated union rather than one optional-everything interface, because
+ * the backend REFUSES a field the type has no use for (a `sellPrice` on a parent
+ * is a 400 naming the field, not a silent success). Encoding that here means a
+ * payload the API would reject does not compile.
+ */
+export interface CreateStandaloneInput extends CreateProductBase {
+  productType?: "standalone";
+  sellPrice: string;
+  barcode?: string;
+  minStock?: number;
+  hasExpiry?: boolean;
+  openingStock?: OpeningStockInput;
+}
+
+export interface CreateParentInput extends CreateProductBase {
+  productType: "parent";
+  variantAxes: VariantAxis[];
+  hasExpiry?: boolean;
+  /** The family, written with the parent in ONE transaction. */
+  variants?: CreateFamilyVariantInput[];
+}
+
+export interface CreateVariantInput {
+  productType: "variant";
+  sku: string;
+  name: string;
+  parentId: string;
+  variantAttributes: Record<string, string>;
+  sellPrice: string;
+  barcode?: string;
+  minStock?: number;
+  isActive?: boolean;
+  openingStock?: OpeningStockInput;
+  /** `categoryId`, `unit` and `hasExpiry` are inherited — sending them is a 400. */
+}
+
+export interface CreateBundleInput extends CreateProductBase {
+  productType: "bundle";
+  bundleConfig: {
+    pricingMode: BundlePricingMode;
+    fixedPrice?: string;
+    components: Array<{ componentProductId: string; qty: string }>;
+  };
+  barcode?: string;
+}
+
+export type CreateProductInput =
+  | CreateStandaloneInput
+  | CreateParentInput
+  | CreateVariantInput
+  | CreateBundleInput;
+
+/**
+ * PATCH /api/products/:id — send only what changed.
+ *
+ * No `productType` and no `parentId`: both are fixed at create time, because
+ * changing either would strand the stock rows and sales history written against
+ * the old shape.
+ */
+export interface UpdateProductInput {
+  sku?: string;
+  name?: string;
+  categoryId?: string;
+  unit?: string;
+  /** `""` clears it. */
+  barcode?: string | null;
+  minStock?: number;
+  hasExpiry?: boolean;
+  sellPrice?: string;
+  variantAxes?: VariantAxis[];
+  variantAttributes?: Record<string, string>;
+  bundleConfig?: CreateBundleInput["bundleConfig"];
+  isActive?: boolean;
+}
+
+/**
+ * What `POST /api/products` returns.
+ *
+ * The two extra fields appear ONLY when the request asked for them, so a plain
+ * standalone create reads back exactly as a `Product`.
+ */
+export interface CreatedProduct extends Product {
+  /** Present when the payload carried `variants[]`. */
+  variants?: Product[];
+  /** Present when the payload asked for opening stock. */
+  openingStock?: OpeningStockReport;
+}
+
+/**
+ * Whether the opening stock actually landed.
+ *
+ * `posted: false` ARRIVES ON A SUCCESSFUL CREATE (201). The products are
+ * committed before the ledger runs, so a failure there is reported rather than
+ * thrown — the caller must tell the user the product exists and its opening
+ * stock does not.
+ */
+export interface OpeningStockReport {
+  posted: boolean;
+  movements: StockMovement[];
+  error: string | null;
 }
 
 /* ------------------------------------------------------------ stock opname */

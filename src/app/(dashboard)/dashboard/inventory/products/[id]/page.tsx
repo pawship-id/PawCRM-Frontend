@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { Breadcrumb } from "@/components";
 import { ProductForm } from "@/features/inventory";
+import { RequirePermission } from "@/features/permissions";
 
 export const metadata: Metadata = { title: "Edit produk · PawShip" };
 
@@ -17,21 +18,26 @@ export default async function EditProductPage({
   const { id } = await params;
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <Breadcrumb
-          items={[
-            { label: "Inventory", href: "/dashboard/inventory" },
-            { label: "Produk & Varian", href: "/dashboard/inventory/products" },
-            { label: "Edit produk" },
-          ]}
-        />
-        <h1 className="mt-1 text-2xl font-semibold text-foreground">
-          Edit produk
-        </h1>
-      </div>
+    <RequirePermission feature="products" action="update">
+      <div className="flex flex-col gap-6">
+        <div>
+          <Breadcrumb
+            items={[
+              { label: "Inventory", href: "/dashboard/inventory" },
+              {
+                label: "Produk & Varian",
+                href: "/dashboard/inventory/products",
+              },
+              { label: "Edit produk" },
+            ]}
+          />
+          <h1 className="mt-1 text-2xl font-semibold text-foreground">
+            Edit produk
+          </h1>
+        </div>
 
-      <ProductForm productId={id} />
-    </div>
+        <ProductForm productId={id} />
+      </div>
+    </RequirePermission>
   );
 }
