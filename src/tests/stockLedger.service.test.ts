@@ -71,16 +71,67 @@ describe("stockMovementService", () => {
     expect(get).toHaveBeenCalledWith("/stock-movements/m1");
   });
 
-  it("exposes no write method — the ledger is append-only", () => {
-    // A `create`, `update` or `remove` appearing here later is a design change,
-    // not a convenience: corrections are posted as reversing movements by the
-    // adjustment form, which owns that call. `export` reads; it writes nothing.
+  it("exposes exactly one write — the ledger is append-only", () => {
+    // `create` posts an adjustment or a transfer, which is the whole write
+    // surface the API offers a client. An `update` or a `remove` appearing here
+    // later is a design change, not a convenience: a wrong movement is corrected
+    // by posting a reversing one, which `create` already covers. `preview` is a
+    // POST that writes nothing.
     expect(Object.keys(stockMovementService).sort()).toEqual([
+      "create",
       "export",
       "getById",
       "list",
+      "preview",
       "summary",
     ]);
+  });
+
+  it("preview posts the same payload as create, and cannot carry a retry token", async () => {
+    const post = jest.spyOn(apiClient, "post").mockResolvedValue({} as never);
+
+    await stockMovementService.preview({
+      operation: "adjustment",
+      productId: "p1",
+      warehouseId: "wh1",
+      qty: "-3",
+    });
+
+    expect(post).toHaveBeenCalledWith("/stock-movements/preview", {
+      operation: "adjustment",
+      productId: "p1",
+      warehouseId: "wh1",
+      qty: "-3",
+    });
+    // There is nothing to be idempotent about when nothing is written, and the
+    // API refuses the field — reusing a key on the create afterwards would look
+    // like a replay of a request that never happened.
+    expect(post.mock.calls[0][1]).not.toHaveProperty("idempotencyKey");
+  });
+
+  it("create posts the operation and hands back every row the server wrote", async () => {
+    const post = jest
+      .spyOn(apiClient, "post")
+      .mockResolvedValue([{ _id: "m1" }, { _id: "m2" }] as never);
+
+    const written = await stockMovementService.create({
+      operation: "transfer",
+      productId: "p1",
+      fromWarehouseId: "wh1",
+      toWarehouseId: "wh2",
+      qty: "6",
+    });
+
+    expect(post).toHaveBeenCalledWith("/stock-movements", {
+      operation: "transfer",
+      productId: "p1",
+      fromWarehouseId: "wh1",
+      toWarehouseId: "wh2",
+      qty: "6",
+    });
+    // An ARRAY, always: FEFO splits a withdrawal across lots and a transfer
+    // writes a pair per lot. A caller assuming one object would drop the rest.
+    expect(written).toHaveLength(2);
   });
 
   it("summary gets /stock-movements/summary with the filters and no paging", async () => {

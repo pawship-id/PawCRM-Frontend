@@ -7,6 +7,128 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Preview dari server, dan retry yang aman
+
+Branch: `feature/inventory-purchasing`. Follows the entry below, which shipped the
+two write forms against an API that could only report what it had already done.
+
+`PawCRM-Backend` 0.21.0 closed the three gaps that entry lists, and this pass
+**deletes the code that existed because of them**. Net effect on the user: the
+preview panel now shows what will actually be written, and a save that times out
+can be retried without moving stock twice. Net effect on the code: three files
+fewer.
+
+### Added
+
+- **`stockMovementService.preview`** + **`useMovementPreview`** — a debounced
+  (350 ms) `POST /stock-movements/preview`. It keeps the last answer on screen
+  while a new one is in flight, because clearing it makes the panel flicker
+  between every keystroke and its response
+- **`utils/idempotency.ts`** — `newIdempotencyKey`, minted once per **intent**.
+  Both forms keep it across a failed attempt, so a retry replays instead of
+  writing twice, and replace it only after a save succeeds
+- `types/inventory.ts` — `PreviewStockMovementInput`, `PreviewMovementRow`,
+  `PreviewHpp`, `StockMovementPreview`, `HppCalculation`; `idempotencyKey` on
+  both create inputs
+
+### Removed
+
+- **`features/inventory/utils/preview.ts`** — the reimplementations of FEFO
+  allocation, the perpetual weighted average and the counter-account choice. They
+  agreed with the server; the risk was that a future divergence would not throw,
+  it would render a confident wrong number the user approves
+- **`hooks/useJournalAccounts.ts`** and **`services/chartOfAccounts.service.ts`**
+  — they existed only to put names on the two account codes `utils/preview.ts`
+  hardcoded. The preview response carries codes and names
+- **`ChartAccount`** from `types/api.ts`, and **`stockPreview.test.ts`** (14
+  cases) — the rules they pinned now have one implementation, in the backend
+
+### Changed
+
+- **Both forms build ONE payload and use it for the preview and the save.** A
+  preview of a different request is worse than no preview, and that object was
+  the only place they could diverge; the test asserts they match
+- **Neither form loads lots any more.** `useProductBatches` was there to compute
+  the FEFO split — the preview now names every lot it would touch
+- `FefoPreview` takes the server's rows instead of a client-computed allocation;
+  `HppStrip` takes `HppCalculation` from `types/inventory` instead of a demo-store
+  type. The "sisa lot" caption is gone — it was the one field the preview does not
+  return, and keeping a second request alive for a caption is not a trade worth
+  making
+- `StockMovementForms.test.tsx` rewritten around the fetched preview (14 → 15)
+
+---
+
+## [Unreleased] — Penyesuaian & Transfer Stok
+
+Branch: `feature/inventory-purchasing`.
+
+The two screens that **write** to the stock ledger move off the prototype store
+onto `POST /api/stock-movements`. Together they are the entire write surface the
+API offers a client — an `operation` of `adjustment` or `transfer`, and nothing
+else — so the stock module's write side is now complete. See
+`docs/features/stock-movements.md`.
+
+Frontend only. **No backend change**, but three new gaps were found and written
+up: `PawCRM-Backend/docs/stock-card-gaps.md` gaps 7–9.
+
+### Added
+
+- **`stockMovementService.create`** — posts an adjustment or a transfer and
+  returns the ARRAY the server wrote. Callers must not assume one row: FEFO
+  splits a withdrawal across every lot it draws from, and a transfer writes a
+  pair per lot
+- **`services/chartOfAccounts.service.ts`** (`getByCode`) — one method, so the
+  journal preview can name the accounts it is about to post against. By code,
+  never by id: account ids differ per tenant, codes do not
+- **`features/inventory/utils/preview.ts`** — `previewFefo`, `previewHpp`,
+  `previewAdjustmentJournal`. The API has no preview endpoint, so these
+  reimplement three server decisions; the file's header says which, and why the
+  duplication is a risk rather than a convenience
+- **`hooks/useJournalAccounts`** — code → name, and the only lookup in this
+  feature that swallows its failure. The preview falls back to showing `5201`,
+  which is still true; a red banner because the role lacks
+  `chartOfAccounts:read` would block a stock adjustment over a missing caption
+- `types/api.ts` — `ChartAccount`
+- Tests: `stockPreview.test.ts` (14), `StockMovementForms.test.tsx` (14)
+
+### Changed
+
+- **`StockAdjustmentForm` and `StockTransferForm`** now read their warehouses,
+  products, lots and HPP from the API and post to it. The UI is unchanged; what
+  changed is that Simpan writes something that survives a refresh
+- **Only ACTIVE warehouses are offered**, unlike the stock card, which lists
+  inactive ones because it only reads. The API refuses a movement at an inactive
+  location, so offering one would be a rejection waiting to happen
+- **The transfer form refuses to render** with fewer than two active warehouses,
+  rather than showing two selects stuck on the same value above a disabled button
+- **Rejections are surfaced with `ApiError.fullMessage`**, which carries the
+  actionable half of a 400 ("Warehouse 'Gudang Bazar' is not active…") that
+  `message` alone drops. Only rules a user can fix without a round trip are
+  validated locally
+- **The success toast reports the SERVER's row count**, not the predicted one —
+  so a disagreement between preview and reality is visible rather than silent
+- `InventoryScreens.test.tsx` is down to the hub: it is the last inventory screen
+  on the demo store, apart from opname
+
+### Known limitations
+
+Each traced to a backend gap — `PawCRM-Backend/docs/stock-card-gaps.md`:
+
+- the previews are computed in the browser and can drift from the server's own
+  rules (gap 7); both forms say so in their copy
+- the account codes a movement posts to are hardcoded; only their names are
+  looked up per tenant (gap 8)
+- **a manual movement cannot be retried safely** (gap 9). The submit button is
+  disabled while in flight, which stops a double click and nothing else: a
+  request that times out and is retried writes the adjustment twice
+
+> **All three are gone** — `PawCRM-Backend` 0.21.0 closed the gaps and the entry
+> above rewired the forms. This entry is kept as the record of what the screens
+> looked like when the API could only report what it had already done.
+
+---
+
 ## [Unreleased] — Kartu stok, rewired
 
 Branch: `feature/inventory-purchasing`. Follows the entry below, which shipped the

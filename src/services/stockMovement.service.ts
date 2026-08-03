@@ -1,8 +1,11 @@
 import { apiClient } from "./api-client";
 import type {
+  CreateStockMovementInput,
+  PreviewStockMovementInput,
   StockMovement,
   StockMovementListQuery,
   StockMovementPage,
+  StockMovementPreview,
   StockMovementSummary,
 } from "@/types/inventory";
 
@@ -13,10 +16,12 @@ import type {
  * every other service here. The tenant scope comes from the session cookie on
  * the backend, so it is never passed.
  *
- * READ-ONLY, AND THAT IS THE WHOLE FILE. The API does expose `POST` for a manual
- * adjustment and a manual transfer, but those belong to the forms that own them
- * (StockAdjustmentForm, StockTransferForm) and are added when those screens are
- * wired — a stock card reads the ledger and never writes to it.
+ * ONE WRITE, AND IT IS THE WHOLE WRITE SURFACE. `create` posts a manual
+ * adjustment or a manual transfer — the only two things a client may put in this
+ * ledger. A goods receipt, a POS sale, a bundle consumption and an opname
+ * difference are all posted service-to-service by the module that owns the
+ * document, because a client able to claim a receipt could conjure stock that no
+ * purchase order accounts for.
  *
  * There is no `update`, no `remove` and no `restore` here or on the API: the
  * ledger is append-only. A wrong movement is corrected by posting a reversing
@@ -103,4 +108,36 @@ export const stockMovementService = {
   /** GET /stock-movements/:id — one row (404 for another tenant's). */
   getById: (id: string) =>
     apiClient.get<StockMovement>(`/stock-movements/${id}`),
+
+  /**
+   * POST /stock-movements — a manual adjustment or a manual transfer (201).
+   *
+   * RETURNS AN ARRAY, ALWAYS, and callers must not assume one row. FEFO splits a
+   * withdrawal across every lot it draws from — "keluarkan 10" over three lots is
+   * three rows — and a transfer produces a pair per lot moved. The array is what
+   * actually landed in the ledger, so a form should report its length rather than
+   * the quantity the user typed.
+   *
+   * The client sends an `operation`, not a `movementType`: the server decides
+   * the type, the reference, the signs and how many rows come out. See
+   * CreateStockMovementInput.
+   */
+  create: (input: CreateStockMovementInput) =>
+    apiClient.post<StockMovement[]>("/stock-movements", input),
+
+  /**
+   * POST /stock-movements/preview — what `create` would write, without writing.
+   *
+   * 200, not 201: it makes nothing. It refuses exactly what the create refuses,
+   * so a form learns about an inactive warehouse before the user presses save
+   * rather than after.
+   *
+   * THIS REPLACED A FILE. The frontend used to reimplement FEFO allocation, the
+   * perpetual weighted average and the journal's counter account in
+   * `features/inventory/utils/preview.ts`. Those copies agreed with the server —
+   * right up until the day they would not have, silently, in a preview a user
+   * had already approved.
+   */
+  preview: (input: PreviewStockMovementInput) =>
+    apiClient.post<StockMovementPreview>("/stock-movements/preview", input),
 };

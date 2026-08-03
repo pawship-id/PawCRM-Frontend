@@ -6,7 +6,7 @@ import {
   toDecimalString,
   toMinor,
 } from "@/utils/decimal";
-import type { HppPreview } from "../data/demoStore";
+import type { HppCalculation } from "@/types/inventory";
 
 /**
  * The weighted-average calculation, shown as arithmetic rather than as a result.
@@ -24,7 +24,7 @@ import type { HppPreview } from "../data/demoStore";
  * error the string contract exists to prevent, in the one place a user is
  * guaranteed to look.
  */
-export function HppStrip({ preview }: { preview: HppPreview | null }) {
+export function HppStrip({ preview }: { preview: HppCalculation | null }) {
   if (!preview) return null;
 
   const beforeMinor = toMinor(preview.before ?? "0") ?? 0n;

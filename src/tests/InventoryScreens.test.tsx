@@ -1,26 +1,17 @@
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 
-import {
-  InventoryHub,
-  StockAdjustmentForm,
-  StockTransferForm,
-} from "@/features/inventory";
+import { InventoryHub } from "@/features/inventory";
 import { resetState } from "@/features/inventory/data/demoStore";
 
 /**
- * Mount tests for the stock screens still backed by the demo store — the hub and
- * the two manual-movement forms.
+ * Mount tests for the inventory screens still backed by the demo store.
  *
- * Deliberately shallow on styling and deep on the two things a reviewer would
- * otherwise have to catch by clicking: that each screen mounts at all, and that
- * the previews which justify these screens' existence actually appear — the
- * FEFO allocation, the "no journal" note on a transfer, and the required-batch
- * rule for goods that expire.
+ * That is now the hub alone. The stock card, the adjustment form and the
+ * transfer form all read and write the real API, so they need mocked services
+ * and none of the setup here applies to them — see StockCardScreen.test.tsx and
+ * StockMovementForms.test.tsx.
  *
- * The demo store is module-level state shared by all three screens, so it is
- * reset between tests; without that, a quantity written by one case would leak
- * into the next one's arithmetic.
+ * The demo store is module-level state, so it is reset between tests.
  */
 beforeEach(() => {
   resetState();
@@ -59,118 +50,5 @@ describe("InventoryHub", () => {
     render(<InventoryHub />);
 
     expect(screen.getByText(/Prototype · data contoh/)).toBeInTheDocument();
-  });
-});
-
-describe("StockAdjustmentForm", () => {
-  it("mounts with the inbound direction selected", () => {
-    render(<StockAdjustmentForm />);
-
-    expect(screen.getByText("Arah penyesuaian")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Barang masuk (+)" }),
-    ).toBeInTheDocument();
-  });
-
-  it("asks for a batch and expiry when the product tracks kedaluwarsa", () => {
-    // The default fixture product has hasExpiry: true — this is the promise the
-    // flag makes, and the form is where it is finally collected.
-    render(<StockAdjustmentForm />);
-
-    expect(screen.getByLabelText(/Kode batch/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Tanggal kedaluwarsa/)).toBeInTheDocument();
-  });
-
-  it("blocks an inbound save that has no batch code", async () => {
-    const user = userEvent.setup();
-    render(<StockAdjustmentForm />);
-
-    await user.type(screen.getByLabelText(/^Jumlah/), "5");
-    await user.click(screen.getByRole("button", { name: /Simpan penyesuaian/ }));
-
-    expect(
-      screen.getByText(/kode batch wajib diisi/i),
-    ).toBeInTheDocument();
-  });
-
-  it("shows the weighted-average arithmetic, not just the result", async () => {
-    const user = userEvent.setup();
-    render(<StockAdjustmentForm />);
-
-    await user.type(screen.getByLabelText(/^Jumlah/), "5");
-
-    expect(
-      screen.getByText(/Perhitungan HPP rata-rata tertimbang/),
-    ).toBeInTheDocument();
-  });
-
-  it("swaps the HPP strip for the FEFO allocation when writing stock off", async () => {
-    const user = userEvent.setup();
-    render(<StockAdjustmentForm />);
-
-    await user.click(screen.getByRole("button", { name: "Barang keluar (−)" }));
-    await user.type(screen.getByLabelText(/^Jumlah/), "6");
-
-    expect(screen.getByText(/Alokasi FEFO/)).toBeInTheDocument();
-    // 6 units of the default product span two lots — so two ledger rows.
-    expect(screen.getByText("2 baris movement")).toBeInTheDocument();
-  });
-
-  it("warns when the lots cannot cover the withdrawal, without blocking it", async () => {
-    const user = userEvent.setup();
-    render(<StockAdjustmentForm />);
-
-    await user.click(screen.getByRole("button", { name: "Barang keluar (−)" }));
-    await user.type(screen.getByLabelText(/^Jumlah/), "999");
-
-    expect(screen.getByText(/Stok lot tidak mencukupi/)).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /Simpan penyesuaian/ }),
-    ).toBeEnabled();
-  });
-});
-
-// StockCardScreen has its own file: it reads the real API rather than the demo
-// store, so it needs mocked services and an auth context, and none of the setup
-// here applies to it. See StockCardScreen.test.tsx.
-
-describe("StockTransferForm", () => {
-  it("mounts with two distinct warehouses preselected", () => {
-    render(<StockTransferForm />);
-
-    expect(screen.getByLabelText("Dari gudang")).toBeInTheDocument();
-    expect(screen.getByLabelText("Ke gudang")).toBeInTheDocument();
-  });
-
-  it("says plainly that a transfer posts no journal", () => {
-    // Users who have just learned every stock action hits the books need to be
-    // told this one does not, or they go looking for the missing entry.
-    render(<StockTransferForm />);
-
-    expect(
-      screen.getByText(/Transfer TIDAK membuat jurnal/),
-    ).toBeInTheDocument();
-  });
-
-  it("previews the mirrored rows once a quantity is entered", async () => {
-    const user = userEvent.setup();
-    render(<StockTransferForm />);
-
-    await user.type(screen.getByLabelText(/^Jumlah/), "6");
-
-    expect(screen.getByText("Lot yang berpindah")).toBeInTheDocument();
-    // Two lots × an out/in pair each.
-    expect(screen.getByText("4 baris movement")).toBeInTheDocument();
-  });
-
-  it("explains that lots travel with their expiry", async () => {
-    const user = userEvent.setup();
-    render(<StockTransferForm />);
-
-    await user.type(screen.getByLabelText(/^Jumlah/), "2");
-
-    expect(
-      screen.getByText(/kode, tanggal\s+kedaluwarsa, dan harga beli yang sama/),
-    ).toBeInTheDocument();
   });
 });

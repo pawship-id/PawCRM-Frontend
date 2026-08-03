@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { Alert, Button, Card, TextField } from "@/components";
+import { Alert, Button, Card, Spinner, TextField } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import {
@@ -13,10 +13,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { swalToast } from "@/lib/swal";
-import { formatMoney, formatQty, isDecimal, isPositive, multiplyDecimals } from "@/utils/decimal";
+import { ApiError } from "@/services/api-error";
+import { stockMovementService } from "@/services/stockMovement.service";
+import {
+  absDecimal,
+  formatMoney,
+  formatQty,
+  isDecimal,
+  isPositive,
+  multiplyDecimals,
+} from "@/utils/decimal";
 
-import * as demo from "../data/demoStore";
-import { useInventoryDemo } from "../hooks/useInventoryDemo";
+import { useMovementPreview } from "../hooks/useMovementPreview";
+import { useProductStock } from "../hooks/useProductStock";
+import { useStockCardLookups } from "../hooks/useStockCardLookups";
+import { newIdempotencyKey } from "../utils/idempotency";
 import { ExpiryBadge } from "./ExpiryBadge";
 import { JournalPreview } from "./JournalPreview";
 
@@ -42,37 +53,100 @@ import { JournalPreview } from "./JournalPreview";
  * The user never types a batch code here, deliberately: they move a QUANTITY and
  * the system decides which lots. Letting them retype the code would be an
  * invitation to move batch A and have it arrive labelled batch B.
+ *
+ * THE LOT PREVIEW IS FETCHED, NOT COMPUTED. `POST /stock-movements/preview` is
+ * the posting path with the commit left off, so the pairs listed on the right
+ * are the rows that will be written — including which lot each one carries. The
+ * browser used to reimplement FEFO to draw this, which was a copy of a rule that
+ * could go quietly out of date.
  */
 export function StockTransferForm() {
-  const { products, warehouses, sync } = useInventoryDemo();
+  const lookups = useStockCardLookups();
 
-  const active = warehouses.filter((warehouse) => warehouse.isActive);
-
-  const [fromWarehouseId, setFrom] = useState(active[0]._id);
-  const [toWarehouseId, setTo] = useState(active[1]?._id ?? active[0]._id);
-  const [productId, setProductId] = useState(demo.firstStockProduct(products)!._id);
+  const [fromWarehouseId, setFrom] = useState("");
+  const [toWarehouseId, setTo] = useState("");
+  const [productId, setProductId] = useState("");
   const [qty, setQty] = useState("");
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  /**
+   * Minted once per INTENT, not per request: it survives a failed attempt — so a
+   * retry of a save that may have landed replays instead of moving the stock
+   * twice — and is replaced only after one succeeds.
+   */
+  const [idempotencyKey, setIdempotencyKey] = useState(newIdempotencyKey);
 
-  const product = products.find((p) => p._id === productId)!;
-  const available = demo.qtyOnHand(productId, fromWarehouseId);
-  const sameWarehouse = fromWarehouseId === toWarehouseId;
-
-  const allocations = useMemo(
-    () =>
-      !sameWarehouse && isPositive(qty)
-        ? demo.previewFefo(productId, fromWarehouseId, qty)
-        : [],
-    [sameWarehouse, qty, productId, fromWarehouseId],
+  // ACTIVE only, both ends. The API refuses a movement at an inactive warehouse,
+  // so offering one would produce a rejection after the form was filled in.
+  const active = useMemo(
+    () => lookups.warehouses.filter((warehouse) => warehouse.isActive),
+    [lookups.warehouses],
   );
 
-  const fromName = warehouses.find((w) => w._id === fromWarehouseId)?.name ?? "";
-  const toName = warehouses.find((w) => w._id === toWarehouseId)?.name ?? "";
+  useEffect(() => {
+    if (fromWarehouseId || active.length === 0) return;
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setFrom(active[0]._id);
+    // The second warehouse, when there is one: defaulting both ends to the same
+    // location would open the form in a state it refuses to submit.
+    setTo(active[1]?._id ?? active[0]._id);
+    setProductId((prev) => prev || (lookups.products[0]?._id ?? ""));
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [active, lookups.products, fromWarehouseId]);
+
+  const { product, qtyOnHand } = useProductStock(
+    productId,
+    fromWarehouseId,
+    refreshKey,
+  );
+
+  const sameWarehouse = Boolean(
+    fromWarehouseId && fromWarehouseId === toWarehouseId,
+  );
+
+  /**
+   * The payload, built once and used for both the preview and the save.
+   *
+   * Identical on purpose: a preview of a DIFFERENT request is worse than no
+   * preview, and this is the only place the two could diverge.
+   */
+  const payload = useMemo(
+    () => ({
+      operation: "transfer" as const,
+      productId,
+      fromWarehouseId,
+      toWarehouseId,
+      qty,
+    }),
+    [productId, fromWarehouseId, toWarehouseId, qty],
+  );
+
+  const preview = useMovementPreview(
+    payload,
+    Boolean(productId && !sameWarehouse && isPositive(qty)),
+    refreshKey,
+  );
+
+  /**
+   * The outbound half of each pair, which is what the list is about: one entry
+   * per lot that leaves the source warehouse. The matching `transfer_in` is
+   * rendered beside it, not as its own row.
+   */
+  const allocations = (preview.preview?.movements ?? []).filter(
+    (row) => row.movementType === "transfer_out",
+  );
+
+  const fromName =
+    lookups.warehouses.find((w) => w._id === fromWarehouseId)?.name ?? "";
+  const toName =
+    lookups.warehouses.find((w) => w._id === toWarehouseId)?.name ?? "";
   const movedValue =
-    product.hppAvg && isPositive(qty) ? multiplyDecimals(qty, product.hppAvg) : null;
+    product?.hppAvg && isPositive(qty)
+      ? multiplyDecimals(qty, product.hppAvg)
+      : null;
 
   function validate(): boolean {
     const next: Record<string, string> = {};
@@ -92,34 +166,76 @@ export function StockTransferForm() {
     return Object.keys(next).length === 0;
   }
 
-  function handleSubmit(event: React.FormEvent) {
+  async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setFormError(null);
     if (!validate()) return;
 
     setSaving(true);
     try {
-      const written = demo.postTransfer({
-        operation: "transfer",
-        productId,
-        fromWarehouseId,
-        toWarehouseId,
-        qty,
+      // The SAME payload the preview described, plus the retry token. Building a
+      // second one here is how a form ends up saving something other than what
+      // it showed.
+      const written = await stockMovementService.create({
+        ...payload,
+        idempotencyKey,
       });
 
-      sync();
       setQty("");
       setFieldErrors({});
+      setRefreshKey((key) => key + 1);
+      // A new intent needs a new token; reusing this one would make the next
+      // transfer look like a replay of this one and move nothing.
+      setIdempotencyKey(newIdempotencyKey);
+
+      // The row count is the server's. It writes a pair per lot, so an odd
+      // number here would itself be worth noticing — which is why the message
+      // reports rows and derives the lot count from them, rather than the other
+      // way round.
       swalToast(
         `Transfer tersimpan — ${written.length} baris ditulis (${written.length / 2} lot berpindah).`,
       );
     } catch (error) {
       setFormError(
-        error instanceof Error ? error.message : "Terjadi kesalahan. Coba lagi.",
+        error instanceof ApiError
+          ? error.fullMessage
+          : "Terjadi kesalahan. Coba lagi.",
       );
     } finally {
       setSaving(false);
     }
+  }
+
+  if (lookups.loading) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
+        <Spinner /> Memuat daftar produk dan gudang…
+      </div>
+    );
+  }
+
+  if (lookups.error) {
+    return <Alert variant="error">{lookups.error}</Alert>;
+  }
+
+  if (active.length < 2) {
+    return (
+      <Alert variant="info">
+        Transfer butuh <b>dua gudang aktif</b>. Tenant ini baru punya{" "}
+        {active.length}. Tambahkan gudang lain di Master Data → Warehouse dulu.
+      </Alert>
+    );
+  }
+
+  if (!product) {
+    return (
+      <div className="rounded-xl border border-dashed border-border bg-surface py-16 text-center">
+        <p className="font-medium text-foreground">Pilih produk dulu</p>
+        <p className="mx-auto mt-1 max-w-md text-sm text-muted">
+          Transfer memindahkan satu produk dari satu gudang ke gudang lain.
+        </p>
+      </div>
+    );
   }
 
   return (
@@ -182,9 +298,9 @@ export function StockTransferForm() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {/* Only what can hold stock — a parent's quantity is its
-                          variants' and a bundle consumes its components. */}
-                      {products.filter(demo.canHoldStock).map((item) => (
+                      {/* The lookup already asked for `holdsStock` products, so
+                          a parent or a bundle can never appear here. */}
+                      {lookups.products.map((item) => (
                         <SelectItem key={item._id} value={item._id}>
                           {item.name}
                         </SelectItem>
@@ -200,7 +316,7 @@ export function StockTransferForm() {
                   value={qty}
                   onChange={(e) => setQty(e.target.value)}
                   error={fieldErrors.qty}
-                  hint={`Tersedia ${formatQty(available)} ${product.unit} di ${fromName}.`}
+                  hint={`Tersedia ${formatQty(qtyOnHand)} ${product.unit} di ${fromName}.`}
                   required
                 />
               </div>
@@ -213,7 +329,9 @@ export function StockTransferForm() {
                   <>
                     <span className="text-muted">·</span>
                     <span className="text-muted">nilai berpindah</span>
-                    <b className="font-mono tabular-nums">{formatMoney(movedValue)}</b>
+                    <b className="font-mono tabular-nums">
+                      {formatMoney(movedValue)}
+                    </b>
                   </>
                 )}
               </div>
@@ -238,39 +356,45 @@ export function StockTransferForm() {
               </div>
 
               <ul className="divide-y divide-border/60">
-                {allocations.map((allocation, index) => (
-                  <li key={allocation.batch?._id ?? index} className="px-4 py-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-xs">
-                        {allocation.batch?.batchCode ?? "tanpa lot"}
-                      </span>
-                      {allocation.batch?.expiryDate && (
-                        <ExpiryBadge date={allocation.batch.expiryDate} />
-                      )}
-                      <span className="ml-auto font-mono text-sm font-semibold tabular-nums">
-                        {formatQty(allocation.qty)}
-                      </span>
-                    </div>
+                {allocations.map((allocation, index) => {
+                  // The API signs its quantities; both halves of the pair are
+                  // drawn from the magnitude.
+                  const moved = absDecimal(allocation.qty);
 
-                    {/* The pair. Showing both halves is the point: the lot is not
-                        moved, it is closed here and re-opened there. */}
-                    <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-[11px]">
-                      <div className="rounded-md bg-danger/8 px-2 py-1.5">
-                        <p className="font-mono text-danger">
-                          −{formatQty(allocation.qty)}
-                        </p>
-                        <p className="truncate text-muted">{fromName}</p>
+                  return (
+                    <li key={allocation.batchId ?? index} className="px-4 py-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-xs">
+                          {allocation.batchCode ?? "tanpa lot"}
+                        </span>
+                        {allocation.batchExpiryDate && (
+                          <ExpiryBadge date={allocation.batchExpiryDate} />
+                        )}
+                        <span className="ml-auto font-mono text-sm font-semibold tabular-nums">
+                          {formatQty(moved)}
+                        </span>
                       </div>
-                      <span className="text-muted">→</span>
-                      <div className="rounded-md bg-success/10 px-2 py-1.5">
-                        <p className="font-mono text-success">
-                          +{formatQty(allocation.qty)}
-                        </p>
-                        <p className="truncate text-muted">{toName}</p>
+
+                      {/* The pair. Showing both halves is the point: the lot is
+                          not moved, it is closed here and re-opened there. */}
+                      <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-[11px]">
+                        <div className="rounded-md bg-danger/8 px-2 py-1.5">
+                          <p className="font-mono text-danger">
+                            −{formatQty(moved)}
+                          </p>
+                          <p className="truncate text-muted">{fromName}</p>
+                        </div>
+                        <span className="text-muted">→</span>
+                        <div className="rounded-md bg-success/10 px-2 py-1.5">
+                          <p className="font-mono text-success">
+                            +{formatQty(moved)}
+                          </p>
+                          <p className="truncate text-muted">{toName}</p>
+                        </div>
                       </div>
-                    </div>
-                  </li>
-                ))}
+                    </li>
+                  );
+                })}
               </ul>
 
               <p className="border-t border-border px-4 py-2.5 text-xs text-muted">
@@ -294,6 +418,11 @@ export function StockTransferForm() {
           <Button type="submit" disabled={saving || sameWarehouse}>
             {saving ? "Menyimpan…" : "Simpan transfer"}
           </Button>
+
+          <p className="text-xs text-muted">
+            Daftar lot di atas datang dari server — pembagian yang sama persis
+            yang akan ditulis saat disimpan.
+          </p>
 
           <p className="text-xs text-muted">
             Catatan desain: bila kedua gudang berada di <b>cabang berbeda</b>,

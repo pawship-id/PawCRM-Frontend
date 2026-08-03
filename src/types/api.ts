@@ -414,6 +414,22 @@ export interface UpdateWarehouseInput {
 export type CategoryKind = "product";
 
 /**
+ * One account of a tenant's chart of accounts.
+ *
+ * Only the fields a NON-accounting screen needs to name an account it is about
+ * to post against; the finance module's own type will be wider. Resolved by
+ * `code` rather than by id — ids differ per tenant, codes do not, which is why
+ * `/chart-of-accounts/by-code/:code` exists at all.
+ */
+export interface ChartAccount {
+  _id: string;
+  code: string;
+  name: string;
+  accountType: "asset" | "liability" | "equity" | "income" | "expense";
+  isActive: boolean;
+}
+
+/**
  * A product category — the label a product is filed under.
  *
  * Nothing but a name, which is the point: grouping is all a category does. It

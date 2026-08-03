@@ -198,6 +198,15 @@ export interface CreateAdjustmentInput {
   expiryDate?: string;
   costPerUnit?: string;
   isConsignment?: boolean;
+  /**
+   * A token that makes a RETRY safe, 8–64 characters.
+   *
+   * A manual adjustment has no upstream document, so the API cannot tell a
+   * retried request from a second deliberate one — and stock is the one number
+   * where guessing wrong needs a physical count to undo. Send the SAME key when
+   * retrying an attempt that may have landed, and a NEW one for a new intent.
+   */
+  idempotencyKey?: string;
 }
 
 /** POST /api/stock-movements — the manual transfer payload. */
@@ -208,10 +217,80 @@ export interface CreateTransferInput {
   toWarehouseId: string;
   /** Decimal STRING, and must be POSITIVE — direction comes from the two ids. */
   qty: string;
+  /** See CreateAdjustmentInput — same token, same reason. */
+  idempotencyKey?: string;
 }
 
 export type CreateStockMovementInput =
   CreateAdjustmentInput | CreateTransferInput;
+
+/**
+ * POST /api/stock-movements/preview — what the create WOULD write.
+ *
+ * Takes the create's payload minus `idempotencyKey`, and writes nothing. It
+ * exists so a client never has to reimplement FEFO, the weighted average, or
+ * which account a shrinkage books to — three rules that used to live in
+ * `features/inventory/utils/preview.ts` and could drift from the server without
+ * anything failing.
+ */
+export type PreviewStockMovementInput =
+  | Omit<CreateAdjustmentInput, "idempotencyKey">
+  | Omit<CreateTransferInput, "idempotencyKey">;
+
+/** One LEDGER ROW the posting would write — not one per requested line. */
+export interface PreviewMovementRow {
+  warehouseId: string;
+  warehouseName: string;
+  productId: string;
+  movementType: MovementType;
+  /** Decimal string. Signed, as the ledger stores it. */
+  qty: string;
+  hppAtTime: string;
+  /** The existing lot this row would draw from; null when it would create one. */
+  batchId: string | null;
+  batchCode: string | null;
+  batchExpiryDate: string | null;
+  isNewBatch: boolean;
+  destinationWarehouseId: string | null;
+  /**
+   * True on the row that would drive a lot below zero.
+   *
+   * The posting is still written — the goods left the shelf — so this is a
+   * warning, never a blocker. A negative lot is a visible discrepancy; an
+   * unrecorded withdrawal is an invisible one.
+   */
+  short: boolean;
+}
+
+/**
+ * The weighted average a posting would leave behind, and the working behind it.
+ *
+ * `qtyBefore` is the quantity across EVERY warehouse, because the average is a
+ * property of the product: weighting per location would mean a transfer changed
+ * the cost of goods nobody traded.
+ */
+export interface HppCalculation {
+  /** Null when no average has formed yet — the first valued receipt. */
+  before: string | null;
+  after: string;
+  qtyBefore: string;
+  qtyIn: string;
+  unitCost: string;
+}
+
+/** `HppCalculation` as the API returns it, which always names its product. */
+export interface PreviewHpp extends Omit<HppCalculation, "before"> {
+  productId: string;
+  before: string;
+}
+
+export interface StockMovementPreview {
+  movements: PreviewMovementRow[];
+  /** Empty when nothing acquires stock — an outbound draws at the average it has. */
+  hppAvg: PreviewHpp[];
+  /** Empty for a transfer: inventory value does not change, so nothing is posted. */
+  journal: JournalLine[];
+}
 
 /** One line of a double-entry posting, as the preview renders it. */
 export interface JournalLine {

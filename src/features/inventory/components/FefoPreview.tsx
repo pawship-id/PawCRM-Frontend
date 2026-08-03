@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
-import { formatQty } from "@/utils/decimal";
-import type { FefoAllocation } from "@/types/inventory";
+import { absDecimal, formatQty } from "@/utils/decimal";
+import type { PreviewMovementRow } from "@/types/inventory";
 
 import { ExpiryBadge } from "./ExpiryBadge";
 
@@ -21,18 +21,24 @@ import { ExpiryBadge } from "./ExpiryBadge";
  * cashier who cannot finish a sale. It drives the last lot negative instead. A
  * negative lot is a visible discrepancy; an unrecorded sale is an invisible one.
  * So it is flagged here, in amber, rather than blocking the form.
+ *
+ * THE ROWS COME STRAIGHT FROM THE SERVER'S PREVIEW. This component used to be
+ * handed an allocation the browser had computed by reimplementing FEFO; it now
+ * renders `POST /stock-movements/preview`, which is the posting path with the
+ * commit left off. What is drawn is what will be written.
  */
 export function FefoPreview({
-  allocations,
+  rows,
   /** Label for the rows — "movement" on an adjustment, "pasangan" on a transfer. */
   rowNoun = "baris movement",
 }: {
-  allocations: FefoAllocation[];
+  /** The outbound rows of a preview, in the order FEFO would consume them. */
+  rows: PreviewMovementRow[];
   rowNoun?: string;
 }) {
-  if (allocations.length === 0) return null;
+  if (rows.length === 0) return null;
 
-  const short = allocations.some((allocation) => allocation.short);
+  const short = rows.some((row) => row.short);
 
   return (
     <div className="rounded-lg border border-border bg-surface">
@@ -41,14 +47,14 @@ export function FefoPreview({
           Alokasi FEFO — paling dekat kedaluwarsa keluar duluan
         </p>
         <Badge variant="outline" className="ml-auto">
-          {allocations.length} {rowNoun}
+          {rows.length} {rowNoun}
         </Badge>
       </div>
 
       <ul className="divide-y divide-border/60">
-        {allocations.map((allocation, index) => (
+        {rows.map((row, index) => (
           <li
-            key={allocation.batch?._id ?? `unbatched-${index}`}
+            key={row.batchId ?? `unbatched-${index}`}
             className="flex flex-wrap items-center gap-3 px-4 py-2.5"
           >
             <span className="flex size-5 items-center justify-center rounded-full bg-accent font-mono text-[10px] text-muted">
@@ -56,15 +62,10 @@ export function FefoPreview({
             </span>
 
             <div className="min-w-0 flex-1">
-              {allocation.batch ? (
-                <>
-                  <p className="truncate font-mono text-xs text-foreground">
-                    {allocation.batch.batchCode}
-                  </p>
-                  <p className="mt-0.5 text-[11px] text-muted">
-                    sisa lot {formatQty(allocation.batch.qtyRemaining)}
-                  </p>
-                </>
+              {row.batchCode ? (
+                <p className="truncate font-mono text-xs text-foreground">
+                  {row.batchCode}
+                </p>
               ) : (
                 <p className="text-xs text-muted">
                   Tanpa lot — produk ini tidak melacak batch
@@ -72,12 +73,12 @@ export function FefoPreview({
               )}
             </div>
 
-            {allocation.batch?.expiryDate && (
-              <ExpiryBadge date={allocation.batch.expiryDate} />
-            )}
+            {row.batchExpiryDate && <ExpiryBadge date={row.batchExpiryDate} />}
 
+            {/* The API signs its quantities; the minus here is typographic, so
+                a magnitude is what gets formatted. */}
             <span className="font-mono text-sm font-semibold tabular-nums text-danger">
-              −{formatQty(allocation.qty)}
+              −{formatQty(absDecimal(row.qty))}
             </span>
           </li>
         ))}
