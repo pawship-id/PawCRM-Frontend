@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { Breadcrumb } from "@/components";
 import { BatchesScreen } from "@/features/inventory";
+import { RequirePermission } from "@/features/permissions";
 
 export const metadata: Metadata = { title: "Batch & Expired · PawShip" };
 
@@ -24,7 +25,11 @@ export default function BatchesPage() {
         </p>
       </div>
 
-      <BatchesScreen />
+      {/* The nav already hides this link from a role without the grant; this
+          covers direct URL entry. */}
+      <RequirePermission feature="productBatches">
+        <BatchesScreen />
+      </RequirePermission>
     </div>
   );
 }

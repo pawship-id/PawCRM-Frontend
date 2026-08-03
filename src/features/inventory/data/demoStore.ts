@@ -66,6 +66,21 @@ import type {
  */
 
 /** Account codes this module posts against, as seeded per tenant. */
+/**
+ * The labels the real API resolves for every lot, stubbed as null.
+ *
+ * This store backs prototype screens that render a batch code and nothing else;
+ * `productName` and friends exist so the demo fixtures still satisfy the type
+ * the API defines. Filling them in would mean maintaining a second copy of the
+ * catalogue inside the fixture.
+ */
+const DEMO_BATCH_LABELS = {
+  productName: null,
+  productSku: null,
+  productUnit: null,
+  warehouseName: null,
+} as const;
+
 const ACCOUNT = {
   inventory: { code: "1201", name: "Persediaan Barang Dagangan" },
   cogs: { code: "5101", name: "Harga Pokok Penjualan" },
@@ -280,6 +295,7 @@ function seed(): DemoState {
       createdBy: "u1",
       createdAt: hoursAgo(600),
       updatedAt: hoursAgo(20),
+      ...DEMO_BATCH_LABELS,
     },
     {
       _id: "bt_rc_b",
@@ -296,6 +312,7 @@ function seed(): DemoState {
       createdBy: "u1",
       createdAt: hoursAgo(288),
       updatedAt: hoursAgo(20),
+      ...DEMO_BATCH_LABELS,
     },
     {
       _id: "bt_wsk_a",
@@ -312,6 +329,7 @@ function seed(): DemoState {
       createdBy: "u1",
       createdAt: hoursAgo(600),
       updatedAt: hoursAgo(4),
+      ...DEMO_BATCH_LABELS,
     },
     {
       _id: "bt_wsk_b",
@@ -328,6 +346,7 @@ function seed(): DemoState {
       createdBy: "u1",
       createdAt: hoursAgo(72),
       updatedAt: hoursAgo(72),
+      ...DEMO_BATCH_LABELS,
     },
   ];
 
@@ -878,6 +897,7 @@ export function postAdjustment(input: CreateAdjustmentInput): StockMovement[] {
         createdBy: "u1",
         createdAt: now,
         updatedAt: now,
+        ...DEMO_BATCH_LABELS,
       };
       state.batches = [...state.batches, batch];
       batchId = batch._id;

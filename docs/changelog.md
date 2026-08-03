@@ -7,6 +7,58 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Batch & Expired
+
+Branch: `feature/inventory-purchasing`.
+
+Inventory → Batch & Expired moves off the prototype store onto
+`/api/product-batches`, `/summary` and `/expiring`. See
+`docs/features/batch-expiry.md`.
+
+**Four backend changes came first** (`PawCRM-Backend` 0.22.0), all of them
+consequences of reading the lot collection ACROSS products and warehouses rather
+than within one pair: labels on every row, a summary endpoint, no-expiry lots
+sorting last, and a batch-code search. There is no client-side workaround for any
+of them left in this repo.
+
+### Added
+
+- **`productBatchService.summary`** + **`useBatchSummary`** — the four tiles.
+  Counts span every matching lot rather than the page, and **Nilai berisiko** is
+  now a real number: summing `qtyRemaining × costPerUnit` needs every row, so the
+  demo screen was the only version that could ever have shown it
+- **`useBatches`** — picks the endpoint. A horizon asks `/expiring` (cumulative,
+  live lots with a date); "Semua lot" and any batch-code search ask
+  `/product-batches` (everything, including exhausted and never-expiring lots)
+- **`useWarehouseOptions`** — just the warehouses. Deliberately smaller than
+  `useStockCardLookups`, which also pages the catalogue for a product picker this
+  screen does not have: its rows already name their own product
+- **Batch-code search**, and `BatchesToolbar` / `BatchesTable` split out of the
+  screen
+- `types/inventory.ts` — `ProductBatch` gains `productName`, `productSku`,
+  `productUnit`, `warehouseName`; new `BatchExpirySummary`, `BatchExpiryBucket`;
+  `ProductBatchListQuery` gains `search`, `expiryFrom`, `expiryTo`
+- Tests: `BatchesScreen.test.tsx` (11)
+
+### Changed
+
+- **`BatchesScreen` computes nothing.** Counts, value, labels and row order all
+  arrive resolved. The order matters most: with the list paged server-side, a
+  client that re-sorted would only be reordering the twenty rows it holds,
+  producing a sequence that changes meaning at every page boundary
+- **Two controls explain themselves when they go quiet** — the horizon is
+  disabled during a search (the alert endpoint cannot filter by code, and tracing
+  a lot is a question about its whole life), and the exhausted-lot toggle is
+  hidden outside audit mode (an exhausted lot cannot expire into anything)
+- `/dashboard/inventory/batches` sits behind
+  `RequirePermission feature="productBatches"`
+- Inactive warehouses appear in the filter, marked. A closed location still holds
+  the lots it held — forgotten stock is what this report exists to surface
+- `InventoryCatalogue.test.tsx` is down to Opname, the last inventory screen with
+  no backend
+
+---
+
 ## [Unreleased] — Preview dari server, dan retry yang aman
 
 Branch: `feature/inventory-purchasing`. Follows the entry below, which shipped the

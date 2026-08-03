@@ -1,7 +1,7 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { BatchesScreen, OpnameScreen } from "@/features/inventory";
+import { OpnameScreen } from "@/features/inventory";
 import * as demo from "@/features/inventory/data/demoStore";
 
 const push = jest.fn();
@@ -12,49 +12,14 @@ jest.mock("next/navigation", () => ({
 /**
  * Mount tests for the stock screens that are still demo-backed.
  *
- * THE CATALOGUE MOVED OUT when it was wired to `/api/products`: those screens
- * fetch, so their tests mock services instead of seeding a store, and they live
- * in ProductsScreen.test.tsx and ProductForm.test.tsx. What remains here reads
- * the demo store and is asserted as before — that lots sort by urgency, and that
- * an opname sheet only counts what can hold stock.
+ * SCREENS MOVE OUT AS THEY ARE WIRED. The catalogue left for
+ * ProductsScreen.test.tsx and ProductForm.test.tsx; Batch & Expired left for
+ * BatchesScreen.test.tsx. Each fetches, so its tests mock services instead of
+ * seeding a store. Opname is what remains: it has no backend yet.
  */
 beforeEach(() => {
   demo.resetState();
   push.mockClear();
-});
-
-describe("BatchesScreen", () => {
-  it("counts expiring lots by urgency", () => {
-    render(<BatchesScreen />);
-
-    expect(screen.getByText("Sudah lewat tanggal")).toBeInTheDocument();
-    expect(screen.getByText("Kritis — kurang 7 hari")).toBeInTheDocument();
-    expect(screen.getByText("Nilai berisiko")).toBeInTheDocument();
-    // "Perhatian — 30 hari" is deliberately not asserted here: it is both a stat
-    // label and the horizon filter's default value, so the query is ambiguous.
-  });
-
-  it("lists the soonest-expiring lot first", () => {
-    render(<BatchesScreen />);
-
-    const table = screen.getByRole("table");
-    const codes = within(table)
-      .getAllByText(/^(RC|WSK)-B26-/)
-      .map((node) => node.textContent);
-
-    // WSK-B26-0512 expires in 5 days; RC-B26-0455 in 24.
-    expect(codes[0]).toBe("WSK-B26-0512");
-  });
-
-  it("hides exhausted lots until asked", async () => {
-    const user = userEvent.setup();
-    render(<BatchesScreen />);
-
-    const toggle = screen.getByLabelText(/Tampilkan lot yang sudah habis/);
-    expect(toggle).not.toBeChecked();
-    await user.click(toggle);
-    expect(toggle).toBeChecked();
-  });
 });
 
 describe("OpnameScreen", () => {

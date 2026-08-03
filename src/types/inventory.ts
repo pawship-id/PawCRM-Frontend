@@ -163,6 +163,50 @@ export interface ProductBatch {
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
+
+  /* ------------------------------------------- labels, resolved by the API */
+  /* A lot names its product and its warehouse by id, and the screen that reads
+     this collection spans BOTH — so a client would need the whole catalogue in
+     memory to render one row. Each may be null where the id is not: a label is
+     for display, an id is what a client links to. */
+
+  productName: string | null;
+  productSku: string | null;
+  productUnit: string | null;
+  warehouseName: string | null;
+}
+
+/**
+ * GET /api/product-batches/summary — the four tiles above the expiry alert.
+ *
+ * THE BUCKETS ARE MUTUALLY EXCLUSIVE, unlike the `/expiring` list, which is
+ * cumulative. That is the difference between a list and a set of tiles: a list
+ * is read top-down and leads with the most urgent rows, while tiles sit side by
+ * side and must not count the same lot twice. `atRisk` is genuinely the other
+ * three added up.
+ *
+ * `value` is the figure a client cannot produce for itself — summing
+ * `qtyRemaining × costPerUnit` needs every row, and summing the page on screen
+ * would report a number that grows as the user pages.
+ */
+export interface BatchExpiryBucket {
+  count: number;
+  /** Decimal string — Σ sisa × harga beli lot. */
+  value: string;
+}
+
+export interface BatchExpirySummary {
+  /** The date has passed and the goods are still on the shelf. */
+  expired: BatchExpiryBucket;
+  /** Expires within `criticalDays`. */
+  critical: BatchExpiryBucket;
+  /** Expires within `withinDays`. */
+  soon: BatchExpiryBucket;
+  /** The three above, added up. */
+  atRisk: BatchExpiryBucket;
+  /** Echoed back so a caption need not hardcode its own number. */
+  criticalDays: number;
+  withinDays: number;
 }
 
 /** The product fields the stock screens need. A subset of the catalogue type. */
@@ -691,6 +735,16 @@ export interface ProductBatchListQuery {
   productId?: string;
   warehouseId?: string;
   hasRemaining?: boolean;
+  /** Case-insensitive substring over `batchCode`. */
+  search?: string;
+  /**
+   * ISO bounds on `expiryDate`.
+   *
+   * Setting either EXCLUDES lots that have no expiry at all — a lot with no
+   * date cannot fall inside a date range.
+   */
+  expiryFrom?: string;
+  expiryTo?: string;
 }
 
 /** GET /api/product-batches/expiring. */
