@@ -56,6 +56,16 @@ fewer.
   return, and keeping a second request alive for a caption is not a trade worth
   making
 - `StockMovementForms.test.tsx` rewritten around the fetched preview (14 → 15)
+- **The expiry checkbox on an existing variant family now says that changing it
+  cascades to every variant.** The backend cascade is new (`PawCRM-Backend`
+  unreleased); the checkbox looks like a small edit and is not one, and finding
+  that out from a stock card six weeks later is worse than reading it here
+- **Penyesuaian Stok now has a sidebar entry**, last in the Inventory menu, with
+  a new `AdjustmentIcon`. It was previously reachable only from the hub. Last on
+  purpose — a real discrepancy is found by an opname and moved goods are moved by
+  a transfer, so the by-hand correction should not sit above either — and gated
+  on `stockMovements:create`, which the seeded Staff role does not hold.
+  `nav.test.ts` pins both the order and the read-only case
 
 ---
 

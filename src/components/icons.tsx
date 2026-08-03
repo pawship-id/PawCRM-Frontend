@@ -322,6 +322,25 @@ export function TransferIcon(props: IconProps) {
   );
 }
 
+/**
+ * Adjustment — a plus and a minus over a box: a correction that can go either
+ * way.
+ *
+ * Deliberately NOT a pencil or any other edit glyph. The ledger is append-only,
+ * and an adjustment adds a row rather than changing one; an icon suggesting
+ * otherwise would teach the wrong thing about the module before a user has read
+ * a word of the screen.
+ */
+export function AdjustmentIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M3 7.5l6-3.5 6 3.5v7l-6 3.5-6-3.5z" />
+      <path d="M9 4v14" />
+      <path d="M15.5 17.5h5M18 15v5" />
+    </Base>
+  );
+}
+
 /* -------------------------------------------------------------- Purchasing */
 
 /** Purchasing — a shopping bag with a downward arrow (goods coming in). */

@@ -3,10 +3,16 @@
 The two screens that **write** to the stock ledger, against `POST /api/stock-movements`.
 Branch: `feature/inventory-purchasing`.
 
-| Screen | Route | File |
-|---|---|---|
-| Stok awal & penyesuaian | `/dashboard/inventory/adjustments` | `StockAdjustmentForm.tsx` |
-| Transfer stok antar gudang | `/dashboard/inventory/transfers` | `StockTransferForm.tsx` |
+| Screen | Route | Sidebar | File |
+|---|---|---|---|
+| Stok awal & penyesuaian | `/dashboard/inventory/adjustments` | Inventory → **Penyesuaian Stok** | `StockAdjustmentForm.tsx` |
+| Transfer stok antar gudang | `/dashboard/inventory/transfers` | Inventory → **Transfer Stok** | `StockTransferForm.tsx` |
+
+Penyesuaian sits **last** in the Inventory menu, and that is the ordering doing its job: a
+real discrepancy is found by an opname and goods that moved are moved by a transfer, so
+offering the by-hand correction above either would offer the shortcut before the procedure.
+Both entries are gated on `stockMovements:create`, which the seeded **Staff** role does not
+hold — an adjustment with no document behind it is the easiest way to hide a shortage.
 
 Both moved off the in-memory prototype store (`features/inventory/data/demoStore.ts`) onto
 the real API. The UI is unchanged; what changed is that pressing Simpan now writes

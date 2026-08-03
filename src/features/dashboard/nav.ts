@@ -22,6 +22,7 @@ import {
   BatchIcon,
   OpnameIcon,
   TransferIcon,
+  AdjustmentIcon,
   PurchasingIcon,
   SupplierIcon,
   ReceiptIcon,
@@ -86,7 +87,8 @@ export const NAV_ITEMS: NavItem[] = [
    *
    * Ordered by how the data flows rather than alphabetically — you define a
    * product, then watch its card, then manage its lots, then count it, then
-   * move it. A reader learning the module top-down learns it in the right order.
+   * move it, and only then correct it by hand. A reader learning the module
+   * top-down learns it in the right order.
    */
   {
     label: "Inventory",
@@ -129,6 +131,27 @@ export const NAV_ITEMS: NavItem[] = [
         label: "Transfer Stok",
         href: "/dashboard/inventory/transfers",
         icon: TransferIcon,
+        permission: { feature: "stockMovements", action: "create" },
+      },
+      {
+        /**
+         * Last, and that is the ordering doing its job rather than an
+         * afterthought. An adjustment is the correction of last resort: a real
+         * discrepancy is found by an opname, and goods that moved are moved by a
+         * transfer. Putting it above either would offer the shortcut before the
+         * procedure.
+         *
+         * It is also, at the other end of a tenant's life, how opening stock is
+         * entered on day one — which is why it is in the menu at all rather than
+         * only on the hub, where it used to be reachable from a single card.
+         *
+         * Gated on `create`, so the seeded Staff role (read-only on the ledger)
+         * never sees it: a manual adjustment with no document behind it is the
+         * easiest way to hide a shortage.
+         */
+        label: "Penyesuaian Stok",
+        href: "/dashboard/inventory/adjustments",
+        icon: AdjustmentIcon,
         permission: { feature: "stockMovements", action: "create" },
       },
     ],

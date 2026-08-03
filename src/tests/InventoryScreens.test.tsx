@@ -31,14 +31,15 @@ describe("InventoryHub", () => {
   it("links to every screen in the Inventory dropdown", () => {
     render(<InventoryHub />);
 
-    // The five the sidebar lists, in the order the data flows: define a
-    // product, watch its card, manage its lots, count it, move it.
+    // The same screens the sidebar lists, in the order the data flows: define a
+    // product, watch its card, manage its lots, count it, move it, correct it.
     const expected: Array<[RegExp, string]> = [
       [/Produk & Varian/i, "/dashboard/inventory/products"],
       [/Kartu Stok/i, "/dashboard/inventory/stock-card"],
       [/Batch & Expired/i, "/dashboard/inventory/batches"],
       [/Stok Opname/i, "/dashboard/inventory/opname"],
       [/Transfer Stok/i, "/dashboard/inventory/transfers"],
+      [/Penyesuaian cepat/i, "/dashboard/inventory/adjustments"],
     ];
 
     for (const [name, href] of expected) {

@@ -867,8 +867,13 @@ function ProductFormFields({
                   Kalau dicentang, setiap penerimaan <b>wajib</b> mengisi kode
                   batch dan tanggal kedaluwarsa — itulah yang membuat FEFO dan
                   laporan expired bisa bekerja.
+                  {/* On an EXISTING family the change cascades, which is a bigger
+                      action than the checkbox looks. Saying so here is cheaper
+                      than a user discovering it from a stock card six weeks on. */}
                   {mode === "variants" &&
-                    " Varian mewarisi setelan ini dari induknya."}
+                    (existing
+                      ? " Mengubahnya ikut mengubah SEMUA varian produk ini — setelan ini milik induk, bukan milik ukurannya."
+                      : " Varian mewarisi setelan ini dari induknya.")}
                 </p>
               </div>
             </div>
