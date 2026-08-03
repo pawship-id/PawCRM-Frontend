@@ -1,16 +1,16 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import {
   InventoryHub,
   StockAdjustmentForm,
-  StockCardScreen,
   StockTransferForm,
 } from "@/features/inventory";
 import { resetState } from "@/features/inventory/data/demoStore";
 
 /**
- * Mount tests for the three stock screens.
+ * Mount tests for the stock screens still backed by the demo store — the hub and
+ * the two manual-movement forms.
  *
  * Deliberately shallow on styling and deep on the two things a reviewer would
  * otherwise have to catch by clicking: that each screen mounts at all, and that
@@ -130,31 +130,9 @@ describe("StockAdjustmentForm", () => {
   });
 });
 
-describe("StockCardScreen", () => {
-  it("mounts with the ledger tab and a running balance", () => {
-    render(<StockCardScreen />);
-
-    expect(screen.getByText(/Kartu stok \(/)).toBeInTheDocument();
-    expect(screen.getByText("Saldo")).toBeInTheDocument();
-  });
-
-  it("states that the log cannot be edited", () => {
-    render(<StockCardScreen />);
-
-    expect(screen.getByText(/tidak bisa diubah/)).toBeInTheDocument();
-  });
-
-  it("switches to the batch tab and numbers the lots in FEFO order", async () => {
-    const user = userEvent.setup();
-    render(<StockCardScreen />);
-
-    await user.click(screen.getByRole("button", { name: /Batch \/ FEFO/ }));
-
-    const table = screen.getByRole("table");
-    expect(within(table).getByText("Urutan FEFO")).toBeInTheDocument();
-    expect(within(table).getByText("RC-B26-0455")).toBeInTheDocument();
-  });
-});
+// StockCardScreen has its own file: it reads the real API rather than the demo
+// store, so it needs mocked services and an auth context, and none of the setup
+// here applies to it. See StockCardScreen.test.tsx.
 
 describe("StockTransferForm", () => {
   it("mounts with two distinct warehouses preselected", () => {

@@ -22,9 +22,9 @@ import type {
  *     `variants[]` creates the whole family in one transaction, and the response
  *     carries them back in `variants`. It may also post opening stock, reported
  *     in `openingStock` — see CreatedProduct.
- *  2. `list` TAKES TWO MUTUALLY EXCLUSIVE FILTERS. `excludeVariants` and
- *     `productType` select rows the same way and the backend rejects the pair
- *     with a 400. Callers send one or the other.
+ *  2. `list` TAKES THREE MUTUALLY EXCLUSIVE FILTERS. `excludeVariants`,
+ *     `productType` and `holdsStock` all select rows by type, and the backend
+ *     rejects any pair of them with a 400. Callers send exactly one.
  *
  * Money and quantities are decimal STRINGS in both directions. Nothing here
  * parses them — see types/inventory.ts.
@@ -47,6 +47,7 @@ export const productService = {
         parentId: query.parentId,
         isActive: query.isActive,
         excludeVariants: query.excludeVariants,
+        holdsStock: query.holdsStock,
         includeDeleted: query.includeDeleted,
       },
     }),

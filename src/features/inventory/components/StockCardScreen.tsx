@@ -1,23 +1,32 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-import { Card } from "@/components";
-import { Badge } from "@/components/ui/badge";
+import { Alert, Card, Spinner } from "@/components";
+import { usePermissions } from "@/features/permissions";
 import { cn } from "@/lib/utils";
+import { ApiError } from "@/services/api-error";
+import { stockMovementService } from "@/services/stockMovement.service";
 import {
+  absDecimal,
   formatMoney,
   formatQty,
   multiplyDecimals,
-  toDecimalString,
   toMinor,
 } from "@/utils/decimal";
-import type { ProductBatch, StockMovement } from "@/types/inventory";
 
-import * as demo from "../data/demoStore";
-import { useInventoryDemo } from "../hooks/useInventoryDemo";
-import { ExpiryBadge } from "./ExpiryBadge";
-import { MovementBadge } from "./MovementBadge";
+import { useProductBatches } from "../hooks/useProductBatches";
+import { useProductStock } from "../hooks/useProductStock";
+import {
+  EMPTY_FILTERS,
+  useStockCard,
+  type StockCardFilters as Filters,
+} from "../hooks/useStockCard";
+import { useStockCardLookups } from "../hooks/useStockCardLookups";
+import { useStockCardSummary } from "../hooks/useStockCardSummary";
+import { BatchLotTable } from "./BatchLotTable";
+import { StockCardFilters } from "./StockCardFilters";
+import { StockLedgerTable } from "./StockLedgerTable";
 import { WarehouseProductPicker } from "./WarehouseProductPicker";
 
 type Tab = "ledger" | "batches";
@@ -27,153 +36,332 @@ type Tab = "ledger" | "batches";
  *
  * TWO VIEWS OF ONE TRUTH, which is why they share a screen rather than sitting
  * on separate pages. The ledger says what happened; the lots say what is on the
- * shelf right now. Both are derived from the same movements — the lot balances
- * are a cache the ledger can rebuild — so a discrepancy between the two tabs is
- * itself the useful signal, and putting them a click apart is what lets anyone
- * notice one.
+ * shelf right now. Both are ultimately derived from the same movements, so a
+ * discrepancy between the two tabs is itself the useful signal, and putting them
+ * a click apart is what lets anyone notice one.
  *
- * The running balance is computed from the OLDEST row forward and then shown
- * newest-first. That ordering is deliberate: a stock card is read top-down to
- * answer "how did we get to this number", so the newest row has to carry the
- * current balance, not the first movement ever recorded.
+ * FIVE ENDPOINTS, ONE SCREEN, and they are not interchangeable:
+ *
+ *   products + warehouses  — the pickers (useStockCardLookups), once on mount
+ *   products/:id           — the position tiles: on-hand, HPP, stock value
+ *   stock-movements        — the ledger, one page at a time
+ *   .../summary            — the period tiles: what moved in the filtered range
+ *   product-batches        — the lot tab
+ *
+ * ONE REFRESH KEY DRIVES THE LAST FOUR TOGETHER. A user who hits "muat ulang"
+ * because a number looks wrong must not get a fresh ledger beside stale tiles.
+ *
+ * TWO KINDS OF NUMBER SIT IN THE SAME TILE ROW, and the labels have to earn
+ * their keep: the first two describe the POSITION right now, the last two
+ * describe the PERIOD the filters select. Mixing them silently would let a user
+ * read "keluar 40" as a current shortage.
+ *
+ * EVERY SECTION FAILS SEPARATELY AND SAYS SO. `stockMovements:read`,
+ * `products:read`, `warehouses:read` and `productBatches:read` are four distinct
+ * grants, and a role can hold some of them. A missing grant produces a named
+ * error where its data would be, never an empty table that reads as "no stock
+ * movements ever happened here".
  */
-/** One ledger row plus the balance it left behind. */
-interface LedgerRow {
-  movement: StockMovement;
-  balance: string;
-}
-
 export function StockCardScreen() {
-  const {
-    products,
-    warehouses,
-    movements: allMovements,
-    batches: allBatches,
-  } = useInventoryDemo();
+  const lookups = useStockCardLookups();
+  const { can } = usePermissions();
+  const mayReadBatches = can("productBatches", "read");
 
-  const [warehouseId, setWarehouseId] = useState(warehouses[0]._id);
-  const [productId, setProductId] = useState(demo.firstStockProduct(products)!._id);
+  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  const [page, setPage] = useState(1);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [tab, setTab] = useState<Tab>("ledger");
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
-  const product = products.find((p) => p._id === productId)!;
+  // The first warehouse and product become the default view once the lists
+  // arrive. Not a fetch, so no cleanup: it runs once, when an empty selection
+  // can be filled.
+  useEffect(() => {
+    if (filters.warehouseId || lookups.warehouses.length === 0) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setFilters((prev) => ({
+      ...prev,
+      warehouseId: lookups.warehouses[0]._id,
+      productId: prev.productId || (lookups.products[0]?._id ?? ""),
+    }));
+  }, [lookups.warehouses, lookups.products, filters.warehouseId]);
 
-  /**
-   * The ledger with a running balance.
-   *
-   * Accumulated with `reduce` rather than a `let` the map closes over: a
-   * mutable variable declared in a component body is reassigned across renders,
-   * which React's rules forbid for good reason — a re-render mid-list would
-   * continue from the previous total. The reduce carries the running sum in its
-   * accumulator, so the calculation cannot survive its own render.
-   *
-   * Oldest-first to accumulate, then reversed for display: a stock card is read
-   * top-down to answer "how did we get to this number", so the newest row has to
-   * carry the current balance.
-   */
-  const rows = useMemo(() => {
-    const oldestFirst = allMovements
-      .filter((m) => m.productId === productId && m.warehouseId === warehouseId)
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const {
+    product,
+    qtyOnHand,
+    loading: stockLoading,
+    error: stockError,
+  } = useProductStock(filters.productId, filters.warehouseId, refreshKey);
 
-    return oldestFirst
-      .reduce<{ running: bigint; out: LedgerRow[] }>(
-        (acc, movement) => {
-          const running = acc.running + (toMinor(movement.qty) ?? 0n);
-          acc.out.push({ movement, balance: toDecimalString(running) });
-          return { running, out: acc.out };
-        },
-        { running: 0n, out: [] },
-      )
-      .out.reverse();
-  }, [allMovements, productId, warehouseId]);
+  const ledger = useStockCard(filters, page, refreshKey);
+  const period = useStockCardSummary(filters, refreshKey);
 
-  const batches = useMemo(
-    () =>
-      allBatches
-        .filter((b) => b.productId === productId && b.warehouseId === warehouseId)
-        .sort((a, b) => (a.expiryDate ?? "").localeCompare(b.expiryDate ?? "")),
-    [allBatches, productId, warehouseId],
+  const batches = useProductBatches(
+    mayReadBatches ? filters.productId : "",
+    mayReadBatches ? filters.warehouseId : "",
+    refreshKey,
   );
 
-  const onHand = demo.qtyOnHand(productId, warehouseId);
-  const stockValue = product.hppAvg
-    ? multiplyDecimals(onHand, product.hppAvg)
-    : null;
-  const low = (toMinor(onHand) ?? 0n) <= BigInt(product.minStock) * 10_000n;
+  /** Any filter change is a new question, so it starts at page 1. */
+  const patchFilters = useCallback((patch: Partial<Filters>) => {
+    setFilters((prev) => ({ ...prev, ...patch }));
+    setPage(1);
+  }, []);
+
+  const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
+
+  /**
+   * Saves the CSV the API streams.
+   *
+   * The blob is fetched rather than linked to, so a 403 arrives as an error the
+   * screen can show. An anchor pointing at the endpoint would be shorter and
+   * would silently save a file containing an error envelope.
+   */
+  const exportCsv = useCallback(async () => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const { blob, filename } = await stockMovementService.export({
+        productId: filters.productId,
+        warehouseId: filters.warehouseId,
+        movementType: filters.movementType || undefined,
+        from: filters.from ? `${filters.from}T00:00:00.000Z` : undefined,
+        to: filters.to ? `${filters.to}T23:59:59.999Z` : undefined,
+      });
+
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      anchor.click();
+      // Revoked immediately: the click has already handed the blob to the
+      // browser's download manager, and an object URL left behind pins the whole
+      // file in memory for the life of the tab.
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setExportError(
+        err instanceof ApiError ? err.message : "Export gagal. Coba lagi.",
+      );
+    } finally {
+      setExporting(false);
+    }
+  }, [filters]);
+
+  const stockValue =
+    qtyOnHand && product?.hppAvg
+      ? multiplyDecimals(qtyOnHand, product.hppAvg)
+      : null;
+  const low =
+    qtyOnHand !== null &&
+    product !== null &&
+    (toMinor(qtyOnHand) ?? 0n) <= BigInt(product.minStock) * 10_000n;
+
+  const filtered =
+    filters.movementType !== "" || filters.from !== "" || filters.to !== "";
+  const nothingSelected = !filters.productId || !filters.warehouseId;
+
+  if (lookups.loading) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
+        <Spinner /> Memuat daftar produk dan gudang…
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
+      {lookups.error && <Alert variant="error">{lookups.error}</Alert>}
+
+      {lookups.truncated && (
+        <Alert variant="info">
+          Daftar produk dipotong karena katalog terlalu besar. Produk yang tidak
+          muncul di pemilih belum bisa dibuka kartu stoknya.
+        </Alert>
+      )}
+
       <Card title="Pilih barang">
-        <WarehouseProductPicker
-          warehouses={warehouses}
-          products={products}
-          warehouseId={warehouseId}
-          productId={productId}
-          onWarehouseChange={setWarehouseId}
-          onProductChange={setProductId}
-        />
+        <div className="flex flex-col gap-4">
+          <WarehouseProductPicker
+            warehouses={lookups.warehouses}
+            products={lookups.products}
+            warehouseId={filters.warehouseId}
+            productId={filters.productId}
+            onWarehouseChange={(warehouseId) => patchFilters({ warehouseId })}
+            onProductChange={(productId) => patchFilters({ productId })}
+            includeInactiveWarehouses
+            productPlaceholder="Pilih produk"
+          />
+
+          <StockCardFilters
+            filters={filters}
+            disabled={nothingSelected}
+            refreshing={ledger.loading || stockLoading}
+            exporting={exporting}
+            onChange={patchFilters}
+            onRefresh={refresh}
+            onExport={exportCsv}
+          />
+        </div>
       </Card>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat
-          label="Stok di gudang ini"
-          value={`${formatQty(onHand)} ${product.unit}`}
-          tone={low ? "danger" : "default"}
-          note={low ? `di bawah minimum (${product.minStock})` : `minimum ${product.minStock}`}
-        />
-        <Stat
-          label="HPP rata-rata"
-          value={product.hppAvg ? formatMoney(product.hppAvg) : "—"}
-          note={product.hppAvg ? "per unit" : "belum ada penerimaan bernilai"}
-        />
-        <Stat
-          label="Nilai persediaan"
-          value={stockValue ? formatMoney(stockValue) : "—"}
-          note="stok × HPP"
-        />
-        <Stat
-          label="Lot aktif"
-          value={String(
-            batches.filter((b) => (toMinor(b.qtyRemaining) ?? 0n) > 0n).length,
-          )}
-          note={product.hasExpiry ? "melacak kedaluwarsa" : "tidak melacak batch"}
-        />
-      </div>
+      {nothingSelected ? (
+        <div className="rounded-xl border border-dashed border-border bg-surface py-16 text-center">
+          <p className="font-medium text-foreground">
+            Pilih gudang dan produk dulu
+          </p>
+          <p className="mx-auto mt-1 max-w-md text-sm text-muted">
+            Kartu stok selalu dibaca untuk satu produk di satu gudang — itulah
+            yang membuat saldonya bisa dicocokkan.
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* Separate from the ledger's own error: a role may hold
+              stockMovements:read without products:read, and the ledger still
+              renders — with the position tiles missing, which this says out loud
+              rather than showing as empty cells. */}
+          {stockError && <Alert variant="error">{stockError}</Alert>}
+          {exportError && <Alert variant="error">{exportError}</Alert>}
 
-      <div>
-        <div className="flex gap-1 border-b border-border">
-          {(
-            [
-              ["ledger", `Kartu stok (${rows.length})`],
-              ["batches", `Batch / FEFO (${batches.length})`],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setTab(value)}
-              className={cn(
-                "-mb-px border-b-2 px-4 py-2.5 text-sm font-medium transition",
-                tab === value
-                  ? "border-primary text-primary-hover"
-                  : "border-transparent text-muted hover:text-foreground",
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Stat
+              label="Stok di gudang ini"
+              value={
+                qtyOnHand === null
+                  ? "—"
+                  : `${formatQty(qtyOnHand)} ${product?.unit ?? ""}`.trim()
+              }
+              tone={low ? "danger" : "default"}
+              note={
+                product
+                  ? low
+                    ? `di bawah minimum (${product.minStock})`
+                    : `minimum ${product.minStock}`
+                  : undefined
+              }
+            />
+            <Stat
+              label="Nilai persediaan"
+              value={stockValue ? formatMoney(stockValue) : "—"}
+              note={
+                product?.hppAvg
+                  ? `HPP ${formatMoney(product.hppAvg)} / ${product.unit}`
+                  : "belum ada penerimaan bernilai"
+              }
+            />
+            <Stat
+              label="Masuk periode ini"
+              value={
+                period.summary
+                  ? `+${formatQty(period.summary.totalIn)}`
+                  : period.loading
+                    ? "…"
+                    : "—"
+              }
+              tone="success"
+              note={periodNote(filtered)}
+            />
+            <Stat
+              label="Keluar periode ini"
+              value={
+                period.summary
+                  ? // The API returns this negative, as the ledger stores it.
+                    // Shown as a magnitude under a label that already says
+                    // "keluar" — two negatives in one tile read as a double
+                    // negative, not as emphasis.
+                    `−${formatQty(absDecimal(period.summary.totalOut))}`
+                  : period.loading
+                    ? "…"
+                    : "—"
+              }
+              tone="danger"
+              note={
+                period.summary
+                  ? `${period.summary.movementCount} pergerakan, nett ${formatQty(period.summary.net)}`
+                  : periodNote(filtered)
+              }
+            />
+          </div>
+
+          {period.error && <Alert variant="error">{period.error}</Alert>}
+
+          <div>
+            <div className="flex gap-1 border-b border-border">
+              {(
+                [
+                  ["ledger", `Kartu stok (${ledger.pagination.total})`],
+                  ...(mayReadBatches
+                    ? ([["batches", `Batch / FEFO (${batches.total})`]] as const)
+                    : []),
+                ] as ReadonlyArray<readonly [Tab, string]>
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setTab(value)}
+                  className={cn(
+                    "-mb-px border-b-2 px-4 py-2.5 text-sm font-medium transition",
+                    tab === value
+                      ? "border-primary text-primary-hover"
+                      : "border-transparent text-muted hover:text-foreground",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex flex-col gap-4 pt-4">
+              {tab === "ledger" ? (
+                <>
+                  {ledger.error && <Alert variant="error">{ledger.error}</Alert>}
+                  {ledger.loading ? (
+                    <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
+                      <Spinner /> Memuat kartu stok…
+                    </div>
+                  ) : (
+                    <StockLedgerTable
+                      movements={ledger.movements}
+                      unit={product?.unit ?? ""}
+                      openingBalance={ledger.openingBalance}
+                      page={ledger.pagination.page}
+                      totalPages={ledger.pagination.totalPages}
+                      total={ledger.pagination.total}
+                      filtered={filtered}
+                      onPageChange={setPage}
+                    />
+                  )}
+                </>
+              ) : (
+                <>
+                  {batches.error && (
+                    <Alert variant="error">{batches.error}</Alert>
+                  )}
+                  {batches.loading ? (
+                    <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
+                      <Spinner /> Memuat batch…
+                    </div>
+                  ) : (
+                    <BatchLotTable
+                      batches={batches.batches}
+                      total={batches.total}
+                      hasExpiry={product?.hasExpiry ?? false}
+                    />
+                  )}
+                </>
               )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        <div className="pt-4">
-          {tab === "ledger" ? (
-            <LedgerTable rows={rows} unit={product.unit} />
-          ) : (
-            <BatchTable batches={batches} hasExpiry={product.hasExpiry} />
-          )}
-        </div>
-      </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
+}
+
+/** Says which period the tile is talking about — the filters decide it. */
+function periodNote(filtered: boolean): string {
+  return filtered ? "sesuai filter" : "sepanjang riwayat";
 }
 
 function Stat({
@@ -185,7 +373,7 @@ function Stat({
   label: string;
   value: string;
   note?: string;
-  tone?: "default" | "danger";
+  tone?: "default" | "danger" | "success";
 }) {
   return (
     <div
@@ -201,213 +389,12 @@ function Stat({
         className={cn(
           "mt-1.5 font-mono text-xl font-semibold tabular-nums",
           tone === "danger" && "text-danger",
+          tone === "success" && "text-success",
         )}
       >
         {value}
       </p>
       {note && <p className="mt-0.5 text-xs text-muted">{note}</p>}
     </div>
-  );
-}
-
-function LedgerTable({
-  rows,
-  unit,
-}: {
-  rows: LedgerRow[];
-  unit: string;
-}) {
-  if (rows.length === 0) {
-    return (
-      <div className="rounded-xl border border-border bg-surface py-16 text-center">
-        <p className="font-medium text-foreground">Belum ada pergerakan</p>
-        <p className="mt-1 text-sm text-muted">
-          Kartu stok terisi setelah ada penerimaan, penjualan, penyesuaian, atau
-          transfer di gudang ini.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border text-[10px] uppercase tracking-widest text-muted">
-            <th className="px-4 py-2.5 text-left font-medium">Waktu</th>
-            <th className="px-4 py-2.5 text-left font-medium">Tipe</th>
-            <th className="px-4 py-2.5 text-left font-medium">Lot</th>
-            <th className="px-4 py-2.5 text-right font-medium">Masuk / keluar</th>
-            <th className="px-4 py-2.5 text-right font-medium">Saldo</th>
-            <th className="px-4 py-2.5 text-right font-medium">HPP saat itu</th>
-            <th className="px-4 py-2.5 text-left font-medium">Referensi</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(({ movement, balance }) => {
-            const positive = (toMinor(movement.qty) ?? 0n) > 0n;
-            return (
-              <tr key={movement._id} className="border-b border-border/60 last:border-0">
-                <td className="whitespace-nowrap px-4 py-2.5 font-mono text-xs text-muted">
-                  {new Date(movement.createdAt).toLocaleString("id-ID", {
-                    day: "2-digit",
-                    month: "short",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </td>
-                <td className="px-4 py-2.5">
-                  <MovementBadge type={movement.movementType} />
-                </td>
-                <td className="px-4 py-2.5 font-mono text-xs text-muted">
-                  {movement.batchId ? movement.batchId.replace("bt_", "") : "—"}
-                </td>
-                <td
-                  className={cn(
-                    "px-4 py-2.5 text-right font-mono text-sm font-semibold tabular-nums",
-                    positive ? "text-success" : "text-danger",
-                  )}
-                >
-                  {positive ? "+" : ""}
-                  {formatQty(movement.qty)}
-                </td>
-                <td className="px-4 py-2.5 text-right font-mono text-sm tabular-nums">
-                  {formatQty(balance)} <span className="text-xs text-muted">{unit}</span>
-                </td>
-                <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums text-muted">
-                  {movement.hppAtTime ? formatMoney(movement.hppAtTime) : "—"}
-                </td>
-                <td className="px-4 py-2.5 font-mono text-xs text-muted">
-                  {movement.reference.type}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-
-      <p className="border-t border-border px-4 py-2.5 text-xs text-muted">
-        Log ini <b>tidak bisa diubah</b>. Koreksi dilakukan dengan menambah baris
-        baru, bukan mengedit yang lama — sehingga saldo di atas selalu bisa
-        dihitung ulang dari nol dan dicocokkan.
-      </p>
-    </div>
-  );
-}
-
-function BatchTable({
-  batches,
-  hasExpiry,
-}: {
-  batches: ProductBatch[];
-  hasExpiry: boolean;
-}) {
-  if (batches.length === 0) {
-    return (
-      <div className="rounded-xl border border-border bg-surface py-16 text-center">
-        <p className="font-medium text-foreground">Produk ini tidak melacak lot</p>
-        <p className="mt-1 text-sm text-muted">
-          {hasExpiry
-            ? "Lot dibuat otomatis saat barang diterima."
-            : "Lot hanya dibuat untuk barang yang punya masa kedaluwarsa atau datang sebagai konsinyasi."}
-        </p>
-      </div>
-    );
-  }
-
-  // Live lots first, in FEFO order; exhausted ones drop to the bottom as history.
-  const live = batches.filter((b) => (toMinor(b.qtyRemaining) ?? 0n) > 0n);
-  const spent = batches.filter((b) => (toMinor(b.qtyRemaining) ?? 0n) <= 0n);
-
-  return (
-    <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border text-[10px] uppercase tracking-widest text-muted">
-            <th className="px-4 py-2.5 text-left font-medium">Urutan FEFO</th>
-            <th className="px-4 py-2.5 text-left font-medium">Kode batch</th>
-            <th className="px-4 py-2.5 text-left font-medium">Kedaluwarsa</th>
-            <th className="px-4 py-2.5 text-right font-medium">Sisa / awal</th>
-            <th className="px-4 py-2.5 text-right font-medium">Harga beli lot</th>
-            <th className="px-4 py-2.5 text-right font-medium">Nilai sisa</th>
-          </tr>
-        </thead>
-        <tbody>
-          {live.map((batch, index) => (
-            <BatchRow key={batch._id} batch={batch} order={index + 1} />
-          ))}
-          {spent.map((batch) => (
-            <BatchRow key={batch._id} batch={batch} order={null} />
-          ))}
-        </tbody>
-      </table>
-
-      <p className="border-t border-border px-4 py-2.5 text-xs text-muted">
-        Urutan di kolom pertama adalah urutan pengambilan: <b>yang paling dekat
-        kedaluwarsa keluar duluan</b>. Lot yang sudah habis tetap ditampilkan di
-        bawah sebagai riwayat — kuantitas tidak pernah dihapus, hanya menjadi nol.
-      </p>
-    </div>
-  );
-}
-
-function BatchRow({
-  batch,
-  order,
-}: {
-  batch: ProductBatch;
-  order: number | null;
-}) {
-  const remaining = toMinor(batch.qtyRemaining) ?? 0n;
-  const negative = remaining < 0n;
-  const spent = remaining <= 0n;
-
-  return (
-    <tr className={cn("border-b border-border/60 last:border-0", spent && "opacity-55")}>
-      <td className="px-4 py-2.5">
-        {order ? (
-          <span className="flex size-6 items-center justify-center rounded-full bg-primary/12 font-mono text-xs font-semibold text-primary-hover">
-            {order}
-          </span>
-        ) : (
-          <span className="text-xs text-muted">habis</span>
-        )}
-      </td>
-      <td className="px-4 py-2.5">
-        <span className="font-mono text-xs">{batch.batchCode}</span>
-        {batch.isConsignment && (
-          <Badge
-            variant="outline"
-            className="ml-2 border-transparent bg-secondary/25 text-secondary-foreground"
-          >
-            konsinyasi
-          </Badge>
-        )}
-      </td>
-      <td className="px-4 py-2.5">
-        {batch.expiryDate ? (
-          <ExpiryBadge date={batch.expiryDate} />
-        ) : (
-          <span className="text-xs text-muted">tanpa expiry</span>
-        )}
-      </td>
-      <td
-        className={cn(
-          "px-4 py-2.5 text-right font-mono text-sm tabular-nums",
-          negative && "font-semibold text-danger",
-        )}
-      >
-        {formatQty(batch.qtyRemaining)}
-        <span className="text-xs text-muted"> / {formatQty(batch.initialQty)}</span>
-      </td>
-      <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums text-muted">
-        {formatMoney(batch.costPerUnit)}
-      </td>
-      <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums">
-        {spent
-          ? "—"
-          : formatMoney(multiplyDecimals(batch.qtyRemaining, batch.costPerUnit))}
-      </td>
-    </tr>
   );
 }

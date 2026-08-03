@@ -71,6 +71,76 @@ export interface StockMovement {
   createdAt: string;
   updatedAt: string;
   /** No `deletedAt`: the ledger is append-only. Corrections are new rows. */
+
+  /* ------------------------------------------- computed by the API, not stored */
+
+  /**
+   * The stock level this movement left behind — a decimal string.
+   *
+   * Summed over the WHOLE ledger of the product/warehouse pair, INCLUDING the
+   * rows the request's filters hide. That is why it comes from the server: a
+   * card filtered to "only sales" still has to show the true stock level after
+   * each sale, and a client can only sum the rows it was sent.
+   *
+   * NULL unless the request named both `productId` and `warehouseId`. Summed
+   * across products a balance adds sacks of feed to bottles of shampoo, so the
+   * API answers "does not apply" rather than guessing.
+   */
+  balanceAfter: string | null;
+
+  /* -------------------------------------------------- labels for the bare ids */
+  /* Each may be null where the id is not: a label is for display and its row may
+     have been deleted, an id is the thing to link to. */
+
+  batchCode: string | null;
+  batchExpiryDate: string | null;
+  createdByName: string | null;
+  warehouseName: string | null;
+  destinationWarehouseName: string | null;
+  /**
+   * NOT A FIELD YET. `reference.type` names the KIND of document; naming the
+   * document needs `goodsreceipts`, `postransactions` and `stockopnames` to
+   * exist, and they do not. It arrives with those modules — until then the
+   * ledger shows a document type where a user wants a number.
+   */
+}
+
+/**
+ * GET /api/stock-movements — a page of the ledger, plus where it starts from.
+ *
+ * `openingBalance` is the balance immediately BEFORE the page's oldest row, so
+ * a reader can check the page's own arithmetic: opening, plus every row's `qty`,
+ * equals the newest row's `balanceAfter`.
+ *
+ * Null when the balance is unanswerable (a list spanning products) and on an
+ * empty page — "before nothing" is not zero, and a zero would read as "the
+ * warehouse was empty".
+ */
+export interface StockMovementPage {
+  items: StockMovement[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+  openingBalance: string | null;
+}
+
+/**
+ * GET /api/stock-movements/summary — totals for everything matching the filters,
+ * not for the page.
+ *
+ * `totalOut` is NEGATIVE, as the ledger stores it: the sign is the direction
+ * everywhere in this module, and flipping it for display would make
+ * `totalIn + totalOut === net` false — the one arithmetic a reader checks.
+ */
+export interface StockMovementSummary {
+  /** Decimal strings. */
+  totalIn: string;
+  totalOut: string;
+  net: string;
+  movementCount: number;
 }
 
 /** One lot of one product at one warehouse. */
@@ -301,6 +371,18 @@ export interface ProductListQuery {
   isActive?: boolean;
   /** Top-level rows only; a matched variant surfaces its parent. */
   excludeVariants?: boolean;
+  /**
+   * Only the types that HOLD stock (`standalone` and `variant`), or only the
+   * types that do not.
+   *
+   * The server owns that list — it is the same one a movement is refused
+   * against — so a picker asks for it rather than assembling it from
+   * `productType`, which takes a single value and would need two requests.
+   *
+   * MUTUALLY EXCLUSIVE with `productType` (the same question twice) and with
+   * `excludeVariants` (the opposite one); the API returns 400 for either pair.
+   */
+  holdsStock?: boolean;
   includeDeleted?: boolean;
 }
 
@@ -484,4 +566,78 @@ export interface Opname {
   submittedBy: string | null;
   submittedAt: string | null;
   notes: string;
+}
+
+/* -------------------------------------------------- ledger & lot requests */
+
+/**
+ * GET /api/stock-movements.
+ *
+ * With `productId` + `warehouseId` this IS the stock card — the backend has no
+ * separate route, because a stock card is these rows in this order.
+ *
+ * `limit` is capped at 100 by the API, and there is NO running balance on a
+ * row. Both facts drive useStockCard's design; see PawCRM-Backend
+ * docs/stock-card-gaps.md for what would remove the constraint.
+ *
+ * `from` / `to` bound `createdAt`, which is the only date a movement has:
+ * insert order is calculation order for the weighted average, so nothing can be
+ * backdated and there is nothing else to filter on.
+ */
+export interface StockMovementListQuery {
+  page?: number;
+  limit?: number;
+  productId?: string;
+  warehouseId?: string;
+  batchId?: string;
+  movementType?: MovementType;
+  referenceType?: ReferenceType;
+  referenceId?: string;
+  /** ISO date string. */
+  from?: string;
+  /** ISO date string. The backend refuses a `to` that precedes `from`. */
+  to?: string;
+}
+
+/**
+ * GET /api/product-batches.
+ *
+ * `hasRemaining` is TRI-STATE: left unset the API returns exhausted lots too,
+ * which is what an audit of a sold-out lot needs. The lot tab leaves it unset
+ * deliberately and sorts the spent rows to the bottom itself.
+ */
+export interface ProductBatchListQuery {
+  page?: number;
+  limit?: number;
+  productId?: string;
+  warehouseId?: string;
+  hasRemaining?: boolean;
+}
+
+/** GET /api/product-batches/expiring. */
+export interface ExpiringBatchListQuery {
+  page?: number;
+  limit?: number;
+  warehouseId?: string;
+  /** 0–365, default 30. Zero means "expired or expiring today". */
+  withinDays?: number;
+}
+
+/**
+ * GET /api/product-batches/expiring — a page, plus the question it answered.
+ *
+ * `withinDays` and `before` are echoed back so a client rendering "kedaluwarsa
+ * dalam 30 hari" does not have to remember what it asked for.
+ */
+export interface ExpiringBatchesResult {
+  items: ProductBatch[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+  withinDays: number;
+  /** ISO date — the computed cutoff. */
+  before: string;
 }

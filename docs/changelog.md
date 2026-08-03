@@ -7,6 +7,139 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Kartu stok, rewired
+
+Branch: `feature/inventory-purchasing`. Follows the entry below, which shipped the
+screen against an API that returned neither a balance nor a label.
+
+`PawCRM-Backend` 0.20.0 closed five of the six gaps that entry lists, and this
+pass **deletes the workarounds** rather than keeping them beside the new fields.
+Net effect on the user: the balance column survives every filter, the ledger
+pages like every other list, there is a "diinput oleh" column, period totals, and
+an export button. Net effect on the code: less of it.
+
+### Added
+
+- **Period tiles** — `useStockCardSummary` + `GET /stock-movements/summary`.
+  Total masuk, keluar, nett and movement count for the filtered range. Omitted
+  before, because summing the loaded page reports the page and grows as the user
+  pages. Deliberately not keyed on the page number: the totals do not change when
+  you page
+- **Export CSV** — a button beside the filters it obeys, plus
+  `stockMovementService.export` and a new `apiClient.download`. The blob is
+  fetched and saved rather than linked to: an anchor pointing at the endpoint
+  would turn a 403 into a downloaded file containing `{"success":false}`.
+  `download` shares credentials, timeout and error translation with every other
+  call — only the `{ success, data }` unwrapping is skipped, because it would
+  throw on the first byte of CSV
+- **"Diinput oleh" column**, and `batchCode` read straight off the row. `null`
+  renders as "sistem" — the API's answer for a movement a background process
+  posted
+- **`openingBalance` in the ledger's footer** — the balance before the page's
+  oldest row, so a reader can check the page's own arithmetic
+- `types/inventory.ts` — `StockMovement` gains the six fields the API computes
+  (`balanceAfter` and the five labels); new `StockMovementPage`,
+  `StockMovementSummary`; `ProductListQuery.holdsStock`
+
+### Changed
+
+- **The ledger pages by jumping again.** `Pagination` replaces "Muat lebih
+  banyak", and `useStockCard` returns one page instead of accumulating. The
+  append-only feed existed because the balance was reconstructed by walking
+  backwards from the newest row, which a page-jump would have invalidated —
+  every balance on screen wrong by the sum of the pages it skipped
+- **No filter costs the balance column any more.** The paragraph in
+  `StockCardFilters` explaining that a type or end-date filter disabled it is
+  gone, not reworded: the server sums the rows it hides too
+- **The product picker issues one request** (`holdsStock=true`) instead of two
+  merged by type, and no longer carries a copy of the server's
+  `STOCK_TRACKING_TYPES`
+- **`utils/ledger.ts` is down to `partitionBatches` and `qtyAtWarehouse`.**
+  `withRunningBalance` and `canAnchorBalance` are deleted; the file's header now
+  records why they existed, so nobody rebuilds them
+- `useProductStock` is still fetched, but for the position tiles only — it is no
+  longer the balance anchor, so a stale reading no longer moves every number in
+  the table
+- Tests: `stockLedger.test.ts` drops its balance arithmetic (10 → 4);
+  `StockCardScreen.test.tsx` rewritten around the rendered-not-derived seams
+  (8 → 14); `stockLedger.service.test.ts` covers `summary` and `export` (8 → 10)
+
+### Still missing
+
+- **`referenceNo`.** The Referensi column names a document *kind*, not a
+  document, because `goodsreceipts`, `postransactions` and `stockopnames` are not
+  collections yet. It lands with those modules
+
+---
+
+## [Unreleased] — Kartu stok
+
+Branch: `feature/inventory-purchasing`.
+
+Inventory → Kartu Stok moves off the prototype store and onto the real
+`/api/stock-movements` and `/api/product-batches`. Frontend only — **no backend
+change**. See `docs/features/stock-card.md`, and
+`PawCRM-Backend/docs/stock-card-gaps.md` for what the API still owes this screen.
+
+### Added
+
+- `services/stockMovement.service.ts` (`list`, `getById`) and
+  `services/productBatch.service.ts` (`list`, `expiring`, `getById`) — both
+  **read-only**, mirroring APIs that have no write surface. The ledger is
+  append-only; a batch is born from a movement
+- `features/inventory/utils/ledger.ts` — `withRunningBalance`,
+  `canAnchorBalance`, `partitionBatches`, `qtyAtWarehouse`. The balance the API
+  does not return, derived by anchoring backwards from `qtyOnHand` on BigInt
+  minor units
+- Hooks `useStockCardLookups`, `useProductStock`, `useStockCard`,
+  `useProductBatches` — one `refreshKey` drives the last three together, so a
+  refresh can never measure a fresh ledger against a stale anchor
+- `components/StockCardFilters.tsx` (movement type, date range, reset, refresh),
+  `StockLedgerTable.tsx`, `BatchLotTable.tsx`
+- `types/inventory.ts` — `StockMovementListQuery`, `ProductBatchListQuery`,
+  `ExpiringBatchListQuery`, `ExpiringBatchesResult`
+- Tests: `stockLedger.test.ts` (10), `stockLedger.service.test.ts` (8),
+  `StockCardScreen.test.tsx` (8)
+
+### Changed
+
+- **`StockCardScreen`** rewritten as a container over the four hooks: per-section
+  loading, per-section errors, an empty state, and stat tiles that read `—`
+  rather than guessing when `products:read` is missing
+- **The ledger appends, and no longer offers a pager.** The running balance is
+  anchored to the current on-hand quantity, which is only valid while the loaded
+  rows run contiguously from the newest one — a page-jump would leave every
+  balance on screen wrong by the sum of the pages it skipped
+- **A movement-type filter or an end date blanks the balance column**, on purpose
+  and with the reason stated on the filter itself: both hide rows newer than the
+  ones displayed, which breaks the anchor
+- **`WarehouseProductPicker`** gains opt-in `includeInactiveWarehouses` and a
+  `productPlaceholder`. Only a read-only screen passes the first — the stock card
+  does, because a deactivated warehouse still owns its whole history
+- `/dashboard/inventory/stock-card` now sits behind
+  `RequirePermission feature="stockMovements"`; the batch tab carries its own
+  `productBatches:read` check and is not requested without it
+- `InventoryScreens.test.tsx` drops its three StockCardScreen cases — that screen
+  no longer reads the demo store, so it needs mocked services and an auth context
+
+### Known limitations
+
+Each traced to a backend gap rather than a frontend decision — see
+`PawCRM-Backend/docs/stock-card-gaps.md`:
+
+- no "siapa yang input" column, and the reference shows a document **type**
+  rather than a number (gap 2)
+- no period totals and no CSV/PDF export (gaps 3 and 4)
+- the product picker issues two requests and caps at 500 rows per type, warning
+  when a catalogue exceeds it (gap 5)
+
+> **All of these are gone** — `PawCRM-Backend` 0.20.0 closed the gaps and the
+> entry above rewired the screen. `referenceNo` is the one that remains. This
+> entry is kept as the record of what the screen looked like when the API
+> returned neither a balance nor a label.
+
+---
+
 ## [Unreleased] — Warehouse management
 
 Branch: `feature/inventory-purchasing`.

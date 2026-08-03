@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { Breadcrumb } from "@/components";
 import { StockCardScreen } from "@/features/inventory";
+import { RequirePermission } from "@/features/permissions";
 
 export const metadata: Metadata = { title: "Kartu stok · PawShip" };
 
@@ -24,7 +25,12 @@ export default function StockCardPage() {
         </p>
       </div>
 
-      <StockCardScreen />
+      {/* The nav already hides this link from a role without the grant; this
+          covers direct URL entry. The batch tab carries its own check — the two
+          halves of the screen are two permissions. */}
+      <RequirePermission feature="stockMovements">
+        <StockCardScreen />
+      </RequirePermission>
     </div>
   );
 }

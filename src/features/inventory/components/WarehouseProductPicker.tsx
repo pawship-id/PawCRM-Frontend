@@ -26,6 +26,12 @@ import type { Product, StockWarehouse } from "@/types/inventory";
  *                abstraction over its variants and a `bundle` consumes its
  *                components; the API refuses a movement against either, so
  *                listing them would be an invitation to a 400.
+ *
+ * `includeInactiveWarehouses` lifts the first filter, and only a READ-ONLY
+ * screen may pass it. The stock card does: a deactivated warehouse still owns
+ * everything it ever held, and a history nobody can open is an audit hole. The
+ * forms leave it off, because for them an inactive warehouse is a rejection
+ * waiting to happen.
  */
 export function WarehouseProductPicker({
   warehouses,
@@ -35,6 +41,8 @@ export function WarehouseProductPicker({
   onWarehouseChange,
   onProductChange,
   warehouseLabel = "Gudang",
+  includeInactiveWarehouses = false,
+  productPlaceholder,
 }: {
   warehouses: StockWarehouse[];
   products: Product[];
@@ -43,6 +51,9 @@ export function WarehouseProductPicker({
   onWarehouseChange: (id: string) => void;
   onProductChange: (id: string) => void;
   warehouseLabel?: string;
+  includeInactiveWarehouses?: boolean;
+  /** Shown before anything is chosen — a read screen may open with no selection. */
+  productPlaceholder?: string;
 }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
@@ -50,14 +61,17 @@ export function WarehouseProductPicker({
         <Label htmlFor="warehouse">{warehouseLabel}</Label>
         <Select value={warehouseId} onValueChange={onWarehouseChange}>
           <SelectTrigger id="warehouse" aria-label={warehouseLabel}>
-            <SelectValue />
+            <SelectValue placeholder="Pilih gudang" />
           </SelectTrigger>
           <SelectContent>
             {warehouses
-              .filter((warehouse) => warehouse.isActive)
+              .filter(
+                (warehouse) => includeInactiveWarehouses || warehouse.isActive,
+              )
               .map((warehouse) => (
                 <SelectItem key={warehouse._id} value={warehouse._id}>
                   {warehouse.name}
+                  {!warehouse.isActive && " (nonaktif)"}
                 </SelectItem>
               ))}
           </SelectContent>
@@ -68,7 +82,7 @@ export function WarehouseProductPicker({
         <Label htmlFor="product">Produk</Label>
         <Select value={productId} onValueChange={onProductChange}>
           <SelectTrigger id="product" aria-label="Produk">
-            <SelectValue />
+            <SelectValue placeholder={productPlaceholder} />
           </SelectTrigger>
           <SelectContent>
             {products

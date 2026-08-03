@@ -551,6 +551,24 @@ function mv(
     createdBy: "u1",
     createdAt,
     updatedAt: createdAt,
+
+    /**
+     * The fields the real API computes on read, stubbed as null.
+     *
+     * This store backs the two manual-movement FORMS, which show what a posting
+     * would produce — a row that does not exist yet and therefore has no balance
+     * and no resolved labels. The stock card, which is the only screen that
+     * renders them, reads the real API. Filling them in here would mean
+     * reimplementing the server's cumulative sum to decorate a preview nobody
+     * displays.
+     */
+    balanceAfter: null,
+    batchCode: null,
+    batchExpiryDate: null,
+    createdByName: null,
+    warehouseName: null,
+    destinationWarehouseName: null,
+
     ...extra,
   };
 }
