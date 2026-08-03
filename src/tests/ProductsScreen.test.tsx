@@ -7,7 +7,7 @@ import { productService } from "@/services/product.service";
 import { categoryService } from "@/services/category.service";
 import { warehouseService } from "@/services/warehouse.service";
 import { ApiError } from "@/services/api-error";
-import type { PageResult } from "@/types/api";
+import type { PageResult, Warehouse } from "@/types/api";
 import type { Product } from "@/types/inventory";
 
 jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn() }) }));
@@ -46,6 +46,24 @@ function makeProduct(overrides: Partial<Product> = {}): Product {
   };
 }
 
+/** A full Warehouse document — the catalogue only reads a few of its fields. */
+function warehouse(id: string, name: string): Warehouse {
+  return {
+    _id: id,
+    tenantId: "t1",
+    name,
+    defaultBranchId: null,
+    address: null,
+    picName: null,
+    picPhone: null,
+    isActive: true,
+    isDefault: false,
+    deletedAt: null,
+    createdAt: "",
+    updatedAt: "",
+  };
+}
+
 function page(items: Product[]): PageResult<Product> {
   return {
     items,
@@ -70,8 +88,8 @@ function mockLookups() {
   });
   jest.spyOn(warehouseService, "list").mockResolvedValue({
     items: [
-      { _id: WAREHOUSE, name: "Gudang Pusat", isActive: true, defaultBranchId: null },
-      { _id: OTHER_WAREHOUSE, name: "Gudang Cabang", isActive: true, defaultBranchId: null },
+      warehouse(WAREHOUSE, "Gudang Pusat"),
+      warehouse(OTHER_WAREHOUSE, "Gudang Cabang"),
     ],
     pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
   });

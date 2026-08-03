@@ -11,6 +11,13 @@ import type { ValidationDetail } from "@/types/api";
 export class ApiError extends Error {
   readonly status: number;
   readonly details?: ValidationDetail[];
+  /**
+   * The backend's explanation of a refusal, when it sent one — see
+   * ApiFailure.reason. Kept separate from `message` rather than concatenated at
+   * construction, so a caller can style the two differently; `fullMessage`
+   * joins them for the common case.
+   */
+  readonly reason?: string;
   /** True when the request never reached the server (offline, DNS, CORS). */
   readonly isNetworkError: boolean;
 
@@ -19,6 +26,7 @@ export class ApiError extends Error {
     status: number,
     options: {
       details?: ValidationDetail[];
+      reason?: string;
       isNetworkError?: boolean;
     } = {},
   ) {
@@ -26,6 +34,7 @@ export class ApiError extends Error {
     this.name = "ApiError";
     this.status = status;
     this.details = options.details;
+    this.reason = options.reason;
     this.isNetworkError = options.isNetworkError ?? false;
   }
 
@@ -42,6 +51,15 @@ export class ApiError extends Error {
   /** Input was rejected — callers can map details onto form fields. */
   get isValidationError(): boolean {
     return this.status === 400 && Array.isArray(this.details);
+  }
+
+  /**
+   * The message plus the backend's reason, for the single-string slots (an
+   * Alert, a dialog's error line). Falls back to the message when no reason was
+   * sent, so every call site can use this and never has to test for one.
+   */
+  get fullMessage(): string {
+    return this.reason ? `${this.message} — ${this.reason}` : this.message;
   }
 
   /**

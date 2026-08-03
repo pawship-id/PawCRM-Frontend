@@ -144,6 +144,39 @@ describe("apiClient", () => {
       });
     });
 
+    it("carries a 409's reason alongside the message", async () => {
+      // The delete guards put the WHAT in message and the actionable WHY in
+      // reason; dropping the second leaves the user nothing to act on.
+      mockFetch(
+        {
+          success: false,
+          message: "Cannot delete warehouse",
+          reason: "Warehouse still holds stock for 3 product(s).",
+        },
+        { status: 409 },
+      );
+
+      const error = (await apiClient
+        .delete("/warehouses/w1")
+        .catch((e) => e)) as ApiError;
+
+      expect(error.reason).toBe("Warehouse still holds stock for 3 product(s).");
+      expect(error.fullMessage).toBe(
+        "Cannot delete warehouse — Warehouse still holds stock for 3 product(s).",
+      );
+    });
+
+    it("falls back to the message when no reason was sent", async () => {
+      mockFetch({ success: false, message: "Warehouse not found" }, { status: 404 });
+
+      const error = (await apiClient
+        .get("/warehouses/w1")
+        .catch((e) => e)) as ApiError;
+
+      expect(error.reason).toBeUndefined();
+      expect(error.fullMessage).toBe("Warehouse not found");
+    });
+
     it("flags a 401 as unauthorized", async () => {
       mockFetch({ success: false, message: "Unauthorized" }, { status: 401 });
 

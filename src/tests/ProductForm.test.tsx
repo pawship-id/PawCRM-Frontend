@@ -66,9 +66,17 @@ function mockLookups() {
     items: [
       {
         _id: WAREHOUSE,
+        tenantId: "t1",
         name: "Gudang Pusat",
-        isActive: true,
         defaultBranchId: null,
+        address: null,
+        picName: null,
+        picPhone: null,
+        isActive: true,
+        isDefault: false,
+        deletedAt: null,
+        createdAt: "",
+        updatedAt: "",
       },
     ],
     pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },

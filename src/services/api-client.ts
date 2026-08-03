@@ -122,8 +122,13 @@ async function request<T>(
     const message =
       payload.success === false ? payload.message : response.statusText;
     const details = payload.success === false ? payload.details : undefined;
+    // The 409 guards (delete a warehouse holding stock, restore onto a taken
+    // name) put the actionable half of the refusal here; dropping it would
+    // leave the user with "Cannot delete warehouse" and nothing to act on.
+    const reason = payload.success === false ? payload.reason : undefined;
     throw new ApiError(message || "Request failed", response.status, {
       details,
+      reason,
     });
   }
 

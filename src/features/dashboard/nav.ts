@@ -8,6 +8,7 @@ import {
   MasterDataIcon,
   UsersIcon,
   BranchIcon,
+  WarehouseIcon,
   CustomerIcon,
   RolesIcon,
   AuditLogIcon,
@@ -198,6 +199,16 @@ export const NAV_ITEMS: NavItem[] = [
         href: "/dashboard/master/branches",
         icon: BranchIcon,
         permission: { feature: "branches", action: "read" },
+      },
+      {
+        // Directly under Branch: a warehouse is its sibling, not its child —
+        // stock location vs. bookkeeping unit — and the pair is read together.
+        // Labelled in English like its Master Data siblings (User, Branch,
+        // Customer), not "Gudang" like the Indonesian Inventory group.
+        label: "Warehouse",
+        href: "/dashboard/master/warehouses",
+        icon: WarehouseIcon,
+        permission: { feature: "warehouses", action: "read" },
       },
       {
         label: "Customer",

@@ -155,6 +155,22 @@ export function BranchIcon(props: IconProps) {
   );
 }
 
+/**
+ * Warehouse — a pitched storage shed with a shutter door. Deliberately unlike
+ * BranchIcon (a multi-storey building): the two sit next to each other in Master
+ * Data and mean different things, so they must not read as the same silhouette.
+ */
+export function WarehouseIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M3 20V9.5L12 4l9 5.5V20" />
+      <path d="M2 20h20" />
+      <path d="M8.5 20v-6.5h7V20" />
+      <path d="M8.5 16.5h7" />
+    </Base>
+  );
+}
+
 /** Customer — a single person with a contact tag, for the customer directory. */
 export function CustomerIcon(props: IconProps) {
   return (

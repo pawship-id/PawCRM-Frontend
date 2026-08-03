@@ -7,6 +7,55 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Warehouse management
+
+Branch: `feature/inventory-purchasing`.
+
+Master Data → Warehouse, against the already-existing `/api/warehouses`. Frontend
+only — **no backend change**. See `docs/features/warehouse-management.md`.
+
+### Added
+
+- `features/warehouses/` — `WarehousesScreen`, `WarehousesToolbar`,
+  `WarehousesTable`, `WarehouseStatusBadge`, `WarehouseBranchSelect`,
+  `WarehouseCreateForm`, `WarehouseEditForm`; hooks `useWarehouses` (list query
+  state) and `useWarehouseBranches` (branch names + picker options)
+- Routes `/dashboard/master/warehouses`, `/new` and `/[id]`, each behind
+  `RequirePermission` (`warehouses` / `:create` / `:update`)
+- `types/api.ts` — `Warehouse`, `WarehouseListQuery`, `CreateWarehouseInput`,
+  `UpdateWarehouseInput`
+- `utils/validation.ts` — `validateWarehouseName`, `validateWarehouseAddress`,
+  `validatePicName`, `validatePicPhone`
+- `components/icons.tsx` — `WarehouseIcon`; Master Data → Warehouse nav entry
+  gated on `warehouses:read`
+- Tests: `warehouse.service.test.ts` (7), `WarehousesTable.test.tsx` (9),
+  `WarehouseCreateForm.test.tsx` (5)
+
+### Changed
+
+- **`services/warehouse.service.ts`** grows from a picker's `list` into the full
+  set (`list/getById/create/update/remove/restore`). `list` gains `page`,
+  `defaultBranchId` and `includeDeleted`, keeps its `limit: 100` default, and now
+  returns `PageResult<Warehouse>` — structurally assignable to the slim
+  `StockWarehouse`, so `useCatalogLookups` and the product screens are untouched
+- **`api-client` / `ApiError` carry the envelope's `reason`**, with a new
+  `ApiError.fullMessage` (`"message — reason"`). The warehouse delete guards put
+  the actionable half of a 409 there ("still holds stock for 3 product(s)"), and
+  it was being dropped — every feature benefits, none changes behaviour
+- A branch's **default warehouse offers no Delete** (table and danger zone): the
+  backend refuses it unconditionally, so the badge and a line of copy explain it
+  instead of a button that can only 409
+- `tests/ProductForm.test.tsx` / `tests/ProductsScreen.test.tsx` warehouse
+  fixtures are now full `Warehouse` documents
+
+### Not implemented (needs backend)
+
+Reassigning a branch's default warehouse (no `set-default` route, `isDefault` is
+server-owned), a per-warehouse stock summary, a populated `defaultBranchId`, and
+filtering for central (unassigned) warehouses only.
+
+---
+
 ## [Unreleased] — Product & Variant management
 
 Branch: `feature/inventory-purchasing`.

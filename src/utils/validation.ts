@@ -14,6 +14,10 @@ export const FULL_NAME_MAX_LENGTH = 120;
 export const RESET_TOKEN_LENGTH = 64;
 export const BRANCH_NAME_MAX_LENGTH = 120;
 export const BRANCH_ADDRESS_MAX_LENGTH = 255;
+export const WAREHOUSE_NAME_MAX_LENGTH = 120;
+export const WAREHOUSE_ADDRESS_MAX_LENGTH = 255;
+export const WAREHOUSE_PIC_NAME_MAX_LENGTH = 120;
+export const WAREHOUSE_PIC_PHONE_MAX_LENGTH = 32;
 export const CUSTOMER_NAME_MAX_LENGTH = 120;
 export const CUSTOMER_EMAIL_MAX_LENGTH = 254;
 export const CUSTOMER_PHONE_MAX_LENGTH = 32;
@@ -80,6 +84,42 @@ export function validateAddress(value: string): string | undefined {
   const address = value.trim();
   if (!address) return undefined;
   if (address.length > BRANCH_ADDRESS_MAX_LENGTH) return "Address is too long";
+  return undefined;
+}
+
+export function validateWarehouseName(value: string): string | undefined {
+  const name = value.trim();
+  if (!name) return "Warehouse name is required";
+  if (name.length > WAREHOUSE_NAME_MAX_LENGTH)
+    return "Warehouse name is too long";
+  return undefined;
+}
+
+/** The warehouse address is optional and clearable. */
+export function validateWarehouseAddress(value: string): string | undefined {
+  const address = value.trim();
+  if (!address) return undefined;
+  if (address.length > WAREHOUSE_ADDRESS_MAX_LENGTH)
+    return "Address is too long";
+  return undefined;
+}
+
+/** The person accountable for stock here — optional, a plain name. */
+export function validatePicName(value: string): string | undefined {
+  const name = value.trim();
+  if (!name) return undefined;
+  if (name.length > WAREHOUSE_PIC_NAME_MAX_LENGTH) return "PIC name is too long";
+  return undefined;
+}
+
+/** Optional and clearable; mirrors the backend's 32-char limit and pattern. */
+export function validatePicPhone(value: string): string | undefined {
+  const phone = value.trim();
+  if (!phone) return undefined;
+  if (phone.length > WAREHOUSE_PIC_PHONE_MAX_LENGTH)
+    return "PIC phone is too long";
+  if (!PHONE_PATTERN.test(phone))
+    return "Only digits, spaces and + ( ) - . are allowed";
   return undefined;
 }
 

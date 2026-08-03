@@ -1,29 +1,67 @@
 import { apiClient } from "./api-client";
-import type { PageResult } from "@/types/api";
-import type { StockWarehouse } from "@/types/inventory";
+import type {
+  PageResult,
+  Warehouse,
+  WarehouseListQuery,
+  CreateWarehouseInput,
+  UpdateWarehouseInput,
+} from "@/types/api";
 
 /**
- * Stock locations, against /api/warehouses.
+ * Warehouse master-data calls against /api/warehouses — a tenant's physical
+ * stock locations.
  *
- * `list` only, for the same reason categoryService started that way: warehouses
- * are read by the catalogue's and the stock screens' pickers, and managed by no
- * screen in this frontend yet. The write endpoints exist on the backend and get
- * their methods when something calls them.
+ * One typed domain operation per apiClient request, no React and no state, like
+ * every other service here. The tenant scope comes from the session cookie on
+ * the backend, so it is never passed.
+ *
+ * `isActive` is an ordinary field edited through `update` (a warehouse that is
+ * closed to movement but still owns its stock); the `deletedAt` lifecycle has
+ * its own `remove`/`restore` routes, mirroring the API. `isDefault` has no
+ * method at all: it is server-owned, and the backend strips it from any payload.
  */
 export const warehouseService = {
   /**
-   * GET /warehouses — the picker's list.
+   * GET /warehouses — paginated, filterable list.
    *
-   * `limit: 100` by default: a picker wants the whole set in one page, and a
-   * tenant with more than a hundred stock locations needs a different control
-   * than a dropdown anyway.
+   * Defaults to `limit: 100` because the oldest caller is a picker
+   * (useCatalogLookups) that wants the whole set in one page; the list screen
+   * passes an explicit page size. Spread into a fresh object literal to satisfy
+   * apiClient's `Record<string, ...>` query type — it drops the undefined
+   * entries.
    */
-  list: (query: { isActive?: boolean; search?: string; limit?: number } = {}) =>
-    apiClient.get<PageResult<StockWarehouse>>("/warehouses", {
+  list: (query: WarehouseListQuery = {}) =>
+    apiClient.get<PageResult<Warehouse>>("/warehouses", {
       query: {
-        isActive: query.isActive,
-        search: query.search,
+        page: query.page,
         limit: query.limit ?? 100,
+        isActive: query.isActive,
+        defaultBranchId: query.defaultBranchId,
+        search: query.search,
+        includeDeleted: query.includeDeleted,
       },
     }),
+
+  /** GET /warehouses/:id — a single warehouse. */
+  getById: (id: string) => apiClient.get<Warehouse>(`/warehouses/${id}`),
+
+  /** POST /warehouses — create a warehouse (201). */
+  create: (input: CreateWarehouseInput) =>
+    apiClient.post<Warehouse>("/warehouses", input),
+
+  /** PATCH /warehouses/:id — update editable fields (send only what changed). */
+  update: (id: string, patch: UpdateWarehouseInput) =>
+    apiClient.patch<Warehouse>(`/warehouses/${id}`, patch),
+
+  /**
+   * DELETE /warehouses/:id — soft delete (returns the deleted warehouse).
+   *
+   * Refused with 409 when the warehouse is a branch's default or still holds
+   * stock/history; the explanation arrives in ApiError.reason, so callers show
+   * `fullMessage` rather than `message`.
+   */
+  remove: (id: string) => apiClient.delete<Warehouse>(`/warehouses/${id}`),
+
+  /** PATCH /warehouses/:id/restore — undo a soft delete (may 409 on name clash). */
+  restore: (id: string) => apiClient.patch<Warehouse>(`/warehouses/${id}/restore`),
 };
