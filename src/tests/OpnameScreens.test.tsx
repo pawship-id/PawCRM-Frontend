@@ -400,6 +400,18 @@ describe("OpnameSheet", () => {
       physicalQty: "10.0000",
       counted: true,
     });
+
+    /**
+     * AND THE LINE STILL NAMES ITS PRODUCT AFTERWARDS. The save's response
+     * replaces the lines on screen, so a `PATCH` that answered with bare
+     * `productId`s blanked every name the moment somebody ticked a box — which
+     * is exactly what the API did until PawCRM-Backend 0.24.1.
+     *
+     * The mock here has always returned a labelled sheet, which is why these
+     * tests did not catch it: a mock more generous than the API tests a server
+     * that does not exist. It mirrors the real response — keep it that way.
+     */
+    expect(await screen.findByText("Shampoo Anjing")).toBeInTheDocument();
   });
 
   /**
@@ -428,6 +440,52 @@ describe("OpnameSheet", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(/belum punya kode batch dan tanggal kedaluwarsa/),
+    ).toBeInTheDocument();
+  });
+
+  /**
+   * AND KEEPS ASKING AFTER THE SAVE LANDS. The prompt is driven by
+   * `productHasExpiry`, which arrives per line — so it survives only as long as
+   * the auto-save's response carries it. Until PawCRM-Backend 0.24.1 it did not,
+   * and typing the surplus that CREATED the requirement was the very act that
+   * switched the prompt off: nothing on screen said so, and the requirement came
+   * back as a 400 at submit with nobody left at the shelf to answer it.
+   *
+   * The test above covers the load; this covers the save, which is the path that
+   * actually broke.
+   */
+  it("keeps asking for the lot after the save comes back", async () => {
+    const user = userEvent.setup();
+    const expiring = (overrides = {}) =>
+      item({
+        productName: "Vaksin Rabies",
+        productHasExpiry: true,
+        countedAt: "2026-08-03T09:14:00.000Z",
+        ...overrides,
+      });
+
+    asMock(stockOpnameService.getById).mockResolvedValue(
+      sheet({ items: [expiring({ physicalQty: "10.0000", diffQty: "0.0000" })] }),
+    );
+    // The server's answer to that surplus, labelled as the real API returns it.
+    asMock(stockOpnameService.update).mockResolvedValue(
+      sheet({
+        items: [expiring({ physicalQty: "13.0000", diffQty: "3.0000" })],
+      }),
+    );
+
+    renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+
+    const field = await screen.findByLabelText(/Qty fisik Vaksin Rabies/);
+    await user.clear(field);
+    await user.type(field, "13");
+
+    await waitFor(() => expect(stockOpnameService.update).toHaveBeenCalled(), {
+      timeout: 3000,
+    });
+
+    expect(
+      await screen.findByLabelText(/Kode batch Vaksin Rabies/),
     ).toBeInTheDocument();
   });
 

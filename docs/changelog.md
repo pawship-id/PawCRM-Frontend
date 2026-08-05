@@ -7,13 +7,77 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Inventory hub, and the document a ledger row points at
+
+Branch: `feature/inventory-purchasing`.
+
+**The Inventory landing screen is wired.** It was the last screen in the module still
+computing its answers from the in-memory prototype store, and both of its alert lists were
+wrong in ways nobody would have noticed: "perlu restock" compared **one warehouse's** shelf
+against `minStock` — a per-**product** threshold — and listed the same product once per
+warehouse, while the expiry list could only ever see the fixtures it held. Both now come
+from the API, five rows each, badged with the server's real total. See
+`docs/features/inventory-hub.md`.
+
+**The stock card names the document behind a row.** `referenceNo` (`PawCRM-Backend` 0.24.0)
+fills the **Referensi** column with `OPN-2026-0007` where it previously offered only the
+kind of document. `null` on every other reference type, and the fallback is the type label —
+never `reference.id`, which names nothing a reader can look up. This closes the last piece
+of gap 2 in `PawCRM-Backend/docs/stock-card-gaps.md`; nothing on the stock card is waiting
+on the backend now.
+
+### Added
+
+- **`features/inventory/hooks/useLowStockAlert.ts`** — `GET /products/low-stock`, five rows
+  and the total. Takes an `enabled` flag, which is the permission gate: without
+  `products:read` **no request is issued**, because a landing page that opens on a 403 for a
+  section the user was never meant to see is worse than one that quietly does not offer it
+- **`features/inventory/hooks/useExpiringAlert.ts`** — `GET /product-batches/expiring`,
+  same shape, 30-day horizon echoed back by the API so the caption hardcodes no number
+- **A `Kategori` card on the hub**, which the sidebar had and the hub did not
+- **`docs/features/inventory-hub.md`**
+
+### Changed
+
+- **`InventoryHub` reads the API and computes nothing.** The "Prototype · data contoh" badge
+  and the **Reset data** button are gone with the fixtures behind them
+- **Every action card is permission-gated**, with the same requirements the sidebar uses, so
+  the hub and the menu cannot disagree about what a role may open. `Penyesuaian cepat` is
+  gated on `stockMovements:create` — a read-only role never sees the shortcut that writes
+  off stock with no document behind it
+- **`StockLedgerTable` renders `referenceNo`** above the type when the row has one
+- **`types/inventory.ts`** — `StockMovement.referenceNo: string | null`, replacing the
+  comment explaining why the field did not exist
+- **`InventoryScreens.test.tsx` is now a mocked-service suite** (7 tests) rather than a
+  demo-store mount test
+
+### Fixed
+
+- **The count sheet no longer blanks its product names on save** (`PawCRM-Backend` 0.24.1).
+  `PATCH /stock-opnames/:id` answered with bare `productId`s, and this screen renders that
+  response — it has to, since every derived quantity comes back recomputed — so ticking
+  **Dihitung** or typing a quantity replaced "Royal Canin Adult — 1kg / beef · RC-ADULT-1KG-BEEF
+  · pcs" with a dash and an ObjectId. The backend now returns the same labels the detail
+  read does; nothing changed in this repo.
+
+  The mocked `update` in `OpnameScreens.test.tsx` had always returned a labelled sheet,
+  which is why the tests did not catch it — a mock more generous than the API tests a
+  server that does not exist. It now asserts the name survives a save, with a note to keep
+  the mock mirroring the real response.
+
+### Note
+
+`demoStore` is still here and still real: the **purchasing** prototype screens run on it and
+eight components import it. What left with this change is the last inventory consumer.
+
+---
+
 ## [Unreleased] — Stok Opname
 
 Branch: `feature/inventory-purchasing`.
 
-Inventory → Stok Opname moves off the prototype store onto `/api/stock-opnames`. It was
-the **last demo-backed screen** in the inventory module; `demoStore`'s opname half is gone
-with it. See `docs/features/stock-opname.md`.
+Inventory → Stok Opname moves off the prototype store onto `/api/stock-opnames`; the
+`demoStore`'s opname half is gone with it. See `docs/features/stock-opname.md`.
 
 **Four backend changes came first** (`PawCRM-Backend` 0.23.0), all found while wiring this
 screen and all the same shape of problem — the API knew something the sheet needed and was

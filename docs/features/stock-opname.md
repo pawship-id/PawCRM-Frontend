@@ -61,6 +61,13 @@ The save indicator is explicit ("Menyimpan…" / "Tersimpan 14:22") because an a
 nobody can see is one nobody trusts — the alternative is a counter re-entering a whole
 shelf because they were not sure it took.
 
+**The save's response replaces the lines on screen, so it has to carry the labels too.**
+It is not only the recomputed quantities that come back — `productName`, `productSku`,
+`productUnit` and `productHasExpiry` ride along, exactly as on the detail read. Until
+PawCRM-Backend 0.24.1 they did not, and every product name on the sheet blanked to a raw
+ObjectId the moment anybody ticked a line; `productHasExpiry` went with them, switching off
+the batch-code prompt below until the submit refused the sheet with a 400.
+
 ## The preview is fetched, never computed
 
 `POST /:id/preview` returns the movements FEFO will actually write and the journal lines

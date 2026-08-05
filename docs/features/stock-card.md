@@ -122,12 +122,19 @@ ulang** because a number looks wrong must not get a fresh ledger beside stale ti
 `useStockCardSummary` is deliberately *not* keyed on the page number — the totals do not
 change when you page, and re-fetching them per click would be one wasted request each.
 
-## Still missing from the backend
+## The Referensi column names the document where there is one
 
-One field, and it is a dependency rather than an omission: **`referenceNo`**. The
-**Referensi** column names the *kind* of document ("Penerimaan barang") rather than the
-document, because `goodsreceipts`, `postransactions` and `stockopnames` are not collections
-yet. It lands with those modules. See `PawCRM-Backend/docs/stock-card-gaps.md`.
+**`referenceNo`** (PawCRM-Backend 0.24.0) carries the number of the document behind a row,
+and the column shows it above the type: `OPN-2026-0007` over "Stok opname". Only stock
+opname can fill it today — `goodsreceipts` and `postransactions` are still not collections,
+and a manual adjustment or a transfer has no document at all by design — so the field is
+`null` on most rows and the column falls back to the type alone.
+
+**The fallback is the TYPE, never `reference.id`.** An ObjectId names nothing a reader can
+look up, and printing one would make the column look filled while answering nothing.
+
+This was the last open piece of gap 2 in `PawCRM-Backend/docs/stock-card-gaps.md`; nothing
+on this screen is waiting on the backend now.
 
 ## Tests
 
@@ -135,9 +142,10 @@ yet. It lands with those modules. See `PawCRM-Backend/docs/stock-card-gaps.md`.
   was balance arithmetic before the server took it over.
 - `stockLedger.service.test.ts` (10) — the full query object of every call, so an unset
   filter that quietly became `""` cannot ship, and `export` cannot grow a `limit`.
-- `StockCardScreen.test.tsx` (14) — the balance/lot/author rendered straight from the row,
-  period tiles from the summary endpoint rather than the page, page-jumping, the
-  one-request picker, export success and failure, the hidden lot tab, error surfacing.
+- `StockCardScreen.test.tsx` (15) — the balance/lot/author rendered straight from the row,
+  the document number and its fall back to the type, period tiles from the summary endpoint
+  rather than the page, page-jumping, the one-request picker, export success and failure,
+  the hidden lot tab, error surfacing.
 
 The Radix selects are not driven in tests — jsdom cannot do their pointer protocol, and
 what they set is filter state that goes straight to the query.

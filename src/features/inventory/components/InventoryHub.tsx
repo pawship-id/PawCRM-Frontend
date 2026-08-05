@@ -1,115 +1,137 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
 
-import { Button } from "@/components";
+import { Alert, Spinner } from "@/components";
 import { Badge } from "@/components/ui/badge";
-import { expiresWithin } from "@/utils/date";
-import { formatMoney, formatQty, multiplyDecimals, toMinor } from "@/utils/decimal";
+import { usePermissions } from "@/features/permissions";
+import type { Action, Feature } from "@/features/permissions";
+import { formatMoney, formatQty, multiplyDecimals } from "@/utils/decimal";
 
-import * as demo from "../data/demoStore";
-import { useInventoryDemo } from "../hooks/useInventoryDemo";
+import { useExpiringAlert } from "../hooks/useExpiringAlert";
+import { useLowStockAlert } from "../hooks/useLowStockAlert";
 import { ExpiryBadge } from "./ExpiryBadge";
 
 /**
- * The Inventory landing screen: what needs attention, and the three actions.
+ * The Inventory landing screen: what needs attention, and the way in to every
+ * screen in the module.
  *
- * The two alert lists are chosen rather than exhaustive. A shop owner opening
+ * THE TWO ALERT LISTS ARE CHOSEN RATHER THAN EXHAUSTIVE. A shop owner opening
  * this page is asking one of exactly two questions — "what do I need to reorder"
  * and "what is about to go bad" — and both are answers you act on the same day.
  * Everything else (full stock value, movement history) is a click away on the
- * stock card, where there is room to read it properly.
+ * stock card and the batch report, where there is room to read it properly.
+ *
+ * BOTH LISTS ARE THE SERVER'S ANSWER, not a client-side scan. This screen used
+ * to be a prototype over an in-memory store and computed both itself; each was
+ * wrong in a way nobody would notice:
+ *
+ *   perlu restock — it compared ONE WAREHOUSE's shelf against `minStock`, which
+ *                   is a per-PRODUCT threshold, and listed the same product once
+ *                   per warehouse. `GET /products/low-stock` sums the product's
+ *                   stock across warehouses, which is what the threshold means.
+ *   kedaluwarsa   — it could only ever see the lots it happened to hold, so the
+ *                   count was the count of the fixtures.
+ *
+ * Each list shows the most urgent FIVE and reports the true total beside it: a
+ * landing page answers "is there anything to do", and a number that only counted
+ * the rows on screen is worse than no number because it looks like a total.
+ *
+ * EACH SECTION IS GATED ON ITS OWN GRANT, and a section a user cannot read is
+ * not requested at all. The seeded Staff role holds both, but a narrower custom
+ * role need not — and firing the request anyway would paint a 403 across the
+ * landing page instead of simply not offering the section.
  */
-const ACTIONS = [
+const ACTIONS: Array<{
+  href: string;
+  title: string;
+  description: string;
+  /** Mirrors the sidebar's gate for the same screen — see features/dashboard/nav.ts. */
+  feature: Feature;
+  action: Action;
+}> = [
   {
     href: "/dashboard/inventory/products",
     title: "Produk & Varian",
     description:
       "Katalog: produk biasa, keluarga varian dua tingkat, dan bundle multi-satuan.",
+    feature: "products",
+    action: "read",
+  },
+  {
+    href: "/dashboard/inventory/categories",
+    title: "Kategori",
+    description:
+      "Rak arsip katalog. Setiap produk harus punya satu sebelum bisa dibuat.",
+    feature: "categories",
+    action: "read",
   },
   {
     href: "/dashboard/inventory/stock-card",
     title: "Kartu Stok",
     description:
       "Riwayat pergerakan satu produk di satu gudang, dengan saldo berjalan.",
+    feature: "stockMovements",
+    action: "read",
   },
   {
     href: "/dashboard/inventory/batches",
     title: "Batch & Expired",
     description:
       "Semua lot, diurutkan dari yang paling dekat kedaluwarsa. Urutan FEFO.",
+    feature: "productBatches",
+    action: "read",
   },
   {
     href: "/dashboard/inventory/opname",
     title: "Stok Opname",
     description:
       "Hitung fisik, cocokkan dengan sistem, selisihnya jadi penyesuaian dan jurnal.",
+    feature: "stockOpnames",
+    action: "read",
   },
   {
     href: "/dashboard/inventory/transfers",
     title: "Transfer Stok",
     description:
       "Pindahkan barang antar gudang. Lot beserta tanggal kedaluwarsanya ikut pindah.",
+    feature: "stockMovements",
+    action: "create",
   },
   {
     href: "/dashboard/inventory/adjustments",
     title: "Penyesuaian cepat",
     description:
       "Koreksi satu barang di luar opname — rusak, hilang, atau terpakai sendiri.",
+    feature: "stockMovements",
+    action: "create",
   },
 ];
 
 export function InventoryHub() {
-  const { products, warehouses, batches, version, reset } = useInventoryDemo();
+  const { can } = usePermissions();
 
-  // Products at or below their reorder threshold, per warehouse.
-  const low = products.flatMap((product) =>
-    warehouses
-      .filter((warehouse) => warehouse.isActive)
-      .map((warehouse) => ({
-        product,
-        warehouse,
-        onHand: demo.qtyOnHand(product._id, warehouse._id),
-      }))
-      .filter(
-        ({ onHand }) =>
-          (toMinor(onHand) ?? 0n) > 0n &&
-          (toMinor(onHand) ?? 0n) <= BigInt(product.minStock) * 10_000n,
-      ),
-  );
+  const mayReadProducts = can("products", "read");
+  const mayReadBatches = can("productBatches", "read");
 
-  // Lots that still hold something and expire within 30 days — including the
-  // ones already past, which sort to the top because they are the urgent case.
-  const expiring = batches
-    .filter(
-      (batch) =>
-        (toMinor(batch.qtyRemaining) ?? 0n) > 0n &&
-        expiresWithin(batch.expiryDate, 30),
-    )
-    .sort((a, b) => (a.expiryDate ?? "").localeCompare(b.expiryDate ?? ""));
+  const lowStock = useLowStockAlert(mayReadProducts);
+  const expiring = useExpiringAlert(mayReadBatches);
+
+  const actions = ACTIONS.filter((action) => can(action.feature, action.action));
 
   return (
-    <div className="flex flex-col gap-6" key={version}>
-      <div className="flex flex-wrap items-end gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">Inventory</h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted">
-            Stok dihitung dari buku besar pergerakan — bukan angka yang disimpan
-            terpisah. Setiap saldo di layar ini bisa dihitung ulang dari nol.
-          </p>
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          <Badge variant="outline" className="border-secondary text-secondary-foreground">
-            Prototype · data contoh
-          </Badge>
-          <Button variant="secondary" onClick={reset}>
-            Reset data
-          </Button>
-        </div>
+    <div className="flex flex-col gap-6">
+      <div>
+        <h1 className="text-2xl font-semibold text-foreground">Inventory</h1>
+        <p className="mt-1 max-w-2xl text-sm text-muted">
+          Stok dihitung dari buku besar pergerakan — bukan angka yang disimpan
+          terpisah. Setiap saldo di layar ini bisa dihitung ulang dari nol.
+        </p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {ACTIONS.map((action) => (
+        {actions.map((action) => (
           <Link
             key={action.href}
             href={action.href}
@@ -124,83 +146,172 @@ export function InventoryHub() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <section className="rounded-xl border border-border bg-surface">
-          <header className="flex items-center gap-2 border-b border-border px-5 py-3">
-            <h2 className="font-semibold">Perlu restock</h2>
-            <Badge variant="outline" className="ml-auto">
-              {low.length}
-            </Badge>
-          </header>
-
-          {low.length === 0 ? (
-            <p className="px-5 py-10 text-center text-sm text-muted">
-              Semua stok di atas batas minimum.
-            </p>
-          ) : (
-            <ul className="divide-y divide-border/60">
-              {low.map(({ product, warehouse, onHand }) => (
-                <li
-                  key={`${product._id}-${warehouse._id}`}
-                  className="flex items-center gap-3 px-5 py-3"
+        <AlertSection
+          title="Perlu restock"
+          total={lowStock.total}
+          shown={lowStock.items.length}
+          loading={lowStock.loading}
+          error={lowStock.error}
+          allowed={mayReadProducts}
+          empty="Semua stok di atas batas minimum."
+          moreLabel="produk lain juga di bawah batas minimum"
+        >
+          {lowStock.items.map((product) => (
+            <li
+              key={product._id}
+              className="flex items-center gap-3 px-5 py-3"
+            >
+              <div className="min-w-0 flex-1">
+                <Link
+                  href={`/dashboard/inventory/products/${product._id}`}
+                  className="truncate text-sm font-medium hover:text-primary-hover"
                 >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{product.name}</p>
-                    <p className="truncate text-xs text-muted">{warehouse.name}</p>
-                  </div>
-                  <span className="font-mono text-sm font-semibold tabular-nums text-danger">
-                    {formatQty(onHand)}
-                  </span>
-                  <span className="text-xs text-muted">/ {product.minStock}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+                  {product.name}
+                </Link>
+                <p className="truncate font-mono text-xs text-muted">
+                  {product.sku}
+                </p>
+              </div>
+              <span className="font-mono text-sm font-semibold tabular-nums text-danger">
+                {formatQty(product.qtyOnHand)}
+              </span>
+              <span className="whitespace-nowrap text-xs text-muted">
+                / {product.minStock} {product.unit}
+              </span>
+            </li>
+          ))}
+        </AlertSection>
 
-        <section className="rounded-xl border border-border bg-surface">
-          <header className="flex items-center gap-2 border-b border-border px-5 py-3">
-            <h2 className="font-semibold">Mendekati kedaluwarsa</h2>
-            <Badge variant="outline" className="ml-auto">
-              {expiring.length}
-            </Badge>
-          </header>
-
-          {expiring.length === 0 ? (
-            <p className="px-5 py-10 text-center text-sm text-muted">
-              Tidak ada lot yang kedaluwarsa dalam 30 hari.
-            </p>
-          ) : (
-            <ul className="divide-y divide-border/60">
-              {expiring.map((batch) => {
-                const product = products.find((p) => p._id === batch.productId);
-                return (
-                  <li key={batch._id} className="flex items-center gap-3 px-5 py-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">
-                        {product?.name ?? batch.productId}
-                      </p>
-                      <p className="truncate font-mono text-xs text-muted">
-                        {batch.batchCode}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-mono text-sm tabular-nums">
-                        {formatQty(batch.qtyRemaining)}
-                      </p>
-                      <p className="font-mono text-[11px] text-muted">
-                        {formatMoney(
-                          multiplyDecimals(batch.qtyRemaining, batch.costPerUnit),
-                        )}
-                      </p>
-                    </div>
-                    {batch.expiryDate && <ExpiryBadge date={batch.expiryDate} />}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
+        <AlertSection
+          title="Mendekati kedaluwarsa"
+          caption={`dalam ${expiring.withinDays} hari`}
+          total={expiring.total}
+          shown={expiring.items.length}
+          loading={expiring.loading}
+          error={expiring.error}
+          allowed={mayReadBatches}
+          empty={`Tidak ada lot yang kedaluwarsa dalam ${expiring.withinDays} hari.`}
+          moreLabel="lot lain juga di dalam rentang ini"
+          seeAll={{ href: "/dashboard/inventory/batches", label: "Lihat semua lot" }}
+        >
+          {expiring.items.map((batch) => (
+            <li key={batch._id} className="flex items-center gap-3 px-5 py-3">
+              <div className="min-w-0 flex-1">
+                {/* Resolved by the API — this screen never joins the catalogue
+                    itself. Null only where the product row has since gone. */}
+                <p className="truncate text-sm font-medium">
+                  {batch.productName ?? "—"}
+                </p>
+                <p className="truncate font-mono text-xs text-muted">
+                  {batch.batchCode}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="font-mono text-sm tabular-nums">
+                  {formatQty(batch.qtyRemaining)}
+                </p>
+                <p className="font-mono text-[11px] text-muted">
+                  {formatMoney(
+                    multiplyDecimals(batch.qtyRemaining, batch.costPerUnit),
+                  )}
+                </p>
+              </div>
+              {/* A lot without a date cannot be in this list at all — the
+                  endpoint only returns lots that expire. */}
+              {batch.expiryDate && <ExpiryBadge date={batch.expiryDate} />}
+            </li>
+          ))}
+        </AlertSection>
       </div>
     </div>
+  );
+}
+
+/**
+ * One alert list, and every state it can be in.
+ *
+ * THE COUNT IS THE SERVER'S TOTAL, not `children.length`. The list is the five
+ * most urgent rows; the badge is how many there are. Showing "5" next to five
+ * rows out of forty would tell somebody the job is nearly done.
+ *
+ * A ZERO IS NEVER SHOWN WHILE THE ANSWER IS IN FLIGHT, for the same reason the
+ * batch tiles do not: "0 perlu restock" that changes its mind a second later has
+ * already told somebody there was nothing to do.
+ */
+function AlertSection({
+  title,
+  caption,
+  total,
+  shown,
+  loading,
+  error,
+  allowed,
+  empty,
+  moreLabel,
+  seeAll,
+  children,
+}: {
+  title: string;
+  caption?: string;
+  total: number;
+  shown: number;
+  loading: boolean;
+  error: string | null;
+  allowed: boolean;
+  empty: string;
+  /** Copy for the "…and N more" line under a truncated list. */
+  moreLabel: string;
+  seeAll?: { href: string; label: string };
+  children: ReactNode;
+}) {
+  const remaining = total - shown;
+
+  return (
+    <section className="rounded-xl border border-border bg-surface">
+      <header className="flex items-center gap-2 border-b border-border px-5 py-3">
+        <h2 className="font-semibold">{title}</h2>
+        {caption && <span className="text-xs text-muted">{caption}</span>}
+        <Badge variant="outline" className="ml-auto tabular-nums">
+          {allowed ? (loading ? "…" : total) : "—"}
+        </Badge>
+      </header>
+
+      {!allowed ? (
+        <p className="px-5 py-10 text-center text-sm text-muted">
+          Role Anda tidak punya akses ke data ini.
+        </p>
+      ) : error ? (
+        <div className="px-5 py-4">
+          <Alert variant="error">{error}</Alert>
+        </div>
+      ) : loading ? (
+        <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted">
+          <Spinner /> Memuat…
+        </div>
+      ) : shown === 0 ? (
+        <p className="px-5 py-10 text-center text-sm text-muted">{empty}</p>
+      ) : (
+        <>
+          <ul className="divide-y divide-border/60">{children}</ul>
+          {(remaining > 0 || seeAll) && (
+            <div className="flex items-center gap-3 border-t border-border px-5 py-2.5 text-xs text-muted">
+              {remaining > 0 && (
+                <span>
+                  +{remaining} {moreLabel}
+                </span>
+              )}
+              {seeAll && (
+                <Link
+                  href={seeAll.href}
+                  className="ml-auto font-medium text-primary hover:text-primary-hover"
+                >
+                  {seeAll.label} →
+                </Link>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </section>
   );
 }

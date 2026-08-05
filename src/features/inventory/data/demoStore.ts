@@ -581,6 +581,7 @@ function mv(
     createdByName: null,
     warehouseName: null,
     destinationWarehouseName: null,
+    referenceNo: null,
 
     ...extra,
   };

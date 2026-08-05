@@ -98,11 +98,19 @@ export interface StockMovement {
   warehouseName: string | null;
   destinationWarehouseName: string | null;
   /**
-   * NOT A FIELD YET. `reference.type` names the KIND of document; naming the
-   * document needs `goodsreceipts`, `postransactions` and `stockopnames` to
-   * exist, and they do not. It arrives with those modules — until then the
-   * ledger shows a document type where a user wants a number.
+   * The NUMBER of the document behind this row — "OPN-2026-0007" where
+   * `reference.type` only says `stock_opname`.
+   *
+   * NULL FOR MOST ROWS, and that is the honest answer rather than a gap:
+   * `goodsreceipts` and `postransactions` are not collections in the backend
+   * yet, so there is no number to read, and a manual adjustment or a transfer
+   * has no document at all by design. Only stock opname can fill it today
+   * (PawCRM-Backend 0.24.0).
+   *
+   * A renderer therefore falls back to the type label — never to the raw
+   * `reference.id`, which names nothing a human can look up.
    */
+  referenceNo: string | null;
 }
 
 /**

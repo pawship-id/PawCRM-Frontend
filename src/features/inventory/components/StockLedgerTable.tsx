@@ -21,10 +21,12 @@ import { MovementBadge } from "./MovementBadge";
  * balance. It returns both (PawCRM-Backend 0.20.0), so this component renders
  * and computes nothing.
  *
- * THE ONE COLUMN STILL SHOWING LESS THAN IT SHOULD is **Referensi**: it names
- * the KIND of document rather than the document, because `goodsreceipts`,
- * `postransactions` and `stockopnames` do not exist yet. It lands with those
- * modules.
+ * **Referensi** NAMES THE DOCUMENT WHERE THERE IS ONE TO NAME. A row posted by a
+ * stock opname shows that sheet's number (`referenceNo`, PawCRM-Backend 0.24.0)
+ * above its type; every other kind still shows the type alone, because
+ * `goodsreceipts` and `postransactions` are not collections yet and a manual
+ * adjustment has no document at all. The fallback is the TYPE, never
+ * `reference.id` — an ObjectId names nothing a human can look up.
  */
 const REFERENCE_LABELS: Record<ReferenceType, string> = {
   goods_receipt: "Penerimaan barang",
@@ -138,7 +140,18 @@ export function StockLedgerTable({
                     {movement.hppAtTime ? formatMoney(movement.hppAtTime) : "—"}
                   </td>
                   <td className="px-4 py-2.5 text-xs text-muted">
-                    {REFERENCE_LABELS[movement.reference.type]}
+                    {movement.referenceNo ? (
+                      <>
+                        <span className="block font-mono text-foreground">
+                          {movement.referenceNo}
+                        </span>
+                        <span className="block text-[11px]">
+                          {REFERENCE_LABELS[movement.reference.type]}
+                        </span>
+                      </>
+                    ) : (
+                      REFERENCE_LABELS[movement.reference.type]
+                    )}
                   </td>
                   <td className="px-4 py-2.5 text-xs text-muted">
                     {/* Null for movements a background process posted — the POS

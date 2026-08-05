@@ -100,6 +100,9 @@ function movement(overrides: Partial<StockMovement> = {}): StockMovement {
     createdByName: null,
     warehouseName: "Gudang Pusat",
     destinationWarehouseName: null,
+    // Null for a goods receipt: that collection does not exist in the backend
+    // yet, so there is no number to resolve. Only opname rows carry one.
+    referenceNo: null,
     ...overrides,
   };
 }
@@ -233,6 +236,30 @@ describe("StockCardScreen", () => {
     // data, and there was no author column at all.
     expect(await screen.findByText("RC-B26-0455")).toBeInTheDocument();
     expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
+  });
+
+  it("names the document a row points at, and falls back to its type", async () => {
+    mockHappyPath(
+      [
+        movement({
+          _id: "from-opname",
+          movementType: "opname_diff",
+          reference: { type: "stock_opname", id: "o1" },
+          referenceNo: "OPN-2026-0007",
+        }),
+        movement({ _id: "by-hand", reference: { type: "manual_adjustment", id: null } }),
+      ],
+      [],
+    );
+
+    renderWithAuth(<StockCardScreen />);
+
+    // The sheet's own number, so a reader can look the count up. The type stays
+    // beside it — the number alone does not say what kind of document it is.
+    expect(await screen.findByText("OPN-2026-0007")).toBeInTheDocument();
+    expect(screen.getByText("Stok opname")).toBeInTheDocument();
+    // Nothing to name, so the type is all there is — never the raw ObjectId.
+    expect(screen.getByText("Penyesuaian manual")).toBeInTheDocument();
   });
 
   it("attributes an unauthored movement to the system, not to nobody", async () => {
