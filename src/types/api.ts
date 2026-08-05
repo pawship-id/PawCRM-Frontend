@@ -15,6 +15,15 @@ export interface ApiFailure {
   success: false;
   message: string;
   details?: ValidationDetail[];
+  /**
+   * The WHY behind a refusal, when the message alone is only the WHAT.
+   *
+   * Emitted by ApiError.conflict(message, reason) on the backend — a 409 whose
+   * message is "Cannot delete warehouse" carries the actionable half here
+   * ("still holds stock for 3 product(s) … deactivate it instead"). Absent on
+   * ordinary errors, so a caller shows `message` alone when it is missing.
+   */
+  reason?: string;
 }
 
 export type ApiResponse<T> = ApiSuccess<T> | ApiFailure;
@@ -314,6 +323,153 @@ export interface UpdateBranchInput {
   address?: string | null;
   phone?: string | null;
   isActive?: boolean;
+}
+
+/**
+ * A warehouse — a tenant's PHYSICAL stock location, as returned by
+ * /api/warehouses.
+ *
+ * Deliberately NOT a branch, and the two are not 1:1 (see warehouse.model.js): a
+ * branch is a unit of bookkeeping, a warehouse a unit of stock. A tenant can run
+ * one central warehouse serving three branches, or two warehouses inside one.
+ * Quantities and movements reference `warehouseId`, never `branchId`.
+ *
+ * `defaultBranchId` is the soft link between the two — the branch a movement
+ * here posts against by default. It is returned as a bare id, NOT populated, so
+ * a screen wanting the branch NAME resolves it against the branch list
+ * (useWarehouseBranches).
+ *
+ * `isActive` and `deletedAt` are orthogonal, exactly as on a branch: inactive
+ * means "still owns its stock, not accepting movement"; deleted means "removed,
+ * restorable". `isDefault` is server-owned — set only when a branch is created
+ * and its stock location auto-provisioned — and is what makes DELETE refuse, so
+ * the UI reads it but can never write it.
+ */
+export interface Warehouse {
+  _id: string;
+  tenantId: string;
+  name: string;
+  /** The branch this warehouse posts against by default; null = central. */
+  defaultBranchId: string | null;
+  address: string | null;
+  /** Who is accountable for stock here — a plain name, not a user reference. */
+  picName: string | null;
+  picPhone: string | null;
+  isActive: boolean;
+  /** True for the warehouse auto-created with a branch. Read-only: DELETE refuses. */
+  isDefault: boolean;
+  /** Soft-delete marker; non-null means deleted (restorable), null means live. */
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Query parameters accepted by GET /api/warehouses. All optional. */
+export interface WarehouseListQuery {
+  page?: number;
+  limit?: number;
+  isActive?: boolean;
+  /** The stock locations of one branch — the POS switcher's filter. */
+  defaultBranchId?: string;
+  /** Free-text over name / address / picName. */
+  search?: string;
+  /** Include soft-deleted warehouses (default false on the backend). */
+  includeDeleted?: boolean;
+}
+
+/**
+ * Body of POST /api/warehouses. Only `name` is required — a tenant may register
+ * its locations before it has the address or PIC details to hand. `isDefault` is
+ * absent by design: the backend strips it, so it cannot be forged from here.
+ */
+export interface CreateWarehouseInput {
+  name: string;
+  defaultBranchId?: string | null;
+  address?: string | null;
+  picName?: string | null;
+  picPhone?: string | null;
+  isActive?: boolean;
+}
+
+/**
+ * Body of PATCH /api/warehouses/:id — every field optional, but the backend
+ * rejects an empty body (send only what changed, at least one field).
+ */
+export interface UpdateWarehouseInput {
+  name?: string;
+  defaultBranchId?: string | null;
+  address?: string | null;
+  picName?: string | null;
+  picPhone?: string | null;
+  isActive?: boolean;
+}
+
+/**
+ * What a category is FOR. One value today, and the field exists anyway because
+ * finance categories used to share this collection and the backend kept the
+ * discriminator when they moved to the chart of accounts — see
+ * category.model.js. Nothing in the UI offers a choice; every category the
+ * frontend creates is a product category.
+ */
+export type CategoryKind = "product";
+
+/**
+ * One account of a tenant's chart of accounts.
+ *
+ * Only the fields a NON-accounting screen needs to name an account it is about
+ * to post against; the finance module's own type will be wider. Resolved by
+ * `code` rather than by id — ids differ per tenant, codes do not, which is why
+ * `/chart-of-accounts/by-code/:code` exists at all.
+ */
+export interface ChartAccount {
+  _id: string;
+  code: string;
+  name: string;
+  accountType: "asset" | "liability" | "equity" | "income" | "expense";
+  isActive: boolean;
+}
+
+/**
+ * A product category — the label a product is filed under.
+ *
+ * Nothing but a name, which is the point: grouping is all a category does. It
+ * carries no price, no stock and no rules, so the only thing that can be wrong
+ * with one is what it is called.
+ */
+export interface Category {
+  _id: string;
+  tenantId: string;
+  kind: CategoryKind;
+  name: string;
+  /** Soft-delete marker; non-null means deleted (restorable), null means live. */
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Query parameters accepted by GET /api/categories. All optional. */
+export interface CategoryListQuery {
+  page?: number;
+  limit?: number;
+  kind?: CategoryKind;
+  /** Free-text over the name. */
+  search?: string;
+  /** Include soft-deleted categories (default false on the backend). */
+  includeDeleted?: boolean;
+}
+
+/** Body of POST /api/categories. `kind` defaults to "product" server-side. */
+export interface CreateCategoryInput {
+  name: string;
+  kind?: CategoryKind;
+}
+
+/**
+ * Body of PATCH /api/categories/:id. `name` is the only editable field, and the
+ * backend rejects an empty body — so in practice it is required here too.
+ */
+export interface UpdateCategoryInput {
+  name?: string;
 }
 
 /**

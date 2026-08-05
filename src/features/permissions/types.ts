@@ -15,6 +15,41 @@
 export const PERMISSION_CATALOG = {
   tenants: ["create", "read", "update", "delete", "restore"],
   branches: ["create", "read", "update", "delete", "restore"],
+  warehouses: ["create", "read", "update", "delete", "restore"],
+  businessLines: ["create", "read", "update", "delete", "restore"],
+  categories: ["create", "read", "update", "delete", "restore"],
+  products: ["create", "read", "update", "delete", "restore"],
+  // The stock ledger is append-only, so it has no `update`, `delete` or
+  // `restore` — those endpoints do not exist. A wrong movement is corrected by
+  // posting a reversing adjustment, which `create` already covers.
+  stockMovements: ["create", "read"],
+  // Batches are born from movements and never written directly, so `read` is
+  // the only action this feature will ever grant.
+  productBatches: ["read"],
+  // Physical stock counts. `submit` is its own action rather than part of
+  // `update`: editing a draft is data entry a shop assistant does all afternoon,
+  // while submitting turns a counted shortage into an accepted loss and cannot
+  // be undone. The seeded Staff role gets create/read/update and NOT submit —
+  // someone other than the counter accepts the variance. No `restore`: a deleted
+  // opname is a draft somebody discarded, and un-discarding a count sheet is not
+  // a workflow (the shelves have moved on; the honest answer is to count again).
+  stockOpnames: ["create", "read", "update", "delete", "submit"],
+  suppliers: ["create", "read", "update", "delete", "restore"],
+  // A goods receipt raises stock and creates a payable, so there is no `update`
+  // and no `delete`: correcting one means returning the goods, which is its own
+  // document with its own reversal of the weighted average.
+  goodsReceipts: ["create", "read"],
+  // Payables are created BY a receipt, never by hand — hence no `create`.
+  // `pay` is its own action rather than part of `update`: recording money
+  // leaving the business is a materially different privilege from relabelling
+  // an invoice.
+  purchaseInvoices: ["read", "update", "pay"],
+  purchaseReturns: ["create", "read"],
+  chartOfAccounts: ["create", "read", "update", "delete", "restore"],
+  // A posted journal entry is immutable: no delete, no restore. `reverse` is
+  // its own action because correcting the ledger is a different privilege from
+  // relabelling an entry.
+  journalEntries: ["create", "read", "update", "reverse"],
   customers: ["create", "read", "update", "delete", "restore"],
   users: [
     "create",

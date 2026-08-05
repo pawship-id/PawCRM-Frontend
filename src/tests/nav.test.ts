@@ -40,10 +40,46 @@ describe("filterNavItems", () => {
     expect(master?.children?.map((c) => c.label)).toEqual([
       "User",
       "Branch",
+      "Warehouse",
       "Customer",
       "Roles",
       "Audit Log",
     ]);
+  });
+
+  it("lists every Inventory screen, in the order the data flows", () => {
+    const inventory = filterNavItems(NAV_ITEMS, allowAll).find(
+      (i) => i.label === "Inventory",
+    );
+
+    // Define a product, watch its card, manage its lots, count it, move it,
+    // correct it. Penyesuaian is LAST on purpose: a real discrepancy is found by
+    // an opname and goods that moved are moved by a transfer, so offering the
+    // by-hand correction above either would offer the shortcut before the
+    // procedure.
+    expect(inventory?.children?.map((c) => c.label)).toEqual([
+      "Produk & Varian",
+      "Kategori",
+      "Kartu Stok",
+      "Batch & Expired",
+      "Stok Opname",
+      "Transfer Stok",
+      "Penyesuaian Stok",
+    ]);
+  });
+
+  it("hides the three write screens from a read-only stock role", () => {
+    // What the seeded Staff role holds: read on the ledger, never create. A
+    // manual adjustment with no document behind it is the easiest way to hide a
+    // shortage, so the menu must not offer one.
+    const readOnlyStock: CanFn = (feature, action) =>
+      feature === "stockMovements" && action === "read";
+
+    const inventory = filterNavItems(NAV_ITEMS, readOnlyStock).find(
+      (i) => i.label === "Inventory",
+    );
+
+    expect(inventory?.children?.map((c) => c.label)).toEqual(["Kartu Stok"]);
   });
 
   it("does not mutate the source NAV_ITEMS", () => {

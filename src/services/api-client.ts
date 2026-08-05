@@ -122,17 +122,90 @@ async function request<T>(
     const message =
       payload.success === false ? payload.message : response.statusText;
     const details = payload.success === false ? payload.details : undefined;
+    // The 409 guards (delete a warehouse holding stock, restore onto a taken
+    // name) put the actionable half of the refusal here; dropping it would
+    // leave the user with "Cannot delete warehouse" and nothing to act on.
+    const reason = payload.success === false ? payload.reason : undefined;
     throw new ApiError(message || "Request failed", response.status, {
       details,
+      reason,
     });
   }
 
   return payload.data;
 }
 
+/**
+ * Fetches a FILE rather than the JSON envelope.
+ *
+ * Its own function because `request` unwraps `{ success, data }`, and an export
+ * endpoint answers with the file itself — running one through the other would
+ * throw on the first byte of CSV. Everything else is shared on purpose: this is
+ * still the only module that calls `fetch`, so credentials, timeouts and error
+ * translation cannot drift between a JSON call and a download.
+ *
+ * A FAILURE STILL ARRIVES AS JSON. The server only switches content type once it
+ * starts writing rows, so a 403 or a 400 is an ordinary envelope and is parsed
+ * as one — a download that silently saved a file containing `{"success":false}`
+ * would be the worst possible outcome.
+ *
+ * The filename comes from `Content-Disposition` when the server sets one; the
+ * caller's fallback is used otherwise, so a proxy that strips the header costs a
+ * good filename rather than the download.
+ */
+async function download(
+  path: string,
+  options: RequestOptions & { fallbackFilename: string },
+): Promise<{ blob: Blob; filename: string }> {
+  const { query, timeoutMs = DEFAULT_TIMEOUT_MS, fallbackFilename } = options;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(buildUrl(path, query), {
+      method: "GET",
+      signal: controller.signal,
+      credentials: "include",
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new ApiError(`Request timed out after ${timeoutMs}ms`, 0, {
+        isNetworkError: true,
+      });
+    }
+    throw ApiError.network();
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!response.ok) {
+    const payload = await parseBody<never>(response);
+    throw new ApiError(
+      (payload.success === false && payload.message) || "Download failed",
+      response.status,
+      {
+        details: payload.success === false ? payload.details : undefined,
+        reason: payload.success === false ? payload.reason : undefined,
+      },
+    );
+  }
+
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = /filename="?([^";]+)"?/i.exec(disposition);
+
+  return {
+    blob: await response.blob(),
+    filename: match?.[1] ?? fallbackFilename,
+  };
+}
+
 export const apiClient = {
   get: <T>(path: string, options?: RequestOptions) =>
     request<T>("GET", path, options),
+
+  download,
 
   post: <T>(path: string, body?: unknown, options?: RequestOptions) =>
     request<T>("POST", path, { ...options, body }),

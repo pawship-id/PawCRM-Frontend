@@ -2,6 +2,8 @@ export { Logo } from "./Logo";
 export { Button } from "./Button";
 export { TextField } from "./TextField";
 export { Alert } from "./Alert";
+export { Breadcrumb } from "./Breadcrumb";
+export type { BreadcrumbProps, Crumb } from "./Breadcrumb";
 export { Card } from "./Card";
 export { Spinner } from "./Spinner";
 export { HighlightText } from "./HighlightText";

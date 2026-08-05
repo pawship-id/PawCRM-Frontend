@@ -10,7 +10,10 @@ import type { SVGProps } from "react";
 
 type IconProps = SVGProps<SVGSVGElement>;
 
-function Base({ children, ...props }: IconProps & { children: React.ReactNode }) {
+function Base({
+  children,
+  ...props
+}: IconProps & { children: React.ReactNode }) {
   return (
     <svg
       width="20"
@@ -152,6 +155,22 @@ export function BranchIcon(props: IconProps) {
   );
 }
 
+/**
+ * Warehouse — a pitched storage shed with a shutter door. Deliberately unlike
+ * BranchIcon (a multi-storey building): the two sit next to each other in Master
+ * Data and mean different things, so they must not read as the same silhouette.
+ */
+export function WarehouseIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M3 20V9.5L12 4l9 5.5V20" />
+      <path d="M2 20h20" />
+      <path d="M8.5 20v-6.5h7V20" />
+      <path d="M8.5 16.5h7" />
+    </Base>
+  );
+}
+
 /** Customer — a single person with a contact tag, for the customer directory. */
 export function CustomerIcon(props: IconProps) {
   return (
@@ -236,3 +255,144 @@ export function PanelLeftIcon(props: IconProps) {
   );
 }
 
+/* --------------------------------------------------------------- Inventory */
+
+/** Product & variants — a boxed item with a price tag. */
+export function ProductIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M3.5 8.5 12 4l8.5 4.5v7L12 20l-8.5-4.5z" />
+      <path d="M3.5 8.5 12 13l8.5-4.5" />
+      <circle cx="12" cy="9.5" r="1" />
+    </Base>
+  );
+}
+
+/** Category — a folder tab, the label products are filed under. */
+export function CategoryIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M3.5 7a1.5 1.5 0 0 1 1.5-1.5h3.8a1.5 1.5 0 0 1 1.2.6l1 1.4H19a1.5 1.5 0 0 1 1.5 1.5v8.5a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5z" />
+      <path d="M3.5 11.5h17" />
+    </Base>
+  );
+}
+
+/** Stock card — a ledger with movement lines. */
+export function StockCardIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <rect x="4" y="3.5" width="16" height="17" rx="2" />
+      <path d="M8 8.5h8M8 12h5M8 15.5h8" />
+    </Base>
+  );
+}
+
+/** Batch & expiry — stacked lots with a clock. */
+export function BatchIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M3.5 7 9 4.5 14.5 7 9 9.5z" />
+      <path d="M3.5 12 9 14.5 14.5 12M3.5 16.5 9 19l5.5-2.5" />
+      <circle cx="18" cy="16" r="4" />
+      <path d="M18 14.5V16l1 1" />
+    </Base>
+  );
+}
+
+/** Stock opname — a clipboard with a check. */
+export function OpnameIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <rect x="5" y="4.5" width="14" height="16" rx="2" />
+      <path d="M9 4.5V3.5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1" />
+      <path d="M9 13l2 2 4-4" />
+    </Base>
+  );
+}
+
+/** Transfer — goods moving between two locations. */
+export function TransferIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M3 9h13l-3-3M21 15H8l3 3" />
+      <rect x="2.5" y="3.5" width="4" height="4" rx="1" />
+      <rect x="17.5" y="16.5" width="4" height="4" rx="1" />
+    </Base>
+  );
+}
+
+/**
+ * Adjustment — a plus and a minus over a box: a correction that can go either
+ * way.
+ *
+ * Deliberately NOT a pencil or any other edit glyph. The ledger is append-only,
+ * and an adjustment adds a row rather than changing one; an icon suggesting
+ * otherwise would teach the wrong thing about the module before a user has read
+ * a word of the screen.
+ */
+export function AdjustmentIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M3 7.5l6-3.5 6 3.5v7l-6 3.5-6-3.5z" />
+      <path d="M9 4v14" />
+      <path d="M15.5 17.5h5M18 15v5" />
+    </Base>
+  );
+}
+
+/* -------------------------------------------------------------- Purchasing */
+
+/** Purchasing — a shopping bag with a downward arrow (goods coming in). */
+export function PurchasingIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M5 8h14l-1.2 11a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8z" />
+      <path d="M9 8V5.5a3 3 0 0 1 6 0V8" />
+    </Base>
+  );
+}
+
+/** Supplier — a storefront. */
+export function SupplierIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M3.5 9.5 5 4.5h14l1.5 5" />
+      <path d="M4.5 9.5v10h15v-10" />
+      <path d="M3.5 9.5a2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 2 0" />
+      <path d="M9.5 19.5v-5h5v5" />
+    </Base>
+  );
+}
+
+/** Goods receipt — a box with an inbound arrow. */
+export function ReceiptIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M4 10.5 12 6.5l8 4v7l-8 4-8-4z" />
+      <path d="M12 2.5v5m0 0-2-2m2 2 2-2" />
+    </Base>
+  );
+}
+
+/** Payables — a banknote with a clock, for "owed and due". */
+export function PayableIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <rect x="2.5" y="6" width="15" height="9" rx="1.5" />
+      <circle cx="10" cy="10.5" r="2" />
+      <circle cx="17.5" cy="16.5" r="4" />
+      <path d="M17.5 15v1.5l1 1" />
+    </Base>
+  );
+}
+
+/** Purchase return — goods going back out. */
+export function PurchaseReturnIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M4 10.5 12 6.5l8 4v7l-8 4-8-4z" />
+      <path d="M12 7.5v-5m0 0-2 2m2-2 2 2" />
+    </Base>
+  );
+}

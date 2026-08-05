@@ -7,6 +7,568 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Inventory hub, and the document a ledger row points at
+
+Branch: `feature/inventory-purchasing`.
+
+**The Inventory landing screen is wired.** It was the last screen in the module still
+computing its answers from the in-memory prototype store, and both of its alert lists were
+wrong in ways nobody would have noticed: "perlu restock" compared **one warehouse's** shelf
+against `minStock` — a per-**product** threshold — and listed the same product once per
+warehouse, while the expiry list could only ever see the fixtures it held. Both now come
+from the API, five rows each, badged with the server's real total. See
+`docs/features/inventory-hub.md`.
+
+**The stock card names the document behind a row.** `referenceNo` (`PawCRM-Backend` 0.24.0)
+fills the **Referensi** column with `OPN-2026-0007` where it previously offered only the
+kind of document. `null` on every other reference type, and the fallback is the type label —
+never `reference.id`, which names nothing a reader can look up. This closes the last piece
+of gap 2 in `PawCRM-Backend/docs/stock-card-gaps.md`; nothing on the stock card is waiting
+on the backend now.
+
+### Added
+
+- **`features/inventory/hooks/useLowStockAlert.ts`** — `GET /products/low-stock`, five rows
+  and the total. Takes an `enabled` flag, which is the permission gate: without
+  `products:read` **no request is issued**, because a landing page that opens on a 403 for a
+  section the user was never meant to see is worse than one that quietly does not offer it
+- **`features/inventory/hooks/useExpiringAlert.ts`** — `GET /product-batches/expiring`,
+  same shape, 30-day horizon echoed back by the API so the caption hardcodes no number
+- **A `Kategori` card on the hub**, which the sidebar had and the hub did not
+- **`docs/features/inventory-hub.md`**
+
+### Changed
+
+- **`InventoryHub` reads the API and computes nothing.** The "Prototype · data contoh" badge
+  and the **Reset data** button are gone with the fixtures behind them
+- **Every action card is permission-gated**, with the same requirements the sidebar uses, so
+  the hub and the menu cannot disagree about what a role may open. `Penyesuaian cepat` is
+  gated on `stockMovements:create` — a read-only role never sees the shortcut that writes
+  off stock with no document behind it
+- **`StockLedgerTable` renders `referenceNo`** above the type when the row has one
+- **`types/inventory.ts`** — `StockMovement.referenceNo: string | null`, replacing the
+  comment explaining why the field did not exist
+- **`InventoryScreens.test.tsx` is now a mocked-service suite** (7 tests) rather than a
+  demo-store mount test
+
+### Fixed
+
+- **The count sheet no longer blanks its product names on save** (`PawCRM-Backend` 0.24.1).
+  `PATCH /stock-opnames/:id` answered with bare `productId`s, and this screen renders that
+  response — it has to, since every derived quantity comes back recomputed — so ticking
+  **Dihitung** or typing a quantity replaced "Royal Canin Adult — 1kg / beef · RC-ADULT-1KG-BEEF
+  · pcs" with a dash and an ObjectId. The backend now returns the same labels the detail
+  read does; nothing changed in this repo.
+
+  The mocked `update` in `OpnameScreens.test.tsx` had always returned a labelled sheet,
+  which is why the tests did not catch it — a mock more generous than the API tests a
+  server that does not exist. It now asserts the name survives a save, with a note to keep
+  the mock mirroring the real response.
+
+### Note
+
+`demoStore` is still here and still real: the **purchasing** prototype screens run on it and
+eight components import it. What left with this change is the last inventory consumer.
+
+---
+
+## [Unreleased] — Stok Opname
+
+Branch: `feature/inventory-purchasing`.
+
+Inventory → Stok Opname moves off the prototype store onto `/api/stock-opnames`; the
+`demoStore`'s opname half is gone with it. See `docs/features/stock-opname.md`.
+
+**Four backend changes came first** (`PawCRM-Backend` 0.23.0), all found while wiring this
+screen and all the same shape of problem — the API knew something the sheet needed and was
+not saying it: `items[].countedAt` (+ the `counted` flag), `itemCount` / `countedCount` on
+the list, `warehouseName` on the list, and `productUnit` / `productHasExpiry` per line.
+There is no client-side workaround for any of them left in this repo.
+
+**The decision that shapes the screen.** System quantity is re-read **at submit**, not
+frozen when the sheet opened — a count takes an afternoon and the shop keeps selling. So
+the browser subtracts nothing: `physicalQty` goes up, every other quantity comes back
+computed. A locally derived variance would drift from the posted one, silently.
+
+### Added
+
+- **`stockOpnameService`** — seven endpoints, no `unsubmit` and no `restore`: submitting
+  posts immutable movements and a journal entry, so a sheet that could go back to draft
+  would claim to describe a count whose corrections had already been booked
+- **`useOpnames`** — the list, with status / warehouse / date-range / number-search filters
+  and ordinary page-jump paging
+- **`useOpnameSheet`** — the detail and its **800 ms debounced auto-save**. A stale response
+  never lands on newer edits (a revision counter discards it), and `flush()` runs before a
+  submit so the last thing typed cannot be left behind in a timer
+- **`useOpnamePreview`** — on-demand rather than debounced, unlike `useMovementPreview`: a
+  sheet has hundreds of lines and the question is only asked once, when somebody is about
+  to accept the whole thing
+- **`OpnameStartCard`** — warehouse + optional category. Surfaces the one-open-draft `409`
+  with its `reason`, which names the sheet that is in the way
+- **`OpnameToolbar`**, **`OpnameStatusBadge`**, and a rewritten **`OpnameScreen`** /
+  **`OpnameSheet`**
+- **`stockOpnames` in the permission catalog**, with `submit` as its own action. Seeded
+  Staff count but do not accept the variance; the sheet says so plainly rather than hiding
+  a disabled button
+- **23 tests** in `OpnameScreens.test.tsx`, replacing the demo-backed
+  `InventoryCatalogue.test.tsx`
+
+### Changed
+
+- **The journal panel is fetched, not computed.** The prototype hardcoded a surplus to
+  "4901 Pendapatan Lain-lain"; the ledger books **both** directions to the
+  inventory-adjustment account. The page copy claimed the same thing and is corrected
+- **The nav entry is gated on `stockOpnames:read`**, was `stockMovements:create` — which
+  hid the whole feature from exactly the people who do the counting, while showing it to
+  anyone who can post a manual adjustment
+- **Both opname routes are wrapped in `RequirePermission`**, matching every other
+  inventory page. They had no guard at all
+- **`jest.config.ts` declares `moduleNameMapper` for the `@/` alias**, so
+  `jest.mock("@/services/…")` resolves. Ordinary imports were never affected —
+  `next/jest`'s SWC transform resolves the tsconfig `paths` alias at transform time — but
+  `jest.mock()` is resolved at runtime by jest-resolve, which reads moduleNameMapper and
+  nothing else. The repo had avoided this by convention (the service suites spy on the
+  `apiClient` singleton; `stockLedger.service.test.ts` says so in as many words), and that
+  convention does not extend to a COMPONENT test, which must replace the whole service
+  module. Declared in the runner rather than by adding `baseUrl` to tsconfig, which would
+  change how the compiler resolves every bare import
+
+### Removed
+
+- **`demoStore`'s opname half** — `startOpname`, `opnameItemsOf`, `setOpnameCount`,
+  `opnameDiff`, `opnameTotal`, `submitOpname` and the two state arrays, plus their tests.
+  The store now backs purchasing only
+
+---
+
+## [Unreleased] — Batch & Expired
+
+Branch: `feature/inventory-purchasing`.
+
+Inventory → Batch & Expired moves off the prototype store onto
+`/api/product-batches`, `/summary` and `/expiring`. See
+`docs/features/batch-expiry.md`.
+
+**Four backend changes came first** (`PawCRM-Backend` 0.22.0), all of them
+consequences of reading the lot collection ACROSS products and warehouses rather
+than within one pair: labels on every row, a summary endpoint, no-expiry lots
+sorting last, and a batch-code search. There is no client-side workaround for any
+of them left in this repo.
+
+### Added
+
+- **`productBatchService.summary`** + **`useBatchSummary`** — the four tiles.
+  Counts span every matching lot rather than the page, and **Nilai berisiko** is
+  now a real number: summing `qtyRemaining × costPerUnit` needs every row, so the
+  demo screen was the only version that could ever have shown it
+- **`useBatches`** — picks the endpoint. A horizon asks `/expiring` (cumulative,
+  live lots with a date); "Semua lot" and any batch-code search ask
+  `/product-batches` (everything, including exhausted and never-expiring lots)
+- **`useWarehouseOptions`** — just the warehouses. Deliberately smaller than
+  `useStockCardLookups`, which also pages the catalogue for a product picker this
+  screen does not have: its rows already name their own product
+- **Batch-code search**, and `BatchesToolbar` / `BatchesTable` split out of the
+  screen
+- `types/inventory.ts` — `ProductBatch` gains `productName`, `productSku`,
+  `productUnit`, `warehouseName`; new `BatchExpirySummary`, `BatchExpiryBucket`;
+  `ProductBatchListQuery` gains `search`, `expiryFrom`, `expiryTo`
+- Tests: `BatchesScreen.test.tsx` (11)
+
+### Changed
+
+- **`BatchesScreen` computes nothing.** Counts, value, labels and row order all
+  arrive resolved. The order matters most: with the list paged server-side, a
+  client that re-sorted would only be reordering the twenty rows it holds,
+  producing a sequence that changes meaning at every page boundary
+- **Two controls explain themselves when they go quiet** — the horizon is
+  disabled during a search (the alert endpoint cannot filter by code, and tracing
+  a lot is a question about its whole life), and the exhausted-lot toggle is
+  hidden outside audit mode (an exhausted lot cannot expire into anything)
+- `/dashboard/inventory/batches` sits behind
+  `RequirePermission feature="productBatches"`
+- Inactive warehouses appear in the filter, marked. A closed location still holds
+  the lots it held — forgotten stock is what this report exists to surface
+- `InventoryCatalogue.test.tsx` is down to Opname, the last inventory screen with
+  no backend
+
+---
+
+## [Unreleased] — Preview dari server, dan retry yang aman
+
+Branch: `feature/inventory-purchasing`. Follows the entry below, which shipped the
+two write forms against an API that could only report what it had already done.
+
+`PawCRM-Backend` 0.21.0 closed the three gaps that entry lists, and this pass
+**deletes the code that existed because of them**. Net effect on the user: the
+preview panel now shows what will actually be written, and a save that times out
+can be retried without moving stock twice. Net effect on the code: three files
+fewer.
+
+### Added
+
+- **`stockMovementService.preview`** + **`useMovementPreview`** — a debounced
+  (350 ms) `POST /stock-movements/preview`. It keeps the last answer on screen
+  while a new one is in flight, because clearing it makes the panel flicker
+  between every keystroke and its response
+- **`utils/idempotency.ts`** — `newIdempotencyKey`, minted once per **intent**.
+  Both forms keep it across a failed attempt, so a retry replays instead of
+  writing twice, and replace it only after a save succeeds
+- `types/inventory.ts` — `PreviewStockMovementInput`, `PreviewMovementRow`,
+  `PreviewHpp`, `StockMovementPreview`, `HppCalculation`; `idempotencyKey` on
+  both create inputs
+
+### Removed
+
+- **`features/inventory/utils/preview.ts`** — the reimplementations of FEFO
+  allocation, the perpetual weighted average and the counter-account choice. They
+  agreed with the server; the risk was that a future divergence would not throw,
+  it would render a confident wrong number the user approves
+- **`hooks/useJournalAccounts.ts`** and **`services/chartOfAccounts.service.ts`**
+  — they existed only to put names on the two account codes `utils/preview.ts`
+  hardcoded. The preview response carries codes and names
+- **`ChartAccount`** from `types/api.ts`, and **`stockPreview.test.ts`** (14
+  cases) — the rules they pinned now have one implementation, in the backend
+
+### Changed
+
+- **Both forms build ONE payload and use it for the preview and the save.** A
+  preview of a different request is worse than no preview, and that object was
+  the only place they could diverge; the test asserts they match
+- **Neither form loads lots any more.** `useProductBatches` was there to compute
+  the FEFO split — the preview now names every lot it would touch
+- `FefoPreview` takes the server's rows instead of a client-computed allocation;
+  `HppStrip` takes `HppCalculation` from `types/inventory` instead of a demo-store
+  type. The "sisa lot" caption is gone — it was the one field the preview does not
+  return, and keeping a second request alive for a caption is not a trade worth
+  making
+- `StockMovementForms.test.tsx` rewritten around the fetched preview (14 → 15)
+- **The expiry checkbox on an existing variant family now says that changing it
+  cascades to every variant.** The backend cascade is new (`PawCRM-Backend`
+  unreleased); the checkbox looks like a small edit and is not one, and finding
+  that out from a stock card six weeks later is worse than reading it here
+- **Penyesuaian Stok now has a sidebar entry**, last in the Inventory menu, with
+  a new `AdjustmentIcon`. It was previously reachable only from the hub. Last on
+  purpose — a real discrepancy is found by an opname and moved goods are moved by
+  a transfer, so the by-hand correction should not sit above either — and gated
+  on `stockMovements:create`, which the seeded Staff role does not hold.
+  `nav.test.ts` pins both the order and the read-only case
+
+---
+
+## [Unreleased] — Penyesuaian & Transfer Stok
+
+Branch: `feature/inventory-purchasing`.
+
+The two screens that **write** to the stock ledger move off the prototype store
+onto `POST /api/stock-movements`. Together they are the entire write surface the
+API offers a client — an `operation` of `adjustment` or `transfer`, and nothing
+else — so the stock module's write side is now complete. See
+`docs/features/stock-movements.md`.
+
+Frontend only. **No backend change**, but three new gaps were found and written
+up: `PawCRM-Backend/docs/stock-card-gaps.md` gaps 7–9.
+
+### Added
+
+- **`stockMovementService.create`** — posts an adjustment or a transfer and
+  returns the ARRAY the server wrote. Callers must not assume one row: FEFO
+  splits a withdrawal across every lot it draws from, and a transfer writes a
+  pair per lot
+- **`services/chartOfAccounts.service.ts`** (`getByCode`) — one method, so the
+  journal preview can name the accounts it is about to post against. By code,
+  never by id: account ids differ per tenant, codes do not
+- **`features/inventory/utils/preview.ts`** — `previewFefo`, `previewHpp`,
+  `previewAdjustmentJournal`. The API has no preview endpoint, so these
+  reimplement three server decisions; the file's header says which, and why the
+  duplication is a risk rather than a convenience
+- **`hooks/useJournalAccounts`** — code → name, and the only lookup in this
+  feature that swallows its failure. The preview falls back to showing `5201`,
+  which is still true; a red banner because the role lacks
+  `chartOfAccounts:read` would block a stock adjustment over a missing caption
+- `types/api.ts` — `ChartAccount`
+- Tests: `stockPreview.test.ts` (14), `StockMovementForms.test.tsx` (14)
+
+### Changed
+
+- **`StockAdjustmentForm` and `StockTransferForm`** now read their warehouses,
+  products, lots and HPP from the API and post to it. The UI is unchanged; what
+  changed is that Simpan writes something that survives a refresh
+- **Only ACTIVE warehouses are offered**, unlike the stock card, which lists
+  inactive ones because it only reads. The API refuses a movement at an inactive
+  location, so offering one would be a rejection waiting to happen
+- **The transfer form refuses to render** with fewer than two active warehouses,
+  rather than showing two selects stuck on the same value above a disabled button
+- **Rejections are surfaced with `ApiError.fullMessage`**, which carries the
+  actionable half of a 400 ("Warehouse 'Gudang Bazar' is not active…") that
+  `message` alone drops. Only rules a user can fix without a round trip are
+  validated locally
+- **The success toast reports the SERVER's row count**, not the predicted one —
+  so a disagreement between preview and reality is visible rather than silent
+- `InventoryScreens.test.tsx` is down to the hub: it is the last inventory screen
+  on the demo store, apart from opname
+
+### Known limitations
+
+Each traced to a backend gap — `PawCRM-Backend/docs/stock-card-gaps.md`:
+
+- the previews are computed in the browser and can drift from the server's own
+  rules (gap 7); both forms say so in their copy
+- the account codes a movement posts to are hardcoded; only their names are
+  looked up per tenant (gap 8)
+- **a manual movement cannot be retried safely** (gap 9). The submit button is
+  disabled while in flight, which stops a double click and nothing else: a
+  request that times out and is retried writes the adjustment twice
+
+> **All three are gone** — `PawCRM-Backend` 0.21.0 closed the gaps and the entry
+> above rewired the forms. This entry is kept as the record of what the screens
+> looked like when the API could only report what it had already done.
+
+---
+
+## [Unreleased] — Kartu stok, rewired
+
+Branch: `feature/inventory-purchasing`. Follows the entry below, which shipped the
+screen against an API that returned neither a balance nor a label.
+
+`PawCRM-Backend` 0.20.0 closed five of the six gaps that entry lists, and this
+pass **deletes the workarounds** rather than keeping them beside the new fields.
+Net effect on the user: the balance column survives every filter, the ledger
+pages like every other list, there is a "diinput oleh" column, period totals, and
+an export button. Net effect on the code: less of it.
+
+### Added
+
+- **Period tiles** — `useStockCardSummary` + `GET /stock-movements/summary`.
+  Total masuk, keluar, nett and movement count for the filtered range. Omitted
+  before, because summing the loaded page reports the page and grows as the user
+  pages. Deliberately not keyed on the page number: the totals do not change when
+  you page
+- **Export CSV** — a button beside the filters it obeys, plus
+  `stockMovementService.export` and a new `apiClient.download`. The blob is
+  fetched and saved rather than linked to: an anchor pointing at the endpoint
+  would turn a 403 into a downloaded file containing `{"success":false}`.
+  `download` shares credentials, timeout and error translation with every other
+  call — only the `{ success, data }` unwrapping is skipped, because it would
+  throw on the first byte of CSV
+- **"Diinput oleh" column**, and `batchCode` read straight off the row. `null`
+  renders as "sistem" — the API's answer for a movement a background process
+  posted
+- **`openingBalance` in the ledger's footer** — the balance before the page's
+  oldest row, so a reader can check the page's own arithmetic
+- `types/inventory.ts` — `StockMovement` gains the six fields the API computes
+  (`balanceAfter` and the five labels); new `StockMovementPage`,
+  `StockMovementSummary`; `ProductListQuery.holdsStock`
+
+### Changed
+
+- **The ledger pages by jumping again.** `Pagination` replaces "Muat lebih
+  banyak", and `useStockCard` returns one page instead of accumulating. The
+  append-only feed existed because the balance was reconstructed by walking
+  backwards from the newest row, which a page-jump would have invalidated —
+  every balance on screen wrong by the sum of the pages it skipped
+- **No filter costs the balance column any more.** The paragraph in
+  `StockCardFilters` explaining that a type or end-date filter disabled it is
+  gone, not reworded: the server sums the rows it hides too
+- **The product picker issues one request** (`holdsStock=true`) instead of two
+  merged by type, and no longer carries a copy of the server's
+  `STOCK_TRACKING_TYPES`
+- **`utils/ledger.ts` is down to `partitionBatches` and `qtyAtWarehouse`.**
+  `withRunningBalance` and `canAnchorBalance` are deleted; the file's header now
+  records why they existed, so nobody rebuilds them
+- `useProductStock` is still fetched, but for the position tiles only — it is no
+  longer the balance anchor, so a stale reading no longer moves every number in
+  the table
+- Tests: `stockLedger.test.ts` drops its balance arithmetic (10 → 4);
+  `StockCardScreen.test.tsx` rewritten around the rendered-not-derived seams
+  (8 → 14); `stockLedger.service.test.ts` covers `summary` and `export` (8 → 10)
+
+### Still missing
+
+- **`referenceNo`.** The Referensi column names a document *kind*, not a
+  document, because `goodsreceipts`, `postransactions` and `stockopnames` are not
+  collections yet. It lands with those modules
+
+---
+
+## [Unreleased] — Kartu stok
+
+Branch: `feature/inventory-purchasing`.
+
+Inventory → Kartu Stok moves off the prototype store and onto the real
+`/api/stock-movements` and `/api/product-batches`. Frontend only — **no backend
+change**. See `docs/features/stock-card.md`, and
+`PawCRM-Backend/docs/stock-card-gaps.md` for what the API still owes this screen.
+
+### Added
+
+- `services/stockMovement.service.ts` (`list`, `getById`) and
+  `services/productBatch.service.ts` (`list`, `expiring`, `getById`) — both
+  **read-only**, mirroring APIs that have no write surface. The ledger is
+  append-only; a batch is born from a movement
+- `features/inventory/utils/ledger.ts` — `withRunningBalance`,
+  `canAnchorBalance`, `partitionBatches`, `qtyAtWarehouse`. The balance the API
+  does not return, derived by anchoring backwards from `qtyOnHand` on BigInt
+  minor units
+- Hooks `useStockCardLookups`, `useProductStock`, `useStockCard`,
+  `useProductBatches` — one `refreshKey` drives the last three together, so a
+  refresh can never measure a fresh ledger against a stale anchor
+- `components/StockCardFilters.tsx` (movement type, date range, reset, refresh),
+  `StockLedgerTable.tsx`, `BatchLotTable.tsx`
+- `types/inventory.ts` — `StockMovementListQuery`, `ProductBatchListQuery`,
+  `ExpiringBatchListQuery`, `ExpiringBatchesResult`
+- Tests: `stockLedger.test.ts` (10), `stockLedger.service.test.ts` (8),
+  `StockCardScreen.test.tsx` (8)
+
+### Changed
+
+- **`StockCardScreen`** rewritten as a container over the four hooks: per-section
+  loading, per-section errors, an empty state, and stat tiles that read `—`
+  rather than guessing when `products:read` is missing
+- **The ledger appends, and no longer offers a pager.** The running balance is
+  anchored to the current on-hand quantity, which is only valid while the loaded
+  rows run contiguously from the newest one — a page-jump would leave every
+  balance on screen wrong by the sum of the pages it skipped
+- **A movement-type filter or an end date blanks the balance column**, on purpose
+  and with the reason stated on the filter itself: both hide rows newer than the
+  ones displayed, which breaks the anchor
+- **`WarehouseProductPicker`** gains opt-in `includeInactiveWarehouses` and a
+  `productPlaceholder`. Only a read-only screen passes the first — the stock card
+  does, because a deactivated warehouse still owns its whole history
+- `/dashboard/inventory/stock-card` now sits behind
+  `RequirePermission feature="stockMovements"`; the batch tab carries its own
+  `productBatches:read` check and is not requested without it
+- `InventoryScreens.test.tsx` drops its three StockCardScreen cases — that screen
+  no longer reads the demo store, so it needs mocked services and an auth context
+
+### Known limitations
+
+Each traced to a backend gap rather than a frontend decision — see
+`PawCRM-Backend/docs/stock-card-gaps.md`:
+
+- no "siapa yang input" column, and the reference shows a document **type**
+  rather than a number (gap 2)
+- no period totals and no CSV/PDF export (gaps 3 and 4)
+- the product picker issues two requests and caps at 500 rows per type, warning
+  when a catalogue exceeds it (gap 5)
+
+> **All of these are gone** — `PawCRM-Backend` 0.20.0 closed the gaps and the
+> entry above rewired the screen. `referenceNo` is the one that remains. This
+> entry is kept as the record of what the screen looked like when the API
+> returned neither a balance nor a label.
+
+---
+
+## [Unreleased] — Warehouse management
+
+Branch: `feature/inventory-purchasing`.
+
+Master Data → Warehouse, against the already-existing `/api/warehouses`. Frontend
+only — **no backend change**. See `docs/features/warehouse-management.md`.
+
+### Added
+
+- `features/warehouses/` — `WarehousesScreen`, `WarehousesToolbar`,
+  `WarehousesTable`, `WarehouseStatusBadge`, `WarehouseBranchSelect`,
+  `WarehouseCreateForm`, `WarehouseEditForm`; hooks `useWarehouses` (list query
+  state) and `useWarehouseBranches` (branch names + picker options)
+- Routes `/dashboard/master/warehouses`, `/new` and `/[id]`, each behind
+  `RequirePermission` (`warehouses` / `:create` / `:update`)
+- `types/api.ts` — `Warehouse`, `WarehouseListQuery`, `CreateWarehouseInput`,
+  `UpdateWarehouseInput`
+- `utils/validation.ts` — `validateWarehouseName`, `validateWarehouseAddress`,
+  `validatePicName`, `validatePicPhone`
+- `components/icons.tsx` — `WarehouseIcon`; Master Data → Warehouse nav entry
+  gated on `warehouses:read`
+- Tests: `warehouse.service.test.ts` (7), `WarehousesTable.test.tsx` (9),
+  `WarehouseCreateForm.test.tsx` (5)
+
+### Changed
+
+- **`services/warehouse.service.ts`** grows from a picker's `list` into the full
+  set (`list/getById/create/update/remove/restore`). `list` gains `page`,
+  `defaultBranchId` and `includeDeleted`, keeps its `limit: 100` default, and now
+  returns `PageResult<Warehouse>` — structurally assignable to the slim
+  `StockWarehouse`, so `useCatalogLookups` and the product screens are untouched
+- **`api-client` / `ApiError` carry the envelope's `reason`**, with a new
+  `ApiError.fullMessage` (`"message — reason"`). The warehouse delete guards put
+  the actionable half of a 409 there ("still holds stock for 3 product(s)"), and
+  it was being dropped — every feature benefits, none changes behaviour
+- A branch's **default warehouse offers no Delete** (table and danger zone): the
+  backend refuses it unconditionally, so the badge and a line of copy explain it
+  instead of a button that can only 409
+- `tests/ProductForm.test.tsx` / `tests/ProductsScreen.test.tsx` warehouse
+  fixtures are now full `Warehouse` documents
+
+### Not implemented (needs backend)
+
+Reassigning a branch's default warehouse (no `set-default` route, `isDefault` is
+server-owned), a per-warehouse stock summary, a populated `defaultBranchId`, and
+filtering for central (unassigned) warehouses only.
+
+---
+
+## [Unreleased] — Product & Variant management
+
+Branch: `feature/inventory-purchasing`.
+
+The catalogue screens leave the demo store and run against `/api/products`. See
+`docs/features/product-management.md`.
+
+### Added
+
+- `services/product.service.ts` —
+  `list/getById/listVariants/getByBarcode/lowStock/create/update/remove/restore`
+- `services/warehouse.service.ts` — `list`, for the stock-column and
+  opening-stock pickers
+- `features/inventory/hooks/` — `useProducts` (list query state),
+  `useProductVariants` (lazy, cached per-parent expand), `useProductDetail` (the
+  edit screen's product + family), `useCatalogLookups` (categories + active
+  warehouses), `useBundleCandidates` (component picker, bundle mode only)
+- `features/inventory/utils/catalogue.ts` — the pure helpers both screens share:
+  `qtyAt`, `stockOf`, `limitedByAt`, `variantCombinations`, `attributesFor`,
+  `defaultVariantSku`, `matchVariant`
+- `features/inventory/components/` — `ProductsToolbar` and `ProductsTable`, split
+  out of `ProductsScreen` the way the customers and branches screens are
+- `types/inventory.ts` — the request/response contract: `ProductStockRow`,
+  `BundleAvailabilityRow`, `ProductListQuery`, `OpeningStockInput`,
+  `CreateFamilyVariantInput`, the `CreateProductInput` discriminated union,
+  `UpdateProductInput`, `CreatedProduct`, `OpeningStockReport`
+- Tests: `ProductsScreen.test.tsx` (11) and `ProductForm.test.tsx` (15), both
+  against mocked services
+
+### Changed
+
+- **`ProductsScreen`** now lists from the API with server pagination, asking for
+  `excludeVariants=true` so a family is one row and `total` counts what is shown.
+  A parent's variants are fetched when its row is expanded, and cached. The
+  warehouse selector re-reads quantities already on the page rather than
+  refetching. Delete and restore run through `ConfirmDialog` and surface the
+  backend's refusal verbatim — it names which guard stopped it
+- **`ProductForm`** now loads its product (and, for a parent, its variants)
+  before rendering, and saves through the API: a family goes in ONE request
+  carrying `variants[]`; an edit sends only the fields that changed and creates
+  only the combinations that are new. `openingStock` travels with the create, per
+  variant, and a `posted: false` on a successful create is reported to the user
+  rather than swallowed. Field-level refusals (`400` and `409` alike) bind to
+  their inputs, and row-scoped ones to the variant row
+- **`BundleComponentEditor`** is fed by the API instead of the demo store
+- The three product routes are behind `<RequirePermission feature="products">`,
+  and every row action behind `<Can>`
+- `demoStore` products carry `stockByWarehouse: []`, matching the API shape now
+  that `Product` is the API's type. The demo store still backs the stock card,
+  batches, opname and transfer screens
+- `tests/InventoryCatalogue.test.tsx` keeps the demo-backed batch/opname
+  coverage; the catalogue cases moved to the two new files
+
+### Requires (backend, same branch)
+
+`POST /api/products` accepting `variants[]` + `openingStock`, `excludeVariants`
+on the list with parent-surfacing search, `variantCount`/`variantStock` on a
+parent, `bundleAvailability` on a bundle, and `details[]` on a `409`. See the
+backend changelog `[0.19.0]`.
+
+---
+
 ## [Unreleased]
 
 Branch: `feature/project-initialization`.
