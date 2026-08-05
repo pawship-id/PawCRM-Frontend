@@ -11,8 +11,6 @@ import type {
   FefoAllocation,
   JournalLine,
   MovementType,
-  Opname,
-  OpnameItem,
   Product,
   ProductBatch,
   StockMovement,
@@ -105,8 +103,6 @@ export interface DemoState {
   warehouses: StockWarehouse[];
   batches: ProductBatch[];
   movements: StockMovement[];
-  opnames: Opname[];
-  opnameItems: OpnameItem[];
   suppliers: Supplier[];
   receipts: GoodsReceipt[];
   receiptItems: GoodsReceiptItem[];
@@ -531,8 +527,6 @@ function seed(): DemoState {
     warehouses,
     batches,
     movements,
-    opnames: [],
-    opnameItems: [],
     suppliers,
     receipts: [],
     receiptItems: [],
@@ -602,8 +596,6 @@ export function getState(): DemoState {
     warehouses: [...state.warehouses],
     batches: [...state.batches],
     movements: [...state.movements],
-    opnames: [...state.opnames],
-    opnameItems: [...state.opnameItems],
     suppliers: [...state.suppliers],
     receipts: [...state.receipts],
     receiptItems: [...state.receiptItems],
@@ -1442,149 +1434,6 @@ export function addCategory(name: string): Category {
   const category: Category = { _id: nextId("cat"), name: name.trim() };
   state.categories = [...state.categories, category];
   return category;
-}
-
-/* ------------------------------------------------------------ stock opname */
-
-let opnameSequence = 0;
-
-/**
- * Opens a count sheet, SNAPSHOTTING the system quantity and cost of every
- * product at this warehouse.
- *
- * The snapshot is the point. A count takes an afternoon, and sales keep
- * happening while it runs; comparing tonight's physical count against tonight's
- * system number would fold every sale made during the count into the variance.
- * Freezing both numbers when the sheet opens means the difference measures what
- * it claims to.
- */
-export function startOpname(warehouseId: string, notes = ""): Opname {
-  opnameSequence += 1;
-  const opname: Opname = {
-    _id: nextId("op"),
-    opnameNumber: `OP-${new Date().toISOString().slice(2, 10).replace(/-/g, "")}-${String(
-      opnameSequence,
-    ).padStart(3, "0")}`,
-    warehouseId,
-    opnameDate: new Date().toISOString().slice(0, 10),
-    status: "draft",
-    totalDiffValue: "0.0000",
-    submittedBy: null,
-    submittedAt: null,
-    notes,
-  };
-
-  const items: OpnameItem[] = state.products
-    // Only what can actually hold stock: a parent's quantity is its variants'
-    // and a bundle has none of its own, so neither can be counted.
-    .filter(
-      (p) =>
-        p.isActive &&
-        (p.productType === "standalone" || p.productType === "variant"),
-    )
-    .map((p) => ({
-      _id: nextId("opi"),
-      opnameId: opname._id,
-      productId: p._id,
-      systemQty: qtyOnHand(p._id, warehouseId),
-      physicalQty: null,
-      hppAtOpname: p.hppAvg,
-    }));
-
-  state.opnames = [opname, ...state.opnames];
-  state.opnameItems = [...state.opnameItems, ...items];
-  return opname;
-}
-
-export function opnameItemsOf(opnameId: string): OpnameItem[] {
-  return state.opnameItems.filter((item) => item.opnameId === opnameId);
-}
-
-/** Records a counted quantity. Null clears it back to "not counted yet". */
-export function setOpnameCount(
-  itemId: string,
-  physicalQty: string | null,
-): void {
-  state.opnameItems = state.opnameItems.map((item) =>
-    item._id === itemId ? { ...item, physicalQty } : item,
-  );
-}
-
-/** The variance on one line: counted minus system, and what that is worth. */
-export function opnameDiff(
-  item: OpnameItem,
-): { qty: bigint; value: bigint } | null {
-  if (item.physicalQty === null) return null;
-  const qty =
-    (toMinor(item.physicalQty) ?? 0n) - (toMinor(item.systemQty) ?? 0n);
-  const value = divideRound(
-    qty * (toMinor(item.hppAtOpname ?? "0") ?? 0n),
-    SCALE,
-  );
-  return { qty, value };
-}
-
-/** The whole sheet's variance — what the journal will post. */
-export function opnameTotal(opnameId: string): string {
-  const total = opnameItemsOf(opnameId).reduce<bigint>((acc, item) => {
-    const diff = opnameDiff(item);
-    return diff ? acc + diff.value : acc;
-  }, 0n);
-  return toDecimalString(total);
-}
-
-/**
- * Finalises a count: writes one `opname_diff` movement per line that differs,
- * and freezes the sheet.
- *
- * Lines counted equal to the system write NOTHING — a movement of zero is a row
- * with no meaning that every report then has to skip. Lines left blank are
- * skipped too: "not counted" is not the same claim as "counted zero", and
- * treating them alike would write off every product the counter did not reach.
- */
-export function submitOpname(
-  opnameId: string,
-  submittedBy = "Fitria",
-): StockMovement[] {
-  const opname = state.opnames.find((o) => o._id === opnameId);
-  if (!opname) throw new Error("Opname tidak ditemukan");
-  if (opname.status === "submitted") throw new Error("Opname ini sudah final");
-
-  const now = new Date().toISOString();
-  const written: StockMovement[] = [];
-
-  for (const item of opnameItemsOf(opnameId)) {
-    const diff = opnameDiff(item);
-    if (!diff || diff.qty === 0n) continue;
-
-    written.push(
-      mv(
-        item.productId,
-        opname.warehouseId,
-        "opname_diff",
-        toDecimalString(diff.qty),
-        item.hppAtOpname,
-        null,
-        { type: "stock_opname", id: opnameId },
-        now,
-      ),
-    );
-  }
-
-  state.movements = [...written, ...state.movements];
-  state.opnames = state.opnames.map((o) =>
-    o._id === opnameId
-      ? {
-          ...o,
-          status: "submitted",
-          totalDiffValue: opnameTotal(opnameId),
-          submittedBy,
-          submittedAt: now,
-        }
-      : o,
-  );
-
-  return written;
 }
 
 /**

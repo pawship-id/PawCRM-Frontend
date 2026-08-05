@@ -125,7 +125,17 @@ export const NAV_ITEMS: NavItem[] = [
         label: "Stok Opname",
         href: "/dashboard/inventory/opname",
         icon: OpnameIcon,
-        permission: { feature: "stockMovements", action: "create" },
+        /**
+         * Gated on `stockOpnames:read`, NOT on the ledger's `create`.
+         *
+         * Counting the shelves is Staff work — it is most of the labour an
+         * opname costs — and the seeded Staff role deliberately holds
+         * create/read/update here while holding only `read` on the ledger. Gating
+         * this on `stockMovements:create` would have hidden the whole feature
+         * from exactly the people who do it, while showing it to anyone who can
+         * post a manual adjustment. The two are different privileges.
+         */
+        permission: { feature: "stockOpnames", action: "read" },
       },
       {
         label: "Transfer Stok",

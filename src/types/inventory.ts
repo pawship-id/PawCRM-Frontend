@@ -662,33 +662,202 @@ export interface OpeningStockReport {
 
 /* ------------------------------------------------------------ stock opname */
 
+/**
+ * A physical stock count, against /api/stock-opnames.
+ *
+ * TWO STATES, ONE WAY. `draft` is a sheet somebody is still counting against;
+ * `submitted` is one that has moved stock and hit the ledger. There is no
+ * un-submit — the movements and journal entry a submit produced are themselves
+ * immutable, so a sheet that could go back would claim to describe a count whose
+ * corrections had already been booked.
+ */
 export type OpnameStatus = "draft" | "submitted";
 
-/** One product on a count sheet. */
+/**
+ * One product on a count sheet.
+ *
+ * A LINE HAS NO `_id`. It is identified by its `productId`, which is unique
+ * within a sheet — the array is embedded on the opname document rather than
+ * being a collection of its own, so there is nothing else for an id to mean.
+ *
+ * ONE FIELD HERE IS AN INPUT: `physicalQty`, what was found on the shelf, plus
+ * the `notes` / `batchCode` / `expiryDate` that explain it. Every quantity below
+ * it is computed by the server and recomputed at submit — a count sheet whose
+ * author could also type the system quantity is one that can be made to balance.
+ */
 export interface OpnameItem {
-  _id: string;
-  opnameId: string;
   productId: string;
-  /** What the system believed at the moment the sheet was opened. */
+  /**
+   * What the system believed. A DISPLAY HINT: it is re-read at submit, because a
+   * draft may sit open for hours while the shop keeps selling, and diffing
+   * against an hours-old snapshot would book those sales a second time as
+   * shrinkage.
+   */
   systemQty: string;
-  /** What the counter found. Null until somebody writes a number in. */
-  physicalQty: string | null;
-  /** `hppAvg` snapshotted when the sheet opened, so the value cannot drift. */
-  hppAtOpname: string | null;
+  /**
+   * What the counter found. Never null — a fresh line opens PRE-FILLED with the
+   * system quantity, so a line nobody reaches is a no-op rather than a write-off
+   * of everything the counter did not get to.
+   */
+  physicalQty: string;
+  /** `physicalQty − systemQty`. Positive = found more, negative = short. */
+  diffQty: string;
+  /** `hppAvg` snapshotted at submit, so a March variance is not restated in June. */
+  hppAtOpname: string;
+  /** `diffQty × hppAtOpname` — what this line's discrepancy was worth. */
+  diffValue: string;
+  /**
+   * When a human last put a number against this line, or null.
+   *
+   * THE FIELD THAT TELLS "NOT COUNTED YET" FROM "COUNTED, AND IT MATCHED".
+   * Both post nothing, so the ledger cannot distinguish them — but a counter
+   * deciding whether the sheet is finished must. Server-stamped from the
+   * `counted` flag on the save; never sent as a date.
+   */
+  countedAt: string | null;
+  notes: string | null;
+  /** Required by the API for FOUND stock of a product that expires. */
+  batchCode: string | null;
+  expiryDate: string | null;
+  /* --- labels, on the DETAIL read only. Null for a product since deleted. --- */
+  productSku?: string | null;
+  productName?: string | null;
+  /** So a sheet asking for "8" can say "8 kg". */
+  productUnit?: string | null;
+  /**
+   * Whether a POSITIVE difference on this line will need a lot. Sent so the form
+   * can ask WHILE the counter is at the shelf rather than surfacing a 400 after
+   * the sheet is filled in.
+   */
+  productHasExpiry?: boolean | null;
 }
 
-/** A stock count. Draft until submitted; submitting writes the movements. */
+/** A count sheet. Draft until submitted; submitting writes the movements. */
 export interface Opname {
   _id: string;
   opnameNumber: string;
   warehouseId: string;
+  /** When the shelves were walked — not when the row was written. */
   opnameDate: string;
   status: OpnameStatus;
-  /** Decimal string — Σ (selisih × HPP snapshot). Negative is shrinkage. */
+  categoryFilter: string | null;
+  /** Decimal string — Σ (selisih × HPP). Negative is shrinkage. */
   totalDiffValue: string;
+  /**
+   * The ledger entry the submit posted. Null on a draft — and legitimately null
+   * on a submitted sheet whose differences were worth nothing.
+   */
+  journalEntryId: string | null;
   submittedBy: string | null;
   submittedAt: string | null;
-  notes: string;
+  notes: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Present on the DETAIL read; the list projects the array away. */
+  items?: OpnameItem[];
+  /* ----------------------- labels and counts the server resolves ----------- */
+  warehouseName?: string | null;
+  createdByName?: string | null;
+  submittedByName?: string | null;
+  /** LIST only: how many lines, and how many have actually been counted. */
+  itemCount?: number;
+  countedCount?: number;
+}
+
+export interface OpnamePage {
+  items: Opname[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+/** GET /api/stock-opnames. */
+export interface OpnameListQuery {
+  page?: number;
+  limit?: number;
+  /** Substring over the opname number and the sheet note. */
+  search?: string;
+  warehouseId?: string;
+  status?: OpnameStatus;
+  categoryFilter?: string;
+  /** ISO date. Bounds `opnameDate`, the day the shelves were walked. */
+  dateFrom?: string;
+  /** ISO date. The API refuses a `dateTo` that precedes `dateFrom`. */
+  dateTo?: string;
+  includeDeleted?: boolean;
+}
+
+/**
+ * One line as the CLIENT sends it — four fields, and not one of them a quantity
+ * the server computes.
+ */
+export interface OpnameItemInput {
+  productId: string;
+  physicalQty: string;
+  /**
+   * "Somebody has walked this shelf." Omitting it PRESERVES whatever is stored,
+   * so an auto-save with no opinion never resets progress; `false` clears it.
+   */
+  counted?: boolean;
+  notes?: string | null;
+  batchCode?: string;
+  expiryDate?: string;
+}
+
+/**
+ * POST /api/stock-opnames.
+ *
+ * `items` IS OPTIONAL, and omitting it is the ordinary case: the server fills
+ * the sheet with every active stock-tracking product at the warehouse, narrowed
+ * by `categoryFilter`. That is what a stock take is — you count the shelves, you
+ * do not curate a list first.
+ */
+export interface CreateOpnameInput {
+  warehouseId: string;
+  opnameDate?: string;
+  categoryFilter?: string | null;
+  notes?: string | null;
+  items?: OpnameItemInput[];
+}
+
+/**
+ * PATCH /api/stock-opnames/:id — the auto-save.
+ *
+ * `items` REPLACES the whole array, so the client sends the entire sheet. A
+ * patch-by-line protocol would need a stable line id, an ordering rule and a
+ * conflict story for two tablets counting one warehouse; replacing a bounded
+ * array in one atomic write needs none of them.
+ */
+export interface UpdateOpnameInput {
+  opnameDate?: string;
+  notes?: string | null;
+  items?: OpnameItemInput[];
+}
+
+/**
+ * POST /api/stock-opnames/:id/preview — what submitting would post.
+ *
+ * Reuses the stock-movement preview shapes, because it IS that preview: the
+ * opname service asks the same gateway the manual adjustment form does, so the
+ * FEFO allocation and the resolved journal accounts are the ones that will
+ * actually be written.
+ *
+ * A PERFECT COUNT ANSWERS WITH EMPTY ARRAYS rather than an error — every shelf
+ * agreed, and there is nothing to post.
+ */
+export interface OpnameSubmitPreview {
+  opnameId: string;
+  opnameNumber: string;
+  /** The lines recomputed against LIVE stock, which is what submit will use. */
+  items: OpnameItem[];
+  totalDiffValue: string;
+  movements: PreviewMovementRow[];
+  hppAvg: PreviewHpp[];
+  journal: JournalLine[];
 }
 
 /* -------------------------------------------------- ledger & lot requests */

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { Breadcrumb } from "@/components";
 import { OpnameSheet } from "@/features/inventory";
+import { RequirePermission } from "@/features/permissions";
 
 export const metadata: Metadata = { title: "Lembar opname · PawShip" };
 
@@ -26,12 +27,16 @@ export default async function OpnameSheetPage({
           Lembar penghitungan
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">
-          Isi jumlah fisik hasil hitungan. Angka sistem dan HPP sudah dikunci
-          sejak lembar ini dibuka.
+          Isi jumlah fisik hasil hitungan — tersimpan otomatis, jadi aman
+          ditinggal dan dilanjutkan. Selisihnya dihitung ulang terhadap stok
+          terbaru saat opname diselesaikan, sehingga penjualan yang terjadi
+          selama penghitungan tidak ikut terhitung sebagai selisih.
         </p>
       </div>
 
-      <OpnameSheet opnameId={id} />
+      <RequirePermission feature="stockOpnames">
+        <OpnameSheet opnameId={id} />
+      </RequirePermission>
     </div>
   );
 }

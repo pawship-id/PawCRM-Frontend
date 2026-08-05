@@ -2,81 +2,108 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 
-import { Button } from "@/components";
-import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Alert, ConfirmDialog, Pagination, Spinner } from "@/components";
+import { usePermissions } from "@/features/permissions";
+import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
+import { ApiError } from "@/services/api-error";
+import { stockOpnameService } from "@/services/stockOpname.service";
+import type { Opname } from "@/types/inventory";
 import { formatMoney, toMinor } from "@/utils/decimal";
 
-import * as demo from "../data/demoStore";
-import { useInventoryDemo } from "../hooks/useInventoryDemo";
+import { useCatalogLookups } from "../hooks/useCatalogLookups";
+import {
+  EMPTY_OPNAME_FILTERS,
+  useOpnames,
+  type OpnameFilters,
+} from "../hooks/useOpnames";
+import { OpnameStartCard } from "./OpnameStartCard";
+import { OpnameStatusBadge } from "./OpnameStatusBadge";
+import { OpnameToolbar } from "./OpnameToolbar";
 
 /**
  * The stock-count list: sheets in progress, and sheets already final.
  *
  * WHY A SHEET RATHER THAN A ROW-BY-ROW EDIT. Counting a warehouse takes an
  * afternoon and sales keep happening while it runs. Adjusting each product as
- * you go would fold every sale made during the count into the variance, and the
- * number at the end would measure the count itself rather than what is missing.
- * Opening a sheet SNAPSHOTS the system quantity and the cost of every product,
- * so the difference means what it claims to.
+ * you go would write a movement per shelf, so a customer buying the item you
+ * just counted would look like a second discrepancy. A sheet stays a draft —
+ * moving nothing — until somebody accepts the whole count at once, which is what
+ * makes it safe to start in the morning and finish after lunch.
  *
- * A sheet is a draft until it is submitted. Nothing moves until then — which is
- * what makes it safe to start one in the morning and finish it after lunch.
+ * THE PROGRESS COLUMN IS THE POINT OF THIS SCREEN. `12 / 40` is the difference
+ * between a finished stock take and an abandoned one, and it is only honest
+ * because the API tracks which lines were actually visited — a sheet where every
+ * line still holds the system quantity is indistinguishable from a completed one
+ * that happened to agree, and submitting the first believing it was the second
+ * silently certifies shelves nobody looked at.
  */
 export function OpnameScreen() {
-  const router = useRouter();
-  const { opnames, warehouses, opnameItems, sync } = useInventoryDemo();
+  const { can } = usePermissions();
+  const lookups = useCatalogLookups();
 
-  const [warehouseId, setWarehouseId] = useState(warehouses[0]._id);
-  const [starting, setStarting] = useState(false);
+  const [filters, setFilters] = useState<OpnameFilters>(EMPTY_OPNAME_FILTERS);
+  const [page, setPage] = useState(1);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [pendingDelete, setPendingDelete] = useState<Opname | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  function handleStart() {
-    setStarting(true);
-    const opname = demo.startOpname(warehouseId);
-    sync();
-    router.push(`/dashboard/inventory/opname/${opname._id}`);
+  const { opnames, pagination, loading, error } = useOpnames(
+    filters,
+    page,
+    refreshKey,
+  );
+
+  const refresh = () => setRefreshKey((key) => key + 1);
+
+  function handleFilters(next: OpnameFilters) {
+    setFilters(next);
+    // A filter change re-asks the question; keeping page 4 would answer it with
+    // a page that may no longer exist.
+    setPage(1);
+  }
+
+  async function handleDelete() {
+    if (!pendingDelete) return;
+
+    setDeleting(true);
+    setDeleteError(null);
+
+    try {
+      await stockOpnameService.remove(pendingDelete._id);
+      swalToast(`Draft ${pendingDelete.opnameNumber} dibuang.`);
+      setPendingDelete(null);
+      refresh();
+    } catch (caught) {
+      setDeleteError(
+        caught instanceof ApiError
+          ? caught.fullMessage
+          : "Draft gagal dibuang. Coba lagi.",
+      );
+    } finally {
+      setDeleting(false);
+    }
   }
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-surface p-4">
-        <div className="min-w-56 flex-1">
-          <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted">
-            Mulai hitung fisik
-          </p>
-          <p className="mt-1 text-sm text-muted">
-            Sistem akan mengunci angka stok dan HPP setiap produk di gudang ini
-            saat lembar dibuka, supaya penjualan yang terjadi selama penghitungan
-            tidak ikut terhitung sebagai selisih.
-          </p>
-        </div>
-        <Select value={warehouseId} onValueChange={setWarehouseId}>
-          <SelectTrigger className="w-56" aria-label="Gudang yang dihitung">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {warehouses
-              .filter((warehouse) => warehouse.isActive)
-              .map((warehouse) => (
-                <SelectItem key={warehouse._id} value={warehouse._id}>
-                  {warehouse.name}
-                </SelectItem>
-              ))}
-          </SelectContent>
-        </Select>
-        <Button onClick={handleStart} disabled={starting}>
-          {starting ? "Menyiapkan…" : "+ Mulai opname"}
-        </Button>
-      </div>
+      {can("stockOpnames", "create") && (
+        <OpnameStartCard
+          warehouses={lookups.warehouses}
+          categories={lookups.categories}
+          onStarted={refresh}
+        />
+      )}
+
+      <OpnameToolbar
+        filters={filters}
+        warehouses={lookups.warehouses}
+        onChange={handleFilters}
+      />
+
+      {error && <Alert variant="error">{error}</Alert>}
 
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
         <table className="w-full text-sm">
@@ -85,18 +112,32 @@ export function OpnameScreen() {
               <th className="px-4 py-2.5 text-left font-medium">Nomor</th>
               <th className="px-4 py-2.5 text-left font-medium">Tanggal</th>
               <th className="px-4 py-2.5 text-left font-medium">Gudang</th>
-              <th className="px-4 py-2.5 text-right font-medium">Item</th>
-              <th className="px-4 py-2.5 text-right font-medium">Selisih nilai</th>
+              <th className="px-4 py-2.5 text-right font-medium">Terhitung</th>
+              <th className="px-4 py-2.5 text-right font-medium">
+                Selisih nilai
+              </th>
               <th className="px-4 py-2.5 text-left font-medium">Status</th>
               <th className="px-4 py-2.5 text-right font-medium">Aksi</th>
             </tr>
           </thead>
           <tbody>
-            {opnames.length === 0 && (
+            {loading && (
+              <tr>
+                <td colSpan={7} className="px-4 py-16">
+                  <div className="flex items-center justify-center gap-2 text-sm text-muted">
+                    <Spinner /> Memuat daftar opname…
+                  </div>
+                </td>
+              </tr>
+            )}
+
+            {!loading && opnames.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-4 py-16 text-center">
-                  <p className="font-medium text-foreground">Belum ada opname</p>
-                  <p className="mt-1 text-sm text-muted">
+                  <p className="font-medium text-foreground">
+                    Belum ada opname
+                  </p>
+                  <p className="mx-auto mt-1 max-w-md text-sm text-muted">
                     Mulai penghitungan pertama untuk mencocokkan stok fisik
                     dengan catatan sistem.
                   </p>
@@ -104,71 +145,122 @@ export function OpnameScreen() {
               </tr>
             )}
 
-            {opnames.map((opname) => {
-              const items = opnameItems.filter((item) => item.opnameId === opname._id);
-              const counted = items.filter((item) => item.physicalQty !== null).length;
-              const total =
-                opname.status === "submitted"
-                  ? opname.totalDiffValue
-                  : demo.opnameTotal(opname._id);
-              const totalMinor = toMinor(total) ?? 0n;
+            {!loading &&
+              opnames.map((opname) => {
+                const totalMinor = toMinor(opname.totalDiffValue) ?? 0n;
+                const isDraft = opname.status === "draft";
 
-              return (
-                <tr key={opname._id} className="border-b border-border/60 last:border-0">
-                  <td className="px-4 py-2.5 font-mono text-xs">{opname.opnameNumber}</td>
-                  <td className="px-4 py-2.5 text-xs">
-                    {new Date(opname.opnameDate).toLocaleDateString("id-ID", {
-                      day: "2-digit",
-                      month: "short",
-                      year: "numeric",
-                    })}
-                  </td>
-                  <td className="px-4 py-2.5 text-xs text-muted">
-                    {warehouses.find((w) => w._id === opname.warehouseId)?.name ?? "—"}
-                  </td>
-                  <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums">
-                    {counted} / {items.length}
-                  </td>
-                  <td
-                    className={cn(
-                      "px-4 py-2.5 text-right font-mono text-sm font-semibold tabular-nums",
-                      totalMinor < 0n && "text-danger",
-                      totalMinor > 0n && "text-success",
-                    )}
+                return (
+                  <tr
+                    key={opname._id}
+                    className="border-b border-border/60 last:border-0"
                   >
-                    {totalMinor === 0n ? "—" : formatMoney(total)}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    {opname.status === "submitted" ? (
-                      <Badge
-                        variant="outline"
-                        className="border-transparent bg-success/12 text-success"
-                      >
-                        final
-                      </Badge>
-                    ) : (
-                      <Badge
-                        variant="outline"
-                        className="border-transparent bg-secondary/25 text-secondary-foreground"
-                      >
-                        draft
-                      </Badge>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5 text-right">
-                    <Link
-                      href={`/dashboard/inventory/opname/${opname._id}`}
-                      className="text-sm font-medium text-primary-hover hover:underline"
+                    <td className="px-4 py-2.5 font-mono text-xs">
+                      {opname.opnameNumber}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs">
+                      {new Date(opname.opnameDate).toLocaleDateString("id-ID", {
+                        day: "2-digit",
+                        month: "short",
+                        year: "numeric",
+                      })}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-muted">
+                      {opname.warehouseName ?? "—"}
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums">
+                      {opname.itemCount === undefined ? (
+                        "—"
+                      ) : (
+                        <span
+                          className={cn(
+                            isDraft &&
+                              opname.countedCount === 0 &&
+                              "text-muted",
+                          )}
+                        >
+                          {opname.countedCount ?? 0} / {opname.itemCount}
+                        </span>
+                      )}
+                    </td>
+                    <td
+                      className={cn(
+                        "px-4 py-2.5 text-right font-mono text-sm font-semibold tabular-nums",
+                        totalMinor < 0n && "text-danger",
+                        totalMinor > 0n && "text-success",
+                      )}
                     >
-                      {opname.status === "draft" ? "Lanjutkan" : "Lihat"}
-                    </Link>
-                  </td>
-                </tr>
-              );
-            })}
+                      {totalMinor === 0n
+                        ? "—"
+                        : formatMoney(opname.totalDiffValue)}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <OpnameStatusBadge status={opname.status} />
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      <div className="flex items-center justify-end gap-3">
+                        <Link
+                          href={`/dashboard/inventory/opname/${opname._id}`}
+                          className="text-sm font-medium text-primary-hover hover:underline"
+                        >
+                          {isDraft ? "Lanjutkan" : "Lihat"}
+                        </Link>
+                        {/* Drafts only — the API refuses to discard a submitted
+                            sheet, which is the supporting document for movements
+                            and a journal entry that cannot be undone. */}
+                        {isDraft && can("stockOpnames", "delete") && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDeleteError(null);
+                              setPendingDelete(opname);
+                            }}
+                            className="text-sm font-medium text-danger hover:underline"
+                          >
+                            Buang
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
           </tbody>
         </table>
       </div>
+
+      <Pagination
+        page={pagination.page}
+        totalPages={pagination.totalPages}
+        total={pagination.total}
+        unit="opname"
+        unitPlural="opname"
+        onPageChange={setPage}
+      />
+
+      {pendingDelete && (
+        <ConfirmDialog
+          title="Buang draft opname?"
+          confirmLabel="Buang draft"
+          destructive
+          busy={deleting}
+          error={deleteError}
+          onConfirm={handleDelete}
+          onCancel={() => setPendingDelete(null)}
+        >
+          {/* Inline fragments, not <p>: DialogDescription is itself a <p>. */}
+          <>
+            Draft <b className="font-mono">{pendingDelete.opnameNumber}</b>{" "}
+            beserta seluruh hitungan yang sudah diisi akan dibuang. Tidak ada
+            stok yang berubah — draft memang belum pernah menulis apa pun.
+            <span className="mt-2 block">
+              Kalau penghitungannya sudah terlanjur jalan, lebih baik
+              diselesaikan daripada dibuang: hasil hitung yang hilang tidak bisa
+              diulang tanpa kembali ke rak.
+            </span>
+          </>
+        </ConfirmDialog>
+      )}
     </div>
   );
 }

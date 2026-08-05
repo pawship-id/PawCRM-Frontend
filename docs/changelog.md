@@ -7,6 +7,76 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Stok Opname
+
+Branch: `feature/inventory-purchasing`.
+
+Inventory → Stok Opname moves off the prototype store onto `/api/stock-opnames`. It was
+the **last demo-backed screen** in the inventory module; `demoStore`'s opname half is gone
+with it. See `docs/features/stock-opname.md`.
+
+**Four backend changes came first** (`PawCRM-Backend` 0.23.0), all found while wiring this
+screen and all the same shape of problem — the API knew something the sheet needed and was
+not saying it: `items[].countedAt` (+ the `counted` flag), `itemCount` / `countedCount` on
+the list, `warehouseName` on the list, and `productUnit` / `productHasExpiry` per line.
+There is no client-side workaround for any of them left in this repo.
+
+**The decision that shapes the screen.** System quantity is re-read **at submit**, not
+frozen when the sheet opened — a count takes an afternoon and the shop keeps selling. So
+the browser subtracts nothing: `physicalQty` goes up, every other quantity comes back
+computed. A locally derived variance would drift from the posted one, silently.
+
+### Added
+
+- **`stockOpnameService`** — seven endpoints, no `unsubmit` and no `restore`: submitting
+  posts immutable movements and a journal entry, so a sheet that could go back to draft
+  would claim to describe a count whose corrections had already been booked
+- **`useOpnames`** — the list, with status / warehouse / date-range / number-search filters
+  and ordinary page-jump paging
+- **`useOpnameSheet`** — the detail and its **800 ms debounced auto-save**. A stale response
+  never lands on newer edits (a revision counter discards it), and `flush()` runs before a
+  submit so the last thing typed cannot be left behind in a timer
+- **`useOpnamePreview`** — on-demand rather than debounced, unlike `useMovementPreview`: a
+  sheet has hundreds of lines and the question is only asked once, when somebody is about
+  to accept the whole thing
+- **`OpnameStartCard`** — warehouse + optional category. Surfaces the one-open-draft `409`
+  with its `reason`, which names the sheet that is in the way
+- **`OpnameToolbar`**, **`OpnameStatusBadge`**, and a rewritten **`OpnameScreen`** /
+  **`OpnameSheet`**
+- **`stockOpnames` in the permission catalog**, with `submit` as its own action. Seeded
+  Staff count but do not accept the variance; the sheet says so plainly rather than hiding
+  a disabled button
+- **23 tests** in `OpnameScreens.test.tsx`, replacing the demo-backed
+  `InventoryCatalogue.test.tsx`
+
+### Changed
+
+- **The journal panel is fetched, not computed.** The prototype hardcoded a surplus to
+  "4901 Pendapatan Lain-lain"; the ledger books **both** directions to the
+  inventory-adjustment account. The page copy claimed the same thing and is corrected
+- **The nav entry is gated on `stockOpnames:read`**, was `stockMovements:create` — which
+  hid the whole feature from exactly the people who do the counting, while showing it to
+  anyone who can post a manual adjustment
+- **Both opname routes are wrapped in `RequirePermission`**, matching every other
+  inventory page. They had no guard at all
+- **`jest.config.ts` declares `moduleNameMapper` for the `@/` alias**, so
+  `jest.mock("@/services/…")` resolves. Ordinary imports were never affected —
+  `next/jest`'s SWC transform resolves the tsconfig `paths` alias at transform time — but
+  `jest.mock()` is resolved at runtime by jest-resolve, which reads moduleNameMapper and
+  nothing else. The repo had avoided this by convention (the service suites spy on the
+  `apiClient` singleton; `stockLedger.service.test.ts` says so in as many words), and that
+  convention does not extend to a COMPONENT test, which must replace the whole service
+  module. Declared in the runner rather than by adding `baseUrl` to tsconfig, which would
+  change how the compiler resolves every bare import
+
+### Removed
+
+- **`demoStore`'s opname half** — `startOpname`, `opnameItemsOf`, `setOpnameCount`,
+  `opnameDiff`, `opnameTotal`, `submitOpname` and the two state arrays, plus their tests.
+  The store now backs purchasing only
+
+---
+
 ## [Unreleased] — Batch & Expired
 
 Branch: `feature/inventory-purchasing`.
