@@ -230,7 +230,7 @@ function NavGroup({
         ].join(" ")}
       >
         {item.children!.map((child) => {
-          const active = isActiveHref(child.href, pathname);
+          const active = isActiveHref(child.href, pathname, child.exact);
           const ChildIcon = child.icon;
           return (
             <Link

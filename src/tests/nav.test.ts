@@ -1,4 +1,9 @@
-import { NAV_ITEMS, filterNavItems, type CanFn } from "@/features/dashboard/nav";
+import {
+  NAV_ITEMS,
+  filterNavItems,
+  isActiveHref,
+  type CanFn,
+} from "@/features/dashboard/nav";
 
 /**
  * The nav filter is the pure core of the sidebar gating: given a `can`
@@ -58,6 +63,7 @@ describe("filterNavItems", () => {
     // by-hand correction above either would offer the shortcut before the
     // procedure.
     expect(inventory?.children?.map((c) => c.label)).toEqual([
+      "Ringkasan",
       "Produk & Varian",
       "Kategori",
       "Kartu Stok",
@@ -79,7 +85,33 @@ describe("filterNavItems", () => {
       (i) => i.label === "Inventory",
     );
 
-    expect(inventory?.children?.map((c) => c.label)).toEqual(["Kartu Stok"]);
+    expect(inventory?.children?.map((c) => c.label)).toEqual([
+      "Ringkasan",
+      "Kartu Stok",
+    ]);
+  });
+
+  it("drops the Inventory group entirely for a role with no stock grant", () => {
+    // The hub link is ungated, so it survives the child filter — but it must not
+    // be enough to keep the group open by itself, or a role that may read
+    // nothing here gets a menu leading to a page that says exactly that.
+    const inventory = filterNavItems(NAV_ITEMS, denyAll).find(
+      (i) => i.label === "Inventory",
+    );
+    expect(inventory).toBeUndefined();
+  });
+
+  it("marks the Inventory hub active only on its own route", () => {
+    // Its href is the prefix of all seven siblings, so prefix matching would
+    // light this row up on every screen in the module.
+    const hub = NAV_ITEMS.find((i) => i.label === "Inventory")?.children?.[0];
+    expect(hub?.href).toBe("/dashboard/inventory");
+    expect(isActiveHref(hub!.href, "/dashboard/inventory", hub!.exact)).toBe(
+      true,
+    );
+    expect(
+      isActiveHref(hub!.href, "/dashboard/inventory/products", hub!.exact),
+    ).toBe(false);
   });
 
   it("does not mutate the source NAV_ITEMS", () => {
