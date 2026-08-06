@@ -273,6 +273,56 @@ export interface UpdateRoleInput {
 }
 
 /**
+ * A tenant's subscription state, embedded on the tenant document.
+ *
+ * `plan` is a string enum rather than a reference — there is no plans collection
+ * on the backend yet. `trialEndsAt` is null for a tenant that never started a
+ * trial (migrated, or paid up front), so a countdown must handle its absence.
+ */
+export interface TenantSubscription {
+  status: "trialing" | "active" | "past_due" | "suspended" | "cancelled";
+  plan: "free" | "basic" | "pro" | "enterprise";
+  trialEndsAt: string | null;
+}
+
+/** Per-tenant behaviour switches. */
+export interface TenantSettings {
+  /**
+   * Whether boarding capacity is addressed by numbered cages or named zones.
+   * It changes how the hotel module reads and writes, hence a tenant-level
+   * switch rather than a per-request option.
+   */
+  hotelMode: "numbered" | "zone";
+}
+
+/**
+ * The signed-in user's business, as returned by GET /api/tenants/me — the root
+ * document every other record hangs off. Deliberately has no `tenantId` of its
+ * own: a tenant IS the tenant, so there is nothing above it to scope by.
+ *
+ * `slug` is a public URL identifier, not a display nicety, which is why the
+ * backend never re-derives it when the business is renamed.
+ */
+export interface Tenant {
+  _id: string;
+  name: string;
+  slug: string;
+  logoUrl: string | null;
+  /** IANA zone (e.g. "Asia/Jakarta") — the zone the tenant's day is measured in. */
+  timezone: string;
+  /** ISO 4217. Only "IDR" exists today; typed as a string for the next one. */
+  currency: string;
+  subscription: TenantSubscription;
+  settings: TenantSettings;
+  /** Schema version, stamped on write so a migration can find older shapes. */
+  sv: number;
+  /** Soft-delete marker; a live session on a deleted tenant reads a 404 instead. */
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
  * A branch, as returned by GET /api/branches. A tenant's physical location.
  *
  * `isActive` (temporarily closed vs. open) and `deletedAt` (removed, restorable)

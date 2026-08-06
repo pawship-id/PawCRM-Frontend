@@ -145,6 +145,24 @@ export function UsersIcon(props: IconProps) {
   );
 }
 
+/**
+ * Business (the tenant itself) — a storefront: an awning over a shop window.
+ * Used by the account dropdown's "Business information" entry.
+ *
+ * Deliberately unlike BranchIcon (a multi-storey building) and WarehouseIcon (a
+ * pitched shed): the tenant is the business as a whole and its branches are its
+ * buildings, so the three must not read as the same silhouette.
+ */
+export function BusinessIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M3.5 9h17l-1.2-4.2a1 1 0 0 0-1-.8H5.7a1 1 0 0 0-1 .8L3.5 9Z" />
+      <path d="M4.5 9v10.5a.5.5 0 0 0 .5.5h14a.5.5 0 0 0 .5-.5V9" />
+      <path d="M9.5 20v-5.5h5V20" />
+    </Base>
+  );
+}
+
 export function BranchIcon(props: IconProps) {
   return (
     <Base {...props}>

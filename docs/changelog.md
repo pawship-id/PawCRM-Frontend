@@ -7,9 +7,26 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased] — Inventory hub, and the document a ledger row points at
+## [Unreleased] — Inventory hub, the document a ledger row points at, and a business that can read itself
 
 Branch: `feature/inventory-purchasing`.
+
+**Business information, in the account dropdown.** `/dashboard/profile` answered "who am I";
+nothing answered "what business am I in". A signed-in user could not see their own tenant's
+timezone, currency, plan or trial deadline anywhere in the app — the data existed, and only a
+platform owner had a route to it. The new screen at `/dashboard/business` reads
+`GET /tenants/me` (`PawCRM-Backend` 0.25.0) and lays the tenant out in four cards. It hangs
+off the top-bar account menu below **My profile**, not the sidebar: those two questions belong
+together, and Master Data is where records are *maintained* — this screen is read-only, so it
+would have been the one entry in that group leading nowhere you can act. See
+`docs/features/business-information.md`.
+
+**Read-only, and there is no `update` in the service either.** Renaming a business, changing
+its slug or moving its timezone are not per-user preferences: the slug is a public URL
+identifier existing links depend on, and the timezone re-anchors every report and every stock
+movement date the tenant has. Those edits stay behind platform administration. Every instant
+on the screen is formatted **in the tenant's own timezone** — which is what that field is for,
+and a trial deadline read on a laptop still set to UTC is a day out at either end of the day.
 
 **The Inventory landing screen is wired.** It was the last screen in the module still
 computing its answers from the in-memory prototype store, and both of its alert lists were
@@ -36,6 +53,22 @@ on the backend now.
   same shape, 30-day horizon echoed back by the API so the caption hardcodes no number
 - **A `Kategori` card on the hub**, which the sidebar had and the hub did not
 - **`docs/features/inventory-hub.md`**
+- **`app/(dashboard)/dashboard/business/page.tsx`** — the Business information screen, guarded
+  by `RequirePermission feature="tenants"` so direct URL entry shows Access denied rather than
+  a page that can only ever load a 403
+- **`features/tenant/`** — `useTenant` (one fetch, plus `refetch` for the error state's **Try
+  again**), `TenantDetail` (the four cards, timezone-aware dates, the trial sentence, the
+  logo/initials fallback) and `TenantSubscriptionBadge`. The badge keeps `past_due`,
+  `suspended` and `cancelled` in three different tones on purpose: a bill to pay, a service
+  already withheld, and the end of the relationship are not the same news
+- **`services/tenant.service.ts`** — `me()` and nothing else. The rest of `/api/tenants`
+  administers *other* businesses; a method for it here would invite a screen that has no
+  business existing in a tenant's own app
+- **`types/api.ts`** — `Tenant`, `TenantSubscription`, `TenantSettings`
+- **`components/icons.tsx`** — `BusinessIcon`, a storefront, deliberately unlike the branch
+  building and the warehouse shed
+- **`UserMenu.test.tsx`** (3 tests) — the dropdown had none until now
+- **`docs/features/business-information.md`**
 
 ### Changed
 
@@ -50,6 +83,13 @@ on the backend now.
   comment explaining why the field did not exist
 - **`InventoryScreens.test.tsx` is now a mocked-service suite** (7 tests) rather than a
   demo-store mount test
+- **`UserMenu` carries a third entry**, `Business information`, between the profile link and
+  Logout. Rendered only when `can("tenants", "read")` — the same grant `GET /tenants/me`
+  requires, which no seeded role but Owner holds (by the super-admin bypass), because the
+  screen shows the subscription plan and billing state. A link that can only ever open an
+  access-denied panel is worse than no link
+- **`tests/helpers/renderWithAuth.tsx` accepts a `user`**, for components that show who is
+  signed in as well as what their role may do. Still defaults to `null`
 
 ### Fixed
 
