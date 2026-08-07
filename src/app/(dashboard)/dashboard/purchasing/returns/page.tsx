@@ -1,8 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { Breadcrumb } from "@/components";
 import { Button } from "@/components/ui/button";
-import { PurchaseReturnsScreen } from "@/features/purchasing";
+import {
+  PURCHASING_CRUMBS,
+  PurchaseReturnsScreen,
+} from "@/features/purchasing";
 
 export const metadata: Metadata = { title: "Retur ke Supplier · PawShip" };
 
@@ -11,7 +15,10 @@ export default function PurchaseReturnsPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">
+          <Breadcrumb
+            items={[PURCHASING_CRUMBS.hub, { label: "Retur ke Supplier" }]}
+          />
+          <h1 className="mt-1 text-2xl font-semibold text-foreground">
             Retur ke Supplier
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">

@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 
-import { PageHeading, ReceiptDetail } from "@/features/purchasing";
+import {
+  PageHeading,
+  PURCHASING_CRUMBS,
+  ReceiptDetail,
+} from "@/features/purchasing";
 
 export const metadata: Metadata = { title: "Detail penerimaan · PawShip" };
 
@@ -14,8 +18,11 @@ export default async function ReceiptDetailPage({
   return (
     <div className="flex flex-col gap-6">
       <PageHeading
-        backHref="/dashboard/purchasing/receipts"
-        backLabel="Penerimaan Barang"
+        crumbs={[
+          PURCHASING_CRUMBS.hub,
+          PURCHASING_CRUMBS.receipts,
+          { label: "Detail penerimaan" },
+        ]}
         title="Detail penerimaan"
       />
       <ReceiptDetail receiptId={id} />

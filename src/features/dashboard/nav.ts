@@ -207,6 +207,20 @@ export const NAV_ITEMS: NavItem[] = [
     icon: PurchasingIcon,
     children: [
       {
+        /**
+         * Same shape as the Inventory hub, and `exact` for the same reason: its
+         * href is the prefix of every sibling's, so prefix matching would light
+         * this row up on all four screens below it.
+         *
+         * Ungated, like the Inventory hub — the page gates each section itself,
+         * and the group still disappears entirely when no gated child survives.
+         */
+        label: "Ringkasan",
+        href: "/dashboard/purchasing",
+        icon: PurchasingIcon,
+        exact: true,
+      },
+      {
         label: "Supplier",
         href: "/dashboard/purchasing/suppliers",
         icon: SupplierIcon,

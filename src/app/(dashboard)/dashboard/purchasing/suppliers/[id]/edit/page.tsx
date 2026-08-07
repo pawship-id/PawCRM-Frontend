@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
 
-import { PageHeading, SupplierForm } from "@/features/purchasing";
+import {
+  PageHeading,
+  PURCHASING_CRUMBS,
+  SupplierForm,
+  supplierCrumb,
+} from "@/features/purchasing";
 
 export const metadata: Metadata = { title: "Edit supplier · PawShip" };
 
@@ -14,8 +19,12 @@ export default async function EditSupplierPage({
   return (
     <div className="flex flex-col gap-6">
       <PageHeading
-        backHref={`/dashboard/purchasing/suppliers/${id}`}
-        backLabel="Detail supplier"
+        crumbs={[
+          PURCHASING_CRUMBS.hub,
+          PURCHASING_CRUMBS.suppliers,
+          supplierCrumb(id),
+          { label: "Edit supplier" },
+        ]}
         title="Edit supplier"
       />
       <SupplierForm supplierId={id} />

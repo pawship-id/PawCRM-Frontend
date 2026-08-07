@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 
-import { PageHeading, ReceiptForm } from "@/features/purchasing";
+import {
+  PageHeading,
+  PURCHASING_CRUMBS,
+  ReceiptForm,
+} from "@/features/purchasing";
 
 export const metadata: Metadata = { title: "Terima barang · PawShip" };
 
@@ -18,8 +22,11 @@ export default async function NewReceiptPage({
   return (
     <div className="flex flex-col gap-6">
       <PageHeading
-        backHref="/dashboard/purchasing/receipts"
-        backLabel="Penerimaan Barang"
+        crumbs={[
+          PURCHASING_CRUMBS.hub,
+          PURCHASING_CRUMBS.receipts,
+          { label: "Terima barang" },
+        ]}
         title="Terima barang"
       >
         Penerimaan inilah yang membentuk HPP. Cocokkan harga beli dengan faktur

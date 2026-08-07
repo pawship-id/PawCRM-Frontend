@@ -140,17 +140,16 @@ export function SupplierForm({ supplierId }: { supplierId?: string }) {
     <form
       onSubmit={handleSubmit}
       noValidate
-      className="flex max-w-3xl flex-col gap-6"
+      className="flex w-full flex-col gap-6"
     >
       {formError && <Alert variant="error">{formError}</Alert>}
 
       <Card title="Identitas">
         <div className="flex flex-col gap-4">
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2">
             <TextField
               label="Nama supplier"
               name="name"
-              className="sm:col-span-2"
               value={name}
               onChange={(event) => setName(event.target.value)}
               error={fieldErrors.name}
@@ -166,7 +165,11 @@ export function SupplierForm({ supplierId }: { supplierId?: string }) {
                   setSupplierType(value as SupplierType)
                 }
               >
-                <SelectTrigger id="supplierType" aria-label="Tipe kerja sama">
+                <SelectTrigger
+                  id="supplierType"
+                  aria-label="Tipe kerja sama"
+                  className="w-full"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

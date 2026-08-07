@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 
+import { Breadcrumb } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -14,6 +15,7 @@ import type { Supplier } from "@/types/purchasing";
 import * as demo from "@/features/inventory/data/demoStore";
 import { useInventoryDemo } from "@/features/inventory/hooks/useInventoryDemo";
 
+import { PURCHASING_CRUMBS } from "../crumbs";
 import { SupplierTypeBadge } from "./SupplierTypeBadge";
 
 /**
@@ -79,7 +81,12 @@ export function SuppliersScreen() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">Supplier</h1>
+          <Breadcrumb
+            items={[PURCHASING_CRUMBS.hub, { label: "Supplier" }]}
+          />
+          <h1 className="mt-1 text-2xl font-semibold text-foreground">
+            Supplier
+          </h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">
             Data pemasok, termin pembayaran, dan sisa utang yang belum dibayar.
           </p>

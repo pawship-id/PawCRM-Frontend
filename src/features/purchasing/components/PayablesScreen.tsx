@@ -3,15 +3,19 @@
 import { useState } from "react";
 import Link from "next/link";
 
+import { Breadcrumb } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { daysUntil } from "@/utils/date";
-import { formatMoney, sumDecimals, toMinor } from "@/utils/decimal";
+import { formatMoney, toMinor } from "@/utils/decimal";
 import type { InvoiceStatus } from "@/types/purchasing";
 
 import * as demo from "@/features/inventory/data/demoStore";
 import { useInventoryDemo } from "@/features/inventory/hooks/useInventoryDemo";
+
+import { PURCHASING_CRUMBS } from "../crumbs";
+import { isOverdue, outstandingTotal } from "../payables";
 
 type Filter = InvoiceStatus | "all" | "overdue";
 
@@ -52,29 +56,26 @@ export function PayablesScreen() {
   const { invoices, suppliers } = useInventoryDemo();
   const [filter, setFilter] = useState<Filter>("all");
 
-  const overdue = invoices.filter(
-    (invoice) => invoice.status !== "paid" && daysUntil(invoice.dueDate) < 0,
-  );
+  // `isOverdue` is shared with the purchasing hub so the banner here and the
+  // count there cannot drift apart — see features/purchasing/payables.ts.
+  const overdue = invoices.filter(isOverdue);
 
   const rows = invoices.filter((invoice) => {
     if (filter === "all") return true;
-    if (filter === "overdue") {
-      return invoice.status !== "paid" && daysUntil(invoice.dueDate) < 0;
-    }
+    if (filter === "overdue") return isOverdue(invoice);
     return invoice.status === filter;
   });
 
-  const totalOutstanding = sumDecimals(
-    invoices.map((invoice) => demo.outstandingOf(invoice)),
-  );
-  const overdueTotal = sumDecimals(
-    overdue.map((invoice) => demo.outstandingOf(invoice)),
-  );
+  const totalOutstanding = outstandingTotal(invoices);
+  const overdueTotal = outstandingTotal(overdue);
 
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">
+        <Breadcrumb
+          items={[PURCHASING_CRUMBS.hub, { label: "Utang Supplier" }]}
+        />
+        <h1 className="mt-1 text-2xl font-semibold text-foreground">
           Utang Supplier
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">
@@ -151,8 +152,7 @@ export function PayablesScreen() {
             )}
 
             {rows.map((invoice) => {
-              const late =
-                invoice.status !== "paid" && daysUntil(invoice.dueDate) < 0;
+              const late = isOverdue(invoice);
               const outstanding = demo.outstandingOf(invoice);
 
               return (

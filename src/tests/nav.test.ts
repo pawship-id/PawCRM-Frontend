@@ -114,6 +114,40 @@ describe("filterNavItems", () => {
     ).toBe(false);
   });
 
+  it("leads Purchasing with its hub, then the order a purchase unfolds", () => {
+    const purchasing = filterNavItems(NAV_ITEMS, allowAll).find(
+      (i) => i.label === "Purchasing",
+    );
+
+    expect(purchasing?.children?.map((c) => c.label)).toEqual([
+      "Ringkasan",
+      "Supplier",
+      "Penerimaan Barang",
+      "Utang Supplier",
+      "Retur ke Supplier",
+    ]);
+  });
+
+  it("drops the Purchasing group for a role with no purchasing grant", () => {
+    // The hub link is ungated and survives the child filter, exactly as the
+    // Inventory one does — and must not keep the group open by itself.
+    const purchasing = filterNavItems(NAV_ITEMS, denyAll).find(
+      (i) => i.label === "Purchasing",
+    );
+    expect(purchasing).toBeUndefined();
+  });
+
+  it("marks the Purchasing hub active only on its own route", () => {
+    const hub = NAV_ITEMS.find((i) => i.label === "Purchasing")?.children?.[0];
+    expect(hub?.href).toBe("/dashboard/purchasing");
+    expect(isActiveHref(hub!.href, "/dashboard/purchasing", hub!.exact)).toBe(
+      true,
+    );
+    expect(
+      isActiveHref(hub!.href, "/dashboard/purchasing/suppliers", hub!.exact),
+    ).toBe(false);
+  });
+
   it("does not mutate the source NAV_ITEMS", () => {
     const before = NAV_ITEMS.find((i) => i.label === "Master Data")?.children
       ?.length;

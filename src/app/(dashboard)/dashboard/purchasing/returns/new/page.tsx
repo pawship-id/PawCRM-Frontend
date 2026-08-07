@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 
-import { PageHeading, PurchaseReturnForm } from "@/features/purchasing";
+import {
+  PageHeading,
+  PURCHASING_CRUMBS,
+  PurchaseReturnForm,
+} from "@/features/purchasing";
 
 export const metadata: Metadata = { title: "Buat retur · PawShip" };
 
@@ -14,8 +18,11 @@ export default async function NewPurchaseReturnPage({
   return (
     <div className="flex flex-col gap-6">
       <PageHeading
-        backHref="/dashboard/purchasing/returns"
-        backLabel="Retur ke Supplier"
+        crumbs={[
+          PURCHASING_CRUMBS.hub,
+          PURCHASING_CRUMBS.returns,
+          { label: "Buat retur" },
+        ]}
         title="Buat retur"
       >
         HPP dibalik memakai harga beli asli dari penerimaannya, bukan HPP yang

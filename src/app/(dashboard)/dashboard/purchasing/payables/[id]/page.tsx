@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 
-import { InvoiceDetail, PageHeading } from "@/features/purchasing";
+import {
+  InvoiceDetail,
+  PageHeading,
+  PURCHASING_CRUMBS,
+} from "@/features/purchasing";
 
 export const metadata: Metadata = { title: "Detail faktur · PawShip" };
 
@@ -14,8 +18,11 @@ export default async function InvoiceDetailPage({
   return (
     <div className="flex flex-col gap-6">
       <PageHeading
-        backHref="/dashboard/purchasing/payables"
-        backLabel="Utang Supplier"
+        crumbs={[
+          PURCHASING_CRUMBS.hub,
+          PURCHASING_CRUMBS.payables,
+          { label: "Detail faktur" },
+        ]}
         title="Detail faktur"
       >
         Pembayaran boleh dicicil beberapa kali. Akun kas menyesuaikan metodenya.
