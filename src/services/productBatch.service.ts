@@ -1,5 +1,5 @@
 import { apiClient } from "./api-client";
-import type { PageResult } from "@/types/api";
+import type { PageResult, SupplierConsignmentSummary } from "@/types/api";
 import type {
   BatchExpirySummary,
   ExpiringBatchListQuery,
@@ -85,6 +85,25 @@ export const productBatchService = {
         withinDays: query.withinDays,
       },
     }),
+
+  /**
+   * GET /product-batches/consignment-summary — consigned stock still held, per
+   * supplier.
+   *
+   * THE ONE REPORT THAT SEPARATES CONSIGNED FROM OWNED STOCK. A consigned lot is
+   * indistinguishable from owned stock everywhere else, because physically it is
+   * — it sits on the same shelf and counts in the same stock take. What makes it
+   * different is that it belongs to the supplier until it sells, and this is the
+   * only place that difference is reportable.
+   *
+   * NOT A DEBT: nothing here is owed yet. Read alongside
+   * `purchaseInvoiceService.outstandingSummary`, which is what IS owed.
+   */
+  consignmentSummary: (query: { supplierId?: string } = {}) =>
+    apiClient.get<SupplierConsignmentSummary>(
+      "/product-batches/consignment-summary",
+      { query: { supplierId: query.supplierId } },
+    ),
 
   /** GET /product-batches/:id — one lot. */
   getById: (id: string) => apiClient.get<ProductBatch>(`/product-batches/${id}`),

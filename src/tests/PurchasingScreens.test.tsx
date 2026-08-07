@@ -7,8 +7,6 @@ import {
   PurchasingHub,
   ReceiptForm,
   ReceiptsScreen,
-  SupplierForm,
-  SuppliersScreen,
 } from "@/features/purchasing";
 import * as demo from "@/features/inventory/data/demoStore";
 
@@ -32,89 +30,13 @@ beforeEach(() => {
   push.mockClear();
 });
 
-describe("SuppliersScreen", () => {
-  it("lists the seeded suppliers with their terms", () => {
-    render(<SuppliersScreen />);
-
-    expect(screen.getByText("PT Sumber Pakan Sejahtera")).toBeInTheDocument();
-    expect(screen.getByText("CV Anugerah Petshop")).toBeInTheDocument();
-    expect(screen.getAllByText("30 hari").length).toBeGreaterThan(0);
-  });
-
-  it("names the module above the title, without linking to itself", () => {
-    render(<SuppliersScreen />);
-
-    const trail = screen.getByRole("navigation", { name: "Breadcrumb" });
-    expect(within(trail).getByRole("link", { name: "Purchasing" })).toHaveAttribute(
-      "href",
-      "/dashboard/purchasing",
-    );
-    // The page you are on is a destination that goes nowhere — see Breadcrumb.
-    expect(
-      within(trail).queryByRole("link", { name: "Supplier" }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("marks a consignment supplier distinctly", () => {
-    // Consigned goods look like owned stock on every other screen; the badge is
-    // the one cue that they are not.
-    render(<SuppliersScreen />);
-
-    expect(screen.getByText("konsinyasi")).toBeInTheDocument();
-  });
-
-  it("filters by name", async () => {
-    const user = userEvent.setup();
-    render(<SuppliersScreen />);
-
-    await user.type(screen.getByLabelText("Cari supplier"), "vetindo");
-
-    expect(screen.getByText("PT Vetindo Farma")).toBeInTheDocument();
-    expect(screen.queryByText("CV Anugerah Petshop")).not.toBeInTheDocument();
-  });
-});
-
-describe("SupplierForm", () => {
-  it("requires a name", async () => {
-    const user = userEvent.setup();
-    render(<SupplierForm />);
-
-    await user.click(screen.getByRole("button", { name: "Simpan supplier" }));
-
-    expect(screen.getByText("Nama supplier wajib diisi.")).toBeInTheDocument();
-  });
-
-  it("rejects a duplicate name", async () => {
-    const user = userEvent.setup();
-    render(<SupplierForm />);
-
-    await user.type(screen.getByLabelText(/Nama supplier/), "PT Vetindo Farma");
-    await user.click(screen.getByRole("button", { name: "Simpan supplier" }));
-
-    expect(screen.getByText(/Sudah ada supplier dengan nama ini/)).toBeInTheDocument();
-  });
-
-  it("explains what the payment term drives", () => {
-    render(<SupplierForm />);
-
-    expect(
-      screen.getByText(/Hari sampai jatuh tempo\. 0 = bayar saat terima\./),
-    ).toBeInTheDocument();
-  });
-
-  it("saves and returns to the list", async () => {
-    const user = userEvent.setup();
-    render(<SupplierForm />);
-
-    await user.type(screen.getByLabelText(/Nama supplier/), "CV Baru Jaya");
-    await user.click(screen.getByRole("button", { name: "Simpan supplier" }));
-
-    expect(
-      demo.getState().suppliers.some((s) => s.name === "CV Baru Jaya"),
-    ).toBe(true);
-    expect(push).toHaveBeenCalledWith("/dashboard/purchasing/suppliers");
-  });
-});
+/*
+ * THE SUPPLIER SCREENS ARE NOT TESTED HERE ANY MORE. They run against the real
+ * API rather than the prototype store, so their tests mock services instead of
+ * seeding `demoStore` and live in SuppliersTable / SupplierCreateForm /
+ * SupplierSelect / supplier.service test files. The screens still covered below
+ * are the ones still on the prototype store.
+ */
 
 describe("ReceiptForm", () => {
   it("mounts on outright purchase, with invoice fields visible", () => {

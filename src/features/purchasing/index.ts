@@ -7,8 +7,13 @@
  */
 export { PurchasingHub } from "./components/PurchasingHub";
 export { SuppliersScreen } from "./components/SuppliersScreen";
-export { SupplierForm } from "./components/SupplierForm";
+export { SupplierCreateForm } from "./components/SupplierCreateForm";
+export { SupplierEditForm } from "./components/SupplierEditForm";
 export { SupplierDetail } from "./components/SupplierDetail";
+// The picker the receipt and return forms choose a vendor with. Exported here
+// because it is the only supported way to list suppliers for selection — it is
+// what keeps a deactivated vendor out of a new purchase.
+export { SupplierSelect } from "./components/SupplierSelect";
 export { ReceiptsScreen } from "./components/ReceiptsScreen";
 export { ReceiptForm } from "./components/ReceiptForm";
 export { ReceiptDetail } from "./components/ReceiptDetail";

@@ -3,11 +3,12 @@ import type { Metadata } from "next";
 import {
   PageHeading,
   PURCHASING_CRUMBS,
-  SupplierForm,
+  SupplierEditForm,
   supplierCrumb,
 } from "@/features/purchasing";
+import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Edit supplier · PawShip" };
+export const metadata: Metadata = { title: "Ubah supplier · PawShip" };
 
 export default async function EditSupplierPage({
   params,
@@ -17,17 +18,23 @@ export default async function EditSupplierPage({
   const { id } = await params;
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeading
-        crumbs={[
-          PURCHASING_CRUMBS.hub,
-          PURCHASING_CRUMBS.suppliers,
-          supplierCrumb(id),
-          { label: "Edit supplier" },
-        ]}
-        title="Edit supplier"
-      />
-      <SupplierForm supplierId={id} />
-    </div>
+    <RequirePermission feature="suppliers" action="update">
+      <div className="flex flex-col gap-6">
+        <PageHeading
+          crumbs={[
+            PURCHASING_CRUMBS.hub,
+            PURCHASING_CRUMBS.suppliers,
+            supplierCrumb(id),
+            { label: "Ubah supplier" },
+          ]}
+          title="Ubah supplier"
+        >
+          Mengubah termin atau tipe kerja sama tidak berlaku surut — penerimaan
+          yang sudah tercatat tetap memakai ketentuan saat itu.
+        </PageHeading>
+
+        <SupplierEditForm supplierId={id} />
+      </div>
+    </RequirePermission>
   );
 }

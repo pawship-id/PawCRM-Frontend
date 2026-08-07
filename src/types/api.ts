@@ -592,6 +592,245 @@ export interface UpdateCustomerInput {
 }
 
 /**
+ * How a tenant works with a supplier — the COOPERATION MODEL, which decides
+ * whether goods arriving create a debt.
+ *
+ *   beli_putus  — bought outright. The goods are the tenant's on arrival, so the
+ *                 receipt creates a payable and posts to the ledger.
+ *   konsinyasi  — consigned. The goods sit in the warehouse but belong to the
+ *                 supplier until they sell, so there is NO payable on receipt.
+ *   both        — the vendor does either, decided per receipt.
+ *
+ * Snake_case because these are Indonesian business terms and the backend enum
+ * stores them verbatim (see supplier.model.js).
+ */
+export type SupplierType = "beli_putus" | "konsinyasi" | "both";
+
+/**
+ * A vendor the tenant buys from, as returned by /api/suppliers.
+ *
+ * FIELD NAMES FOLLOW THE BACKEND, not the older prototype types in
+ * types/purchasing.ts: `type` (not `supplierType`) and `pic` (not `picName`).
+ * The prototype shapes were written before the API existed; this is the one the
+ * server actually speaks.
+ *
+ * TWO INDEPENDENT LIFECYCLE AXES, and conflating them is the mistake to avoid:
+ *   isActive: false  — still buying from them? No. The record and its history
+ *                      stand, it just drops out of the purchasing pickers.
+ *   deletedAt        — the record was removed (soft). Restorable.
+ * A supplier can be either, both, or neither.
+ *
+ * `isActive` is optional because suppliers created before the field existed do
+ * not carry it, and a missing flag means active — the backend applies the same
+ * rule when it filters and when it refuses a receipt. Read it through
+ * `isSupplierActive()` rather than testing it directly.
+ */
+export interface Supplier {
+  _id: string;
+  tenantId: string;
+  name: string;
+  /** The contact person AT the vendor — a plain name, never a PawCRM user. */
+  pic: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  /** Indonesian taxpayer number, needed on a faktur pajak. */
+  npwp: string | null;
+  notes: string | null;
+  type: SupplierType;
+  /** Days from invoice date to due date. 0 means payable on receipt. */
+  paymentTermDays: number;
+  /** Absent on records written before the field existed — absent means active. */
+  isActive?: boolean;
+  createdBy: string | null;
+  /** Soft-delete marker; non-null means deleted (restorable), null means live. */
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Whether a vendor is still bought from.
+ *
+ * `!== false`, NOT `=== true`: a supplier stored before `isActive` shipped has no
+ * such field, and treating the absence as "deactivated" would grey out and hide
+ * every vendor a tenant already had. Absent and true are the same answer, which
+ * is exactly what the backend's `$ne: false` filter says.
+ */
+export function isSupplierActive(supplier: Pick<Supplier, "isActive">): boolean {
+  return supplier.isActive !== false;
+}
+
+/** Query parameters accepted by GET /api/suppliers. All optional. */
+export interface SupplierListQuery {
+  page?: number;
+  limit?: number;
+  type?: SupplierType;
+  /** Free-text over name / pic / phone / npwp. */
+  search?: string;
+  /** Narrow by activity. Omit for both — the management list wants both. */
+  isActive?: boolean;
+  /** Include soft-deleted suppliers (default false on the backend). */
+  includeDeleted?: boolean;
+}
+
+/**
+ * Body of POST /api/suppliers. `name` and `type` are both required — the backend
+ * refuses to infer the cooperation model, because it decides whether an arrival
+ * creates a debt. `tenantId` and `createdBy` come from the session, never here.
+ */
+export interface CreateSupplierInput {
+  name: string;
+  type: SupplierType;
+  pic?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  npwp?: string | null;
+  notes?: string | null;
+  paymentTermDays?: number;
+  isActive?: boolean;
+}
+
+/**
+ * Body of PATCH /api/suppliers/:id — every field optional, but the backend
+ * rejects an empty body (send only what changed). A nullable field set to
+ * `null`/"" clears it; `type`, `paymentTermDays` and `isActive` refuse null,
+ * since each always has a meaningful value.
+ */
+export interface UpdateSupplierInput {
+  name?: string;
+  type?: SupplierType;
+  pic?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  npwp?: string | null;
+  notes?: string | null;
+  paymentTermDays?: number;
+  isActive?: boolean;
+}
+
+/**
+ * One supplier's row in GET /api/purchase-invoices/outstanding — what is still
+ * owed to them.
+ *
+ * Money is a decimal STRING, like everywhere else in this API: a rupiah total
+ * that has been through a float is a total that disagrees with its own rows.
+ * A supplier owed nothing is ABSENT rather than present with zeros, so consumers
+ * key by `supplierId` and read a miss as zero.
+ */
+export interface SupplierOutstandingRow {
+  supplierId: string;
+  /** Null when the vendor was soft-deleted since — the debt still stands. */
+  supplierName: string | null;
+  invoiceCount: number;
+  outstanding: string;
+}
+
+export interface SupplierOutstandingSummary {
+  items: SupplierOutstandingRow[];
+  totalOutstanding: string;
+  totalInvoices: number;
+}
+
+/**
+ * One supplier's row in GET /api/goods-receipts/summary — what has been bought
+ * from them.
+ *
+ * `purchased` is EX-TAX: it is what was debited to inventory, so it ties out
+ * against the stock side. What the vendor was billed is that plus `taxTotal`.
+ */
+export interface SupplierPurchaseRow {
+  supplierId: string;
+  supplierName: string | null;
+  receiptCount: number;
+  purchased: string;
+  taxTotal: string;
+  lastReceiptDate: string | null;
+}
+
+export interface SupplierPurchaseSummary {
+  items: SupplierPurchaseRow[];
+  totalPurchased: string;
+  totalReceipts: number;
+}
+
+/**
+ * One supplier's row in GET /api/product-batches/consignment-summary — their
+ * goods still sitting in the tenant's warehouses.
+ *
+ * NOT A DEBT, unlike `SupplierOutstandingRow`: consigned stock belongs to the
+ * supplier until it sells, so nothing here is owed yet. The two read side by
+ * side are a consignment vendor's whole position — what has been billed, and
+ * what is still on the shelf waiting to be.
+ */
+export interface SupplierConsignmentRow {
+  supplierId: string;
+  supplierName: string | null;
+  /** Distinct lots still holding stock. */
+  lotCount: number;
+  /** Distinct products across those lots. */
+  productCount: number;
+  qtyRemaining: string;
+  /** `qtyRemaining × costPerUnit` — what the supplier will invoice as it sells. */
+  value: string;
+}
+
+export interface SupplierConsignmentSummary {
+  items: SupplierConsignmentRow[];
+  totalValue: string;
+  totalLots: number;
+}
+
+/** What kind of arrival a delivery was — the per-receipt half of `SupplierType`. */
+export type PurchaseType = "beli_putus" | "konsinyasi";
+
+/**
+ * One row of GET /api/goods-receipts — a delivery, without its lines.
+ *
+ * MONEY IS A DECIMAL STRING, never a number: `JSON.parse` would have lost
+ * precision before any client code ran, and these are the figures a tenant
+ * reconciles a supplier's invoice against.
+ *
+ * `total` is EX-TAX (what was debited to inventory); `grandTotal` is what the
+ * supplier is owed, derived server-side rather than stored so a third total
+ * cannot disagree with the two it came from. The list projects the lines away,
+ * so `itemCount` stands in for them.
+ */
+export interface GoodsReceiptListRow {
+  _id: string;
+  receiptNumber: string;
+  supplierId: string;
+  supplierName: string | null;
+  warehouseId: string;
+  warehouseName: string | null;
+  receiptDate: string;
+  purchaseType: PurchaseType;
+  total: string;
+  taxAmount: string;
+  grandTotal: string;
+  itemCount: number;
+  invoiceId: string | null;
+  notes: string | null;
+  createdAt: string;
+}
+
+/** Query parameters accepted by GET /api/goods-receipts. All optional. */
+export interface GoodsReceiptListQuery {
+  page?: number;
+  limit?: number;
+  /** Free-text over receipt number / notes. */
+  search?: string;
+  supplierId?: string;
+  warehouseId?: string;
+  purchaseType?: PurchaseType;
+  /** ISO dates bounding `receiptDate` (inclusive), never `createdAt`. */
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+/**
  * The actor (and branch) references the audit-log list endpoint populates.
  *
  * The backend returns `userId`/`branchId` as populated subdocuments — a small

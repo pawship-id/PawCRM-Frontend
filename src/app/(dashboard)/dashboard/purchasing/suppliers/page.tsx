@@ -1,9 +1,14 @@
 import type { Metadata } from "next";
 
 import { SuppliersScreen } from "@/features/purchasing";
+import { RequirePermission } from "@/features/permissions";
 
 export const metadata: Metadata = { title: "Supplier · PawShip" };
 
 export default function SuppliersPage() {
-  return <SuppliersScreen />;
+  return (
+    <RequirePermission feature="suppliers">
+      <SuppliersScreen />
+    </RequirePermission>
+  );
 }
