@@ -127,7 +127,14 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
           {returns.map((row, index) => (
             <span key={row._id}>
               {index > 0 && ", "}
-              <b className="font-mono">{row.returnNumber}</b>
+              {/* Linked, because "check before raising another" is only
+                  actionable if the reader can get to the one already there. */}
+              <Link
+                href={`/dashboard/purchasing/returns/${row._id}`}
+                className="font-mono font-semibold text-primary-hover hover:underline"
+              >
+                {row.returnNumber}
+              </Link>
               {row.status === "draft" && " (draft)"}
             </span>
           ))}
@@ -144,6 +151,12 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
                 <th className="px-2 py-2 text-left font-medium">Produk</th>
                 <th className="px-2 py-2 text-left font-medium">Lot</th>
                 <th className="px-2 py-2 text-right font-medium">Qty</th>
+                {/* How much of each line has already gone back, and how much
+                    still may. Both come from the server — see
+                    GoodsReceiptDetailItem — and both are ADVISORY: the return
+                    submit re-reads the ceiling and refuses an over-claim
+                    regardless of what this column showed. */}
+                <th className="px-2 py-2 text-right font-medium">Diretur</th>
                 <th className="px-2 py-2 text-right font-medium">Harga beli</th>
                 <th className="px-2 py-2 text-right font-medium">Subtotal</th>
               </tr>
@@ -157,6 +170,8 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
                 // paperwork it was reconciled against.
                 const renamed =
                   item.productName !== null && item.productName !== item.name;
+
+                const returnedMinor = toMinor(item.returnedQty) ?? 0n;
 
                 return (
                   <tr
@@ -205,6 +220,21 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
                     </td>
 
                     <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">
+                      {returnedMinor > 0n ? (
+                        <>
+                          <span className="text-danger">
+                            {formatQty(item.returnedQty)}
+                          </span>
+                          <span className="block text-[10px] text-muted">
+                            sisa {formatQty(item.remainingQty)}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-muted">—</span>
+                      )}
+                    </td>
+
+                    <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">
                       {formatMoney(item.costPerUnit)}
                     </td>
 
@@ -217,7 +247,7 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
 
               <tr className="bg-accent/40">
                 <td
-                  colSpan={4}
+                  colSpan={5}
                   className="px-2 py-2 text-right text-xs font-semibold"
                 >
                   Subtotal
@@ -230,7 +260,7 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
               {taxMinor > 0n && (
                 <tr>
                   <td
-                    colSpan={4}
+                    colSpan={5}
                     className="px-2 py-2 text-right text-xs text-muted"
                   >
                     PPN masukan
@@ -243,7 +273,7 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
 
               <tr>
                 <td
-                  colSpan={4}
+                  colSpan={5}
                   className="px-2 py-2 text-right text-xs font-semibold"
                 >
                   Total

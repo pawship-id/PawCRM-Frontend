@@ -1,5 +1,4 @@
 import { goodsReceiptService } from "@/services/goodsReceipt.service";
-import { purchaseReturnService } from "@/services/purchaseReturn.service";
 import { apiClient } from "@/services/api-client";
 import type { CreateGoodsReceiptInput } from "@/types/api";
 
@@ -130,34 +129,5 @@ describe("goodsReceiptService", () => {
       "preview",
       "summary",
     ]);
-  });
-});
-
-describe("purchaseReturnService", () => {
-  afterEach(() => jest.restoreAllMocks());
-
-  it("finds the returns raised against one delivery", async () => {
-    const get = jest.spyOn(apiClient, "get").mockResolvedValue({} as never);
-
-    await purchaseReturnService.list({
-      originalReceiptId: "gr1",
-      limit: 50,
-    });
-
-    expect(get).toHaveBeenCalledWith("/purchase-returns", {
-      query: expect.objectContaining({
-        originalReceiptId: "gr1",
-        limit: 50,
-      }),
-    });
-  });
-
-  /**
-   * Read-only on purpose: the returns SCREENS still run on the prototype store,
-   * and wrapping the writes before they are converted would put two ways to
-   * return goods in the codebase at once.
-   */
-  it("wraps no write, because the returns screens are not converted yet", () => {
-    expect(Object.keys(purchaseReturnService)).toEqual(["list"]);
   });
 });

@@ -1,38 +1,20 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
-import { Breadcrumb } from "@/components";
-import { Button } from "@/components/ui/button";
-import {
-  PURCHASING_CRUMBS,
-  PurchaseReturnsScreen,
-} from "@/features/purchasing";
+import { PurchaseReturnsScreen } from "@/features/purchasing";
+import { RequirePermission } from "@/features/permissions";
 
 export const metadata: Metadata = { title: "Retur ke Supplier · PawShip" };
 
+/**
+ * The heading, the toolbar and the create button all live inside the screen —
+ * matching the receipts page. They depend on the list's own state (the search
+ * term, the permission to create), and a page that rendered its own copy would
+ * be a second place for the wording to drift.
+ */
 export default function PurchaseReturnsPage() {
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-end gap-4">
-        <div>
-          <Breadcrumb
-            items={[PURCHASING_CRUMBS.hub, { label: "Retur ke Supplier" }]}
-          />
-          <h1 className="mt-1 text-2xl font-semibold text-foreground">
-            Retur ke Supplier
-          </h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted">
-            Retur selalu ditarik dari penerimaan aslinya, sehingga harga beli
-            asli ikut terbawa — itulah yang membuat perhitungan HPP tetap benar
-            setelah barang dikembalikan.
-          </p>
-        </div>
-        <Button asChild className="ml-auto">
-          <Link href="/dashboard/purchasing/returns/new">+ Buat retur</Link>
-        </Button>
-      </div>
-
+    <RequirePermission feature="purchaseReturns" action="read">
       <PurchaseReturnsScreen />
-    </div>
+    </RequirePermission>
   );
 }

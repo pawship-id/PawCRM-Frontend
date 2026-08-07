@@ -7,6 +7,84 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Retur ke Supplier on the API
+
+Branch: `feature/inventory-purchasing`.
+
+**The return screens now run against `/api/purchase-returns`.** They were the last of the
+purchasing module still on the prototype store, and the worst place for it to remain: the old
+form simulated the weighted-average reversal in the browser and posted a return irreversibly
+from the create screen, in one step, with no confirmation. The number it was simulating is the
+cost basis of every unit still on the shelf. See `docs/features/purchase-returns.md`.
+
+**A return now has a life before it posts**, matching the workflow the API has always
+exposed. `/returns/new` creates a **draft** and moves nothing; the new `/returns/[id]` is
+where it is edited, previewed and submitted. The preview comes from
+`POST /:id/preview` — the endpoint that runs the submit's own code with the commit left off —
+so the HPP arithmetic on screen is the arithmetic that will be written, not a second
+implementation of it that drifts silently.
+
+**The list grew filters, pagination, status and row actions**, replacing a table that showed
+every demo row unsorted with no way to narrow it. A draft can be discarded from the list; a
+submitted return cannot, because the API refuses to discard one and the control should not
+exist where the request would fail.
+
+**Consignment deliveries are returnable now.** The old form filtered the picker to
+`beli_putus` and was *stricter than the API*: consignment goods can be sent back, the stock
+leaves and the average is reversed identically, and only the journal entry is skipped because
+the goods were never bought. The form offers both and labels the difference.
+
+**`reason` is free text again.** The prototype's four-value enum could not express "rusak saat
+transit, kardus basah"; the API stores a 255-character string per line precisely because the
+supplier reads it. The editor offers the four as presets plus "Tulis sendiri…".
+
+### Permissions: three actions that could not be granted
+
+`features/permissions/types.ts` had `purchaseReturns: ["create", "read"]` against a backend
+catalog of `["create", "read", "update", "delete", "submit"]`. A tenant literally could not
+authorise anybody to submit a return from the Role screen. Fixed.
+
+`submit` is separate from `update` for the usual reason — the seeded **Staff** role gets
+create/read/update and not submit, so the person who identifies a bad delivery is not the one
+who decides the vendor owes less for it. Because `POST /:id/preview` is gated on `submit`
+rather than `read`, a Staff user gets a 403 there while the rest of the page works;
+`useReturnPreview` separates that case from an error and the screen renders it as a panel they
+do not get, never as a banner over a working page.
+
+**All three routes are guarded.** `/returns` had no `RequirePermission` at all — the nav hid
+the entry, but direct URL entry rendered the tenant's returns to any signed-in role.
+
+### A mislabelled journal, fixed at the root
+
+`ReceiptPreviewJournal` is **deleted**. It existed to map the receipt preview's bare
+`accountId`s onto account names, and it decided which line was which by testing
+`line.credit !== null` — but that endpoint has always sent `credit: "0"` for a debit line,
+never `null`. Every line matched the credit branch, so the panel labelled all three rows of a
+purchase **"2101 Utang Supplier"**, on the one screen where the entry matters most.
+
+Both purchasing previews now return `accountCode` and `accountName` per line (backend
+`0.29.1`), so `ReceiptForm` and the new `ReturnPreviewPanel` pass them straight to the shared
+`JournalPreview` and nothing guesses. `ReceiptJournalLine` documents the remaining trap: both
+`debit` and `credit` are always present on these two endpoints, one of them `"0"` — read the
+amount, never the null.
+
+### Other changes riding along
+
+- **The receipt detail shows what has already gone back.** A new **Diretur** column reads
+  `returnedQty` / `remainingQty` from `GET /goods-receipts/:id` (backend `0.29.1`), and the
+  existing "this delivery already has returns" notice now links to each of them — "check
+  before raising another" is only actionable if the reader can get to the one already there.
+- **`PurchaseReturnListRow.notes` removed.** The collection has never had the field, so it was
+  always `undefined` at runtime. A return explains itself per line, in `items[].reason`.
+- **The purchasing hub's return count comes from the API**, read off `pagination.total` with
+  `limit: 1` rather than by counting a page — `.length` on a page silently caps at the page
+  size and would report "20 retur" forever.
+- **`tests/PurchasingScreens.test.tsx` deleted.** It was the last purchasing suite seeding
+  `demoStore`, and returns were the only thing left in it. Replaced by
+  `PurchaseReturnScreens.test.tsx` and `purchaseReturn.service.test.ts`.
+
+---
+
 ## [Unreleased] — Utang Supplier on the API, and three gaps closed behind it
 
 Branch: `feature/inventory-purchasing`.

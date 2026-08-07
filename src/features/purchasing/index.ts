@@ -24,5 +24,8 @@ export { InvoiceDetail } from "./components/InvoiceDetail";
 export { FileInvoiceForm } from "./components/FileInvoiceForm";
 export { PurchaseReturnsScreen } from "./components/PurchaseReturnsScreen";
 export { PurchaseReturnForm } from "./components/PurchaseReturnForm";
+// A return has a life before it posts, so unlike a receipt it has a detail
+// screen that can still change it: edit the draft, preview, submit, discard.
+export { PurchaseReturnDetail } from "./components/PurchaseReturnDetail";
 export { PageHeading } from "./components/PageHeading";
 export { PURCHASING_CRUMBS, supplierCrumb } from "./crumbs";

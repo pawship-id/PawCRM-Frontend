@@ -112,6 +112,8 @@ function detail(
         qty: "10.0000",
         costPerUnit: "15000.0000",
         subtotal: "150000.0000",
+        returnedQty: "0.0000",
+        remainingQty: "10.0000",
       },
     ],
     total: "150000.0000",
@@ -156,9 +158,23 @@ function preview(
         unitCost: "15000.0000",
       },
     ],
+    // Both sides are always present on this endpoint, one of them "0" — the
+    // preview labels its own accounts, so nothing has to guess which is which.
     journal: [
-      { accountId: "acc-inventory", debit: "150000.0000", credit: null },
-      { accountId: "acc-payable", debit: null, credit: "150000.0000" },
+      {
+        accountId: "acc-inventory",
+        accountCode: "1201",
+        accountName: "Persediaan Barang Dagangan",
+        debit: "150000.0000",
+        credit: "0",
+      },
+      {
+        accountId: "acc-payable",
+        accountCode: "2101",
+        accountName: "Utang Supplier",
+        debit: "0",
+        credit: "150000.0000",
+      },
     ],
     ...overrides,
   };

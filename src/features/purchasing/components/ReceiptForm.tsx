@@ -30,11 +30,11 @@ import {
 import type { CreateGoodsReceiptInput, PurchaseType } from "@/types/api";
 import type { Product } from "@/types/inventory";
 import { HppStrip } from "@/features/inventory/components/HppStrip";
+import { JournalPreview } from "@/features/inventory/components/JournalPreview";
 import { useStockCardLookups } from "@/features/inventory/hooks/useStockCardLookups";
 
 import { useReceiptPreview } from "../hooks/useReceiptPreview";
 import { useSupplierOptions } from "../hooks/useSupplierOptions";
-import { ReceiptPreviewJournal } from "./ReceiptPreviewJournal";
 
 interface LineDraft {
   productId: string;
@@ -742,7 +742,9 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
       )}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,320px)]">
-        <ReceiptPreviewJournal
+        {/* The preview labels its own accounts now — see ReceiptJournalLine.
+            This used to go through a shim that guessed them and got it wrong. */}
+        <JournalPreview
           lines={preview?.journal ?? []}
           emptyReason={
             consignment

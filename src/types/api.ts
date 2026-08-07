@@ -903,6 +903,22 @@ export interface GoodsReceiptDetailItem {
   qty: string;
   costPerUnit: string;
   subtotal: string;
+  /**
+   * Σ of every SUBMITTED purchase return against this line. Drafts do not count:
+   * one has moved no stock, and counting it would show a line as spent while the
+   * goods are still on the shelf.
+   */
+  returnedQty: string;
+  /**
+   * `qty − returnedQty` — what may still be sent back.
+   *
+   * ADVISORY, and the distinction matters. The server re-reads this inside the
+   * submit and refuses an over-claim regardless of what a form was shown, so a
+   * screen may use it to cap an input but must never use it to decide the request
+   * will succeed. Two drafts can each claim the same remainder; the second to
+   * submit is refused.
+   */
+  remainingQty: string;
 }
 
 /**
@@ -982,19 +998,22 @@ export interface CreateGoodsReceiptInput {
 }
 
 /**
- * One line of the entry POST /api/goods-receipts/preview would post.
+ * One line of a posting a purchasing preview would write.
  *
- * IDENTIFIES ITS ACCOUNT BY ID ONLY — unlike `JournalLine` in types/inventory.ts,
- * which the stock-movement preview fills with `accountCode` and `accountName`.
- * The two endpoints disagree about this, so `JournalPreview` cannot render these
- * rows directly; ReceiptPreviewJournal maps the ids onto the three accounts a
- * receipt can touch. See its header for why that mapping is safe and what would
- * remove it.
+ * `accountCode` and `accountName` arrive resolved, matching the stock-movement
+ * preview. They used to be absent, and `ReceiptPreviewJournal` guessed each
+ * line's account from its position and its nulls — which was wrong, because
+ * BOTH `debit` AND `credit` ARE ALWAYS PRESENT on these two endpoints, one of
+ * them `"0"`. (The stock-movement preview nulls the unused side; these do not.
+ * Read the amount, never the null.) The guess labelled every row of a purchase
+ * as the payable. Server-side labels removed the guess and the shim with it.
  */
 export interface ReceiptJournalLine {
   accountId: string;
-  debit: string | null;
-  credit: string | null;
+  accountCode: string;
+  accountName: string;
+  debit: string;
+  credit: string;
 }
 
 /** One line as the preview echoes it back — priced, but not yet a document. */
@@ -1238,11 +1257,14 @@ export type PurchaseReturnStatus = "draft" | "submitted";
 /**
  * One row of GET /api/purchase-returns — a delivery sent back, without its lines.
  *
- * ONLY THE LIST SHAPE IS DECLARED HERE, and only because the goods-receipt detail
- * screen needs to answer "has this delivery already been returned against?". The
- * returns module owns everything else about a return and still runs on the
- * prototype store; wrapping its writes before that screen is converted would put
- * two ways to return goods in the codebase at once.
+ * `items` IS PROJECTED AWAY by the server and replaced with `itemCount`, as on
+ * the receipt list. Read one return to get its lines.
+ *
+ * THERE IS NO `notes`. This type used to declare one; the collection has never
+ * had the field, so it was always `undefined` at runtime. A return explains
+ * itself per line, in `items[].reason` — one return commonly carries two damaged
+ * cartons and one wrong SKU, and a single note at the top would have to be a lie
+ * about one of them.
  */
 export interface PurchaseReturnListRow {
   _id: string;
@@ -1258,22 +1280,159 @@ export interface PurchaseReturnListRow {
   originalReceiptNumber: string | null;
   totalAmount: string;
   itemCount: number;
-  notes: string | null;
   createdAt: string;
+}
+
+/**
+ * One line of a return, as GET /api/purchase-returns/:id returns it.
+ *
+ * EVERYTHING BUT `qty` AND `reason` IS THE SERVER'S, copied from the receipt line
+ * `originalReceiptItemId` names. That is the point of tracing at all: `costPerUnit`
+ * is what the delivery ACTUALLY charged, which is the figure the weighted average
+ * has to be reversed at, and a client able to type it could restate the cost basis
+ * every future sale is costed at.
+ */
+export interface PurchaseReturnItem {
+  /** The `goodsreceipts.items[].itemId` this line reverses. Also its identity. */
+  originalReceiptItemId: string;
+  productId: string;
+  productSku: string | null;
+  /** Null when the product has been deleted since. */
+  productName: string | null;
+  productUnit: string | null;
+  /** The lot the goods leave from. Null is the ordinary case. */
+  batchId: string | null;
+  batchCode: string | null;
+  batchExpiryDate: string | null;
+  /** Stored POSITIVE — the stock ledger owns the sign. */
+  qty: string;
+  /** What that delivery charged for one unit. Never today's average. */
+  costPerUnit: string;
+  subtotal: string;
+  /** Free text, ≤ 255 chars. Read by the SUPPLIER, so not an enum. */
+  reason: string;
+}
+
+/**
+ * GET /api/purchase-returns/:id — one return, with its lines and their labels.
+ *
+ * `journalEntryId` IS NULL FOR THREE DIFFERENT REASONS and a screen must not
+ * collapse them: the return is still a draft and nothing has posted; the goods
+ * came in on `konsinyasi`, so there was never a debt to discharge; or the
+ * returned value came to zero, which the ledger correctly declines to post.
+ */
+export interface PurchaseReturnDetail
+  extends Omit<PurchaseReturnListRow, "itemCount"> {
+  items: PurchaseReturnItem[];
+  journalEntryId: string | null;
+  /** Who opened the return. Null when that user has been deleted since. */
+  createdByName: string | null;
+  updatedAt: string;
 }
 
 /** Query parameters accepted by GET /api/purchase-returns. All optional. */
 export interface PurchaseReturnListQuery {
   page?: number;
   limit?: number;
+  /** Matches the return number — what a human recognises a return by. */
   search?: string;
   supplierId?: string;
   warehouseId?: string;
   /** The delivery being reversed — how a receipt finds its own returns. */
   originalReceiptId?: string;
   status?: PurchaseReturnStatus;
+  /** ISO dates bounding `returnDate` — the day the goods went back. */
   dateFrom?: string;
   dateTo?: string;
+}
+
+/** One line going back, as a client sends it. Three fields, and that is the design. */
+export interface PurchaseReturnItemInput {
+  originalReceiptItemId: string;
+  /** Strictly positive, and never more than the line's `remainingQty`. */
+  qty: string;
+  /** Required on every line. Free text — the supplier reads it. */
+  reason: string;
+}
+
+/**
+ * POST /api/purchase-returns — open a DRAFT against a delivery. 201.
+ *
+ * MOVES NOTHING. The draft exists so a storekeeper can list what is going back
+ * while holding the damaged carton, and somebody with the authority to reduce a
+ * supplier's payable closes it afterwards. The return NUMBER is allocated here
+ * regardless, because a clerk on the phone to a vendor needs one to quote.
+ *
+ * `supplierId` and `warehouseId` are NOT sent: goods go back to whoever delivered
+ * them, out of wherever they landed, and both are read off the receipt.
+ *
+ * AT LEAST ONE ITEM, unlike a stock opname — a return is never opened empty,
+ * because it is raised in response to something already in the room.
+ */
+export interface CreatePurchaseReturnInput {
+  originalReceiptId: string;
+  /** Defaults to now. When the goods PHYSICALLY went back. */
+  returnDate?: string;
+  items: PurchaseReturnItemInput[];
+}
+
+/**
+ * PATCH /api/purchase-returns/:id — edit a draft.
+ *
+ * `items` REPLACES the stored array wholesale, so removing a line is sending the
+ * list without it and emptying the return is a delete rather than an edit.
+ *
+ * `returnDate` is optional; omitting it leaves the stored date alone rather than
+ * clearing it. `originalReceiptId` is not accepted at all — repointing a return
+ * would silently revalue every line at costs from a different arrival.
+ */
+export interface UpdatePurchaseReturnInput {
+  returnDate?: string;
+  items: PurchaseReturnItemInput[];
+}
+
+/** One line of the return, echoed back by the preview — priced, but not yet posted. */
+export interface PurchaseReturnPreviewItem {
+  originalReceiptItemId: string;
+  productId: string;
+  batchId: string | null;
+  qty: string;
+  costPerUnit: string;
+  subtotal: string;
+  reason: string;
+}
+
+/**
+ * POST /api/purchase-returns/:id/preview — what submitting WOULD do, writing
+ * nothing.
+ *
+ * WORTH AN ENDPOINT MORE THAN ALMOST ANYWHERE ELSE, because the submit cannot be
+ * undone and moves two things at once: the stock leaves, and the weighted-average
+ * cost every future sale of the SURVIVING stock is costed at moves with it.
+ * `hppAvg` shows the before, the after and the working.
+ *
+ * GATED ON `purchaseReturns:submit`, NOT `read` — it answers "what does this do
+ * to my margins and my payable", and a role that may not close a return has no
+ * business asking. A screen must hide the panel for such a role rather than
+ * showing them a 403.
+ *
+ * Every refusal the submit would make, this makes too.
+ */
+export interface PurchaseReturnPreview {
+  returnId: string;
+  returnNumber: string;
+  originalReceiptId: string;
+  originalReceiptNumber: string | null;
+  /** `konsinyasi` posts no journal at all — the goods were never bought. */
+  purchaseType: PurchaseType;
+  items: PurchaseReturnPreviewItem[];
+  totalAmount: string;
+  /** The rows that would be written, and the lots they would draw from. */
+  movements: PreviewMovementRow[];
+  /** The new weighted average per product, WITH the working. Empty when the goods had no cost. */
+  hppAvg: PreviewHpp[];
+  /** `Dr 2101 / Cr 1201`. `[]` for a consignment return, and for one worth nothing. */
+  journal: ReceiptJournalLine[];
 }
 
 /**

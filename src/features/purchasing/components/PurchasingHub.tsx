@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +9,8 @@ import type { Action, Feature } from "@/features/permissions";
 import { cn } from "@/lib/utils";
 import { daysUntil } from "@/utils/date";
 import { formatMoney } from "@/utils/decimal";
+
+import { purchaseReturnService } from "@/services/purchaseReturn.service";
 
 import { useInventoryDemo } from "@/features/inventory/hooks/useInventoryDemo";
 
@@ -73,10 +76,15 @@ const SECTIONS: Array<{
  * documents makes the "is there anything here" point without claiming to be an
  * account.
  *
- * THE PAYABLES HALF NOW READS THE API; the other three cards still count the
- * in-memory demo store, because suppliers, receipts and returns each have their
- * own conversion. That is why the payables count is the only one that can be
- * null — it is the only one waiting on a request.
+ * THE PAYABLES AND RETURNS HALVES NOW READ THE API; suppliers and receipts still
+ * count the in-memory demo store, because each card is converted with its own
+ * module. That is why those two counts are the only ones that can be null — they
+ * are the ones waiting on a request.
+ *
+ * THE RETURNS COUNT COMES FROM THE PAGINATION, NOT FROM THE ROWS. Asking for one
+ * row and reading `pagination.total` costs one small request and is right; asking
+ * for a page and calling `.length` on it would silently cap at the page size and
+ * report "20 retur" forever.
  *
  * EACH CARD IS GATED ON ITS OWN GRANT and the two lists on `purchaseInvoices`,
  * matching the sidebar exactly — a user whose menu has no Utang Supplier link
@@ -85,11 +93,35 @@ const SECTIONS: Array<{
  */
 export function PurchasingHub() {
   const { can } = usePermissions();
-  const { suppliers, receipts, purchaseReturns } = useInventoryDemo();
+  const { suppliers, receipts } = useInventoryDemo();
 
   const mayReadInvoices = can("purchaseInvoices", "read");
   const { overdue, dueSoon, outstandingCount } =
     usePayablesPanels(mayReadInvoices);
+
+  const mayReadReturns = can("purchaseReturns", "read");
+  const [returnCount, setReturnCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    // A denied role issues no request at all, matching how the payables panels
+    // are gated — a 403 in the console is a worse answer than not asking.
+    if (!mayReadReturns) return;
+
+    let active = true;
+
+    purchaseReturnService
+      .list({ limit: 1 })
+      .then((result) => {
+        if (active) setReturnCount(result.pagination.total);
+      })
+      // A hub card is a signpost; a missing count is not worth an error banner
+      // over three other cards that loaded fine.
+      .catch(() => undefined);
+
+    return () => {
+      active = false;
+    };
+  }, [mayReadReturns]);
 
   const sections = SECTIONS.filter((section) =>
     can(section.feature, section.action),
@@ -102,7 +134,8 @@ export function PurchasingHub() {
       outstandingCount === null
         ? "—"
         : `${outstandingCount} belum lunas`,
-    "/dashboard/purchasing/returns": `${purchaseReturns.length} retur`,
+    "/dashboard/purchasing/returns":
+      returnCount === null ? "—" : `${returnCount} retur`,
   };
 
   return (

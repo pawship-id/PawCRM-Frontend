@@ -146,6 +146,8 @@ function receiptDetail(): GoodsReceiptDetail {
         qty: "10.0000",
         costPerUnit: "15000.0000",
         subtotal: "150000.0000",
+        returnedQty: "0.0000",
+        remainingQty: "10.0000",
       },
     ],
     total: "150000.0000",
