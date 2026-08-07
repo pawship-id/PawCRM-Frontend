@@ -414,3 +414,28 @@ export function PurchaseReturnIcon(props: IconProps) {
     </Base>
   );
 }
+
+/* -------------------------------------------------------------- Accounting */
+
+/** Chart of accounts — a hierarchy: one spine branching into its accounts. */
+export function AccountTreeIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <rect x="9.5" y="2.5" width="11" height="5" rx="1.5" />
+      <rect x="9.5" y="9.5" width="11" height="5" rx="1.5" />
+      <rect x="9.5" y="16.5" width="11" height="5" rx="1.5" />
+      <path d="M4.5 5v14M4.5 5h5M4.5 12h5M4.5 19h5" />
+    </Base>
+  );
+}
+
+/** General ledger — a book ruled into a debit and a credit column. */
+export function JournalIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <rect x="4" y="3" width="16" height="18" rx="1.75" />
+      <path d="M12 7v10" />
+      <path d="M7.5 10.5h2M7.5 14h2M14.5 10.5h2M14.5 14h2" />
+    </Base>
+  );
+}

@@ -148,6 +148,58 @@ describe("filterNavItems", () => {
     ).toBe(false);
   });
 
+  it("orders Keuangan as the accounts the ledger needs, then the ledger", () => {
+    // A journal line has nowhere to land without an account, so the COA comes
+    // first — the menu teaches the dependency.
+    const finance = filterNavItems(NAV_ITEMS, allowAll).find(
+      (i) => i.label === "Keuangan",
+    );
+
+    expect(finance?.children?.map((c) => c.label)).toEqual([
+      "Ringkasan",
+      "Daftar Akun",
+      "Jurnal Umum",
+    ]);
+  });
+
+  it("shows Keuangan with only the ledger for a journal-only role", () => {
+    // The hub rides along ungated; the COA link does not, because reading the
+    // ledger says nothing about being allowed to read the chart of accounts.
+    const onlyJournal: CanFn = (feature, action) =>
+      feature === "journalEntries" && action === "read";
+
+    const finance = filterNavItems(NAV_ITEMS, onlyJournal).find(
+      (i) => i.label === "Keuangan",
+    );
+
+    expect(finance?.children?.map((c) => c.label)).toEqual([
+      "Ringkasan",
+      "Jurnal Umum",
+    ]);
+  });
+
+  it("drops the Keuangan group for a role with no accounting grant", () => {
+    const finance = filterNavItems(NAV_ITEMS, denyAll).find(
+      (i) => i.label === "Keuangan",
+    );
+    expect(finance).toBeUndefined();
+  });
+
+  it("marks the Keuangan hub active only on its own route", () => {
+    const hub = NAV_ITEMS.find((i) => i.label === "Keuangan")?.children?.[0];
+    expect(hub?.href).toBe("/dashboard/keuangan");
+    expect(isActiveHref(hub!.href, "/dashboard/keuangan", hub!.exact)).toBe(
+      true,
+    );
+    expect(
+      isActiveHref(
+        hub!.href,
+        "/dashboard/keuangan/journal-entries",
+        hub!.exact,
+      ),
+    ).toBe(false);
+  });
+
   it("does not mutate the source NAV_ITEMS", () => {
     const before = NAV_ITEMS.find((i) => i.label === "Master Data")?.children
       ?.length;

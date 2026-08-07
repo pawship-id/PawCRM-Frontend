@@ -28,6 +28,8 @@ import {
   ReceiptIcon,
   PayableIcon,
   PurchaseReturnIcon,
+  AccountTreeIcon,
+  JournalIcon,
 } from "@/components/icons";
 import type {
   Action,
@@ -248,7 +250,43 @@ export const NAV_ITEMS: NavItem[] = [
   },
   { label: "POS", href: "/dashboard/pos", icon: PosIcon },
   { label: "Sales & Invoice", href: "/dashboard/sales", icon: SalesIcon },
-  { label: "Keuangan", href: "/dashboard/keuangan", icon: FinanceIcon },
+  /**
+   * Keuangan — a GROUP rather than a leaf, now that the module has screens.
+   *
+   * Ordered the way double-entry bookkeeping is learned and the way the data
+   * depends: the chart of accounts first, because a journal line has nowhere to
+   * land without it, then the ledger those accounts are posted to. Reports
+   * (laba rugi, neraca, arus kas) are queries over the ledger and will slot in
+   * below it when they exist — they are deliberately not listed yet.
+   */
+  {
+    label: "Keuangan",
+    icon: FinanceIcon,
+    children: [
+      {
+        // The hub, `exact` for the same reason the Inventory and Purchasing
+        // ones are: its href is the prefix of every sibling's, so prefix
+        // matching would light this row up on all of them. Ungated like those
+        // two — the page gates each card itself.
+        label: "Ringkasan",
+        href: "/dashboard/keuangan",
+        icon: FinanceIcon,
+        exact: true,
+      },
+      {
+        label: "Daftar Akun",
+        href: "/dashboard/keuangan/chart-of-accounts",
+        icon: AccountTreeIcon,
+        permission: { feature: "chartOfAccounts", action: "read" },
+      },
+      {
+        label: "Jurnal Umum",
+        href: "/dashboard/keuangan/journal-entries",
+        icon: JournalIcon,
+        permission: { feature: "journalEntries", action: "read" },
+      },
+    ],
+  },
   {
     label: "E-commerce Sync",
     href: "/dashboard/ecommerce-sync",
