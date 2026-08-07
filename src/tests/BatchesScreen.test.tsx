@@ -39,6 +39,7 @@ function warehouse(id = WAREHOUSE, name = "Gudang Pusat"): Warehouse {
     name,
     defaultBranchId: null,
     address: null,
+    location: { lat: null, lng: null, source: "manual" },
     picName: null,
     picPhone: null,
     isActive: true,

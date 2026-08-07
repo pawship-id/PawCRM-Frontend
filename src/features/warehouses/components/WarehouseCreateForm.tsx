@@ -3,7 +3,15 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { Alert, Button, TextField } from "@/components";
+import {
+  Alert,
+  Button,
+  LocationFields,
+  TextField,
+  toGeoLocation,
+  validateLocationFields,
+} from "@/components";
+import type { LocationFieldsValue } from "@/components";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { ApiError } from "@/services/api-error";
@@ -38,6 +46,10 @@ export function WarehouseCreateForm() {
   const [name, setName] = useState("");
   const [branchId, setBranchId] = useState<string | null>(null);
   const [address, setAddress] = useState("");
+  const [location, setLocation] = useState<LocationFieldsValue>({
+    lat: "",
+    lng: "",
+  });
   const [picName, setPicName] = useState("");
   const [picPhone, setPicPhone] = useState("");
   const [isActive, setIsActive] = useState(true);
@@ -50,7 +62,9 @@ export function WarehouseCreateForm() {
     event.preventDefault();
     setFormError(null);
 
-    const nextErrors: Record<string, string> = {};
+    const nextErrors: Record<string, string> = {
+      ...validateLocationFields(location),
+    };
     const nameError = validateWarehouseName(name);
     const addressError = validateWarehouseAddress(address);
     const picNameError = validatePicName(picName);
@@ -68,6 +82,7 @@ export function WarehouseCreateForm() {
         name: name.trim(),
         defaultBranchId: branchId,
         address: address.trim() === "" ? null : address.trim(),
+        location: toGeoLocation(location),
         picName: picName.trim() === "" ? null : picName.trim(),
         picPhone: picPhone.trim() === "" ? null : picPhone.trim(),
         isActive,
@@ -121,7 +136,14 @@ export function WarehouseCreateForm() {
           />
         </div>
 
-        {/* Row 3: the person accountable for stock here */}
+        {/* Row 3: the map pin */}
+        <LocationFields
+          value={location}
+          onChange={setLocation}
+          errors={fieldErrors}
+        />
+
+        {/* Row 4: the person accountable for stock here */}
         <TextField
           label="PIC name"
           name="picName"

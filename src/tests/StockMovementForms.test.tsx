@@ -75,6 +75,7 @@ function warehouse(id: string, name: string, isActive = true): Warehouse {
     name,
     defaultBranchId: null,
     address: null,
+    location: { lat: null, lng: null, source: "manual" },
     picName: null,
     picPhone: null,
     isActive,

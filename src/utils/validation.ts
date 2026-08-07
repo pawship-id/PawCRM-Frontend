@@ -18,6 +18,11 @@ export const WAREHOUSE_NAME_MAX_LENGTH = 120;
 export const WAREHOUSE_ADDRESS_MAX_LENGTH = 255;
 export const WAREHOUSE_PIC_NAME_MAX_LENGTH = 120;
 export const WAREHOUSE_PIC_PHONE_MAX_LENGTH = 32;
+// Coordinate bounds, mirroring models/location.schema.js on the backend.
+export const LATITUDE_MIN = -90;
+export const LATITUDE_MAX = 90;
+export const LONGITUDE_MIN = -180;
+export const LONGITUDE_MAX = 180;
 export const CUSTOMER_NAME_MAX_LENGTH = 120;
 export const CUSTOMER_EMAIL_MAX_LENGTH = 254;
 export const CUSTOMER_PHONE_MAX_LENGTH = 32;
@@ -137,6 +142,53 @@ export function validatePicPhone(value: string): string | undefined {
   if (!PHONE_PATTERN.test(phone))
     return "Only digits, spaces and + ( ) - . are allowed";
   return undefined;
+}
+
+/**
+ * A coordinate is optional and clearable, so blank is valid. `Number("")` is 0,
+ * not NaN, which is why the blank check comes before the parse — without it an
+ * empty field would validate as a pin on the equator.
+ */
+export function validateLatitude(value: string): string | undefined {
+  const raw = value.trim();
+  if (!raw) return undefined;
+  const lat = Number(raw);
+  if (!Number.isFinite(lat)) return "Latitude must be a number";
+  if (lat < LATITUDE_MIN || lat > LATITUDE_MAX)
+    return `Latitude must be between ${LATITUDE_MIN} and ${LATITUDE_MAX}`;
+  return undefined;
+}
+
+export function validateLongitude(value: string): string | undefined {
+  const raw = value.trim();
+  if (!raw) return undefined;
+  const lng = Number(raw);
+  if (!Number.isFinite(lng)) return "Longitude must be a number";
+  if (lng < LONGITUDE_MIN || lng > LONGITUDE_MAX)
+    return `Longitude must be between ${LONGITUDE_MIN} and ${LONGITUDE_MAX}`;
+  return undefined;
+}
+
+/**
+ * The pair is all-or-nothing, mirroring the backend's Joi `.and("lat", "lng")`.
+ * A latitude with no longitude is not a partial pin — it resolves to the
+ * Greenwich meridian, a marker in the Atlantic.
+ *
+ * Reported against whichever field is empty, so the message lands on the input
+ * the user still has to fill in rather than the one they already did.
+ */
+export function validateCoordinatePair(
+  lat: string,
+  lng: string,
+): { field: "lat" | "lng"; message: string } | undefined {
+  const hasLat = lat.trim() !== "";
+  const hasLng = lng.trim() !== "";
+  if (hasLat === hasLng) return undefined;
+
+  return {
+    field: hasLat ? "lng" : "lat",
+    message: "Latitude and longitude must be filled in together",
+  };
 }
 
 export function validateCustomerName(value: string): string | undefined {

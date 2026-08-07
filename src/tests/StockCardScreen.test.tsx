@@ -67,6 +67,7 @@ function warehouse(): Warehouse {
     name: "Gudang Pusat",
     defaultBranchId: null,
     address: null,
+    location: { lat: null, lng: null, source: "manual" },
     picName: null,
     picPhone: null,
     isActive: true,

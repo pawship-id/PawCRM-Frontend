@@ -331,6 +331,41 @@ export interface Tenant {
 }
 
 /**
+ * How a pin got into the database.
+ *
+ * "manual" means someone read the numbers off Google Maps and typed them in;
+ * "google_places" means the Places picker wrote them. Server-owned — it is
+ * absent from the input type below because the backend strips a client-supplied
+ * value, so typing it as optional would suggest sending it does something.
+ */
+export type GeoLocationSource = "manual" | "google_places";
+
+/**
+ * A geographic pin on a branch or a warehouse.
+ *
+ * A subdocument rather than two flat fields on the parent, deliberately: the
+ * Places picker returns a placeId and a formatted address alongside the pair,
+ * and adding them here later is additive — neither Branch nor Warehouse changes
+ * shape. See location.schema.js on the backend.
+ *
+ * `lat` and `lng` are always both set or both null; the backend rejects half a
+ * pair with a 400, because a latitude alone points at the Greenwich meridian.
+ */
+export interface GeoLocation {
+  lat: number | null;
+  lng: number | null;
+  source: GeoLocationSource;
+}
+
+/**
+ * What a client MAY send as a pin. `null` clears it.
+ *
+ * `source` is omitted because the server stamps it from whichever code path
+ * wrote the coordinates.
+ */
+export type GeoLocationInput = Pick<GeoLocation, "lat" | "lng">;
+
+/**
  * A branch, as returned by GET /api/branches. A tenant's physical location.
  *
  * `isActive` (temporarily closed vs. open) and `deletedAt` (removed, restorable)
@@ -343,6 +378,13 @@ export interface Branch {
   name: string;
   address: string | null;
   phone: string | null;
+  /**
+   * Where the branch actually is, independent of the `address` text. Present on
+   * every document written by the current schema — but read it defensively, as
+   * the backend's list reads use `.lean()` and skip schema defaults, so a
+   * document predating the field comes back without the key entirely.
+   */
+  location: GeoLocation;
   isActive: boolean;
   /** Soft-delete marker; non-null means deleted (restorable), null means live. */
   deletedAt: string | null;
@@ -369,6 +411,8 @@ export interface CreateBranchInput {
   name: string;
   address?: string | null;
   phone?: string | null;
+  /** `null` clears the pin; both coordinates must be sent together. */
+  location?: GeoLocationInput | null;
   isActive?: boolean;
 }
 
@@ -380,6 +424,8 @@ export interface UpdateBranchInput {
   name?: string;
   address?: string | null;
   phone?: string | null;
+  /** `null` clears the pin; both coordinates must be sent together. */
+  location?: GeoLocationInput | null;
   isActive?: boolean;
 }
 
@@ -410,6 +456,12 @@ export interface Warehouse {
   /** The branch this warehouse posts against by default; null = central. */
   defaultBranchId: string | null;
   address: string | null;
+  /**
+   * Where the warehouse physically sits. Inherited from the branch when a
+   * default warehouse is auto-provisioned, and editable afterwards. Read it
+   * defensively for the same reason as on Branch.
+   */
+  location: GeoLocation;
   /** Who is accountable for stock here — a plain name, not a user reference. */
   picName: string | null;
   picPhone: string | null;
@@ -444,6 +496,8 @@ export interface CreateWarehouseInput {
   name: string;
   defaultBranchId?: string | null;
   address?: string | null;
+  /** `null` clears the pin; both coordinates must be sent together. */
+  location?: GeoLocationInput | null;
   picName?: string | null;
   picPhone?: string | null;
   isActive?: boolean;
@@ -457,6 +511,8 @@ export interface UpdateWarehouseInput {
   name?: string;
   defaultBranchId?: string | null;
   address?: string | null;
+  /** `null` clears the pin; both coordinates must be sent together. */
+  location?: GeoLocationInput | null;
   picName?: string | null;
   picPhone?: string | null;
   isActive?: boolean;
