@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { Alert, Button, Card, TextField } from "@/components";
+import { Alert, Button, Card, Spinner, TextField } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button as UIButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,23 +17,24 @@ import {
 } from "@/components/ui/select";
 import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
+import { ApiError } from "@/services/api-error";
+import { goodsReceiptService } from "@/services/goodsReceipt.service";
 import {
   formatMoney,
-  formatMoneyPrecise,
   formatQty,
   isDecimal,
   isPositive,
   multiplyDecimals,
   sumDecimals,
-  toDecimalString,
-  toMinor,
-  weightedAverage,
 } from "@/utils/decimal";
-import type { ReceiptType } from "@/types/purchasing";
+import type { CreateGoodsReceiptInput, PurchaseType } from "@/types/api";
+import type { Product } from "@/types/inventory";
+import { HppStrip } from "@/features/inventory/components/HppStrip";
+import { useStockCardLookups } from "@/features/inventory/hooks/useStockCardLookups";
 
-import * as demo from "@/features/inventory/data/demoStore";
-import { useInventoryDemo } from "@/features/inventory/hooks/useInventoryDemo";
-import { JournalPreview } from "@/features/inventory/components/JournalPreview";
+import { useReceiptPreview } from "../hooks/useReceiptPreview";
+import { useSupplierOptions } from "../hooks/useSupplierOptions";
+import { ReceiptPreviewJournal } from "./ReceiptPreviewJournal";
 
 interface LineDraft {
   productId: string;
@@ -43,41 +44,94 @@ interface LineDraft {
   expiryDate: string;
 }
 
+/** Today, as an `<input type="date">` holds it. Also the API's default. */
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * Whether a line must carry lot details.
+ *
+ * Required when the goods expire — the promise `hasExpiry` makes — or whenever
+ * the delivery is consigned, because consignment stock always gets its own lot:
+ * its cost was entered by hand rather than derived from a purchase.
+ *
+ * MODULE-LEVEL, taking `consignment` as an argument rather than closing over it.
+ * Defined inside the component it would be a new function every render, and the
+ * payload memo that calls it would either rebuild on every keystroke or lie about
+ * its dependencies.
+ */
+function needsLot(product: Product | undefined, consignment: boolean): boolean {
+  return Boolean(product?.hasExpiry) || consignment;
+}
+
+/**
+ * What to say when one product is on two rows.
+ *
+ * NAMES THE PRODUCT AND THE WAY OUT. The API's own refusal identifies it by
+ * ObjectId, which tells a clerk nothing about which of their rows to touch — and
+ * the fix is not obvious either, because two lines for one product is exactly how
+ * somebody records "twenty at one price, ten at another".
+ *
+ * That case IS real, and the answer is TWO RECEIPTS: the delivery physically was
+ * two purchases at two prices, and one line per product is what lets a purchase
+ * return say which of them it is reversing.
+ */
+function duplicateMessage(name: string | undefined): string {
+  return `${name ?? "Produk ini"} muncul di dua baris. Gabungkan menjadi satu baris — atau, kalau harga belinya memang berbeda, catat sebagai dua penerimaan terpisah.`;
+}
+
 /**
  * Record goods arriving from a supplier.
  *
  * THIS FORM IS WHERE HPP IS BORN. Every other screen reads the weighted average;
- * this is the one that moves it. That is why the calculation is shown per line
+ * this is the one that moves it. That is why the calculation is shown per product
  * as arithmetic rather than as a result — the shop owner holding the supplier's
- * invoice can check the new average against the price on the paper in their
- * hand, which is the only moment anybody ever can.
+ * invoice can check the new average against the price on the paper in their hand,
+ * which is the only moment anybody ever can.
  *
- * THE SIMULATION IS SEQUENTIAL, and that detail matters. Two lines of the same
- * product compound: the second is averaged against the result of the first, not
- * against the stored value. Previewing them independently would show two numbers
- * that neither matches what gets saved.
+ * THE NUMBERS ARE FETCHED, NOT COMPUTED. This form used to run its own sequential
+ * weighted-average simulation across the lines, reimplemented from the service.
+ * That is gone. `POST /goods-receipts/preview` is the posting path with the
+ * commit left off, so the lots, the average and the journal shown here are the
+ * ones that will actually be written. A reimplementation does not fail loudly
+ * when the server changes its mind — it renders a confident wrong number that the
+ * user approves, and here that number is permanent.
  *
  * BELI PUTUS vs KONSINYASI changes what the form even means. Outright, the goods
- * become the tenant's and a payable is created. Consigned, they sit in the
- * warehouse belonging to the supplier — stock rises, but nothing is owed and
- * nothing is journalled, because nothing has been bought.
+ * become the tenant's, the ledger is posted and `2101 Utang Supplier` is
+ * credited. Consigned, they sit in the warehouse still belonging to the supplier
+ * — stock rises, but nothing is owed and nothing is journalled, because nothing
+ * has been bought. `taxAmount` is not merely hidden for consignment, it is
+ * omitted from the payload: the API REFUSES the field there rather than ignoring
+ * it, on the grounds that a clerk who typed one has misunderstood which kind of
+ * delivery they are recording.
+ *
+ * WHAT THE SERVER REFUSES IS NOT DUPLICATED IN `validate`. A supplier whose terms
+ * do not permit this purchase type, an inactive warehouse, a product that holds
+ * no stock, a batch code already used — those come back as a 400 and are surfaced
+ * verbatim, naming every offending SKU at once so a forty-line delivery is fixed
+ * in one pass. Only the rules a user can fix without a round trip are checked
+ * locally.
+ *
+ * SUBMITTING TWICE CREATES TWO DELIVERIES. `POST /goods-receipts` is not
+ * idempotent and has no `idempotencyKey` to send — a receipt IS the upstream
+ * document, so a retried submit is indistinguishable from a second van arriving
+ * with the same goods. The button is therefore locked for the whole flight and
+ * the handler refuses re-entry; the preview panel is the other half of the
+ * mitigation.
  */
 export function ReceiptForm({ supplierId }: { supplierId?: string }) {
   const router = useRouter();
-  const { suppliers, warehouses, products, sync } = useInventoryDemo();
 
-  const sellable = products.filter(demo.canHoldStock);
-  const activeSuppliers = suppliers.filter((supplier) => supplier.isActive);
+  const { suppliers, loading: suppliersLoading } =
+    useSupplierOptions(supplierId);
+  const lookups = useStockCardLookups();
 
-  const [supplier, setSupplier] = useState(
-    supplierId ?? activeSuppliers[0]?._id ?? "",
-  );
-  const [warehouseId, setWarehouseId] = useState(warehouses[0]._id);
-  const [receiptType, setReceiptType] = useState<ReceiptType>("beli_putus");
-  const [receiptDate, setReceiptDate] = useState(
-    new Date().toISOString().slice(0, 10),
-  );
-  const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [supplier, setSupplier] = useState(supplierId ?? "");
+  const [warehouseId, setWarehouseId] = useState("");
+  const [purchaseType, setPurchaseType] = useState<PurchaseType>("beli_putus");
+  const [receiptDate, setReceiptDate] = useState(today);
   const [taxAmount, setTaxAmount] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<LineDraft[]>([]);
@@ -86,72 +140,153 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const consignment = receiptType === "konsinyasi";
-  const currentSupplier = suppliers.find((s) => s._id === supplier);
+  const consignment = purchaseType === "konsinyasi";
 
-  const subtotal = sumDecimals(
+  /**
+   * ACTIVE warehouses only, unlike the stock card. This form WRITES, and the API
+   * refuses a delivery at an inactive location — offering one would produce a
+   * rejection after the user had filled the whole form.
+   */
+  const writableWarehouses = useMemo(
+    () => lookups.warehouses.filter((warehouse) => warehouse.isActive),
+    [lookups.warehouses],
+  );
+
+  /** Same reasoning for the catalogue: a deleted product cannot be received. */
+  const receivableProducts = useMemo(
+    () =>
+      lookups.products.filter(
+        (product) => product.isActive && !product.deletedAt,
+      ),
+    [lookups.products],
+  );
+
+  const productById = useMemo(
+    () => new Map(receivableProducts.map((product) => [product._id, product])),
+    [receivableProducts],
+  );
+
+  /**
+   * What the "+ Tambah barang" picker may still offer.
+   *
+   * A PRODUCT ALREADY ON THE FORM IS REMOVED, because the API refuses a receipt
+   * carrying one twice and there is no reason to let a user build a payload that
+   * cannot be saved. Preventing it beats validating it: the duplicate rule is not
+   * something a clerk can be expected to know, and discovering it from a 400
+   * after filling forty lines is the worst possible moment.
+   */
+  const availableProducts = useMemo(() => {
+    const used = new Set(lines.map((line) => line.productId));
+    return receivableProducts.filter((product) => !used.has(product._id));
+  }, [receivableProducts, lines]);
+
+  // The first warehouse becomes the default once the list arrives. Kept out of an
+  // effect: a value derived from props/state does not need to round-trip through
+  // one, and `warehouseId` staying "" until then is a legitimate intermediate.
+  const effectiveWarehouseId =
+    warehouseId || (writableWarehouses[0]?._id ?? "");
+
+  /**
+   * The payload, built once and used for BOTH the preview and the save.
+   *
+   * Identical on purpose: a preview of a DIFFERENT request is worse than no
+   * preview, and this is the only place the two could diverge.
+   */
+  const payload = useMemo<CreateGoodsReceiptInput>(() => {
+    const trimmedTax = taxAmount.trim();
+
+    return {
+      supplierId: supplier,
+      warehouseId: effectiveWarehouseId,
+      receiptDate,
+      purchaseType,
+      // Omitted entirely on consignment — the API forbids the key, it does not
+      // ignore it. Omitted when blank so an untouched field is not "0".
+      ...(consignment || trimmedTax === "" ? {} : { taxAmount: trimmedTax }),
+      ...(notes.trim() === "" ? {} : { notes: notes.trim() }),
+      items: lines.map((line) => {
+        const product = productById.get(line.productId);
+        return {
+          productId: line.productId,
+          qty: line.qty.trim(),
+          costPerUnit: line.costPerUnit.trim(),
+          ...(needsLot(product, consignment) && line.batchCode.trim() !== ""
+            ? { batchCode: line.batchCode.trim() }
+            : {}),
+          ...(needsLot(product, consignment) && line.expiryDate !== ""
+            ? { expiryDate: line.expiryDate }
+            : {}),
+        };
+      }),
+    };
+    // `needsLot` closes over `consignment`, which `purchaseType` already covers.
+  }, [
+    supplier,
+    effectiveWarehouseId,
+    receiptDate,
+    purchaseType,
+    consignment,
+    taxAmount,
+    notes,
+    lines,
+    productById,
+  ]);
+
+  /**
+   * The product on two rows at once, if there is one.
+   *
+   * THE API REFUSES THIS, and its message names the offending product by
+   * ObjectId — correct for a machine, useless to a clerk staring at two rows that
+   * look perfectly reasonable side by side. Detected here so the form can say
+   * WHICH product, by name, before the request is sent.
+   *
+   * The picker below already excludes what is on the form, so this is reachable
+   * only by a line whose product was removed from the catalogue mid-edit. It
+   * stays because "unreachable" and "unreachable today" are different claims, and
+   * the failure mode is a raw id in a red box.
+   */
+  const duplicateProductId = useMemo(() => {
+    const seen = new Set<string>();
+    for (const line of lines) {
+      if (seen.has(line.productId)) return line.productId;
+      seen.add(line.productId);
+    }
+    return null;
+  }, [lines]);
+
+  /**
+   * The gate on asking the server. The endpoint refuses exactly what the create
+   * refuses, so asking it about a half-typed line would paint the panel red while
+   * the user is still working. Everything checked here is something the user can
+   * see and fix in the form; the server has the final word on the rest.
+   */
+  const previewEnabled =
+    Boolean(supplier) &&
+    Boolean(effectiveWarehouseId) &&
+    lines.length > 0 &&
+    // Asking about a payload we KNOW will be refused buys nothing but a red
+    // panel quoting an ObjectId.
+    duplicateProductId === null &&
+    lines.every((line) => {
+      const product = productById.get(line.productId);
+      if (!isPositive(line.qty)) return false;
+      if (!isDecimal(line.costPerUnit)) return false;
+      if (needsLot(product, consignment) && line.batchCode.trim() === "") return false;
+      if (product?.hasExpiry && line.expiryDate === "") return false;
+      return true;
+    }) &&
+    (consignment || taxAmount.trim() === "" || isDecimal(taxAmount.trim()));
+
+  const { preview, loading: previewLoading, error: previewError } =
+    useReceiptPreview(payload, previewEnabled);
+
+  /** Line subtotals are plain multiplication — no server rule is involved. */
+  const localSubtotal = sumDecimals(
     lines.map((line) =>
       isDecimal(line.qty) && isDecimal(line.costPerUnit)
         ? multiplyDecimals(line.qty, line.costPerUnit)
         : "0",
     ),
-  );
-  const total = consignment
-    ? subtotal
-    : sumDecimals([subtotal, isDecimal(taxAmount) ? taxAmount : "0"]);
-
-  const dueDate = useMemo(() => {
-    const due = new Date(receiptDate);
-    due.setDate(due.getDate() + (currentSupplier?.paymentTermDays ?? 0));
-    return due.toISOString().slice(0, 10);
-  }, [receiptDate, currentSupplier]);
-
-  /**
-   * The new average per line, simulated in ORDER so repeated products compound
-   * exactly as the save will compute them.
-   */
-  const simulation = useMemo(() => {
-    const runningQty = new Map<string, bigint>();
-    const runningAvg = new Map<string, bigint>();
-
-    return lines.map((line) => {
-      const product = products.find((p) => p._id === line.productId);
-      if (!product || !isPositive(line.qty) || !isDecimal(line.costPerUnit)) {
-        return null;
-      }
-
-      const key = line.productId;
-      const qtyBefore =
-        runningQty.get(key) ?? toMinor(demo.totalQty(key)) ?? 0n;
-      const avgBefore =
-        runningAvg.get(key) ?? toMinor(product.hppAvg ?? "0") ?? 0n;
-      const qtyIn = toMinor(line.qty) ?? 0n;
-      const cost = toMinor(line.costPerUnit) ?? 0n;
-
-      const after = weightedAverage(avgBefore, qtyBefore, cost, qtyIn);
-      runningQty.set(key, (qtyBefore > 0n ? qtyBefore : 0n) + qtyIn);
-      runningAvg.set(key, after);
-
-      return {
-        name: product.name,
-        first: product.hppAvg === null && qtyBefore <= 0n,
-        qtyBefore: toDecimalString(qtyBefore),
-        avgBefore: toDecimalString(avgBefore),
-        qtyIn: toDecimalString(qtyIn),
-        cost: toDecimalString(cost),
-        after: toDecimalString(after),
-        rose: after > avgBefore,
-        delta: toDecimalString(
-          after > avgBefore ? after - avgBefore : avgBefore - after,
-        ),
-      };
-    });
-  }, [lines, products]);
-
-  const journal = demo.previewReceiptJournal(
-    subtotal,
-    isDecimal(taxAmount) ? taxAmount : "0",
-    consignment,
   );
 
   function updateLine(index: number, patch: Partial<LineDraft>) {
@@ -161,7 +296,7 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
   }
 
   function addLine(productId: string) {
-    const product = products.find((p) => p._id === productId);
+    const product = productById.get(productId);
     setLines((prev) => [
       ...prev,
       {
@@ -180,33 +315,42 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
     const next: Record<string, string> = {};
 
     if (!supplier) next.supplier = "Pilih supplier.";
+    if (!effectiveWarehouseId) next.warehouse = "Pilih gudang tujuan.";
     if (lines.length === 0) next.lines = "Tambahkan minimal satu barang.";
 
-    for (const [index, line] of lines.entries()) {
-      const product = products.find((p) => p._id === line.productId);
-      const label = product?.name ?? `Baris ${index + 1}`;
+    if (duplicateProductId !== null) {
+      next.lines = duplicateMessage(productById.get(duplicateProductId)?.name);
+    }
 
-      if (!isPositive(line.qty)) {
-        next.lines = `${label}: qty harus lebih dari nol.`;
-        break;
-      }
-      if (!isDecimal(line.costPerUnit) || !isPositive(line.costPerUnit)) {
-        next.lines = consignment
-          ? `${label}: HPP manual wajib diisi untuk barang konsinyasi.`
-          : `${label}: harga beli wajib diisi.`;
-        break;
-      }
-      if (product?.hasExpiry && line.batchCode.trim() === "") {
-        next.lines = `${label}: produk ini melacak batch — kode batch wajib diisi.`;
-        break;
-      }
-      if (product?.hasExpiry && line.expiryDate === "") {
-        next.lines = `${label}: tanggal kedaluwarsa wajib diisi.`;
-        break;
+    if (!next.lines) {
+      for (const [index, line] of lines.entries()) {
+        const product = productById.get(line.productId);
+        const label = product?.name ?? `Baris ${index + 1}`;
+
+        if (!isPositive(line.qty)) {
+          next.lines = `${label}: qty harus lebih dari nol.`;
+          break;
+        }
+        if (!isDecimal(line.costPerUnit)) {
+          next.lines = consignment
+            ? `${label}: HPP manual wajib diisi untuk barang konsinyasi.`
+            : `${label}: harga beli wajib diisi.`;
+          break;
+        }
+        if (needsLot(product, consignment) && line.batchCode.trim() === "") {
+          next.lines = consignment
+            ? `${label}: barang konsinyasi selalu punya lot sendiri — kode batch wajib diisi.`
+            : `${label}: produk ini melacak batch — kode batch wajib diisi.`;
+          break;
+        }
+        if (product?.hasExpiry && line.expiryDate === "") {
+          next.lines = `${label}: tanggal kedaluwarsa wajib diisi.`;
+          break;
+        }
       }
     }
 
-    if (!consignment && taxAmount.trim() !== "" && !isDecimal(taxAmount)) {
+    if (!consignment && taxAmount.trim() !== "" && !isDecimal(taxAmount.trim())) {
       next.taxAmount = "Gunakan angka, maksimal 4 desimal.";
     }
 
@@ -214,50 +358,46 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
     return Object.keys(next).length === 0;
   }
 
-  function handleSubmit(event: React.FormEvent) {
+  async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    // Re-entry guard. `disabled` on the button covers the pointer; this covers
+    // a second submit event from the keyboard while the first is still in
+    // flight — which, without an idempotency key, would be a second delivery.
+    if (saving) return;
+
     setFormError(null);
     if (!validate()) return;
 
     setSaving(true);
     try {
-      const receipt = demo.submitReceipt({
-        supplierId: supplier,
-        warehouseId,
-        receiptType,
-        receiptDate,
-        invoiceNumber: invoiceNumber.trim() || undefined,
-        taxAmount: consignment ? "0" : taxAmount.trim() || "0",
-        notes,
-        items: lines.map((line) => ({
-          productId: line.productId,
-          qty: line.qty,
-          costPerUnit: line.costPerUnit,
-          batchCode: line.batchCode.trim() || undefined,
-          expiryDate: line.expiryDate || undefined,
-        })),
-      });
+      const receipt = await goodsReceiptService.create(payload);
 
-      sync();
-      router.push(`/dashboard/purchasing/receipts/${receipt._id}`);
       swalToast(
         consignment
           ? `${receipt.receiptNumber} tersimpan — stok naik, belum ada utang.`
-          : `${receipt.receiptNumber} tersimpan — HPP & faktur diperbarui.`,
+          : `${receipt.receiptNumber} tersimpan — HPP dan utang diperbarui.`,
       );
+      // `replace`, not `push`: the create form must not be reachable by going
+      // back, because going back to it and submitting again receives the goods
+      // a second time.
+      router.replace(`/dashboard/purchasing/receipts/${receipt._id}`);
     } catch (error) {
-      setFormError(
-        error instanceof Error
-          ? error.message
-          : "Terjadi kesalahan. Coba lagi.",
-      );
+      if (error instanceof ApiError) {
+        setFormError(error.fullMessage);
+        setFieldErrors(error.fieldErrors);
+      } else {
+        setFormError("Terjadi kesalahan. Coba lagi.");
+      }
       setSaving(false);
     }
   }
 
+  const lookupsPending = suppliersLoading || lookups.loading;
+
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
       {formError && <Alert variant="error">{formError}</Alert>}
+      {lookups.error && <Alert variant="error">{lookups.error}</Alert>}
 
       <div>
         <div className="inline-flex rounded-lg bg-accent p-1">
@@ -270,10 +410,10 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
             <button
               key={value}
               type="button"
-              onClick={() => setReceiptType(value)}
+              onClick={() => setPurchaseType(value)}
               className={cn(
                 "rounded-md px-3.5 py-2 text-sm font-medium transition",
-                receiptType === value
+                purchaseType === value
                   ? "bg-surface text-foreground shadow-sm"
                   : "text-muted hover:text-foreground",
               )}
@@ -284,97 +424,77 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
         </div>
         <p className="mt-1.5 text-xs text-muted">
           {consignment
-            ? "Barang masuk gudang tapi masih milik supplier — tidak membuat faktur utang dan tidak menjurnal. HPP diisi manual per barang."
-            : "Barang jadi milik toko saat diterima — faktur utang dibuat otomatis dan jurnal diposting."}
+            ? "Barang masuk gudang tapi masih milik supplier — tidak ada utang dan tidak ada jurnal. HPP diisi manual, dan setiap baris wajib punya kode lot sendiri."
+            : "Barang jadi milik toko saat diterima — utang ke supplier langsung tercatat dan jurnal diposting."}
         </p>
       </div>
 
       <Card title="Dokumen">
-        <div className="flex flex-col gap-4">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="supplier">Supplier</Label>
-              <Select value={supplier} onValueChange={setSupplier}>
-                <SelectTrigger id="supplier" aria-label="Supplier">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {activeSuppliers.map((item) => (
-                    <SelectItem key={item._id} value={item._id}>
-                      {item.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {fieldErrors.supplier && (
-                <p role="alert" className="text-xs text-danger">
-                  {fieldErrors.supplier}
-                </p>
-              )}
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="warehouse">Masuk ke gudang</Label>
-              <Select value={warehouseId} onValueChange={setWarehouseId}>
-                <SelectTrigger id="warehouse" aria-label="Masuk ke gudang">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {warehouses
-                    .filter((warehouse) => warehouse.isActive)
-                    .map((warehouse) => (
-                      <SelectItem key={warehouse._id} value={warehouse._id}>
-                        {warehouse.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <TextField
-              label="Tanggal terima"
-              name="receiptDate"
-              type="date"
-              value={receiptDate}
-              onChange={(event) => setReceiptDate(event.target.value)}
-            />
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="supplier">Supplier</Label>
+            <Select value={supplier} onValueChange={setSupplier}>
+              <SelectTrigger id="supplier" aria-label="Supplier">
+                <SelectValue placeholder="Pilih supplier…" />
+              </SelectTrigger>
+              <SelectContent>
+                {suppliers.map((item) => (
+                  <SelectItem key={item._id} value={item._id}>
+                    {item.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {fieldErrors.supplier && (
+              <p role="alert" className="text-xs text-danger">
+                {fieldErrors.supplier}
+              </p>
+            )}
           </div>
 
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="warehouse">Masuk ke gudang</Label>
+            <Select value={effectiveWarehouseId} onValueChange={setWarehouseId}>
+              <SelectTrigger id="warehouse" aria-label="Masuk ke gudang">
+                <SelectValue placeholder="Pilih gudang…" />
+              </SelectTrigger>
+              <SelectContent>
+                {writableWarehouses.map((warehouse) => (
+                  <SelectItem key={warehouse._id} value={warehouse._id}>
+                    {warehouse.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {fieldErrors.warehouse && (
+              <p role="alert" className="text-xs text-danger">
+                {fieldErrors.warehouse}
+              </p>
+            )}
+          </div>
+
+          <TextField
+            label="Tanggal terima"
+            name="receiptDate"
+            type="date"
+            value={receiptDate}
+            onChange={(event) => setReceiptDate(event.target.value)}
+            hint="Tanggal barang tiba, bukan tanggal input."
+          />
+
+          {/* PPN belongs to a purchase. There is none on a consignment, and the
+              API refuses the field there outright. */}
           {!consignment && (
-            <div className="grid gap-4 sm:grid-cols-3">
-              <TextField
-                label="Nomor faktur supplier"
-                name="invoiceNumber"
-                value={invoiceNumber}
-                onChange={(event) => setInvoiceNumber(event.target.value)}
-                hint="Boleh dikosongkan — sistem membuat nomornya sendiri."
-                className="font-mono"
-                placeholder="INV/SPS/2026/0455"
-              />
-              <TextField
-                label="PPN"
-                name="taxAmount"
-                inputMode="decimal"
-                value={taxAmount}
-                onChange={(event) => setTaxAmount(event.target.value)}
-                error={fieldErrors.taxAmount}
-                hint="Masuk ke akun 1301, bukan ke nilai persediaan."
-                placeholder="0"
-              />
-              <div className="flex flex-col gap-1.5">
-                <Label>Jatuh tempo</Label>
-                <div className="flex h-9 items-center rounded-md border border-input bg-accent/40 px-3 text-sm">
-                  {new Date(dueDate).toLocaleDateString("id-ID", {
-                    day: "2-digit",
-                    month: "short",
-                    year: "numeric",
-                  })}
-                </div>
-                <p className="text-xs text-muted">
-                  Termin {currentSupplier?.paymentTermDays ?? 0} hari
-                </p>
-              </div>
-            </div>
+            <TextField
+              label="PPN masukan"
+              name="taxAmount"
+              inputMode="decimal"
+              value={taxAmount}
+              onChange={(event) => setTaxAmount(event.target.value)}
+              error={fieldErrors.taxAmount}
+              hint="Masuk ke akun 1301, bukan ke nilai persediaan."
+              placeholder="0"
+            />
           )}
         </div>
       </Card>
@@ -386,11 +506,20 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
             <Badge variant="outline">{lines.length} baris</Badge>
             <span className="ml-auto w-64 font-normal">
               <Select value="" onValueChange={addLine}>
-                <SelectTrigger aria-label="Tambah barang">
-                  <SelectValue placeholder="+ Tambah barang…" />
+                <SelectTrigger
+                  aria-label="Tambah barang"
+                  disabled={availableProducts.length === 0}
+                >
+                  <SelectValue
+                    placeholder={
+                      availableProducts.length === 0 && lines.length > 0
+                        ? "Semua produk sudah ada"
+                        : "+ Tambah barang…"
+                    }
+                  />
                 </SelectTrigger>
                 <SelectContent>
-                  {sellable.map((product) => (
+                  {availableProducts.map((product) => (
                     <SelectItem key={product._id} value={product._id}>
                       {product.name}
                     </SelectItem>
@@ -401,7 +530,11 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
           </span>
         }
       >
-        {lines.length === 0 ? (
+        {lookupsPending && lines.length === 0 ? (
+          <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted">
+            <Spinner /> Memuat katalog…
+          </div>
+        ) : lines.length === 0 ? (
           <div className="py-10 text-center">
             <p className="font-medium">Belum ada barang</p>
             <p className="mt-1 text-sm text-muted">
@@ -412,13 +545,13 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border text-[10px] uppercase tracking-widest text-muted">
+                <tr className="border-b border-border text-[10px] tracking-widest text-muted uppercase">
                   <th className="px-2 py-2 text-left font-medium">Produk</th>
                   <th className="px-2 py-2 text-right font-medium">Qty</th>
                   <th className="px-2 py-2 text-right font-medium">
                     {consignment ? "HPP manual" : "Harga beli"}
                   </th>
-                  <th className="px-2 py-2 text-left font-medium">Batch</th>
+                  <th className="px-2 py-2 text-left font-medium">Kode lot</th>
                   <th className="px-2 py-2 text-left font-medium">Expired</th>
                   <th className="px-2 py-2 text-right font-medium">Subtotal</th>
                   <th className="px-2 py-2" />
@@ -426,23 +559,22 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
               </thead>
               <tbody>
                 {lines.map((line, index) => {
-                  const product = products.find(
-                    (p) => p._id === line.productId,
-                  );
+                  const product = productById.get(line.productId);
+                  const lotRequired = needsLot(product, consignment);
+
                   return (
                     <tr
                       key={`${line.productId}-${index}`}
                       className="border-b border-border/60"
                     >
                       <td className="px-2 py-2">
-                        <p className="font-medium">{product?.name}</p>
+                        <p className="font-medium">{product?.name ?? "—"}</p>
                         <p className="font-mono text-xs text-muted">
-                          {product?.sku} · stok{" "}
-                          {formatQty(
-                            demo.qtyOnHand(line.productId, warehouseId),
-                          )}
+                          {product?.sku}
+                          {product?.unit && ` · ${product.unit}`}
                         </p>
                       </td>
+
                       <td className="px-2 py-2">
                         <Input
                           aria-label={`Qty ${product?.name ?? ""}`}
@@ -454,6 +586,7 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
                           className="ml-auto max-w-20 text-right font-mono"
                         />
                       </td>
+
                       <td className="px-2 py-2">
                         <Input
                           aria-label={`Harga ${product?.name ?? ""}`}
@@ -467,10 +600,11 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
                           className="ml-auto max-w-28 text-right font-mono"
                         />
                       </td>
+
                       <td className="px-2 py-2">
-                        {product?.hasExpiry ? (
+                        {lotRequired ? (
                           <Input
-                            aria-label={`Batch ${product.name}`}
+                            aria-label={`Kode lot ${product?.name ?? ""}`}
                             value={line.batchCode}
                             onChange={(event) =>
                               updateLine(index, {
@@ -484,6 +618,7 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
                           <span className="text-xs text-muted">—</span>
                         )}
                       </td>
+
                       <td className="px-2 py-2">
                         {product?.hasExpiry ? (
                           <Input
@@ -501,6 +636,7 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
                           <span className="text-xs text-muted">—</span>
                         )}
                       </td>
+
                       <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">
                         {isDecimal(line.qty) && isDecimal(line.costPerUnit)
                           ? formatMoney(
@@ -508,6 +644,7 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
                             )
                           : "—"}
                       </td>
+
                       <td className="px-2 py-2 text-right">
                         <UIButton
                           type="button"
@@ -531,79 +668,86 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
           </div>
         )}
 
-        {fieldErrors.lines && (
+        {/* A duplicate is reported the moment it exists, not on submit: it blocks
+            the preview too, so waiting for a save attempt would leave the panels
+            silently empty with nothing on screen explaining why. */}
+        {duplicateProductId !== null ? (
           <p role="alert" className="mt-3 text-xs text-danger">
-            {fieldErrors.lines}
+            {duplicateMessage(productById.get(duplicateProductId)?.name)}
           </p>
+        ) : (
+          fieldErrors.lines && (
+            <p role="alert" className="mt-3 text-xs text-danger">
+              {fieldErrors.lines}
+            </p>
+          )
         )}
       </Card>
 
-      {/* ------------------------------------------------------- HPP preview */}
-      {simulation.some(Boolean) && (
-        <div className="rounded-lg border border-dashed border-primary/50 bg-primary/5 p-4">
-          <p className="text-[10px] font-medium uppercase tracking-widest text-primary-hover">
-            Perhitungan HPP rata-rata tertimbang
-          </p>
-          <div className="mt-2 flex flex-col gap-1 overflow-x-auto">
-            {simulation.filter(Boolean).map((row, index) => (
-              <p
-                key={index}
-                className="whitespace-nowrap font-mono text-[13px] leading-7"
-              >
-                {row!.name} <span className="text-muted">→</span>{" "}
-                {row!.first ? (
-                  <>
-                    HPP pertama <span className="text-muted">=</span>{" "}
-                    <b className="text-primary-hover">
-                      {formatMoneyPrecise(row!.after)}
-                    </b>
-                  </>
-                ) : (
-                  <>
-                    (({formatQty(row!.qtyBefore)}{" "}
-                    <span className="text-muted">×</span>{" "}
-                    {formatMoney(row!.avgBefore)}){" "}
-                    <span className="text-muted">+</span> (
-                    {formatQty(row!.qtyIn)}{" "}
-                    <span className="text-muted">×</span>{" "}
-                    {formatMoney(row!.cost)})){" "}
-                    <span className="text-muted">÷</span>{" "}
-                    {formatQty(
-                      toDecimalString(
-                        (toMinor(row!.qtyBefore) ?? 0n) +
-                          (toMinor(row!.qtyIn) ?? 0n),
-                      ),
-                    )}{" "}
-                    <span className="text-muted">=</span>{" "}
-                    <b className="text-primary-hover">
-                      {formatMoneyPrecise(row!.after)}
-                    </b>{" "}
-                    <span
-                      className={row!.rose ? "text-danger" : "text-success"}
-                    >
-                      ({row!.rose ? "▲" : "▼"} {formatMoney(row!.delta)})
-                    </span>
-                  </>
-                )}
-              </p>
-            ))}
-          </div>
-          <p className="mt-2 text-xs text-muted">
-            Angka inilah yang dipakai setiap penjualan berikutnya untuk
-            menghitung HPP dan margin. Cocokkan dengan faktur supplier di
-            tangan.
-          </p>
+      {/* --------------------------------------------------- what will happen */}
+      {previewError && <Alert variant="error">{previewError}</Alert>}
+
+      {previewEnabled && previewLoading && !preview && (
+        <div className="flex items-center gap-2 text-sm text-muted">
+          <Spinner /> Menghitung dampak penerimaan…
         </div>
       )}
 
-      {/* ------------------------------------------------ journal + totals */}
+      {preview && (
+        <>
+          <div className="flex flex-col gap-3">
+            <p className="text-[10px] font-medium tracking-widest text-primary-hover uppercase">
+              Perhitungan HPP rata-rata tertimbang
+            </p>
+            {preview.hppAvg.map((row) => (
+              <div key={row.productId}>
+                <p className="mb-1 text-xs font-medium">
+                  {productById.get(row.productId)?.name ?? row.productId}
+                </p>
+                <HppStrip preview={row} />
+              </div>
+            ))}
+            <p className="text-xs text-muted">
+              Angka inilah yang dipakai setiap penjualan berikutnya untuk
+              menghitung HPP dan margin. Cocokkan dengan faktur supplier di
+              tangan — setelah disimpan, tidak bisa diubah.
+            </p>
+          </div>
+
+          {preview.movements.some((movement) => movement.isNewBatch) && (
+            <Card title="Lot yang akan dibuat">
+              <ul className="flex flex-col gap-1 text-sm">
+                {preview.movements
+                  .filter((movement) => movement.isNewBatch)
+                  .map((movement, index) => (
+                    <li key={index} className="flex flex-wrap gap-2">
+                      <span className="font-medium">
+                        {productById.get(movement.productId)?.name ??
+                          movement.productId}
+                      </span>
+                      <span className="font-mono text-xs text-muted">
+                        {movement.batchCode ?? "—"}
+                        {movement.batchExpiryDate &&
+                          ` · exp ${movement.batchExpiryDate.slice(0, 10)}`}
+                      </span>
+                      <span className="ml-auto font-mono text-xs tabular-nums">
+                        {formatQty(movement.qty)}
+                      </span>
+                    </li>
+                  ))}
+              </ul>
+            </Card>
+          )}
+        </>
+      )}
+
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,320px)]">
-        <JournalPreview
-          lines={journal}
+        <ReceiptPreviewJournal
+          lines={preview?.journal ?? []}
           emptyReason={
             consignment
               ? "Konsinyasi tidak menjurnal — barang belum menjadi milik toko, jadi belum ada utang yang tercatat."
-              : "Tambahkan barang untuk melihat jurnal yang akan dibuat."
+              : "Lengkapi barang yang diterima untuk melihat jurnal yang akan dibuat."
           }
         />
 
@@ -611,24 +755,41 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
           <div className="flex flex-col gap-2 text-sm">
             <div className="flex justify-between">
               <span className="text-muted">Subtotal</span>
-              <b className="font-mono tabular-nums">{formatMoney(subtotal)}</b>
+              <b className="font-mono tabular-nums">
+                {formatMoney(preview?.total ?? localSubtotal)}
+              </b>
             </div>
             {!consignment && (
               <div className="flex justify-between">
                 <span className="text-muted">PPN</span>
                 <b className="font-mono tabular-nums">
-                  {formatMoney(isDecimal(taxAmount) ? taxAmount : "0")}
+                  {formatMoney(
+                    preview?.taxAmount ??
+                      (isDecimal(taxAmount.trim()) ? taxAmount.trim() : "0"),
+                  )}
                 </b>
               </div>
             )}
             <div className="mt-1 flex justify-between border-t border-border pt-2">
               <b>Total</b>
               <b className="font-mono text-base tabular-nums">
-                {formatMoney(total)}
+                {formatMoney(preview?.grandTotal ?? localSubtotal)}
               </b>
             </div>
-            {consignment && (
+            {preview ? (
               <p className="mt-1 text-xs text-muted">
+                Nomor sementara{" "}
+                <span className="font-mono">{preview.receiptNumber}</span> —
+                masih bisa berubah kalau ada penerimaan lain lebih dulu.
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-muted">
+                Angka sementara, dihitung di browser. Yang mengikat adalah hasil
+                dari server setelah semua baris lengkap.
+              </p>
+            )}
+            {consignment && (
+              <p className="text-xs text-muted">
                 Nilai titipan — belum menjadi utang.
               </p>
             )}
@@ -645,17 +806,21 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
         className="max-w-xl"
       />
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button type="submit" disabled={saving || lines.length === 0}>
           {saving ? "Menyimpan…" : "Simpan & terima barang"}
         </Button>
         <Button
           type="button"
           variant="secondary"
+          disabled={saving}
           onClick={() => router.push("/dashboard/purchasing/receipts")}
         >
           Batal
         </Button>
+        <p className="text-xs text-muted">
+          Sekali disimpan, penerimaan tidak bisa diedit atau dihapus.
+        </p>
       </div>
     </form>
   );

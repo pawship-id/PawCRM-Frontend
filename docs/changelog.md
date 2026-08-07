@@ -7,6 +7,105 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Penerimaan Barang on the API, and a module with no edit button
+
+Branch: `feature/inventory-purchasing`.
+
+**The goods-receipt screens now run against `/api/goods-receipts`.** They were the last of
+the purchasing module's core flows still computing their answers in the browser: the create
+form ran its own sequential weighted-average simulation across its lines, built its own
+journal, and invented an invoice number — all reimplemented from the service, and all
+authoritative-looking. The list and the detail read a client-side prototype store. Every one
+of those numbers is now the server's, fetched from `POST /goods-receipts/preview` — the
+posting path with the commit left off — so what a clerk approves before saving is what
+actually gets written. See `docs/features/goods-receipts.md`.
+
+**Create and read. There is no update and no delete, and that is the feature.** The backend
+exposes no `PATCH` and no `DELETE` for a receipt, because it posts stock movements and a
+journal entry that are both immutable and sets the cost basis every later sale is costed at.
+The frontend does not paper over the absence: no edit route, no row actions, no
+`ConfirmDialog`, and both screens say in plain Indonesian that correction happens through a
+purchase return. The `includeDeleted` query flag the endpoint validates is **not** sent and
+has no toggle — with no delete route it can never change a result, and a control that cannot
+alter its data is worse than an absent one.
+
+**`invoiceId` is not the debt, and the copy finally says so.** A `beli_putus` receipt credits
+`2101 Utang Supplier` the moment it posts; `invoiceId` stays null until the supplier's own
+bill is filed separately. The old prototype told users the opposite — that the receipt
+"created the invoice automatically" — which is exactly backwards about when money starts
+being owed. The detail now reads _"Utang sudah tercatat, faktur supplier belum difilekan"_,
+and the list distinguishes `belum difakturkan` from a consignment's `tanpa faktur`.
+
+**Three backend gaps are worked around rather than hidden**, each documented where it lives:
+the create endpoint is not idempotent (mitigated by a submit lock and `router.replace`, not
+solved — a double submit still creates two deliveries); the preview's journal lines carry
+`accountId` but no `accountCode`/`accountName` unlike their stock-movement sibling, so
+`ReceiptPreviewJournal` maps them onto `1201`/`1301`/`2101` by role; and `GET /:id` resolves
+product labels but stops at `batchId`, so lot codes and expiry dates are fetched one at a
+time. All three are listed in the feature doc with what would delete the workaround.
+
+### Added
+
+- **`features/purchasing/hooks/useGoodsReceipts.ts`** — the list query (page, search,
+  supplier, warehouse, purchase type, `receiptDate` range). Mirrors `useSuppliers`; any
+  filter change resets to page 1. No `includeDeleted`, and no mutation for `refetch` to
+  follow, because no row here can be acted on.
+- **`features/purchasing/hooks/useGoodsReceipt.ts`** — one document, with `notFound` as its
+  own state separate from `error`. A 404 offers the way back to the list; a transport
+  failure offers a retry.
+- **`features/purchasing/hooks/useReceiptPreview.ts`** — debounced `POST /preview`, keyed on
+  the serialised payload so an identical body rebuilt each render does not re-fetch. Keeps
+  the previous answer while a new one is in flight.
+- **`features/purchasing/hooks/useReceiptLots.ts`** and **`useReceiptReturns.ts`** —
+  best-effort decorations for the detail screen. `productBatches:read` and
+  `purchaseReturns:read` are permissions separate from `goodsReceipts:read`, so a refusal
+  costs the lot column or the returns notice, never the page.
+- **`features/purchasing/hooks/useReceiptFilterOptions.ts`** — the toolbar's two dropdowns,
+  deliberately **unfiltered** unlike `useSupplierOptions`: that one feeds forms, where an
+  inactive vendor must not be selectable; this feeds a read, and a vendor deactivated last
+  month still delivered everything they delivered.
+- **`features/purchasing/components/ReceiptsToolbar.tsx`**, **`ReceiptsTable.tsx`** — the
+  list, split as `SuppliersScreen` is. The table has no actions column.
+- **`features/purchasing/components/ReceiptPreviewJournal.tsx`** — the shim over the
+  labelling gap above, with the mapping's justification in its header and a note on what
+  removes the file.
+- **`services/purchaseReturn.service.ts`** — `list` only, so the receipt detail can answer
+  "has this already been returned against?". The returns screens are still on the prototype
+  store; wrapping their writes now would put two ways to return goods in the codebase.
+- **`docs/features/goods-receipts.md`**, **`tests/ReceiptScreens.test.tsx`**,
+  **`tests/goodsReceipt.service.test.ts`**.
+
+### Changed
+
+- **`services/goodsReceipt.service.ts`** — gained `getById`, `create` and `preview`. The
+  header no longer says "read-only here because the screen still runs on the prototype
+  store"; that reason is gone, and the remaining absences are the backend's design.
+- **`features/purchasing/components/ReceiptsScreen.tsx`** — rewritten onto the API. The
+  headline total comes from `/goods-receipts/summary`, summed server-side across every
+  receipt ever rather than over the visible page.
+- **`features/purchasing/components/ReceiptDetail.tsx`** — rewritten onto `GET /:id`. Gained
+  loading / not-found / error states, the `createdByName` and per-line unit the API resolves,
+  and a notice when returns already exist. **Lost its journal panel**: the payload carries no
+  lines, and reconstructing an entry from `total` and `taxAmount` would be the screen
+  asserting what was posted rather than reading it.
+- **`features/purchasing/components/ReceiptForm.tsx`** — rewritten onto `/preview` and
+  `POST`. Lost the local HPP simulation, the **Nomor faktur supplier** field and the
+  **Jatuh tempo** display — the API accepts neither, and both belong to the purchase invoice
+  that is filed afterwards. `taxAmount` is now omitted from the payload on consignment rather
+  than sent as `"0"`, because the endpoint forbids the key there.
+- **`app/(dashboard)/dashboard/purchasing/receipts/*`** — wrapped in `RequirePermission`.
+  The create page is gated on `create` rather than `read`, because `/preview` is itself gated
+  on `create` and a read-only role would otherwise meet a 403 on the first keystroke.
+- **`types/api.ts`** — added the goods-receipt detail, create, preview and purchase-return
+  list shapes. Now imports two preview row types from `types/inventory.ts` (type-only, and
+  that file imports nothing, so it cannot cycle): a receipt's preview returns the stock
+  gateway's own rows verbatim, and redeclaring them would be a second definition that drifts.
+- **`tests/PurchasingScreens.test.tsx`** — the `ReceiptForm` and `ReceiptsScreen` blocks were
+  removed; those screens no longer touch `demoStore`. What remains is payables, returns and
+  the hub.
+
+---
+
 ## [Unreleased] — Inventory hub, the document a ledger row points at, and a business that can read itself
 
 Branch: `feature/inventory-purchasing`.

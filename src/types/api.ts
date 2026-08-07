@@ -6,6 +6,14 @@
  * it changes here in the same pull request.
  */
 
+/**
+ * Type-only, and the direction matters: `inventory.ts` imports nothing, so this
+ * cannot cycle. A goods receipt's preview returns the stock gateway's OWN
+ * movement and HPP rows verbatim, so redeclaring them here would be a second
+ * definition of the same payload that drifts the first time the gateway changes.
+ */
+import type { PreviewHpp, PreviewMovementRow } from "./inventory";
+
 export interface ApiSuccess<T> {
   success: true;
   data: T;
@@ -816,7 +824,14 @@ export interface GoodsReceiptListRow {
   createdAt: string;
 }
 
-/** Query parameters accepted by GET /api/goods-receipts. All optional. */
+/**
+ * Query parameters accepted by GET /api/goods-receipts. All optional.
+ *
+ * NO `includeDeleted`, though the endpoint validates one. There is no `DELETE
+ * /goods-receipts/:id` — a posted receipt is immutable — so the flag can never
+ * change what comes back, and a filter that cannot alter a result is worse than
+ * an absent one: somebody eventually builds a toggle for it.
+ */
 export interface GoodsReceiptListQuery {
   page?: number;
   limit?: number;
@@ -826,6 +841,211 @@ export interface GoodsReceiptListQuery {
   warehouseId?: string;
   purchaseType?: PurchaseType;
   /** ISO dates bounding `receiptDate` (inclusive), never `createdAt`. */
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+/**
+ * One line of GET /api/goods-receipts/:id — what physically arrived.
+ *
+ * `name` IS THE SNAPSHOT taken the day the goods landed; `productName` is what
+ * the product is called today. They differ exactly when somebody renamed it
+ * since, which is the case a reader most needs to see both halves of — so both
+ * are kept rather than one being resolved into the other.
+ *
+ * `batchId` names the lot this line created, `null` when the goods carry none.
+ * The lot's OWN code and expiry are not on this payload; the detail screen
+ * resolves them through `productBatchService.getById` — see ReceiptDetail.
+ */
+export interface GoodsReceiptDetailItem {
+  itemId: string;
+  productId: string;
+  /** The product name as it was when the delivery arrived. */
+  name: string;
+  productSku: string | null;
+  /** Today's name. Null when the product has been deleted since. */
+  productName: string | null;
+  /** The unit received IN — a line reading "8" without "kg" gets miscounted. */
+  productUnit: string | null;
+  batchId: string | null;
+  qty: string;
+  costPerUnit: string;
+  subtotal: string;
+}
+
+/**
+ * GET /api/goods-receipts/:id — one delivery, with its lines and their labels.
+ *
+ * NAMED `…Detail` RATHER THAN `GoodsReceipt` because `types/purchasing.ts`
+ * already owns that name for the prototype store, which the payables and returns
+ * screens still run on. Two different shapes under one name would be resolved by
+ * import order, which is not a thing anybody should have to reason about.
+ *
+ * `invoiceId` IS NULL UNTIL THE SUPPLIER'S BILL IS FILED through
+ * POST /api/purchase-invoices, and permanently null for consignment. It is NOT
+ * the debt: a `beli_putus` receipt credits `2101 Utang Supplier` the moment it
+ * posts. What the invoice adds is the vendor's own document number and a due
+ * date. A screen that reads a null here as "nothing is owed" is wrong.
+ */
+export interface GoodsReceiptDetail {
+  _id: string;
+  receiptNumber: string;
+  supplierId: string;
+  supplierName: string | null;
+  warehouseId: string;
+  warehouseName: string | null;
+  /** Who keyed it in. Null when that user has been deleted since. */
+  createdByName: string | null;
+  receiptDate: string;
+  purchaseType: PurchaseType;
+  items: GoodsReceiptDetailItem[];
+  /** EX-TAX — what was debited to inventory. */
+  total: string;
+  taxAmount: string;
+  /** `total + taxAmount`. Derived server-side so a third total cannot disagree. */
+  grandTotal: string;
+  invoiceId: string | null;
+  /** Null on a consignment receipt: nothing was bought, so nothing was posted. */
+  journalEntryId: string | null;
+  notes: string | null;
+  createdAt: string;
+}
+
+/** One delivered line, as a client sends it. Money and qty are decimal strings. */
+export interface CreateGoodsReceiptItemInput {
+  productId: string;
+  /** Strictly positive — a receipt records goods ARRIVING. */
+  qty: string;
+  /**
+   * REQUIRED on every line, both purchase types. On `beli_putus` it is the price
+   * on the invoice; on `konsinyasi` there was no purchase, so an admin types the
+   * agreed value in. Zero is legitimate (a free sample is a real delivery).
+   */
+  costPerUnit: string;
+  /** Required when the product `hasExpiry`, and on every `konsinyasi` line. */
+  batchCode?: string;
+  /** Required when the product `hasExpiry`. */
+  expiryDate?: string;
+}
+
+/**
+ * POST /api/goods-receipts (and /preview — the same body, deliberately).
+ *
+ * THE WRITE SURFACE IS NARROW ON PURPOSE. A client sends what a person reading a
+ * surat jalan can see. `receiptNumber`, per-line `name`, `subtotal`, `total`,
+ * `invoiceId` and `journalEntryId` are all computed by the server and appear
+ * nowhere here — a `total` accepted from a client would be a receipt whose lines
+ * need not sum to it, and the difference posts into the ledger unexplained.
+ */
+export interface CreateGoodsReceiptInput {
+  supplierId: string;
+  warehouseId: string;
+  /** Defaults to now. When the goods ARRIVED, not when the row was written. */
+  receiptDate?: string;
+  purchaseType: PurchaseType;
+  /** FORBIDDEN on `konsinyasi` — nothing was bought, so there is no input VAT. */
+  taxAmount?: string;
+  notes?: string;
+  items: CreateGoodsReceiptItemInput[];
+}
+
+/**
+ * One line of the entry POST /api/goods-receipts/preview would post.
+ *
+ * IDENTIFIES ITS ACCOUNT BY ID ONLY — unlike `JournalLine` in types/inventory.ts,
+ * which the stock-movement preview fills with `accountCode` and `accountName`.
+ * The two endpoints disagree about this, so `JournalPreview` cannot render these
+ * rows directly; ReceiptPreviewJournal maps the ids onto the three accounts a
+ * receipt can touch. See its header for why that mapping is safe and what would
+ * remove it.
+ */
+export interface ReceiptJournalLine {
+  accountId: string;
+  debit: string | null;
+  credit: string | null;
+}
+
+/** One line as the preview echoes it back — priced, but not yet a document. */
+export interface GoodsReceiptPreviewItem {
+  productId: string;
+  name: string;
+  qty: string;
+  costPerUnit: string;
+  subtotal: string;
+}
+
+/**
+ * POST /api/goods-receipts/preview — what receiving WOULD do, writing nothing.
+ *
+ * Worth an endpoint of its own more than anywhere else in the system, because a
+ * posted receipt cannot be edited: it sets the cost basis every later sale of
+ * these goods is costed at, and the only correction is a purchase return.
+ *
+ * `receiptNumber` IS ADVISORY — peeked, not allocated. Two clerks previewing at
+ * the same moment see the same value and a concurrent post makes it stale. Safe
+ * as a "this will be GR-260806-004" hint, never as a number to store or to show
+ * as though it were already assigned.
+ */
+export interface GoodsReceiptPreview {
+  receiptNumber: string;
+  supplierName: string;
+  warehouseName: string;
+  purchaseType: PurchaseType;
+  items: GoodsReceiptPreviewItem[];
+  total: string;
+  taxAmount: string;
+  grandTotal: string;
+  /** The ledger rows that would be written, including lots that would be created. */
+  movements: PreviewMovementRow[];
+  /** The new weighted average per product, WITH the working. */
+  hppAvg: PreviewHpp[];
+  /** The exact lines that would be posted. `[]` for a consignment delivery. */
+  journal: ReceiptJournalLine[];
+}
+
+/**
+ * A return's lifecycle. `draft` is still being keyed and has moved nothing;
+ * `submitted` has reversed the stock and the ledger.
+ */
+export type PurchaseReturnStatus = "draft" | "submitted";
+
+/**
+ * One row of GET /api/purchase-returns — a delivery sent back, without its lines.
+ *
+ * ONLY THE LIST SHAPE IS DECLARED HERE, and only because the goods-receipt detail
+ * screen needs to answer "has this delivery already been returned against?". The
+ * returns module owns everything else about a return and still runs on the
+ * prototype store; wrapping its writes before that screen is converted would put
+ * two ways to return goods in the codebase at once.
+ */
+export interface PurchaseReturnListRow {
+  _id: string;
+  returnNumber: string;
+  returnDate: string;
+  status: PurchaseReturnStatus;
+  supplierId: string;
+  supplierName: string | null;
+  warehouseId: string;
+  warehouseName: string | null;
+  /** The delivery this reverses. */
+  originalReceiptId: string;
+  originalReceiptNumber: string | null;
+  totalAmount: string;
+  itemCount: number;
+  notes: string | null;
+  createdAt: string;
+}
+
+/** Query parameters accepted by GET /api/purchase-returns. All optional. */
+export interface PurchaseReturnListQuery {
+  page?: number;
+  limit?: number;
+  search?: string;
+  supplierId?: string;
+  warehouseId?: string;
+  /** The delivery being reversed — how a receipt finds its own returns. */
+  originalReceiptId?: string;
+  status?: PurchaseReturnStatus;
   dateFrom?: string;
   dateTo?: string;
 }

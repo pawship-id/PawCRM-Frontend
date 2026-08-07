@@ -5,8 +5,6 @@ import {
   PayablesScreen,
   PurchaseReturnForm,
   PurchasingHub,
-  ReceiptForm,
-  ReceiptsScreen,
 } from "@/features/purchasing";
 import * as demo from "@/features/inventory/data/demoStore";
 
@@ -18,12 +16,11 @@ jest.mock("next/navigation", () => ({
 }));
 
 /**
- * Mount tests for the four purchasing screens.
+ * Mount tests for the purchasing screens STILL ON THE PROTOTYPE STORE.
  *
  * Deep on the things a reviewer would otherwise have to discover by clicking:
- * that the receipt form changes meaning between outright and consigned, that
- * the HPP arithmetic appears before saving, and that a return refuses to be
- * entered free-hand.
+ * that a return refuses to be entered free-hand, and where the payables hub
+ * draws the line between late and merely due.
  */
 beforeEach(() => {
   demo.resetState();
@@ -31,102 +28,17 @@ beforeEach(() => {
 });
 
 /*
- * THE SUPPLIER SCREENS ARE NOT TESTED HERE ANY MORE. They run against the real
- * API rather than the prototype store, so their tests mock services instead of
- * seeding `demoStore` and live in SuppliersTable / SupplierCreateForm /
- * SupplierSelect / supplier.service test files. The screens still covered below
- * are the ones still on the prototype store.
+ * TWO SETS OF SCREENS HAVE LEFT THIS FILE, for the same reason both times: they
+ * run against the real API now, so their tests mock services instead of seeding
+ * `demoStore`.
+ *
+ *   suppliers        → SuppliersTable / SupplierCreateForm / SupplierSelect /
+ *                      supplier.service test files.
+ *   goods receipts   → ReceiptScreens.test.tsx and goodsReceipt.service.test.ts.
+ *
+ * What remains below is what remains on the prototype store: payables, returns
+ * and the hub that reads both.
  */
-
-describe("ReceiptForm", () => {
-  it("mounts on outright purchase, with invoice fields visible", () => {
-    render(<ReceiptForm />);
-
-    expect(screen.getByLabelText(/Nomor faktur supplier/)).toBeInTheDocument();
-    expect(screen.getByLabelText("PPN")).toBeInTheDocument();
-  });
-
-  it("hides the invoice fields on consignment and says why", async () => {
-    const user = userEvent.setup();
-    render(<ReceiptForm />);
-
-    await user.click(screen.getByRole("button", { name: /Konsinyasi/ }));
-
-    expect(screen.queryByLabelText("PPN")).not.toBeInTheDocument();
-    expect(
-      screen.getByText(/tidak membuat faktur utang dan tidak menjurnal/),
-    ).toBeInTheDocument();
-  });
-
-  it("shows the HPP arithmetic once a line is priced", async () => {
-    const user = userEvent.setup();
-    render(<ReceiptForm />);
-
-    await user.click(screen.getByLabelText("Tambah barang"));
-    await user.click(
-      screen.getByRole("option", { name: /Shampoo Petcare Anti Kutu/ }),
-    );
-
-    expect(
-      screen.getByText(/Perhitungan HPP rata-rata tertimbang/),
-    ).toBeInTheDocument();
-  });
-
-  it("refuses to save without any goods", async () => {
-    render(<ReceiptForm />);
-
-    // Nothing to receive means nothing to record — the button stays disabled
-    // rather than producing an empty document.
-    expect(
-      screen.getByRole("button", { name: /Simpan & terima barang/ }),
-    ).toBeDisabled();
-  });
-
-  it("records the receipt and lands on its detail page", async () => {
-    const user = userEvent.setup();
-    render(<ReceiptForm />);
-
-    await user.click(screen.getByLabelText("Tambah barang"));
-    await user.click(
-      screen.getByRole("option", { name: /Shampoo Petcare Anti Kutu/ }),
-    );
-    await user.click(screen.getByRole("button", { name: /Simpan & terima barang/ }));
-
-    const receipt = demo.getState().receipts[0];
-    expect(receipt).toBeDefined();
-    expect(push).toHaveBeenCalledWith(
-      `/dashboard/purchasing/receipts/${receipt._id}`,
-    );
-    // The payable is created by the receipt, not entered separately.
-    expect(receipt.invoiceId).not.toBeNull();
-  });
-});
-
-describe("ReceiptsScreen", () => {
-  it("explains that receipts are corrected by returning, not editing", () => {
-    render(<ReceiptsScreen />);
-
-    expect(
-      screen.getByText(/Penerimaan tidak bisa diedit atau dihapus/),
-    ).toBeInTheDocument();
-  });
-
-  it("marks a consignment receipt as having no invoice", () => {
-    demo.submitReceipt({
-      supplierId: "sup_anugerah",
-      warehouseId: "wh_utama",
-      receiptType: "konsinyasi",
-      receiptDate: "2026-08-02",
-      items: [
-        { productId: "prd_pasir", qty: "5", costPerUnit: "58000", batchCode: "K1" },
-      ],
-    });
-
-    render(<ReceiptsScreen />);
-
-    expect(screen.getByText("tanpa faktur")).toBeInTheDocument();
-  });
-});
 
 describe("PayablesScreen", () => {
   it("says where invoices come from when there are none", () => {

@@ -1,7 +1,10 @@
 import { apiClient } from "./api-client";
 import type {
+  CreateGoodsReceiptInput,
+  GoodsReceiptDetail,
   GoodsReceiptListQuery,
   GoodsReceiptListRow,
+  GoodsReceiptPreview,
   PageResult,
   SupplierPurchaseSummary,
 } from "@/types/api";
@@ -9,22 +12,27 @@ import type {
 /**
  * Goods receipts, against /api/goods-receipts.
  *
- * READ-ONLY HERE, and narrower than the API on purpose: receiving goods is the
- * irreversible operation of the purchasing module — it moves stock, restates the
- * weighted average cost and creates the payable — and the screen that does it
- * still runs on the prototype store. Wrapping `POST` before that screen is
- * converted would put two ways to receive goods in the codebase at once.
+ * CREATE AND READ ONLY, and the absences are the backend's design rather than
+ * this file's caution. There is no `update` and no `remove` here because there is
+ * no `PATCH` and no `DELETE` there: a receipt posts stock movements and a journal
+ * entry that are both immutable, and it sets the cost basis every later sale of
+ * those goods is costed at. An edit would silently restate margins that have
+ * already been reported; a delete would leave the ledger pointing at a document
+ * nobody can look up. A delivery that was wrong is corrected by a PURCHASE
+ * RETURN, which reverses at the original price and says so in the books.
  *
- * What IS wrapped is what the supplier screens read: a vendor's delivery history,
- * and the per-supplier totals behind their stats.
+ * Mirrors supplierService: each method maps one typed domain operation onto a
+ * single apiClient request — no React, no state. The tenant scope is derived from
+ * the session cookie by the backend, so it is never passed here.
  */
 export const goodsReceiptService = {
   /**
-   * GET /goods-receipts — deliveries, newest first, filterable by supplier.
+   * GET /goods-receipts — deliveries, newest first, filterable.
    *
-   * The supplier detail screen passes `supplierId` and a small `limit`: it shows
-   * the recent history, not the whole book, and the count it displays comes from
-   * `summary` rather than from paging through this.
+   * `items` IS PROJECTED AWAY by the server and replaced with `itemCount`; read
+   * one receipt to get its lines. The supplier detail screen passes `supplierId`
+   * and a small `limit`: it shows the recent history, not the whole book, and the
+   * count it displays comes from `summary` rather than from paging through this.
    */
   list: (query: GoodsReceiptListQuery = {}) =>
     apiClient.get<PageResult<GoodsReceiptListRow>>("/goods-receipts", {
@@ -39,6 +47,47 @@ export const goodsReceiptService = {
         dateTo: query.dateTo,
       },
     }),
+
+  /**
+   * GET /goods-receipts/:id — one delivery, with its lines and their labels.
+   *
+   * 404s for another tenant's receipt exactly as for an unknown id, which is the
+   * intended answer: a 403 would confirm the id exists.
+   */
+  getById: (id: string) =>
+    apiClient.get<GoodsReceiptDetail>(`/goods-receipts/${id}`),
+
+  /**
+   * POST /goods-receipts — receive a delivery (201). THE IRREVERSIBLE ONE.
+   *
+   * Moves the stock, recomputes the weighted average cost, and — for a
+   * `beli_putus` purchase — credits `2101 Utang Supplier`. All of it in one
+   * transaction with the document itself.
+   *
+   * NOT IDEMPOTENT ACROSS REQUESTS, and callers must handle that themselves: a
+   * double-submitted form creates TWO receipts, because a receipt *is* the
+   * upstream document, so a retried submit is indistinguishable from a second
+   * delivery of the same goods — which genuinely happens. Unlike
+   * stockMovementService.createAdjustment there is no `idempotencyKey` to send.
+   * ReceiptForm locks its submit button for the whole flight; `preview` is the
+   * other half of the mitigation.
+   */
+  create: (input: CreateGoodsReceiptInput) =>
+    apiClient.post<GoodsReceiptDetail>("/goods-receipts", input),
+
+  /**
+   * POST /goods-receipts/preview — what the receipt WOULD do, writing nothing.
+   *
+   * THE SAME BODY AS `create`, because it is the same request. A client that can
+   * preview can trust that posting will not then be turned away for a reason the
+   * preview never mentioned — so the two must never be sent different payloads.
+   *
+   * Gated on `goodsReceipts:create`, not `read`: it answers "what will this
+   * delivery do to my cost basis and my books", and a role that may not receive
+   * goods has no business asking.
+   */
+  preview: (input: CreateGoodsReceiptInput) =>
+    apiClient.post<GoodsReceiptPreview>("/goods-receipts/preview", input),
 
   /**
    * GET /goods-receipts/summary — deliveries and value, per supplier.

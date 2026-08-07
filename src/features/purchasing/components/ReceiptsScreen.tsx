@@ -1,177 +1,102 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
-import { Breadcrumb } from "@/components";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { formatMoney, sumDecimals } from "@/utils/decimal";
-
-import { useInventoryDemo } from "@/features/inventory/hooks/useInventoryDemo";
+import { Alert, Pagination, Spinner } from "@/components";
+import { goodsReceiptService } from "@/services/goodsReceipt.service";
+import { formatMoney } from "@/utils/decimal";
 
 import { PURCHASING_CRUMBS } from "../crumbs";
-import { SupplierTypeBadge } from "./SupplierTypeBadge";
+import { useGoodsReceipts } from "../hooks/useGoodsReceipts";
+import { PageHeading } from "./PageHeading";
+import { ReceiptsTable } from "./ReceiptsTable";
+import { ReceiptsToolbar } from "./ReceiptsToolbar";
 
 /**
- * Every goods receipt, newest first.
+ * The Purchasing → Penerimaan Barang list.
  *
- * The faktur column is where the two receipt types visibly diverge: an outright
- * purchase carries an invoice number, a consignment carries a dash. That single
- * column is the fastest way to answer "why does this delivery not appear in my
- * payables" without opening anything.
+ * Owns the list query (useGoodsReceipts) and wires the toolbar, table and pager
+ * together. Mirrors SuppliersScreen — with no `onChanged` plumbing, because no
+ * row here can be mutated: a posted receipt has no edit and no delete.
+ *
+ * THE HEADER FIGURE IS THE WHOLE BOOK, not this page, and it is summed
+ * server-side by `/goods-receipts/summary`. A total that grew as the user paged
+ * would be worse than no total, because it looks authoritative. It is also
+ * UNFILTERED on purpose: it answers "what have we bought, ever", which is a
+ * different question from the one the filters below are asking, and quietly
+ * re-scoping it to the current filter would make the same number mean two things.
  */
 export function ReceiptsScreen() {
-  const { receipts, suppliers, warehouses, invoices, receiptItems } =
-    useInventoryDemo();
+  const { receipts, pagination, query, loading, error, setQuery } =
+    useGoodsReceipts();
 
-  const totalReceived = sumDecimals(
-    receipts.map((receipt) => receipt.totalAmount),
-  );
+  const [totalPurchased, setTotalPurchased] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    goodsReceiptService
+      .summary()
+      .then((result) => {
+        if (active) setTotalPurchased(result.totalPurchased);
+      })
+      // The list is the screen; a missing headline figure is not worth an error
+      // banner over data that loaded fine.
+      .catch(() => undefined);
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-end gap-4">
-        <div>
-          <Breadcrumb
-            items={[PURCHASING_CRUMBS.hub, { label: "Penerimaan Barang" }]}
-          />
-          <h1 className="mt-1 text-2xl font-semibold text-foreground">
-            Penerimaan Barang
-          </h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted">
-            Setiap penerimaan menaikkan stok dan menghitung ulang HPP rata-rata.
-            Beli putus otomatis membuat faktur utang; konsinyasi tidak.
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <PageHeading
+          crumbs={[PURCHASING_CRUMBS.hub, { label: "Penerimaan Barang" }]}
+          title="Penerimaan Barang"
+        >
+          Setiap penerimaan menaikkan stok dan menghitung ulang HPP rata-rata.
+          Beli putus langsung mencatat utang ke supplier; konsinyasi tidak.
+        </PageHeading>
+
+        <div className="text-right">
+          <p className="text-[10px] font-medium tracking-widest text-muted uppercase">
+            Total nilai pembelian
           </p>
-        </div>
-        <div className="ml-auto flex items-center gap-3">
-          <div className="text-right">
-            <p className="text-[10px] font-medium uppercase tracking-widest text-muted">
-              Total nilai diterima
-            </p>
-            <p className="font-mono text-lg font-semibold tabular-nums">
-              {formatMoney(totalReceived)}
-            </p>
-          </div>
-          <Button asChild>
-            <Link href="/dashboard/purchasing/receipts/new">
-              + Terima barang
-            </Link>
-          </Button>
+          <p className="font-mono text-lg font-semibold tabular-nums">
+            {totalPurchased === null ? "—" : formatMoney(totalPurchased)}
+          </p>
+          <p className="text-[10px] text-muted">sebelum PPN, seluruh periode</p>
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-[10px] uppercase tracking-widest text-muted">
-              <th className="px-4 py-2.5 text-left font-medium">Nomor</th>
-              <th className="px-4 py-2.5 text-left font-medium">Tanggal</th>
-              <th className="px-4 py-2.5 text-left font-medium">Supplier</th>
-              <th className="px-4 py-2.5 text-left font-medium">Gudang</th>
-              <th className="px-4 py-2.5 text-left font-medium">Tipe</th>
-              <th className="px-4 py-2.5 text-right font-medium">Item</th>
-              <th className="px-4 py-2.5 text-right font-medium">Nilai</th>
-              <th className="px-4 py-2.5 text-left font-medium">Faktur</th>
-              <th className="px-4 py-2.5 text-right font-medium">Aksi</th>
-            </tr>
-          </thead>
-          <tbody>
-            {receipts.length === 0 && (
-              <tr>
-                <td colSpan={9} className="px-4 py-16 text-center">
-                  <p className="font-medium text-foreground">
-                    Belum ada penerimaan
-                  </p>
-                  <p className="mt-1 text-sm text-muted">
-                    Catat barang masuk pertama — itulah yang membentuk HPP.
-                  </p>
-                </td>
-              </tr>
-            )}
+      <ReceiptsToolbar query={query} onChange={setQuery} />
 
-            {receipts.map((receipt) => {
-              const supplier = suppliers.find(
-                (s) => s._id === receipt.supplierId,
-              );
-              const invoice = invoices.find((i) => i._id === receipt.invoiceId);
-              const items = receiptItems.filter(
-                (item) => item.receiptId === receipt._id,
-              );
+      {error && <Alert variant="error">{error}</Alert>}
 
-              return (
-                <tr
-                  key={receipt._id}
-                  className="border-b border-border/60 last:border-0"
-                >
-                  <td className="px-4 py-2.5 font-mono text-xs">
-                    {receipt.receiptNumber}
-                  </td>
-                  <td className="px-4 py-2.5 text-xs">
-                    {new Date(receipt.receiptDate).toLocaleDateString("id-ID", {
-                      day: "2-digit",
-                      month: "short",
-                      year: "numeric",
-                    })}
-                  </td>
-                  <td className="px-4 py-2.5 text-sm font-medium">
-                    {supplier?.name ?? "—"}
-                  </td>
-                  <td className="px-4 py-2.5 text-xs text-muted">
-                    {warehouses.find((w) => w._id === receipt.warehouseId)
-                      ?.name ?? "—"}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <SupplierTypeBadge type={receipt.receiptType} />
-                  </td>
-                  <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums">
-                    {items.length}
-                  </td>
-                  <td className="px-4 py-2.5 text-right font-mono text-sm tabular-nums">
-                    {formatMoney(
-                      sumDecimals([receipt.totalAmount, receipt.taxAmount]),
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    {invoice ? (
-                      <Link
-                        href={`/dashboard/purchasing/payables/${invoice._id}`}
-                        className="font-mono text-xs text-primary-hover hover:underline"
-                      >
-                        {invoice.invoiceNumber}
-                      </Link>
-                    ) : (
-                      <Badge
-                        variant="outline"
-                        className="border-transparent bg-secondary/25 text-secondary-foreground"
-                      >
-                        tanpa faktur
-                      </Badge>
-                    )}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-2.5 text-right">
-                    <Button variant="ghost" size="sm" asChild>
-                      <Link
-                        href={`/dashboard/purchasing/receipts/${receipt._id}`}
-                      >
-                        Detail
-                      </Link>
-                    </Button>
-                    {receipt.receiptType === "beli_putus" && (
-                      <Button variant="ghost" size="sm" asChild>
-                        <Link
-                          href={`/dashboard/purchasing/returns/new?receipt=${receipt._id}`}
-                        >
-                          Retur
-                        </Link>
-                      </Button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      {loading && receipts.length === 0 ? (
+        <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
+          <Spinner /> Memuat data penerimaan…
+        </div>
+      ) : (
+        <>
+          <ReceiptsTable
+            receipts={receipts}
+            loading={loading}
+            search={query.search}
+          />
+          <Pagination
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            total={pagination.total}
+            unit="penerimaan"
+            unitPlural="penerimaan"
+            onPageChange={(page) => setQuery({ page })}
+          />
+        </>
+      )}
 
       <p className="text-xs text-muted">
         Penerimaan tidak bisa diedit atau dihapus. Koreksi dilakukan lewat{" "}
@@ -181,8 +106,7 @@ export function ReceiptsScreen() {
         >
           retur ke supplier
         </Link>{" "}
-        — yang sekaligus membalik HPP di harga beli aslinya dan mengurangi
-        utang.
+        — yang membalik HPP di harga beli aslinya dan mengurangi utang.
       </p>
     </div>
   );
