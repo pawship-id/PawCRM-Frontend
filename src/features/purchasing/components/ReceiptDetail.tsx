@@ -286,18 +286,25 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
            payable exists. What is missing is the vendor's own document, which is
            filed separately and is what carries their invoice number and the due
            date derived from the supplier's payment terms. */
-        <div className="rounded-lg border border-border bg-accent/40 px-4 py-3 text-sm">
-          <b>Utang sudah tercatat, faktur supplier belum difilekan.</b>{" "}
-          Penerimaan beli putus langsung mengkredit akun 2101 saat diposting.
-          Nomor faktur dan tanggal jatuh tempo baru muncul setelah tagihan dari
-          supplier dicatat di{" "}
-          <Link
-            href="/dashboard/purchasing/payables"
-            className="text-primary-hover hover:underline"
-          >
-            utang usaha
-          </Link>
-          .
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-accent/40 px-4 py-3 text-sm">
+          <span>
+            <b>Utang sudah tercatat, faktur supplier belum dicatat.</b>{" "}
+            Penerimaan beli putus langsung mengkredit akun 2101 saat diposting.
+            Nomor faktur dan tanggal jatuh tempo baru muncul setelah tagihan dari
+            supplier dicatat.
+          </span>
+          {/* Deep-links with the delivery preselected — `?receipt=` is read by
+              the page and handed to the form, the same shape the returns flow
+              uses. Gated on `create`: filing a bill is a write. */}
+          <Can feature="purchaseInvoices" action="create">
+            <Button variant="outline" size="sm" asChild className="ml-auto">
+              <Link
+                href={`/dashboard/purchasing/payables/new?receipt=${receipt._id}`}
+              >
+                Catat faktur supplier
+              </Link>
+            </Button>
+          </Can>
         </div>
       )}
 

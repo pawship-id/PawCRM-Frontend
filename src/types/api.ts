@@ -734,12 +734,34 @@ export interface SupplierOutstandingRow {
   supplierName: string | null;
   invoiceCount: number;
   outstanding: string;
+  /**
+   * The LATE subset of the two figures above, summed in the same pass and as of
+   * the same instant.
+   *
+   * A supplier who owes something but is late on none of it is present with
+   * zeros here — presence in `items` means "has a debt", and these two columns
+   * describe that debt. That is not in tension with a supplier owing nothing
+   * being absent entirely: the row exists because there is a debt at all.
+   */
+  overdueInvoiceCount: number;
+  overdueOutstanding: string;
 }
 
 export interface SupplierOutstandingSummary {
   items: SupplierOutstandingRow[];
   totalOutstanding: string;
   totalInvoices: number;
+  /**
+   * What is already late, across the whole book.
+   *
+   * THE REASON TO PREFER THIS ENDPOINT over counting `?overdue=true`: that filter
+   * answers with a count through `pagination.total` and nothing else, so the
+   * rupiah figure could only be had by paging every overdue invoice and adding
+   * them up — which is a fan-out, and still wrong past the first page. Always
+   * ≤ `totalOutstanding`; both come from one aggregation over one filtered set.
+   */
+  totalOverdueOutstanding: string;
+  totalOverdueInvoices: number;
 }
 
 /**
@@ -840,6 +862,16 @@ export interface GoodsReceiptListQuery {
   supplierId?: string;
   warehouseId?: string;
   purchaseType?: PurchaseType;
+  /**
+   * Has the supplier's bill been filed against this delivery yet?
+   *
+   * A TRI-STATE: omit for either, which is what the ordinary list wants.
+   * `false` is what the file-an-invoice picker asks for, and it must be asked of
+   * the SERVER — filtering a page on `invoiceId === null` drops rows the server
+   * already counted, so page 2 of "belum difakturkan" can come back empty while
+   * unbilled deliveries sit on page 3.
+   */
+  invoiced?: boolean;
   /** ISO dates bounding `receiptDate` (inclusive), never `createdAt`. */
   dateFrom?: string;
   dateTo?: string;
@@ -1001,6 +1033,200 @@ export interface GoodsReceiptPreview {
   hppAvg: PreviewHpp[];
   /** The exact lines that would be posted. `[]` for a consignment delivery. */
   journal: ReceiptJournalLine[];
+}
+
+/* ------------------------------------------------- purchase invoices (utang) */
+
+/**
+ * Where a payable stands. AUTO-COMPUTED server-side from `paidAmount` against
+ * `total` and never accepted from a client — "outstanding AP" is defined as
+ * `status !== "paid"`, so a status somebody could type would be a wrong number
+ * on the one report this collection exists to produce.
+ */
+export type InvoiceStatus = "unpaid" | "partial" | "paid";
+
+/**
+ * How a supplier was paid. The value decides which account is CREDITED, which is
+ * the only reason it is an enum: `cash` hits 1101 Kas, everything else hits
+ * 1102 Bank.
+ *
+ * `giro` is the one approximation — a post-dated cheque clears later and
+ * strictly belongs in a clearing liability, but no such account exists in the
+ * seeded chart. The method is recorded so those entries can be reclassified when
+ * one does.
+ */
+export type PaymentMethod = "cash" | "transfer" | "qris" | "giro";
+
+/**
+ * One row of GET /api/purchase-invoices — a supplier bill, without its payments.
+ *
+ * NOT THE DEBT ITSELF. A `beli_putus` goods receipt credits `2101 Utang
+ * Supplier` the moment it posts, so the payable exists before any invoice is
+ * filed. This document adds the vendor's own number, the date they issued it,
+ * and the due date derived from their payment terms.
+ *
+ * `outstandingAmount` AND `isOverdue` ARE DERIVED SERVER-SIDE and must not be
+ * recomputed here. `outstandingAmount` is `total - paidAmount` in exact minor
+ * units; `isOverdue` is `status !== "paid" && dueDate < now`, evaluated against
+ * ONE instant for the whole page so two invoices due at the same moment cannot
+ * land on opposite sides of it. A client redoing either arithmetic is how the
+ * banner above a table ends up disagreeing with the rows beneath it.
+ *
+ * The list projects `payments` away; `paymentCount` stands in for them.
+ */
+export interface PurchaseInvoiceListRow {
+  _id: string;
+  /** The SUPPLIER'S number, typed in from their document — not one we allocate. */
+  invoiceNumber: string;
+  supplierId: string;
+  /** Null when the vendor was soft-deleted since; the bill still stands. */
+  supplierName: string | null;
+  branchId: string;
+  goodsReceiptId: string;
+  /** When the supplier ISSUED the bill — what `dueDate` is counted from. */
+  invoiceDate: string;
+  /** `invoiceDate + supplier.paymentTermDays`, frozen when the bill was filed. */
+  dueDate: string;
+  /** Goods value, ex-tax. Reconciles exactly with the goods receipt's total. */
+  subtotal: string;
+  taxAmount: string;
+  /** `subtotal + taxAmount` — what the supplier is owed in full. */
+  total: string;
+  paidAmount: string;
+  /** `total - paidAmount`. Derived, never stored. */
+  outstandingAmount: string;
+  /** `status !== "paid"` AND past due, as of the server's clock. */
+  isOverdue: boolean;
+  status: InvoiceStatus;
+  paymentCount: number;
+  notes: string | null;
+  createdAt: string;
+}
+
+/**
+ * One payment against one invoice.
+ *
+ * `journalEntryId` IS NEVER NULL, unlike every other journal reference in this
+ * API: a payment moves cash, and cash that moved without a double entry behind
+ * it is money the books cannot account for. It is also the only route to
+ * correcting a mistake — a payment cannot be edited or deleted, so a wrong one
+ * is fixed by reversing the entry it posted.
+ */
+export interface PurchaseInvoicePayment {
+  /** The payment's own id — NOT `_id`; it is a domain identifier. */
+  paymentId: string;
+  /** When the money actually MOVED, which is what the ledger entry is dated by. */
+  at: string;
+  amount: string;
+  method: PaymentMethod;
+  /** Bank reference, giro number or QRIS transaction id. */
+  ref: string | null;
+  byUserId: string | null;
+  /** Null when that user has been deleted since. */
+  byUserName: string | null;
+  journalEntryId: string;
+}
+
+/**
+ * GET /api/purchase-invoices/:id — one bill, with its payments and their labels.
+ *
+ * `journalEntryId` on the INVOICE (as opposed to on a payment) is null on
+ * everything the API writes today, and that is the design rather than a gap: the
+ * payable was posted by the goods receipt, so an entry here would double it. A
+ * screen must not read the null as "nothing was posted".
+ */
+export interface PurchaseInvoiceDetail
+  extends Omit<PurchaseInvoiceListRow, "paymentCount"> {
+  branchName: string | null;
+  goodsReceiptNumber: string | null;
+  /** Who filed the bill. Null when that user has been deleted since. */
+  createdByName: string | null;
+  payments: PurchaseInvoicePayment[];
+  journalEntryId: string | null;
+}
+
+/**
+ * Query parameters accepted by GET /api/purchase-invoices. All optional.
+ *
+ * `outstanding` and `overdue` ARE THE AP REPORT and are expressed server-side so
+ * every consumer asks the question identically: outstanding is `status != paid`,
+ * overdue is that plus a due date already past. An explicit `status` wins over
+ * both. Recomputing either from a page of rows would make the screen's filter
+ * and the server's count disagree.
+ *
+ * NO `includeDeleted`, though the endpoint validates one: nothing writes
+ * `deletedAt` and no route removes an invoice, so the flag cannot change a
+ * result — and a filter that cannot alter anything is worse than an absent one.
+ */
+export interface PurchaseInvoiceListQuery {
+  page?: number;
+  limit?: number;
+  /** Free-text over invoice number / notes. */
+  search?: string;
+  supplierId?: string;
+  branchId?: string;
+  goodsReceiptId?: string;
+  status?: InvoiceStatus;
+  outstanding?: boolean;
+  overdue?: boolean;
+  /**
+   * ISO dates bounding `invoiceDate` — the day the SUPPLIER issued the bill,
+   * never `createdAt`. `dateTo` covers the whole day it names.
+   */
+  dateFrom?: string;
+  dateTo?: string;
+  /**
+   * Upper bound on `dueDate` — "what falls due before X", the planning horizon.
+   * Unlike `dateTo` this is NOT pushed to end of day: callers pass an instant
+   * they computed, not a date a human typed.
+   */
+  dueBefore?: string;
+}
+
+/**
+ * POST /api/purchase-invoices — file the supplier's bill against a delivery.
+ *
+ * THE WRITE SURFACE IS DELIBERATELY NARROW: a client sends only what a person
+ * holding the vendor's paperwork can read off it. `dueDate`, `total`,
+ * `paidAmount`, `status`, `payments` and `branchId` are all derived or stamped
+ * by the server and appear nowhere here — a `dueDate` from a client would let a
+ * clerk grant themselves terms the supplier never agreed to.
+ *
+ * `subtotal` AND `taxAmount` MUST MATCH THE RECEIPT to the minor unit. The
+ * payable was already posted at the receipt's numbers, so a difference would be
+ * a price variance nothing booked — the server refuses it with a message quoting
+ * both figures. Prefill from the receipt rather than asking a human to retype.
+ */
+export interface CreatePurchaseInvoiceInput {
+  supplierId: string;
+  /** The delivery being billed. One invoice per receipt, enforced by a unique index. */
+  goodsReceiptId: string;
+  invoiceNumber: string;
+  /** Defaults to now. The date the supplier ISSUED the bill. */
+  invoiceDate?: string;
+  subtotal: string;
+  taxAmount?: string;
+  notes?: string;
+}
+
+/**
+ * POST /api/purchase-invoices/:id/payments — pay a supplier.
+ *
+ * NOT IDEMPOTENT: a double-submitted form records the money leaving twice, on
+ * two irreversible journal entries. Callers lock their submit control for the
+ * whole flight.
+ *
+ * Overpayment is REFUSED rather than absorbed, and there is no `notes` field —
+ * the model carries only `ref`, the string this row will be reconciled against
+ * on a bank statement.
+ */
+export interface RecordPaymentInput {
+  /** Strictly positive, and never more than `outstandingAmount`. */
+  amount: string;
+  method: PaymentMethod;
+  /** Defaults to now. The day the money MOVED, which dates the ledger entry. */
+  at?: string;
+  ref?: string;
 }
 
 /**

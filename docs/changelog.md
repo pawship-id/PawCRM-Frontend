@@ -7,6 +7,67 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Utang Supplier on the API, and three gaps closed behind it
+
+Branch: `feature/inventory-purchasing`.
+
+**The payables screens now run against `/api/purchase-invoices`.** They were the last of the
+purchasing module's core flows computing their answers in the browser: the list derived every
+invoice's outstanding balance, decided for itself which were overdue, and summed a running
+total across whatever rows it happened to be holding. All three are now the server's —
+`outstandingAmount` and `isOverdue` arrive per row against one instant per page, and the
+headline figures come from `GET /purchase-invoices/outstanding`, summed in the database over
+the whole book. See `docs/features/supplier-payables.md`.
+
+**A new screen: filing the supplier's bill.** `/dashboard/purchasing/payables/new` wraps
+`POST /purchase-invoices`, reachable from the payables toolbar or deep-linked from a receipt
+with `?receipt=<id>`. The amounts are copied from the delivery and shown read-only: they must
+reconcile to the minor unit or the API refuses the request, so an editable box could only
+hold the same numbers or cause a 400.
+
+**Both new routes are guarded, and the two existing ones now are too.** `/payables` and
+`/payables/[id]` had no `RequirePermission` at all — the nav hid the entry, but direct URL
+entry rendered a tenant's supplier debt to any signed-in role. The payment form gates
+separately on `purchaseInvoices:pay`, which is the separation of duties the backend enforces:
+filing a bill is data entry, paying one moves cash irreversibly.
+
+### Three backend gaps closed, because the frontend could not be correct without them
+
+- **`dateTo` silently dropped a day.** `purchaseInvoice.repository.js` documented that the
+  validation layer pushed the bound to end-of-day; nothing did. `dateTo=2026-08-07` arrived
+  as midnight, so every bill issued on the 7th fell outside the range — and the list still
+  rendered, just missing the newest rows. The coercion now lives in `common.validation.js` as
+  `inclusiveDateTo`, so the next module to need it does not have to remember.
+- **The overdue rupiah figure did not exist.** `?overdue=true` answers *how many* through
+  `pagination.total` and nothing more, so "N faktur lewat jatuh tempo — total Rp X" could
+  only be assembled by paging the entire overdue book. `/outstanding` now carries
+  `overdueInvoiceCount` / `overdueOutstanding` per supplier and in the grand totals, summed
+  in the same `$group` against the same `now` — so the banner cannot claim more is late than
+  is owed.
+- **Unbilled deliveries could not be filtered for.** `GET /goods-receipts` gained
+  `?invoiced=`, a tri-state. Without it the file-a-bill picker had to filter a page on
+  `invoiceId === null`, which discards rows the server already counted — page 2 of "belum
+  difakturkan" comes back empty while unbilled deliveries sit on page 3.
+
+**A permission-catalog drift, fixed.** The frontend declared
+`purchaseInvoices: ["read", "update", "pay"]`. There is no `PATCH` route for `update` to
+gate, and the missing `create` hid the file-a-bill button from exactly the roles that hold
+the grant. Now `["create", "read", "pay"]`, matching the backend catalog.
+
+**`features/purchasing/payables.ts` deleted.** Its `isOverdue`, `isDueWithin` and
+`outstandingTotal` helpers existed to derive in the browser what the API now sends. Keeping
+them would have kept a second definition of "overdue" around to drift from the server's.
+
+### Known gap, not closed here
+
+**Reversing a payment's journal entry corrects the ledger, not the invoice.** Nothing on the
+backend restores `paidAmount` or `status`, so a bill whose payment was reversed still reads
+as paid. `PaymentHistory` shows each payment's `journalEntryId` and says exactly this, rather
+than offering a "batalkan pembayaran" action that would not do what its label claims. Closing
+the loop needs a backend void/reversal hook — a new feature, deliberately out of this change.
+
+---
+
 ## [Unreleased] — Penerimaan Barang on the API, and a module with no edit button
 
 Branch: `feature/inventory-purchasing`.

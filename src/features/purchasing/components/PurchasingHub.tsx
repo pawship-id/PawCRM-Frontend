@@ -6,24 +6,16 @@ import { Badge } from "@/components/ui/badge";
 import { usePermissions } from "@/features/permissions";
 import type { Action, Feature } from "@/features/permissions";
 import { cn } from "@/lib/utils";
-import type { PurchaseInvoice, Supplier } from "@/types/purchasing";
 import { daysUntil } from "@/utils/date";
 import { formatMoney } from "@/utils/decimal";
 
-import * as demo from "@/features/inventory/data/demoStore";
 import { useInventoryDemo } from "@/features/inventory/hooks/useInventoryDemo";
 
 import {
-  dueWithinInvoices,
-  outstandingTotal,
-  overdueInvoices,
-} from "../payables";
-
-/** How far ahead the second list looks. A week is one payment run. */
-const HORIZON_DAYS = 7;
-
-/** Rows per list before the footer takes over — the same five Inventory shows. */
-const PREVIEW_ROWS = 5;
+  HORIZON_DAYS,
+  usePayablesPanels,
+  type PayablePanelData,
+} from "../hooks/usePayablesPanels";
 
 const SECTIONS: Array<{
   href: string;
@@ -77,33 +69,39 @@ const SECTIONS: Array<{
  * the overdue list learns about a bill on the day it is already a problem, which
  * is the failure the module's payment terms exist to prevent.
  *
- * THE COUNTS ON THE SECTION CARDS ARE ROW COUNTS, never money. Purchasing still
- * runs on the in-memory demo store, so a rupiah total labelled "bulan ini" would
- * read as a report of the tenant's actual spend while being a property of the
- * fixtures. A count of documents makes the same "is there anything here" point
- * without claiming to be an account.
+ * THE COUNTS ON THE SECTION CARDS ARE ROW COUNTS, never money. A count of
+ * documents makes the "is there anything here" point without claiming to be an
+ * account.
+ *
+ * THE PAYABLES HALF NOW READS THE API; the other three cards still count the
+ * in-memory demo store, because suppliers, receipts and returns each have their
+ * own conversion. That is why the payables count is the only one that can be
+ * null — it is the only one waiting on a request.
  *
  * EACH CARD IS GATED ON ITS OWN GRANT and the two lists on `purchaseInvoices`,
  * matching the sidebar exactly — a user whose menu has no Utang Supplier link
- * must not land on a page that opens with their supplier debt.
+ * must not land on a page that opens with their supplier debt. The hook is
+ * handed that same answer so a denied role issues no requests at all.
  */
 export function PurchasingHub() {
   const { can } = usePermissions();
-  const { invoices, suppliers, receipts, purchaseReturns } = useInventoryDemo();
+  const { suppliers, receipts, purchaseReturns } = useInventoryDemo();
 
   const mayReadInvoices = can("purchaseInvoices", "read");
+  const { overdue, dueSoon, outstandingCount } =
+    usePayablesPanels(mayReadInvoices);
 
   const sections = SECTIONS.filter((section) =>
     can(section.feature, section.action),
   );
 
-  const overdue = overdueInvoices(invoices);
-  const dueSoon = dueWithinInvoices(invoices, HORIZON_DAYS);
-
   const counts: Record<string, string> = {
     "/dashboard/purchasing/suppliers": `${suppliers.filter((supplier) => supplier.isActive).length} aktif`,
     "/dashboard/purchasing/receipts": `${receipts.length} penerimaan`,
-    "/dashboard/purchasing/payables": `${invoices.filter((invoice) => invoice.status !== "paid").length} belum lunas`,
+    "/dashboard/purchasing/payables":
+      outstandingCount === null
+        ? "—"
+        : `${outstandingCount} belum lunas`,
     "/dashboard/purchasing/returns": `${purchaseReturns.length} retur`,
   };
 
@@ -140,8 +138,7 @@ export function PurchasingHub() {
         <div className="grid gap-6 lg:grid-cols-2">
           <PayablePanel
             title="Lewat jatuh tempo"
-            invoices={overdue}
-            suppliers={suppliers}
+            data={overdue}
             totalLabel="Total tertunggak"
             urgent
             empty="Tidak ada faktur yang lewat jatuh tempo."
@@ -151,8 +148,7 @@ export function PurchasingHub() {
           <PayablePanel
             title="Jatuh tempo minggu ini"
             caption={`${HORIZON_DAYS} hari ke depan`}
-            invoices={dueSoon}
-            suppliers={suppliers}
+            data={dueSoon}
             totalLabel="Kas yang perlu disiapkan"
             empty={`Tidak ada faktur yang jatuh tempo dalam ${HORIZON_DAYS} hari.`}
             moreLabel="faktur lain juga jatuh tempo minggu ini"
@@ -166,16 +162,20 @@ export function PurchasingHub() {
 /**
  * One list of invoices that need money, and every state it can be in.
  *
- * THE BADGE AND THE TOTAL COVER THE WHOLE LIST, not the five rows shown. A panel
- * that said "3" beside three rows out of eleven would tell somebody the job was
- * nearly done — the same reason the Inventory alerts report the server's count
- * rather than `children.length`.
+ * THE BADGE AND THE TOTAL COVER THE WHOLE BUCKET, not the five rows shown. A
+ * panel that said "3" beside three rows out of eleven would tell somebody the job
+ * was nearly done — the same reason the Inventory alerts report the server's
+ * count rather than `children.length`. Both figures come from the hook, which
+ * gets them from the server's own aggregation; nothing here adds anything up.
+ *
+ * A NULL TOTAL RENDERS AS AN ABSENCE, never as zero. The due-soon bucket cannot
+ * always be summed exactly (see usePayablesPanels), and "Rp 0" over eleven
+ * unpaid bills is a number somebody would act on.
  */
 function PayablePanel({
   title,
   caption,
-  invoices,
-  suppliers,
+  data,
   totalLabel,
   urgent = false,
   empty,
@@ -183,8 +183,7 @@ function PayablePanel({
 }: {
   title: string;
   caption?: string;
-  invoices: PurchaseInvoice[];
-  suppliers: Supplier[];
+  data: PayablePanelData;
   totalLabel: string;
   /** Colours the count and the amounts — reserved for money already late. */
   urgent?: boolean;
@@ -192,9 +191,8 @@ function PayablePanel({
   /** Copy for the "+N more" line under a truncated list. */
   moreLabel: string;
 }) {
-  const shown = invoices.slice(0, PREVIEW_ROWS);
-  const remaining = invoices.length - shown.length;
-  const total = outstandingTotal(invoices);
+  const { rows, count, total } = data;
+  const remaining = count - rows.length;
 
   return (
     <section className="flex flex-col rounded-xl border border-border bg-surface">
@@ -205,31 +203,33 @@ function PayablePanel({
           variant="outline"
           className={cn(
             "ml-auto tabular-nums",
-            urgent && invoices.length > 0 && "border-danger text-danger",
+            urgent && count > 0 && "border-danger text-danger",
           )}
         >
-          {invoices.length}
+          {count}
         </Badge>
       </header>
 
-      {invoices.length === 0 ? (
+      {count === 0 ? (
         <p className="px-5 py-10 text-center text-sm text-muted">{empty}</p>
       ) : (
         <>
-          <div className="flex items-baseline gap-3 border-b border-border bg-accent px-5 py-2.5">
-            <span className="text-xs text-muted">{totalLabel}</span>
-            <span
-              className={cn(
-                "ml-auto font-mono text-[15px] font-semibold tabular-nums",
-                urgent && "text-danger",
-              )}
-            >
-              {formatMoney(total)}
-            </span>
-          </div>
+          {total !== null && (
+            <div className="flex items-baseline gap-3 border-b border-border bg-accent px-5 py-2.5">
+              <span className="text-xs text-muted">{totalLabel}</span>
+              <span
+                className={cn(
+                  "ml-auto font-mono text-[15px] font-semibold tabular-nums",
+                  urgent && "text-danger",
+                )}
+              >
+                {formatMoney(total)}
+              </span>
+            </div>
+          )}
 
           <ul className="divide-y divide-border/60">
-            {shown.map((invoice) => (
+            {rows.map((invoice) => (
               <li
                 key={invoice._id}
                 className="flex items-center gap-3 px-5 py-3"
@@ -239,7 +239,10 @@ function PayablePanel({
                     href={`/dashboard/purchasing/payables/${invoice._id}`}
                     className="block truncate text-sm font-medium hover:text-primary-hover"
                   >
-                    {supplierNameOf(suppliers, invoice.supplierId)}
+                    {/* A supplier deleted since still has invoices, and those
+                        invoices are still owed — so the row renders with a
+                        placeholder rather than being dropped. */}
+                    {invoice.supplierName ?? "—"}
                   </Link>
                   <p className="truncate font-mono text-xs text-muted">
                     {invoice.invoiceNumber}
@@ -251,7 +254,7 @@ function PayablePanel({
                     urgent && "text-danger",
                   )}
                 >
-                  {formatMoney(demo.outstandingOf(invoice))}
+                  {formatMoney(invoice.outstandingAmount)}
                 </span>
                 <DueChip dueDate={invoice.dueDate} />
               </li>
@@ -314,12 +317,4 @@ function DueChip({ dueDate }: { dueDate: string }) {
       {label}
     </span>
   );
-}
-
-/**
- * A supplier that has been deleted still has invoices, and those invoices are
- * still owed — so the row renders with a placeholder rather than being dropped.
- */
-function supplierNameOf(suppliers: Supplier[], supplierId: string): string {
-  return suppliers.find((supplier) => supplier._id === supplierId)?.name ?? "—";
 }

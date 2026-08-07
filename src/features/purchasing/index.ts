@@ -19,6 +19,9 @@ export { ReceiptForm } from "./components/ReceiptForm";
 export { ReceiptDetail } from "./components/ReceiptDetail";
 export { PayablesScreen } from "./components/PayablesScreen";
 export { InvoiceDetail } from "./components/InvoiceDetail";
+// Filing the vendor's bill against a delivery. Its own entry point because it is
+// its own route — the payable already exists by the time this screen is opened.
+export { FileInvoiceForm } from "./components/FileInvoiceForm";
 export { PurchaseReturnsScreen } from "./components/PurchaseReturnsScreen";
 export { PurchaseReturnForm } from "./components/PurchaseReturnForm";
 export { PageHeading } from "./components/PageHeading";

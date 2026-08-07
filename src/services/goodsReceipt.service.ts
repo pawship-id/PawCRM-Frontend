@@ -33,6 +33,12 @@ export const goodsReceiptService = {
    * one receipt to get its lines. The supplier detail screen passes `supplierId`
    * and a small `limit`: it shows the recent history, not the whole book, and the
    * count it displays comes from `summary` rather than from paging through this.
+   *
+   * `invoiced` IS A TRI-STATE and is passed through as one. Omitted means either;
+   * `false` is how the file-an-invoice picker asks for deliveries still awaiting
+   * the vendor's bill. It has to be a server filter — the API pages before a
+   * client could filter, so a page-local `invoiceId === null` would hide rows the
+   * pager had already counted.
    */
   list: (query: GoodsReceiptListQuery = {}) =>
     apiClient.get<PageResult<GoodsReceiptListRow>>("/goods-receipts", {
@@ -43,6 +49,7 @@ export const goodsReceiptService = {
         supplierId: query.supplierId,
         warehouseId: query.warehouseId,
         purchaseType: query.purchaseType,
+        invoiced: query.invoiced,
         dateFrom: query.dateFrom,
         dateTo: query.dateTo,
       },

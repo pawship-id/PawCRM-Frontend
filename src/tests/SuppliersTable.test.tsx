@@ -43,7 +43,19 @@ function makeSupplier(overrides: Partial<Supplier> = {}): Supplier {
 
 const owed = (outstanding: string, invoiceCount = 2) =>
   new Map<string, SupplierOutstandingRow>([
-    ["s1", { supplierId: "s1", supplierName: null, invoiceCount, outstanding }],
+    [
+      "s1",
+      {
+        supplierId: "s1",
+        supplierName: null,
+        invoiceCount,
+        outstanding,
+        // Nothing late in this fixture — the supplier column under test reads
+        // `outstanding`, and the overdue split belongs to the payables screens.
+        overdueInvoiceCount: 0,
+        overdueOutstanding: "0",
+      },
+    ],
   ]);
 
 const bought = (receiptCount: number) =>
