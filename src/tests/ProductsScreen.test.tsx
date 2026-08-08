@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { UserEvent } from "@testing-library/user-event";
 
 import { renderWithAuth } from "./helpers/renderWithAuth";
 import { ProductsScreen } from "@/features/inventory";
@@ -98,6 +99,16 @@ function mockLookups() {
 
 function mockList(items: Product[]) {
   return jest.spyOn(productService, "list").mockResolvedValue(page(items));
+}
+
+/**
+ * Opens a row's kebab menu. Every row action lives behind it, so each action
+ * assertion starts here — which is also the cheapest way to notice if the
+ * trigger ever stops being reachable by its accessible name.
+ */
+async function openRowMenu(user: UserEvent, name = "Shampoo Anjing") {
+  await user.click(screen.getByRole("button", { name: `Aksi untuk ${name}` }));
+  return screen.getByRole("menu");
 }
 
 /**
@@ -252,8 +263,9 @@ describe("ProductsScreen", () => {
     renderWithAuth(<ProductsScreen />);
     await screen.findByText("Shampoo Anjing");
 
-    await user.click(screen.getByRole("button", { name: "Hapus" }));
-    const dialog = screen.getByRole("dialog");
+    const menu = await openRowMenu(user);
+    await user.click(within(menu).getByRole("menuitem", { name: "Hapus" }));
+    const dialog = await screen.findByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: "Hapus" }));
 
     await waitFor(() => expect(remove).toHaveBeenCalledWith("p1"));
@@ -275,8 +287,9 @@ describe("ProductsScreen", () => {
     renderWithAuth(<ProductsScreen />);
     await screen.findByText("Shampoo Anjing");
 
-    await user.click(screen.getByRole("button", { name: "Hapus" }));
-    const dialog = screen.getByRole("dialog");
+    const menu = await openRowMenu(user);
+    await user.click(within(menu).getByRole("menuitem", { name: "Hapus" }));
+    const dialog = await screen.findByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: "Hapus" }));
 
     // Reworded to "could not delete", this would lose the only actionable part.
@@ -284,16 +297,27 @@ describe("ProductsScreen", () => {
   });
 
   it("offers restore, not delete, on a soft-deleted product", async () => {
+    const user = userEvent.setup();
     mockList([makeProduct({ deletedAt: "2026-08-01T00:00:00.000Z" })]);
 
     renderWithAuth(<ProductsScreen />);
     await screen.findByText("Shampoo Anjing");
 
-    expect(screen.getByRole("button", { name: "Pulihkan" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Hapus" })).not.toBeInTheDocument();
+    const menu = await openRowMenu(user);
+    expect(
+      within(menu).getByRole("menuitem", { name: "Pulihkan" }),
+    ).toBeInTheDocument();
+    expect(
+      within(menu).queryByRole("menuitem", { name: "Hapus" }),
+    ).not.toBeInTheDocument();
+    // Restoring it first is what makes editing it meaningful again.
+    expect(
+      within(menu).queryByRole("menuitem", { name: "Edit" }),
+    ).not.toBeInTheDocument();
   });
 
-  it("hides the write actions from a read-only role", async () => {
+  it("leaves a read-only role the detail entry and nothing that writes", async () => {
+    const user = userEvent.setup();
     mockList([makeProduct()]);
 
     renderWithAuth(<ProductsScreen />, {
@@ -302,11 +326,38 @@ describe("ProductsScreen", () => {
     });
     await screen.findByText("Shampoo Anjing");
 
-    expect(screen.queryByRole("button", { name: "Hapus" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Edit" })).not.toBeInTheDocument();
+    // The menu still opens: Detail needs only `products:read`, which is what
+    // put the row on screen — so the trigger never leads to an empty menu.
+    const menu = await openRowMenu(user);
+    expect(
+      within(menu).getByRole("menuitem", { name: "Detail" }),
+    ).toHaveAttribute("href", "/dashboard/inventory/products/p1");
+    expect(
+      within(menu).queryByRole("menuitem", { name: "Hapus" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(menu).queryByRole("menuitem", { name: "Edit" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: /Produk baru/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it("points Detail and Edit at the two different routes", async () => {
+    const user = userEvent.setup();
+    mockList([makeProduct()]);
+
+    renderWithAuth(<ProductsScreen />);
+    await screen.findByText("Shampoo Anjing");
+
+    const menu = await openRowMenu(user);
+    expect(
+      within(menu).getByRole("menuitem", { name: "Detail" }),
+    ).toHaveAttribute("href", "/dashboard/inventory/products/p1");
+    expect(within(menu).getByRole("menuitem", { name: "Edit" })).toHaveAttribute(
+      "href",
+      "/dashboard/inventory/products/p1/edit",
+    );
   });
 
   it("surfaces a failed load instead of an empty catalogue", async () => {

@@ -14,6 +14,8 @@ Under **Dashboard → Inventory → Produk & Varian** a permitted user can:
 - **List** the catalogue — one row per family, paginated, with free-text search,
   type/category/status filters and a "show deleted" toggle.
 - **Expand** a parent into its variants, fetched on demand.
+- **Open** one product read-only — every stored field, its stock per warehouse,
+  and, for a parent, the whole family with each variant's quantity.
 - **Create** a product in one of three shapes, with optional opening stock.
 - **Edit** a product, including adding variants to an existing family.
 - **Delete / restore**, both guarded by the backend and reported verbatim.
@@ -40,6 +42,49 @@ its variants**, so searching "3kg" finds the product rather than nothing.
 All three are computed by the backend. The **warehouse selector is a view, not a
 filter**: every product arrives carrying its quantities for every warehouse, so
 switching location re-reads what is already on the page and issues no request.
+
+### Row actions behind a kebab menu
+
+**Detail · Edit · Hapus / Pulihkan**, in a dropdown on each parent row — the same
+arrangement the supplier list uses, and for the same reason: this table already
+carries three numeric columns it exists for (HPP, harga jual, stok), and a third
+inline button pushed them off the right edge on a laptop.
+
+**Detail is the first item and the only ungated one.** It needs `products:read`,
+which is already what put the row on screen, so the menu can never open onto
+nothing — which is why the Aksi column is unconditional here while the supplier
+table hides its own. A deleted row offers only Pulihkan; restoring it first is
+what makes editing it meaningful again.
+
+Variant rows have no menu: the variant's own name links to its detail page, and
+everything else about a variant is edited through its parent's form.
+
+### Detail is its own screen, not the form
+
+`ProductDetail` answers "what IS this product right now"; `ProductForm` answers
+"what should it be". They are different pages because they show different things:
+the form hides stock entirely (an existing product's quantity moves through the
+stock screens, never through a text box) and renders a parent's family as a grid
+of price inputs, while the detail screen shows the quantities and nothing
+editable.
+
+That is also why `/[id]` is the **detail** page and editing sits at `/[id]/edit`
+— the same split the supplier routes use. Arriving at a product from a low-stock
+alert or a search means wanting to look at it, and a URL that opened a form full
+of live inputs is an edit nobody asked for.
+
+One **warehouse selector scopes every quantity on the page**, defaulting to all
+of them. Like the list's selector it is a view rather than a filter: the response
+already carries the per-warehouse rows, so switching location re-reads what is on
+screen instead of issuing a request. Its options include **inactive** warehouses
+— a closed location still owns the stock it held, and a row it appears in has to
+be named rather than shown as an id.
+
+A parent lists its variants from `GET /:id/variants` (unpaginated — a parent has
+a handful by construction), each row linking to its own detail page: a variant is
+a product in its own right, carrying the barcode, the price and the stock the
+parent carries none of. A **variant** fetches its parent for the reverse reason —
+`parentId` is an id, and "induk: 68f1a…" tells a reader nothing.
 
 ### Three shapes, one form
 
@@ -84,11 +129,12 @@ Stok.
 | ---------------------------------------- | ----------------------------------------------------- | -------------------------- |
 | `/dashboard/inventory/products`          | `app/(dashboard)/dashboard/inventory/products/page.tsx`     | List (`ProductsScreen`)    |
 | `/dashboard/inventory/products/new`      | `.../products/new/page.tsx`                           | Create (`ProductForm`)     |
-| `/dashboard/inventory/products/[id]`     | `.../products/[id]/page.tsx`                          | Edit (`ProductForm`)       |
+| `/dashboard/inventory/products/[id]`     | `.../products/[id]/page.tsx`                          | Detail (`ProductDetail`)   |
+| `/dashboard/inventory/products/[id]/edit`| `.../products/[id]/edit/page.tsx`                     | Edit (`ProductForm`)       |
 
-All three are behind `<RequirePermission feature="products" …>` (`read`,
-`create`, `update` respectively). The `[id]` route is an async Server Component
-that awaits the Next 16 `params` Promise.
+All four are behind `<RequirePermission feature="products" …>` (`read`, `create`,
+`read`, `update` respectively). The dynamic routes are async Server Components
+that await the Next 16 `params` Promise.
 
 ## Structure
 
@@ -98,15 +144,20 @@ that awaits the Next 16 `params` Promise.
     (the API rejects the pair).
   - `hooks/useProductVariants.ts` — lazy per-parent expand, cached; the
     already-asked set lives in a ref so a re-expand cannot refire the request.
-  - `hooks/useProductDetail.ts` — the edit screen's product + its variants.
-  - `hooks/useCatalogLookups.ts` — categories and active warehouses, in parallel.
+  - `hooks/useProductDetail.ts` — one product plus the rest of its family: a
+    parent's variants, or a variant's parent. Feeds both `ProductForm` and
+    `ProductDetail`.
+  - `hooks/useCatalogLookups.ts` — categories and warehouses, in parallel. Active
+    warehouses by default (an inactive one cannot take an opening balance);
+    `{ includeInactive: true }` for the detail screen, which names locations
+    rather than offering them.
   - `hooks/useBundleCandidates.ts` — standalone + variant products for the
     component picker, fetched only in bundle mode.
   - `utils/catalogue.ts` — `qtyAt`, `stockOf`, `limitedByAt`,
     `variantCombinations`, `attributesFor`, `defaultVariantSku`, `matchVariant`.
   - `components/` — `ProductsScreen`, `ProductsToolbar`, `ProductsTable`,
-    `ProductForm`, plus the existing `VariantAxisEditor`, `BundleComponentEditor`
-    and `ProductTypeBadge`.
+    `ProductDetail`, `ProductForm`, plus the existing `VariantAxisEditor`,
+    `BundleComponentEditor` and `ProductTypeBadge`.
 - `services/product.service.ts` — `list/getById/listVariants/getByBarcode/
   lowStock/create/update/remove/restore`.
 - `services/warehouse.service.ts` — `list` (picker).
@@ -161,8 +212,14 @@ Arithmetic goes through `utils/decimal.ts` (`toMinor`, `sumDecimals`,
   `excludeVariants` request, `variantCount` without expanding, the expand
   fetching once and caching, the bundle's "bisa dibuat" and its cap, the
   warehouse switch not refetching, delete → confirm → refetch, a 409 shown
-  verbatim, restore on a deleted row, a read-only role seeing no write actions,
-  and both failure paths.
+  verbatim, restore on a deleted row, Detail and Edit pointing at their two
+  routes, a read-only role keeping Detail and losing everything that writes, and
+  both failure paths.
+- `tests/ProductDetail.test.tsx` — the read-only page: the stored fields and the
+  stock summed across warehouses, a closed warehouse still named, a parent's
+  whole family listed with each variant's quantity and its axes, a variant naming
+  its parent instead of showing an id, the edit link hidden from a read-only
+  role, and the server's refusal shown rather than an empty page.
 - `tests/ProductForm.test.tsx` — the payloads: no `openingStock` when the switch
   is off, the full instruction when it is on, a discarded quantity after
   switching off, batch/expiry demanded for expiring goods, `posted: false`

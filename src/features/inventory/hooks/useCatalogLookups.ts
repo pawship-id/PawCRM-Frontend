@@ -10,11 +10,24 @@ import type { StockWarehouse } from "@/types/inventory";
 
 interface CatalogLookups {
   categories: Category[];
-  /** Active only — an inactive warehouse cannot accept an opening balance. */
+  /**
+   * Active only by default — an inactive warehouse cannot accept an opening
+   * balance, so offering it in a picker leads to a 400. See `includeInactive`.
+   */
   warehouses: StockWarehouse[];
   loading: boolean;
   /** Non-null when either list failed — the screen shows this instead of guessing. */
   error: string | null;
+}
+
+interface CatalogLookupsOptions {
+  /**
+   * Load closed locations too. For NAMING rather than for picking: a product may
+   * still hold stock at a warehouse nobody may post to any more, and a detail
+   * screen that dropped those rows would report less stock than exists — while
+   * one that kept them without the name would show a row labelled by an id.
+   */
+  includeInactive?: boolean;
 }
 
 /**
@@ -32,7 +45,9 @@ interface CatalogLookups {
  * "could not load categories" is an answer its user can act on, where an empty
  * dropdown is not.
  */
-export function useCatalogLookups(): CatalogLookups {
+export function useCatalogLookups({
+  includeInactive = false,
+}: CatalogLookupsOptions = {}): CatalogLookups {
   const [categories, setCategories] = useState<Category[]>([]);
   const [warehouses, setWarehouses] = useState<StockWarehouse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,7 +60,7 @@ export function useCatalogLookups(): CatalogLookups {
       try {
         const [categoryResult, warehouseResult] = await Promise.all([
           categoryService.list(),
-          warehouseService.list({ isActive: true }),
+          warehouseService.list(includeInactive ? {} : { isActive: true }),
         ]);
         if (!active) return;
         setCategories(categoryResult.items);
@@ -65,7 +80,7 @@ export function useCatalogLookups(): CatalogLookups {
     return () => {
       active = false;
     };
-  }, []);
+  }, [includeInactive]);
 
   return { categories, warehouses, loading, error };
 }

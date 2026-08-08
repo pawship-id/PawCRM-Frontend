@@ -2,10 +2,24 @@
 
 import { Fragment, useState } from "react";
 import Link from "next/link";
+import {
+  EllipsisVertical,
+  Eye,
+  Pencil,
+  RotateCcw,
+  Trash2,
+} from "lucide-react";
 
 import { ConfirmDialog } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Can } from "@/features/permissions";
 import { productService } from "@/services/product.service";
 import { ApiError } from "@/services/api-error";
@@ -30,6 +44,17 @@ import { ProductTypeBadge } from "./ProductTypeBadge";
  * Every number in the Stok column is computed by the backend and read here, not
  * derived: a parent reports its variants' total, a bundle how many it can build,
  * everything else what is on the shelf. See utils/catalogue.
+ *
+ * THE ROW ACTIONS LIVE BEHIND A KEBAB MENU, as on the supplier list and for the
+ * same reason: this table already carries three numeric columns the screen
+ * exists for, and a third inline button pushed them off the right edge on a
+ * laptop. The trigger is one click; what it costs is a second click for the
+ * action, and what it buys is that the prices and the stock stay readable.
+ *
+ * DETAIL IS THE FIRST ITEM and the only ungated one — it needs `products:read`,
+ * which is already what put the row on screen, so a menu never opens onto
+ * nothing. Variant rows have no menu: the variant's own name links to its detail
+ * page, and everything else about a variant is edited through its parent's form.
  */
 export function ProductsTable({
   products,
@@ -164,7 +189,15 @@ export function ProductsTable({
                           </button>
                         )}
                         <div className={cn(variantCount === 0 && "pl-7")}>
-                          <p className="font-medium">{product.name}</p>
+                          {/* The name is the way IN to a product — the Edit
+                              button opens the form, this opens the read-only
+                              view most people actually want. */}
+                          <Link
+                            href={`/dashboard/inventory/products/${product._id}`}
+                            className="font-medium hover:text-primary-hover hover:underline"
+                          >
+                            {product.name}
+                          </Link>
                           <p className="font-mono text-xs text-muted">
                             {product.sku}
                             {product.barcode && ` · ⦀ ${product.barcode}`}
@@ -233,44 +266,79 @@ export function ProductsTable({
                         </>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 text-right whitespace-nowrap">
-                      {deleted ? (
-                        <Can feature="products" action="restore">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() =>
-                              setPending({ product, action: "restore" })
-                            }
-                          >
-                            Pulihkan
-                          </Button>
-                        </Can>
-                      ) : (
-                        <>
-                          <Can feature="products" action="update">
-                            <Button variant="ghost" size="sm" asChild>
-                              <Link
-                                href={`/dashboard/inventory/products/${product._id}`}
-                              >
-                                Edit
-                              </Link>
-                            </Button>
-                          </Can>
-                          <Can feature="products" action="delete">
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center justify-end">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="text-danger"
-                              onClick={() =>
-                                setPending({ product, action: "delete" })
-                              }
+                              // The icon carries no name of its own, so the
+                              // label says which row this menu belongs to — a
+                              // screen-reader user hearing twenty identical
+                              // "Aksi" buttons has learnt nothing.
+                              aria-label={`Aksi untuk ${product.name}`}
                             >
-                              Hapus
+                              <EllipsisVertical className="size-4" />
                             </Button>
-                          </Can>
-                        </>
-                      )}
+                          </DropdownMenuTrigger>
+
+                          <DropdownMenuContent>
+                            {/* Ungated: it needs `products:read`, which is
+                                already what put this row on screen — so the
+                                menu can never open onto nothing. */}
+                            <DropdownMenuItem asChild>
+                              <Link
+                                href={`/dashboard/inventory/products/${product._id}`}
+                              >
+                                <Eye />
+                                Detail
+                              </Link>
+                            </DropdownMenuItem>
+
+                            {deleted ? (
+                              <Can feature="products" action="restore">
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onSelect={() =>
+                                    setPending({ product, action: "restore" })
+                                  }
+                                >
+                                  <RotateCcw />
+                                  Pulihkan
+                                </DropdownMenuItem>
+                              </Can>
+                            ) : (
+                              <>
+                                <Can feature="products" action="update">
+                                  <DropdownMenuItem asChild>
+                                    <Link
+                                      href={`/dashboard/inventory/products/${product._id}/edit`}
+                                    >
+                                      <Pencil />
+                                      Edit
+                                    </Link>
+                                  </DropdownMenuItem>
+                                </Can>
+                                <Can feature="products" action="delete">
+                                  {/* Separated and tinted: everything above it
+                                      only navigates, and this one writes. */}
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    variant="destructive"
+                                    onSelect={() =>
+                                      setPending({ product, action: "delete" })
+                                    }
+                                  >
+                                    <Trash2 />
+                                    Hapus
+                                  </DropdownMenuItem>
+                                </Can>
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </td>
                   </tr>
 
@@ -307,11 +375,14 @@ export function ProductsTable({
                           className="border-b border-border/60 bg-accent/30"
                         >
                           <td className="py-2.5 pr-4 pl-16">
-                            <p className="text-sm">
+                            <Link
+                              href={`/dashboard/inventory/products/${variant._id}`}
+                              className="text-sm hover:text-primary-hover hover:underline"
+                            >
                               {Object.values(
                                 variant.variantAttributes ?? {},
                               ).join(" / ")}
-                            </p>
+                            </Link>
                             <p className="font-mono text-xs text-muted">
                               {variant.sku}
                               {variant.barcode && ` · ⦀ ${variant.barcode}`}
