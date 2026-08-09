@@ -145,6 +145,24 @@ export function UsersIcon(props: IconProps) {
   );
 }
 
+/**
+ * Business (the tenant itself) — a storefront: an awning over a shop window.
+ * Used by the account dropdown's "Business information" entry.
+ *
+ * Deliberately unlike BranchIcon (a multi-storey building) and WarehouseIcon (a
+ * pitched shed): the tenant is the business as a whole and its branches are its
+ * buildings, so the three must not read as the same silhouette.
+ */
+export function BusinessIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M3.5 9h17l-1.2-4.2a1 1 0 0 0-1-.8H5.7a1 1 0 0 0-1 .8L3.5 9Z" />
+      <path d="M4.5 9v10.5a.5.5 0 0 0 .5.5h14a.5.5 0 0 0 .5-.5V9" />
+      <path d="M9.5 20v-5.5h5V20" />
+    </Base>
+  );
+}
+
 export function BranchIcon(props: IconProps) {
   return (
     <Base {...props}>
@@ -393,6 +411,31 @@ export function PurchaseReturnIcon(props: IconProps) {
     <Base {...props}>
       <path d="M4 10.5 12 6.5l8 4v7l-8 4-8-4z" />
       <path d="M12 7.5v-5m0 0-2 2m2-2 2 2" />
+    </Base>
+  );
+}
+
+/* -------------------------------------------------------------- Accounting */
+
+/** Chart of accounts — a hierarchy: one spine branching into its accounts. */
+export function AccountTreeIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <rect x="9.5" y="2.5" width="11" height="5" rx="1.5" />
+      <rect x="9.5" y="9.5" width="11" height="5" rx="1.5" />
+      <rect x="9.5" y="16.5" width="11" height="5" rx="1.5" />
+      <path d="M4.5 5v14M4.5 5h5M4.5 12h5M4.5 19h5" />
+    </Base>
+  );
+}
+
+/** General ledger — a book ruled into a debit and a credit column. */
+export function JournalIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <rect x="4" y="3" width="16" height="18" rx="1.75" />
+      <path d="M12 7v10" />
+      <path d="M7.5 10.5h2M7.5 14h2M14.5 10.5h2M14.5 14h2" />
     </Base>
   );
 }

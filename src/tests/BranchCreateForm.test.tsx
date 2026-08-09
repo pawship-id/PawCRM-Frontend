@@ -59,6 +59,61 @@ describe("BranchCreateForm", () => {
     expect(push).toHaveBeenCalledWith("/dashboard/master/branches");
   });
 
+  it("sends a pinned branch with its coordinates parsed to numbers", async () => {
+    const create = jest
+      .spyOn(branchService, "create")
+      .mockResolvedValue({} as never);
+    render(<BranchCreateForm />);
+
+    await userEvent.type(screen.getByLabelText(/branch name/i), "Kemang");
+    await userEvent.click(screen.getByLabelText(/latitude/i));
+    await userEvent.paste("-6.260712, 106.813377");
+    await userEvent.click(
+      screen.getByRole("button", { name: /create branch/i }),
+    );
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "Kemang",
+        location: { lat: -6.260712, lng: 106.813377 },
+      }),
+    );
+  });
+
+  it("sends location: null when no pin was entered", async () => {
+    const create = jest
+      .spyOn(branchService, "create")
+      .mockResolvedValue({} as never);
+    render(<BranchCreateForm />);
+
+    await userEvent.type(screen.getByLabelText(/branch name/i), "Bandung");
+    await userEvent.click(
+      screen.getByRole("button", { name: /create branch/i }),
+    );
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ location: null }),
+    );
+  });
+
+  it("blocks the request when only one coordinate is filled in", async () => {
+    // Half a pair points at the Greenwich meridian. The backend refuses it too;
+    // catching it here saves the round trip.
+    const create = jest.spyOn(branchService, "create");
+    render(<BranchCreateForm />);
+
+    await userEvent.type(screen.getByLabelText(/branch name/i), "Bandung");
+    await userEvent.type(screen.getByLabelText(/latitude/i), "-6.260712");
+    await userEvent.click(
+      screen.getByRole("button", { name: /create branch/i }),
+    );
+
+    expect(create).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(/latitude and longitude must be filled in together/i),
+    ).toBeInTheDocument();
+  });
+
   it("surfaces a duplicate-name conflict as an alert", async () => {
     jest
       .spyOn(branchService, "create")

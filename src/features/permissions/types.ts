@@ -39,12 +39,49 @@ export const PERMISSION_CATALOG = {
   // and no `delete`: correcting one means returning the goods, which is its own
   // document with its own reversal of the weighted average.
   goodsReceipts: ["create", "read"],
-  // Payables are created BY a receipt, never by hand — hence no `create`.
-  // `pay` is its own action rather than part of `update`: recording money
-  // leaving the business is a materially different privilege from relabelling
-  // an invoice.
-  purchaseInvoices: ["read", "update", "pay"],
-  purchaseReturns: ["create", "read"],
+  /**
+   * The supplier's BILL, and the payments that discharge it.
+   *
+   * `create` FILES THE VENDOR'S DOCUMENT — it does not create the debt. The
+   * payable already exists: a `beli_putus` goods receipt credits 2101 the moment
+   * it posts. What `create` adds is the invoice number, the issue date, and the
+   * due date derived from the supplier's terms. This entry previously read
+   * `["read", "update", "pay"]`, which was wrong in both directions — there is no
+   * PATCH route for `update` to gate, and the missing `create` meant the file-a-
+   * bill button was hidden from precisely the roles that hold the grant.
+   *
+   * `pay` is its own action rather than part of `create`: filing a bill is data
+   * entry a purchasing clerk does all morning, while paying one moves cash out of
+   * the bank on an entry that cannot be undone. The seeded Staff role holds
+   * create+read and NOT pay — ordinary separation of duties, the same split
+   * `submit` makes on `stockOpnames`.
+   *
+   * No `update` and no `delete`: every payment posts an immutable journal entry,
+   * so a wrong one is corrected by REVERSING that entry, never by editing it.
+   */
+  purchaseInvoices: ["create", "read", "pay"],
+  /**
+   * Goods going BACK to a supplier — the correction a goods receipt cannot make
+   * to itself.
+   *
+   * This entry previously read `["create", "read"]`, which was wrong the same way
+   * `purchaseInvoices` was: the backend catalogue has always carried five actions,
+   * and the three missing ones could not be granted from the Role screen at all.
+   * A tenant literally could not authorise anybody to submit a return.
+   *
+   * `submit` IS ITS OWN ACTION. Listing what is going back is clerical work a
+   * storekeeper does while holding the damaged carton; submitting takes the stock
+   * out, reverses the weighted-average cost every later sale is costed at, and
+   * reduces what the supplier is owed — none of it undoable. The seeded Staff role
+   * gets create/read/update and NOT submit: the person who identifies a problem
+   * with a delivery should not also decide the vendor owes less for it. Same split
+   * as `submit` on `stockOpnames` and `pay` on `purchaseInvoices`.
+   *
+   * `delete` discards a DRAFT only — the API refuses a submitted return, which is
+   * the supporting document for movements and a journal entry that are both
+   * immutable. No `restore`, for the same reason a discarded opname has none.
+   */
+  purchaseReturns: ["create", "read", "update", "delete", "submit"],
   chartOfAccounts: ["create", "read", "update", "delete", "restore"],
   // A posted journal entry is immutable: no delete, no restore. `reverse` is
   // its own action because correcting the ledger is a different privilege from

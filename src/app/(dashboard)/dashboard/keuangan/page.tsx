@@ -1,15 +1,9 @@
 import type { Metadata } from "next";
-import { SectionPlaceholder } from "@/features/dashboard";
-import { FinanceIcon } from "@/components/icons";
+
+import { AccountingHub } from "@/features/accounting";
 
 export const metadata: Metadata = { title: "Keuangan · PawShip" };
 
 export default function KeuanganPage() {
-  return (
-    <SectionPlaceholder
-      title="Keuangan"
-      description="Cash flow, expenses, and financial reporting."
-      icon={FinanceIcon}
-    />
-  );
+  return <AccountingHub />;
 }

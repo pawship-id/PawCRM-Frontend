@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { Alert, Button, Card } from "@/components";
+import { Alert, Card, Spinner } from "@/components";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -14,32 +15,39 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { swalToast } from "@/lib/swal";
-import { cn } from "@/lib/utils";
+import { ApiError } from "@/services/api-error";
+import { purchaseReturnService } from "@/services/purchaseReturn.service";
 import {
   formatMoney,
-  formatMoneyPrecise,
-  formatQty,
-  isPositive,
   multiplyDecimals,
   sumDecimals,
-  toDecimalString,
-  toMinor,
 } from "@/utils/decimal";
-import type { ReturnReason } from "@/types/purchasing";
+import type { PurchaseReturnItemInput } from "@/types/api";
 
-import * as demo from "@/features/inventory/data/demoStore";
-import { useInventoryDemo } from "@/features/inventory/hooks/useInventoryDemo";
-import { JournalPreview } from "@/features/inventory/components/JournalPreview";
+import { useGoodsReceipt } from "../hooks/useGoodsReceipt";
+import { useReturnableReceipts } from "../hooks/useReturnableReceipts";
+import {
+  ReturnLinesEditor,
+  chosenLines,
+  exceedsRemaining,
+  type ReturnLineDrafts,
+} from "./ReturnLinesEditor";
 
-const REASONS: Array<{ value: ReturnReason; label: string }> = [
-  { value: "rusak", label: "Rusak" },
-  { value: "kadaluarsa", label: "Kadaluarsa" },
-  { value: "salah kirim", label: "Salah kirim" },
-  { value: "lainnya", label: "Lainnya" },
-];
+/** `yyyy-mm-dd` for a date input, from the browser's own clock. */
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 /**
- * Send goods back to the supplier.
+ * Open a return against a delivery.
+ *
+ * THIS SCREEN CREATES A DRAFT AND NOTHING ELSE. It moves no stock, reverses no
+ * cost and touches no payable — all of that happens at submit, on the detail
+ * screen, behind a separate permission. The split is the point: a storekeeper
+ * lists what is going back while the damaged carton is in front of them, and
+ * somebody with the authority to reduce a supplier's payable closes it later.
+ * The return NUMBER is allocated here anyway, because a clerk on the phone to a
+ * vendor needs one to quote before anything ships.
  *
  * THE RETURN IS ALWAYS DRAWN FROM A RECEIPT, never entered free-hand, and that
  * constraint is the whole design. The receipt line carries the price ACTUALLY
@@ -47,101 +55,83 @@ const REASONS: Array<{ value: ReturnReason; label: string }> = [
  * at today's running average would remove a different amount of value than was
  * ever put in, leaving the stock that stays behind valued at a price nobody paid.
  *
- * WHAT SURPRISES PEOPLE, and why the preview spells it out: returning goods that
- * were CHEAPER than the current average makes the remaining stock more
- * expensive. That is arithmetically right — the cheap units are the ones
- * leaving — but it looks like a bug the first time somebody watches HPP rise
- * after sending something back.
+ * WHAT THIS FORM NO LONGER DOES, and the absence is the improvement. The version
+ * this replaced ran on the prototype store, simulated the weighted-average
+ * reversal locally, and posted the return in one irreversible step from the
+ * create screen. The simulation is gone — the server previews it, running the
+ * same code the submit runs — and so is the one-step post.
  *
- * Consignment lots are exempt. They carry the supplier's own cost and never
- * contributed to the average, so taking them back must not disturb it either.
+ * BOTH PURCHASE TYPES ARE OFFERED. The prototype filtered to `beli_putus` and was
+ * stricter than the API: consignment goods CAN be sent back, the stock leaves and
+ * the average is reversed exactly the same way, and only the journal entry is
+ * skipped because the goods were never bought. The form labels that rather than
+ * hiding the option.
  */
 export function PurchaseReturnForm({ receiptId }: { receiptId?: string }) {
   const router = useRouter();
   const {
     receipts,
-    receiptItems,
-    suppliers,
-    products,
-    batches,
-    invoices,
-    sync,
-  } = useInventoryDemo();
+    loading: loadingReceipts,
+    error: receiptsError,
+    truncated,
+  } = useReturnableReceipts();
 
-  // Only outright purchases can be returned for credit: a consignment delivery
-  // was never bought, so there is no debt to reduce.
-  const returnable = receipts.filter(
-    (receipt) => receipt.receiptType === "beli_putus",
-  );
-
-  const [selectedReceipt, setSelectedReceipt] = useState(
-    receiptId ?? returnable[0]?._id ?? "",
-  );
-  const [returnDate, setReturnDate] = useState(
-    new Date().toISOString().slice(0, 10),
-  );
-  const [drafts, setDrafts] = useState<
-    Record<string, { qty: string; reason: ReturnReason }>
-  >({});
-
+  const [selectedId, setSelectedId] = useState(receiptId ?? "");
+  const [returnDate, setReturnDate] = useState(today());
+  const [drafts, setDrafts] = useState<ReturnLineDrafts>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const lines = receiptItems.filter(
-    (item) => item.receiptId === selectedReceipt,
-  );
+  // The lines, the original costs and the returnable ceiling all come from here.
+  // `remainingQty` is the server's own number — see the editor's header.
+  const {
+    receipt,
+    loading: loadingReceipt,
+    error: receiptError,
+  } = useGoodsReceipt(selectedId);
 
-  const chosen = lines.filter((line) =>
-    isPositive(drafts[line._id]?.qty ?? ""),
-  );
+  const items = selectedId && receipt?._id === selectedId ? receipt.items : [];
+  const chosen = chosenLines(items, drafts);
 
   const total = sumDecimals(
-    chosen.map((line) =>
-      multiplyDecimals(drafts[line._id].qty, line.costPerUnit),
+    chosen.map((item) =>
+      multiplyDecimals(drafts[item.itemId].qty, item.costPerUnit),
     ),
   );
 
-  /**
-   * Not memoized on purpose. `chosen` is a fresh array on every render, so a
-   * `useMemo` keyed on it would recompute anyway while telling the React
-   * Compiler it could not preserve the memoization. The work is a handful of
-   * lookups over the lines of one receipt — cheaper than the bookkeeping.
-   */
-  const previews = chosen
-    .map((line) => {
-      const batch = line.batchId
-        ? batches.find((b) => b._id === line.batchId)
-        : undefined;
-      return demo.previewReverseHpp(
-        line.productId,
-        drafts[line._id].qty,
-        line.costPerUnit,
-        batch?.isConsignment === true,
-      );
-    })
-    .filter(Boolean);
+  const consignment = receipt?.purchaseType === "konsinyasi";
 
-  const invoice = invoices.find((i) => i.goodsReceiptId === selectedReceipt);
-  const journal = demo.previewReturnJournal(total);
+  /**
+   * Every reason a line would be refused, checked here so the user learns it
+   * before the round trip. The server checks all of it again — this is a
+   * courtesy, never the authority.
+   */
+  const invalidLines = chosen.filter(
+    (item) =>
+      drafts[item.itemId].reason.trim() === "" ||
+      exceedsRemaining(drafts[item.itemId].qty, item.remainingQty),
+  );
+
+  const canSave = chosen.length > 0 && invalidLines.length === 0 && !saving;
 
   function setDraft(
-    lineId: string,
-    patch: Partial<{ qty: string; reason: ReturnReason }>,
+    itemId: string,
+    patch: Partial<{ qty: string; reason: string }>,
   ) {
     setDrafts((prev) => ({
       ...prev,
       // Defaults first, then whatever the row already held, then the patch —
       // spread order matters, and listing the literal keys alongside a spread
       // that also carries them is how a default silently wins over a real value.
-      [lineId]: {
-        qty: prev[lineId]?.qty ?? "",
-        reason: prev[lineId]?.reason ?? "rusak",
+      [itemId]: {
+        qty: prev[itemId]?.qty ?? "",
+        reason: prev[itemId]?.reason ?? "",
         ...patch,
       },
     }));
   }
 
-  function handleSubmit(event: React.FormEvent) {
+  async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setFormError(null);
 
@@ -150,38 +140,60 @@ export function PurchaseReturnForm({ receiptId }: { receiptId?: string }) {
       return;
     }
 
+    if (invalidLines.length > 0) {
+      setFormError(
+        "Ada baris yang qty-nya melebihi sisa atau belum diisi alasannya.",
+      );
+      return;
+    }
+
+    const items: PurchaseReturnItemInput[] = chosen.map((item) => ({
+      originalReceiptItemId: item.itemId,
+      qty: drafts[item.itemId].qty.trim(),
+      reason: drafts[item.itemId].reason.trim(),
+    }));
+
     setSaving(true);
     try {
-      const created = demo.submitPurchaseReturn({
-        originalReceiptId: selectedReceipt,
+      const created = await purchaseReturnService.create({
+        originalReceiptId: selectedId,
         returnDate,
-        items: chosen.map((line) => ({
-          originalReceiptItemId: line._id,
-          qty: drafts[line._id].qty,
-          reason: drafts[line._id].reason,
-        })),
+        items,
       });
 
-      sync();
-      router.push("/dashboard/purchasing/returns");
       swalToast(
-        `Retur ${created.returnNumber} tersimpan — HPP & utang diperbarui.`,
+        `Draft retur ${created.returnNumber} dibuat — belum ada stok yang keluar.`,
       );
-    } catch (error) {
+      // Straight to the detail, which is where the preview and the submit live.
+      // A draft left on the list is one somebody has to find again.
+      router.push(`/dashboard/purchasing/returns/${created._id}`);
+    } catch (caught) {
       setFormError(
-        error instanceof Error
-          ? error.message
-          : "Terjadi kesalahan. Coba lagi.",
+        caught instanceof ApiError
+          ? caught.fullMessage
+          : "Retur gagal disimpan. Coba lagi.",
       );
       setSaving(false);
     }
   }
 
-  if (returnable.length === 0) {
+  if (loadingReceipts) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
+        <Spinner /> Memuat daftar penerimaan…
+      </div>
+    );
+  }
+
+  if (receiptsError) {
+    return <Alert variant="error">{receiptsError}</Alert>;
+  }
+
+  if (receipts.length === 0) {
     return (
       <Alert variant="info">
-        Belum ada penerimaan beli putus yang bisa diretur. Konsinyasi tidak bisa
-        diretur lewat jalur ini — barangnya memang belum pernah dibeli.
+        Belum ada penerimaan yang bisa diretur. Retur selalu ditarik dari
+        penerimaan yang sudah tercatat — itulah yang membawa harga beli aslinya.
       </Alert>
     );
   }
@@ -195,27 +207,39 @@ export function PurchaseReturnForm({ receiptId }: { receiptId?: string }) {
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="receipt">Pilih penerimaan</Label>
             <Select
-              value={selectedReceipt}
+              value={selectedId}
               onValueChange={(value) => {
-                setSelectedReceipt(value);
+                setSelectedId(value);
+                // The drafts are keyed by the OLD receipt's item ids; keeping
+                // them would silently carry quantities onto lines of a different
+                // delivery.
                 setDrafts({});
+                setFormError(null);
               }}
             >
               <SelectTrigger id="receipt" aria-label="Pilih penerimaan">
-                <SelectValue />
+                <SelectValue placeholder="Pilih penerimaan…" />
               </SelectTrigger>
               <SelectContent>
-                {returnable.map((item) => (
-                  <SelectItem key={item._id} value={item._id}>
-                    {item.receiptNumber} ·{" "}
-                    {suppliers.find((s) => s._id === item.supplierId)?.name}
+                {receipts.map((row) => (
+                  <SelectItem key={row._id} value={row._id}>
+                    {row.receiptNumber} · {row.supplierName ?? "—"}
+                    {row.purchaseType === "konsinyasi" ? " · konsinyasi" : ""}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <p className="text-xs text-muted">
-              Hanya beli putus — harga beli aslinya ikut terbawa dari sini.
+              Harga beli aslinya ikut terbawa dari sini — bukan HPP yang berlaku
+              hari ini.
             </p>
+            {truncated && (
+              <p className="text-xs text-muted">
+                Hanya {receipts.length} penerimaan terbaru yang ditampilkan.
+                Kalau penerimaannya tidak ada di sini, buka detailnya dari daftar
+                penerimaan dan mulai retur dari sana.
+              </p>
+            )}
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -226,202 +250,94 @@ export function PurchaseReturnForm({ receiptId }: { receiptId?: string }) {
               value={returnDate}
               onChange={(event) => setReturnDate(event.target.value)}
             />
+            <p className="text-xs text-muted">
+              Tanggal barang benar-benar dikembalikan — ini yang dipakai jurnal
+              saat retur disubmit, bukan tanggal pengetikan.
+            </p>
           </div>
         </div>
+
+        {consignment && (
+          <div className="mt-4">
+            <Alert variant="info">
+              Penerimaan konsinyasi. Stok tetap keluar dan HPP tetap dibalik,
+              tapi <b>tidak ada utang yang berkurang</b> — barangnya memang belum
+              pernah dibeli, jadi tidak ada jurnal yang dibuat.
+            </Alert>
+          </div>
+        )}
       </Card>
 
       <Card title="Barang yang dikembalikan">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-[10px] uppercase tracking-widest text-muted">
-                <th className="px-2 py-2 text-left font-medium">Produk</th>
-                <th className="px-2 py-2 text-right font-medium">Diterima</th>
-                <th className="px-2 py-2 text-right font-medium">
-                  Sudah diretur
-                </th>
-                <th className="px-2 py-2 text-right font-medium">Maks</th>
-                <th className="px-2 py-2 text-right font-medium">
-                  Harga beli asli
-                </th>
-                <th className="px-2 py-2 text-right font-medium">Qty retur</th>
-                <th className="px-2 py-2 text-left font-medium">Alasan</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lines.map((line) => {
-                const product = products.find((p) => p._id === line.productId);
-                const already = demo.returnedQtyOf(line._id);
-                const max = toDecimalString(
-                  (toMinor(line.qty) ?? 0n) - (toMinor(already) ?? 0n),
-                );
-                const exhausted = (toMinor(max) ?? 0n) <= 0n;
-                const draft = drafts[line._id];
-                const active = isPositive(draft?.qty ?? "");
+        {!selectedId && (
+          <p className="py-8 text-center text-sm text-muted">
+            Pilih penerimaan dulu untuk melihat barang yang bisa diretur.
+          </p>
+        )}
 
-                return (
-                  <tr
-                    key={line._id}
-                    className={cn(
-                      "border-b border-border/60 last:border-0",
-                      active && "bg-primary/5",
-                    )}
-                  >
-                    <td className="px-2 py-2">
-                      <p className="text-sm font-medium">
-                        {product?.name ?? "—"}
-                      </p>
-                      <p className="font-mono text-xs text-muted">
-                        {product?.sku}
-                      </p>
-                    </td>
-                    <td className="px-2 py-2 text-right font-mono text-xs tabular-nums text-muted">
-                      {formatQty(line.qty)}
-                    </td>
-                    <td className="px-2 py-2 text-right font-mono text-xs tabular-nums text-muted">
-                      {(toMinor(already) ?? 0n) > 0n ? formatQty(already) : "—"}
-                    </td>
-                    <td className="px-2 py-2 text-right font-mono text-xs font-semibold tabular-nums">
-                      {formatQty(max)}
-                    </td>
-                    <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">
-                      {formatMoney(line.costPerUnit)}
-                    </td>
-                    <td className="px-2 py-2">
-                      <Input
-                        aria-label={`Qty retur ${product?.name ?? ""}`}
-                        inputMode="decimal"
-                        placeholder="0"
-                        disabled={exhausted}
-                        value={draft?.qty ?? ""}
-                        onChange={(event) =>
-                          setDraft(line._id, { qty: event.target.value })
-                        }
-                        className="ml-auto max-w-20 text-right font-mono"
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Select
-                        value={draft?.reason ?? "rusak"}
-                        onValueChange={(value) =>
-                          setDraft(line._id, { reason: value as ReturnReason })
-                        }
-                      >
-                        <SelectTrigger
-                          aria-label={`Alasan ${product?.name ?? ""}`}
-                          className="w-36"
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {REASONS.map((reason) => (
-                            <SelectItem key={reason.value} value={reason.value}>
-                              {reason.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        {selectedId && loadingReceipt && (
+          <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted">
+            <Spinner /> Memuat baris penerimaan…
+          </div>
+        )}
+
+        {selectedId && receiptError && (
+          <Alert variant="error">{receiptError}</Alert>
+        )}
+
+        {selectedId && !loadingReceipt && items.length > 0 && (
+          <ReturnLinesEditor
+            items={items}
+            drafts={drafts}
+            onChange={setDraft}
+            disabled={saving}
+          />
+        )}
+      </Card>
+
+      <Card title="Ringkasan">
+        <div className="flex flex-col gap-2 text-sm">
+          <div className="flex justify-between">
+            <span className="text-muted">Baris diretur</span>
+            <b className="font-mono tabular-nums">{chosen.length}</b>
+          </div>
+          <div className="flex justify-between border-t border-border pt-2">
+            <b>Perkiraan nilai retur</b>
+            <b className="font-mono text-base tabular-nums text-danger">
+              {formatMoney(total)}
+            </b>
+          </div>
+          {/* PERKIRAAN, deliberately. The server recomputes every line against
+              the live receipt at submit, so a draft opened this morning can be
+              worth something different this afternoon if another return against
+              the same delivery landed in between. */}
+          <p className="mt-1 text-xs text-muted">
+            Angka ini dihitung ulang oleh server saat retur disubmit. Nilai
+            akhirnya bisa berbeda kalau ada retur lain atas penerimaan yang sama
+            yang lebih dulu final.
+          </p>
         </div>
       </Card>
 
-      {/* ------------------------------------------- reverse weighted HPP */}
-      {previews.length > 0 && (
-        <div className="rounded-lg border border-dashed border-primary/50 bg-primary/5 p-4">
-          <p className="text-[10px] font-medium uppercase tracking-widest text-primary-hover">
-            HPP dihitung ulang dengan HARGA BELI ASLI, bukan HPP berjalan
-          </p>
-          <div className="mt-2 flex flex-col gap-1 overflow-x-auto">
-            {previews.map((preview, index) => (
-              <p
-                key={index}
-                className="whitespace-nowrap font-mono text-[13px] leading-7"
-              >
-                {preview!.productName} <span className="text-muted">→</span>{" "}
-                {preview!.skipped ? (
-                  <span className="text-muted">
-                    lot konsinyasi — HPP tidak dihitung ulang
-                  </span>
-                ) : preview!.hppAfter === null ? (
-                  <>
-                    stok habis <span className="text-muted">→</span>{" "}
-                    <b className="text-primary-hover">HPP direset (null)</b>
-                  </>
-                ) : (
-                  <>
-                    (({formatQty(preview!.qtyBefore)}{" "}
-                    <span className="text-muted">×</span>{" "}
-                    {formatMoney(preview!.hppBefore)}){" "}
-                    <span className="text-muted">−</span> (
-                    {formatQty(preview!.qtyReturned)}{" "}
-                    <span className="text-muted">×</span>{" "}
-                    {formatMoney(preview!.originalCost)})){" "}
-                    <span className="text-muted">÷</span>{" "}
-                    {formatQty(preview!.qtyAfter)}{" "}
-                    <span className="text-muted">=</span>{" "}
-                    <b className="text-primary-hover">
-                      {formatMoneyPrecise(preview!.hppAfter)}
-                    </b>
-                  </>
-                )}
-              </p>
-            ))}
-          </div>
-          <p className="mt-2 text-xs text-muted">
-            Kalau barang yang dikembalikan <b>lebih murah</b> dari rata-rata,
-            HPP sisa stok justru <b>naik</b>. Itu benar secara hitungan — unit
-            murahnya yang pergi — dan inilah yang menjaga nilai persediaan tetap
-            sama dengan uang yang benar-benar keluar.
-          </p>
-        </div>
-      )}
-
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,320px)]">
-        <JournalPreview
-          lines={journal}
-          emptyReason="Isi qty retur untuk melihat jurnal yang akan dibuat."
-        />
-
-        <Card title="Ringkasan">
-          <div className="flex flex-col gap-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-muted">Baris diretur</span>
-              <b className="font-mono tabular-nums">{chosen.length}</b>
-            </div>
-            <div className="flex justify-between border-t border-border pt-2">
-              <b>Nilai retur</b>
-              <b className="font-mono text-base tabular-nums">
-                {formatMoney(total)}
-              </b>
-            </div>
-            {invoice && (toMinor(total) ?? 0n) > 0n && (
-              <p className="mt-1 text-xs text-muted">
-                Faktur <b className="font-mono">{invoice.invoiceNumber}</b>{" "}
-                otomatis berkurang {formatMoney(total)} — supaya utang dan stok
-                tetap sepakat.
-              </p>
-            )}
-          </div>
-        </Card>
-      </div>
-
       <div className="flex flex-wrap gap-2">
-        <Button type="submit" disabled={saving || chosen.length === 0}>
-          {saving ? "Menyimpan…" : "Simpan retur"}
+        <Button type="submit" disabled={!canSave}>
+          {saving ? "Menyimpan…" : "Simpan draft retur"}
         </Button>
         <Button
           type="button"
           variant="secondary"
+          disabled={saving}
           onClick={() => router.push("/dashboard/purchasing/returns")}
         >
           Batal
         </Button>
       </div>
+
+      <p className="text-xs text-muted">
+        Menyimpan draft <b>belum</b> mengeluarkan stok dan belum mengurangi utang.
+        Perkiraan HPP dan jurnalnya bisa dilihat di halaman detail, lalu retur
+        disubmit dari sana.
+      </p>
     </form>
   );
 }

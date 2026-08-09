@@ -33,6 +33,7 @@ const BRANCHES: Branch[] = [
     name: "Jakarta",
     address: null,
     phone: null,
+    location: { lat: null, lng: null, source: "manual" },
     isActive: true,
     deletedAt: null,
     createdAt: "2026-01-01T00:00:00.000Z",

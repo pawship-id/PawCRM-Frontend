@@ -29,6 +29,7 @@ function branchPage(): PageResult<Branch> {
         name: "Jakarta",
         address: null,
         phone: null,
+        location: { lat: null, lng: null, source: "manual" },
         isActive: true,
         deletedAt: null,
         createdAt: "",
@@ -93,6 +94,9 @@ describe("WarehouseCreateForm", () => {
         // rather than omitted.
         defaultBranchId: null,
         address: null,
+        // Both coordinate fields left blank, which is one pin-less state, not
+        // two nulls — see toGeoLocation.
+        location: null,
         picName: "Budi",
         picPhone: null,
         isActive: true,

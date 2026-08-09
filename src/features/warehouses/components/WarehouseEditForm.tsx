@@ -10,7 +10,12 @@ import {
   Spinner,
   TextField,
   ConfirmDialog,
+  LocationFields,
+  toGeoLocation,
+  toLocationFieldsValue,
+  validateLocationFields,
 } from "@/components";
+import type { LocationFieldsValue } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -145,6 +150,11 @@ function DetailsSection({
     warehouse.defaultBranchId,
   );
   const [address, setAddress] = useState(warehouse.address ?? "");
+  // toLocationFieldsValue tolerates a missing pin, so a warehouse document
+  // written before the field existed renders as two empty inputs, not a throw.
+  const [location, setLocation] = useState<LocationFieldsValue>(() =>
+    toLocationFieldsValue(warehouse.location),
+  );
   const [picName, setPicName] = useState(warehouse.picName ?? "");
   const [picPhone, setPicPhone] = useState(warehouse.picPhone ?? "");
   const [isActive, setIsActive] = useState(warehouse.isActive);
@@ -159,7 +169,9 @@ function DetailsSection({
     event.preventDefault();
     setFormError(null);
 
-    const nextErrors: Record<string, string> = {};
+    const nextErrors: Record<string, string> = {
+      ...validateLocationFields(location),
+    };
     const nameError = validateWarehouseName(name);
     const addressError = validateWarehouseAddress(address);
     const picNameError = validatePicName(picName);
@@ -177,6 +189,7 @@ function DetailsSection({
         name: name.trim(),
         defaultBranchId: branchId,
         address: address.trim() === "" ? null : address.trim(),
+        location: toGeoLocation(location),
         picName: picName.trim() === "" ? null : picName.trim(),
         picPhone: picPhone.trim() === "" ? null : picPhone.trim(),
         isActive,
@@ -245,7 +258,15 @@ function DetailsSection({
           />
         </div>
 
-        {/* Row 3: the person accountable for stock here */}
+        {/* Row 3: the map pin */}
+        <LocationFields
+          value={location}
+          onChange={setLocation}
+          errors={fieldErrors}
+          disabled={disabled}
+        />
+
+        {/* Row 4: the person accountable for stock here */}
         <TextField
           label="PIC name"
           name="picName"

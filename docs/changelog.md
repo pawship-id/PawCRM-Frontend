@@ -7,9 +7,264 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased] — Inventory hub, and the document a ledger row points at
+## [Unreleased] — Retur ke Supplier on the API
 
 Branch: `feature/inventory-purchasing`.
+
+**The return screens now run against `/api/purchase-returns`.** They were the last of the
+purchasing module still on the prototype store, and the worst place for it to remain: the old
+form simulated the weighted-average reversal in the browser and posted a return irreversibly
+from the create screen, in one step, with no confirmation. The number it was simulating is the
+cost basis of every unit still on the shelf. See `docs/features/purchase-returns.md`.
+
+**A return now has a life before it posts**, matching the workflow the API has always
+exposed. `/returns/new` creates a **draft** and moves nothing; the new `/returns/[id]` is
+where it is edited, previewed and submitted. The preview comes from
+`POST /:id/preview` — the endpoint that runs the submit's own code with the commit left off —
+so the HPP arithmetic on screen is the arithmetic that will be written, not a second
+implementation of it that drifts silently.
+
+**The list grew filters, pagination, status and row actions**, replacing a table that showed
+every demo row unsorted with no way to narrow it. A draft can be discarded from the list; a
+submitted return cannot, because the API refuses to discard one and the control should not
+exist where the request would fail.
+
+**Consignment deliveries are returnable now.** The old form filtered the picker to
+`beli_putus` and was *stricter than the API*: consignment goods can be sent back, the stock
+leaves and the average is reversed identically, and only the journal entry is skipped because
+the goods were never bought. The form offers both and labels the difference.
+
+**`reason` is free text again.** The prototype's four-value enum could not express "rusak saat
+transit, kardus basah"; the API stores a 255-character string per line precisely because the
+supplier reads it. The editor offers the four as presets plus "Tulis sendiri…".
+
+### Permissions: three actions that could not be granted
+
+`features/permissions/types.ts` had `purchaseReturns: ["create", "read"]` against a backend
+catalog of `["create", "read", "update", "delete", "submit"]`. A tenant literally could not
+authorise anybody to submit a return from the Role screen. Fixed.
+
+`submit` is separate from `update` for the usual reason — the seeded **Staff** role gets
+create/read/update and not submit, so the person who identifies a bad delivery is not the one
+who decides the vendor owes less for it. Because `POST /:id/preview` is gated on `submit`
+rather than `read`, a Staff user gets a 403 there while the rest of the page works;
+`useReturnPreview` separates that case from an error and the screen renders it as a panel they
+do not get, never as a banner over a working page.
+
+**All three routes are guarded.** `/returns` had no `RequirePermission` at all — the nav hid
+the entry, but direct URL entry rendered the tenant's returns to any signed-in role.
+
+### A mislabelled journal, fixed at the root
+
+`ReceiptPreviewJournal` is **deleted**. It existed to map the receipt preview's bare
+`accountId`s onto account names, and it decided which line was which by testing
+`line.credit !== null` — but that endpoint has always sent `credit: "0"` for a debit line,
+never `null`. Every line matched the credit branch, so the panel labelled all three rows of a
+purchase **"2101 Utang Supplier"**, on the one screen where the entry matters most.
+
+Both purchasing previews now return `accountCode` and `accountName` per line (backend
+`0.29.1`), so `ReceiptForm` and the new `ReturnPreviewPanel` pass them straight to the shared
+`JournalPreview` and nothing guesses. `ReceiptJournalLine` documents the remaining trap: both
+`debit` and `credit` are always present on these two endpoints, one of them `"0"` — read the
+amount, never the null.
+
+### Other changes riding along
+
+- **The receipt detail shows what has already gone back.** A new **Diretur** column reads
+  `returnedQty` / `remainingQty` from `GET /goods-receipts/:id` (backend `0.29.1`), and the
+  existing "this delivery already has returns" notice now links to each of them — "check
+  before raising another" is only actionable if the reader can get to the one already there.
+- **`PurchaseReturnListRow.notes` removed.** The collection has never had the field, so it was
+  always `undefined` at runtime. A return explains itself per line, in `items[].reason`.
+- **The purchasing hub's return count comes from the API**, read off `pagination.total` with
+  `limit: 1` rather than by counting a page — `.length` on a page silently caps at the page
+  size and would report "20 retur" forever.
+- **`tests/PurchasingScreens.test.tsx` deleted.** It was the last purchasing suite seeding
+  `demoStore`, and returns were the only thing left in it. Replaced by
+  `PurchaseReturnScreens.test.tsx` and `purchaseReturn.service.test.ts`.
+
+---
+
+## [Unreleased] — Utang Supplier on the API, and three gaps closed behind it
+
+Branch: `feature/inventory-purchasing`.
+
+**The payables screens now run against `/api/purchase-invoices`.** They were the last of the
+purchasing module's core flows computing their answers in the browser: the list derived every
+invoice's outstanding balance, decided for itself which were overdue, and summed a running
+total across whatever rows it happened to be holding. All three are now the server's —
+`outstandingAmount` and `isOverdue` arrive per row against one instant per page, and the
+headline figures come from `GET /purchase-invoices/outstanding`, summed in the database over
+the whole book. See `docs/features/supplier-payables.md`.
+
+**A new screen: filing the supplier's bill.** `/dashboard/purchasing/payables/new` wraps
+`POST /purchase-invoices`, reachable from the payables toolbar or deep-linked from a receipt
+with `?receipt=<id>`. The amounts are copied from the delivery and shown read-only: they must
+reconcile to the minor unit or the API refuses the request, so an editable box could only
+hold the same numbers or cause a 400.
+
+**Both new routes are guarded, and the two existing ones now are too.** `/payables` and
+`/payables/[id]` had no `RequirePermission` at all — the nav hid the entry, but direct URL
+entry rendered a tenant's supplier debt to any signed-in role. The payment form gates
+separately on `purchaseInvoices:pay`, which is the separation of duties the backend enforces:
+filing a bill is data entry, paying one moves cash irreversibly.
+
+### Three backend gaps closed, because the frontend could not be correct without them
+
+- **`dateTo` silently dropped a day.** `purchaseInvoice.repository.js` documented that the
+  validation layer pushed the bound to end-of-day; nothing did. `dateTo=2026-08-07` arrived
+  as midnight, so every bill issued on the 7th fell outside the range — and the list still
+  rendered, just missing the newest rows. The coercion now lives in `common.validation.js` as
+  `inclusiveDateTo`, so the next module to need it does not have to remember.
+- **The overdue rupiah figure did not exist.** `?overdue=true` answers *how many* through
+  `pagination.total` and nothing more, so "N faktur lewat jatuh tempo — total Rp X" could
+  only be assembled by paging the entire overdue book. `/outstanding` now carries
+  `overdueInvoiceCount` / `overdueOutstanding` per supplier and in the grand totals, summed
+  in the same `$group` against the same `now` — so the banner cannot claim more is late than
+  is owed.
+- **Unbilled deliveries could not be filtered for.** `GET /goods-receipts` gained
+  `?invoiced=`, a tri-state. Without it the file-a-bill picker had to filter a page on
+  `invoiceId === null`, which discards rows the server already counted — page 2 of "belum
+  difakturkan" comes back empty while unbilled deliveries sit on page 3.
+
+**A permission-catalog drift, fixed.** The frontend declared
+`purchaseInvoices: ["read", "update", "pay"]`. There is no `PATCH` route for `update` to
+gate, and the missing `create` hid the file-a-bill button from exactly the roles that hold
+the grant. Now `["create", "read", "pay"]`, matching the backend catalog.
+
+**`features/purchasing/payables.ts` deleted.** Its `isOverdue`, `isDueWithin` and
+`outstandingTotal` helpers existed to derive in the browser what the API now sends. Keeping
+them would have kept a second definition of "overdue" around to drift from the server's.
+
+### Known gap, not closed here
+
+**Reversing a payment's journal entry corrects the ledger, not the invoice.** Nothing on the
+backend restores `paidAmount` or `status`, so a bill whose payment was reversed still reads
+as paid. `PaymentHistory` shows each payment's `journalEntryId` and says exactly this, rather
+than offering a "batalkan pembayaran" action that would not do what its label claims. Closing
+the loop needs a backend void/reversal hook — a new feature, deliberately out of this change.
+
+---
+
+## [Unreleased] — Penerimaan Barang on the API, and a module with no edit button
+
+Branch: `feature/inventory-purchasing`.
+
+**The goods-receipt screens now run against `/api/goods-receipts`.** They were the last of
+the purchasing module's core flows still computing their answers in the browser: the create
+form ran its own sequential weighted-average simulation across its lines, built its own
+journal, and invented an invoice number — all reimplemented from the service, and all
+authoritative-looking. The list and the detail read a client-side prototype store. Every one
+of those numbers is now the server's, fetched from `POST /goods-receipts/preview` — the
+posting path with the commit left off — so what a clerk approves before saving is what
+actually gets written. See `docs/features/goods-receipts.md`.
+
+**Create and read. There is no update and no delete, and that is the feature.** The backend
+exposes no `PATCH` and no `DELETE` for a receipt, because it posts stock movements and a
+journal entry that are both immutable and sets the cost basis every later sale is costed at.
+The frontend does not paper over the absence: no edit route, no row actions, no
+`ConfirmDialog`, and both screens say in plain Indonesian that correction happens through a
+purchase return. The `includeDeleted` query flag the endpoint validates is **not** sent and
+has no toggle — with no delete route it can never change a result, and a control that cannot
+alter its data is worse than an absent one.
+
+**`invoiceId` is not the debt, and the copy finally says so.** A `beli_putus` receipt credits
+`2101 Utang Supplier` the moment it posts; `invoiceId` stays null until the supplier's own
+bill is filed separately. The old prototype told users the opposite — that the receipt
+"created the invoice automatically" — which is exactly backwards about when money starts
+being owed. The detail now reads _"Utang sudah tercatat, faktur supplier belum difilekan"_,
+and the list distinguishes `belum difakturkan` from a consignment's `tanpa faktur`.
+
+**Three backend gaps are worked around rather than hidden**, each documented where it lives:
+the create endpoint is not idempotent (mitigated by a submit lock and `router.replace`, not
+solved — a double submit still creates two deliveries); the preview's journal lines carry
+`accountId` but no `accountCode`/`accountName` unlike their stock-movement sibling, so
+`ReceiptPreviewJournal` maps them onto `1201`/`1301`/`2101` by role; and `GET /:id` resolves
+product labels but stops at `batchId`, so lot codes and expiry dates are fetched one at a
+time. All three are listed in the feature doc with what would delete the workaround.
+
+### Added
+
+- **`features/purchasing/hooks/useGoodsReceipts.ts`** — the list query (page, search,
+  supplier, warehouse, purchase type, `receiptDate` range). Mirrors `useSuppliers`; any
+  filter change resets to page 1. No `includeDeleted`, and no mutation for `refetch` to
+  follow, because no row here can be acted on.
+- **`features/purchasing/hooks/useGoodsReceipt.ts`** — one document, with `notFound` as its
+  own state separate from `error`. A 404 offers the way back to the list; a transport
+  failure offers a retry.
+- **`features/purchasing/hooks/useReceiptPreview.ts`** — debounced `POST /preview`, keyed on
+  the serialised payload so an identical body rebuilt each render does not re-fetch. Keeps
+  the previous answer while a new one is in flight.
+- **`features/purchasing/hooks/useReceiptLots.ts`** and **`useReceiptReturns.ts`** —
+  best-effort decorations for the detail screen. `productBatches:read` and
+  `purchaseReturns:read` are permissions separate from `goodsReceipts:read`, so a refusal
+  costs the lot column or the returns notice, never the page.
+- **`features/purchasing/hooks/useReceiptFilterOptions.ts`** — the toolbar's two dropdowns,
+  deliberately **unfiltered** unlike `useSupplierOptions`: that one feeds forms, where an
+  inactive vendor must not be selectable; this feeds a read, and a vendor deactivated last
+  month still delivered everything they delivered.
+- **`features/purchasing/components/ReceiptsToolbar.tsx`**, **`ReceiptsTable.tsx`** — the
+  list, split as `SuppliersScreen` is. The table has no actions column.
+- **`features/purchasing/components/ReceiptPreviewJournal.tsx`** — the shim over the
+  labelling gap above, with the mapping's justification in its header and a note on what
+  removes the file.
+- **`services/purchaseReturn.service.ts`** — `list` only, so the receipt detail can answer
+  "has this already been returned against?". The returns screens are still on the prototype
+  store; wrapping their writes now would put two ways to return goods in the codebase.
+- **`docs/features/goods-receipts.md`**, **`tests/ReceiptScreens.test.tsx`**,
+  **`tests/goodsReceipt.service.test.ts`**.
+
+### Changed
+
+- **`services/goodsReceipt.service.ts`** — gained `getById`, `create` and `preview`. The
+  header no longer says "read-only here because the screen still runs on the prototype
+  store"; that reason is gone, and the remaining absences are the backend's design.
+- **`features/purchasing/components/ReceiptsScreen.tsx`** — rewritten onto the API. The
+  headline total comes from `/goods-receipts/summary`, summed server-side across every
+  receipt ever rather than over the visible page.
+- **`features/purchasing/components/ReceiptDetail.tsx`** — rewritten onto `GET /:id`. Gained
+  loading / not-found / error states, the `createdByName` and per-line unit the API resolves,
+  and a notice when returns already exist. **Lost its journal panel**: the payload carries no
+  lines, and reconstructing an entry from `total` and `taxAmount` would be the screen
+  asserting what was posted rather than reading it.
+- **`features/purchasing/components/ReceiptForm.tsx`** — rewritten onto `/preview` and
+  `POST`. Lost the local HPP simulation, the **Nomor faktur supplier** field and the
+  **Jatuh tempo** display — the API accepts neither, and both belong to the purchase invoice
+  that is filed afterwards. `taxAmount` is now omitted from the payload on consignment rather
+  than sent as `"0"`, because the endpoint forbids the key there.
+- **`app/(dashboard)/dashboard/purchasing/receipts/*`** — wrapped in `RequirePermission`.
+  The create page is gated on `create` rather than `read`, because `/preview` is itself gated
+  on `create` and a read-only role would otherwise meet a 403 on the first keystroke.
+- **`types/api.ts`** — added the goods-receipt detail, create, preview and purchase-return
+  list shapes. Now imports two preview row types from `types/inventory.ts` (type-only, and
+  that file imports nothing, so it cannot cycle): a receipt's preview returns the stock
+  gateway's own rows verbatim, and redeclaring them would be a second definition that drifts.
+- **`tests/PurchasingScreens.test.tsx`** — the `ReceiptForm` and `ReceiptsScreen` blocks were
+  removed; those screens no longer touch `demoStore`. What remains is payables, returns and
+  the hub.
+
+---
+
+## [Unreleased] — Inventory hub, the document a ledger row points at, and a business that can read itself
+
+Branch: `feature/inventory-purchasing`.
+
+**Business information, in the account dropdown.** `/dashboard/profile` answered "who am I";
+nothing answered "what business am I in". A signed-in user could not see their own tenant's
+timezone, currency, plan or trial deadline anywhere in the app — the data existed, and only a
+platform owner had a route to it. The new screen at `/dashboard/business` reads
+`GET /tenants/me` (`PawCRM-Backend` 0.25.0) and lays the tenant out in four cards. It hangs
+off the top-bar account menu below **My profile**, not the sidebar: those two questions belong
+together, and Master Data is where records are *maintained* — this screen is read-only, so it
+would have been the one entry in that group leading nowhere you can act. See
+`docs/features/business-information.md`.
+
+**Read-only, and there is no `update` in the service either.** Renaming a business, changing
+its slug or moving its timezone are not per-user preferences: the slug is a public URL
+identifier existing links depend on, and the timezone re-anchors every report and every stock
+movement date the tenant has. Those edits stay behind platform administration. Every instant
+on the screen is formatted **in the tenant's own timezone** — which is what that field is for,
+and a trial deadline read on a laptop still set to UTC is a day out at either end of the day.
 
 **The Inventory landing screen is wired.** It was the last screen in the module still
 computing its answers from the in-memory prototype store, and both of its alert lists were
@@ -36,6 +291,22 @@ on the backend now.
   same shape, 30-day horizon echoed back by the API so the caption hardcodes no number
 - **A `Kategori` card on the hub**, which the sidebar had and the hub did not
 - **`docs/features/inventory-hub.md`**
+- **`app/(dashboard)/dashboard/business/page.tsx`** — the Business information screen, guarded
+  by `RequirePermission feature="tenants"` so direct URL entry shows Access denied rather than
+  a page that can only ever load a 403
+- **`features/tenant/`** — `useTenant` (one fetch, plus `refetch` for the error state's **Try
+  again**), `TenantDetail` (the four cards, timezone-aware dates, the trial sentence, the
+  logo/initials fallback) and `TenantSubscriptionBadge`. The badge keeps `past_due`,
+  `suspended` and `cancelled` in three different tones on purpose: a bill to pay, a service
+  already withheld, and the end of the relationship are not the same news
+- **`services/tenant.service.ts`** — `me()` and nothing else. The rest of `/api/tenants`
+  administers *other* businesses; a method for it here would invite a screen that has no
+  business existing in a tenant's own app
+- **`types/api.ts`** — `Tenant`, `TenantSubscription`, `TenantSettings`
+- **`components/icons.tsx`** — `BusinessIcon`, a storefront, deliberately unlike the branch
+  building and the warehouse shed
+- **`UserMenu.test.tsx`** (3 tests) — the dropdown had none until now
+- **`docs/features/business-information.md`**
 
 ### Changed
 
@@ -50,6 +321,13 @@ on the backend now.
   comment explaining why the field did not exist
 - **`InventoryScreens.test.tsx` is now a mocked-service suite** (7 tests) rather than a
   demo-store mount test
+- **`UserMenu` carries a third entry**, `Business information`, between the profile link and
+  Logout. Rendered only when `can("tenants", "read")` — the same grant `GET /tenants/me`
+  requires, which no seeded role but Owner holds (by the super-admin bypass), because the
+  screen shows the subscription plan and billing state. A link that can only ever open an
+  access-denied panel is worse than no link
+- **`tests/helpers/renderWithAuth.tsx` accepts a `user`**, for components that show who is
+  signed in as well as what their role may do. Still defaults to `null`
 
 ### Fixed
 

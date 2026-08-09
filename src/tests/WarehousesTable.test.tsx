@@ -23,6 +23,7 @@ function makeWarehouse(overrides: Partial<Warehouse> = {}): Warehouse {
     name: "Gudang Pusat",
     defaultBranchId: "b1",
     address: "Jl. Sudirman 1",
+    location: { lat: null, lng: null, source: "manual" },
     picName: "Budi",
     picPhone: "021-555-1234",
     isActive: true,

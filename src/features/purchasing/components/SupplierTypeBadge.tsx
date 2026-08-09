@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type { SupplierType } from "@/types/purchasing";
+import type { SupplierType } from "@/types/api";
 
 /**
  * How the tenant works with this supplier — and it is not cosmetic, because it

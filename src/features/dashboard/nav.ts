@@ -28,6 +28,8 @@ import {
   ReceiptIcon,
   PayableIcon,
   PurchaseReturnIcon,
+  AccountTreeIcon,
+  JournalIcon,
 } from "@/components/icons";
 import type {
   Action,
@@ -49,6 +51,12 @@ export interface NavChild {
   label: string;
   href: string;
   icon: Icon;
+  /**
+   * Match the pathname exactly rather than by prefix — needed by a child whose
+   * route is the parent of its siblings, such as the Inventory hub, which would
+   * otherwise read as active on every screen below it.
+   */
+  exact?: boolean;
   /**
    * The permission a user must hold for this link to appear. Omitted means
    * "always visible" — sections without a catalog feature yet (Booking, POS…)
@@ -94,6 +102,25 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Inventory",
     icon: InventoryIcon,
     children: [
+      {
+        /**
+         * The hub, first — the one screen in the module the menu used to have no
+         * way of reaching at all, so the alert lists it exists for (perlu
+         * restock, mendekati kedaluwarsa) could only be found by typing the URL.
+         *
+         * Ungated, unlike its siblings, because it has no single feature behind
+         * it: every card and both lists gate themselves, so the page is already
+         * exactly as much as the role may read. filterNavItems ignores it when
+         * deciding whether the group survives — see there.
+         *
+         * `exact`, because its href is the prefix of every sibling's: without it
+         * this row would be highlighted on all seven screens below it.
+         */
+        label: "Ringkasan",
+        href: "/dashboard/inventory",
+        icon: InventoryIcon,
+        exact: true,
+      },
       {
         label: "Produk & Varian",
         href: "/dashboard/inventory/products",
@@ -182,6 +209,20 @@ export const NAV_ITEMS: NavItem[] = [
     icon: PurchasingIcon,
     children: [
       {
+        /**
+         * Same shape as the Inventory hub, and `exact` for the same reason: its
+         * href is the prefix of every sibling's, so prefix matching would light
+         * this row up on all four screens below it.
+         *
+         * Ungated, like the Inventory hub — the page gates each section itself,
+         * and the group still disappears entirely when no gated child survives.
+         */
+        label: "Ringkasan",
+        href: "/dashboard/purchasing",
+        icon: PurchasingIcon,
+        exact: true,
+      },
+      {
         label: "Supplier",
         href: "/dashboard/purchasing/suppliers",
         icon: SupplierIcon,
@@ -209,7 +250,43 @@ export const NAV_ITEMS: NavItem[] = [
   },
   { label: "POS", href: "/dashboard/pos", icon: PosIcon },
   { label: "Sales & Invoice", href: "/dashboard/sales", icon: SalesIcon },
-  { label: "Keuangan", href: "/dashboard/keuangan", icon: FinanceIcon },
+  /**
+   * Keuangan — a GROUP rather than a leaf, now that the module has screens.
+   *
+   * Ordered the way double-entry bookkeeping is learned and the way the data
+   * depends: the chart of accounts first, because a journal line has nowhere to
+   * land without it, then the ledger those accounts are posted to. Reports
+   * (laba rugi, neraca, arus kas) are queries over the ledger and will slot in
+   * below it when they exist — they are deliberately not listed yet.
+   */
+  {
+    label: "Keuangan",
+    icon: FinanceIcon,
+    children: [
+      {
+        // The hub, `exact` for the same reason the Inventory and Purchasing
+        // ones are: its href is the prefix of every sibling's, so prefix
+        // matching would light this row up on all of them. Ungated like those
+        // two — the page gates each card itself.
+        label: "Ringkasan",
+        href: "/dashboard/keuangan",
+        icon: FinanceIcon,
+        exact: true,
+      },
+      {
+        label: "Daftar Akun",
+        href: "/dashboard/keuangan/chart-of-accounts",
+        icon: AccountTreeIcon,
+        permission: { feature: "chartOfAccounts", action: "read" },
+      },
+      {
+        label: "Jurnal Umum",
+        href: "/dashboard/keuangan/journal-entries",
+        icon: JournalIcon,
+        permission: { feature: "journalEntries", action: "read" },
+      },
+    ],
+  },
   {
     label: "E-commerce Sync",
     href: "/dashboard/ecommerce-sync",
@@ -271,8 +348,14 @@ export type CanFn = (feature: Feature, action: Action) => boolean;
 /**
  * Narrows NAV_ITEMS to what `can` permits: a leaf is dropped when its
  * `permission` is not granted; a group keeps only its permitted children and is
- * itself dropped when none remain. Items with no `permission` always pass. Pure
- * — the Sidebar memoizes it against the current `can`.
+ * itself dropped when no GATED child survives. Items with no `permission`
+ * always pass. Pure — the Sidebar memoizes it against the current `can`.
+ *
+ * A group's survival is decided by its gated children alone. An ungated child
+ * (the Inventory hub) rides along with whatever else the role may see, but
+ * cannot on its own keep a group open: a role with no inventory grant at all
+ * would then get an Inventory menu whose one destination is a landing page
+ * telling it, seven times over, that it may not read any of this.
  */
 export function filterNavItems(items: NavItem[], can: CanFn): NavItem[] {
   const allowed = (req?: PermissionRequirement) =>
@@ -281,7 +364,9 @@ export function filterNavItems(items: NavItem[], can: CanFn): NavItem[] {
   return items.reduce<NavItem[]>((visible, item) => {
     if (item.children) {
       const children = item.children.filter((child) => allowed(child.permission));
-      if (children.length > 0) visible.push({ ...item, children });
+      if (children.some((child) => child.permission)) {
+        visible.push({ ...item, children });
+      }
     } else if (allowed(item.permission)) {
       visible.push(item);
     }
@@ -303,7 +388,9 @@ export function isActiveHref(
 /** Whether a nav item (leaf or group) is active for the given pathname. */
 export function isActive(item: NavItem, pathname: string): boolean {
   if (item.children) {
-    return item.children.some((child) => isActiveHref(child.href, pathname));
+    return item.children.some((child) =>
+      isActiveHref(child.href, pathname, child.exact),
+    );
   }
   return item.href ? isActiveHref(item.href, pathname, item.exact) : false;
 }

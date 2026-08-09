@@ -3,7 +3,19 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { Alert, Button, Card, Spinner, TextField, ConfirmDialog } from "@/components";
+import {
+  Alert,
+  Button,
+  Card,
+  Spinner,
+  TextField,
+  ConfirmDialog,
+  LocationFields,
+  toGeoLocation,
+  toLocationFieldsValue,
+  validateLocationFields,
+} from "@/components";
+import type { LocationFieldsValue } from "@/components";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { ApiError } from "@/services/api-error";
@@ -113,6 +125,11 @@ function DetailsSection({
   const [name, setName] = useState(branch.name);
   const [address, setAddress] = useState(branch.address ?? "");
   const [phone, setPhone] = useState(branch.phone ?? "");
+  // toLocationFieldsValue tolerates a missing pin, so a branch document written
+  // before the field existed renders as two empty inputs rather than throwing.
+  const [location, setLocation] = useState<LocationFieldsValue>(() =>
+    toLocationFieldsValue(branch.location),
+  );
   const [isActive, setIsActive] = useState(branch.isActive);
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -125,7 +142,9 @@ function DetailsSection({
     event.preventDefault();
     setFormError(null);
 
-    const nextErrors: Record<string, string> = {};
+    const nextErrors: Record<string, string> = {
+      ...validateLocationFields(location),
+    };
     const nameError = validateBranchName(name);
     const addressError = validateAddress(address);
     const phoneError = validatePhone(phone);
@@ -141,6 +160,7 @@ function DetailsSection({
         name: name.trim(),
         address: address.trim() === "" ? null : address.trim(),
         phone: phone.trim() === "" ? null : phone.trim(),
+        location: toGeoLocation(location),
         isActive,
       });
       onUpdated(updated);
@@ -203,6 +223,14 @@ function DetailsSection({
             disabled={disabled}
           />
         </div>
+
+        {/* Row 3: the map pin — two half-width fields fill the existing grid. */}
+        <LocationFields
+          value={location}
+          onChange={setLocation}
+          errors={fieldErrors}
+          disabled={disabled}
+        />
       </div>
 
       <div className="flex items-center gap-2.5">
