@@ -48,6 +48,7 @@ import {
   attributesFor,
   defaultVariantSku,
   matchVariant,
+  skuPrefix,
   variantCombinations,
 } from "../utils/catalogue";
 import { BundleComponentEditor } from "./BundleComponentEditor";
@@ -112,8 +113,8 @@ export function ProductForm({ productId }: { productId?: string }) {
   if (lookups.categories.length === 0) {
     return (
       <Alert variant="error">
-        Belum ada kategori produk. Buat satu dulu di Inventory → Kategori — setiap
-        produk harus difilekan di bawah kategori.
+        Belum ada kategori produk. Buat satu dulu di Inventory → Kategori —
+        setiap produk harus difilekan di bawah kategori.
       </Alert>
     );
   }
@@ -190,6 +191,8 @@ function ProductFormFields({
   const products = bundleCandidates.products;
 
   const [name, setName] = useState(existing?.name ?? "");
+  // "" for a parent that has none — the field is shown in every mode, but only
+  // the modes that sell something insist on it.
   const [sku, setSku] = useState(existing?.sku ?? "");
   const [categoryId, setCategoryId] = useState(
     existing?.categoryId ?? categories[0]._id,
@@ -250,6 +253,11 @@ function ProductFormFields({
    * row when there is one so an edit does not wipe prices somebody set.
    */
   const variantRows: VariantRow[] = useMemo(() => {
+    // The parent's SKU when it has one, its NAME when it does not — leaving the
+    // parent's code empty is ordinary now, and twelve rows called "SKU-…" would
+    // be twelve rows the user has to retype.
+    const prefix = skuPrefix(sku, name);
+
     return variantCombinations(axes).map((combo) => {
       const key = combo.join("|");
       const previous = matchVariant(existingVariants, axes, combo);
@@ -258,7 +266,7 @@ function ProductFormFields({
       return {
         id: previous?._id,
         combo,
-        sku: override.sku ?? previous?.sku ?? defaultVariantSku(sku, combo),
+        sku: override.sku ?? previous?.sku ?? defaultVariantSku(prefix, combo),
         barcode: override.barcode ?? previous?.barcode ?? "",
         sellPrice: override.sellPrice ?? previous?.sellPrice ?? "",
         minStock: override.minStock ?? String(previous?.minStock ?? 0),
@@ -269,7 +277,7 @@ function ProductFormFields({
         openingCost: override.openingCost ?? "",
       };
     });
-  }, [axes, sku, existingVariants, variantOverrides]);
+  }, [axes, sku, name, existingVariants, variantOverrides]);
 
   /**
    * Whether this save can open a stock balance at all.
@@ -317,11 +325,23 @@ function ProductFormFields({
 
   function validate(): boolean {
     const next: Record<string, string> = {};
+    /** Per-variant refusals, keyed by combination — same map applyApiError fills. */
+    const nextRows: Record<string, string> = {};
 
     if (name.trim() === "") next.name = "Nama produk wajib diisi.";
-    // Uniqueness is NOT checked here. Only the server knows what is taken, and
-    // it answers with the field — see applyApiError.
-    if (sku.trim() === "") next.sku = "SKU wajib diisi.";
+    /**
+     * A SKU is required by everything that is SOLD, and by nothing else.
+     *
+     * A parent holds no stock, carries no price and is never scanned — what
+     * staff quote and the till looks up is the variant's code, and each row of
+     * the table below insists on one. Asking for a parent code as well is a
+     * second thing to keep unique that nobody ever says out loud. The field is
+     * still SHOWN in this mode: filling it seeds every variant's SKU.
+     *
+     * Uniqueness is NOT checked here. Only the server knows what is taken, and
+     * it answers with the field — see applyApiError.
+     */
+    if (mode !== "variants" && sku.trim() === "") next.sku = "SKU wajib diisi.";
     if (unit.trim() === "") next.unit = "Satuan wajib diisi.";
 
     if (mode === "standalone") {
@@ -367,10 +387,30 @@ function ProductFormFields({
         next.axes = "Isi minimal satu nilai atribut supaya varian bisa dibuat.";
       }
 
+      /**
+       * The variant SKUs, checked ON THE ROW rather than above the table.
+       *
+       * This is where the requirement moved to: the parent may have no code, so
+       * every row must. Both refusals are bound to the cell that caused them —
+       * a family of twelve rows told only "a SKU is missing" is a hunt, and the
+       * duplicate message used to land in the AXIS error slot, where it also
+       * overwrote whatever the axis editor was trying to say.
+       */
       const skus = variantRows.map((row) => row.sku.trim().toUpperCase());
-      if (new Set(skus).size !== skus.length) {
-        next.axes = "Ada SKU varian yang kembar — setiap varian butuh SKU sendiri.";
-      }
+      const duplicated = new Set(
+        skus.filter(
+          (value, index) => value !== "" && skus.indexOf(value) !== index,
+        ),
+      );
+
+      variantRows.forEach((row, index) => {
+        const key = row.combo.join("|");
+        if (skus[index] === "") {
+          nextRows[key] = "SKU varian wajib diisi.";
+        } else if (duplicated.has(skus[index])) {
+          nextRows[key] = "SKU ini kembar dengan varian lain.";
+        }
+      });
 
       // Every variant is sold directly, so every variant needs a price — the
       // API requires it per row, and a blank here would come back as a 400 on
@@ -455,7 +495,8 @@ function ProductFormFields({
     }
 
     setFieldErrors(next);
-    return Object.keys(next).length === 0;
+    setRowErrors(nextRows);
+    return Object.keys(next).length === 0 && Object.keys(nextRows).length === 0;
   }
 
   /** Whether anything at all will be sent as an opening balance. */
@@ -488,15 +529,16 @@ function ProductFormFields({
   /** The create payload for whichever shape the form is in. */
   function buildCreateInput(): CreateProductInput {
     const base = {
-      sku: sku.trim().toUpperCase(),
       name: name.trim(),
       categoryId,
       unit: unit.trim(),
     };
+    const trimmedSku = sku.trim().toUpperCase();
 
     if (mode === "bundle") {
       return {
         ...base,
+        sku: trimmedSku,
         productType: "bundle",
         ...(barcode.trim() ? { barcode: barcode.trim() } : {}),
         bundleConfig: {
@@ -524,6 +566,9 @@ function ProductFormFields({
 
       return {
         ...base,
+        // Omitted entirely when blank rather than sent as "" — the parent's
+        // code is genuinely optional, and the rows below carry the real ones.
+        ...(trimmedSku ? { sku: trimmedSku } : {}),
         productType: "parent",
         hasExpiry,
         // Trimmed here rather than in the editor: a half-typed axis is a normal
@@ -537,6 +582,7 @@ function ProductFormFields({
 
     return {
       ...base,
+      sku: trimmedSku,
       sellPrice: sellPrice.trim(),
       minStock: Number(minStock) || 0,
       hasExpiry,
@@ -559,8 +605,15 @@ function ProductFormFields({
     const patch: UpdateProductInput = {};
 
     if (name.trim() !== product.name) patch.name = name.trim();
-    if (sku.trim().toUpperCase() !== product.sku)
-      patch.sku = sku.trim().toUpperCase();
+
+    /**
+     * "" is how the API is told to CLEAR one, the same way `barcode` works —
+     * and only a parent may be cleared, which is the one mode where the field
+     * is optional. `product.sku` is null there, so the comparison is against
+     * `?? ""` rather than the raw value.
+     */
+    const nextSku = sku.trim().toUpperCase();
+    if (nextSku !== (product.sku ?? "")) patch.sku = nextSku;
     if (categoryId !== product.categoryId && mode !== "variants")
       patch.categoryId = categoryId;
     if (unit.trim() !== product.unit) patch.unit = unit.trim();
@@ -787,16 +840,23 @@ function ProductFormFields({
               placeholder="mis. Royal Canin Adult"
               required
             />
+            {/* Shown in every mode, insisted on only where something is sold.
+                A parent keeps the field because filling it seeds every variant
+                SKU below — it is a convenience, not a requirement. */}
             <TextField
               label="SKU"
               name="sku"
               value={sku}
               onChange={(event) => setSku(event.target.value.toUpperCase())}
               error={fieldErrors.sku}
-              hint="Unik per tenant"
+              hint={
+                mode === "variants"
+                  ? "Opsional — dipakai sebagai awalan SKU varian. Induk tidak dijual, jadi boleh dikosongkan."
+                  : "Unik per tenant"
+              }
               placeholder="RC-ADULT"
               className="font-mono"
-              required
+              required={mode !== "variants"}
             />
           </div>
 
@@ -907,8 +967,8 @@ function ProductFormFields({
             </div>
 
             <p className="text-xs text-muted">
-              HPP tidak diisi manual. Ia terbentuk sendiri dari penerimaan barang
-              sebagai rata-rata tertimbang.
+              HPP tidak diisi manual. Ia terbentuk sendiri dari penerimaan
+              barang sebagai rata-rata tertimbang.
             </p>
           </div>
         </Card>
@@ -954,9 +1014,15 @@ function ProductFormFields({
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border text-[10px] tracking-widest text-muted uppercase">
-                      <th className="px-2 py-2 text-left font-medium">Varian</th>
-                      <th className="px-2 py-2 text-left font-medium">SKU</th>
-                      <th className="px-2 py-2 text-left font-medium">Barcode</th>
+                      <th className="px-2 py-2 text-left font-medium">
+                        Varian
+                      </th>
+                      <th className="px-2 py-2 text-left font-medium">
+                        SKU <span className="text-danger">*</span>
+                      </th>
+                      <th className="px-2 py-2 text-left font-medium">
+                        Barcode
+                      </th>
                       <th className="px-2 py-2 text-left font-medium">
                         Harga jual
                       </th>
@@ -967,13 +1033,11 @@ function ProductFormFields({
                   </thead>
                   <tbody>
                     {variantRows.map((row) => {
-                      const rowError = rowErrors[row.combo.join("|")];
+                      const key = row.combo.join("|");
+                      const rowError = rowErrors[key];
 
                       return (
-                        <tr
-                          key={row.combo.join("|")}
-                          className="border-b border-border/60"
-                        >
+                        <tr key={key} className="border-b border-border/60">
                           <td className="px-2 py-2 font-medium">
                             {row.combo.join(" / ")}
                             {row.id && (
@@ -981,15 +1045,21 @@ function ProductFormFields({
                                 sudah ada
                               </Badge>
                             )}
-                            {rowError && (
-                              <p role="alert" className="text-xs text-danger">
-                                {rowError}
-                              </p>
-                            )}
                           </td>
                           <td className="px-2 py-2">
+                            {/* The requirement lives here now that the parent
+                                has none, so the refusal does too — a family of
+                                twelve rows told only "a SKU is missing" above
+                                the table is a hunt. Every row refusal is bound
+                                to this cell, including the API's. */}
                             <Input
                               aria-label={`SKU ${row.combo.join(" ")}`}
+                              aria-invalid={rowError ? true : undefined}
+                              aria-describedby={
+                                rowError
+                                  ? `variant-sku-error-${key}`
+                                  : undefined
+                              }
                               value={row.sku}
                               onChange={(event) =>
                                 setVariantField(
@@ -1000,6 +1070,15 @@ function ProductFormFields({
                               }
                               className="font-mono text-xs"
                             />
+                            {rowError && (
+                              <p
+                                id={`variant-sku-error-${key}`}
+                                role="alert"
+                                className="mt-1 text-xs text-danger"
+                              >
+                                {rowError}
+                              </p>
+                            )}
                           </td>
                           <td className="px-2 py-2">
                             <Input
@@ -1087,7 +1166,9 @@ function ProductFormFields({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="fixed">Tetap — saya isi manual</SelectItem>
+                    <SelectItem value="fixed">
+                      Tetap — saya isi manual
+                    </SelectItem>
                     <SelectItem value="auto">
                       Otomatis — jumlah harga komponen
                     </SelectItem>
@@ -1259,7 +1340,9 @@ function ProductFormFields({
                     label="Kode batch"
                     name="openingBatchCode"
                     value={openingBatchCode}
-                    onChange={(event) => setOpeningBatchCode(event.target.value)}
+                    onChange={(event) =>
+                      setOpeningBatchCode(event.target.value)
+                    }
                     error={fieldErrors.openingBatchCode}
                     hint="Wajib untuk produk kedaluwarsa."
                     placeholder="B-2026-08"

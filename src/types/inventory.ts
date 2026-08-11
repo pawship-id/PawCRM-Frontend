@@ -423,7 +423,11 @@ export interface Category {
  */
 export interface Product {
   _id: string;
-  sku: string;
+  /**
+   * Null on a `parent` — an abstraction nobody sells, prices or scans. The code
+   * staff quote and the till looks up is the VARIANT's, which always has one.
+   */
+  sku: string | null;
   name: string;
   productType: ProductType;
   /** Set on a `variant` only — the parent it belongs to. */
@@ -580,8 +584,15 @@ export interface CreateStandaloneInput extends CreateProductBase {
   openingStock?: OpeningStockInput;
 }
 
-export interface CreateParentInput extends CreateProductBase {
+export interface CreateParentInput extends Omit<CreateProductBase, "sku"> {
   productType: "parent";
+  /**
+   * OPTIONAL, unlike every other type — a parent holds no stock, carries no
+   * price and is never scanned, so the only code that has to exist is on each
+   * entry of `variants` below. Sent when a family code is useful, omitted
+   * otherwise; the API stores null.
+   */
+  sku?: string;
   variantAxes: VariantAxis[];
   hasExpiry?: boolean;
   /** The family, written with the parent in ONE transaction. */
@@ -626,7 +637,8 @@ export type CreateProductInput =
  * the old shape.
  */
 export interface UpdateProductInput {
-  sku?: string;
+  /** `""` clears it — accepted on a `parent` alone, a 400 on every other type. */
+  sku?: string | null;
   name?: string;
   categoryId?: string;
   unit?: string;

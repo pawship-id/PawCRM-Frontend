@@ -253,7 +253,10 @@ describe("ProductForm", () => {
       jest.spyOn(productService, "create").mockRejectedValue(
         new ApiError("Product with SKU 'SHAMPOO' already exists", 409, {
           details: [
-            { field: "sku", message: "SKU 'SHAMPOO' sudah dipakai produk lain" },
+            {
+              field: "sku",
+              message: "SKU 'SHAMPOO' sudah dipakai produk lain",
+            },
           ],
         }),
       );
@@ -402,6 +405,108 @@ describe("ProductForm", () => {
       ).toBeInTheDocument();
       expect(create).not.toHaveBeenCalled();
     });
+
+    /**
+     * The parent needs no SKU; every variant does.
+     *
+     * A parent holds no stock, carries no price and is never scanned — the code
+     * staff quote belongs to the row that is actually sold. These four assert
+     * both halves of that trade: the parent may go without, and the rows may
+     * not.
+     */
+    it("saves a family with no parent SKU at all", async () => {
+      const user = userEvent.setup();
+      const create = mockCreate();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await user.type(screen.getByLabelText(/Nama produk/), "Royal Canin");
+      await switchToFamily(user);
+      await addAxisValue(user, "1kg");
+      await user.type(screen.getByLabelText("Harga 1kg"), "68000");
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+      const [payload] = create.mock.calls[0];
+      // Omitted, not sent as "" — the field is genuinely absent.
+      expect(payload).not.toHaveProperty("sku");
+      expect((payload as { variants: Array<{ sku: string }> }).variants[0].sku)
+        // Seeded from the NAME once there is no parent code to seed from.
+        .toBe("ROYALCANIN-1KG");
+    });
+
+    it("seeds the variant SKUs from the parent SKU when there is one", async () => {
+      const user = userEvent.setup();
+      mockCreate();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await fillCommon(user, { name: "Royal Canin", sku: "RC" });
+      await switchToFamily(user);
+      await addAxisValue(user, "1kg");
+
+      expect(screen.getByLabelText("SKU 1kg")).toHaveValue("RC-1KG");
+    });
+
+    it("refuses a blank variant SKU, on the row that is blank", async () => {
+      const user = userEvent.setup();
+      const create = mockCreate();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await fillCommon(user, { name: "Royal Canin", sku: "RC" });
+      await switchToFamily(user);
+      await addAxisValue(user, "1kg");
+      await addAxisValue(user, "3kg");
+      await user.type(screen.getByLabelText("Harga 1kg"), "68000");
+      await user.type(screen.getByLabelText("Harga 3kg"), "185000");
+      await user.clear(screen.getByLabelText("SKU 3kg"));
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      expect(
+        await screen.findByText("SKU varian wajib diisi."),
+      ).toBeInTheDocument();
+      // Bound to the cell, not dumped above a table of twelve rows.
+      expect(screen.getByLabelText("SKU 3kg")).toHaveAttribute(
+        "aria-invalid",
+        "true",
+      );
+      expect(screen.getByLabelText("SKU 1kg")).not.toHaveAttribute(
+        "aria-invalid",
+      );
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it("marks BOTH rows when two variants share a SKU", async () => {
+      const user = userEvent.setup();
+      const create = mockCreate();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await fillCommon(user, { name: "Royal Canin", sku: "RC" });
+      await switchToFamily(user);
+      await addAxisValue(user, "1kg");
+      await addAxisValue(user, "3kg");
+      await user.type(screen.getByLabelText("Harga 1kg"), "68000");
+      await user.type(screen.getByLabelText("Harga 3kg"), "185000");
+      await user.clear(screen.getByLabelText("SKU 3kg"));
+      await user.type(screen.getByLabelText("SKU 3kg"), "RC-1KG");
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      expect(
+        await screen.findAllByText("SKU ini kembar dengan varian lain."),
+      ).toHaveLength(2);
+      // It used to land in the AXIS error slot, where it also overwrote
+      // whatever the axis editor was trying to say.
+      expect(
+        screen.queryByText(/Ada SKU varian yang kembar/),
+      ).not.toBeInTheDocument();
+      expect(create).not.toHaveBeenCalled();
+    });
   });
 
   describe("editing", () => {
@@ -419,7 +524,9 @@ describe("ProductForm", () => {
 
       await user.clear(screen.getByLabelText(/Nama produk/));
       await user.type(screen.getByLabelText(/Nama produk/), "Shampoo Kucing");
-      await user.click(screen.getByRole("button", { name: /Simpan perubahan/ }));
+      await user.click(
+        screen.getByRole("button", { name: /Simpan perubahan/ }),
+      );
 
       await waitFor(() => expect(update).toHaveBeenCalled());
       // Re-sending an untouched SKU makes the uniqueness check answer about the
@@ -433,7 +540,9 @@ describe("ProductForm", () => {
       renderWithAuth(<ProductForm productId="p1" />);
       await screen.findByDisplayValue("Shampoo Anjing");
 
-      expect(screen.getByRole("button", { name: "Punya varian" })).toBeDisabled();
+      expect(
+        screen.getByRole("button", { name: "Punya varian" }),
+      ).toBeDisabled();
       // And no opening stock: an existing product's quantity moves through the
       // stock screens, where the movement gets a reason.
       expect(
@@ -475,7 +584,9 @@ describe("ProductForm", () => {
 
       await user.clear(screen.getByLabelText("Harga 3kg"));
       await user.type(screen.getByLabelText("Harga 3kg"), "185000");
-      await user.click(screen.getByRole("button", { name: /Simpan perubahan/ }));
+      await user.click(
+        screen.getByRole("button", { name: /Simpan perubahan/ }),
+      );
 
       // The 3kg combination has no stored row yet, so it is created against the
       // parent; the 1kg row is untouched and therefore not sent.
@@ -493,12 +604,10 @@ describe("ProductForm", () => {
   describe("bundle", () => {
     it("offers no opening stock at all — a bundle holds none", async () => {
       const user = userEvent.setup();
-      jest
-        .spyOn(productService, "list")
-        .mockResolvedValue({
-          items: [],
-          pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
-        });
+      jest.spyOn(productService, "list").mockResolvedValue({
+        items: [],
+        pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
+      });
 
       renderWithAuth(<ProductForm />);
       await screen.findByLabelText(/Nama produk/);
@@ -510,6 +619,62 @@ describe("ProductForm", () => {
       expect(
         screen.queryByLabelText("Isi stok awal sekarang"),
       ).not.toBeInTheDocument();
+    });
+
+    it("still requires a SKU — a bundle is sold, so it has a code", async () => {
+      const user = userEvent.setup();
+      const create = mockCreate();
+      jest.spyOn(productService, "list").mockResolvedValue({
+        items: [],
+        pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
+      });
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await user.type(screen.getByLabelText(/Nama produk/), "Paket Grooming");
+      await user.click(
+        screen.getByRole("button", { name: /Bundle \/ multi-satuan/ }),
+      );
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      expect(await screen.findByText("SKU wajib diisi.")).toBeInTheDocument();
+      expect(create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("who needs a SKU", () => {
+    it("requires one on a standalone", async () => {
+      const user = userEvent.setup();
+      const create = mockCreate();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await user.type(screen.getByLabelText(/Nama produk/), "Shampoo");
+      await user.type(screen.getByLabelText(/Harga jual/), "45000");
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      expect(await screen.findByText("SKU wajib diisi.")).toBeInTheDocument();
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it("drops the requirement the moment the form becomes a family", async () => {
+      const user = userEvent.setup();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      // By placeholder, not by label: once the form is a family the variant
+      // rows carry SKU inputs of their own, and "SKU" matches all of them.
+      //
+      // The field stays on screen in both modes — filling it seeds the variant
+      // SKUs — so what changes is only whether it is marked required.
+      expect(screen.getByPlaceholderText("RC-ADULT")).toBeRequired();
+
+      await user.click(screen.getByRole("button", { name: "Punya varian" }));
+
+      expect(screen.getByPlaceholderText("RC-ADULT")).not.toBeRequired();
     });
   });
 });

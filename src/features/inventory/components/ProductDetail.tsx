@@ -117,7 +117,8 @@ export function ProductDetail({ productId }: { productId: string }) {
             {deleted && <Badge variant="outline">terhapus</Badge>}
           </div>
           <p className="mt-1 font-mono text-xs text-muted">
-            {product.sku}
+            {/* Null on a parent, which is never sold or scanned. */}
+            {product.sku ?? "—"}
             {product.barcode && ` · ⦀ ${product.barcode}`}
           </p>
           {parent && (
@@ -210,8 +211,7 @@ export function ProductDetail({ productId }: { productId: string }) {
           label="HPP rata-rata"
           value={formatMoney(product.hppAvg)}
           hint={
-            product.productType === "parent" ||
-            product.productType === "bundle"
+            product.productType === "parent" || product.productType === "bundle"
               ? "Melekat pada barang yang benar-benar disimpan"
               : product.hppAvg
                 ? undefined
@@ -234,11 +234,13 @@ export function ProductDetail({ productId }: { productId: string }) {
           <Card title="Informasi produk">
             <dl className="grid grid-cols-[120px_1fr] gap-y-2 text-sm">
               <dt className="text-muted">SKU</dt>
-              <dd className="font-mono text-xs">{product.sku}</dd>
+              <dd className="font-mono text-xs">{product.sku ?? "—"}</dd>
               <dt className="text-muted">Barcode</dt>
               <dd className="font-mono text-xs">{product.barcode ?? "—"}</dd>
               <dt className="text-muted">Tipe</dt>
-              <dd className="font-medium">{TYPE_LABELS[product.productType]}</dd>
+              <dd className="font-medium">
+                {TYPE_LABELS[product.productType]}
+              </dd>
               <dt className="text-muted">Kategori</dt>
               <dd className="font-medium">
                 {categoryName(lookups.categories, product.categoryId)}
@@ -257,11 +259,7 @@ export function ProductDetail({ productId }: { productId: string }) {
               </dd>
               <dt className="text-muted">Status</dt>
               <dd className="font-medium">
-                {deleted
-                  ? "Terhapus"
-                  : product.isActive
-                    ? "Aktif"
-                    : "Nonaktif"}
+                {deleted ? "Terhapus" : product.isActive ? "Aktif" : "Nonaktif"}
               </dd>
             </dl>
           </Card>
@@ -374,7 +372,9 @@ function StockByWarehouse({
 
   return (
     <Card
-      title={product.productType === "bundle" ? "Bisa dibuat" : "Stok per gudang"}
+      title={
+        product.productType === "bundle" ? "Bisa dibuat" : "Stok per gudang"
+      }
       description={
         product.productType === "parent"
           ? "Jumlah seluruh varian di tiap gudang. Produk induk sendiri tidak menyimpan stok."
@@ -633,7 +633,9 @@ function BundleComponents({
                           {item.name}
                         </Link>
                       ) : (
-                        <span className="font-mono text-xs text-muted">{id}</span>
+                        <span className="font-mono text-xs text-muted">
+                          {id}
+                        </span>
                       )}
                       {limiting === id && (
                         <Badge variant="outline" className="ml-2">
@@ -716,7 +718,10 @@ function stockHint(product: Product, scope: string): string {
  * red would raise an alert nobody can act on from this screen.
  */
 function isLow(product: Product, qty: string): boolean {
-  if (product.productType !== "standalone" && product.productType !== "variant") {
+  if (
+    product.productType !== "standalone" &&
+    product.productType !== "variant"
+  ) {
     return false;
   }
   if (product.minStock <= 0) return false;
@@ -731,9 +736,7 @@ function warehouseName(
 }
 
 function categoryName(categories: Category[], categoryId: string): string {
-  return (
-    categories.find((row) => row._id === String(categoryId))?.name ?? "—"
-  );
+  return categories.find((row) => row._id === String(categoryId))?.name ?? "—";
 }
 
 function Stat({

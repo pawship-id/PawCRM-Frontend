@@ -2,13 +2,7 @@
 
 import { Fragment, useState } from "react";
 import Link from "next/link";
-import {
-  EllipsisVertical,
-  Eye,
-  Pencil,
-  RotateCcw,
-  Trash2,
-} from "lucide-react";
+import { EllipsisVertical, Eye, Pencil, RotateCcw, Trash2 } from "lucide-react";
 
 import { ConfirmDialog } from "@/components";
 import { Badge } from "@/components/ui/badge";
@@ -180,7 +174,9 @@ export function ProductsTable({
                         {variantCount > 0 && (
                           <button
                             type="button"
-                            aria-label={isOpen ? "Tutup varian" : "Lihat varian"}
+                            aria-label={
+                              isOpen ? "Tutup varian" : "Lihat varian"
+                            }
                             aria-expanded={isOpen}
                             onClick={() => toggle(product)}
                             className="flex size-5 items-center justify-center rounded text-muted hover:bg-accent hover:text-foreground"
@@ -199,7 +195,10 @@ export function ProductsTable({
                             {product.name}
                           </Link>
                           <p className="font-mono text-xs text-muted">
-                            {product.sku}
+                            {/* A parent carries no SKU — its variants do. "—"
+                                rather than a blank line, which reads as a
+                                rendering bug. */}
+                            {product.sku ?? "—"}
                             {product.barcode && ` · ⦀ ${product.barcode}`}
                           </p>
                         </div>
@@ -344,7 +343,10 @@ export function ProductsTable({
 
                   {isOpen && variants.loading[product._id] && (
                     <tr className="border-b border-border/60 bg-accent/30">
-                      <td colSpan={7} className="px-4 py-3 pl-16 text-xs text-muted">
+                      <td
+                        colSpan={7}
+                        className="px-4 py-3 pl-16 text-xs text-muted"
+                      >
                         Memuat varian…
                       </td>
                     </tr>
@@ -352,7 +354,10 @@ export function ProductsTable({
 
                   {isOpen && variants.errors[product._id] && (
                     <tr className="border-b border-border/60 bg-accent/30">
-                      <td colSpan={7} className="px-4 py-3 pl-16 text-xs text-danger">
+                      <td
+                        colSpan={7}
+                        className="px-4 py-3 pl-16 text-xs text-danger"
+                      >
                         {variants.errors[product._id]}
                       </td>
                     </tr>

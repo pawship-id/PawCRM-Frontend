@@ -1,8 +1,4 @@
-import type {
-  Product,
-  ProductStockRow,
-  VariantAxis,
-} from "@/types/inventory";
+import type { Product, ProductStockRow, VariantAxis } from "@/types/inventory";
 
 /**
  * Pure catalogue helpers shared by the list and the form.
@@ -95,10 +91,35 @@ export function attributesFor(
   );
 }
 
-/** The SKU a variant row starts with: the parent's, then its values. */
-export function defaultVariantSku(baseSku: string, combo: string[]): string {
-  const base = (baseSku || "SKU").toUpperCase();
-  return `${base}-${combo
+/**
+ * What a variant row's SKU is built on.
+ *
+ * The parent's own SKU when it has one — but a parent NEED NOT have one, and
+ * leaving the field empty is now the ordinary case rather than an oversight. So
+ * the fallback is the product NAME rather than a literal, which is the only
+ * other thing on the form that identifies the family: "Makanan Kucing Premium"
+ * seeds `MAKANANKUCING-1KG` instead of twelve rows all called `SKU-…`.
+ *
+ * The name is stripped to what a SKU may contain (the API's pattern is
+ * `^[A-Z0-9][A-Z0-9._-]{0,39}$`) and capped well under the 40-character limit,
+ * so the combination suffix still fits. A name with nothing usable in it —
+ * punctuation only — falls back to "SKU" as before.
+ */
+export function skuPrefix(baseSku: string, name: string): string {
+  const trimmed = baseSku.trim().toUpperCase();
+  if (trimmed !== "") return trimmed;
+
+  const fromName = name
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 16);
+
+  return fromName || "SKU";
+}
+
+/** The SKU a variant row starts with: the family's prefix, then its values. */
+export function defaultVariantSku(prefix: string, combo: string[]): string {
+  return `${prefix}-${combo
     .map((value) => value.toUpperCase().replace(/\s+/g, ""))
     .join("-")}`;
 }

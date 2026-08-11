@@ -188,6 +188,35 @@ describe("ProductDetail", () => {
     expect(screen.getByText("Ukuran")).toBeInTheDocument();
   });
 
+  it("shows a dash for a parent that carries no SKU", async () => {
+    // A parent holds no stock, carries no price and is never scanned — the code
+    // is on its variants. A blank line here reads as a rendering bug; "—" is
+    // the same answer the barcode row already gives.
+    mockLookups();
+    const parent = makeProduct({
+      _id: "parent1",
+      sku: null,
+      name: "Royal Canin Adult",
+      productType: "parent",
+      sellPrice: null,
+      hppAvg: null,
+      variantAxes: [{ name: "Ukuran", values: ["1kg"] }],
+      variantCount: 1,
+      variantStock: [],
+    });
+    jest.spyOn(productService, "getById").mockResolvedValue(parent);
+    jest
+      .spyOn(productService, "listVariants")
+      .mockResolvedValue({ parent, items: [] });
+
+    renderWithAuth(<ProductDetail productId="parent1" />);
+
+    await screen.findByText("Royal Canin Adult");
+    // The header line and the "Informasi produk" row — both, and neither blank.
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText("null")).not.toBeInTheDocument();
+  });
+
   it("names the family a variant belongs to instead of its parent id", async () => {
     mockLookups();
     const getById = jest
