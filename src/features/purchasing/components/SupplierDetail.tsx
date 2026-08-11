@@ -45,6 +45,8 @@ export function SupplierDetail({ supplierId }: { supplierId: string }) {
   const consigned = summaries.consignment.get(supplierId);
 
   const owedMinor = toMinor(owed?.outstanding ?? "0") ?? 0n;
+  const overdueMinor = toMinor(owed?.overdueOutstanding ?? "0") ?? 0n;
+  const dueSoonMinor = toMinor(owed?.dueSoonOutstanding ?? "0") ?? 0n;
   const consignedMinor = toMinor(consigned?.value ?? "0") ?? 0n;
 
   if (notFound) {
@@ -120,12 +122,37 @@ export function SupplierDetail({ supplierId }: { supplierId: string }) {
           value={formatMoney(bought?.purchased ?? "0")}
           hint="Belum termasuk PPN"
         />
+        {/* The hint carries WHEN the debt comes due, not only how many bills it
+            is spread over: a million already a month late and a million due in
+            June are the same figure above and different decisions. Both splits
+            are subsets the server cut from that figure at one instant — nothing
+            here subtracts anything — and each line appears only if it is not
+            zero, so a vendor with nothing late says nothing about lateness. */}
         <Stat
           label="Sisa utang"
           value={owedMinor > 0n ? formatMoney(owed!.outstanding) : "—"}
           tone={owedMinor > 0n ? "danger" : "default"}
           hint={
-            owed ? `${owed.invoiceCount} faktur belum lunas` : "Tidak ada utang"
+            owed ? (
+              <>
+                {owed.invoiceCount} faktur belum lunas
+                {overdueMinor > 0n && (
+                  <span className="block text-danger">
+                    {formatMoney(owed.overdueOutstanding)} lewat jatuh tempo
+                  </span>
+                )}
+                {dueSoonMinor > 0n && (
+                  <span className="block">
+                    {formatMoney(owed.dueSoonOutstanding)} jatuh tempo
+                    {summaries.horizonDays === null
+                      ? " sebentar lagi"
+                      : ` dalam ${summaries.horizonDays} hari`}
+                  </span>
+                )}
+              </>
+            ) : (
+              "Tidak ada utang"
+            )
           }
         />
         <Stat
@@ -326,7 +353,8 @@ function Stat({
 }: {
   label: string;
   value: string;
-  hint?: string;
+  /** A node, not a string: the payables stat breaks its hint over three lines. */
+  hint?: React.ReactNode;
   tone?: "default" | "danger";
 }) {
   return (

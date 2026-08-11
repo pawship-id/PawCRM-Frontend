@@ -39,10 +39,10 @@ export const purchaseInvoiceService = {
    * read one invoice to get them. `outstandingAmount` and `isOverdue` arrive
    * computed, against one instant for the whole page.
    *
-   * THE AP FILTERS GO OVER THE WIRE. `outstanding` and `overdue` are booleans the
-   * server understands — asking for everything and filtering here would make the
-   * screen's list and the pager's total disagree the moment there is a second
-   * page, which is the failure mode that looks like working software.
+   * THE AP FILTERS GO OVER THE WIRE. `outstanding`, `overdue` and `dueSoon` are
+   * booleans the server understands — asking for everything and filtering here
+   * would make the screen's list and the pager's total disagree the moment there
+   * is a second page, which is the failure mode that looks like working software.
    */
   list: (query: PurchaseInvoiceListQuery = {}) =>
     apiClient.get<PageResult<PurchaseInvoiceListRow>>("/purchase-invoices", {
@@ -56,6 +56,7 @@ export const purchaseInvoiceService = {
         status: query.status,
         outstanding: query.outstanding,
         overdue: query.overdue,
+        dueSoon: query.dueSoon,
         dateFrom: query.dateFrom,
         dateTo: query.dateTo,
         dueBefore: query.dueBefore,

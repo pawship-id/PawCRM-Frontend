@@ -50,10 +50,13 @@ const owed = (outstanding: string, invoiceCount = 2) =>
         supplierName: null,
         invoiceCount,
         outstanding,
-        // Nothing late in this fixture — the supplier column under test reads
-        // `outstanding`, and the overdue split belongs to the payables screens.
+        // Nothing late and nothing due this week in this fixture — the supplier
+        // column under test reads `outstanding`, and the overdue/due-soon split
+        // belongs to the payables screens.
         overdueInvoiceCount: 0,
         overdueOutstanding: "0",
+        dueSoonInvoiceCount: 0,
+        dueSoonOutstanding: "0",
       },
     ],
   ]);
@@ -78,6 +81,7 @@ function renderTable(
   options: {
     outstanding?: Map<string, SupplierOutstandingRow>;
     purchases?: Map<string, SupplierPurchaseRow>;
+    horizonDays?: number | null;
     onChanged?: () => void;
     permissions?: Parameters<typeof renderWithAuth>[1];
   } = {},
@@ -87,6 +91,7 @@ function renderTable(
       suppliers={suppliers}
       outstanding={options.outstanding ?? new Map()}
       purchases={options.purchases ?? new Map()}
+      horizonDays={options.horizonDays ?? 7}
       loading={false}
       onChanged={options.onChanged ?? jest.fn()}
     />,
@@ -132,6 +137,48 @@ describe("SuppliersTable", () => {
     // with zeros — the row must read that as "—", not as missing data.
     renderTable([makeSupplier()]);
     expect(screen.getByText("—")).toBeInTheDocument();
+  });
+
+  /**
+   * WHEN, under HOW MUCH. Ten million a month late and ten million due in June
+   * are the same figure in this column and completely different decisions, so
+   * the split is what makes it answer "who do I pay first". Both halves are the
+   * server's own subsets of the amount above them — nothing here subtracts.
+   */
+  it("splits the debt into what is late and what is about to be", () => {
+    renderTable([makeSupplier()], {
+      outstanding: new Map([
+        [
+          "s1",
+          {
+            supplierId: "s1",
+            supplierName: null,
+            invoiceCount: 3,
+            outstanding: "1500000.0000",
+            overdueInvoiceCount: 1,
+            overdueOutstanding: "900000.0000",
+            dueSoonInvoiceCount: 1,
+            dueSoonOutstanding: "400000.0000",
+          },
+        ],
+      ]),
+      horizonDays: 7,
+    });
+
+    expect(screen.getByText(/1\.500\.000/)).toBeInTheDocument();
+    expect(screen.getByText(/900\.000 lewat tempo/)).toBeInTheDocument();
+    // The window is named from what the server reported, never a constant here.
+    expect(screen.getByText(/400\.000 ≤ 7 hari/)).toBeInTheDocument();
+  });
+
+  // A vendor with nothing late says nothing about lateness: two zero lines would
+  // read as data where there is none.
+  it("omits a half of the split that is zero", () => {
+    renderTable([makeSupplier()], { outstanding: owed("1500000.0000") });
+
+    expect(screen.queryByText(/lewat tempo/)).toBeNull();
+    // Narrower than /hari/ on purpose: the Termin column says "30 hari".
+    expect(screen.queryByText(/≤ \d+ hari/)).toBeNull();
   });
 
   it("counts deliveries from the purchase summary", () => {
@@ -331,7 +378,13 @@ describe("SuppliersTable", () => {
   });
 
   describe("permission gating", () => {
-    it("hides the whole menu from a read-only role", () => {
+    /**
+     * A read-only role keeps the menu, and it holds exactly one thing: the way
+     * to the detail screen, which needs no grant beyond the one that rendered
+     * this row. Every mutation is still gated — the menu is not empty, and it is
+     * not a way in either.
+     */
+    it("offers a read-only role the detail link and nothing else", async () => {
       renderTable([makeSupplier()], {
         permissions: {
           isSuperAdmin: false,
@@ -339,12 +392,26 @@ describe("SuppliersTable", () => {
         },
       });
 
-      // No trigger at all: a menu that opens onto nothing is worse than none.
+      const menu = await openRowMenu();
+
       expect(
-        screen.queryByRole("button", { name: /Aksi untuk/ }),
+        within(menu).getByRole("menuitem", { name: /Lihat detail/ }),
+      ).toBeInTheDocument();
+      expect(within(menu).queryByRole("menuitem", { name: /Ubah/ })).toBeNull();
+      expect(
+        within(menu).queryByRole("menuitem", { name: /Nonaktifkan/ }),
       ).toBeNull();
-      // The column goes with it — an empty Actions header is noise.
-      expect(screen.queryByRole("columnheader", { name: "Aksi" })).toBeNull();
+      expect(within(menu).queryByRole("menuitem", { name: /Hapus/ })).toBeNull();
+    });
+
+    it("points the detail link at the supplier's own page", async () => {
+      renderTable([makeSupplier()]);
+
+      const menu = await openRowMenu();
+
+      expect(
+        within(menu).getByRole("menuitem", { name: /Lihat detail/ }),
+      ).toHaveAttribute("href", "/dashboard/purchasing/suppliers/s1");
     });
 
     it("lets an update-only role deactivate but not delete", async () => {
@@ -364,12 +431,13 @@ describe("SuppliersTable", () => {
     });
 
     /**
-     * The mixed case the per-row trigger exists for: with "show deleted" on, a
-     * restore-only role has something to offer on the deleted rows and nothing
-     * on the live ones. A single column-level decision would give every row a
-     * trigger, half of them empty.
+     * The mixed case the per-row trigger exists for: with "show deleted" on, the
+     * two rows offer different things. The live one has the detail link; the
+     * deleted one has Pulihkan and NOT the detail link, because the detail
+     * endpoint reads live suppliers only and the link would land on "tidak
+     * ditemukan". Restoring first is what makes it reachable.
      */
-    it("gives a restore-only role a menu on deleted rows only", () => {
+    it("offers restore on a deleted row, and no way into its detail", async () => {
       renderTable(
         [
           makeSupplier(),
@@ -387,12 +455,22 @@ describe("SuppliersTable", () => {
         },
       );
 
+      const live = await openRowMenu();
       expect(
-        screen.queryByRole("button", { name: "Aksi untuk PT Sumber Pangan" }),
-      ).toBeNull();
-      expect(
-        screen.getByRole("button", { name: "Aksi untuk CV Mitra" }),
+        within(live).getByRole("menuitem", { name: /Lihat detail/ }),
       ).toBeInTheDocument();
+      expect(
+        within(live).queryByRole("menuitem", { name: /Pulihkan/ }),
+      ).toBeNull();
+      await userEvent.keyboard("{Escape}");
+
+      const deleted = await openRowMenu("CV Mitra");
+      expect(
+        within(deleted).getByRole("menuitem", { name: /Pulihkan/ }),
+      ).toBeInTheDocument();
+      expect(
+        within(deleted).queryByRole("menuitem", { name: /Lihat detail/ }),
+      ).toBeNull();
     });
   });
 });

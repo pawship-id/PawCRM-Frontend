@@ -119,6 +119,9 @@ function summary(
     totalInvoices: 1,
     totalOverdueOutstanding: "0.0000",
     totalOverdueInvoices: 0,
+    totalDueSoonOutstanding: "0.0000",
+    totalDueSoonInvoices: 0,
+    horizonDays: 7,
     ...overrides,
   };
 }
@@ -307,6 +310,79 @@ describe("PayablesScreen", () => {
     });
   });
 
+  /**
+   * The payment run — and the one view a client could not have assembled for
+   * itself. Its window has a NEAR end as well as a far one ("due this week and
+   * not already late"), which no filter on this screen expresses: `Tanggal
+   * faktur` bounds when the vendor issued the bill, never when it comes due.
+   */
+  it("sends dueSoon as a filter, with no window of its own", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PayablesScreen />);
+
+    await waitFor(() => expect(purchaseInvoiceService.list).toHaveBeenCalled());
+    await user.click(screen.getByRole("button", { name: "Minggu ini" }));
+
+    await waitFor(() => {
+      const calls = asMock(purchaseInvoiceService.list).mock.calls;
+      const last = calls[calls.length - 1][0];
+      expect(last).toMatchObject({ dueSoon: true });
+      // The horizon lives on the server; a client stating one here could state
+      // it differently from the summary whose figures sit above this list.
+      expect(last).not.toHaveProperty("dueBefore");
+      expect(last).not.toHaveProperty("overdue");
+    });
+  });
+
+  it("states the due-soon note with the server's own window", async () => {
+    asMock(purchaseInvoiceService.outstandingSummary).mockResolvedValue(
+      summary({
+        totalDueSoonInvoices: 4,
+        totalDueSoonOutstanding: "1250000.0000",
+        horizonDays: 14,
+      }),
+    );
+
+    renderWithAuth(<PayablesScreen />);
+
+    expect(
+      await screen.findByText("4 faktur jatuh tempo dalam 14 hari"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Rp 1\.250\.000/)).toBeInTheDocument();
+  });
+
+  // The note is the only headline here with a way to act on it — the bucket it
+  // describes is a view of the list underneath, asked of the server with the
+  // same definition.
+  it("switches the list to the due-soon bucket from the note", async () => {
+    const user = userEvent.setup();
+    asMock(purchaseInvoiceService.outstandingSummary).mockResolvedValue(
+      summary({
+        totalDueSoonInvoices: 4,
+        totalDueSoonOutstanding: "1250000.0000",
+      }),
+    );
+
+    renderWithAuth(<PayablesScreen />);
+
+    await user.click(await screen.findByText("Lihat daftarnya →"));
+
+    await waitFor(() => {
+      const calls = asMock(purchaseInvoiceService.list).mock.calls;
+      expect(calls[calls.length - 1][0]).toMatchObject({ dueSoon: true });
+    });
+    // Gone once the list already shows it — a link to where you are is noise.
+    expect(screen.queryByText("Lihat daftarnya →")).not.toBeInTheDocument();
+  });
+
+  it("hides the due-soon note when nothing falls due", async () => {
+    renderWithAuth(<PayablesScreen />);
+
+    await waitFor(() => expect(purchaseInvoiceService.list).toHaveBeenCalled());
+
+    expect(screen.queryByText(/faktur jatuh tempo dalam/)).not.toBeInTheDocument();
+  });
+
   it("sends an exact status for the status views", async () => {
     const user = userEvent.setup();
     renderWithAuth(<PayablesScreen />);
@@ -322,6 +398,7 @@ describe("PayablesScreen", () => {
       // status and silently drops them, so sending both hides the disagreement.
       expect(last).not.toHaveProperty("outstanding");
       expect(last).not.toHaveProperty("overdue");
+      expect(last).not.toHaveProperty("dueSoon");
     });
   });
 
@@ -710,31 +787,57 @@ describe("PurchasingHub payables panels", () => {
   });
 
   /**
-   * `dueBefore` bounds only the far end of the window, so the API's answer
-   * necessarily includes everything already late. The two panels are read side
-   * by side and their totals added up, so an invoice in both would be counted
-   * twice.
+   * THE ALREADY-LATE INVOICES ARE THE SERVER'S TO EXCLUDE, and this asks it to.
+   *
+   * `dueBefore` bounds only the far end of the window, so a due-soon read
+   * expressed with it comes back with everything overdue mixed in — and the two
+   * panels are read side by side, where a bill in both is counted twice by
+   * whoever adds up the week. This hook used to fetch fifty rows and drop the
+   * late ones here; `?dueSoon=true` is the same question asked where the answer
+   * can actually be paged.
    */
-  it("keeps an already-late invoice out of the due-soon panel", async () => {
-    asMock(purchaseInvoiceService.outstandingSummary).mockResolvedValue(
-      summary({ totalOverdueInvoices: 1, totalOverdueOutstanding: "50000.0000" }),
+  it("asks the server for the due-soon bucket rather than filtering here", async () => {
+    renderWithAuth(<PurchasingHub />);
+
+    await screen.findByText("Jatuh tempo minggu ini");
+
+    await waitFor(() =>
+      expect(purchaseInvoiceService.list).toHaveBeenCalledWith({
+        dueSoon: true,
+        limit: 5,
+      }),
     );
-    asMock(purchaseInvoiceService.list).mockImplementation(async (query) => {
-      if (query?.overdue) return page([listRow({ isOverdue: true })], 1);
-      // The due-soon read: both the late one and a genuinely upcoming one.
-      return page(
-        [
-          listRow({ _id: "late", isOverdue: true }),
-          listRow({
-            _id: "soon",
-            invoiceNumber: "INV/2026/VIII/0200",
-            supplierName: "CV Mitra Ternak",
-            outstandingAmount: "80000.0000",
-          }),
-        ],
-        2,
-      );
+    // The overdue panel's read is the complement of it, and neither carries a
+    // window: the horizon lives on the server.
+    expect(purchaseInvoiceService.list).toHaveBeenCalledWith({
+      overdue: true,
+      limit: 5,
     });
+  });
+
+  it("takes the due-soon count and total from the summary endpoint", async () => {
+    asMock(purchaseInvoiceService.outstandingSummary).mockResolvedValue(
+      summary({
+        totalInvoices: 12,
+        totalDueSoonInvoices: 4,
+        totalDueSoonOutstanding: "1250000.0000",
+      }),
+    );
+    asMock(purchaseInvoiceService.list).mockImplementation(async (query) =>
+      query?.dueSoon
+        ? page(
+            [
+              listRow({
+                _id: "soon",
+                invoiceNumber: "INV/2026/VIII/0200",
+                supplierName: "CV Mitra Ternak",
+                outstandingAmount: "80000.0000",
+              }),
+            ],
+            4,
+          )
+        : page([], 0),
+    );
 
     renderWithAuth(<PurchasingHub />);
 
@@ -745,11 +848,24 @@ describe("PurchasingHub payables panels", () => {
     );
 
     const soon = panel("Jatuh tempo minggu ini");
-    expect(within(soon).queryByText("PT Sumber Pangan")).not.toBeInTheDocument();
-    // Twice: as the panel's total and as the row's own amount. That they are
-    // equal IS the assertion — the total covers the one upcoming invoice, not
-    // the two the API returned.
-    expect(within(soon).getAllByText("Rp 80.000")).toHaveLength(2);
+    // The whole bucket beside one row of it, and a total nothing here summed.
+    expect(within(soon).getByText("4")).toBeInTheDocument();
+    expect(within(soon).getByText("Rp 1.250.000")).toBeInTheDocument();
+  });
+
+  /**
+   * The caption states the window the figures were COMPUTED with, not a constant
+   * this screen keeps — which would go on saying "7 hari" the day the server's
+   * default changes.
+   */
+  it("captions the panel with the horizon the server reported", async () => {
+    asMock(purchaseInvoiceService.outstandingSummary).mockResolvedValue(
+      summary({ horizonDays: 14 }),
+    );
+
+    renderWithAuth(<PurchasingHub />);
+
+    expect(await screen.findByText("14 hari ke depan")).toBeInTheDocument();
   });
 
   it("issues no payables requests for a role that may not read them", async () => {

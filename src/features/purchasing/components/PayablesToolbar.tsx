@@ -29,13 +29,22 @@ const ALL = "all";
  * The view segmented control.
  *
  * ORDERED BY URGENCY, NOT BY THE ENUM. "Jatuh tempo" first because it is the
- * question somebody opens this screen at 9am to answer, then the planning view,
- * then the exact statuses, then everything. `unpaid`/`partial`/`paid` are the
- * API's statuses; the first two entries are its AP shorthands — both go over the
- * wire, neither is computed here.
+ * question somebody opens this screen at 9am to answer, then what is about to
+ * become that question, then the planning view, then the exact statuses, then
+ * everything. `unpaid`/`partial`/`paid` are the API's statuses; the first three
+ * entries are its AP shorthands — all of them go over the wire, none is computed
+ * here.
+ *
+ * "Minggu ini" IS THE PAYMENT RUN, and it is the chip the hub's second panel
+ * finally has a list behind: what falls due inside the server's horizon and is
+ * not already late. Without it the only way to see that set was the hub's
+ * five-row preview, because it is a window no date filter on this screen can
+ * express — `Tanggal faktur` bounds when the vendor ISSUED the bill, never when
+ * it comes due.
  */
 const VIEWS: Array<{ value: PayablesView; label: string; urgent?: boolean }> = [
   { value: "overdue", label: "Jatuh tempo", urgent: true },
+  { value: "dueSoon", label: "Minggu ini" },
   { value: "outstanding", label: "Belum lunas" },
   { value: "partial", label: "Sebagian" },
   { value: "paid", label: "Lunas" },

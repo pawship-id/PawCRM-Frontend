@@ -73,6 +73,7 @@ export function SuppliersScreen() {
             suppliers={suppliers}
             outstanding={summaries.outstanding}
             purchases={summaries.purchases}
+            horizonDays={summaries.horizonDays}
             loading={loading}
             onChanged={handleChanged}
             search={query.search}
