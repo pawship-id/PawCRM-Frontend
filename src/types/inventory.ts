@@ -563,7 +563,14 @@ interface CreateProductBase {
   sku: string;
   name: string;
   categoryId: string;
-  unit: string;
+  /**
+   * OPTIONAL — the API stores `pcs` when it is absent, and refuses anything
+   * outside `pcs` | `sak` | `dus` with a 400. Typed as a plain string rather
+   * than that union because a product catalogued before the list closed may
+   * still hold "botol", and an edit form seeded from one has to be able to
+   * carry the value it was given.
+   */
+  unit?: string;
   isActive?: boolean;
 }
 

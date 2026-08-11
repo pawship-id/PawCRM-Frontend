@@ -643,6 +643,61 @@ describe("ProductForm", () => {
     });
   });
 
+  describe("satuan", () => {
+    it("starts at pcs and sends it without being asked", async () => {
+      const user = userEvent.setup();
+      const create = mockCreate();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await fillCommon(user);
+      await user.type(screen.getByLabelText(/Harga jual/), "45000");
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      await waitFor(() => expect(create).toHaveBeenCalled());
+      expect(create.mock.calls[0][0]).toMatchObject({ unit: "pcs" });
+    });
+
+    it("offers exactly the three the API accepts", async () => {
+      const user = userEvent.setup();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await user.click(screen.getByLabelText("Satuan"));
+
+      expect(
+        await screen.findByRole("option", { name: "sak" }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "dus" })).toBeInTheDocument();
+      // Free text let one tenant spell the same unit three ways; the select is
+      // what makes that unreachable rather than merely discouraged.
+      expect(screen.getAllByRole("option")).toHaveLength(3);
+    });
+
+    it("keeps showing a unit stored before the list closed", async () => {
+      // "botol" predates the enum. The select has to render it rather than come
+      // up blank and rewrite a field the user never touched.
+      jest
+        .spyOn(productService, "getById")
+        .mockResolvedValue(makeProduct({ unit: "botol" }));
+      const update = jest
+        .spyOn(productService, "update")
+        .mockResolvedValue(makeProduct());
+
+      renderWithAuth(<ProductForm productId="p1" />);
+      await screen.findByLabelText(/Nama produk/);
+
+      // The trigger itself, not just the option list — that is what the user
+      // reads before deciding whether to change anything.
+      expect(await screen.findByLabelText("Satuan")).toHaveTextContent(
+        "botol (satuan lama)",
+      );
+      expect(update).not.toHaveBeenCalled();
+    });
+  });
+
   describe("who needs a SKU", () => {
     it("requires one on a standalone", async () => {
       const user = userEvent.setup();

@@ -87,6 +87,17 @@ const MODES: Array<{ value: Mode; label: string; hint: string }> = [
 ];
 
 /**
+ * The units a product may be counted in — the API's closed list, mirrored.
+ *
+ * A select rather than a text box because the API refuses anything else: free
+ * text let one tenant spell the same unit three ways, and a report grouping by
+ * unit then showed three rows for one. Leaving it alone stores DEFAULT_UNIT,
+ * which is why the field asks for nothing and starts filled.
+ */
+const PRODUCT_UNITS = ["pcs", "sak", "dus"] as const;
+const DEFAULT_UNIT = "pcs";
+
+/**
  * The create/edit screen for a catalogue product.
  *
  * A LOADER AROUND THE FORM, and the split is not ceremony: every field below
@@ -197,7 +208,19 @@ function ProductFormFields({
   const [categoryId, setCategoryId] = useState(
     existing?.categoryId ?? categories[0]._id,
   );
-  const [unit, setUnit] = useState(existing?.unit ?? "pcs");
+  const [unit, setUnit] = useState(existing?.unit ?? DEFAULT_UNIT);
+  /**
+   * The stored unit when it predates the closed list ("botol", "kg").
+   *
+   * Rendered as an extra option so the select can SHOW it. Without this the
+   * trigger would come up blank on such a product and the first save would
+   * rewrite a field the user never touched.
+   */
+  const legacyUnit =
+    existing?.unit &&
+    !(PRODUCT_UNITS as readonly string[]).includes(existing.unit)
+      ? existing.unit
+      : null;
   const [barcode, setBarcode] = useState(existing?.barcode ?? "");
   const [sellPrice, setSellPrice] = useState(existing?.sellPrice ?? "");
   const [minStock, setMinStock] = useState(String(existing?.minStock ?? 0));
@@ -342,7 +365,8 @@ function ProductFormFields({
      * it answers with the field — see applyApiError.
      */
     if (mode !== "variants" && sku.trim() === "") next.sku = "SKU wajib diisi.";
-    if (unit.trim() === "") next.unit = "Satuan wajib diisi.";
+    // No check on `unit`: the select always holds one of the API's values, so
+    // there is nothing a user can do to it that the server would refuse.
 
     if (mode === "standalone") {
       if (sellPrice.trim() === "") next.sellPrice = "Harga jual wajib diisi.";
@@ -890,15 +914,36 @@ function ProductFormFields({
               )}
             </div>
 
-            <TextField
-              label="Satuan"
-              name="unit"
-              value={unit}
-              onChange={(event) => setUnit(event.target.value)}
-              error={fieldErrors.unit}
-              placeholder="pcs / kg / dus"
-              required
-            />
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="unit">Satuan</Label>
+              <Select value={unit} onValueChange={setUnit}>
+                <SelectTrigger id="unit" aria-label="Satuan" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PRODUCT_UNITS.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                  {/* A product catalogued as "botol" before the list closed is
+                      still editable, and its unit has to be SHOWN rather than
+                      silently rewritten to pcs by a select that cannot render
+                      it. Offered as its own option, so changing it stays a
+                      decision the user makes. */}
+                  {legacyUnit && (
+                    <SelectItem value={legacyUnit}>
+                      {legacyUnit} (satuan lama)
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted">
+                {mode === "variants"
+                  ? "Varian mewarisi satuan ini dari induknya."
+                  : "Opsional — kosong berarti pcs."}
+              </p>
+            </div>
 
             {mode !== "variants" && (
               <TextField
