@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { CheckIcon } from "lucide-react";
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 
 import { cn } from "@/lib/utils";
@@ -15,9 +16,11 @@ import { cn } from "@/lib/utils";
  * tabindex through the items, Escape and outside-click, and returning focus to
  * the trigger on close.
  *
- * Only the parts in use are wrapped. Sub-menus, checkbox and radio items are
- * left out rather than shipped unused: an unused wrapper is untested code that
- * looks tested.
+ * Only the parts in use are wrapped. Sub-menus and radio items are left out
+ * rather than shipped unused: an unused wrapper is untested code that looks
+ * tested. The CHECKBOX item is in, for the catalogue's warehouse filter — Radix
+ * Select has no multiple mode, so a menu of checkable items is what a "pick any
+ * number of these" control is built from.
  */
 function DropdownMenu({
   ...props
@@ -81,6 +84,46 @@ function DropdownMenuItem({
   );
 }
 
+/**
+ * A menu item that toggles rather than acts.
+ *
+ * KEEPS THE MENU OPEN by default, which is the one change from stock shadcn:
+ * every use of a checkable item here is a multi-selection, and a menu that shut
+ * after each tick would make choosing three warehouses three trips. A caller
+ * that wants the close-on-pick behaviour can still get it by not preventing the
+ * default in its own `onSelect`.
+ */
+function DropdownMenuCheckboxItem({
+  className,
+  children,
+  checked,
+  onSelect,
+  ...props
+}: React.ComponentProps<typeof DropdownMenuPrimitive.CheckboxItem>) {
+  return (
+    <DropdownMenuPrimitive.CheckboxItem
+      data-slot="dropdown-menu-checkbox-item"
+      checked={checked}
+      onSelect={(event) => {
+        event.preventDefault();
+        onSelect?.(event);
+      }}
+      className={cn(
+        "relative flex cursor-default items-center gap-2 rounded-sm py-1.5 pr-2 pl-8 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        className,
+      )}
+      {...props}
+    >
+      <span className="pointer-events-none absolute left-2 flex size-3.5 items-center justify-center">
+        <DropdownMenuPrimitive.ItemIndicator>
+          <CheckIcon className="size-4" />
+        </DropdownMenuPrimitive.ItemIndicator>
+      </span>
+      {children}
+    </DropdownMenuPrimitive.CheckboxItem>
+  );
+}
+
 function DropdownMenuLabel({
   className,
   ...props
@@ -112,6 +155,7 @@ export {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuCheckboxItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
 };

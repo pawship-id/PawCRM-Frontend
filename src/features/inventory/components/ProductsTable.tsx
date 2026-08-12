@@ -24,7 +24,13 @@ import type { Category } from "@/types/api";
 import type { Product } from "@/types/inventory";
 
 import { useProductVariants } from "../hooks/useProductVariants";
-import { limitedByAt, qtyAt, stockOf } from "../utils/catalogue";
+import {
+  availabilitySpread,
+  limitedByAt,
+  qtyIn,
+  stockOf,
+} from "../utils/catalogue";
+import type { WarehouseScope } from "../utils/catalogue";
 import { ProductTypeBadge } from "./ProductTypeBadge";
 
 /**
@@ -37,7 +43,10 @@ import { ProductTypeBadge } from "./ProductTypeBadge";
  *
  * Every number in the Stok column is computed by the backend and read here, not
  * derived: a parent reports its variants' total, a bundle how many it can build,
- * everything else what is on the shelf. See utils/catalogue.
+ * everything else what is on the shelf. The one thing this screen works out for
+ * itself is a scope covering more than one warehouse, which adds those
+ * per-warehouse figures up — exactly, on BigInt minor units, never on floats.
+ * See utils/catalogue.
  *
  * THE ROW ACTIONS LIVE BEHIND A KEBAB MENU, as on the supplier list and for the
  * same reason: this table already carries three numeric columns the screen
@@ -53,13 +62,14 @@ import { ProductTypeBadge } from "./ProductTypeBadge";
 export function ProductsTable({
   products,
   categories,
-  warehouseId,
+  warehouseIds,
   loading,
   onChanged,
 }: {
   products: Product[];
   categories: Category[];
-  warehouseId: string;
+  /** The warehouses every quantity here is reported for; empty means all. */
+  warehouseIds: WarehouseScope;
   loading: boolean;
   onChanged: () => void;
 }) {
@@ -154,7 +164,7 @@ export function ProductsTable({
             {products.map((product) => {
               const isOpen = expanded === product._id;
               const variantCount = product.variantCount ?? 0;
-              const stock = stockOf(product, warehouseId);
+              const stock = stockOf(product, warehouseIds);
               const deleted = Boolean(product.deletedAt);
               const low =
                 product.productType === "standalone" &&
@@ -281,12 +291,9 @@ export function ProductsTable({
                           <span className="ml-1 text-[11px] text-muted">
                             bisa dibuat
                           </span>
-                          {/* The cap is rarely the component the user is looking
-                              at, so it is named rather than left to be worked
-                              out from the component list. */}
-                          <LimitedBy
+                          <BundleNote
                             product={product}
-                            warehouseId={warehouseId}
+                            warehouseIds={warehouseIds}
                             names={namesById}
                           />
                         </>
@@ -392,9 +399,9 @@ export function ProductsTable({
 
                   {isOpen &&
                     (variants.byParent[product._id] ?? []).map((variant) => {
-                      const variantStock = qtyAt(
+                      const variantStock = qtyIn(
                         variant.stockByWarehouse,
-                        warehouseId,
+                        warehouseIds,
                       );
                       const variantLow =
                         variant.minStock > 0 &&
@@ -485,30 +492,47 @@ export function ProductsTable({
 }
 
 /**
- * Which component caps this bundle, named.
+ * The line under a bundle's figure, which says one of two different things.
  *
- * The API answers with the component's id; the name comes from whatever is
- * already on screen — the page's own rows and any expanded variants. A bundle
- * whose limiting component is not on this page renders NOTHING rather than
- * "dibatasi <id>", because an id tells the user less than silence does. Fetching
- * it would be one request per bundle row to add one word.
+ * WITH ONE WAREHOUSE IN SCOPE, which component caps it. The API answers with the
+ * component's id; the name comes from whatever is already on screen — the page's
+ * own rows and any expanded variants. A bundle whose limiting component is not
+ * on this page renders NOTHING rather than "dibatasi <id>", because an id tells
+ * the user less than silence does. Fetching it would be one request per bundle
+ * row to add one word.
+ *
+ * ACROSS SEVERAL, that the number is a sum — because components cannot be pooled
+ * between locations, so four buildable here and three there is an upper bound
+ * and not seven bundles anybody can assemble. There is no single cap to name in
+ * that case: each warehouse ran out of something different.
  */
-function LimitedBy({
+function BundleNote({
   product,
-  warehouseId,
+  warehouseIds,
   names,
 }: {
   product: Product;
-  warehouseId: string;
+  warehouseIds: WarehouseScope;
   names: Map<string, string>;
 }) {
-  const limitedBy = limitedByAt(product, warehouseId);
+  const limitedBy = limitedByAt(product, warehouseIds);
   const name = limitedBy ? names.get(String(limitedBy)) : undefined;
-  if (!name) return null;
 
-  return (
-    <span className="block text-[11px] font-normal text-muted">
-      dibatasi {name}
-    </span>
-  );
+  if (name) {
+    return (
+      <span className="block text-[11px] font-normal text-muted">
+        dibatasi {name}
+      </span>
+    );
+  }
+
+  if (availabilitySpread(product, warehouseIds) > 1) {
+    return (
+      <span className="block text-[11px] font-normal text-muted">
+        dijumlah per gudang
+      </span>
+    );
+  }
+
+  return null;
 }

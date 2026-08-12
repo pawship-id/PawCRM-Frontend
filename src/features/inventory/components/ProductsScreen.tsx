@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { Alert, Breadcrumb, Pagination, Spinner } from "@/components";
 
@@ -22,22 +22,27 @@ import { ProductsToolbar } from "./ProductsToolbar";
  * data already on the page instead of issuing a request. It is kept here rather
  * than in the table because it is a property of the screen — what "Stok" means
  * on it — not of any row.
+ *
+ * IT OPENS ON EVERY GUDANG, which is the question the catalogue is usually asked
+ * ("how much of this do we have?"), and picking locations narrows it. The
+ * original default — whichever warehouse happened to sort first — answered a
+ * question nobody had asked and read as a total, so a tenant with stock split
+ * across two locations saw a number that was quietly short. It is also a value
+ * available before the warehouse list arrives, so the Stok column no longer
+ * starts blank and fills in.
+ *
+ * ANY NUMBER OF WAREHOUSES CAN BE PICKED, held here as a list of ids where the
+ * EMPTY LIST MEANS EVERY ONE. Two shops out of five is a real question — "can
+ * the Jakarta branches cover this order between them" — and answering it by
+ * reading two numbers off two loads of the page and adding them by hand is
+ * exactly the arithmetic this column exists to do.
  */
 export function ProductsScreen() {
   const { products, pagination, query, loading, error, setQuery, refetch } =
     useProducts();
   const lookups = useCatalogLookups();
 
-  const [warehouseId, setWarehouseId] = useState("");
-
-  // The first warehouse becomes the default view once the list arrives. Not a
-  // fetch, so no cleanup: it runs once, when an empty selection can be filled.
-  useEffect(() => {
-    if (!warehouseId && lookups.warehouses.length > 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setWarehouseId(lookups.warehouses[0]._id);
-    }
-  }, [lookups.warehouses, warehouseId]);
+  const [warehouseIds, setWarehouseIds] = useState<string[]>([]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -61,8 +66,8 @@ export function ProductsScreen() {
         query={query}
         categories={lookups.categories}
         warehouses={lookups.warehouses}
-        warehouseId={warehouseId}
-        onWarehouseChange={setWarehouseId}
+        warehouseIds={warehouseIds}
+        onWarehouseChange={setWarehouseIds}
         onChange={setQuery}
       />
 
@@ -82,7 +87,7 @@ export function ProductsScreen() {
           <ProductsTable
             products={products}
             categories={lookups.categories}
-            warehouseId={warehouseId}
+            warehouseIds={warehouseIds}
             loading={loading}
             onChanged={refetch}
           />

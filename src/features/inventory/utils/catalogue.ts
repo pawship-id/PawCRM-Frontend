@@ -1,3 +1,4 @@
+import { sumDecimals } from "@/utils/decimal";
 import type { Product, ProductStockRow, VariantAxis } from "@/types/inventory";
 
 /**
@@ -9,20 +10,49 @@ import type { Product, ProductStockRow, VariantAxis } from "@/types/inventory";
  */
 
 /**
- * One warehouse's quantity out of a per-warehouse array.
+ * Which locations a quantity on screen is reported for: any number of warehouse
+ * ids, where EMPTY MEANS EVERY ONE OF THEM.
  *
- * A missing row is `"0"` rather than null: absent means the product has never
- * had stock there, and a stock column showing "—" for that would read as "not
- * known" when it is known and it is none. The one place absence IS meaningful —
- * a parent whose variants have no rows at all — is handled by the caller.
+ * Empty rather than a list of all the ids, because "all" and "these ten, which
+ * happen to be all of them" are different questions once a warehouse is
+ * inactive or soft-deleted: a product can still hold stock somewhere the
+ * warehouse dropdown no longer offers, and an empty scope counts it while an
+ * enumerated one would quietly drop it from the total.
  */
-export function qtyAt(
+export type WarehouseScope = readonly string[];
+
+/**
+ * The rows a scope covers — every row when it is empty.
+ *
+ * Generic over the row, so the plain per-warehouse quantities and a bundle's
+ * availability rows (which carry `limitedBy` too) both come back as themselves
+ * rather than widened to the narrower shape.
+ */
+function rowsInScope<Row extends { warehouseId: string }>(
+  rows: Row[] | undefined,
+  scope: WarehouseScope,
+): Row[] {
+  if (scope.length === 0) return rows ?? [];
+
+  return (rows ?? []).filter((row) => scope.includes(String(row.warehouseId)));
+}
+
+/**
+ * What a per-warehouse array adds up to across the scope.
+ *
+ * A missing row counts as zero rather than null: absent means the product has
+ * never had stock there, and a stock column showing "—" for that would read as
+ * "not known" when it is known and it is none. The one place absence IS
+ * meaningful — a parent whose variants have no rows at all — is the caller's.
+ *
+ * The total goes through sumDecimals rather than `+`, because these are decimal
+ * STRINGS the backend sent precisely so they never touch a float.
+ */
+export function qtyIn(
   rows: ProductStockRow[] | undefined,
-  warehouseId: string,
+  scope: WarehouseScope,
 ): string {
-  return (
-    rows?.find((row) => String(row.warehouseId) === warehouseId)?.qty ?? "0"
-  );
+  return sumDecimals(rowsInScope(rows, scope).map((row) => row.qty));
 }
 
 /**
@@ -34,27 +64,53 @@ export function qtyAt(
  *
  * All three come from the backend already computed. The screen picks the field
  * that answers the question its row is asking.
+ *
+ * A scope covering more than one warehouse sums the chosen field. For a bundle
+ * that total is an UPPER BOUND rather than a plan — components cannot be pooled
+ * across locations, so four buildable here and three there is not seven
+ * buildable anywhere. Both screens say so beside the figure.
  */
-export function stockOf(product: Product, warehouseId: string): string {
+export function stockOf(product: Product, scope: WarehouseScope): string {
   if (product.productType === "bundle") {
-    return qtyAt(product.bundleAvailability, warehouseId);
+    return qtyIn(product.bundleAvailability, scope);
   }
   if (product.productType === "parent") {
-    return qtyAt(product.variantStock, warehouseId);
+    return qtyIn(product.variantStock, scope);
   }
-  return qtyAt(product.stockByWarehouse, warehouseId);
+  return qtyIn(product.stockByWarehouse, scope);
 }
 
-/** The bundle component that caps availability at this warehouse, if any. */
+/**
+ * How many warehouses the bundle's "bisa dibuat" figure is spread over.
+ *
+ * The backend emits one row per location where any component has stock, so this
+ * is what tells a screen whether its number describes one shelf or several
+ * added together — the difference between a count and an upper bound.
+ */
+export function availabilitySpread(
+  product: Product,
+  scope: WarehouseScope,
+): number {
+  return rowsInScope(product.bundleAvailability, scope).length;
+}
+
+/**
+ * The bundle component that caps availability, when the scope leaves exactly one
+ * warehouse to be capped.
+ *
+ * Null across several: each location has its own limiting component, and naming
+ * one of them beside a total spanning all of them would be a claim about the
+ * total that is not true. One row IS the whole answer, though, however the scope
+ * arrived at it — so a bundle whose components only live in one warehouse names
+ * its cap even under "Semua gudang".
+ */
 export function limitedByAt(
   product: Product,
-  warehouseId: string,
+  scope: WarehouseScope,
 ): string | null {
-  return (
-    product.bundleAvailability?.find(
-      (row) => String(row.warehouseId) === warehouseId,
-    )?.limitedBy ?? null
-  );
+  const rows = rowsInScope(product.bundleAvailability, scope);
+
+  return rows.length === 1 ? (rows[0].limitedBy ?? null) : null;
 }
 
 /**

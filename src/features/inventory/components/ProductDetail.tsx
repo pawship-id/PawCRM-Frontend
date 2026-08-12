@@ -30,7 +30,8 @@ import type { Product, ProductStockRow } from "@/types/inventory";
 import { useBundleCandidates } from "../hooks/useBundleCandidates";
 import { useCatalogLookups } from "../hooks/useCatalogLookups";
 import { useProductDetail } from "../hooks/useProductDetail";
-import { limitedByAt, qtyAt } from "../utils/catalogue";
+import { limitedByAt, qtyIn } from "../utils/catalogue";
+import type { WarehouseScope } from "../utils/catalogue";
 import { ProductTypeBadge } from "./ProductTypeBadge";
 
 /**
@@ -42,8 +43,20 @@ const RichTextView = dynamic(
   { ssr: false, loading: () => <p className="text-sm text-muted">Memuat…</p> },
 );
 
-/** Sentinel for the "every warehouse" option — Radix Select forbids `""`. */
+/**
+ * Sentinel for the "every warehouse" option — Radix Select forbids `""`.
+ *
+ * ONE WAREHOUSE AT A TIME HERE, unlike the catalogue list, which lets several be
+ * ticked at once. This page is about one product, and the card below the figure
+ * already breaks it down per location — the choice a list needs ("these two
+ * branches, added up") is a question this screen answers by being read.
+ */
 const ALL = "all";
+
+/** The single-warehouse selector, as the scope the shared helpers take. */
+function scopeOf(warehouseId: string): WarehouseScope {
+  return warehouseId === ALL ? [] : [warehouseId];
+}
 
 /**
  * "warisan dari induk" beside a value a variant did not set itself.
@@ -153,7 +166,7 @@ export function ProductDetail({ productId }: { productId: string }) {
   }
 
   const rows = stockRowsOf(product);
-  const stock = quantityAt(rows, warehouseId);
+  const stock = qtyIn(rows, scopeOf(warehouseId));
   const deleted = Boolean(product.deletedAt);
   const holdsStock =
     product.productType === "standalone" || product.productType === "variant";
@@ -636,7 +649,7 @@ function VariantTable({
 }) {
   const total = sumDecimals(
     variants.map((variant) =>
-      quantityAt(variant.stockByWarehouse, warehouseId),
+      qtyIn(variant.stockByWarehouse, scopeOf(warehouseId)),
     ),
   );
 
@@ -663,7 +676,10 @@ function VariantTable({
             </thead>
             <tbody>
               {variants.map((variant) => {
-                const qty = quantityAt(variant.stockByWarehouse, warehouseId);
+                const qty = qtyIn(
+                  variant.stockByWarehouse,
+                  scopeOf(warehouseId),
+                );
 
                 return (
                   <tr
@@ -753,8 +769,7 @@ function BundleComponents({
   warehouseId: string;
 }) {
   const components = product.bundleConfig?.components ?? [];
-  const limiting =
-    warehouseId === ALL ? null : limitedByAt(product, warehouseId);
+  const limiting = limitedByAt(product, scopeOf(warehouseId));
 
   return (
     <Card
@@ -853,17 +868,6 @@ function stockRowsOf(product: Product): ProductStockRow[] {
   if (product.productType === "bundle") return product.bundleAvailability ?? [];
   if (product.productType === "parent") return product.variantStock ?? [];
   return product.stockByWarehouse;
-}
-
-/** One warehouse's quantity, or every warehouse's added up. */
-function quantityAt(
-  rows: ProductStockRow[] | undefined,
-  warehouseId: string,
-): string {
-  if (warehouseId === ALL) {
-    return sumDecimals((rows ?? []).map((row) => row.qty));
-  }
-  return qtyAt(rows, warehouseId);
 }
 
 function stockLabel(product: Product): string {

@@ -11,7 +11,9 @@ import { ApiError } from "@/services/api-error";
 import type { PageResult, Warehouse } from "@/types/api";
 import type { Product } from "@/types/inventory";
 
-jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn() }) }));
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: jest.fn() }),
+}));
 
 // Mutations fire a SweetAlert2 toast on success; mock the library so no real
 // dialog is created during the test.
@@ -22,6 +24,7 @@ jest.mock("sweetalert2", () => ({
 
 const WAREHOUSE = "wh1";
 const OTHER_WAREHOUSE = "wh2";
+const THIRD_WAREHOUSE = "wh3";
 
 function makeProduct(overrides: Partial<Product> = {}): Product {
   return {
@@ -92,8 +95,20 @@ function mockLookups() {
     items: [
       warehouse(WAREHOUSE, "Gudang Pusat"),
       warehouse(OTHER_WAREHOUSE, "Gudang Cabang"),
+      warehouse(THIRD_WAREHOUSE, "Gudang Timur"),
     ],
-    pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
+    pagination: { page: 1, limit: 100, total: 3, totalPages: 1 },
+  });
+}
+
+/** A product stocked in all three warehouses: 14 + 3 + 5, so every subset differs. */
+function stockedEverywhere() {
+  return makeProduct({
+    stockByWarehouse: [
+      { warehouseId: WAREHOUSE, qty: "14.0000" },
+      { warehouseId: OTHER_WAREHOUSE, qty: "3.0000" },
+      { warehouseId: THIRD_WAREHOUSE, qty: "5.0000" },
+    ],
   });
 }
 
@@ -109,6 +124,30 @@ function mockList(items: Product[]) {
 async function openRowMenu(user: UserEvent, name = "Shampoo Anjing") {
   await user.click(screen.getByRole("button", { name: `Aksi untuk ${name}` }));
   return screen.getByRole("menu");
+}
+
+/** The warehouse picker's trigger, whose name doubles as its current value. */
+function warehouseTrigger() {
+  return screen.getByRole("button", { name: /Stok ditampilkan untuk/ });
+}
+
+/**
+ * Ticks warehouses in the picker, then closes it.
+ *
+ * ONE OPEN FOR ALL OF THEM, which is the behaviour being exercised as much as
+ * asserted: a menu that closed after each tick would need one trip per
+ * warehouse. Closing at the end matters too — Radix marks the rest of the page
+ * aria-hidden while the menu is up, so the table is unreachable until it is.
+ */
+async function tickWarehouses(user: UserEvent, ...names: string[]) {
+  await user.click(warehouseTrigger());
+  const menu = screen.getByRole("menu");
+
+  for (const name of names) {
+    await user.click(within(menu).getByRole("menuitemcheckbox", { name }));
+  }
+
+  await user.keyboard("{Escape}");
 }
 
 /**
@@ -198,6 +237,7 @@ describe("ProductsScreen", () => {
   });
 
   it("labels a bundle's stock as what can be BUILT, and names the cap", async () => {
+    const user = userEvent.setup();
     mockList([
       makeProduct({
         _id: "b1",
@@ -218,6 +258,7 @@ describe("ProductsScreen", () => {
         },
         bundleAvailability: [
           { warehouseId: WAREHOUSE, qty: "4.0000", limitedBy: "p1" },
+          { warehouseId: OTHER_WAREHOUSE, qty: "2.0000", limitedBy: "p1" },
         ],
       }),
       makeProduct(),
@@ -226,31 +267,103 @@ describe("ProductsScreen", () => {
     renderWithAuth(<ProductsScreen />);
 
     expect(await screen.findByText("bisa dibuat")).toBeInTheDocument();
-    expect(screen.getByText("dibatasi Shampoo Anjing")).toBeInTheDocument();
+    // Spread over two locations the figure is a sum, and components cannot be
+    // pooled between them — so the screen says how it was reached instead of
+    // naming a cap that only holds at one of them.
+    expect(screen.getByText("dijumlah per gudang")).toBeInTheDocument();
+    expect(
+      screen.queryByText("dibatasi Shampoo Anjing"),
+    ).not.toBeInTheDocument();
+
+    await tickWarehouses(user, "Gudang Pusat");
+
+    expect(
+      await screen.findByText("dibatasi Shampoo Anjing"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("dijumlah per gudang")).not.toBeInTheDocument();
   });
 
-  it("re-reads the stock column for the warehouse chosen, without refetching", async () => {
-    const user = userEvent.setup();
-    const list = mockList([
-      makeProduct({
-        stockByWarehouse: [
-          { warehouseId: WAREHOUSE, qty: "14.0000" },
-          { warehouseId: OTHER_WAREHOUSE, qty: "3.0000" },
-        ],
-      }),
-    ]);
+  it("opens on every warehouse added up, so the total is not one location's", async () => {
+    const list = mockList([stockedEverywhere()]);
 
     renderWithAuth(<ProductsScreen />);
     await screen.findByText("Shampoo Anjing");
-    expect(screen.getByText("14")).toBeInTheDocument();
 
-    await user.click(screen.getByLabelText("Gudang"));
-    await user.click(await screen.findByRole("option", { name: "Gudang Cabang" }));
-
-    expect(await screen.findByText("3")).toBeInTheDocument();
-    // Every product already carries every warehouse's quantity, so switching
-    // location is a read of what is on the page.
+    // Defaulting to whichever warehouse sorted first would print "14" here —
+    // a number that reads as the total while being short by everything held
+    // anywhere else.
+    expect(await screen.findByText("22")).toBeInTheDocument();
+    expect(warehouseTrigger()).toHaveTextContent("Semua gudang");
+    // The summing is a read of the rows already on the page, not a request for
+    // an aggregate the backend would have to compute.
     expect(list).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-reads the stock column for the warehouses ticked, without refetching", async () => {
+    const user = userEvent.setup();
+    const list = mockList([stockedEverywhere()]);
+
+    renderWithAuth(<ProductsScreen />);
+    await screen.findByText("Shampoo Anjing");
+    expect(screen.getByText("22")).toBeInTheDocument();
+
+    await tickWarehouses(user, "Gudang Cabang");
+    expect(await screen.findByText("3")).toBeInTheDocument();
+    expect(warehouseTrigger()).toHaveTextContent("Gudang Cabang");
+
+    await tickWarehouses(user, "Gudang Cabang", "Gudang Pusat");
+    expect(await screen.findByText("14")).toBeInTheDocument();
+
+    // Every product already carries every warehouse's quantity, so ticking one
+    // is a read of what is on the page.
+    expect(list).toHaveBeenCalledTimes(1);
+  });
+
+  it("adds up several warehouses at once — the point of ticking more than one", async () => {
+    const user = userEvent.setup();
+    mockList([stockedEverywhere()]);
+
+    renderWithAuth(<ProductsScreen />);
+    await screen.findByText("Shampoo Anjing");
+
+    // One trip through the menu for both, because it stays open as they are
+    // ticked. 14 + 5, and deliberately not the 22 that "all" would give — a
+    // subset has to be a real subset for the control to be worth anything.
+    await tickWarehouses(user, "Gudang Pusat", "Gudang Timur");
+
+    expect(await screen.findByText("19")).toBeInTheDocument();
+    expect(warehouseTrigger()).toHaveTextContent("2 gudang");
+  });
+
+  it("falls back to every warehouse when the last tick is removed", async () => {
+    const user = userEvent.setup();
+    mockList([stockedEverywhere()]);
+
+    renderWithAuth(<ProductsScreen />);
+    await screen.findByText("Shampoo Anjing");
+
+    await tickWarehouses(user, "Gudang Pusat");
+    expect(await screen.findByText("14")).toBeInTheDocument();
+
+    // Nothing ticked cannot mean "no warehouses" — that would be a page of
+    // zeros, which is never what emptying a filter is asking for.
+    await tickWarehouses(user, "Gudang Pusat");
+    expect(await screen.findByText("22")).toBeInTheDocument();
+    expect(warehouseTrigger()).toHaveTextContent("Semua gudang");
+  });
+
+  it('clears the selection through "Semua gudang" without unticking each one', async () => {
+    const user = userEvent.setup();
+    mockList([stockedEverywhere()]);
+
+    renderWithAuth(<ProductsScreen />);
+    await screen.findByText("Shampoo Anjing");
+
+    await tickWarehouses(user, "Gudang Pusat", "Gudang Timur");
+    expect(await screen.findByText("19")).toBeInTheDocument();
+
+    await tickWarehouses(user, "Semua gudang");
+    expect(await screen.findByText("22")).toBeInTheDocument();
   });
 
   it("deletes through a confirmation, then refetches", async () => {
@@ -354,10 +467,9 @@ describe("ProductsScreen", () => {
     expect(
       within(menu).getByRole("menuitem", { name: "Detail" }),
     ).toHaveAttribute("href", "/dashboard/inventory/products/p1");
-    expect(within(menu).getByRole("menuitem", { name: "Edit" })).toHaveAttribute(
-      "href",
-      "/dashboard/inventory/products/p1/edit",
-    );
+    expect(
+      within(menu).getByRole("menuitem", { name: "Edit" }),
+    ).toHaveAttribute("href", "/dashboard/inventory/products/p1/edit");
   });
 
   it("surfaces a failed load instead of an empty catalogue", async () => {
