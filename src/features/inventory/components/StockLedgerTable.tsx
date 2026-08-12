@@ -37,6 +37,10 @@ const REFERENCE_LABELS: Record<ReferenceType, string> = {
   transfer_manual: "Transfer manual",
   bundle_consume: "Penjualan bundle",
   manual_adjustment: "Penyesuaian manual",
+  // Has no document either, like a manual adjustment — but is worth naming
+  // apart, because "what did this tenant start with" is a question the stock
+  // card could not answer while the two shared one label.
+  opening_balance: "Saldo awal persediaan",
 };
 
 export function StockLedgerTable({

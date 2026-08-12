@@ -4,8 +4,12 @@ import { useEffect, useState } from "react";
 
 import { categoryService } from "@/services/category.service";
 import { warehouseService } from "@/services/warehouse.service";
+import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
+import { businessLineService } from "@/services/businessLine.service";
+import type { BusinessLine } from "@/services/businessLine.service";
 import { ApiError } from "@/services/api-error";
 import type { Category } from "@/types/api";
+import type { ChartOfAccount } from "@/types/accounting";
 import type { StockWarehouse } from "@/types/inventory";
 
 interface CatalogLookups {
@@ -15,9 +19,25 @@ interface CatalogLookups {
    * balance, so offering it in a picker leads to a 400. See `includeInactive`.
    */
   warehouses: StockWarehouse[];
+  /**
+   * Income accounts only, and empty unless `withAccounting` asked for them.
+   *
+   * The API refuses a `salesAccountId` that is not an income account, so
+   * filtering here is what stops the picker from offering a choice that cannot
+   * be saved.
+   */
+  salesAccounts: ChartOfAccount[];
+  businessLines: BusinessLine[];
   loading: boolean;
   /** Non-null when either list failed — the screen shows this instead of guessing. */
   error: string | null;
+  /**
+   * True when the accounting lists were asked for and did not arrive — a
+   * missing permission, most likely. Distinct from `error`, which blocks the
+   * whole form: a product saves perfectly well without a sales account, so this
+   * disables two selects and says why rather than stopping the screen.
+   */
+  accountingUnavailable: boolean;
 }
 
 interface CatalogLookupsOptions {
@@ -28,6 +48,16 @@ interface CatalogLookupsOptions {
    * one that kept them without the name would show a row labelled by an id.
    */
   includeInactive?: boolean;
+  /**
+   * Also load the income accounts and business lines the product form's
+   * accounting section picks from.
+   *
+   * OPT-IN so existing callers issue exactly the two requests they always did.
+   * The list screen and the stock pickers have no use for either, and two extra
+   * round trips on every catalogue read to fill a section that is not rendered
+   * is a cost with no buyer.
+   */
+  withAccounting?: boolean;
 }
 
 /**
@@ -47,9 +77,13 @@ interface CatalogLookupsOptions {
  */
 export function useCatalogLookups({
   includeInactive = false,
+  withAccounting = false,
 }: CatalogLookupsOptions = {}): CatalogLookups {
   const [categories, setCategories] = useState<Category[]>([]);
   const [warehouses, setWarehouses] = useState<StockWarehouse[]>([]);
+  const [salesAccounts, setSalesAccounts] = useState<ChartOfAccount[]>([]);
+  const [businessLines, setBusinessLines] = useState<BusinessLine[]>([]);
+  const [accountingUnavailable, setAccountingUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,13 +92,41 @@ export function useCatalogLookups({
 
     (async () => {
       try {
-        const [categoryResult, warehouseResult] = await Promise.all([
-          categoryService.list(),
-          warehouseService.list(includeInactive ? {} : { isActive: true }),
-        ]);
+        /**
+         * The two accounting lists CATCH THEIR OWN FAILURES, unlike the two
+         * above them.
+         *
+         * `chartOfAccounts:read` and `businessLines:read` are separate
+         * permissions from `products:read`, and a role that manages the
+         * catalogue without seeing the books is an ordinary arrangement rather
+         * than a misconfiguration. Letting either rejection reach the shared
+         * `catch` would take down the whole form — category picker, variant
+         * matrix, opening stock and all — over an optional section.
+         *
+         * Categories and warehouses stay unguarded deliberately: without them
+         * there is no product to save, so their failure IS the form's failure.
+         */
+        const [categoryResult, warehouseResult, accountResult, lineResult] =
+          await Promise.all([
+            categoryService.list(),
+            warehouseService.list(includeInactive ? {} : { isActive: true }),
+            withAccounting
+              ? chartOfAccountsService
+                  .list({ accountType: "income", isActive: true })
+                  .catch(() => null)
+              : Promise.resolve(null),
+            withAccounting
+              ? businessLineService.list().catch(() => null)
+              : Promise.resolve(null),
+          ]);
         if (!active) return;
         setCategories(categoryResult.items);
         setWarehouses(warehouseResult.items);
+        setSalesAccounts(accountResult?.items ?? []);
+        setBusinessLines(lineResult?.items ?? []);
+        setAccountingUnavailable(
+          withAccounting && (accountResult === null || lineResult === null),
+        );
       } catch (err) {
         if (!active) return;
         setError(
@@ -80,7 +142,15 @@ export function useCatalogLookups({
     return () => {
       active = false;
     };
-  }, [includeInactive]);
+  }, [includeInactive, withAccounting]);
 
-  return { categories, warehouses, loading, error };
+  return {
+    categories,
+    warehouses,
+    salesAccounts,
+    businessLines,
+    loading,
+    error,
+    accountingUnavailable,
+  };
 }

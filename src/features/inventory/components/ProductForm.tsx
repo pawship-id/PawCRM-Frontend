@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert, Button, Card, Spinner, TextField } from "@/components";
@@ -16,19 +16,27 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { MediaGallery } from "@/components/MediaGallery";
+import { mediaService } from "@/services/media.service";
+import { Plus, X } from "lucide-react";
+import dynamic from "next/dynamic";
 import { productService } from "@/services/product.service";
 import { ApiError } from "@/services/api-error";
 import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
 import {
   formatMoney,
+  formatQty,
   isDecimal,
   isPositive,
   multiplyDecimals,
   sumDecimals,
+  toDecimalString,
   toMinor,
 } from "@/utils/decimal";
 import type { Category } from "@/types/api";
+import type { ChartOfAccount } from "@/types/accounting";
+import type { BusinessLine } from "@/services/businessLine.service";
 import type {
   BundleComponent,
   BundlePricingMode,
@@ -36,9 +44,11 @@ import type {
   CreateProductInput,
   OpeningStockInput,
   Product,
+  ProductMedia,
   StockWarehouse,
   UpdateProductInput,
   VariantAxis,
+  WeightUnit,
 } from "@/types/inventory";
 
 import { useBundleCandidates } from "../hooks/useBundleCandidates";
@@ -52,7 +62,114 @@ import {
   variantCombinations,
 } from "../utils/catalogue";
 import { BundleComponentEditor } from "./BundleComponentEditor";
+import {
+  ShippingFieldsCard,
+  isShippingEmpty,
+  toShippingDraft,
+  toShippingPayload,
+} from "./ShippingFieldsCard";
+import type { ShippingDraft } from "./ShippingFieldsCard";
 import { VariantAxisEditor } from "./VariantAxisEditor";
+
+/**
+ * ProseMirror touches `document` while it constructs, so the editor cannot be
+ * server-rendered. Loaded lazily for a second reason too: it is by far the
+ * heaviest thing on this screen, and a user creating a plain product with no
+ * description should not pay for it.
+ */
+const RichTextEditor = dynamic(
+  () => import("@/components/RichTextEditor").then((m) => m.RichTextEditor),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="min-h-40 rounded-lg border border-border bg-accent/40" />
+    ),
+  },
+);
+
+/**
+ * A variant row's single image — a 32px tile that IS the upload control.
+ *
+ * One cell rather than a column of buttons: the matrix is already scrolling
+ * sideways at five columns, and "upload / crop / delete" as three more would
+ * make it unusable. Clicking the tile picks a file; clicking the × clears it.
+ *
+ * NO CROPPER HERE, deliberately. The gallery's crop dialog exists because a
+ * catalogue hero image is composed; a variant thumbnail is a record of which
+ * colour this one is, and stopping to crop twelve of them is the friction that
+ * stops anyone filling the field in at all. The server still re-encodes, so the
+ * safety properties are identical.
+ */
+function VariantImageCell({
+  row,
+  onChange,
+}: {
+  row: VariantRow;
+  onChange: (asset: ProductMedia | null) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function pick(file: File) {
+    setBusy(true);
+    try {
+      onChange(await mediaService.upload(file));
+    } catch {
+      // The row keeps whatever it had. A failed upload here must not take down
+      // a form holding eleven other rows of typed-in prices.
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <span className="relative shrink-0">
+      <button
+        type="button"
+        aria-label={`Gambar ${row.combo.join(" ")}`}
+        onClick={() => inputRef.current?.click()}
+        className="block size-8 overflow-hidden rounded border border-dashed border-border bg-accent/40"
+      >
+        {busy ? (
+          <span className="text-[9px] text-muted">…</span>
+        ) : row.image ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={row.image.thumbUrl ?? row.image.url}
+            alt=""
+            className="size-full object-cover"
+          />
+        ) : (
+          <Plus className="mx-auto size-3 text-muted" />
+        )}
+      </button>
+
+      {row.image && (
+        <button
+          type="button"
+          aria-label={`Hapus gambar ${row.combo.join(" ")}`}
+          onClick={() => onChange(null)}
+          className="absolute -top-1 -right-1 rounded-full bg-foreground/70 p-0.5 text-surface"
+        >
+          <X className="size-2.5" />
+        </button>
+      )}
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        tabIndex={-1}
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (file) void pick(file);
+        }}
+      />
+    </span>
+  );
+}
 
 type Mode = "standalone" | "variants" | "bundle";
 
@@ -66,6 +183,20 @@ interface VariantRow {
   minStock: string;
   openingQty: string;
   openingCost: string;
+
+  /**
+   * The per-row overrides, behind the expander.
+   *
+   * EVERY ONE IS "" BY DEFAULT AND "" MEANS INHERIT. The row shows the parent's
+   * value as a placeholder and stores nothing until somebody types — which is
+   * the same rule the standalone form follows, applied per row.
+   */
+  weight: string;
+  weightUnit: string;
+  length: string;
+  width: string;
+  height: string;
+  image: ProductMedia | null;
 }
 
 const MODES: Array<{ value: Mode; label: string; hint: string }> = [
@@ -108,7 +239,10 @@ const DEFAULT_UNIT = "pcs";
  */
 export function ProductForm({ productId }: { productId?: string }) {
   const detail = useProductDetail(productId);
-  const lookups = useCatalogLookups();
+  // `withAccounting` is what pulls in the income accounts and business lines the
+  // accounting section picks from. Opt-in, so the list screen and the stock
+  // pickers still issue exactly the two requests they always did.
+  const lookups = useCatalogLookups({ withAccounting: true });
 
   if (detail.loading || lookups.loading) {
     return (
@@ -136,6 +270,9 @@ export function ProductForm({ productId }: { productId?: string }) {
       existingVariants={detail.variants}
       categories={lookups.categories}
       warehouses={lookups.warehouses}
+      salesAccounts={lookups.salesAccounts}
+      businessLines={lookups.businessLines}
+      accountingUnavailable={lookups.accountingUnavailable}
     />
   );
 }
@@ -181,11 +318,17 @@ function ProductFormFields({
   existingVariants,
   categories,
   warehouses,
+  salesAccounts,
+  businessLines,
+  accountingUnavailable,
 }: {
   existing?: Product;
   existingVariants: Product[];
   categories: Category[];
   warehouses: StockWarehouse[];
+  salesAccounts: ChartOfAccount[];
+  businessLines: BusinessLine[];
+  accountingUnavailable: boolean;
 }) {
   const router = useRouter();
 
@@ -226,6 +369,34 @@ function ProductFormFields({
   const [minStock, setMinStock] = useState(String(existing?.minStock ?? 0));
   const [hasExpiry, setHasExpiry] = useState(existing?.hasExpiry ?? false);
 
+  /**
+   * ─── The marketplace fields ───────────────────────────────────────────
+   *
+   * Every one seeded from the STORED value (`existing.brand`), never from the
+   * resolved one (`existing.resolved.brand`). On a variant the difference is the
+   * whole feature: seeding from `resolved` would load the parent's brand into
+   * the input, and the next save would write it as this variant's own — so it
+   * would silently stop following the family on a save about something else.
+   *
+   * The parent's values are shown as PLACEHOLDERS instead, which is where the
+   * `resolved` block is read.
+   */
+  const [brand, setBrand] = useState(existing?.brand ?? "");
+  const [isPreorder, setIsPreorder] = useState(existing?.isPreorder ?? false);
+  const [shipping, setShipping] = useState<ShippingDraft>(
+    toShippingDraft(existing?.shipping),
+  );
+  const [media, setMedia] = useState<ProductMedia[]>(existing?.media ?? []);
+  // Stored HTML, seeded from the STORED value like every other inheritable
+  // field — never from `resolved`, for the reason spelled out above.
+  const [description, setDescription] = useState(existing?.description ?? "");
+  const [salesAccountId, setSalesAccountId] = useState(
+    existing?.salesAccountId ?? "",
+  );
+  const [businessLineId, setBusinessLineId] = useState(
+    existing?.businessLineId ?? "",
+  );
+
   const [openingEnabled, setOpeningEnabled] = useState(false);
   const [openingQty, setOpeningQty] = useState("");
   const [openingCost, setOpeningCost] = useState("");
@@ -253,6 +424,16 @@ function ProductFormFields({
   const [components, setComponents] = useState<BundleComponent[]>(
     existing?.bundleConfig?.components ?? [],
   );
+
+  /**
+   * Which variant rows have their override drawer open, by combination key.
+   *
+   * EXPAND IN PLACE RATHER THAN A DIALOG, because the user is comparing rows —
+   * "the 10 kg should weigh more than the 3 kg" — and a modal hides exactly the
+   * comparison they opened it to make. It is also the cheapest thing that could
+   * work: one Set, no new component, and it degrades to a long form on mobile.
+   */
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   /** Per-row API refusals, keyed by combination — see applyApiError. */
@@ -298,6 +479,24 @@ function ProductFormFields({
         // stock its movements gave it, and this form is not where that changes.
         openingQty: override.openingQty ?? "",
         openingCost: override.openingCost ?? "",
+
+        /**
+         * The per-row overrides behind the expander.
+         *
+         * Seeded from the STORED value (`previous.shipping.weight`), never from
+         * the resolved one. That is the same rule the standalone form follows,
+         * applied twelve times: loading the parent's weight into each row's
+         * input would turn every inherited row into an explicit override on the
+         * first save, and the family would stop moving together.
+         *
+         * `""` is what the parent's value shows through as — the placeholder.
+         */
+        weight: override.weight ?? previous?.shipping?.weight ?? "",
+        weightUnit: override.weightUnit ?? previous?.shipping?.weightUnit ?? "",
+        length: override.length ?? previous?.shipping?.length ?? "",
+        width: override.width ?? previous?.shipping?.width ?? "",
+        height: override.height ?? previous?.shipping?.height ?? "",
+        image: override.image ?? previous?.variantImage ?? null,
       };
     });
   }, [axes, sku, name, existingVariants, variantOverrides]);
@@ -327,6 +526,53 @@ function ProductFormFields({
     }),
   );
 
+  /**
+   * A preview of the bundle weight the API will derive — the same relationship
+   * `componentHpp` above already has with `hppAvg`: computed here so the number
+   * moves while the user edits the component list, and authoritative on the
+   * server, which resolves each component's own inheritance.
+   *
+   * In GRAMS, matching what the API reports, so the two cannot disagree about
+   * units while the form is open.
+   */
+  const componentWeightGrams = useMemo(() => {
+    if (mode !== "bundle" || components.length === 0) return null;
+
+    let total = 0n;
+    for (const component of components) {
+      const item = products.find(
+        (candidate) => candidate._id === component.componentProductId,
+      );
+      const weight = item?.resolved?.shipping.weight;
+      if (!weight) continue;
+
+      const grams =
+        item?.resolved?.shipping.weightUnit === "kg"
+          ? multiplyDecimals(weight, "1000")
+          : weight;
+      total += toMinor(multiplyDecimals(grams, component.qty)) ?? 0n;
+    }
+
+    // toDecimalString, never a float — a weight is a decimal like every
+    // other quantity here, and Number() would reintroduce exactly the error
+    // minor units exist to remove.
+    return total > 0n ? formatQty(toDecimalString(total)) : null;
+  }, [mode, components, products]);
+
+  /** Components with no weight recorded — named so the total can be trusted. */
+  const unweighedComponents = useMemo(() => {
+    if (mode !== "bundle") return [];
+
+    return components
+      .map((component) =>
+        products.find(
+          (candidate) => candidate._id === component.componentProductId,
+        ),
+      )
+      .filter((item) => item && !item.resolved?.shipping.weight)
+      .map((item) => item?.name ?? "Komponen");
+  }, [mode, components, products]);
+
   const sellsAtLoss =
     mode === "bundle" &&
     pricingMode === "fixed" &&
@@ -334,10 +580,35 @@ function ProductFormFields({
     (toMinor(fixedPrice) ?? 0n) < (toMinor(componentHpp) ?? 0n) &&
     (toMinor(componentHpp) ?? 0n) > 0n;
 
-  function setVariantField(
+  /**
+   * A row's shipping overrides as a payload, or undefined when it typed none.
+   *
+   * Only the leaves the row actually filled in: a variant that set its weight
+   * and nothing else keeps inheriting the parent's box size, which is the whole
+   * reason INHERITED_FROM_PARENT names leaf paths rather than the object.
+   */
+  function rowShippingPayload(row: VariantRow) {
+    const leaves: Record<string, string> = {};
+    if (row.weight.trim()) leaves.weight = row.weight.trim();
+    if (row.weightUnit.trim()) leaves.weightUnit = row.weightUnit.trim();
+    if (row.length.trim()) leaves.length = row.length.trim();
+    if (row.width.trim()) leaves.width = row.width.trim();
+    if (row.height.trim()) leaves.height = row.height.trim();
+
+    return Object.keys(leaves).length > 0 ? leaves : undefined;
+  }
+
+  /**
+   * Records one row's override.
+   *
+   * The value is typed as the FIELD'S own type rather than as `string`, because
+   * `image` holds an asset object and `null` is how it is cleared — the same
+   * clear-by-null every other override in this form uses.
+   */
+  function setVariantField<K extends keyof VariantRow>(
     combo: string[],
-    field: keyof VariantRow,
-    value: string,
+    field: K,
+    value: VariantRow[K],
   ) {
     const key = combo.join("|");
     setVariantOverrides((prev) => ({
@@ -450,6 +721,53 @@ function ProductFormFields({
     }
 
     /**
+     * The marketplace fields. Optional throughout, so what is checked is the
+     * SHAPE of anything actually typed — an empty field is a valid answer.
+     *
+     * Length caps mirror the API's, so a 200-character brand is refused on the
+     * field rather than as a banner over a form the user has to re-find their
+     * way around.
+     */
+    if (brand.trim().length > 120) {
+      next.brand = "Maksimal 120 karakter.";
+    }
+
+    // The API's own cap, checked against the RAW html rather than the rendered
+    // text: 30 KB of markup still has to be parsed even if it renders as a
+    // paragraph, and refusing it here keeps the refusal on the field.
+    if (description.length > 20_000) {
+      next.description = "Deskripsi terlalu panjang (maksimal 20.000 karakter).";
+    }
+
+    (
+      [
+        ["weight", "Berat"],
+        ["length", "Panjang"],
+        ["width", "Lebar"],
+        ["height", "Tinggi"],
+      ] as const
+    ).forEach(([field, label]) => {
+      const raw = shipping[field].trim();
+      if (raw === "") return;
+      if (!isDecimal(raw)) {
+        next[`shipping.${field}`] = `${label}: gunakan angka, maksimal 4 desimal.`;
+      } else if (raw.startsWith("-")) {
+        next[`shipping.${field}`] = `${label} tidak boleh negatif.`;
+      }
+    });
+
+    // A number with no unit is ambiguous in exactly the way that ships a 3 kg
+    // sack as three grams. The API defaults a bare weight to grams; asking here
+    // means the user chooses rather than discovering the default later.
+    if (shipping.weight.trim() !== "" && shipping.weightUnit.trim() === "") {
+      next["shipping.weightUnit"] = "Pilih satuan berat.";
+    }
+
+    if (shipping.packageContents.trim().length > 500) {
+      next["shipping.packageContents"] = "Maksimal 500 karakter.";
+    }
+
+    /**
      * Opening stock, checked only when the switch is on.
      *
      * A stale number left in a field the user then switched off must not block
@@ -462,11 +780,32 @@ function ProductFormFields({
           "Belum ada gudang aktif — stok awal tidak bisa dicatat.";
       }
 
+      /**
+       * A quantity has to arrive with the price it was bought at.
+       *
+       * The API refuses opening stock without `costPerUnit` — and it refuses it
+       * BEFORE writing anything, so a product that would otherwise exist does
+       * not. Asking here keeps the refusal on the field.
+       *
+       * The reason is accounting rather than tidiness: the price is what the
+       * opening inventory journal is built from. Without it the movement carries
+       * a quantity with no value, the journal line is skipped, and the tenant
+       * ends up with stock on the shelf that the balance sheet says is worth
+       * nothing — a hole that only surfaces at the first stocktake, by which
+       * time the original price is a question nobody can answer.
+       *
+       * Zero is allowed, deliberately: donated stock and free samples are real.
+       */
+      const COST_REQUIRED =
+        "Harga beli wajib — angka ini yang membentuk jurnal persediaan stok awal.";
+
       if (mode === "standalone") {
         if (openingQty.trim() !== "" && !isDecimal(openingQty)) {
           next.openingQty = "Gunakan angka, maksimal 4 desimal.";
         }
-        if (openingCost.trim() !== "" && !isDecimal(openingCost)) {
+        if (openingCost.trim() === "") {
+          if (openingQty.trim() !== "") next.openingCost = COST_REQUIRED;
+        } else if (!isDecimal(openingCost)) {
           next.openingCost = "Gunakan angka, maksimal 4 desimal.";
         }
       }
@@ -481,6 +820,18 @@ function ProductFormFields({
           next.openingVariants = `Angka tidak valid pada varian ${malformed
             .map((row) => row.combo.join(" / "))
             .join(", ")} — maksimal 4 desimal.`;
+        }
+
+        // Per row, because a family may open stock for some variants and not
+        // others — naming the rows is what makes a twelve-row table actionable.
+        const priceless = variantRows.filter(
+          (row) =>
+            row.openingQty.trim() !== "" && row.openingCost.trim() === "",
+        );
+        if (priceless.length > 0) {
+          next.openingCostVariants = `${COST_REQUIRED} Lengkapi varian ${priceless
+            .map((row) => row.combo.join(" / "))
+            .join(", ")}.`;
         }
       }
 
@@ -540,7 +891,10 @@ function ProductFormFields({
     return {
       warehouseId: openingWarehouseId,
       qty: qty.trim(),
-      ...(cost.trim() !== "" ? { costPerUnit: cost.trim() } : {}),
+      // Always sent, never conditional: the API requires it, and validate()
+      // has already refused an empty one. Omitting it here would turn a caught
+      // field error into a 400 the form has to unpack.
+      costPerUnit: cost.trim(),
       ...(hasExpiry
         ? {
             batchCode: openingBatchCode.trim(),
@@ -551,6 +905,32 @@ function ProductFormFields({
   }
 
   /** The create payload for whichever shape the form is in. */
+  /**
+   * The marketplace fields, as a create payload.
+   *
+   * Every one is OMITTED when blank rather than sent as null. On a variant that
+   * is what makes it inherit: the API stores the schema default (null), and null
+   * is the sentinel that resolves from the parent. Sending an explicit null
+   * would reach the same place today, but "absent means inherit" is the contract
+   * the API documents and the one that survives a default changing.
+   */
+  function marketplaceCreateFields() {
+    return {
+      ...(brand.trim() ? { brand: brand.trim() } : {}),
+      ...(isPreorder ? { isPreorder: true } : {}),
+      ...(salesAccountId ? { salesAccountId } : {}),
+      ...(businessLineId ? { businessLineId } : {}),
+      ...(isShippingEmpty(shipping)
+        ? {}
+        : { shipping: toShippingPayload(shipping) }),
+      // Omitted when empty, like every other optional field. The gallery is
+      // forbidden on a variant, but this form never creates a lone variant —
+      // it creates a parent whose rows carry one image each.
+      ...(media.length > 0 ? { media } : {}),
+      ...(description.trim() ? { description } : {}),
+    };
+  }
+
   function buildCreateInput(): CreateProductInput {
     const base = {
       name: name.trim(),
@@ -562,6 +942,7 @@ function ProductFormFields({
     if (mode === "bundle") {
       return {
         ...base,
+        ...marketplaceCreateFields(),
         sku: trimmedSku,
         productType: "bundle",
         ...(barcode.trim() ? { barcode: barcode.trim() } : {}),
@@ -583,6 +964,11 @@ function ProductFormFields({
         sellPrice: row.sellPrice.trim(),
         ...(row.barcode.trim() ? { barcode: row.barcode.trim() } : {}),
         minStock: Number(row.minStock) || 0,
+        // OMITTED when the row typed nothing — absence is what makes the field
+        // resolve from the parent, and sending a null would be the same thing
+        // said less clearly.
+        ...(rowShippingPayload(row) ? { shipping: rowShippingPayload(row) } : {}),
+        ...(row.image ? { variantImage: row.image } : {}),
         ...(openingStockFor(row.openingQty, row.openingCost)
           ? { openingStock: openingStockFor(row.openingQty, row.openingCost) }
           : {}),
@@ -590,6 +976,7 @@ function ProductFormFields({
 
       return {
         ...base,
+        ...marketplaceCreateFields(),
         // Omitted entirely when blank rather than sent as "" — the parent's
         // code is genuinely optional, and the rows below carry the real ones.
         ...(trimmedSku ? { sku: trimmedSku } : {}),
@@ -606,6 +993,7 @@ function ProductFormFields({
 
     return {
       ...base,
+      ...marketplaceCreateFields(),
       sku: trimmedSku,
       sellPrice: sellPrice.trim(),
       minStock: Number(minStock) || 0,
@@ -675,6 +1063,60 @@ function ProductFormFields({
           .filter((axis) => axis.values.length > 0)
           .map((axis) => ({ name: axis.name.trim(), values: axis.values }));
       }
+    }
+
+    /**
+     * The marketplace fields, diffed against the STORED value — never against
+     * `product.resolved`.
+     *
+     * The mirror of the placeholder rule. Comparing against the resolved value
+     * would make an untouched variant look changed the moment its parent
+     * differed from it, and the patch would write the parent's number as this
+     * variant's own override.
+     *
+     * "" becomes null, which is how an override is CLEARED and the field
+     * resumes inheriting.
+     */
+    if (description !== (product.description ?? "")) {
+      // "" clears it, which on a variant is what makes it inherit again.
+      patch.description = description.trim() === "" ? null : description;
+    }
+
+    const nextBrand = brand.trim();
+    if (nextBrand !== (product.brand ?? "")) {
+      patch.brand = nextBrand === "" ? null : nextBrand;
+    }
+    if (isPreorder !== (product.isPreorder ?? false)) {
+      patch.isPreorder = isPreorder;
+    }
+    if (salesAccountId !== (product.salesAccountId ?? "")) {
+      patch.salesAccountId = salesAccountId === "" ? null : salesAccountId;
+    }
+    if (businessLineId !== (product.businessLineId ?? "")) {
+      patch.businessLineId = businessLineId === "" ? null : businessLineId;
+    }
+
+    /**
+     * The gallery, sent WHOLE whenever it differs.
+     *
+     * Compared by storage key rather than by object identity: an asset read back
+     * from the API carries an `_id` the freshly-uploaded one does not, so a deep
+     * compare would report every gallery as changed on every save.
+     */
+    const mediaKeys = (items: ProductMedia[]) =>
+      items.map((item) => item.storageKey).join("|");
+    if (mediaKeys(media) !== mediaKeys(product.media ?? [])) {
+      patch.media = media;
+    }
+
+    // Sent whole when anything in it moved: the API merges leaf by leaf, so an
+    // emptied field has to arrive as an explicit null rather than as an absence.
+    const nextShipping = toShippingPayload(shipping);
+    if (
+      JSON.stringify(nextShipping) !==
+      JSON.stringify(toShippingPayload(toShippingDraft(product.shipping)))
+    ) {
+      patch.shipping = nextShipping;
     }
 
     if (mode === "bundle") {
@@ -750,6 +1192,44 @@ function ProductFormFields({
         if ((Number(row.minStock) || 0) !== previous.minStock)
           patch.minStock = Number(row.minStock) || 0;
 
+        /**
+         * The per-row overrides, diffed against the STORED values.
+         *
+         * `previous.shipping` is what this variant itself holds — nulls where it
+         * inherits — so an untouched inherited row produces an identical payload
+         * and no patch. Comparing against `previous.resolved.shipping` instead
+         * would make every inherited row look changed and write the parent's
+         * numbers onto it, which is the bug the whole design exists to prevent.
+         *
+         * Sent WHOLE when anything moved, because the API merges leaf by leaf
+         * and an emptied field has to arrive as an explicit null to clear.
+         */
+        const nextShipping = {
+          weight: row.weight.trim() || null,
+          weightUnit: (row.weightUnit.trim() || null) as WeightUnit | null,
+          length: row.length.trim() || null,
+          width: row.width.trim() || null,
+          height: row.height.trim() || null,
+        };
+        const storedShipping = {
+          weight: previous.shipping?.weight ?? null,
+          weightUnit: previous.shipping?.weightUnit ?? null,
+          length: previous.shipping?.length ?? null,
+          width: previous.shipping?.width ?? null,
+          height: previous.shipping?.height ?? null,
+        };
+        if (JSON.stringify(nextShipping) !== JSON.stringify(storedShipping)) {
+          patch.shipping = nextShipping;
+        }
+
+        if (
+          (row.image?.storageKey ?? null) !==
+          (previous.variantImage?.storageKey ?? null)
+        ) {
+          // Null removes it — the same clear-by-null every override uses.
+          patch.variantImage = row.image;
+        }
+
         if (Object.keys(patch).length > 0) {
           await productService.update(row.id, patch);
         }
@@ -765,6 +1245,10 @@ function ProductFormFields({
         sellPrice: row.sellPrice.trim(),
         ...(row.barcode.trim() ? { barcode: row.barcode.trim() } : {}),
         minStock: Number(row.minStock) || 0,
+        ...(rowShippingPayload(row)
+          ? { shipping: rowShippingPayload(row) }
+          : {}),
+        ...(row.image ? { variantImage: row.image } : {}),
       });
     }
   }
@@ -957,6 +1441,37 @@ function ProductFormFields({
                 className="font-mono"
               />
             )}
+
+            <TextField
+              label="Merk"
+              name="brand"
+              value={brand}
+              onChange={(event) => setBrand(event.target.value)}
+              error={fieldErrors.brand}
+              hint="Opsional. Dipakai untuk filter katalog dan listing marketplace."
+              placeholder="Royal Canin"
+            />
+          </div>
+
+          <div className="flex items-start gap-2">
+            <Checkbox
+              id="isPreorder"
+              checked={isPreorder}
+              onCheckedChange={(checked) => setIsPreorder(checked === true)}
+            />
+            <div>
+              <Label htmlFor="isPreorder">Produk pre-order</Label>
+              <p className="text-xs text-muted">
+                Boleh dipesan walau stok kosong. Dibaca POS dan sinkronisasi
+                e-commerce.
+                {/* Unlike hasExpiry, this does NOT cascade — it is a per-SKU
+                    availability statement, and stock is held per variant.
+                    Saying so is what stops somebody expecting the checkbox to
+                    behave like the one directly below it. */}
+                {mode === "variants" &&
+                  " Setelan ini milik induk saja; atur per varian di tabel varian."}
+              </p>
+            </div>
           </div>
 
           {mode !== "bundle" && (
@@ -979,6 +1494,138 @@ function ProductFormFields({
                     (existing
                       ? " Mengubahnya ikut mengubah SEMUA varian produk ini — setelan ini milik induk, bukan milik ukurannya."
                       : " Varian mewarisi setelan ini dari induknya.")}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {/* ---------------------------------------------------- description */}
+      <Card
+        title="Deskripsi"
+        description="Dipublikasikan ke marketplace dan website. Boleh menyisipkan gambar."
+      >
+        <RichTextEditor
+          value={description}
+          onChange={setDescription}
+          placeholder="Ceritakan produknya — komposisi, cara pakai, ukuran kemasan."
+          error={fieldErrors.description}
+        />
+      </Card>
+
+      {/* ---------------------------------------------------------- media */}
+      {/* On a family this is the PARENT's gallery. Each variant gets its own
+          single image in the variant table — nine images per size is a gallery
+          nobody curates and a POS tile nobody can pick from. */}
+      <Card
+        title="Foto & video produk"
+        description="Yang pertama jadi gambar utama di katalog, POS dan marketplace."
+      >
+        <MediaGallery
+          value={media}
+          onChange={setMedia}
+          error={fieldErrors.media}
+        />
+      </Card>
+
+      {/* ------------------------------------------------------- shipping */}
+      {/* On a family this is the PARENT's shipping — the variant rows inherit
+          it, and only the rows that genuinely weigh something else say so. */}
+      <ShippingFieldsCard
+        value={shipping}
+        onChange={setShipping}
+        derivedWeightGrams={componentWeightGrams}
+        unweighedComponents={unweighedComponents}
+        errors={{
+          weight: fieldErrors["shipping.weight"],
+          weightUnit: fieldErrors["shipping.weightUnit"],
+          length: fieldErrors["shipping.length"],
+          width: fieldErrors["shipping.width"],
+          height: fieldErrors["shipping.height"],
+          packageContents: fieldErrors["shipping.packageContents"],
+        }}
+      />
+
+      {/* ----------------------------------------------------- accounting */}
+      <Card title="Akuntansi">
+        <div className="flex flex-col gap-4">
+          <p className="text-xs text-muted">
+            Opsional, dan belum dipakai memposting apa pun — modul penjualan
+            belum ada. Diisi sekarang karena di sinilah tenant tahu jawabannya;
+            menanyakannya belakangan berarti menanyakannya untuk setiap produk
+            sekaligus.
+            {mode === "variants" && " Varian mewarisi keduanya dari induk."}
+          </p>
+
+          {accountingUnavailable ? (
+            /* A products-only role cannot read the chart of accounts. The form
+               still saves — these two fields are optional — so this says why
+               they are missing rather than blocking the screen. */
+            <p className="rounded-lg border border-secondary/40 bg-secondary/15 px-3 py-2 text-xs">
+              Daftar akun dan lini bisnis tidak bisa dimuat — kemungkinan role
+              Anda tidak punya akses ke Akuntansi. Produk tetap bisa disimpan
+              tanpa keduanya.
+            </p>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="salesAccountId">Akun penjualan</Label>
+                <Select
+                  value={salesAccountId}
+                  onValueChange={setSalesAccountId}
+                  disabled={salesAccounts.length === 0}
+                >
+                  {/* w-fit by default — see the note on the category select. */}
+                  <SelectTrigger id="salesAccountId" className="w-full">
+                    <SelectValue
+                      placeholder={
+                        salesAccounts.length === 0
+                          ? "Belum ada akun pendapatan"
+                          : "Pilih akun"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {salesAccounts.map((account) => (
+                      <SelectItem key={account._id} value={account._id}>
+                        {account.code} — {account.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted">
+                  Hanya akun bertipe pendapatan. Menentukan ke mana penjualan
+                  produk ini dikreditkan.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="businessLineId">Lini bisnis</Label>
+                <Select
+                  value={businessLineId}
+                  onValueChange={setBusinessLineId}
+                  disabled={businessLines.length === 0}
+                >
+                  <SelectTrigger id="businessLineId" className="w-full">
+                    <SelectValue
+                      placeholder={
+                        businessLines.length === 0
+                          ? "Belum ada lini bisnis"
+                          : "Pilih lini bisnis"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {businessLines.map((line) => (
+                      <SelectItem key={line._id} value={line._id}>
+                        {line.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted">
+                  Tagging jurnal — memisahkan laporan Grooming, Hotel dan Retail.
                 </p>
               </div>
             </div>
@@ -1074,6 +1721,10 @@ function ProductFormFields({
                       <th className="px-2 py-2 text-left font-medium">
                         Min stok
                       </th>
+                      {/* The drawer toggle. Unlabelled because the button in
+                          each row carries its own aria-label with the variant
+                          name in it. */}
+                      <th className="px-2 py-2" />
                     </tr>
                   </thead>
                   <tbody>
@@ -1081,15 +1732,32 @@ function ProductFormFields({
                       const key = row.combo.join("|");
                       const rowError = rowErrors[key];
 
+                      const open = expandedRows.has(key);
+
                       return (
-                        <tr key={key} className="border-b border-border/60">
+                        <Fragment key={key}>
+                        <tr className="border-b border-border/60">
                           <td className="px-2 py-2 font-medium">
-                            {row.combo.join(" / ")}
-                            {row.id && (
-                              <Badge variant="outline" className="ml-2">
-                                sudah ada
-                              </Badge>
-                            )}
+                            <div className="flex items-center gap-2">
+                              {/* The image cell — one click opens the picker for
+                                  this row. A whole column of upload controls
+                                  would be five more columns in a table that is
+                                  already scrolling sideways. */}
+                              <VariantImageCell
+                                row={row}
+                                onChange={(asset: ProductMedia | null) =>
+                                  setVariantField(row.combo, "image", asset)
+                                }
+                              />
+                              <span>
+                                {row.combo.join(" / ")}
+                                {row.id && (
+                                  <Badge variant="outline" className="ml-2">
+                                    sudah ada
+                                  </Badge>
+                                )}
+                              </span>
+                            </div>
                           </td>
                           <td className="px-2 py-2">
                             {/* The requirement lives here now that the parent
@@ -1170,7 +1838,106 @@ function ProductFormFields({
                               className="max-w-20 font-mono"
                             />
                           </td>
+                          <td className="px-2 py-2">
+                            <button
+                              type="button"
+                              aria-label={`Detail ${row.combo.join(" ")}`}
+                              aria-expanded={open}
+                              onClick={() =>
+                                setExpandedRows((previous) => {
+                                  const next = new Set(previous);
+                                  if (next.has(key)) next.delete(key);
+                                  else next.add(key);
+                                  return next;
+                                })
+                              }
+                              className="rounded px-1 text-muted hover:text-foreground"
+                            >
+                              {open ? "▾" : "▸"}
+                            </button>
+                          </td>
                         </tr>
+
+                        {open && (
+                          /* EXPANDED IN PLACE rather than in a dialog, because
+                             the user is comparing rows — "the 10 kg should be
+                             heavier than the 3 kg" — and a modal hides exactly
+                             the comparison they opened it to make. */
+                          <tr className="border-b border-border/60 bg-accent/30">
+                            <td colSpan={6} className="px-2 py-3">
+                              <p className="mb-2 text-xs text-muted">
+                                Kosongkan untuk mengikuti induk. Angka di
+                                placeholder adalah nilai induk.
+                              </p>
+                              <div className="grid gap-3 sm:grid-cols-5">
+                                {(
+                                  [
+                                    ["weight", "Berat"],
+                                    ["length", "Panjang"],
+                                    ["width", "Lebar"],
+                                    ["height", "Tinggi"],
+                                  ] as const
+                                ).map(([field, label]) => (
+                                  <label
+                                    key={field}
+                                    className="flex flex-col gap-1 text-xs"
+                                  >
+                                    <span className="text-muted">{label}</span>
+                                    <Input
+                                      aria-label={`${label} ${row.combo.join(" ")}`}
+                                      inputMode="decimal"
+                                      value={row[field]}
+                                      onChange={(event) =>
+                                        setVariantField(
+                                          row.combo,
+                                          field,
+                                          event.target.value,
+                                        )
+                                      }
+                                      /* The PARENT's value, shown through the
+                                         empty input. Never bound as the value —
+                                         that is what would turn an inherited
+                                         row into an override on save. */
+                                      placeholder={
+                                        shipping[field] || "ikut induk"
+                                      }
+                                      className="font-mono"
+                                    />
+                                  </label>
+                                ))}
+                                <label className="flex flex-col gap-1 text-xs">
+                                  <span className="text-muted">Satuan</span>
+                                  <Select
+                                    value={row.weightUnit}
+                                    onValueChange={(value) =>
+                                      setVariantField(
+                                        row.combo,
+                                        "weightUnit",
+                                        value,
+                                      )
+                                    }
+                                  >
+                                    <SelectTrigger
+                                      aria-label={`Satuan berat ${row.combo.join(" ")}`}
+                                      className="w-full"
+                                    >
+                                      <SelectValue
+                                        placeholder={
+                                          shipping.weightUnit || "ikut induk"
+                                        }
+                                      />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="gr">gram</SelectItem>
+                                      <SelectItem value="kg">kg</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </label>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                        </Fragment>
                       );
                     })}
                   </tbody>
@@ -1363,11 +2130,12 @@ function ProductFormFields({
                     <TextField
                       label="Harga beli per unit"
                       name="openingCost"
+                      required
                       inputMode="decimal"
                       value={openingCost}
                       onChange={(event) => setOpeningCost(event.target.value)}
                       error={fieldErrors.openingCost}
-                      hint="Membentuk HPP awal. Kosongkan kalau belum tahu."
+                      hint="Membentuk HPP awal dan jurnal persediaan stok awal. Isi 0 untuk barang donasi."
                       placeholder="44000"
                     />
                   </>
@@ -1426,7 +2194,7 @@ function ProductFormFields({
                             Stok awal
                           </th>
                           <th className="px-2 py-2 text-left font-medium">
-                            Harga beli / unit
+                            Harga beli / unit *
                           </th>
                         </tr>
                       </thead>
@@ -1467,7 +2235,7 @@ function ProductFormFields({
                                     event.target.value,
                                   )
                                 }
-                                placeholder="opsional"
+                                placeholder="44000"
                                 className="max-w-32 font-mono"
                               />
                             </td>
@@ -1477,7 +2245,9 @@ function ProductFormFields({
                     </table>
                     <p className="mt-2 text-xs text-muted">
                       Varian yang dikosongkan dibuat tanpa stok. Tidak semua
-                      harus diisi.
+                      harus diisi — tapi varian yang diberi stok wajib punya
+                      harga beli, karena angka itulah yang membentuk jurnal
+                      persediaan stok awal.
                     </p>
                   </div>
                 ))}
@@ -1485,6 +2255,12 @@ function ProductFormFields({
               {fieldErrors.openingVariants && (
                 <p role="alert" className="text-xs text-danger">
                   {fieldErrors.openingVariants}
+                </p>
+              )}
+
+              {fieldErrors.openingCostVariants && (
+                <p role="alert" className="text-xs text-danger">
+                  {fieldErrors.openingCostVariants}
                 </p>
               )}
             </div>

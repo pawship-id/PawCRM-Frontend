@@ -117,11 +117,92 @@ deletion, so it is a decision rather than a side effect of typing in a field.
   is asked once for the whole entry.
 - **Bundle** — never offered. A bundle holds no stock of its own.
 
+**The purchase price is required wherever a quantity is entered**, and validated
+here rather than left to the API — which now refuses the whole create *before
+writing anything*, so an unpriced row would cost the user the entire form rather
+than one cell. In a family this is per row: a variant left blank asks for no
+price, a variant given stock demands one.
+
+The reason is accounting, not tidiness. The price is what the opening inventory
+journal is built from (**Dr 1201 Persediaan / Cr 3101 Modal**). Without it the
+movement carries a quantity with no value, the journal line is skipped, and the
+tenant is left holding stock the balance sheet says is worth nothing — a hole
+that only surfaces at the first stocktake, by which time the original price is a
+question nobody can answer. `0` is accepted: donated stock and free samples are
+real.
+
 It travels in the same request as the product and is posted to the ledger by the
 API. **The API commits the products before the ledger runs**, so a ledger failure
 comes back on a `201` as `openingStock.posted: false` — the form then tells the
 user the product exists and its opening stock does not, and points at Penyesuaian
-Stok.
+Stok. Everything predictable is refused before anything is written, so this path
+now covers only the narrow window between the check and the posting.
+
+## The marketplace fields
+
+Merk, deskripsi, pre-order, informasi pengiriman, foto/video, and the two accounting references.
+All optional — a tenant that never sells online fills none of them in and the catalogue works
+exactly as it did.
+
+### Inheritance: the one rule to keep
+
+**Inputs bind to the STORED value. The parent's value is a PLACEHOLDER.**
+
+The API returns both — `product.shipping.weight` (what this product itself holds, `null` when it
+inherits) and `product.resolved.shipping.weight` (the effective value) — precisely so the form can
+keep them apart:
+
+```tsx
+value={row.weight}                    // stored: "" when inherited
+placeholder={parentShipping.weight}   // effective: shown, never bound
+```
+
+Getting this backwards is the one bug this feature can produce silently. A variant loads its
+parent's 500 g into the input, the user edits the SKU and saves, and the variant now holds an
+explicit 500 g that has stopped following its family — with nothing on screen to say so. `buildPatch`
+and `saveFamily` diff against `product.shipping`, never `product.resolved.shipping`, for the same
+reason.
+
+Clearing a field is how an override is removed and inheritance resumes. There is no reset button.
+
+`inheritedFields[]` names which values came from the parent; the detail screen renders *"warisan
+dari induk"* beside each, because the two states are otherwise indistinguishable and they lead to
+different actions — edit here, or edit the parent and move every sibling at once.
+
+**`isPreorder` is not inherited.** Inheriting a boolean needs a tri-state that renders as an
+indeterminate checkbox nobody reads correctly, so it is a plain per-product flag.
+
+### Media
+
+Up to 9 images/videos on the parent or standalone; exactly one image per variant. The array's
+order is the display order and the first item is the primary image everywhere — catalogue row, POS
+tile, marketplace listing — which is why the reorder controls matter and why there is no separate
+sort field.
+
+Reordering is native HTML5 drag **plus ◀ ▶ buttons**. The buttons are the touch path, the keyboard
+path and the only path testable in jsdom, which is what makes a drag-and-drop library unnecessary
+for nine one-dimensional items rather than merely avoidable.
+
+Cropping happens in the browser before upload, so the server receives final bytes. Videos skip it —
+there is nothing to crop — and carry an optional poster frame; without one the tile shows a play
+icon.
+
+Deleting a tile removes it from the array only. The bytes go when the product is saved; doing it
+sooner would strand a live product's image if the user then cancelled.
+
+### Bundle weight
+
+A bundle's weight defaults to the sum of its components', in grams, shown as a **placeholder** so
+that saving without touching it keeps the bundle following its components. Type a number to
+override; clear it to go back. Components with no weight recorded are named, because a total the
+user cannot reconcile against the scale is worse than no total.
+
+### Akuntansi
+
+`chartOfAccounts:read` and `businessLines:read` are separate permissions from `products:read`. When
+either list cannot be loaded the two selects are replaced by an explanation and **the form still
+saves** — both fields are optional, and taking down the whole form over an optional section would
+be the wrong trade.
 
 ## Routes
 

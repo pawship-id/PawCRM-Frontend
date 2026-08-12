@@ -13,6 +13,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import dynamic from "next/dynamic";
+
 import { Can } from "@/features/permissions";
 import { cn } from "@/lib/utils";
 import {
@@ -31,8 +33,70 @@ import { useProductDetail } from "../hooks/useProductDetail";
 import { limitedByAt, qtyAt } from "../utils/catalogue";
 import { ProductTypeBadge } from "./ProductTypeBadge";
 
+/**
+ * Read-only rich text. Lazily loaded and never server-rendered, for the same
+ * reason the editor is: ProseMirror touches `document` while it constructs.
+ */
+const RichTextView = dynamic(
+  () => import("@/components/RichTextEditor").then((m) => m.RichTextView),
+  { ssr: false, loading: () => <p className="text-sm text-muted">Memuat…</p> },
+);
+
 /** Sentinel for the "every warehouse" option — Radix Select forbids `""`. */
 const ALL = "all";
+
+/**
+ * "warisan dari induk" beside a value a variant did not set itself.
+ *
+ * WORTH THE PIXELS because the two states look identical otherwise. Somebody
+ * reading a variant's 500 g has no way to tell whether that number was chosen
+ * for this size or is following the family — and those answers lead to different
+ * actions: one is edited here, the other on the parent, where it moves every
+ * sibling at once.
+ *
+ * Renders nothing on a standalone, a parent or a bundle, whose `inheritedFields`
+ * the API always returns empty.
+ */
+function InheritedNote({
+  product,
+  field,
+}: {
+  product: Product;
+  field: string;
+}) {
+  if (!product.inheritedFields?.includes(field)) return null;
+
+  return (
+    <span className="ml-2 text-xs font-normal text-muted">
+      warisan dari induk
+    </span>
+  );
+}
+
+/** "20 × 15 × 10 cm", or an em dash when the box was never measured. */
+function formatDimensions(product: Product): string {
+  const { length, width, height } = product.resolved?.shipping ?? {};
+
+  // All three or none: two out of three describes no box, and rendering
+  // "20 × 15 × —" invites somebody to read the gap as a zero.
+  if (!length || !width || !height) return "—";
+
+  return `${length} × ${width} × ${height} cm`;
+}
+
+/** "4101 — Penjualan", falling back to an em dash rather than a bare id. */
+function accountLabel(
+  accounts: Array<{ _id: string; code: string; name: string }>,
+  accountId: string | null | undefined,
+): string {
+  if (!accountId) return "—";
+
+  const account = accounts.find((candidate) => candidate._id === accountId);
+
+  // An id nobody can resolve names nothing a human can look up, so it is not
+  // shown — the same rule the stock ledger applies to `reference.id`.
+  return account ? `${account.code} — ${account.name}` : "—";
+}
 
 /**
  * One product, read-only: everything stored about it, and — for a parent — every
@@ -64,7 +128,14 @@ export function ProductDetail({ productId }: { productId: string }) {
     useProductDetail(productId);
   // Inactive locations included: a closed warehouse still owns the stock it
   // held, and a row it appears in has to be named rather than shown as an id.
-  const lookups = useCatalogLookups({ includeInactive: true });
+  // `withAccounting` resolves the two account references into names. Without it
+  // the Akuntansi card could only print ObjectIds, which name nothing a human
+  // can look up; the lists fail softly, so the card degrades to em dashes rather
+  // than the screen failing.
+  const lookups = useCatalogLookups({
+    includeInactive: true,
+    withAccounting: true,
+  });
   // Only a bundle pays for this — it is the one type whose components are ids
   // the screen has to turn into names.
   const components = useBundleCandidates(product?.productType === "bundle");
@@ -241,6 +312,11 @@ export function ProductDetail({ productId }: { productId: string }) {
               <dd className="font-medium">
                 {TYPE_LABELS[product.productType]}
               </dd>
+              <dt className="text-muted">Merk</dt>
+              <dd className="font-medium">
+                {product.resolved?.brand ?? "—"}
+                <InheritedNote product={product} field="brand" />
+              </dd>
               <dt className="text-muted">Kategori</dt>
               <dd className="font-medium">
                 {categoryName(lookups.categories, product.categoryId)}
@@ -257,11 +333,106 @@ export function ProductDetail({ productId }: { productId: string }) {
               <dd className="font-medium">
                 {product.hasExpiry ? "Dicatat per batch" : "Tidak dicatat"}
               </dd>
+              <dt className="text-muted">Pre-order</dt>
+              <dd className="font-medium">
+                {product.isPreorder ? "Ya" : "Tidak"}
+              </dd>
               <dt className="text-muted">Status</dt>
               <dd className="font-medium">
                 {deleted ? "Terhapus" : product.isActive ? "Aktif" : "Nonaktif"}
               </dd>
             </dl>
+          </Card>
+
+          {/* The gallery. A product with no photos shows nothing rather than an
+              empty frame — there is no state to explain, unlike shipping, where
+              "unmeasured" is itself an answer a marketplace integration needs. */}
+          {(product.media?.length ?? 0) > 0 && (
+            <Card title="Foto & video">
+              <div className="grid grid-cols-3 gap-2">
+                {product.media?.map((item) => (
+                  <a
+                    key={item.storageKey}
+                    href={item.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="aspect-square overflow-hidden rounded-lg border border-border bg-accent"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={item.thumbUrl ?? item.posterUrl ?? item.url}
+                      alt={item.alt ?? "Media produk"}
+                      className="h-full w-full object-cover"
+                    />
+                  </a>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {/* Shown even when every field is empty, and deliberately: "no
+              shipping information" is the answer a marketplace integration
+              needs, and a card that disappeared when unset would read as a
+              screen that forgot to render rather than as a product nobody has
+              measured. */}
+          <Card title="Informasi pengiriman">
+            <dl className="grid grid-cols-[120px_1fr] gap-y-2 text-sm">
+              <dt className="text-muted">Berat</dt>
+              <dd className="font-mono tabular-nums">
+                {product.resolved?.shipping.weight
+                  ? `${product.resolved.shipping.weight} ${
+                      product.resolved.shipping.weightUnit ?? "gr"
+                    }`
+                  : "—"}
+                <InheritedNote product={product} field="shipping.weight" />
+              </dd>
+              <dt className="text-muted">Dimensi</dt>
+              <dd className="font-mono tabular-nums">
+                {formatDimensions(product)}
+                <InheritedNote product={product} field="shipping.length" />
+              </dd>
+              <dt className="text-muted">Isi paket</dt>
+              <dd>
+                {product.resolved?.shipping.packageContents ?? "—"}
+                <InheritedNote
+                  product={product}
+                  field="shipping.packageContents"
+                />
+              </dd>
+            </dl>
+          </Card>
+
+          {/* Only when there is something to show: an empty description card is
+              a heading with an em dash under it, which reads as a screen that
+              failed rather than a product nobody has written up. */}
+          {product.resolved?.description && (
+            <Card title="Deskripsi">
+              <RichTextView html={product.resolved.description} />
+              <InheritedNote product={product} field="description" />
+            </Card>
+          )}
+
+          <Card title="Akuntansi">
+            <dl className="grid grid-cols-[120px_1fr] gap-y-2 text-sm">
+              <dt className="text-muted">Akun penjualan</dt>
+              <dd className="font-medium">
+                {accountLabel(
+                  lookups.salesAccounts,
+                  product.resolved?.salesAccountId,
+                )}
+                <InheritedNote product={product} field="salesAccountId" />
+              </dd>
+              <dt className="text-muted">Lini bisnis</dt>
+              <dd className="font-medium">
+                {lookups.businessLines.find(
+                  (line) => line._id === product.resolved?.businessLineId,
+                )?.name ?? "—"}
+                <InheritedNote product={product} field="businessLineId" />
+              </dd>
+            </dl>
+            <p className="mt-3 text-xs text-muted">
+              Belum dipakai memposting apa pun — modul penjualan belum ada.
+            </p>
           </Card>
 
           {product.productType === "variant" &&

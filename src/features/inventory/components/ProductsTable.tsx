@@ -184,7 +184,24 @@ export function ProductsTable({
                             {isOpen ? "▾" : "▸"}
                           </button>
                         )}
-                        <div className={cn(variantCount === 0 && "pl-7")}>
+                        {/* The thumbnail, resolved: a variant with no image of
+                            its own shows its parent's, so a catalogue row is
+                            never a blank square. 40px because the row is 2.5
+                            units tall and anything larger reflows it. */}
+                        {product.resolved?.image ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={
+                              product.resolved.image.thumbUrl ??
+                              product.resolved.image.url
+                            }
+                            alt=""
+                            className="size-10 shrink-0 rounded-md border border-border object-cover"
+                          />
+                        ) : (
+                          <span className="size-10 shrink-0 rounded-md border border-dashed border-border" />
+                        )}
+                        <div className={cn(variantCount === 0 && "pl-1")}>
                           {/* The name is the way IN to a product — the Edit
                               button opens the form, this opens the read-only
                               view most people actually want. */}
@@ -194,12 +211,22 @@ export function ProductsTable({
                           >
                             {product.name}
                           </Link>
+                          {product.resolved?.brand && (
+                            <p className="text-xs text-muted">
+                              {product.resolved.brand}
+                            </p>
+                          )}
                           <p className="font-mono text-xs text-muted">
                             {/* A parent carries no SKU — its variants do. "—"
                                 rather than a blank line, which reads as a
                                 rendering bug. */}
                             {product.sku ?? "—"}
                             {product.barcode && ` · ⦀ ${product.barcode}`}
+                            {product.isPreorder && (
+                              <span className="ml-2 font-sans text-secondary-foreground">
+                                pre-order
+                              </span>
+                            )}
                           </p>
                         </div>
                       </div>
