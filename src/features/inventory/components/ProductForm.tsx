@@ -799,12 +799,27 @@ function ProductFormFields({
       const COST_REQUIRED =
         "Harga beli wajib — angka ini yang membentuk jurnal persediaan stok awal.";
 
+      /**
+       * And the quantity itself is required, because the switch already asked.
+       *
+       * Left blank it would save a product with no stock at all — which is
+       * exactly what the OFF position means, except the user walks away
+       * believing they entered an opening balance and only finds out at the
+       * first stock card. Zero is refused for the same reason: a movement of
+       * nothing is not an opening balance, it is the switch turned off.
+       */
+      const QTY_REQUIRED = "Jumlah stok awal wajib diisi.";
+
       if (mode === "standalone") {
-        if (openingQty.trim() !== "" && !isDecimal(openingQty)) {
+        if (openingQty.trim() === "") {
+          next.openingQty = QTY_REQUIRED;
+        } else if (!isDecimal(openingQty)) {
           next.openingQty = "Gunakan angka, maksimal 4 desimal.";
+        } else if (!isPositive(openingQty)) {
+          next.openingQty = "Jumlah stok awal harus lebih dari 0.";
         }
         if (openingCost.trim() === "") {
-          if (openingQty.trim() !== "") next.openingCost = COST_REQUIRED;
+          next.openingCost = COST_REQUIRED;
         } else if (!isDecimal(openingCost)) {
           next.openingCost = "Gunakan angka, maksimal 4 desimal.";
         }
@@ -820,6 +835,14 @@ function ProductFormFields({
           next.openingVariants = `Angka tidak valid pada varian ${malformed
             .map((row) => row.combo.join(" / "))
             .join(", ")} — maksimal 4 desimal.`;
+        } else if (
+          variantRows.length > 0 &&
+          variantRows.every((row) => row.openingQty.trim() === "")
+        ) {
+          // Which variants get stock stays the user's call — a family may
+          // stock two sizes and leave the third for later — but leaving every
+          // row empty is the switch turned off with extra steps.
+          next.openingVariants = `${QTY_REQUIRED} Isi minimal satu varian.`;
         }
 
         // Per row, because a family may open stock for some variants and not
@@ -2149,11 +2172,12 @@ function ProductFormFields({
                     <TextField
                       label="Jumlah stok awal"
                       name="openingQty"
+                      required
                       inputMode="decimal"
                       value={openingQty}
                       onChange={(event) => setOpeningQty(event.target.value)}
                       error={fieldErrors.openingQty}
-                      placeholder="0"
+                      placeholder="12"
                     />
                     <TextField
                       label="Harga beli per unit"
@@ -2219,7 +2243,7 @@ function ProductFormFields({
                             Varian
                           </th>
                           <th className="px-2 py-2 text-left font-medium">
-                            Stok awal
+                            Stok awal *
                           </th>
                           <th className="px-2 py-2 text-left font-medium">
                             Harga beli / unit *
@@ -2273,9 +2297,9 @@ function ProductFormFields({
                     </table>
                     <p className="mt-2 text-xs text-muted">
                       Varian yang dikosongkan dibuat tanpa stok. Tidak semua
-                      harus diisi — tapi varian yang diberi stok wajib punya
-                      harga beli, karena angka itulah yang membentuk jurnal
-                      persediaan stok awal.
+                      harus diisi — tapi minimal satu varian wajib punya jumlah,
+                      dan varian yang diberi stok wajib punya harga beli, karena
+                      angka itulah yang membentuk jurnal persediaan stok awal.
                     </p>
                   </div>
                 ))}

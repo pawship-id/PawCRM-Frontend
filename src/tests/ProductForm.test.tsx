@@ -231,6 +231,48 @@ describe("ProductForm", () => {
       expect(create).not.toHaveBeenCalled();
     });
 
+    it("refuses opening stock with no quantity", async () => {
+      // The switch already asked. A blank quantity saves a product with no
+      // stock — what the OFF position means — while the user believes they
+      // entered an opening balance.
+      const user = userEvent.setup();
+      const create = mockCreate();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await fillCommon(user);
+      await user.type(screen.getByLabelText(/Harga jual/), "45000");
+      await user.click(screen.getByLabelText("Isi stok awal sekarang"));
+      await user.type(screen.getByLabelText(/Harga beli per unit/), "30000");
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      expect(
+        await screen.findByText(/Jumlah stok awal wajib diisi/i),
+      ).toBeInTheDocument();
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it("refuses a quantity of zero — that is the switch turned off", async () => {
+      const user = userEvent.setup();
+      const create = mockCreate();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await fillCommon(user);
+      await user.type(screen.getByLabelText(/Harga jual/), "45000");
+      await user.click(screen.getByLabelText("Isi stok awal sekarang"));
+      await user.type(screen.getByLabelText(/Jumlah stok awal/), "0");
+      await user.type(screen.getByLabelText(/Harga beli per unit/), "30000");
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      expect(
+        await screen.findByText(/harus lebih dari 0/i),
+      ).toBeInTheDocument();
+      expect(create).not.toHaveBeenCalled();
+    });
+
     it("accepts a purchase price of zero — donated stock is real", async () => {
       const user = userEvent.setup();
       const create = mockCreate();
@@ -453,6 +495,31 @@ describe("ProductForm", () => {
 
       expect(
         await screen.findByText(/Harga beli wajib/i),
+      ).toBeInTheDocument();
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it("refuses a family whose every opening row is blank", async () => {
+      // Which rows get stock stays the user's call, but no row at all is the
+      // switch turned off with extra steps.
+      const user = userEvent.setup();
+      const create = mockCreate();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await fillCommon(user, { name: "Royal Canin", sku: "RC" });
+      await switchToFamily(user);
+      await addAxisValue(user, "1kg");
+      await addAxisValue(user, "3kg");
+      await user.type(screen.getByLabelText("Harga 1kg"), "68000");
+      await user.type(screen.getByLabelText("Harga 3kg"), "185000");
+
+      await user.click(screen.getByLabelText("Isi stok awal sekarang"));
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      expect(
+        await screen.findByText(/Jumlah stok awal wajib diisi/i),
       ).toBeInTheDocument();
       expect(create).not.toHaveBeenCalled();
     });
