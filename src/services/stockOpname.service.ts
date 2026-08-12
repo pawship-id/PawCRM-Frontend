@@ -65,10 +65,12 @@ export const stockOpnameService = {
   /**
    * POST /stock-opnames — open a draft (201).
    *
-   * OMIT `items` FOR THE ORDINARY CASE. The server fills the sheet with every
-   * active stock-tracking product at the warehouse, narrowed by
-   * `categoryFilter`, each line pre-filled with the system quantity. Sending
-   * `items` is the deliberate partial count ("just the vaccines fridge").
+   * `items` IS THE PICKED SET — the sheet carries exactly those products, each
+   * line pre-filled with the system quantity. Send `productId` alone: a
+   * `physicalQty` here stamps the line as already counted. OMITTING `items`
+   * asks for the whole warehouse, narrowed by `categoryFilter`; send one or the
+   * other, never both, since `categoryFilter` is stored as the record of how the
+   * lines were populated.
    *
    * 409 when a draft is already open for that warehouse — the refusal's `reason`
    * names the blocking sheet, which is what a user needs to go and find it.
@@ -86,6 +88,39 @@ export const stockOpnameService = {
    */
   update: (id: string, input: UpdateOpnameInput) =>
     apiClient.patch<Opname>(`/stock-opnames/${id}`, input),
+
+  /**
+   * POST /stock-opnames/:id/items — add products to a draft already open.
+   *
+   * NOT A CASE OF `update`, and the difference is the point: a new line must
+   * start at the SYSTEM quantity, which only the server knows. The auto-save
+   * requires a `physicalQty` per line, so a client adding a product there could
+   * only send `0` — a shortage of that product's whole stock, waiting to be
+   * posted — or a balance it read itself, which is a browser computing a system
+   * quantity. Here it sends product ids and nothing else.
+   *
+   * The WHOLE sheet comes back, lines appended and labelled, so the screen
+   * replaces its items with the response exactly as it does after a save. 409
+   * when a product is already on the sheet, or when the sheet was submitted.
+   */
+  addItems: (id: string, productIds: string[]) =>
+    apiClient.post<Opname>(`/stock-opnames/${id}/items`, {
+      items: productIds.map((productId) => ({ productId })),
+    }),
+
+  /**
+   * POST /stock-opnames/:id/items with `all` — the rest of the warehouse.
+   *
+   * Every countable product there, minus the lines the sheet already carries,
+   * within the scope the sheet was opened with. NO SCOPE IS SENT: the category
+   * lives on the sheet, and a client that re-stated it could widen a count past
+   * the scope it claims to have.
+   *
+   * 409 when there is nothing left to add — which is an answer ("already
+   * complete"), not a failure, and better than a 200 that changed nothing.
+   */
+  addEveryProduct: (id: string) =>
+    apiClient.post<Opname>(`/stock-opnames/${id}/items`, { all: true }),
 
   /**
    * POST /stock-opnames/:id/preview — what submitting would post, without

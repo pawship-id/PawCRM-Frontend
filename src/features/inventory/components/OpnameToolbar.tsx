@@ -20,12 +20,12 @@ import type { OpnameFilters } from "../hooks/useOpnames";
  * to the screen. The `ALL` sentinel is the same one every other toolbar here
  * uses: Radix Select forbids an empty item value.
  *
- * INACTIVE WAREHOUSES ARE INCLUDED, unlike the start-a-count picker next to it.
- * This is a READ: a warehouse closed last month still owns the counts taken
- * there, and a filter that could not reach them would make that history
- * unreachable at exactly the moment somebody is auditing it. The picker that
- * OPENS a sheet filters them out, because the API refuses a count at an inactive
- * location — offering one there would produce a rejection after the choice.
+ * INACTIVE WAREHOUSES ARE INCLUDED, unlike the picker on the create page. This
+ * is a READ: a warehouse closed last month still owns the counts taken there,
+ * and a filter that could not reach them would make that history unreachable at
+ * exactly the moment somebody is auditing it. The picker that OPENS a sheet
+ * filters them out, because the API refuses a count at an inactive location —
+ * offering one there would produce a rejection after the choice.
  */
 const ALL = "all";
 

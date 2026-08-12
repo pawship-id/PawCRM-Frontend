@@ -119,6 +119,34 @@ export function formatQty(value: string | null | undefined): string {
   return QTY_FORMAT.format(Number(toDecimalString(minor)));
 }
 
+/**
+ * A stored decimal as an EDITABLE string: trailing zeros dropped, dot kept.
+ *
+ * DISTINCT FROM `formatQty`, which is for reading. That one localises — "2,5",
+ * "1.000" — and a localised number typed back into a form is a payload the API
+ * rejects, because a decimal comma is not a decimal point. This one only
+ * shortens: `"10.0000"` → `"10"`, `"2.5000"` → `"2.5"`, `"0.0000"` → `"0"`.
+ *
+ * The four fixed decimals are how the API stores a quantity, and they are right
+ * for a ledger. In an input they are noise a counter has to read past — and
+ * worse, typing `1` into a box that answers back `1.0000` reads as the form
+ * having changed the number.
+ *
+ * APPLY IT TO VALUES ARRIVING FROM THE API, never to a keystroke. `"1.50"` is a
+ * well-formed decimal, so this would shorten it to `"1.5"` — which is the same
+ * number, and exactly the wrong thing to do to somebody halfway through typing
+ * it. Anything that is NOT a plain decimal comes back untouched, `"1."`
+ * included, so a value on its way to becoming one survives.
+ */
+export function trimQty(value: string | null | undefined): string {
+  if (value === null || value === undefined) return "";
+
+  const text = value.trim();
+  if (!isDecimal(text) || !text.includes(".")) return text;
+
+  return text.replace(/0+$/, "").replace(/\.$/, "");
+}
+
 /** Rupiah for display. Rounded to whole units — nobody prices in sen. */
 export function formatMoney(value: string | null | undefined): string {
   const minor = toMinor(value ?? "");

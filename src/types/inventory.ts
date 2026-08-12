@@ -1150,19 +1150,38 @@ export interface OpnameItemInput {
 }
 
 /**
+ * One line as a sheet is OPENED with — `physicalQty` optional, unlike the
+ * auto-save's.
+ *
+ * A create may say no more than "put this product on the sheet": the server
+ * pre-fills the line with the system quantity, so an untouched line posts
+ * nothing. That difference is load-bearing rather than cosmetic — a line the
+ * caller sends a quantity for is stamped COUNTED, so listing products with a
+ * quantity attached would open a sheet that claims every shelf was already
+ * walked, and the progress figure would read 40 / 40 before anybody left the
+ * office.
+ */
+export type CreateOpnameItemInput = Omit<OpnameItemInput, "physicalQty"> & {
+  physicalQty?: string;
+};
+
+/**
  * POST /api/stock-opnames.
  *
- * `items` IS OPTIONAL, and omitting it is the ordinary case: the server fills
- * the sheet with every active stock-tracking product at the warehouse, narrowed
- * by `categoryFilter`. That is what a stock take is — you count the shelves, you
- * do not curate a list first.
+ * `items` NARROWS THE SHEET TO A CHOSEN SET OF PRODUCTS. Omitting it is the
+ * whole-warehouse count: the server fills the sheet with every active
+ * stock-tracking product there, narrowed by `categoryFilter`.
+ *
+ * SEND ONE OR THE OTHER, not both. `categoryFilter` is stored on the sheet as
+ * the record of how its lines were populated, so pairing it with an explicit
+ * `items` would describe a scope the lines do not match.
  */
 export interface CreateOpnameInput {
   warehouseId: string;
   opnameDate?: string;
   categoryFilter?: string | null;
   notes?: string | null;
-  items?: OpnameItemInput[];
+  items?: CreateOpnameItemInput[];
 }
 
 /**
