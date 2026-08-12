@@ -23,6 +23,9 @@ export interface BusinessLine {
   color: string;
 }
 
+/** The API's hard page-size cap — see chartOfAccounts.service.ts. */
+const MAX_PAGE_LIMIT = 100;
+
 export interface BusinessLineListQuery {
   page?: number;
   limit?: number;
@@ -40,7 +43,7 @@ export const businessLineService = {
     apiClient.get<PageResult<BusinessLine>>("/business-lines", {
       query: {
         page: query.page,
-        limit: query.limit ?? 100,
+        limit: Math.min(query.limit ?? MAX_PAGE_LIMIT, MAX_PAGE_LIMIT),
         search: query.search,
       },
     }),

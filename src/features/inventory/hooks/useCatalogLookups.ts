@@ -8,7 +8,7 @@ import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
 import { businessLineService } from "@/services/businessLine.service";
 import type { BusinessLine } from "@/services/businessLine.service";
 import { ApiError } from "@/services/api-error";
-import type { Category } from "@/types/api";
+import type { Category, PageResult } from "@/types/api";
 import type { ChartOfAccount } from "@/types/accounting";
 import type { StockWarehouse } from "@/types/inventory";
 
@@ -32,12 +32,23 @@ interface CatalogLookups {
   /** Non-null when either list failed — the screen shows this instead of guessing. */
   error: string | null;
   /**
-   * True when the accounting lists were asked for and did not arrive — a
-   * missing permission, most likely. Distinct from `error`, which blocks the
-   * whole form: a product saves perfectly well without a sales account, so this
-   * disables two selects and says why rather than stopping the screen.
+   * Why the accounting lists did not arrive, or null when they did.
+   *
+   * A REASON RATHER THAN A BOOLEAN, and that distinction was paid for: the first
+   * version was a boolean and the UI rendered "your role has no access to
+   * Accounting" for it — so when the real cause turned out to be a malformed
+   * request from this very file (a `limit` above the API's cap, answered 400),
+   * the screen confidently sent people hunting for an RBAC problem that did not
+   * exist.
+   *
+   * A caught error must not be turned into a diagnosis. `403` genuinely is a
+   * permissions answer; anything else is reported as what it was.
+   *
+   * Distinct from `error`, which blocks the whole form: a product saves
+   * perfectly well without a sales account, so this disables two selects and
+   * explains itself rather than stopping the screen.
    */
-  accountingUnavailable: boolean;
+  accountingError: { status: number; message: string } | null;
 }
 
 interface CatalogLookupsOptions {
@@ -83,7 +94,10 @@ export function useCatalogLookups({
   const [warehouses, setWarehouses] = useState<StockWarehouse[]>([]);
   const [salesAccounts, setSalesAccounts] = useState<ChartOfAccount[]>([]);
   const [businessLines, setBusinessLines] = useState<BusinessLine[]>([]);
-  const [accountingUnavailable, setAccountingUnavailable] = useState(false);
+  const [accountingError, setAccountingError] = useState<{
+    status: number;
+    message: string;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -113,19 +127,36 @@ export function useCatalogLookups({
             withAccounting
               ? chartOfAccountsService
                   .list({ accountType: "income", isActive: true })
-                  .catch(() => null)
+                  .catch((err: unknown) => err as ApiError)
               : Promise.resolve(null),
             withAccounting
-              ? businessLineService.list().catch(() => null)
+              ? businessLineService.list().catch((err: unknown) => err as ApiError)
               : Promise.resolve(null),
           ]);
         if (!active) return;
         setCategories(categoryResult.items);
         setWarehouses(warehouseResult.items);
-        setSalesAccounts(accountResult?.items ?? []);
-        setBusinessLines(lineResult?.items ?? []);
-        setAccountingUnavailable(
-          withAccounting && (accountResult === null || lineResult === null),
+        // The rejection is carried through as the value, so the reason survives
+        // rather than collapsing to "something failed".
+        const accountFailure =
+          accountResult instanceof Error ? accountResult : null;
+        const lineFailure = lineResult instanceof Error ? lineResult : null;
+
+        setSalesAccounts(
+          accountResult && !accountFailure ? (accountResult as PageResult<ChartOfAccount>).items : [],
+        );
+        setBusinessLines(
+          lineResult && !lineFailure ? (lineResult as PageResult<BusinessLine>).items : [],
+        );
+
+        const failure = accountFailure ?? lineFailure;
+        setAccountingError(
+          failure
+            ? {
+                status: failure instanceof ApiError ? failure.status : 0,
+                message: failure.message,
+              }
+            : null,
         );
       } catch (err) {
         if (!active) return;
@@ -151,6 +182,6 @@ export function useCatalogLookups({
     businessLines,
     loading,
     error,
-    accountingUnavailable,
+    accountingError,
   };
 }

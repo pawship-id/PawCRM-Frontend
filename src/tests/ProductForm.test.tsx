@@ -107,7 +107,7 @@ function mockLookups() {
         isActive: true,
       },
     ],
-    pagination: { page: 1, limit: 200, total: 1, totalPages: 1 },
+    pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
   });
   jest.spyOn(businessLineService, "list").mockResolvedValue({
     items: [{ _id: BUSINESS_LINE, name: "Retail", color: "#1A2B3C" }],
@@ -923,7 +923,7 @@ describe("ProductForm", () => {
       expect(update.mock.calls[0][1]).toMatchObject({ brand: null });
     });
 
-    it("disables the accounting pickers with a reason when they cannot be read", async () => {
+    it("blames permissions only on a 403", async () => {
       // `chartOfAccounts:read` is a separate permission from `products:read`. A
       // role that manages the catalogue without seeing the books must still get
       // a working form — these two fields are optional.
@@ -939,6 +939,27 @@ describe("ProductForm", () => {
       ).toBeInTheDocument();
       // The rest of the form still works.
       expect(screen.getByLabelText(/Nama produk/)).toBeInTheDocument();
+    });
+
+    it("reports any other failure as what it was, not as a permissions problem", async () => {
+      /**
+       * THE REGRESSION THIS PINS. The card used to assert "your role has no
+       * access to Accounting" for every failure — and the first real one was a
+       * malformed request from our own service layer, answered 400. The screen
+       * was confidently wrong and sent people hunting through RBAC.
+       */
+      jest
+        .spyOn(chartOfAccountsService, "list")
+        .mockRejectedValue(new ApiError('"query.limit" must be less than or equal to 100', 400));
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      expect(await screen.findByText(/gagal dimuat/i)).toBeInTheDocument();
+      expect(screen.getByText(/must be less than or equal to 100/)).toBeInTheDocument();
+      expect(
+        screen.queryByText(/tidak punya akses ke Akuntansi/i),
+      ).not.toBeInTheDocument();
     });
   });
 

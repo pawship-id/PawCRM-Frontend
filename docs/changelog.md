@@ -59,7 +59,15 @@ make. Twelve columns would have made the table unusable; a drawer keeps the comm
 ### New services
 
 `chartOfAccounts.service.ts` and `businessLine.service.ts` are **the first real consumers of those
-endpoints** — the accounting screens still run on `features/accounting/data/dummy.ts`. Expect
+endpoints**. Both clamp their page size to the API's cap of 100 — the first version asked for 200,
+which is a `400` rather than a bigger page, so the accounting section failed for **every** user
+while the UI reported it as a missing permission. `src/tests/lookupServices.test.ts` now asserts
+the queries these services send by mocking `apiClient` rather than the services themselves; the
+form's own tests mock the service, so they could only ever have proved what the mock was told to
+do.
+
+The failure message no longer diagnoses. `403` is reported as a permissions problem; anything else
+is reported as what it actually was — the accounting screens still run on `features/accounting/data/dummy.ts`. Expect
 `types/accounting.ts` to need correcting the first time something disagrees with the API.
 
 `media.service.ts` deliberately does NOT go through `apiClient`, and says why in its header: the

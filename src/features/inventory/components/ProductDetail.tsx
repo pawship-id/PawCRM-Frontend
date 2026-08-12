@@ -431,7 +431,8 @@ export function ProductDetail({ productId }: { productId: string }) {
               </dd>
             </dl>
             <p className="mt-3 text-xs text-muted">
-              Belum dipakai memposting apa pun — modul penjualan belum ada.
+              Belum berpengaruh ke laporan mana pun — akan dipakai saat modul
+              penjualan aktif.
             </p>
           </Card>
 

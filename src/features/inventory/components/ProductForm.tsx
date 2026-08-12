@@ -272,7 +272,7 @@ export function ProductForm({ productId }: { productId?: string }) {
       warehouses={lookups.warehouses}
       salesAccounts={lookups.salesAccounts}
       businessLines={lookups.businessLines}
-      accountingUnavailable={lookups.accountingUnavailable}
+      accountingError={lookups.accountingError}
     />
   );
 }
@@ -320,7 +320,7 @@ function ProductFormFields({
   warehouses,
   salesAccounts,
   businessLines,
-  accountingUnavailable,
+  accountingError,
 }: {
   existing?: Product;
   existingVariants: Product[];
@@ -328,7 +328,7 @@ function ProductFormFields({
   warehouses: StockWarehouse[];
   salesAccounts: ChartOfAccount[];
   businessLines: BusinessLine[];
-  accountingUnavailable: boolean;
+  accountingError: { status: number; message: string } | null;
 }) {
   const router = useRouter();
 
@@ -1551,21 +1551,49 @@ function ProductFormFields({
       <Card title="Akuntansi">
         <div className="flex flex-col gap-4">
           <p className="text-xs text-muted">
-            Opsional, dan belum dipakai memposting apa pun — modul penjualan
-            belum ada. Diisi sekarang karena di sinilah tenant tahu jawabannya;
-            menanyakannya belakangan berarti menanyakannya untuk setiap produk
-            sekaligus.
-            {mode === "variants" && " Varian mewarisi keduanya dari induk."}
+            {/* WHAT THE USER NEEDS, not why we decided it.
+
+                This said "diisi sekarang karena di sinilah tenant tahu
+                jawabannya; menanyakannya belakangan berarti menanyakannya untuk
+                setiap produk sekaligus" — a justification of OUR design choice,
+                aimed at a developer. Why we ask now is not the user's problem;
+                the reasoning belongs in the changelog. What they actually need
+                is whether they may skip it and whether skipping breaks
+                anything. */}
+            Opsional — boleh dikosongkan. Menentukan ke mana penjualan produk ini
+            dicatat nanti saat modul penjualan aktif; untuk sekarang belum
+            berpengaruh ke laporan mana pun.
+            {mode === "variants" && " Varian mengikuti setelan induk."}
           </p>
 
-          {accountingUnavailable ? (
-            /* A products-only role cannot read the chart of accounts. The form
-               still saves — these two fields are optional — so this says why
-               they are missing rather than blocking the screen. */
+          {accountingError ? (
+            /**
+             * REPORTS WHAT HAPPENED, RATHER THAN DIAGNOSING IT.
+             *
+             * This block used to assert "your role has no access to Accounting"
+             * for any failure at all — and the first real failure was a
+             * malformed request from our own service layer (a page size above
+             * the API's cap, answered 400). The screen was confidently wrong,
+             * and it sent people looking at RBAC instead of at the bug.
+             *
+             * 403 is the one status that genuinely IS a permissions answer.
+             * Everything else gets the server's own message, which is the thing
+             * that actually helps whoever has to fix it.
+             */
             <p className="rounded-lg border border-secondary/40 bg-secondary/15 px-3 py-2 text-xs">
-              Daftar akun dan lini bisnis tidak bisa dimuat — kemungkinan role
-              Anda tidak punya akses ke Akuntansi. Produk tetap bisa disimpan
-              tanpa keduanya.
+              {accountingError.status === 403 ? (
+                <>
+                  Role Anda tidak punya akses ke Akuntansi, jadi daftar akun dan
+                  lini bisnis tidak bisa dimuat.
+                </>
+              ) : (
+                <>
+                  Daftar akun dan lini bisnis gagal dimuat
+                  {accountingError.status > 0 && ` (${accountingError.status})`}:{" "}
+                  {accountingError.message}
+                </>
+              )}{" "}
+              Produk tetap bisa disimpan tanpa keduanya.
             </p>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">
