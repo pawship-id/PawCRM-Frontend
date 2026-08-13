@@ -30,6 +30,12 @@ import { PayablesToolbar } from "./PayablesToolbar";
  * from one aggregation as of one instant, so the banner cannot claim more is
  * late than is owed.
  *
+ * THE DUE-SOON NOTE IS THE SAME BARGAIN, one step earlier: money that still has
+ * time. It is deliberately quieter than the overdue banner — nothing here is a
+ * problem yet — and it is the one figure on this screen that comes with a way to
+ * act on it, because the set it describes is a view of the list underneath it.
+ * The window it names is the server's `horizonDays`, not a constant here.
+ *
  * THE FIGURES ARE UNFILTERED ON PURPOSE. They answer "what do we owe, ever",
  * which is a different question from the one the toolbar is asking. Quietly
  * re-scoping them to the current filter would make the same number mean two
@@ -62,6 +68,7 @@ export function PayablesScreen() {
   }, []);
 
   const overdueCount = summary?.totalOverdueInvoices ?? 0;
+  const dueSoonCount = summary?.totalDueSoonInvoices ?? 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -97,6 +104,29 @@ export function PayablesScreen() {
           </b>{" "}
           — total {formatMoney(summary.totalOverdueOutstanding)}. Prioritaskan
           pembayaran supaya pasokan tidak terganggu.
+        </div>
+      )}
+
+      {dueSoonCount > 0 && summary && (
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 rounded-lg border border-border bg-accent px-4 py-3 text-sm">
+          <span>
+            <b>
+              {dueSoonCount} faktur jatuh tempo dalam {summary.horizonDays} hari
+            </b>{" "}
+            — siapkan {formatMoney(summary.totalDueSoonOutstanding)}.
+          </span>
+          {/* The one headline here that can be acted on: the same bucket the
+              figures describe is a view of the list below, asked of the server
+              with the same definition. */}
+          {query.view !== "dueSoon" && (
+            <button
+              type="button"
+              onClick={() => setQuery({ view: "dueSoon" })}
+              className="font-medium text-primary hover:text-primary-hover"
+            >
+              Lihat daftarnya →
+            </button>
+          )}
         </div>
       )}
 

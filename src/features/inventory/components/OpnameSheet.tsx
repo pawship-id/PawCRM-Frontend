@@ -19,6 +19,7 @@ import { formatMoney, formatQty, toMinor } from "@/utils/decimal";
 import { useOpnamePreview } from "../hooks/useOpnamePreview";
 import { useOpnameSheet } from "../hooks/useOpnameSheet";
 import { JournalPreview } from "./JournalPreview";
+import { OpnameAddProductsDialog } from "./OpnameAddProductsDialog";
 import { OpnameStatusBadge } from "./OpnameStatusBadge";
 
 /**
@@ -63,12 +64,20 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
     countedCount,
     editLine,
     setCounted,
+    removeLine,
     flush,
+    addProducts,
+    addEveryProduct,
+    adding,
     reload,
   } = useOpnameSheet(opnameId);
 
   const preview = useOpnamePreview(opnameId);
 
+  const [addingProducts, setAddingProducts] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+  /** A counted line waiting on confirmation — see `handleRemove`. */
+  const [pendingRemove, setPendingRemove] = useState<OpnameItem | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -86,6 +95,8 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
   }
 
   const done = opname.status === "submitted";
+  /** Drafts, and only for a role that may change one. */
+  const canEdit = !done && can("stockOpnames", "update");
   const differing = items.filter((item) => (toMinor(item.diffQty) ?? 0n) !== 0n);
   const totalMinor = toMinor(opname.totalDiffValue) ?? 0n;
 
@@ -100,6 +111,25 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
       (toMinor(item.diffQty) ?? 0n) > 0n &&
       (!item.batchCode || !item.expiryDate),
   );
+
+  async function handleLoadEverything() {
+    setAddError(await addEveryProduct());
+  }
+
+  /**
+   * ONLY A COUNTED LINE ASKS FIRST. Removing a row nobody has been to costs
+   * nothing — it is undoing a mistake made a second ago, and a dialog for it
+   * would be the kind of prompt people learn to dismiss without reading. A line
+   * somebody walked to a shelf for is different: its quantity is the one thing
+   * on this sheet that cannot be recovered from anywhere else.
+   */
+  function handleRemove(item: OpnameItem) {
+    if (item.countedAt !== null) {
+      setPendingRemove(item);
+      return;
+    }
+    void removeLine(item.productId);
+  }
 
   async function handleOpenConfirm() {
     setSubmitError(null);
@@ -180,13 +210,61 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
         </div>
       </div>
 
-      {!done && countedCount < items.length && (
+      {!done && items.length > 0 && countedCount < items.length && (
         <Alert variant="info">
           {items.length - countedCount} produk belum dihitung. Baris yang belum
           disentuh <b>tidak dianggap nol</b> — ia tetap memakai angka sistem dan
           tidak menulis apa pun, jadi lembar yang belum selesai tetap aman
           diselesaikan.
         </Alert>
+      )}
+
+      {addError && <Alert variant="error">{addError}</Alert>}
+
+      {/**
+       * THE EMPTY SHEET IS WHERE THE COUNT IS SCOPED, and that is why it gets a
+       * panel rather than an empty table. A sheet opens with no lines precisely
+       * so this decision can be made here, next to the rows it produces: the
+       * whole warehouse, or the shelves somebody actually means to walk to.
+       */}
+      {!done && items.length === 0 && (
+        <div className="rounded-xl border border-dashed border-border bg-surface p-6 text-center">
+          <p className="font-medium text-foreground">
+            Lembar ini belum berisi produk
+          </p>
+          <p className="mx-auto mt-1 max-w-lg text-sm text-muted">
+            Muat seluruh isi gudang untuk stock take menyeluruh, atau pilih
+            produk tertentu kalau yang dihitung hanya sebagian rak. Keduanya bisa
+            digabung — produk masih bisa ditambahkan setelah penghitungan mulai.
+          </p>
+
+          {can("stockOpnames", "update") && (
+            <div className="mt-4 flex flex-wrap justify-center gap-2">
+              <Button onClick={handleLoadEverything} disabled={adding}>
+                {adding ? "Memuat…" : "Muat semua produk gudang ini"}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => setAddingProducts(true)}
+                disabled={adding}
+              >
+                Pilih produk
+              </Button>
+            </div>
+          )}
+
+          <p className="mt-4 text-xs text-muted">
+            Belum jadi menghitung? Lembar kosong ini masih memblokir gudangnya —
+            buang lewat tombol <b>Buang</b> di{" "}
+            <Link
+              href="/dashboard/inventory/opname"
+              className="font-medium text-primary-hover hover:underline"
+            >
+              daftar opname
+            </Link>
+            .
+          </p>
+        </div>
       )}
 
       {/* `error`, not a softer tone: the submit will be REFUSED until these are
@@ -201,7 +279,14 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
       )}
 
       {/* ------------------------------------------------------------- table */}
-      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+      {/* Hidden while empty: a header row over nothing reads as a sheet that
+          failed to load, where the panel above says what to do next. */}
+      <div
+        className={cn(
+          "overflow-x-auto rounded-xl border border-border bg-surface",
+          items.length === 0 && "hidden",
+        )}
+      >
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-[10px] uppercase tracking-widest text-muted">
@@ -214,6 +299,9 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
               <th className="px-4 py-2.5 text-right font-medium">
                 Nilai selisih
               </th>
+              {canEdit && (
+                <th className="px-4 py-2.5 text-right font-medium">Aksi</th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -224,10 +312,40 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
                 readOnly={done}
                 onEdit={editLine}
                 onCounted={setCounted}
+                onRemove={canEdit ? handleRemove : undefined}
               />
             ))}
           </tbody>
         </table>
+
+        {/* A count sheet is a plan for an afternoon, and the plan is wrong the
+            moment somebody finds a shelf that was not on it. Without this the
+            only remedy was discarding the draft — and every quantity on it. */}
+        {!done && can("stockOpnames", "update") && (
+          <div className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-2.5">
+            <Button
+              variant="secondary"
+              onClick={() => setAddingProducts(true)}
+              disabled={adding}
+            >
+              + Tambah produk
+            </Button>
+            {/* The other half of the same decision, still available once the
+                sheet has lines: it appends what is MISSING rather than starting
+                over, so a partial count can be widened into a full one. */}
+            <Button
+              variant="ghost"
+              onClick={handleLoadEverything}
+              disabled={adding}
+            >
+              {adding ? "Memuat…" : "Muat sisa produk gudang"}
+            </Button>
+            <span className="text-xs text-muted">
+              Baris baru dibuka dengan angka sistem dan berstatus belum
+              dihitung — hitungan yang sudah diisi tidak berubah.
+            </span>
+          </div>
+        )}
 
         <p className="border-t border-border px-4 py-2.5 text-xs text-muted">
           Baris yang <b>belum dihitung</b> dan baris yang <b>cocok</b> sama-sama
@@ -302,7 +420,11 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
           {can("stockOpnames", "submit") ? (
             <Button
               onClick={handleOpenConfirm}
-              disabled={preview.loading || saveState === "saving"}
+              // An empty sheet has nothing to submit and the API says so; the
+              // button is disabled rather than left to produce that 400.
+              disabled={
+                preview.loading || saveState === "saving" || items.length === 0
+              }
             >
               {preview.loading ? "Menghitung…" : "Selesaikan opname"}
             </Button>
@@ -333,6 +455,45 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
             dilakukan lewat opname baru — kartu stok bersifat append-only.
           </p>
         </div>
+      )}
+
+      {addingProducts && (
+        <OpnameAddProductsDialog
+          existingProductIds={items.map((item) => item.productId)}
+          busy={adding}
+          onAdd={addProducts}
+          onClose={() => {
+            setAddError(null);
+            setAddingProducts(false);
+          }}
+        />
+      )}
+
+      {pendingRemove && (
+        <ConfirmDialog
+          title="Hapus produk dari lembar ini?"
+          confirmLabel="Hapus baris"
+          destructive
+          onConfirm={() => {
+            void removeLine(pendingRemove.productId);
+            setPendingRemove(null);
+          }}
+          onCancel={() => setPendingRemove(null)}
+        >
+          {/* Inline fragments, not <p>: DialogDescription is itself a <p>. */}
+          <>
+            <b>{pendingRemove.productName ?? "Produk ini"}</b> sudah dihitung —
+            jumlah fisik <b className="font-mono">
+              {formatQty(pendingRemove.physicalQty)}
+            </b>{" "}
+            akan ikut terbuang bersama barisnya.
+            <span className="mt-2 block">
+              Tidak ada stok yang berubah: lembar ini masih draft dan belum
+              menulis apa pun. Tapi hasil hitungnya tidak bisa dikembalikan
+              tanpa kembali ke rak.
+            </span>
+          </>
+        </ConfirmDialog>
       )}
 
       {confirming && preview.preview && (
@@ -380,11 +541,14 @@ function SheetRow({
   readOnly,
   onEdit,
   onCounted,
+  onRemove,
 }: {
   item: OpnameItem;
   readOnly: boolean;
   onEdit: (productId: string, patch: { physicalQty?: string; batchCode?: string; expiryDate?: string }) => void;
   onCounted: (productId: string, counted: boolean) => void;
+  /** Absent when the sheet is final or the role may not edit it. */
+  onRemove?: (item: OpnameItem) => void;
 }) {
   const diffMinor = toMinor(item.diffQty) ?? 0n;
   const counted = item.countedAt !== null;
@@ -473,6 +637,18 @@ function SheetRow({
         <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums">
           {diffMinor === 0n ? "—" : formatMoney(item.diffValue)}
         </td>
+
+        {onRemove && (
+          <td className="px-4 py-2.5 text-right">
+            <button
+              type="button"
+              onClick={() => onRemove(item)}
+              className="text-sm font-medium text-danger hover:underline"
+            >
+              Hapus
+            </button>
+          </td>
+        )}
       </tr>
 
       {/* The lot row appears only when this line will actually need one, so the
@@ -484,30 +660,39 @@ function SheetRow({
             lotMissing ? "bg-danger/10" : "bg-accent/30",
           )}
         >
-          <td colSpan={7} className="px-4 py-2.5">
+          {/* Spans the action column too when there is one, or the lot fields
+              would be pushed out from under the row they belong to. */}
+          <td colSpan={onRemove ? 8 : 7} className="px-4 py-2.5">
             <div className="flex flex-wrap items-end gap-3">
-              <p className="text-xs text-muted">
+              <p className="min-w-64 flex-1 text-xs text-muted">
                 <b>{item.productName}</b> punya masa kedaluwarsa dan ditemukan
                 lebih banyak dari catatan — barang yang masuk harus punya lot.
               </p>
-              <Input
-                aria-label={`Kode batch ${item.productName ?? ""}`}
-                value={item.batchCode ?? ""}
-                onChange={(event) =>
-                  onEdit(item.productId, { batchCode: event.target.value })
-                }
-                placeholder="Kode batch"
-                className="max-w-44"
-              />
-              <Input
-                aria-label={`Tanggal kedaluwarsa ${item.productName ?? ""}`}
-                type="date"
-                value={item.expiryDate ? item.expiryDate.slice(0, 10) : ""}
-                onChange={(event) =>
-                  onEdit(item.productId, { expiryDate: event.target.value })
-                }
-                className="max-w-44"
-              />
+
+              {/* THE TWO FIELDS ARE ONE GROUP, and wrap as one. Left as
+                  siblings of the sentence above, the code and its date were
+                  pushed onto separate lines by a long product name — and a lot
+                  is only a lot when both halves are read together. */}
+              <div className="flex shrink-0 items-end gap-3">
+                <Input
+                  aria-label={`Kode batch ${item.productName ?? ""}`}
+                  value={item.batchCode ?? ""}
+                  onChange={(event) =>
+                    onEdit(item.productId, { batchCode: event.target.value })
+                  }
+                  placeholder="Kode batch"
+                  className="w-44"
+                />
+                <Input
+                  aria-label={`Tanggal kedaluwarsa ${item.productName ?? ""}`}
+                  type="date"
+                  value={item.expiryDate ? item.expiryDate.slice(0, 10) : ""}
+                  onChange={(event) =>
+                    onEdit(item.productId, { expiryDate: event.target.value })
+                  }
+                  className="w-44"
+                />
+              </div>
             </div>
           </td>
         </tr>

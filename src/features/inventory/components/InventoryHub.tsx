@@ -118,7 +118,9 @@ export function InventoryHub() {
   const lowStock = useLowStockAlert(mayReadProducts);
   const expiring = useExpiringAlert(mayReadBatches);
 
-  const actions = ACTIONS.filter((action) => can(action.feature, action.action));
+  const actions = ACTIONS.filter((action) =>
+    can(action.feature, action.action),
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -157,10 +159,7 @@ export function InventoryHub() {
           moreLabel="produk lain juga di bawah batas minimum"
         >
           {lowStock.items.map((product) => (
-            <li
-              key={product._id}
-              className="flex items-center gap-3 px-5 py-3"
-            >
+            <li key={product._id} className="flex items-center gap-3 px-5 py-3">
               <div className="min-w-0 flex-1">
                 <Link
                   href={`/dashboard/inventory/products/${product._id}`}
@@ -169,7 +168,7 @@ export function InventoryHub() {
                   {product.name}
                 </Link>
                 <p className="truncate font-mono text-xs text-muted">
-                  {product.sku}
+                  {product.sku ?? "—"}
                 </p>
               </div>
               <span className="font-mono text-sm font-semibold tabular-nums text-danger">
@@ -192,7 +191,10 @@ export function InventoryHub() {
           allowed={mayReadBatches}
           empty={`Tidak ada lot yang kedaluwarsa dalam ${expiring.withinDays} hari.`}
           moreLabel="lot lain juga di dalam rentang ini"
-          seeAll={{ href: "/dashboard/inventory/batches", label: "Lihat semua lot" }}
+          seeAll={{
+            href: "/dashboard/inventory/batches",
+            label: "Lihat semua lot",
+          }}
         >
           {expiring.items.map((batch) => (
             <li key={batch._id} className="flex items-center gap-3 px-5 py-3">

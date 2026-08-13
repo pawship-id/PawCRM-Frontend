@@ -1,9 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { Alert, Button } from "@/components";
+import { Alert } from "@/components";
+// The shadcn button rather than the app wrapper: `asChild` is what makes
+// "continue the open draft" a real <Link> rather than a button that pushes.
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -15,22 +19,31 @@ import { ApiError } from "@/services/api-error";
 import { stockOpnameService } from "@/services/stockOpname.service";
 import type { Category, StockWarehouse } from "@/types/inventory";
 
+import { useOpenDraft } from "../hooks/useOpenDraft";
+
 /** Radix Select forbids an empty item value, so "no category" needs a sentinel. */
 const ALL_CATEGORIES = "all";
 
 /**
- * Opening a count sheet: a warehouse, optionally one category, and a button.
+ * The entry point to a count: a warehouse, optionally one category, and the
+ * button that opens the sheet.
  *
- * THE SHEET IS FILLED IN BY THE SERVER. Nothing is picked here beyond the scope
- * — the API populates every active stock-tracking product at that warehouse,
- * each line pre-filled with the quantity the system expects. That is what a
- * stock take is: you count the shelves, you do not curate a list first.
+ * IT OPENS AN EMPTY SHEET AND GOES STRAIGHT TO IT. Which products get counted is
+ * decided ON the sheet — "load everything in this warehouse" or "pick these
+ * six" are two buttons there, next to the lines they produce. An earlier version
+ * asked that question on a page of its own before the sheet existed, which meant
+ * a counter had to commit to a list before seeing a single row, and the same
+ * decision then existed in two places once adding products mid-count became
+ * possible.
  *
- * THE CATEGORY IS A SCOPE, NOT A FILTER ON A LIST. It decides which products go
- * ON the sheet, permanently, and it is also the answer when a warehouse has more
- * countable products than one sheet may carry — the API refuses that outright
- * and names this control as the way out. Counting a warehouse in
- * category-sized passes is also how it is physically done.
+ * THE WAREHOUSE IS CHECKED BEFORE THE CLICK, not after. One warehouse may hold
+ * one draft — two sheets for the same place would each count differences the
+ * other had already corrected — and the API refuses the second with a 409. Doing
+ * the read here turns that refusal into an offer: the button becomes a link to
+ * the sheet already open, which is where that counter was going anyway.
+ *
+ * THE CATEGORY IS THE SHEET'S SCOPE, recorded on it and used later by "load
+ * everything" — not a filter on anything visible here.
  *
  * ACTIVE WAREHOUSES ONLY. The API refuses a count at an inactive location, so
  * offering one would produce a rejection after the user had already chosen. The
@@ -40,12 +53,9 @@ const ALL_CATEGORIES = "all";
 export function OpnameStartCard({
   warehouses,
   categories,
-  onStarted,
 }: {
   warehouses: StockWarehouse[];
   categories: Category[];
-  /** Lets the screen re-read the list when a sheet is opened but not navigated to. */
-  onStarted?: () => void;
 }) {
   const router = useRouter();
 
@@ -55,6 +65,7 @@ export function OpnameStartCard({
   const [error, setError] = useState<string | null>(null);
 
   const active = warehouses.filter((warehouse) => warehouse.isActive);
+  const { draft, checking } = useOpenDraft(warehouseId);
 
   useEffect(() => {
     if (warehouseId || active.length === 0) return;
@@ -73,16 +84,22 @@ export function OpnameStartCard({
         warehouseId,
         categoryFilter:
           categoryId === ALL_CATEGORIES ? undefined : categoryId,
+        /**
+         * EMPTY, and that is not the same as omitting it: an absent `items` asks
+         * the server for the whole catalogue. The sheet opens with no lines and
+         * the counter fills it there — everything, or the shelves they mean to
+         * walk to.
+         */
+        items: [],
       });
 
-      onStarted?.();
       router.push(`/dashboard/inventory/opname/${opname._id}`);
     } catch (caught) {
       /**
        * `fullMessage` carries the actionable half of the 409 — "Opname
        * OPN-2026-0007 is still a draft; submit or delete it before starting
-       * another". Without it the user is told they cannot start a count and not
-       * which sheet is in the way.
+       * another". The pre-check above catches the ordinary case, but somebody
+       * else can open a draft between that read and this write.
        */
       setError(
         caught instanceof ApiError
@@ -108,20 +125,30 @@ export function OpnameStartCard({
 
       <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-surface p-4">
         <div className="min-w-56 flex-1">
-          <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted">
+          <p className="text-[10px] font-medium tracking-[0.14em] text-muted uppercase">
             Mulai hitung fisik
           </p>
           <p className="mt-1 text-sm text-muted">
-            Lembar akan diisi otomatis dengan seluruh produk yang menyimpan stok
-            di gudang ini, lengkap dengan angka yang dicatat sistem. Anda tinggal
-            mengisi jumlah yang benar-benar ada di rak.
+            {draft ? (
+              <>
+                Gudang ini masih punya lembar yang belum selesai. Lanjutkan yang
+                itu — satu gudang hanya boleh punya satu draft, karena lembar
+                kedua akan menghitung selisih yang sudah dikoreksi lembar
+                pertama.
+              </>
+            ) : (
+              <>
+                Lembar akan dibuka kosong. Produknya dipilih di lembar itu —
+                muat semua isi gudang, atau pilih rak yang memang akan dihitung.
+              </>
+            )}
           </p>
         </div>
 
         <div>
           <label
             htmlFor="opname-start-warehouse"
-            className="mb-1.5 block text-[10px] font-medium uppercase tracking-[0.14em] text-muted"
+            className="mb-1.5 block text-[10px] font-medium tracking-[0.14em] text-muted uppercase"
           >
             Gudang
           </label>
@@ -142,11 +169,17 @@ export function OpnameStartCard({
         <div>
           <label
             htmlFor="opname-start-category"
-            className="mb-1.5 block text-[10px] font-medium uppercase tracking-[0.14em] text-muted"
+            className="mb-1.5 block text-[10px] font-medium tracking-[0.14em] text-muted uppercase"
           >
             Kategori (opsional)
           </label>
-          <Select value={categoryId} onValueChange={setCategoryId}>
+          <Select
+            value={categoryId}
+            onValueChange={setCategoryId}
+            // Meaningless while a draft is in the way: the scope belongs to the
+            // sheet being opened, and that sheet already exists with its own.
+            disabled={Boolean(draft)}
+          >
             <SelectTrigger id="opname-start-category" className="w-52">
               <SelectValue />
             </SelectTrigger>
@@ -161,9 +194,20 @@ export function OpnameStartCard({
           </Select>
         </div>
 
-        <Button onClick={handleStart} disabled={starting || !warehouseId}>
-          {starting ? "Menyiapkan…" : "+ Mulai opname"}
-        </Button>
+        {draft ? (
+          <Button variant="secondary" asChild>
+            <Link href={`/dashboard/inventory/opname/${draft._id}`}>
+              Lanjutkan {draft.opnameNumber}
+            </Link>
+          </Button>
+        ) : (
+          <Button
+            onClick={handleStart}
+            disabled={starting || checking || !warehouseId}
+          >
+            {starting ? "Menyiapkan…" : "+ Mulai opname"}
+          </Button>
+        )}
       </div>
 
       <p className="text-xs text-muted">

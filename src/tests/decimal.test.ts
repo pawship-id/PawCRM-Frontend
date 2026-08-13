@@ -9,6 +9,7 @@ import {
   sumDecimals,
   toDecimalString,
   toMinor,
+  trimQty,
   weightedAverage,
 } from "@/utils/decimal";
 
@@ -120,6 +121,32 @@ describe("display helpers", () => {
 
   it("formats rupiah without decimals", () => {
     expect(formatMoney("243750.0000")).toBe("Rp 243.750");
+  });
+
+  /**
+   * `trimQty` shortens FOR AN INPUT, where `formatQty` localises for reading. A
+   * localised number typed back into a form is a payload the API rejects: a
+   * decimal comma is not a decimal point.
+   */
+  describe("trimQty", () => {
+    it("drops the stored decimals a person would not type", () => {
+      expect(trimQty("10.0000")).toBe("10");
+      expect(trimQty("0.0000")).toBe("0");
+      expect(trimQty("2.5000")).toBe("2.5");
+      expect(trimQty("0.2500")).toBe("0.25");
+    });
+
+    it("keeps the decimal POINT, unlike formatQty", () => {
+      expect(trimQty("2.5000")).toBe("2.5");
+      expect(formatQty("2.5000")).toBe("2,5");
+    });
+
+    it("leaves a value on its way to being a number alone", () => {
+      // Half-typed: shortening this under the cursor would eat the dot.
+      expect(trimQty("1.")).toBe("1.");
+      expect(trimQty("")).toBe("");
+      expect(trimQty(null)).toBe("");
+    });
   });
 });
 

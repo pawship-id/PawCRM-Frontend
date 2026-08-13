@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { stockOpnameService } from "@/services/stockOpname.service";
 import { ApiError } from "@/services/api-error";
 import type { Opname, OpnameItem, OpnameItemInput } from "@/types/inventory";
+import { trimQty } from "@/utils/decimal";
 
 /**
  * Long enough that typing "12" is one request rather than two, short enough that
@@ -12,6 +13,27 @@ import type { Opname, OpnameItem, OpnameItemInput } from "@/types/inventory";
  * request per burst of typing, not per keystroke.
  */
 const AUTOSAVE_DEBOUNCE_MS = 800;
+
+/**
+ * The lines as the sheet EDITS them: `physicalQty` shortened to what a person
+ * would write.
+ *
+ * The API stores four decimals, which is right for a ledger and wrong for the
+ * box somebody types into — a counter who enters `1` and is answered `1.0000`
+ * reads that as the form having changed their number. Applied where server lines
+ * arrive rather than at the input, so a half-typed `1.50` is never shortened
+ * under the cursor.
+ *
+ * ONLY `physicalQty`, the one field a client may set. Every other quantity is
+ * rendered through `formatQty`, which localises for reading and must not be fed
+ * back into a payload.
+ */
+function forEditing(items: OpnameItem[] | undefined): OpnameItem[] {
+  return (items ?? []).map((item) => ({
+    ...item,
+    physicalQty: trimQty(item.physicalQty),
+  }));
+}
 
 /** What the save indicator shows. `saved` carries the time it happened. */
 export type SaveState = "idle" | "saving" | "saved" | "error";
@@ -39,8 +61,25 @@ interface UseOpnameSheetResult {
   editLine: (productId: string, patch: LineEdit) => void;
   /** Marks a line counted (or un-counts it) and schedules a save. */
   setCounted: (productId: string, counted: boolean) => void;
+  /**
+   * Takes a product back off the sheet and saves at once. Drafts only — the
+   * caller gates on that, as it does for every other edit here.
+   */
+  removeLine: (productId: string) => Promise<void>;
   /** Flushes any pending edit immediately — call before submitting. */
   flush: () => Promise<void>;
+  /**
+   * Puts more products on the sheet. Resolves to the API's refusal, or null
+   * when it worked — the dialog keeps itself open to show the message.
+   */
+  addProducts: (productIds: string[]) => Promise<string | null>;
+  /**
+   * Fills the sheet with the rest of the warehouse, within the scope it was
+   * opened with. Same contract as `addProducts` — a message, or null.
+   */
+  addEveryProduct: () => Promise<string | null>;
+  /** True while an add is in flight, so the buttons can disable themselves. */
+  adding: boolean;
   /** Re-reads the sheet from the server, discarding nothing (nothing is dirty). */
   reload: () => void;
 }
@@ -75,6 +114,7 @@ export function useOpnameSheet(opnameId: string): UseOpnameSheetResult {
   const [error, setError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [adding, setAdding] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
   /**
@@ -110,8 +150,9 @@ export function useOpnameSheet(opnameId: string): UseOpnameSheetResult {
       .then((result) => {
         if (!active) return;
         setOpname(result);
-        setItems(result.items ?? []);
-        itemsRef.current = result.items ?? [];
+        const lines = forEditing(result.items);
+        setItems(lines);
+        itemsRef.current = lines;
       })
       .catch((err) => {
         if (!active) return;
@@ -175,8 +216,9 @@ export function useOpnameSheet(opnameId: string): UseOpnameSheetResult {
        * count is the one failure nobody would notice until the submit.
        */
       if (revisionRef.current === revision) {
-        setItems(saved.items ?? []);
-        itemsRef.current = saved.items ?? [];
+        const lines = forEditing(saved.items);
+        setItems(lines);
+        itemsRef.current = lines;
         dirtyRef.current = false;
         setSaveState("saved");
         setLastSavedAt(new Date());
@@ -252,6 +294,43 @@ export function useOpnameSheet(opnameId: string): UseOpnameSheetResult {
   );
 
   /**
+   * Takes a product off the sheet.
+   *
+   * A SAVE THAT OMITS THE LINE — no endpoint of its own, because `items`
+   * replaces the array, so a sheet shrinks the same way it grows. Adding needed
+   * one (`POST /:id/items`) only because a new line has to start at a system
+   * quantity the browser must not compute; removing carries no such number.
+   *
+   * SAVED IMMEDIATELY rather than debounced. The 800ms delay is right for
+   * keystrokes, where the next one supersedes the last; a removed row disappears
+   * from the screen at once, and leaving it unsent would mean a sheet that looks
+   * different from the one stored for as long as the counter does nothing else —
+   * closing the tab in that window would bring the line back.
+   */
+  const removeLine = useCallback(
+    async (productId: string) => {
+      revisionRef.current += 1;
+
+      const next = itemsRef.current.filter(
+        (item) => item.productId !== productId,
+      );
+      itemsRef.current = next;
+      setItems(next);
+      dirtyRef.current = true;
+
+      // The pending keystroke save would carry the same array anyway; cancelling
+      // it stops a second identical request landing right behind this one.
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+
+      await save();
+    },
+    [save],
+  );
+
+  /**
    * Saves anything pending, NOW.
    *
    * Called before a submit: the debounce means the last thing a counter typed
@@ -269,6 +348,66 @@ export function useOpnameSheet(opnameId: string): UseOpnameSheetResult {
     }
   }, [save]);
 
+  /**
+   * The shared half of both ways to put products on the sheet.
+   *
+   * FLUSHES FIRST, and skipping that would lose work: the auto-save sends the
+   * WHOLE items array, so a pending save built from the old line list would land
+   * after the append and replace the sheet with a version that never had the new
+   * products on it. Flushing settles the outstanding edit before the server is
+   * asked to extend the list it just accepted.
+   *
+   * The response IS the new sheet, so it replaces the lines outright rather than
+   * being merged in — the same contract as a save, and `revisionRef` moves with
+   * it so a save already in flight cannot land on top.
+   */
+  const runAdd = useCallback(
+    async (request: () => Promise<Opname>) => {
+      setAdding(true);
+
+      try {
+        await flush();
+
+        const updated = await request();
+
+        if (!activeRef.current) return null;
+
+        revisionRef.current += 1;
+        setOpname(updated);
+        const lines = forEditing(updated.items);
+        setItems(lines);
+        itemsRef.current = lines;
+        dirtyRef.current = false;
+        setError(null);
+
+        return null;
+      } catch (err) {
+        // Returned rather than pushed into `error`: the dialog that asked for
+        // these products is where the refusal is actionable — "already on this
+        // sheet" names products the user can untick and try again.
+        return err instanceof ApiError
+          ? err.fullMessage
+          : "Produk gagal ditambahkan. Coba lagi.";
+      } finally {
+        if (activeRef.current) setAdding(false);
+      }
+    },
+    [flush],
+  );
+
+  const addProducts = useCallback(
+    (productIds: string[]) =>
+      productIds.length === 0
+        ? Promise.resolve(null)
+        : runAdd(() => stockOpnameService.addItems(opnameId, productIds)),
+    [opnameId, runAdd],
+  );
+
+  const addEveryProduct = useCallback(
+    () => runAdd(() => stockOpnameService.addEveryProduct(opnameId)),
+    [opnameId, runAdd],
+  );
+
   const reload = useCallback(() => {
     setReloadKey((key) => key + 1);
   }, []);
@@ -283,7 +422,11 @@ export function useOpnameSheet(opnameId: string): UseOpnameSheetResult {
     countedCount: items.filter((item) => item.countedAt !== null).length,
     editLine,
     setCounted,
+    removeLine,
     flush,
+    addProducts,
+    addEveryProduct,
+    adding,
     reload,
   };
 }

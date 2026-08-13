@@ -1,21 +1,16 @@
 import type { Metadata } from "next";
 
 import { Breadcrumb } from "@/components";
-import { ProductDetail } from "@/features/inventory";
+import { ProductForm } from "@/features/inventory";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Detail produk · PawShip" };
+export const metadata: Metadata = { title: "Edit produk · PawShip" };
 
 /**
- * One product, read-only. Editing lives one level deeper, at `[id]/edit` — the
- * same split the supplier routes use, and for the same reason: arriving at a
- * product from a low-stock alert or a search means wanting to LOOK at it, and a
- * URL that opened a form full of live inputs is an edit nobody asked for.
- *
  * `params` is a Promise in this version of Next — awaited before use, matching
- * the other dynamic routes in the app.
+ * the other dynamic routes in the app (master/branches/[id] and friends).
  */
-export default async function ProductDetailPage({
+export default async function EditProductPage({
   params,
 }: {
   params: Promise<{ id: string }>;
@@ -23,7 +18,7 @@ export default async function ProductDetailPage({
   const { id } = await params;
 
   return (
-    <RequirePermission feature="products">
+    <RequirePermission feature="products" action="update">
       <div className="flex flex-col gap-6">
         <div>
           <Breadcrumb
@@ -33,15 +28,19 @@ export default async function ProductDetailPage({
                 label: "Produk & Varian",
                 href: "/dashboard/inventory/products",
               },
-              { label: "Detail produk" },
+              {
+                label: "Detail produk",
+                href: `/dashboard/inventory/products/${id}`,
+              },
+              { label: "Edit produk" },
             ]}
           />
           <h1 className="mt-1 text-2xl font-semibold text-foreground">
-            Detail produk
+            Edit produk
           </h1>
         </div>
 
-        <ProductDetail productId={id} />
+        <ProductForm productId={id} />
       </div>
     </RequirePermission>
   );

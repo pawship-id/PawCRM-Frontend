@@ -37,6 +37,10 @@ const REFERENCE_LABELS: Record<ReferenceType, string> = {
   transfer_manual: "Transfer manual",
   bundle_consume: "Penjualan bundle",
   manual_adjustment: "Penyesuaian manual",
+  // Has no document either, like a manual adjustment — but is worth naming
+  // apart, because "what did this tenant start with" is a question the stock
+  // card could not answer while the two shared one label.
+  opening_balance: "Saldo awal persediaan",
 };
 
 export function StockLedgerTable({
@@ -151,6 +155,24 @@ export function StockLedgerTable({
                       </>
                     ) : (
                       REFERENCE_LABELS[movement.reference.type]
+                    )}
+
+                    {/* WHY it happened, which no other column can say — and the
+                        only thing a `manual_adjustment` or a `transfer_manual`
+                        has instead of a document number.
+
+                        Under the reference rather than in a column of its own:
+                        this table is already eight columns wide, and a note is
+                        read when a row looks surprising, not scanned down. Both
+                        levels are shown — the transfer's own reason and the
+                        product line's — because they answer different questions
+                        and either may be absent. */}
+                    {(movement.notes || movement.lineNotes) && (
+                      <span className="mt-1 block max-w-56 text-[11px] italic">
+                        {[movement.notes, movement.lineNotes]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
                     )}
                   </td>
                   <td className="px-4 py-2.5 text-xs text-muted">

@@ -1,0 +1,75 @@
+import { apiClient } from "./api-client";
+import type { ChartOfAccount } from "@/types/accounting";
+import type { PageResult } from "@/types/api";
+
+/**
+ * Chart-of-accounts calls against /api/chart-of-accounts.
+ *
+ * THE FIRST REAL CONSUMER OF THIS ENDPOINT. The accounting screens are still
+ * prototypes running on `features/accounting/data/dummy.ts`, so nothing else has
+ * ever exercised the route — expect the shapes in `types/accounting.ts` to need
+ * correcting the first time something here disagrees with the API rather than
+ * assuming the types are right.
+ *
+ * What brought it here is the product form's **Akun penjualan** picker: a
+ * product may name the income account a sale of it credits. Nothing posts
+ * against that field yet (there is no sales module), but the catalogue is where
+ * a tenant knows the answer, and asking retroactively for every product on the
+ * day the POS ships is the alternative.
+ *
+ * One typed domain operation per apiClient request — no React, no state,
+ * mirroring category.service.ts. The tenant scope comes from the session cookie
+ * on the backend, so it is never passed here.
+ */
+/**
+ * The API's hard page-size cap (`pagination` in the backend's
+ * common.validation.js). Asking for more is a 400, not a bigger page.
+ *
+ * Clamped rather than merely defaulted, because a default only protects the
+ * caller that omits the field — and the failure is silent here: the product
+ * form catches the rejection and reports "accounting unavailable", so a caller
+ * that asked for 500 would see a section quietly stop working rather than an
+ * error naming what it did.
+ */
+const MAX_PAGE_LIMIT = 100;
+
+export interface ChartOfAccountListQuery {
+  page?: number;
+  limit?: number;
+  search?: string;
+  /** `income`, `asset`, … — narrows the list to one class. */
+  accountType?: ChartOfAccount["accountType"];
+  isActive?: boolean;
+}
+
+export const chartOfAccountsService = {
+  /**
+   * GET /chart-of-accounts — paginated, searchable, filterable by class.
+   *
+   * `limit: 100` because that is the API's HARD CAP (`pagination` in
+   * common.validation.js). Asking for more is not a larger page, it is a 400 —
+   * which is exactly what shipped first here and made the product form's
+   * accounting section fail for every user while reporting it as a permissions
+   * problem.
+   *
+   * 100 is enough in practice for the caller this exists for: the product form
+   * asks with `accountType: "income"`, and a chart with more than a hundred
+   * income accounts is not a chart anyone picks from with a dropdown. Should
+   * that ever stop being true, the fix is a searchable picker, not a bigger
+   * number — the cap will not move.
+   */
+  list: (query: ChartOfAccountListQuery = {}) =>
+    apiClient.get<PageResult<ChartOfAccount>>("/chart-of-accounts", {
+      query: {
+        page: query.page,
+        limit: Math.min(query.limit ?? MAX_PAGE_LIMIT, MAX_PAGE_LIMIT),
+        search: query.search,
+        accountType: query.accountType,
+        isActive: query.isActive,
+      },
+    }),
+
+  /** GET /chart-of-accounts/:id — a single account. */
+  getById: (id: string) =>
+    apiClient.get<ChartOfAccount>(`/chart-of-accounts/${id}`),
+};

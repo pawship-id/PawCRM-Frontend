@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { StockAdjustmentForm, StockTransferForm } from "@/features/inventory";
@@ -106,6 +106,7 @@ function outboundRow(
     warehouseId: WAREHOUSE,
     warehouseName: "Gudang Pusat",
     productId: PRODUCT,
+    productName: "Royal Canin Adult 3kg",
     movementType: "transfer_out",
     qty: "-4.0000",
     hppAtTime: "200000.0000",
@@ -115,6 +116,7 @@ function outboundRow(
     isNewBatch: false,
     destinationWarehouseId: OTHER_WAREHOUSE,
     short: false,
+    lineNotes: null,
     ...overrides,
   };
 }
@@ -159,16 +161,24 @@ function mockLookups({
     warehouse(OTHER_WAREHOUSE, "Gudang Bazar"),
   ],
   detail = product(),
+  catalogue,
   preview = previewOf(),
 }: {
   warehouses?: Warehouse[];
   detail?: Product;
+  /**
+   * What `productService.list` answers with — the adjustment form's lookup AND
+   * the transfer picker's search results, which is the same endpoint.
+   */
+  catalogue?: Product[];
   preview?: StockMovementPreview;
 } = {}) {
   jest
     .spyOn(warehouseService, "list")
     .mockResolvedValue(page(warehouses) as never);
-  jest.spyOn(productService, "list").mockResolvedValue(page([detail]) as never);
+  jest
+    .spyOn(productService, "list")
+    .mockResolvedValue(page(catalogue ?? [detail]) as never);
   jest.spyOn(productService, "getById").mockResolvedValue(detail);
 
   // The forms no longer COMPUTE a preview — they ask for one. Everything the
@@ -430,26 +440,131 @@ describe("StockAdjustmentForm", () => {
   });
 });
 
+/**
+ * Puts a product on the transfer form the way a user does — through the picker
+ * dialog, which is the ONLY way onto it.
+ *
+ * Unlike the form's Radix selects, this dialog IS drivable in jsdom: a search
+ * box, a checkbox per match and a footer button. The picker's candidate list is
+ * debounced, hence the timer advance before the checkbox is looked for.
+ */
+async function addProducts(
+  user: ReturnType<typeof userEvent.setup>,
+  count = 1,
+) {
+  await user.click(await screen.findByRole("button", { name: /Tambah produk/ }));
+
+  const dialog = await screen.findByRole("dialog");
+  await waitFor(() => jest.advanceTimersByTime(400));
+
+  const boxes = await within(dialog).findAllByRole("checkbox");
+  for (const box of boxes.slice(0, count)) await user.click(box);
+
+  await user.click(within(dialog).getByRole("button", { name: /Tambahkan/ }));
+}
+
 describe("StockTransferForm", () => {
-  it("sends both warehouse ids and a positive quantity", async () => {
+  it("sends both warehouse ids and a positive quantity, as one item", async () => {
     const { create } = mockLookups();
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(<StockTransferForm />);
 
+    await addProducts(user);
     await user.type(await screen.findByLabelText(/^Jumlah/), "6");
     await user.click(screen.getByRole("button", { name: /Simpan transfer/ }));
 
     // Direction comes from the two ids, never from a sign — "pindahkan -5 dari A
     // ke B" is the other direction written so every report reads backwards.
+    //
+    // The product travels in `items`, not at the top level: one transfer may
+    // carry several, and the API refuses the old single-product shape outright.
     await waitFor(() =>
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({
           operation: "transfer",
-          productId: PRODUCT,
           fromWarehouseId: WAREHOUSE,
           toWarehouseId: OTHER_WAREHOUSE,
-          qty: "6",
+          items: [{ productId: PRODUCT, qty: "6" }],
+        }),
+      ),
+    );
+  });
+
+  /**
+   * BOTH LEVELS OF NOTE REACH THE PAYLOAD, and each is omitted when blank
+   * rather than sent as "". An empty string is a note that says nothing, and
+   * storing one on every row of a transfer nobody annotated would fill the
+   * stock card's notes column with silence that looks like content.
+   */
+  it("carries the transfer's note and the line's own", async () => {
+    const { create } = mockLookups();
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<StockTransferForm />);
+
+    await addProducts(user);
+    await user.type(await screen.findByLabelText(/^Jumlah/), "6");
+    await user.type(
+      screen.getByLabelText("Catatan transfer"),
+      "persiapan bazar",
+    );
+    await user.type(screen.getByLabelText(/^Catatan Royal Canin/), "lot dekat ED");
+    await user.click(screen.getByRole("button", { name: /Simpan transfer/ }));
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          notes: "persiapan bazar",
+          items: [
+            { productId: PRODUCT, qty: "6", notes: "lot dekat ED" },
+          ],
+        }),
+      ),
+    );
+  });
+
+  /**
+   * A PRODUCT ALREADY ON THE FORM IS NOT OFFERED AGAIN. The API refuses a
+   * transfer carrying one twice — FEFO reads the source lots once per line and
+   * would allocate the same goods to both — so a tick that could only ever
+   * produce a refusal is worse than an absence. Preventing it beats validating
+   * it: that rule is not something a clerk can be expected to know.
+   */
+  it("does not offer a product already on the form", async () => {
+    mockLookups();
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<StockTransferForm />);
+
+    await addProducts(user);
+    // Reopened, with the catalogue's only product now on the form.
+    await user.click(screen.getByRole("button", { name: /Tambah produk/ }));
+    await waitFor(() => jest.advanceTimersByTime(400));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      await within(dialog).findByText(/sudah ditambahkan/),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByRole("checkbox")).not.toBeInTheDocument();
+  });
+
+  it("reports how many products moved, not just how many rows", async () => {
+    const { create } = mockLookups();
+    // Two lots × an out/in pair: four rows from one product.
+    create.mockResolvedValue([{}, {}, {}, {}] as never);
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<StockTransferForm />);
+
+    await addProducts(user);
+    await user.type(await screen.findByLabelText(/^Jumlah/), "6");
+    await user.click(screen.getByRole("button", { name: /Simpan transfer/ }));
+
+    await waitFor(() =>
+      expect(Swal.fire).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: expect.stringContaining("1 produk, 4 baris"),
         }),
       ),
     );
@@ -472,12 +587,132 @@ describe("StockTransferForm", () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(<StockTransferForm />);
 
+    await addProducts(user);
     await user.type(await screen.findByLabelText(/^Jumlah/), "6");
     await settlePreview();
 
     // Two lots × an out/in pair each.
     expect(await screen.findByText("Lot yang berpindah")).toBeInTheDocument();
     expect(screen.getByText("4 baris movement")).toBeInTheDocument();
+  });
+
+  /**
+   * The picker exists because a transfer is normally several products at once.
+   * Ticking two and confirming must produce two rows in one payload, not two
+   * transfers — that is the whole reason `items` is an array.
+   */
+  it("puts every product ticked in the picker into one payload", async () => {
+    const second = product({ _id: "p2", sku: "SH-1L", name: "Shampoo Anjing" });
+    const { create } = mockLookups({ catalogue: [product(), second] });
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<StockTransferForm />);
+
+    await addProducts(user, 2);
+
+    const quantities = await screen.findAllByLabelText(/^Jumlah/);
+    expect(quantities).toHaveLength(2);
+    await user.type(quantities[0], "6");
+    await user.type(quantities[1], "2");
+
+    await user.click(screen.getByRole("button", { name: /Simpan transfer/ }));
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          items: [
+            { productId: PRODUCT, qty: "6" },
+            { productId: "p2", qty: "2" },
+          ],
+        }),
+      ),
+    );
+  });
+
+  /**
+   * A MINUS SIGN NEVER REACHES THE FIELD. The direction of a transfer comes
+   * from its two warehouse ids, so "-5" is not a quantity the user meant — it is
+   * the same move written so that every report reads backwards. Filtered as it
+   * is typed rather than complained about afterwards.
+   */
+  it("refuses to hold a negative quantity", async () => {
+    mockLookups();
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<StockTransferForm />);
+
+    await addProducts(user);
+
+    const qty = await screen.findByLabelText(/^Jumlah/);
+    await user.type(qty, "-5");
+
+    expect(qty).toHaveValue("5");
+  });
+
+  /** Decimals survive: `unit` is free text, and half a sack of feed is real. */
+  it("keeps a decimal quantity", async () => {
+    mockLookups();
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<StockTransferForm />);
+
+    await addProducts(user);
+
+    const qty = await screen.findByLabelText(/^Jumlah/);
+    await user.type(qty, "2.5");
+
+    expect(qty).toHaveValue("2.5");
+  });
+
+  /**
+   * REFUSED, where a sale of the same shortfall would be RECORDED. Nothing has
+   * left a shelf yet — this form is what moves it — so asking for more than the
+   * source holds is a typo to correct, not a fact to record. Posting it would
+   * drive the source negative AND invent a unit at the destination.
+   *
+   * The API refuses it too; this is the same refusal said earlier, in the row
+   * that caused it. Blocking the submit is what stops the user discovering it
+   * after filling in twelve rows.
+   */
+  it("blocks a quantity larger than the source warehouse holds", async () => {
+    // The fixture holds 20 at the source warehouse.
+    const { create, preview } = mockLookups();
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<StockTransferForm />);
+
+    await addProducts(user);
+    await user.type(await screen.findByLabelText(/^Jumlah/), "21");
+    await settlePreview();
+
+    expect(await screen.findByText(/Melebihi stok/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Simpan transfer/ }),
+    ).toBeDisabled();
+
+    // Not even asked about: the API would refuse the whole payload, so the
+    // request could only ever come back as an error.
+    expect(preview).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("allows moving exactly what is on hand", async () => {
+    const { create } = mockLookups();
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<StockTransferForm />);
+
+    await addProducts(user);
+    // Emptying a warehouse is a normal thing to do — the guard is against going
+    // BELOW zero, not against reaching it.
+    await user.type(await screen.findByLabelText(/^Jumlah/), "20");
+    await user.click(screen.getByRole("button", { name: /Simpan transfer/ }));
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ items: [{ productId: PRODUCT, qty: "20" }] }),
+      ),
+    );
   });
 
   it("says plainly that a transfer posts no journal", async () => {

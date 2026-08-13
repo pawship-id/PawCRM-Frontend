@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
@@ -10,12 +9,8 @@ import { cn } from "@/lib/utils";
 import { daysUntil } from "@/utils/date";
 import { formatMoney } from "@/utils/decimal";
 
-import { purchaseReturnService } from "@/services/purchaseReturn.service";
-
-import { useInventoryDemo } from "@/features/inventory/hooks/useInventoryDemo";
-
+import { useHubCounts } from "../hooks/useHubCounts";
 import {
-  HORIZON_DAYS,
   usePayablesPanels,
   type PayablePanelData,
 } from "../hooks/usePayablesPanels";
@@ -72,70 +67,58 @@ const SECTIONS: Array<{
  * the overdue list learns about a bill on the day it is already a problem, which
  * is the failure the module's payment terms exist to prevent.
  *
+ * NEITHER LIST IS ASSEMBLED HERE. Both are a server-side filter (`?overdue=` and
+ * `?dueSoon=`) beside a server-side aggregation, so this screen renders what it
+ * was handed — no row is dropped in the browser and no rupiah figure is added up
+ * in one. See usePayablesPanels for what that replaced.
+ *
  * THE COUNTS ON THE SECTION CARDS ARE ROW COUNTS, never money. A count of
  * documents makes the "is there anything here" point without claiming to be an
  * account.
  *
- * THE PAYABLES AND RETURNS HALVES NOW READ THE API; suppliers and receipts still
- * count the in-memory demo store, because each card is converted with its own
- * module. That is why those two counts are the only ones that can be null — they
- * are the ones waiting on a request.
+ * EVERY FIGURE ON THIS SCREEN COMES FROM THE API — the section counts from
+ * useHubCounts, the two panels and the payables count from the outstanding
+ * summary. That is why every count can be null: each one is waiting on a request,
+ * and null renders as "—" rather than as zero.
  *
- * THE RETURNS COUNT COMES FROM THE PAGINATION, NOT FROM THE ROWS. Asking for one
- * row and reading `pagination.total` costs one small request and is right; asking
- * for a page and calling `.length` on it would silently cap at the page size and
- * report "20 retur" forever.
+ * THE COUNTS COME FROM THE PAGINATION, NOT FROM THE ROWS. Asking for one row and
+ * reading `pagination.total` costs one small request and is right; asking for a
+ * page and calling `.length` on it would silently cap at the page size and report
+ * "20 retur" forever.
  *
  * EACH CARD IS GATED ON ITS OWN GRANT and the two lists on `purchaseInvoices`,
  * matching the sidebar exactly — a user whose menu has no Utang Supplier link
- * must not land on a page that opens with their supplier debt. The hook is
- * handed that same answer so a denied role issues no requests at all.
+ * must not land on a page that opens with their supplier debt. Both hooks are
+ * handed those same answers so a denied role issues no requests at all.
  */
 export function PurchasingHub() {
   const { can } = usePermissions();
-  const { suppliers, receipts } = useInventoryDemo();
 
   const mayReadInvoices = can("purchaseInvoices", "read");
-  const { overdue, dueSoon, outstandingCount } =
+  const { overdue, dueSoon, outstandingCount, horizonDays } =
     usePayablesPanels(mayReadInvoices);
 
-  const mayReadReturns = can("purchaseReturns", "read");
-  const [returnCount, setReturnCount] = useState<number | null>(null);
-
-  useEffect(() => {
-    // A denied role issues no request at all, matching how the payables panels
-    // are gated — a 403 in the console is a worse answer than not asking.
-    if (!mayReadReturns) return;
-
-    let active = true;
-
-    purchaseReturnService
-      .list({ limit: 1 })
-      .then((result) => {
-        if (active) setReturnCount(result.pagination.total);
-      })
-      // A hub card is a signpost; a missing count is not worth an error banner
-      // over three other cards that loaded fine.
-      .catch(() => undefined);
-
-    return () => {
-      active = false;
-    };
-  }, [mayReadReturns]);
+  const { activeSuppliers, receipts, returns } = useHubCounts({
+    suppliers: can("suppliers", "read"),
+    receipts: can("goodsReceipts", "read"),
+    returns: can("purchaseReturns", "read"),
+  });
 
   const sections = SECTIONS.filter((section) =>
     can(section.feature, section.action),
   );
 
   const counts: Record<string, string> = {
-    "/dashboard/purchasing/suppliers": `${suppliers.filter((supplier) => supplier.isActive).length} aktif`,
-    "/dashboard/purchasing/receipts": `${receipts.length} penerimaan`,
+    "/dashboard/purchasing/suppliers":
+      activeSuppliers === null ? "—" : `${activeSuppliers} aktif`,
+    "/dashboard/purchasing/receipts":
+      receipts === null ? "—" : `${receipts} penerimaan`,
     "/dashboard/purchasing/payables":
       outstandingCount === null
         ? "—"
         : `${outstandingCount} belum lunas`,
     "/dashboard/purchasing/returns":
-      returnCount === null ? "—" : `${returnCount} retur`,
+      returns === null ? "—" : `${returns} retur`,
   };
 
   return (
@@ -178,12 +161,22 @@ export function PurchasingHub() {
             moreLabel="faktur lain juga sudah lewat tempo"
           />
 
+          {/* The window is the server's and arrives with the figures, so the
+              caption states the days the numbers beside it were computed with.
+              Until it does, the panel says nothing about a window rather than
+              naming one it is guessing at. */}
           <PayablePanel
             title="Jatuh tempo minggu ini"
-            caption={`${HORIZON_DAYS} hari ke depan`}
+            caption={
+              horizonDays === null ? undefined : `${horizonDays} hari ke depan`
+            }
             data={dueSoon}
             totalLabel="Kas yang perlu disiapkan"
-            empty={`Tidak ada faktur yang jatuh tempo dalam ${HORIZON_DAYS} hari.`}
+            empty={
+              horizonDays === null
+                ? "Tidak ada faktur yang jatuh tempo dalam waktu dekat."
+                : `Tidak ada faktur yang jatuh tempo dalam ${horizonDays} hari.`
+            }
             moreLabel="faktur lain juga jatuh tempo minggu ini"
           />
         </div>
@@ -201,9 +194,9 @@ export function PurchasingHub() {
  * count rather than `children.length`. Both figures come from the hook, which
  * gets them from the server's own aggregation; nothing here adds anything up.
  *
- * A NULL TOTAL RENDERS AS AN ABSENCE, never as zero. The due-soon bucket cannot
- * always be summed exactly (see usePayablesPanels), and "Rp 0" over eleven
- * unpaid bills is a number somebody would act on.
+ * A NULL TOTAL RENDERS AS AN ABSENCE, never as zero. It now means only that the
+ * summary request failed — both totals are exact when it arrives — and "Rp 0"
+ * over eleven unpaid bills is a number somebody would act on.
  */
 function PayablePanel({
   title,

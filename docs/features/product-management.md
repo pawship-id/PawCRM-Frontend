@@ -14,6 +14,8 @@ Under **Dashboard → Inventory → Produk & Varian** a permitted user can:
 - **List** the catalogue — one row per family, paginated, with free-text search,
   type/category/status filters and a "show deleted" toggle.
 - **Expand** a parent into its variants, fetched on demand.
+- **Open** one product read-only — every stored field, its stock per warehouse,
+  and, for a parent, the whole family with each variant's quantity.
 - **Create** a product in one of three shapes, with optional opening stock.
 - **Edit** a product, including adding variants to an existing family.
 - **Delete / restore**, both guarded by the backend and reported verbatim.
@@ -40,6 +42,49 @@ its variants**, so searching "3kg" finds the product rather than nothing.
 All three are computed by the backend. The **warehouse selector is a view, not a
 filter**: every product arrives carrying its quantities for every warehouse, so
 switching location re-reads what is already on the page and issues no request.
+
+### Row actions behind a kebab menu
+
+**Detail · Edit · Hapus / Pulihkan**, in a dropdown on each parent row — the same
+arrangement the supplier list uses, and for the same reason: this table already
+carries three numeric columns it exists for (HPP, harga jual, stok), and a third
+inline button pushed them off the right edge on a laptop.
+
+**Detail is the first item and the only ungated one.** It needs `products:read`,
+which is already what put the row on screen, so the menu can never open onto
+nothing — which is why the Aksi column is unconditional here while the supplier
+table hides its own. A deleted row offers only Pulihkan; restoring it first is
+what makes editing it meaningful again.
+
+Variant rows have no menu: the variant's own name links to its detail page, and
+everything else about a variant is edited through its parent's form.
+
+### Detail is its own screen, not the form
+
+`ProductDetail` answers "what IS this product right now"; `ProductForm` answers
+"what should it be". They are different pages because they show different things:
+the form hides stock entirely (an existing product's quantity moves through the
+stock screens, never through a text box) and renders a parent's family as a grid
+of price inputs, while the detail screen shows the quantities and nothing
+editable.
+
+That is also why `/[id]` is the **detail** page and editing sits at `/[id]/edit`
+— the same split the supplier routes use. Arriving at a product from a low-stock
+alert or a search means wanting to look at it, and a URL that opened a form full
+of live inputs is an edit nobody asked for.
+
+One **warehouse selector scopes every quantity on the page**, defaulting to all
+of them. Like the list's selector it is a view rather than a filter: the response
+already carries the per-warehouse rows, so switching location re-reads what is on
+screen instead of issuing a request. Its options include **inactive** warehouses
+— a closed location still owns the stock it held, and a row it appears in has to
+be named rather than shown as an id.
+
+A parent lists its variants from `GET /:id/variants` (unpaginated — a parent has
+a handful by construction), each row linking to its own detail page: a variant is
+a product in its own right, carrying the barcode, the price and the stock the
+parent carries none of. A **variant** fetches its parent for the reverse reason —
+`parentId` is an id, and "induk: 68f1a…" tells a reader nothing.
 
 ### Three shapes, one form
 
@@ -72,11 +117,92 @@ deletion, so it is a decision rather than a side effect of typing in a field.
   is asked once for the whole entry.
 - **Bundle** — never offered. A bundle holds no stock of its own.
 
+**The purchase price is required wherever a quantity is entered**, and validated
+here rather than left to the API — which now refuses the whole create *before
+writing anything*, so an unpriced row would cost the user the entire form rather
+than one cell. In a family this is per row: a variant left blank asks for no
+price, a variant given stock demands one.
+
+The reason is accounting, not tidiness. The price is what the opening inventory
+journal is built from (**Dr 1201 Persediaan / Cr 3101 Modal**). Without it the
+movement carries a quantity with no value, the journal line is skipped, and the
+tenant is left holding stock the balance sheet says is worth nothing — a hole
+that only surfaces at the first stocktake, by which time the original price is a
+question nobody can answer. `0` is accepted: donated stock and free samples are
+real.
+
 It travels in the same request as the product and is posted to the ledger by the
 API. **The API commits the products before the ledger runs**, so a ledger failure
 comes back on a `201` as `openingStock.posted: false` — the form then tells the
 user the product exists and its opening stock does not, and points at Penyesuaian
-Stok.
+Stok. Everything predictable is refused before anything is written, so this path
+now covers only the narrow window between the check and the posting.
+
+## The marketplace fields
+
+Merk, deskripsi, pre-order, informasi pengiriman, foto/video, and the two accounting references.
+All optional — a tenant that never sells online fills none of them in and the catalogue works
+exactly as it did.
+
+### Inheritance: the one rule to keep
+
+**Inputs bind to the STORED value. The parent's value is a PLACEHOLDER.**
+
+The API returns both — `product.shipping.weight` (what this product itself holds, `null` when it
+inherits) and `product.resolved.shipping.weight` (the effective value) — precisely so the form can
+keep them apart:
+
+```tsx
+value={row.weight}                    // stored: "" when inherited
+placeholder={parentShipping.weight}   // effective: shown, never bound
+```
+
+Getting this backwards is the one bug this feature can produce silently. A variant loads its
+parent's 500 g into the input, the user edits the SKU and saves, and the variant now holds an
+explicit 500 g that has stopped following its family — with nothing on screen to say so. `buildPatch`
+and `saveFamily` diff against `product.shipping`, never `product.resolved.shipping`, for the same
+reason.
+
+Clearing a field is how an override is removed and inheritance resumes. There is no reset button.
+
+`inheritedFields[]` names which values came from the parent; the detail screen renders *"warisan
+dari induk"* beside each, because the two states are otherwise indistinguishable and they lead to
+different actions — edit here, or edit the parent and move every sibling at once.
+
+**`isPreorder` is not inherited.** Inheriting a boolean needs a tri-state that renders as an
+indeterminate checkbox nobody reads correctly, so it is a plain per-product flag.
+
+### Media
+
+Up to 9 images/videos on the parent or standalone; exactly one image per variant. The array's
+order is the display order and the first item is the primary image everywhere — catalogue row, POS
+tile, marketplace listing — which is why the reorder controls matter and why there is no separate
+sort field.
+
+Reordering is native HTML5 drag **plus ◀ ▶ buttons**. The buttons are the touch path, the keyboard
+path and the only path testable in jsdom, which is what makes a drag-and-drop library unnecessary
+for nine one-dimensional items rather than merely avoidable.
+
+Cropping happens in the browser before upload, so the server receives final bytes. Videos skip it —
+there is nothing to crop — and carry an optional poster frame; without one the tile shows a play
+icon.
+
+Deleting a tile removes it from the array only. The bytes go when the product is saved; doing it
+sooner would strand a live product's image if the user then cancelled.
+
+### Bundle weight
+
+A bundle's weight defaults to the sum of its components', in grams, shown as a **placeholder** so
+that saving without touching it keeps the bundle following its components. Type a number to
+override; clear it to go back. Components with no weight recorded are named, because a total the
+user cannot reconcile against the scale is worse than no total.
+
+### Akuntansi
+
+`chartOfAccounts:read` and `businessLines:read` are separate permissions from `products:read`. When
+either list cannot be loaded the two selects are replaced by an explanation and **the form still
+saves** — both fields are optional, and taking down the whole form over an optional section would
+be the wrong trade.
 
 ## Routes
 
@@ -84,11 +210,12 @@ Stok.
 | ---------------------------------------- | ----------------------------------------------------- | -------------------------- |
 | `/dashboard/inventory/products`          | `app/(dashboard)/dashboard/inventory/products/page.tsx`     | List (`ProductsScreen`)    |
 | `/dashboard/inventory/products/new`      | `.../products/new/page.tsx`                           | Create (`ProductForm`)     |
-| `/dashboard/inventory/products/[id]`     | `.../products/[id]/page.tsx`                          | Edit (`ProductForm`)       |
+| `/dashboard/inventory/products/[id]`     | `.../products/[id]/page.tsx`                          | Detail (`ProductDetail`)   |
+| `/dashboard/inventory/products/[id]/edit`| `.../products/[id]/edit/page.tsx`                     | Edit (`ProductForm`)       |
 
-All three are behind `<RequirePermission feature="products" …>` (`read`,
-`create`, `update` respectively). The `[id]` route is an async Server Component
-that awaits the Next 16 `params` Promise.
+All four are behind `<RequirePermission feature="products" …>` (`read`, `create`,
+`read`, `update` respectively). The dynamic routes are async Server Components
+that await the Next 16 `params` Promise.
 
 ## Structure
 
@@ -98,15 +225,20 @@ that awaits the Next 16 `params` Promise.
     (the API rejects the pair).
   - `hooks/useProductVariants.ts` — lazy per-parent expand, cached; the
     already-asked set lives in a ref so a re-expand cannot refire the request.
-  - `hooks/useProductDetail.ts` — the edit screen's product + its variants.
-  - `hooks/useCatalogLookups.ts` — categories and active warehouses, in parallel.
+  - `hooks/useProductDetail.ts` — one product plus the rest of its family: a
+    parent's variants, or a variant's parent. Feeds both `ProductForm` and
+    `ProductDetail`.
+  - `hooks/useCatalogLookups.ts` — categories and warehouses, in parallel. Active
+    warehouses by default (an inactive one cannot take an opening balance);
+    `{ includeInactive: true }` for the detail screen, which names locations
+    rather than offering them.
   - `hooks/useBundleCandidates.ts` — standalone + variant products for the
     component picker, fetched only in bundle mode.
   - `utils/catalogue.ts` — `qtyAt`, `stockOf`, `limitedByAt`,
     `variantCombinations`, `attributesFor`, `defaultVariantSku`, `matchVariant`.
   - `components/` — `ProductsScreen`, `ProductsToolbar`, `ProductsTable`,
-    `ProductForm`, plus the existing `VariantAxisEditor`, `BundleComponentEditor`
-    and `ProductTypeBadge`.
+    `ProductDetail`, `ProductForm`, plus the existing `VariantAxisEditor`,
+    `BundleComponentEditor` and `ProductTypeBadge`.
 - `services/product.service.ts` — `list/getById/listVariants/getByBarcode/
   lowStock/create/update/remove/restore`.
 - `services/warehouse.service.ts` — `list` (picker).
@@ -161,8 +293,14 @@ Arithmetic goes through `utils/decimal.ts` (`toMinor`, `sumDecimals`,
   `excludeVariants` request, `variantCount` without expanding, the expand
   fetching once and caching, the bundle's "bisa dibuat" and its cap, the
   warehouse switch not refetching, delete → confirm → refetch, a 409 shown
-  verbatim, restore on a deleted row, a read-only role seeing no write actions,
-  and both failure paths.
+  verbatim, restore on a deleted row, Detail and Edit pointing at their two
+  routes, a read-only role keeping Detail and losing everything that writes, and
+  both failure paths.
+- `tests/ProductDetail.test.tsx` — the read-only page: the stored fields and the
+  stock summed across warehouses, a closed warehouse still named, a parent's
+  whole family listed with each variant's quantity and its axes, a variant naming
+  its parent instead of showing an id, the edit link hidden from a read-only
+  role, and the server's refusal shown rather than an empty page.
 - `tests/ProductForm.test.tsx` — the payloads: no `openingStock` when the switch
   is off, the full instruction when it is on, a discarded quantity after
   switching off, batch/expiry demanded for expiring goods, `posted: false`

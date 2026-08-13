@@ -801,6 +801,16 @@ export interface SupplierOutstandingRow {
    */
   overdueInvoiceCount: number;
   overdueOutstanding: string;
+  /**
+   * The NOT-YET-LATE subset falling due within the summary's `horizonDays`,
+   * summed in the same pass and as of the same instant.
+   *
+   * Disjoint from the overdue columns above: the server cuts both buckets at one
+   * `now`, so an invoice is in one or the other and never in both. The two can
+   * therefore be added together without counting a bill twice.
+   */
+  dueSoonInvoiceCount: number;
+  dueSoonOutstanding: string;
 }
 
 export interface SupplierOutstandingSummary {
@@ -818,6 +828,26 @@ export interface SupplierOutstandingSummary {
    */
   totalOverdueOutstanding: string;
   totalOverdueInvoices: number;
+  /**
+   * What falls due within `horizonDays` and is NOT yet late — "how much cash does
+   * this week need", across the whole book.
+   *
+   * THE SAME REASON TO PREFER THIS ENDPOINT applies here and more so: `?dueSoon=`
+   * answers with rows and a count, so a client summing a page would be showing a
+   * lower bound as if it were a total. Overdue + due-soon is always
+   * ≤ `totalOutstanding`; all three come from one aggregation over one filtered
+   * set at one instant.
+   */
+  totalDueSoonOutstanding: string;
+  totalDueSoonInvoices: number;
+  /**
+   * The window the due-soon figures were computed with, in days.
+   *
+   * Read it rather than hardcoding 7 in a caption: the default lives on the
+   * server, and a screen repeating a constant of its own would keep saying "7
+   * hari" the day that default changes.
+   */
+  horizonDays: number;
 }
 
 /**
@@ -1244,6 +1274,17 @@ export interface PurchaseInvoiceListQuery {
   status?: InvoiceStatus;
   outstanding?: boolean;
   overdue?: boolean;
+  /**
+   * Outstanding, NOT yet late, and due within the server's horizon.
+   *
+   * Not expressible with `dueBefore`, which bounds only the far end of the window
+   * and so always carries the overdue invoices along with it. This is the exact
+   * complement of `overdue`, cut at the server's own clock — which is why the
+   * window is not a parameter here: the count and the rupiah total beside these
+   * rows come from the outstanding summary, and two places to state a window are
+   * two chances to state it differently.
+   */
+  dueSoon?: boolean;
   /**
    * ISO dates bounding `invoiceDate` — the day the SUPPLIER issued the bill,
    * never `createdAt`. `dateTo` covers the whole day it names.

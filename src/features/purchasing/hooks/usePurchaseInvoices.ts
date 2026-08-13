@@ -17,16 +17,29 @@ import type {
  *   all          — every bill, settled or not.
  *   outstanding  — `status != paid`. Planning: what do we still owe.
  *   overdue      — that, plus already past due. Triage: who gets called today.
- *   unpaid /     — an exact status, which the API honours OVER the two
+ *   dueSoon      — that, but NOT yet late and falling due inside the server's
+ *                  horizon. The payment run: what to prepare cash for.
+ *   unpaid /     — an exact status, which the API honours OVER the three
  *   partial /      shorthands above.
  *   paid
  *
- * "Outstanding" and "overdue" are deliberately NOT expressible as a status: they
- * are the API's own AP definitions, and asking the server for them is what keeps
- * this screen's rows and the pager's total agreeing. A client filtering a page
- * on `isOverdue` would show four rows above a footer claiming twenty.
+ * NONE OF THE THREE SHORTHANDS IS EXPRESSIBLE AS A STATUS, and none is computed
+ * here: they are the API's own AP definitions, and asking the server for them is
+ * what keeps this screen's rows and the pager's total agreeing. A client
+ * filtering a page on `isOverdue` would show four rows above a footer claiming
+ * twenty.
+ *
+ * `dueSoon` in particular could not be assembled client-side at all. Its window
+ * has a NEAR end as well as a far one — "due this week and not already late" —
+ * and `dueBefore` bounds only the far end, so the browser would be dropping rows
+ * out of a page the server had already counted.
  */
-export type PayablesView = "all" | "outstanding" | "overdue" | InvoiceStatus;
+export type PayablesView =
+  | "all"
+  | "outstanding"
+  | "overdue"
+  | "dueSoon"
+  | InvoiceStatus;
 
 /** The query knobs the payables screen drives (page + the visible filters). */
 export interface PurchaseInvoicesQuery {
@@ -74,10 +87,16 @@ const EMPTY_PAGE: PageResult<PurchaseInvoiceListRow>["pagination"] = {
  */
 function viewFilters(
   view: PayablesView,
-): Pick<PurchaseInvoiceListQuery, "status" | "outstanding" | "overdue"> {
+): Pick<
+  PurchaseInvoiceListQuery,
+  "status" | "outstanding" | "overdue" | "dueSoon"
+> {
   if (view === "all") return {};
   if (view === "outstanding") return { outstanding: true };
   if (view === "overdue") return { overdue: true };
+  // No window travels with it: the horizon is the server's, the same one the
+  // outstanding summary computes its due-soon figures against.
+  if (view === "dueSoon") return { dueSoon: true };
   return { status: view };
 }
 

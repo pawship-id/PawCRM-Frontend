@@ -29,7 +29,14 @@ export type MovementType =
   | "transfer_out"
   | "transfer_in"
   | "bundle_consume"
-  | "adjustment";
+  | "adjustment"
+  /**
+   * The stock a tenant starts with, written only when a product is created
+   * carrying `openingStock`. Its journal credits equity (3101 Modal / Saldo
+   * Awal) rather than the inventory-loss account an `adjustment` uses — day-one
+   * goods are capital the owner brought in, not a miscount.
+   */
+  | "opening_balance";
 
 /** Which document caused a movement. Mirrors REFERENCE_TYPES. */
 export type ReferenceType =
@@ -40,7 +47,9 @@ export type ReferenceType =
   | "customer_return"
   | "transfer_manual"
   | "bundle_consume"
-  | "manual_adjustment";
+  | "manual_adjustment"
+  /** Carries `reference.id: null`. A client cannot create one — see above. */
+  | "opening_balance";
 
 /**
  * The two operations a CLIENT may create over HTTP. Everything else is posted
@@ -68,6 +77,17 @@ export interface StockMovement {
   bundleSourceId: string | null;
   reference: { type: ReferenceType; id: string | null };
   createdBy: string | null;
+  /**
+   * WHY this happened, in the words of whoever did it — the one thing a stock
+   * card cannot reconstruct from its own numbers.
+   *
+   * `notes` belongs to the whole posting and is repeated on every row of it;
+   * `lineNotes` belongs to the one product line this row came from, and a
+   * transfer's `transfer_in` inherits it from the `transfer_out` it mirrors.
+   * Both null for the movements no human typed.
+   */
+  notes: string | null;
+  lineNotes: string | null;
   createdAt: string;
   updatedAt: string;
   /** No `deletedAt`: the ledger is append-only. Corrections are new rows. */
@@ -250,6 +270,8 @@ export interface CreateAdjustmentInput {
   expiryDate?: string;
   costPerUnit?: string;
   isConsignment?: boolean;
+  /** Why the balance was corrected. Stored on the ledger row, ≤500 characters. */
+  notes?: string;
   /**
    * A token that makes a RETRY safe, 8–64 characters.
    *
@@ -261,14 +283,37 @@ export interface CreateAdjustmentInput {
   idempotencyKey?: string;
 }
 
-/** POST /api/stock-movements — the manual transfer payload. */
-export interface CreateTransferInput {
-  operation: "transfer";
+/** One product line of a transfer. */
+export interface TransferItemInput {
   productId: string;
-  fromWarehouseId: string;
-  toWarehouseId: string;
   /** Decimal STRING, and must be POSITIVE — direction comes from the two ids. */
   qty: string;
+  /** This line's own reason, distinct from the transfer's. ≤500 characters. */
+  notes?: string;
+}
+
+/**
+ * POST /api/stock-movements — the manual transfer payload.
+ *
+ * ONE SOURCE, ONE DESTINATION, MANY PRODUCTS. "Siapkan barang untuk bazar" is
+ * normally several products leaving the same warehouse at the same moment, and
+ * filing them as separate requests would give each one its own `reference.id` —
+ * so nothing could answer "what went to the bazaar", and a failure halfway would
+ * leave some goods moved and some not, with no document to unwind.
+ *
+ * Each product may appear ONCE. The API refuses a duplicate: FEFO reads the
+ * source lots once per line and does not subtract what an earlier line of the
+ * same posting already took, so two lines for one product would allocate the
+ * same goods twice.
+ */
+export interface CreateTransferInput {
+  operation: "transfer";
+  fromWarehouseId: string;
+  toWarehouseId: string;
+  /** At least one, at most 50, and `productId` unique across them. */
+  items: TransferItemInput[];
+  /** Why the whole transfer happened. Stamped on every row it writes. */
+  notes?: string;
   /** See CreateAdjustmentInput — same token, same reason. */
   idempotencyKey?: string;
 }
@@ -294,6 +339,11 @@ export interface PreviewMovementRow {
   warehouseId: string;
   warehouseName: string;
   productId: string;
+  /**
+   * Resolved by the server, because a transfer may move several products and a
+   * panel that groups its rows by product cannot label the groups from ids.
+   */
+  productName: string;
   movementType: MovementType;
   /** Decimal string. Signed, as the ledger stores it. */
   qty: string;
@@ -312,6 +362,8 @@ export interface PreviewMovementRow {
    * unrecorded withdrawal is an invisible one.
    */
   short: boolean;
+  /** The note on the requested line this row came from, echoed back. */
+  lineNotes: string | null;
 }
 
 /**
@@ -423,7 +475,11 @@ export interface Category {
  */
 export interface Product {
   _id: string;
-  sku: string;
+  /**
+   * Null on a `parent` — an abstraction nobody sells, prices or scans. The code
+   * staff quote and the till looks up is the VARIANT's, which always has one.
+   */
+  sku: string | null;
   name: string;
   productType: ProductType;
   /** Set on a `variant` only — the parent it belongs to. */
@@ -449,6 +505,58 @@ export interface Product {
   deletedAt?: string | null;
 
   /**
+   * ─── The marketplace fields ────────────────────────────────────────────
+   *
+   * These are the STORED values. On a `variant`, `null` means "follow the
+   * parent" — read `resolved` below for the effective value.
+   *
+   * ⚠️ BIND FORM INPUTS TO THESE, never to `resolved`. Loading a resolved value
+   * into an input and saving turns an inherited value into an explicit override,
+   * silently, on a save the user thought changed something else entirely.
+   */
+  brand?: string | null;
+  /** Sanitised HTML — for a marketplace or storefront listing. */
+  description?: string | null;
+  isPreorder?: boolean;
+  shipping?: ProductShipping;
+  /** ChartOfAccounts id, always an `income` account. Nothing posts to it yet. */
+  salesAccountId?: string | null;
+  businessLineId?: string | null;
+
+  /**
+   * What the fields above EFFECTIVELY are, with the parent's values substituted
+   * wherever this product set none.
+   *
+   * ASSEMBLED PER READ, never stored — the same family as `stockByWarehouse` and
+   * `bundleAvailability`. Present on every `productType`: on anything but a
+   * variant it equals the product's own values with `inheritedFields: []`, so a
+   * client never has to branch.
+   *
+   * ⚠️ RENDER THESE AS PLACEHOLDERS, never as input values. See `brand` above.
+   *
+   * Optional in the type although the API always sends it, so existing demo
+   * fixtures keep compiling — read it with `?.`.
+   */
+  /**
+   * The gallery — up to 9 images and videos, IN DISPLAY ORDER. The first entry
+   * is the primary image; there is no separate sort field, because an index that
+   * can disagree with the array position is the drift this avoids.
+   *
+   * Empty on a variant, which carries `variantImage` instead.
+   */
+  media?: ProductMedia[];
+  /** A variant's single image. Null on every other type. */
+  variantImage?: ProductMedia | null;
+
+  resolved?: ResolvedProductFields;
+  /**
+   * Which paths in `resolved` came from the parent rather than from this
+   * product — `["shipping.weight", "brand"]`. Dotted leaf paths, so a variant
+   * that overrode only its weight still reports inheriting the box size.
+   */
+  inheritedFields?: string[];
+
+  /**
    * Assembled per read from `productstocks`, never stored on the product.
    *
    * ALWAYS `[]` on a `parent` and a `bundle`, and that is the backend's answer
@@ -466,6 +574,116 @@ export interface Product {
   variantStock?: ProductStockRow[];
   /** On a `bundle` only — whole bundles assemblable per warehouse. */
   bundleAvailability?: BundleAvailabilityRow[];
+}
+
+/**
+ * The unit a shipping weight is expressed in.
+ *
+ * Two, matching what Indonesian marketplaces accept. Sums are computed in GRAMS
+ * server-side; `kg` is what the tenant typed.
+ */
+export type WeightUnit = "gr" | "kg";
+
+/**
+ * What a courier quotes against. Every field nullable and INDIVIDUALLY
+ * overridable — a variant that weighs more than its sibling still ships in the
+ * same box, so overriding the weight must not orphan the dimensions.
+ *
+ * Measurements are decimal STRINGS, like every other number in this file.
+ */
+export interface ProductShipping {
+  /** Decimal string. Null on a variant means "use the parent's". */
+  weight: string | null;
+  weightUnit: WeightUnit | null;
+  /** Panjang / Lebar / Tinggi, in centimetres. */
+  length: string | null;
+  width: string | null;
+  height: string | null;
+  /** "Isi paket" — what is in the box. */
+  packageContents: string | null;
+}
+
+/** What kind of asset a media item is. */
+export type MediaType = "image" | "video";
+
+/**
+ * One uploaded asset, as `POST /api/media/upload` returns it and as the product
+ * stores it.
+ *
+ * `token` is present only on the upload RESPONSE and must be sent back with the
+ * product payload — it is an HMAC the server signed over the tenant, the key,
+ * the type and the size, and the API refuses an asset without one. It is never
+ * stored, so an asset read back from a product does not carry it.
+ *
+ * `driver` is stored PER ASSET rather than read from config at display time: a
+ * tenant that migrates storage keeps serving the files already written.
+ */
+export interface ProductMedia {
+  _id?: string;
+  mediaType: MediaType;
+  url: string;
+  storageKey: string;
+  driver: "local" | "gcs" | "cloudinary";
+  mimeType: string;
+  bytes?: number | null;
+  width?: number | null;
+  height?: number | null;
+  /** A 320px derivative. Null on a video, which has a poster instead. */
+  thumbUrl?: string | null;
+  thumbKey?: string | null;
+  /** Video only, and null when the client captured no frame. */
+  posterUrl?: string | null;
+  posterKey?: string | null;
+  durationMs?: number | null;
+  alt?: string | null;
+  /** Upload response only — proof of provenance, never stored. */
+  token?: string;
+}
+
+/** The effective values, parent substituted where this product set none. */
+export interface ResolvedProductFields {
+  brand: string | null;
+  description: string | null;
+  salesAccountId: string | null;
+  businessLineId: string | null;
+  shipping: ProductShipping;
+
+  /**
+   * ON A BUNDLE ONLY — where `shipping.weight` above came from.
+   *
+   *   "components" — the sum of what the bundle packages, always in GRAMS. The
+   *                  bundle set no weight of its own.
+   *   "own"        — the tenant typed a number, and it wins.
+   *
+   * Derived per read, never stored, exactly like `bundleAvailability`: a stored
+   * total would be a second opinion that drifts the moment a component is
+   * re-measured — including when somebody edits that component on its own,
+   * which no bundle-side bookkeeping would hear about.
+   *
+   * ⚠️ A derived weight is a PLACEHOLDER in the form, never an input value.
+   * Seeding the input with the sum is what would turn it into an override on the
+   * next save, and the bundle would stop following its components.
+   */
+  weightSource?: "own" | "components";
+  /**
+   * Component ids with no weight recorded, which therefore contributed zero.
+   *
+   * The sum is still reported — a total the user cannot explain is worse than
+   * no total — and this is what lets the UI show it with a warning. The same
+   * move `bundleAvailability.limitedBy` makes.
+   */
+  weightIncomplete?: string[];
+
+  /**
+   * The one image a tile should render — this product's own, or its parent's
+   * first when a variant has none.
+   *
+   * A DISPLAY FALLBACK, NOT INHERITANCE: nothing writes the parent's image onto
+   * the variant, and `imageSource` says which it is so a form can show "using
+   * the parent's photo" rather than implying this variant has one.
+   */
+  image?: { url: string; thumbUrl: string | null; mediaType: MediaType } | null;
+  imageSource?: "own" | "parent" | null;
 }
 
 /** One warehouse's quantity of one product. `qty` is a decimal string. */
@@ -534,8 +752,17 @@ export interface OpeningStockInput {
   warehouseId: string;
   /** Decimal string, must be > 0. */
   qty: string;
-  /** Seeds `hppAvg`. Without it the goods arrive with no cost basis. */
-  costPerUnit?: string;
+  /**
+   * The purchase price per unit. REQUIRED — it seeds `hppAvg` and it is the
+   * figure the opening inventory journal is built from (Dr 1201 Persediaan /
+   * Cr 3101 Modal). Without it the movement carries a quantity with no value,
+   * the journal line is skipped, and the tenant is left holding stock the
+   * balance sheet says is worth nothing.
+   *
+   * "0" is valid — donated stock and free samples are real, and the ledger
+   * declines to write a zero-value line on its own.
+   */
+  costPerUnit: string;
   /** Both REQUIRED by the backend when the product has `hasExpiry: true`. */
   batchCode?: string;
   expiryDate?: string;
@@ -553,13 +780,39 @@ export interface CreateFamilyVariantInput {
   minStock?: number;
   isActive?: boolean;
   openingStock?: OpeningStockInput;
+
+  /**
+   * The only two marketplace fields a family row takes.
+   *
+   * `brand`, `salesAccountId` and `businessLineId` are absent because they are
+   * RESOLVED from the parent — repeating the same brand string across twelve
+   * rows is the payload the inheritance design exists to avoid. `description` is
+   * absent for an arithmetic reason instead: the request body cap is 1 MB and
+   * this array may hold 200 entries. A row that wants its own gets it with a
+   * follow-up PATCH.
+   *
+   * These two ARE here because they are what genuinely differs per row: the 1kg
+   * and the 10kg do not weigh the same, which is the whole reason variant-level
+   * shipping exists.
+   */
+  shipping?: Partial<ProductShipping>;
+  isPreorder?: boolean;
+  /** One image per row — the same rule a standalone variant follows. */
+  variantImage?: ProductMedia;
 }
 
 interface CreateProductBase {
   sku: string;
   name: string;
   categoryId: string;
-  unit: string;
+  /**
+   * OPTIONAL — the API stores `pcs` when it is absent, and refuses anything
+   * outside `pcs` | `sak` | `dus` with a 400. Typed as a plain string rather
+   * than that union because a product catalogued before the list closed may
+   * still hold "botol", and an edit form seeded from one has to be able to
+   * carry the value it was given.
+   */
+  unit?: string;
   isActive?: boolean;
 }
 
@@ -573,6 +826,28 @@ interface CreateProductBase {
  */
 export interface CreateStandaloneInput extends CreateProductBase {
   productType?: "standalone";
+  /** Up to 9, in display order. Forbidden on a variant — see `variantImage`. */
+  media?: ProductMedia[];
+  /**
+   * ─── The marketplace fields ────────────────────────────────────────────
+   *
+   * Optional on every type, required on none. A tenant that never sells online
+   * fills none of them in and the catalogue works exactly as it did.
+   *
+   * On a `variant`, OMITTING a field is what makes it inherit from the parent —
+   * there is no "inherit" sentinel to send. Send a value only when this product
+   * genuinely disagrees with its family.
+   */
+  brand?: string | null;
+  /** Sanitised server-side. Refused on a family-variant row — PATCH it after. */
+  description?: string | null;
+  isPreorder?: boolean;
+  /** Partial objects are the normal case — send only the leaves you mean. */
+  shipping?: Partial<ProductShipping>;
+  /** Must be an `income` account of this tenant, or the API answers 400. */
+  salesAccountId?: string | null;
+  businessLineId?: string | null;
+
   sellPrice: string;
   barcode?: string;
   minStock?: number;
@@ -580,8 +855,37 @@ export interface CreateStandaloneInput extends CreateProductBase {
   openingStock?: OpeningStockInput;
 }
 
-export interface CreateParentInput extends CreateProductBase {
+export interface CreateParentInput extends Omit<CreateProductBase, "sku"> {
   productType: "parent";
+  /** Up to 9, in display order. Forbidden on a variant — see `variantImage`. */
+  media?: ProductMedia[];
+  /**
+   * ─── The marketplace fields ────────────────────────────────────────────
+   *
+   * Optional on every type, required on none. A tenant that never sells online
+   * fills none of them in and the catalogue works exactly as it did.
+   *
+   * On a `variant`, OMITTING a field is what makes it inherit from the parent —
+   * there is no "inherit" sentinel to send. Send a value only when this product
+   * genuinely disagrees with its family.
+   */
+  brand?: string | null;
+  /** Sanitised server-side. Refused on a family-variant row — PATCH it after. */
+  description?: string | null;
+  isPreorder?: boolean;
+  /** Partial objects are the normal case — send only the leaves you mean. */
+  shipping?: Partial<ProductShipping>;
+  /** Must be an `income` account of this tenant, or the API answers 400. */
+  salesAccountId?: string | null;
+  businessLineId?: string | null;
+
+  /**
+   * OPTIONAL, unlike every other type — a parent holds no stock, carries no
+   * price and is never scanned, so the only code that has to exist is on each
+   * entry of `variants` below. Sent when a family code is useful, omitted
+   * otherwise; the API stores null.
+   */
+  sku?: string;
   variantAxes: VariantAxis[];
   hasExpiry?: boolean;
   /** The family, written with the parent in ONE transaction. */
@@ -590,6 +894,28 @@ export interface CreateParentInput extends CreateProductBase {
 
 export interface CreateVariantInput {
   productType: "variant";
+  /** A variant carries exactly one image; `media` is a 400 here. */
+  variantImage?: ProductMedia;
+  /**
+   * ─── The marketplace fields ────────────────────────────────────────────
+   *
+   * Optional on every type, required on none. A tenant that never sells online
+   * fills none of them in and the catalogue works exactly as it did.
+   *
+   * On a `variant`, OMITTING a field is what makes it inherit from the parent —
+   * there is no "inherit" sentinel to send. Send a value only when this product
+   * genuinely disagrees with its family.
+   */
+  brand?: string | null;
+  /** Sanitised server-side. Refused on a family-variant row — PATCH it after. */
+  description?: string | null;
+  isPreorder?: boolean;
+  /** Partial objects are the normal case — send only the leaves you mean. */
+  shipping?: Partial<ProductShipping>;
+  /** Must be an `income` account of this tenant, or the API answers 400. */
+  salesAccountId?: string | null;
+  businessLineId?: string | null;
+
   sku: string;
   name: string;
   parentId: string;
@@ -604,6 +930,28 @@ export interface CreateVariantInput {
 
 export interface CreateBundleInput extends CreateProductBase {
   productType: "bundle";
+  /** Up to 9, in display order. Forbidden on a variant — see `variantImage`. */
+  media?: ProductMedia[];
+  /**
+   * ─── The marketplace fields ────────────────────────────────────────────
+   *
+   * Optional on every type, required on none. A tenant that never sells online
+   * fills none of them in and the catalogue works exactly as it did.
+   *
+   * On a `variant`, OMITTING a field is what makes it inherit from the parent —
+   * there is no "inherit" sentinel to send. Send a value only when this product
+   * genuinely disagrees with its family.
+   */
+  brand?: string | null;
+  /** Sanitised server-side. Refused on a family-variant row — PATCH it after. */
+  description?: string | null;
+  isPreorder?: boolean;
+  /** Partial objects are the normal case — send only the leaves you mean. */
+  shipping?: Partial<ProductShipping>;
+  /** Must be an `income` account of this tenant, or the API answers 400. */
+  salesAccountId?: string | null;
+  businessLineId?: string | null;
+
   bundleConfig: {
     pricingMode: BundlePricingMode;
     fixedPrice?: string;
@@ -626,7 +974,8 @@ export type CreateProductInput =
  * the old shape.
  */
 export interface UpdateProductInput {
-  sku?: string;
+  /** `""` clears it — accepted on a `parent` alone, a 400 on every other type. */
+  sku?: string | null;
   name?: string;
   categoryId?: string;
   unit?: string;
@@ -639,6 +988,33 @@ export interface UpdateProductInput {
   variantAttributes?: Record<string, string>;
   bundleConfig?: CreateBundleInput["bundleConfig"];
   isActive?: boolean;
+
+  /**
+   * ─── The marketplace fields ────────────────────────────────────────────
+   *
+   * `null` is how an override is CLEARED — there is no separate reset verb. On a
+   * variant, patching `brand: null` or `shipping: { weight: null }` makes the
+   * field resolve from the parent again.
+   *
+   * `shipping` MERGES leaf by leaf server-side, so sending `{ weight }` alone
+   * leaves the box dimensions alone rather than wiping them.
+   */
+  brand?: string | null;
+  description?: string | null;
+  isPreorder?: boolean;
+  shipping?: Partial<ProductShipping>;
+  salesAccountId?: string | null;
+  businessLineId?: string | null;
+
+  /**
+   * Sent WHOLE, never patched item by item. The array's order IS the display
+   * order, so a reorder and a delete are both just a new array — and a partial
+   * patch would need an addressing scheme for a list whose indices are exactly
+   * what is changing.
+   */
+  media?: ProductMedia[];
+  /** `null` removes it — the same clear-by-null the shipping overrides use. */
+  variantImage?: ProductMedia | null;
 }
 
 /**
@@ -817,19 +1193,38 @@ export interface OpnameItemInput {
 }
 
 /**
+ * One line as a sheet is OPENED with — `physicalQty` optional, unlike the
+ * auto-save's.
+ *
+ * A create may say no more than "put this product on the sheet": the server
+ * pre-fills the line with the system quantity, so an untouched line posts
+ * nothing. That difference is load-bearing rather than cosmetic — a line the
+ * caller sends a quantity for is stamped COUNTED, so listing products with a
+ * quantity attached would open a sheet that claims every shelf was already
+ * walked, and the progress figure would read 40 / 40 before anybody left the
+ * office.
+ */
+export type CreateOpnameItemInput = Omit<OpnameItemInput, "physicalQty"> & {
+  physicalQty?: string;
+};
+
+/**
  * POST /api/stock-opnames.
  *
- * `items` IS OPTIONAL, and omitting it is the ordinary case: the server fills
- * the sheet with every active stock-tracking product at the warehouse, narrowed
- * by `categoryFilter`. That is what a stock take is — you count the shelves, you
- * do not curate a list first.
+ * `items` NARROWS THE SHEET TO A CHOSEN SET OF PRODUCTS. Omitting it is the
+ * whole-warehouse count: the server fills the sheet with every active
+ * stock-tracking product there, narrowed by `categoryFilter`.
+ *
+ * SEND ONE OR THE OTHER, not both. `categoryFilter` is stored on the sheet as
+ * the record of how its lines were populated, so pairing it with an explicit
+ * `items` would describe a scope the lines do not match.
  */
 export interface CreateOpnameInput {
   warehouseId: string;
   opnameDate?: string;
   categoryFilter?: string | null;
   notes?: string | null;
-  items?: OpnameItemInput[];
+  items?: CreateOpnameItemInput[];
 }
 
 /**

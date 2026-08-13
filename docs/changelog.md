@@ -7,6 +7,134 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Products become publishable
+
+Branch: `feature/product-expansion` (phases 3–7). Frontend half of backend `0.33.0`.
+
+**The product form now covers what a marketplace listing needs**: merk, a rich-text description
+with embedded images, a pre-order flag, shipping parameters, a media gallery, and the sales
+account and business line a future POS will post against. See
+`docs/features/product-management.md`.
+
+### The one rule this feature turns on
+
+**Inputs bind to the STORED value; the parent's value is a PLACEHOLDER.**
+
+A variant that sets no weight of its own renders an EMPTY weight input showing its parent's number
+as placeholder text. Binding the resolved value as the input's value would mean the next save
+writes it as this variant's own override — so the variant silently stops following its family on a
+save the user thought changed something else. The API returns the two separately (`shipping.weight`
+stored, `resolved.shipping.weight` effective) precisely so this is expressible, and `buildPatch`
+diffs against the stored one for the same reason.
+
+Clearing a field is how an override is REMOVED and inheritance resumes. There is no reset button
+to find.
+
+### The variant matrix is now two-tier
+
+The five columns a person fills for every row — Varian, SKU, Barcode, Harga, Min stok — stay
+exactly as they were. Added: a 32px image cell at the front that IS the upload control, and a
+chevron that expands an inline row holding that variant's shipping overrides.
+
+**Expanded in place rather than in a dialog**, because the user is comparing rows — *"the 10 kg
+should be heavier than the 3 kg"* — and a modal hides exactly the comparison they opened it to
+make. Twelve columns would have made the table unusable; a drawer keeps the common path unchanged.
+
+### New components
+
+- `MediaGallery` — up to 9 tiles, crop-before-upload, delete, and reorder by **native HTML5 drag
+  plus ◀ ▶ buttons**. The buttons are not a fallback bolted on: they are the touch path, the
+  keyboard path, and the only path testable in jsdom (which has no `DataTransfer`). That
+  combination is why no drag-and-drop library was added for nine one-dimensional items.
+- `ImageCropDialog` — `react-easy-crop`, the one library here that earns its bytes (~12 KB):
+  pinch-zoom and aspect-locked cropping over a rotated image is 400 lines of pointer maths users
+  notice immediately when it is wrong.
+- `RichTextEditor` / `RichTextView` — Tiptap, loaded via `next/dynamic({ ssr: false })` because
+  ProseMirror touches `document` while constructing. The read-only view renders through Tiptap
+  rather than `dangerouslySetInnerHTML`: the server already sanitises what is stored, so this is a
+  second independent barrier for free.
+- `ShippingFieldsCard` — one card serves parent, standalone and bundle; an `inherited` prop turns
+  every empty input into a window onto the parent's value.
+
+### New services
+
+`chartOfAccounts.service.ts` and `businessLine.service.ts` are **the first real consumers of those
+endpoints**. Both clamp their page size to the API's cap of 100 — the first version asked for 200,
+which is a `400` rather than a bigger page, so the accounting section failed for **every** user
+while the UI reported it as a missing permission. `src/tests/lookupServices.test.ts` now asserts
+the queries these services send by mocking `apiClient` rather than the services themselves; the
+form's own tests mock the service, so they could only ever have proved what the mock was told to
+do.
+
+The failure message no longer diagnoses. `403` is reported as a permissions problem; anything else
+is reported as what it actually was — the accounting screens still run on `features/accounting/data/dummy.ts`. Expect
+`types/accounting.ts` to need correcting the first time something disagrees with the API.
+
+`media.service.ts` deliberately does NOT go through `apiClient`, and says why in its header: the
+wrapper has a hard 15-second timeout (a 50 MB video takes ~80 s) and `fetch` cannot report upload
+progress. It uses `XMLHttpRequest` in that one file and still throws `ApiError`, so callers cannot
+tell.
+
+`useCatalogLookups` gains an opt-in `withAccounting` flag. The two accounting lists **catch their
+own failures**: `chartOfAccounts:read` is a separate permission from `products:read`, and a role
+that manages the catalogue without seeing the books is an ordinary arrangement — letting that
+rejection reach the shared handler would take down the whole form over an optional section.
+
+### Elsewhere
+
+- Catalogue rows show a resolved thumbnail, the brand, and a pre-order marker.
+- The detail screen gains Foto & video, Deskripsi, Informasi pengiriman and Akuntansi cards, each
+  inherited value flagged *"warisan dari induk"* — the two states look identical otherwise, and
+  they lead to different actions (edit here, or edit the parent and move every sibling).
+- `MovementBadge` and `StockLedgerTable` label the `opening_balance` movement type.
+
+### Files
+
+- New: `src/components/{MediaGallery,ImageCropDialog,RichTextEditor}.tsx`,
+  `src/services/{media,chartOfAccounts,businessLine}.service.ts`,
+  `src/features/inventory/components/ShippingFieldsCard.tsx`, `src/tests/MediaGallery.test.tsx`
+- Changed: `ProductForm.tsx`, `ProductDetail.tsx`, `ProductsTable.tsx`, `useCatalogLookups.ts`,
+  `types/inventory.ts`, `MovementBadge.tsx`, `StockLedgerTable.tsx`
+- New deps: `react-easy-crop`, `@tiptap/{react,starter-kit,extension-image,extension-link,pm}`
+
+---
+
+## [Unreleased] — Opening stock now demands its purchase price
+
+Branch: `feature/product-expansion` (phase 2 of the product feature expansion). Frontend half
+of backend `0.32.0`.
+
+**`Harga beli per unit` is now required wherever an opening quantity is entered** — in the
+standalone card and per row in the family table. Validated in `ProductForm`'s `validate()`
+rather than left to the API, because the API's refusal changed shape: a missing price is now a
+`400` raised *before any document is written*, so an unpriced variant row would cost the user
+the whole form rather than one cell.
+
+The reason is accounting. The price is the figure the opening inventory journal is built from
+(**Dr 1201 Persediaan / Cr 3101 Modal**). Without it the movement carries a quantity with no
+value, the journal line is skipped, and the tenant ends up holding stock the balance sheet says
+is worth nothing. `0` is accepted and says so in the hint — donated stock and free samples are
+real.
+
+The field's placeholder changed from `opsional` to a figure, and its hint from *"Kosongkan kalau
+belum tahu"* to what the number actually does. A variant row left with no quantity still asks for
+no price.
+
+`OpeningStockInput.costPerUnit` lost its `?` in `types/inventory.ts`, which is what surfaced
+every call site; `openingStockFor()` now always sends it rather than spreading it in
+conditionally.
+
+### Files
+
+- `src/features/inventory/components/ProductForm.tsx` — `validate()`, `openingStockFor()`, the
+  two inputs and the new per-row error line
+- `src/types/inventory.ts` — `OpeningStockInput.costPerUnit` required
+- `src/tests/ProductForm.test.tsx` — three new cases (standalone refusal, per-row refusal, zero
+  accepted); two existing cases now supply a price
+- `docs/features/product-management.md`
+
+---
+
 ## [Unreleased] — Retur ke Supplier on the API
 
 Branch: `feature/inventory-purchasing`.

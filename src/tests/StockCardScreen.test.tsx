@@ -93,6 +93,8 @@ function movement(overrides: Partial<StockMovement> = {}): StockMovement {
     bundleSourceId: null,
     reference: { type: "goods_receipt", id: "gr1" },
     createdBy: null,
+    notes: null,
+    lineNotes: null,
     createdAt: "2026-08-01T02:00:00.000Z",
     updatedAt: "2026-08-01T02:00:00.000Z",
     balanceAfter: "100.0000",

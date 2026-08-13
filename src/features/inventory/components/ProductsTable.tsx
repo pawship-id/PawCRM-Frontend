@@ -2,10 +2,18 @@
 
 import { Fragment, useState } from "react";
 import Link from "next/link";
+import { EllipsisVertical, Eye, Pencil, RotateCcw, Trash2 } from "lucide-react";
 
 import { ConfirmDialog } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Can } from "@/features/permissions";
 import { productService } from "@/services/product.service";
 import { ApiError } from "@/services/api-error";
@@ -16,7 +24,13 @@ import type { Category } from "@/types/api";
 import type { Product } from "@/types/inventory";
 
 import { useProductVariants } from "../hooks/useProductVariants";
-import { limitedByAt, qtyAt, stockOf } from "../utils/catalogue";
+import {
+  availabilitySpread,
+  limitedByAt,
+  qtyIn,
+  stockOf,
+} from "../utils/catalogue";
+import type { WarehouseScope } from "../utils/catalogue";
 import { ProductTypeBadge } from "./ProductTypeBadge";
 
 /**
@@ -29,18 +43,33 @@ import { ProductTypeBadge } from "./ProductTypeBadge";
  *
  * Every number in the Stok column is computed by the backend and read here, not
  * derived: a parent reports its variants' total, a bundle how many it can build,
- * everything else what is on the shelf. See utils/catalogue.
+ * everything else what is on the shelf. The one thing this screen works out for
+ * itself is a scope covering more than one warehouse, which adds those
+ * per-warehouse figures up — exactly, on BigInt minor units, never on floats.
+ * See utils/catalogue.
+ *
+ * THE ROW ACTIONS LIVE BEHIND A KEBAB MENU, as on the supplier list and for the
+ * same reason: this table already carries three numeric columns the screen
+ * exists for, and a third inline button pushed them off the right edge on a
+ * laptop. The trigger is one click; what it costs is a second click for the
+ * action, and what it buys is that the prices and the stock stay readable.
+ *
+ * DETAIL IS THE FIRST ITEM and the only ungated one — it needs `products:read`,
+ * which is already what put the row on screen, so a menu never opens onto
+ * nothing. Variant rows have no menu: the variant's own name links to its detail
+ * page, and everything else about a variant is edited through its parent's form.
  */
 export function ProductsTable({
   products,
   categories,
-  warehouseId,
+  warehouseIds,
   loading,
   onChanged,
 }: {
   products: Product[];
   categories: Category[];
-  warehouseId: string;
+  /** The warehouses every quantity here is reported for; empty means all. */
+  warehouseIds: WarehouseScope;
   loading: boolean;
   onChanged: () => void;
 }) {
@@ -135,7 +164,7 @@ export function ProductsTable({
             {products.map((product) => {
               const isOpen = expanded === product._id;
               const variantCount = product.variantCount ?? 0;
-              const stock = stockOf(product, warehouseId);
+              const stock = stockOf(product, warehouseIds);
               const deleted = Boolean(product.deletedAt);
               const low =
                 product.productType === "standalone" &&
@@ -155,7 +184,9 @@ export function ProductsTable({
                         {variantCount > 0 && (
                           <button
                             type="button"
-                            aria-label={isOpen ? "Tutup varian" : "Lihat varian"}
+                            aria-label={
+                              isOpen ? "Tutup varian" : "Lihat varian"
+                            }
                             aria-expanded={isOpen}
                             onClick={() => toggle(product)}
                             className="flex size-5 items-center justify-center rounded text-muted hover:bg-accent hover:text-foreground"
@@ -163,11 +194,49 @@ export function ProductsTable({
                             {isOpen ? "▾" : "▸"}
                           </button>
                         )}
-                        <div className={cn(variantCount === 0 && "pl-7")}>
-                          <p className="font-medium">{product.name}</p>
+                        {/* The thumbnail, resolved: a variant with no image of
+                            its own shows its parent's, so a catalogue row is
+                            never a blank square. 40px because the row is 2.5
+                            units tall and anything larger reflows it. */}
+                        {product.resolved?.image ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={
+                              product.resolved.image.thumbUrl ??
+                              product.resolved.image.url
+                            }
+                            alt=""
+                            className="size-10 shrink-0 rounded-md border border-border object-cover"
+                          />
+                        ) : (
+                          <span className="size-10 shrink-0 rounded-md border border-dashed border-border" />
+                        )}
+                        <div className={cn(variantCount === 0 && "pl-1")}>
+                          {/* The name is the way IN to a product — the Edit
+                              button opens the form, this opens the read-only
+                              view most people actually want. */}
+                          <Link
+                            href={`/dashboard/inventory/products/${product._id}`}
+                            className="font-medium hover:text-primary-hover hover:underline"
+                          >
+                            {product.name}
+                          </Link>
+                          {product.resolved?.brand && (
+                            <p className="text-xs text-muted">
+                              {product.resolved.brand}
+                            </p>
+                          )}
                           <p className="font-mono text-xs text-muted">
-                            {product.sku}
+                            {/* A parent carries no SKU — its variants do. "—"
+                                rather than a blank line, which reads as a
+                                rendering bug. */}
+                            {product.sku ?? "—"}
                             {product.barcode && ` · ⦀ ${product.barcode}`}
+                            {product.isPreorder && (
+                              <span className="ml-2 font-sans text-secondary-foreground">
+                                pre-order
+                              </span>
+                            )}
                           </p>
                         </div>
                       </div>
@@ -222,61 +291,96 @@ export function ProductsTable({
                           <span className="ml-1 text-[11px] text-muted">
                             bisa dibuat
                           </span>
-                          {/* The cap is rarely the component the user is looking
-                              at, so it is named rather than left to be worked
-                              out from the component list. */}
-                          <LimitedBy
+                          <BundleNote
                             product={product}
-                            warehouseId={warehouseId}
+                            warehouseIds={warehouseIds}
                             names={namesById}
                           />
                         </>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 text-right whitespace-nowrap">
-                      {deleted ? (
-                        <Can feature="products" action="restore">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() =>
-                              setPending({ product, action: "restore" })
-                            }
-                          >
-                            Pulihkan
-                          </Button>
-                        </Can>
-                      ) : (
-                        <>
-                          <Can feature="products" action="update">
-                            <Button variant="ghost" size="sm" asChild>
-                              <Link
-                                href={`/dashboard/inventory/products/${product._id}`}
-                              >
-                                Edit
-                              </Link>
-                            </Button>
-                          </Can>
-                          <Can feature="products" action="delete">
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center justify-end">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="text-danger"
-                              onClick={() =>
-                                setPending({ product, action: "delete" })
-                              }
+                              // The icon carries no name of its own, so the
+                              // label says which row this menu belongs to — a
+                              // screen-reader user hearing twenty identical
+                              // "Aksi" buttons has learnt nothing.
+                              aria-label={`Aksi untuk ${product.name}`}
                             >
-                              Hapus
+                              <EllipsisVertical className="size-4" />
                             </Button>
-                          </Can>
-                        </>
-                      )}
+                          </DropdownMenuTrigger>
+
+                          <DropdownMenuContent>
+                            {/* Ungated: it needs `products:read`, which is
+                                already what put this row on screen — so the
+                                menu can never open onto nothing. */}
+                            <DropdownMenuItem asChild>
+                              <Link
+                                href={`/dashboard/inventory/products/${product._id}`}
+                              >
+                                <Eye />
+                                Detail
+                              </Link>
+                            </DropdownMenuItem>
+
+                            {deleted ? (
+                              <Can feature="products" action="restore">
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onSelect={() =>
+                                    setPending({ product, action: "restore" })
+                                  }
+                                >
+                                  <RotateCcw />
+                                  Pulihkan
+                                </DropdownMenuItem>
+                              </Can>
+                            ) : (
+                              <>
+                                <Can feature="products" action="update">
+                                  <DropdownMenuItem asChild>
+                                    <Link
+                                      href={`/dashboard/inventory/products/${product._id}/edit`}
+                                    >
+                                      <Pencil />
+                                      Edit
+                                    </Link>
+                                  </DropdownMenuItem>
+                                </Can>
+                                <Can feature="products" action="delete">
+                                  {/* Separated and tinted: everything above it
+                                      only navigates, and this one writes. */}
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    variant="destructive"
+                                    onSelect={() =>
+                                      setPending({ product, action: "delete" })
+                                    }
+                                  >
+                                    <Trash2 />
+                                    Hapus
+                                  </DropdownMenuItem>
+                                </Can>
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </td>
                   </tr>
 
                   {isOpen && variants.loading[product._id] && (
                     <tr className="border-b border-border/60 bg-accent/30">
-                      <td colSpan={7} className="px-4 py-3 pl-16 text-xs text-muted">
+                      <td
+                        colSpan={7}
+                        className="px-4 py-3 pl-16 text-xs text-muted"
+                      >
                         Memuat varian…
                       </td>
                     </tr>
@@ -284,7 +388,10 @@ export function ProductsTable({
 
                   {isOpen && variants.errors[product._id] && (
                     <tr className="border-b border-border/60 bg-accent/30">
-                      <td colSpan={7} className="px-4 py-3 pl-16 text-xs text-danger">
+                      <td
+                        colSpan={7}
+                        className="px-4 py-3 pl-16 text-xs text-danger"
+                      >
                         {variants.errors[product._id]}
                       </td>
                     </tr>
@@ -292,9 +399,9 @@ export function ProductsTable({
 
                   {isOpen &&
                     (variants.byParent[product._id] ?? []).map((variant) => {
-                      const variantStock = qtyAt(
+                      const variantStock = qtyIn(
                         variant.stockByWarehouse,
-                        warehouseId,
+                        warehouseIds,
                       );
                       const variantLow =
                         variant.minStock > 0 &&
@@ -307,11 +414,14 @@ export function ProductsTable({
                           className="border-b border-border/60 bg-accent/30"
                         >
                           <td className="py-2.5 pr-4 pl-16">
-                            <p className="text-sm">
+                            <Link
+                              href={`/dashboard/inventory/products/${variant._id}`}
+                              className="text-sm hover:text-primary-hover hover:underline"
+                            >
                               {Object.values(
                                 variant.variantAttributes ?? {},
                               ).join(" / ")}
-                            </p>
+                            </Link>
                             <p className="font-mono text-xs text-muted">
                               {variant.sku}
                               {variant.barcode && ` · ⦀ ${variant.barcode}`}
@@ -382,30 +492,47 @@ export function ProductsTable({
 }
 
 /**
- * Which component caps this bundle, named.
+ * The line under a bundle's figure, which says one of two different things.
  *
- * The API answers with the component's id; the name comes from whatever is
- * already on screen — the page's own rows and any expanded variants. A bundle
- * whose limiting component is not on this page renders NOTHING rather than
- * "dibatasi <id>", because an id tells the user less than silence does. Fetching
- * it would be one request per bundle row to add one word.
+ * WITH ONE WAREHOUSE IN SCOPE, which component caps it. The API answers with the
+ * component's id; the name comes from whatever is already on screen — the page's
+ * own rows and any expanded variants. A bundle whose limiting component is not
+ * on this page renders NOTHING rather than "dibatasi <id>", because an id tells
+ * the user less than silence does. Fetching it would be one request per bundle
+ * row to add one word.
+ *
+ * ACROSS SEVERAL, that the number is a sum — because components cannot be pooled
+ * between locations, so four buildable here and three there is an upper bound
+ * and not seven bundles anybody can assemble. There is no single cap to name in
+ * that case: each warehouse ran out of something different.
  */
-function LimitedBy({
+function BundleNote({
   product,
-  warehouseId,
+  warehouseIds,
   names,
 }: {
   product: Product;
-  warehouseId: string;
+  warehouseIds: WarehouseScope;
   names: Map<string, string>;
 }) {
-  const limitedBy = limitedByAt(product, warehouseId);
+  const limitedBy = limitedByAt(product, warehouseIds);
   const name = limitedBy ? names.get(String(limitedBy)) : undefined;
-  if (!name) return null;
 
-  return (
-    <span className="block text-[11px] font-normal text-muted">
-      dibatasi {name}
-    </span>
-  );
+  if (name) {
+    return (
+      <span className="block text-[11px] font-normal text-muted">
+        dibatasi {name}
+      </span>
+    );
+  }
+
+  if (availabilitySpread(product, warehouseIds) > 1) {
+    return (
+      <span className="block text-[11px] font-normal text-muted">
+        dijumlah per gudang
+      </span>
+    );
+  }
+
+  return null;
 }

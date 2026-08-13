@@ -89,11 +89,13 @@ export function OpnameScreen() {
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Scope and a way through, not a form: the products are chosen on the
+          create page, because a searchable picker parked above this table would
+          compete with the history somebody came here to read. */}
       {can("stockOpnames", "create") && (
         <OpnameStartCard
           warehouses={lookups.warehouses}
           categories={lookups.categories}
-          onStarted={refresh}
         />
       )}
 

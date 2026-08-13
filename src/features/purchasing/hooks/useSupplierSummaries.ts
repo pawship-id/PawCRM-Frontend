@@ -41,6 +41,15 @@ export interface SupplierSummaries {
     purchased: string;
     consignmentValue: string;
   };
+  /**
+   * The window the payables endpoint computed its due-soon column against, in
+   * days. Null until it answers — or if it never does.
+   *
+   * Exposed so a screen naming the window says the number the figures beside it
+   * were actually cut at, rather than a constant of its own that would go on
+   * saying "7 hari" the day the server's default changes.
+   */
+  horizonDays: number | null;
   loading: boolean;
   refetch: () => void;
 }
@@ -71,6 +80,7 @@ export function useSupplierSummaries(
     purchased: ZERO,
     consignmentValue: ZERO,
   });
+  const [horizonDays, setHorizonDays] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [nonce, setNonce] = useState(0);
 
@@ -95,6 +105,11 @@ export function useSupplierSummaries(
 
         setOutstanding(
           owed.status === "fulfilled" ? index(owed.value.items) : new Map(),
+        );
+        // Null when that one endpoint failed, alongside its now-empty map: a
+        // window with no figures under it is a caption for nothing.
+        setHorizonDays(
+          owed.status === "fulfilled" ? owed.value.horizonDays : null,
         );
         setPurchases(
           bought.status === "fulfilled" ? index(bought.value.items) : new Map(),
@@ -123,5 +138,13 @@ export function useSupplierSummaries(
     };
   }, [supplierId, nonce]);
 
-  return { outstanding, purchases, consignment, totals, loading, refetch };
+  return {
+    outstanding,
+    purchases,
+    consignment,
+    totals,
+    horizonDays,
+    loading,
+    refetch,
+  };
 }

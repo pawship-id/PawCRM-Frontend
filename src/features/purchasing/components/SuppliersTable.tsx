@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   EllipsisVertical,
+  Eye,
   Pencil,
   Power,
   PowerOff,
@@ -75,11 +76,19 @@ type PendingAction = {
  * address book; with it, it is what somebody opens before deciding who to pay
  * this week. It is summed server-side over every unpaid invoice, so it cannot
  * drift from what the payables screen says.
+ *
+ * AND IT NOW SAYS WHEN, not only how much. One debt of ten million already a
+ * month late and another falling due in June are the same number in a column and
+ * completely different decisions; the split under the amount is what makes the
+ * column answer "who do I pay first" rather than only "who do I owe". Both
+ * figures come from the same aggregation as the total above them — a subset of
+ * it, never a second opinion about it.
  */
 export function SuppliersTable({
   suppliers,
   outstanding,
   purchases,
+  horizonDays,
   loading,
   onChanged,
   search,
@@ -87,6 +96,8 @@ export function SuppliersTable({
   suppliers: Supplier[];
   outstanding: Map<string, SupplierOutstandingRow>;
   purchases: Map<string, SupplierPurchaseRow>;
+  /** The due-soon window the figures were cut at. Null until the summary lands. */
+  horizonDays?: number | null;
   loading: boolean;
   onChanged: () => void;
   /** Active search term, highlighted in the searchable cells. */
@@ -100,10 +111,13 @@ export function SuppliersTable({
   // Show the Actions column only when at least one CURRENTLY-LISTED row would
   // render a button — so a restore-only role sees the column while "show
   // deleted" is on but not while it is off. Mirrors the per-button gating below.
+  //
+  // "Lihat detail" needs no grant beyond the one that renders this list, so a
+  // live row always has at least that. A DELETED row does not get it: the detail
+  // endpoint reads live suppliers only, so the link would land on "tidak
+  // ditemukan" — restoring first is what makes it reachable again.
   const rowHasActions = (supplier: Supplier) =>
-    supplier.deletedAt !== null
-      ? can("suppliers", "restore")
-      : can("suppliers", "update") || can("suppliers", "delete");
+    supplier.deletedAt !== null ? can("suppliers", "restore") : true;
   const showActions = suppliers.some(rowHasActions);
 
   function closeDialog() {
@@ -174,8 +188,11 @@ export function SuppliersTable({
               const active = isSupplierActive(supplier);
               // A supplier absent from the summary owes nothing / has received
               // nothing — the API returns no row rather than a row of zeros.
-              const owed = outstanding.get(supplier._id)?.outstanding ?? "0";
+              const debt = outstanding.get(supplier._id);
+              const owed = debt?.outstanding ?? "0";
               const owedMinor = toMinor(owed) ?? 0n;
+              const overdueMinor = toMinor(debt?.overdueOutstanding ?? "0") ?? 0n;
+              const dueSoonMinor = toMinor(debt?.dueSoonOutstanding ?? "0") ?? 0n;
               const receiptCount =
                 purchases.get(supplier._id)?.receiptCount ?? 0;
 
@@ -232,13 +249,34 @@ export function SuppliersTable({
                     {receiptCount}
                   </TableCell>
 
-                  <TableCell
-                    className={cn(
-                      "text-right font-mono text-sm tabular-nums",
-                      owedMinor > 0n && "font-semibold text-danger",
+                  <TableCell className="text-right">
+                    <p
+                      className={cn(
+                        "font-mono text-sm tabular-nums",
+                        owedMinor > 0n && "font-semibold text-danger",
+                      )}
+                    >
+                      {owedMinor > 0n ? formatMoney(owed) : "—"}
+                    </p>
+                    {/* WHEN, under HOW MUCH — and only the halves that exist.
+                        A vendor owing nothing late this week gets no line at
+                        all rather than two zeros, which would read as data
+                        where there is none. Neither figure is computed here:
+                        both are subsets the server cut from the amount above
+                        at one instant. */}
+                    {overdueMinor > 0n && (
+                      <p className="font-mono text-[11px] tabular-nums text-danger">
+                        {formatMoney(debt!.overdueOutstanding)} lewat tempo
+                      </p>
                     )}
-                  >
-                    {owedMinor > 0n ? formatMoney(owed) : "—"}
+                    {dueSoonMinor > 0n && (
+                      <p className="font-mono text-[11px] tabular-nums text-muted">
+                        {formatMoney(debt!.dueSoonOutstanding)}
+                        {horizonDays == null
+                          ? " jatuh tempo"
+                          : ` ≤ ${horizonDays} hari`}
+                      </p>
+                    )}
                   </TableCell>
 
                   {showActions && (
@@ -279,6 +317,22 @@ export function SuppliersTable({
                                 </Can>
                               ) : (
                                 <>
+                                  {/* Ungated, unlike everything below it: this
+                                      goes where the vendor's name already goes,
+                                      and seeing the row is the only grant it
+                                      needs. It is here as well as on the name
+                                      because the detail screen is where the
+                                      terms, the delivery history and the
+                                      consignment exposure live — the row shows
+                                      one figure of a position that has four. */}
+                                  <DropdownMenuItem asChild>
+                                    <Link
+                                      href={`/dashboard/purchasing/suppliers/${supplier._id}`}
+                                    >
+                                      <Eye />
+                                      Lihat detail
+                                    </Link>
+                                  </DropdownMenuItem>
                                   <Can feature="suppliers" action="update">
                                     <DropdownMenuItem asChild>
                                       <Link

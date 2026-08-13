@@ -20,7 +20,8 @@ export default function StockTransfersPage() {
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">
           Pindahkan barang antar gudang — misalnya menyiapkan stok untuk bazar.
-          Lot beserta tanggal kedaluwarsanya ikut berpindah.
+          Satu transfer boleh membawa beberapa produk sekaligus, dan lot beserta
+          tanggal kedaluwarsanya ikut berpindah.
         </p>
       </div>
 

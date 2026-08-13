@@ -144,10 +144,9 @@ describe("transfer", () => {
   it("writes a mirrored PAIR for every lot it draws from", () => {
     const written = demo.postTransfer({
       operation: "transfer",
-      productId: RC,
       fromWarehouseId: UTAMA,
       toWarehouseId: BARAT,
-      qty: "6",
+      items: [{ productId: RC, qty: "6" }],
     });
 
     // 6 units across two lots → 2 out + 2 in.
@@ -159,10 +158,9 @@ describe("transfer", () => {
   it("ties both halves together with one correlation id", () => {
     const written = demo.postTransfer({
       operation: "transfer",
-      productId: RC,
       fromWarehouseId: UTAMA,
       toWarehouseId: BARAT,
-      qty: "2",
+      items: [{ productId: RC, qty: "2" }],
     });
 
     const ids = new Set(written.map((m) => m.reference.id));
@@ -177,10 +175,9 @@ describe("transfer", () => {
 
     demo.postTransfer({
       operation: "transfer",
-      productId: RC,
       fromWarehouseId: UTAMA,
       toWarehouseId: BARAT,
-      qty: "2",
+      items: [{ productId: RC, qty: "2" }],
     });
 
     const arrived = demo.batchesAt(RC, BARAT);
@@ -198,10 +195,9 @@ describe("transfer", () => {
 
     demo.postTransfer({
       operation: "transfer",
-      productId: RC,
       fromWarehouseId: UTAMA,
       toWarehouseId: BARAT,
-      qty: "5",
+      items: [{ productId: RC, qty: "5" }],
     });
 
     expect(toMinor(demo.qtyOnHand(RC, UTAMA))).toBe(before - toMinor("5")!);
@@ -213,10 +209,9 @@ describe("transfer", () => {
 
     demo.postTransfer({
       operation: "transfer",
-      productId: RC,
       fromWarehouseId: UTAMA,
       toWarehouseId: BARAT,
-      qty: "3",
+      items: [{ productId: RC, qty: "3" }],
     });
 
     expect(demo.getState().products.find((p) => p._id === RC)!.hppAvg).toBe(before);
@@ -226,10 +221,9 @@ describe("transfer", () => {
     expect(() =>
       demo.postTransfer({
         operation: "transfer",
-        productId: RC,
         fromWarehouseId: UTAMA,
         toWarehouseId: UTAMA,
-        qty: "1",
+        items: [{ productId: RC, qty: "1" }],
       }),
     ).toThrow(/berbeda|different/i);
   });
@@ -238,10 +232,9 @@ describe("transfer", () => {
     expect(() =>
       demo.postTransfer({
         operation: "transfer",
-        productId: RC,
         fromWarehouseId: UTAMA,
         toWarehouseId: BARAT,
-        qty: "-3",
+        items: [{ productId: RC, qty: "-3" }],
       }),
     ).toThrow(/positive/i);
   });

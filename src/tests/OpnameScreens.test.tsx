@@ -5,14 +5,16 @@ import { OpnameScreen, OpnameSheet } from "@/features/inventory";
 import { stockOpnameService } from "@/services/stockOpname.service";
 import { categoryService } from "@/services/category.service";
 import { warehouseService } from "@/services/warehouse.service";
+import { productService } from "@/services/product.service";
 import { ApiError } from "@/services/api-error";
-import type { Opname, OpnameItem } from "@/types/inventory";
+import type { Opname, OpnameItem, Product } from "@/types/inventory";
 
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
 jest.mock("@/services/stockOpname.service");
 jest.mock("@/services/category.service");
 jest.mock("@/services/warehouse.service");
+jest.mock("@/services/product.service");
 
 const push = jest.fn();
 jest.mock("next/navigation", () => ({
@@ -95,6 +97,31 @@ function sheet(overrides: Partial<Opname> = {}): Opname {
   };
 }
 
+/** A stock-holding product, as the create screen's picker lists it. */
+function product(overrides: Partial<Product> = {}): Product {
+  return {
+    _id: "p1",
+    sku: "SHAMPOO",
+    name: "Shampoo Anjing",
+    productType: "standalone",
+    parentId: null,
+    variantAxes: [],
+    variantAttributes: null,
+    bundleConfig: null,
+    barcode: null,
+    minStock: 0,
+    hasExpiry: false,
+    categoryId: "c1",
+    unit: "botol",
+    sellPrice: "20000.0000",
+    hppAvg: "15000.0000",
+    isActive: true,
+    deletedAt: null,
+    stockByWarehouse: [],
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
 
@@ -122,6 +149,12 @@ beforeEach(() => {
   asMock(categoryService.list).mockResolvedValue({
     items: [],
     pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any);
+
+  asMock(productService.list).mockResolvedValue({
+    items: [product(), product({ _id: "p2", sku: "MAKANAN", name: "Makanan" })],
+    pagination: { page: 1, limit: 50, total: 2, totalPages: 1 },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any);
 });
@@ -200,6 +233,62 @@ describe("OpnameScreen", () => {
     expect(await screen.findByText("Gagal")).toBeInTheDocument();
   });
 
+  /**
+   * The sheet opens EMPTY and the counter scopes it there, next to the rows it
+   * produces. Omitting `items` would ask the server for the whole catalogue —
+   * they are different requests, and this is the one that asks for nothing.
+   */
+  it("opens an empty sheet and goes straight to it", async () => {
+    const user = userEvent.setup();
+    asMock(stockOpnameService.list).mockResolvedValue(page([]));
+    asMock(stockOpnameService.create).mockResolvedValue(sheet());
+
+    renderWithAuth(<OpnameScreen />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "+ Mulai opname" }),
+    );
+
+    await waitFor(() =>
+      expect(stockOpnameService.create).toHaveBeenCalledWith({
+        warehouseId: WAREHOUSE_ID,
+        categoryFilter: undefined,
+        items: [],
+      }),
+    );
+    expect(push).toHaveBeenCalledWith(
+      `/dashboard/inventory/opname/${OPNAME_ID}`,
+    );
+    // No product picker here: what to count is decided on the sheet.
+    expect(productService.list).not.toHaveBeenCalled();
+  });
+
+  /**
+   * One warehouse, one draft. The API refuses the second with a 409 that names
+   * the blocking sheet; asking first turns that refusal into an offer, since the
+   * sheet already open is where that counter was going anyway.
+   */
+  it("offers to continue a draft the warehouse already has", async () => {
+    asMock(stockOpnameService.list).mockResolvedValue(
+      page([sheet({ items: undefined, itemCount: 1, countedCount: 0 })]),
+    );
+
+    renderWithAuth(<OpnameScreen />);
+
+    expect(
+      await screen.findByRole("link", { name: /Lanjutkan OPN-2026-0001/ }),
+    ).toHaveAttribute("href", `/dashboard/inventory/opname/${OPNAME_ID}`);
+    expect(
+      screen.queryByRole("button", { name: "+ Mulai opname" }),
+    ).not.toBeInTheDocument();
+    // The check is a read of the drafts at that warehouse, not of the page.
+    expect(stockOpnameService.list).toHaveBeenCalledWith({
+      warehouseId: WAREHOUSE_ID,
+      status: "draft",
+      limit: 1,
+    });
+  });
+
   it("hides the start card from a role that may not open a count", async () => {
     asMock(stockOpnameService.list).mockResolvedValue(page([]));
 
@@ -210,47 +299,8 @@ describe("OpnameScreen", () => {
 
     await screen.findByText(/Belum ada opname/);
     expect(
-      screen.queryByRole("button", { name: /Mulai opname/ }),
+      screen.queryByRole("button", { name: "+ Mulai opname" }),
     ).not.toBeInTheDocument();
-  });
-
-  it("opens a count and navigates to the sheet", async () => {
-    const user = userEvent.setup();
-    asMock(stockOpnameService.list).mockResolvedValue(page([]));
-    asMock(stockOpnameService.create).mockResolvedValue(sheet());
-
-    renderWithAuth(<OpnameScreen />);
-
-    await user.click(
-      await screen.findByRole("button", { name: /Mulai opname/ }),
-    );
-
-    await waitFor(() =>
-      expect(push).toHaveBeenCalledWith(
-        `/dashboard/inventory/opname/${OPNAME_ID}`,
-      ),
-    );
-  });
-
-  /**
-   * The 409's `reason` names the sheet that is in the way. Dropping it would
-   * leave the user told they cannot start a count and not which one to finish.
-   */
-  it("shows which draft blocks a second count", async () => {
-    const user = userEvent.setup();
-    asMock(stockOpnameService.list).mockResolvedValue(page([]));
-    asMock(stockOpnameService.create).mockRejectedValue(
-      new ApiError("A stock opname is already open for this warehouse", 409, {
-        reason: "Opname OPN-2026-0007 is still a draft",
-      }),
-    );
-
-    renderWithAuth(<OpnameScreen />);
-    await user.click(
-      await screen.findByRole("button", { name: /Mulai opname/ }),
-    );
-
-    expect(await screen.findByText(/OPN-2026-0007/)).toBeInTheDocument();
   });
 
   it("offers Buang on a draft only, and only with the grant", async () => {
@@ -305,6 +355,33 @@ describe("OpnameSheet", () => {
     expect(await screen.findByText("Shampoo Anjing")).toBeInTheDocument();
     // SKU and unit come from the API — the sheet does not fetch the catalogue.
     expect(screen.getByText(/SHAMPOO · botol/)).toBeInTheDocument();
+  });
+
+  /**
+   * The API stores four decimals, which is right for a ledger and wrong for the
+   * box somebody types into: a counter who enters `1` and is answered `1.0000`
+   * reads that as the form having changed their number.
+   */
+  it("puts a quantity in the field the way a person would write it", async () => {
+    asMock(stockOpnameService.getById).mockResolvedValue(
+      sheet({ items: [item({ physicalQty: "1.0000" })] }),
+    );
+
+    renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+
+    expect(await screen.findByLabelText(/Qty fisik Shampoo/)).toHaveValue("1");
+  });
+
+  it("keeps a real fraction, and keeps it typeable", async () => {
+    asMock(stockOpnameService.getById).mockResolvedValue(
+      sheet({ items: [item({ physicalQty: "2.5000" })] }),
+    );
+
+    renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+
+    // A POINT, not the comma `formatQty` would localise it to — a decimal comma
+    // typed back into the payload is a value the API rejects.
+    expect(await screen.findByLabelText(/Qty fisik Shampoo/)).toHaveValue("2.5");
   });
 
   /**
@@ -397,7 +474,9 @@ describe("OpnameSheet", () => {
 
     const [, payload] = asMock(stockOpnameService.update).mock.calls.at(-1)!;
     expect(payload.items?.[0]).toMatchObject({
-      physicalQty: "10.0000",
+      // The stored "10.0000" shortened for the field it is edited in, and sent
+      // back as the same number — the API takes either.
+      physicalQty: "10",
       counted: true,
     });
 
@@ -667,5 +746,286 @@ describe("OpnameSheet", () => {
         timeout: 3000,
       }),
     ).toBeInTheDocument();
+  });
+
+  /**
+   * A sheet opens EMPTY and is scoped here, next to the rows the choice
+   * produces — "everything in this warehouse" or "these six shelves". That
+   * decision used to live on a page of its own, before the sheet existed, which
+   * meant committing to a list without seeing a single row.
+   */
+  describe("scoping an empty sheet", () => {
+    const emptySheet = () => sheet({ items: [] });
+
+    it("offers both ways to fill it instead of an empty table", async () => {
+      asMock(stockOpnameService.getById).mockResolvedValue(emptySheet());
+
+      renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+
+      expect(
+        await screen.findByText(/Lembar ini belum berisi produk/),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /Muat semua produk gudang ini/ }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /^Pilih produk$/ }),
+      ).toBeInTheDocument();
+    });
+
+    it("loads the whole warehouse on request, scope and all", async () => {
+      const user = userEvent.setup();
+      asMock(stockOpnameService.getById).mockResolvedValue(emptySheet());
+      asMock(stockOpnameService.addEveryProduct).mockResolvedValue(sheet());
+
+      renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+      await user.click(
+        await screen.findByRole("button", {
+          name: /Muat semua produk gudang ini/,
+        }),
+      );
+
+      // No scope travels with it: the category lives on the sheet, and a client
+      // that re-stated it could widen a count past the scope it claims.
+      await waitFor(() =>
+        expect(stockOpnameService.addEveryProduct).toHaveBeenCalledWith(
+          OPNAME_ID,
+        ),
+      );
+      expect(await screen.findByText("Shampoo Anjing")).toBeInTheDocument();
+    });
+
+    /** "Already complete" is an answer, and it is shown rather than swallowed. */
+    it("surfaces the refusal when there is nothing left to load", async () => {
+      const user = userEvent.setup();
+      asMock(stockOpnameService.getById).mockResolvedValue(emptySheet());
+      asMock(stockOpnameService.addEveryProduct).mockRejectedValue(
+        new ApiError("Every countable product is already on this sheet", 409, {
+          reason: "Nothing left to add for this warehouse",
+        }),
+      );
+
+      renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+      await user.click(
+        await screen.findByRole("button", {
+          name: /Muat semua produk gudang ini/,
+        }),
+      );
+
+      expect(
+        await screen.findByText(/Nothing left to add for this warehouse/),
+      ).toBeInTheDocument();
+    });
+
+    // The API refuses a submit with no items; the button says so first.
+    it("will not offer to finish a sheet with no lines", async () => {
+      asMock(stockOpnameService.getById).mockResolvedValue(emptySheet());
+
+      renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+
+      expect(
+        await screen.findByRole("button", { name: /Selesaikan opname/ }),
+      ).toBeDisabled();
+    });
+  });
+
+  /**
+   * The other half of adding: a product put on the sheet by mistake comes back
+   * off it. No endpoint of its own — `items` replaces the array, so a sheet
+   * shrinks the same way it grows.
+   */
+  describe("removing a product from a draft", () => {
+    it("saves the sheet without that line, at once rather than on a debounce", async () => {
+      const user = userEvent.setup();
+      asMock(stockOpnameService.getById).mockResolvedValue(
+        sheet({
+          items: [item(), item({ productId: "p2", productName: "Makanan" })],
+        }),
+      );
+      asMock(stockOpnameService.update).mockResolvedValue(sheet());
+
+      renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+
+      const row = (await screen.findByText("Makanan")).closest("tr")!;
+      await user.click(within(row).getByRole("button", { name: "Hapus" }));
+
+      await waitFor(() =>
+        expect(stockOpnameService.update).toHaveBeenCalledWith(OPNAME_ID, {
+          items: [expect.objectContaining({ productId: "p1" })],
+        }),
+      );
+    });
+
+    /**
+     * A counted line's quantity is the one thing on the sheet that cannot be
+     * recovered from anywhere else — so that removal asks, and an uncounted one
+     * does not.
+     */
+    it("asks before discarding a line somebody already counted", async () => {
+      const user = userEvent.setup();
+      asMock(stockOpnameService.getById).mockResolvedValue(
+        sheet({
+          items: [
+            item({ physicalQty: "8.0000", countedAt: "2026-08-03T09:14:00Z" }),
+          ],
+        }),
+      );
+
+      renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+      await user.click(
+        await screen.findByRole("button", { name: "Hapus" }),
+      );
+
+      expect(
+        await screen.findByText(/Hapus produk dari lembar ini\?/),
+      ).toBeInTheDocument();
+      // Nothing sent until it is confirmed.
+      expect(stockOpnameService.update).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole("button", { name: "Hapus baris" }));
+
+      await waitFor(() =>
+        expect(stockOpnameService.update).toHaveBeenCalledWith(OPNAME_ID, {
+          items: [],
+        }),
+      );
+    });
+
+    it("offers no removal on a submitted sheet", async () => {
+      asMock(stockOpnameService.getById).mockResolvedValue(
+        sheet({ status: "submitted" }),
+      );
+
+      renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+
+      await screen.findByText("Shampoo Anjing");
+      expect(
+        screen.queryByRole("button", { name: "Hapus" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("offers no removal to a role that may not edit the sheet", async () => {
+      asMock(stockOpnameService.getById).mockResolvedValue(sheet());
+
+      renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />, {
+        isSuperAdmin: false,
+        permissions: [{ feature: "stockOpnames", actions: ["read"] }],
+      });
+
+      await screen.findByText("Shampoo Anjing");
+      expect(
+        screen.queryByRole("button", { name: "Hapus" }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  /**
+   * A sheet is a plan for an afternoon, and the plan is wrong the moment
+   * somebody finds a shelf that was not on it. The alternative was discarding
+   * the draft — and every quantity already typed with it.
+   */
+  describe("adding products to an open count", () => {
+    const openDialog = async (user: ReturnType<typeof userEvent.setup>) => {
+      await user.click(
+        await screen.findByRole("button", { name: /Tambah produk/ }),
+      );
+    };
+
+    it("adds the picked products and re-renders the sheet the API returned", async () => {
+      const user = userEvent.setup();
+      asMock(stockOpnameService.getById).mockResolvedValue(sheet());
+      asMock(stockOpnameService.addItems).mockResolvedValue(
+        sheet({
+          items: [item(), item({ productId: "p2", productName: "Makanan" })],
+        }),
+      );
+      // The picker offers a product the sheet does not already carry.
+      asMock(productService.list).mockResolvedValue({
+        items: [product({ _id: "p2", sku: "MAKANAN", name: "Makanan" })],
+        pagination: { page: 1, limit: 50, total: 1, totalPages: 1 },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+      await openDialog(user);
+
+      await user.click(await screen.findByLabelText(/Makanan/));
+      await user.click(screen.getByRole("button", { name: /Tambahkan/ }));
+
+      /**
+       * IDS ONLY. A quantity sent here would either be a zero — a shortage of
+       * that product's whole stock, waiting to be posted — or a balance the
+       * browser read for itself; the server fills the line from live stock.
+       */
+      await waitFor(() =>
+        expect(stockOpnameService.addItems).toHaveBeenCalledWith(OPNAME_ID, [
+          "p2",
+        ]),
+      );
+      // The response IS the sheet, so the new line renders without a re-read.
+      expect(await screen.findByText("Makanan")).toBeInTheDocument();
+      expect(stockOpnameService.getById).toHaveBeenCalledTimes(1);
+    });
+
+    /** A product may appear once on a sheet; the API refuses the second. */
+    it("does not offer a product the sheet already carries", async () => {
+      const user = userEvent.setup();
+      asMock(stockOpnameService.getById).mockResolvedValue(sheet());
+      asMock(productService.list).mockResolvedValue({
+        items: [product()],
+        pagination: { page: 1, limit: 50, total: 1, totalPages: 1 },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+      await openDialog(user);
+
+      expect(
+        await screen.findByText(/sudah ada di lembar ini/),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText(/Shampoo Anjing SHAMPOO/)).toBeNull();
+    });
+
+    /** Naming the offender is the point — a closed dialog cannot offer that. */
+    it("keeps the dialog open and shows the refusal", async () => {
+      const user = userEvent.setup();
+      asMock(stockOpnameService.getById).mockResolvedValue(sheet());
+      asMock(stockOpnameService.addItems).mockRejectedValue(
+        new ApiError("Some products are already on this count sheet", 409, {
+          reason: "Already counted here: MAKANAN",
+        }),
+      );
+      asMock(productService.list).mockResolvedValue({
+        items: [product({ _id: "p2", sku: "MAKANAN", name: "Makanan" })],
+        pagination: { page: 1, limit: 50, total: 1, totalPages: 1 },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+      await openDialog(user);
+
+      await user.click(await screen.findByLabelText(/Makanan/));
+      await user.click(screen.getByRole("button", { name: /Tambahkan/ }));
+
+      expect(
+        await screen.findByText(/Already counted here: MAKANAN/),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /Tambahkan/ }),
+      ).toBeInTheDocument();
+    });
+
+    it("is absent on a submitted sheet — a posted count cannot grow", async () => {
+      asMock(stockOpnameService.getById).mockResolvedValue(
+        sheet({ status: "submitted" }),
+      );
+
+      renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+
+      await screen.findByText("Shampoo Anjing");
+      expect(
+        screen.queryByRole("button", { name: /Tambah produk/ }),
+      ).not.toBeInTheDocument();
+    });
   });
 });

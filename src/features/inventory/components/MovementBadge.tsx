@@ -21,6 +21,11 @@ const LABELS: Record<MovementType, { label: string; tone: string }> = {
   bundle_consume: { label: "Bundle consume", tone: "bg-danger/10 text-danger" },
   opname_diff: { label: "Selisih opname", tone: "bg-primary/12 text-primary-hover" },
   adjustment: { label: "Penyesuaian", tone: "bg-primary/12 text-primary-hover" },
+  // Green, because it brings goods in — but its own label rather than
+  // "Penerimaan", which means a purchase. This is the stock a tenant already
+  // owned on its first day, and the distinction is the whole reason it stopped
+  // being an "adjustment": its journal credits capital, not an inventory loss.
+  opening_balance: { label: "Saldo awal", tone: "bg-success/12 text-success" },
 };
 
 export function MovementBadge({ type }: { type: MovementType }) {
