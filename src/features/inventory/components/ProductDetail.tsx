@@ -373,7 +373,15 @@ export function ProductDetail({ productId }: { productId: string }) {
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={item.thumbUrl ?? item.posterUrl ?? item.url}
+                      // The 800px derivative, not the 320px thumbnail: this tile
+                      // is a third of a card wide, where the thumb is visibly
+                      // soft on a 2× screen. Narrows to what older media has.
+                      src={
+                        item.mediumUrl ??
+                        item.thumbUrl ??
+                        item.posterUrl ??
+                        item.url
+                      }
                       alt={item.alt ?? "Media produk"}
                       className="h-full w-full object-cover"
                     />

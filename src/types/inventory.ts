@@ -628,10 +628,21 @@ export interface ProductMedia {
   bytes?: number | null;
   width?: number | null;
   height?: number | null;
+  /**
+   * An 800px derivative — the size a detail-page tile actually draws.
+   *
+   * NULL ON MEDIA STORED BEFORE IT EXISTED, which is why every reader narrows
+   * `mediumUrl ?? thumbUrl ?? url` rather than reaching for it directly.
+   */
+  mediumUrl?: string | null;
+  mediumKey?: string | null;
   /** A 320px derivative. Null on a video, which has a poster instead. */
   thumbUrl?: string | null;
   thumbKey?: string | null;
-  /** Video only, and null when the client captured no frame. */
+  /**
+   * Video only. Set on everything uploaded since the server started extracting
+   * a frame with ffmpeg; null on older videos and where transcoding is off.
+   */
   posterUrl?: string | null;
   posterKey?: string | null;
   durationMs?: number | null;
@@ -681,8 +692,16 @@ export interface ResolvedProductFields {
    * A DISPLAY FALLBACK, NOT INHERITANCE: nothing writes the parent's image onto
    * the variant, and `imageSource` says which it is so a form can show "using
    * the parent's photo" rather than implying this variant has one.
+   *
+   * All three sizes, so a caller picks by the box it is drawing into. Both
+   * derivatives are null on media stored before they existed.
    */
-  image?: { url: string; thumbUrl: string | null; mediaType: MediaType } | null;
+  image?: {
+    url: string;
+    mediumUrl: string | null;
+    thumbUrl: string | null;
+    mediaType: MediaType;
+  } | null;
   imageSource?: "own" | "parent" | null;
 }
 

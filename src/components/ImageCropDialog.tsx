@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { encodeForUpload, loadImage } from "@/utils/media";
 
 /**
  * Crops an image in the browser and hands back the cropped bytes.
@@ -31,21 +32,25 @@ import {
  */
 
 /**
- * Draws the selected region onto a canvas and returns it as a JPEG blob.
+ * Draws the selected region onto a canvas and returns the downscaled bytes.
  *
  * `crop` comes back from the cropper in NATURAL image pixels, which is why the
- * canvas is sized from it directly rather than from anything on screen — the
- * displayed size is a CSS concern and would silently scale the output.
+ * intermediate canvas is sized from it directly rather than from anything on
+ * screen — the displayed size is a CSS concern and would silently scale the
+ * output.
+ *
+ * TWO CANVASES, NOT ONE, and the reason is the crop rectangle. `encodeForUpload`
+ * scales a whole source; it has no notion of a region. Cropping first onto a
+ * canvas sized to the selection turns the crop into a plain full-source
+ * downscale, which is exactly what that helper does — and keeps the resampling
+ * settings in one place rather than duplicated here.
+ *
+ * THIS USED TO ENCODE AT FULL NATURAL RESOLUTION, which is how a 4000×3000
+ * phone photo became a 5 MB upload the server then shrank to 1600px — when it
+ * was not rejected outright for exceeding the ceiling. The downscale is the fix.
  */
 async function cropToBlob(src: string, crop: Area): Promise<Blob> {
-  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-    const element = new Image();
-    element.addEventListener("load", () => resolve(element));
-    element.addEventListener("error", () =>
-      reject(new Error("Gambar tidak bisa dibaca")),
-    );
-    element.src = src;
-  });
+  const image = await loadImage(src);
 
   const canvas = document.createElement("canvas");
   canvas.width = crop.width;
@@ -66,17 +71,7 @@ async function cropToBlob(src: string, crop: Area): Promise<Blob> {
     crop.height,
   );
 
-  return new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob(
-      (blob) =>
-        blob ? resolve(blob) : reject(new Error("Gambar gagal diproses")),
-      // JPEG at high quality: the server re-encodes to WebP anyway, so this is
-      // only the transport format, and PNG would make a photo several times
-      // larger for no gain.
-      "image/jpeg",
-      0.92,
-    );
-  });
+  return encodeForUpload(canvas, canvas.width, canvas.height);
 }
 
 interface ImageCropDialogProps {

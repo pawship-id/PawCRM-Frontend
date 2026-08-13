@@ -7,6 +7,53 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Uploads are compressed before they leave the browser
+
+Frontend half of backend `0.35.0`. See `docs/features/product-management.md`.
+
+### Images are downscaled before upload
+
+`ImageCropDialog` encoded the crop at its full natural resolution, so a 4000×3000 photo off a
+phone became a multi-megabyte upload — often above the 5 MB ceiling, which meant the most ordinary
+thing a user can do was rejected outright. It now downscales to 2048px through the new
+`src/utils/media.ts`, and prefers WebP with a JPEG fallback.
+
+**2048 and not 1600**, which is what the server stores. A canvas `drawImage` downscale is a crude
+filter; leaving the last resampling step to sharp gives a sharper stored image than sending
+exactly the target size. The headroom is the point.
+
+### Videos send a poster frame, and oversized ones are refused up front
+
+`mediaService.upload` has always accepted a `poster` option and nothing ever passed one, so
+`posterUrl` was null on every video and the gallery tile was a blank rectangle. `MediaGallery` now
+captures a frame — seeking past the opening second, because video opens on black more often than
+not — and sends it.
+
+Best-effort throughout: the server extracts a frame when none arrives, so a browser that cannot
+decode one is not an error. `captureVideoPoster` and `probeVideo` both time out after ten seconds,
+because a media element is permitted to fire neither `loadedmetadata` nor `error` and the upload
+awaits them.
+
+A file over 50 MB is now refused before the upload starts rather than after it. Checked for videos
+only: an image is downscaled before it is sent, so the size the user picked says nothing about
+whether it will be accepted.
+
+### The tile says "Memproses…" instead of freezing at 100%
+
+The transfer finishing is not the upload finishing — the server still has three image encodes or a
+video transcode to run, which on a long clip is tens of seconds. A percentage stuck at 100 reads
+as a hung request, and a user who concludes that starts the upload again.
+
+### `mediumUrl` on `ProductMedia`
+
+The product detail grid drew the 320px thumbnail into a tile a few hundred pixels wide, visibly
+soft on a 2× screen. It now uses the new 800px derivative, narrowing
+`mediumUrl ?? thumbUrl ?? posterUrl ?? url` so media stored before it still renders. The
+catalogue table keeps the 320 — right for a 40px row — with the 800 as its fallback instead of the
+full-size image.
+
+---
+
 ## [Unreleased] — Products become publishable
 
 Branch: `feature/product-expansion` (phases 3–7). Frontend half of backend `0.33.0`.

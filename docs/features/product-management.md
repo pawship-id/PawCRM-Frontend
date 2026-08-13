@@ -183,9 +183,40 @@ Reordering is native HTML5 drag **plus ◀ ▶ buttons**. The buttons are the to
 path and the only path testable in jsdom, which is what makes a drag-and-drop library unnecessary
 for nine one-dimensional items rather than merely avoidable.
 
-Cropping happens in the browser before upload, so the server receives final bytes. Videos skip it —
-there is nothing to crop — and carry an optional poster frame; without one the tile shows a play
-icon.
+Cropping happens in the browser before upload, so the server receives already-cropped bytes.
+
+#### Compression
+
+Split between the browser and the server, and the split is on purpose: the browser decides what is
+**sent**, the server decides what is **stored**.
+
+**Images** are downscaled to 2048px and re-encoded (WebP, JPEG where that is unsupported) by the
+crop dialog. The cap is deliberately above the server's 1600 — a canvas downscale is a crude
+filter, so leaving the final resample to sharp produces a sharper stored image than sending
+exactly 1600 would. What this fixes is not only bandwidth: the dialog used to encode at full
+natural resolution, so a photo straight off a phone routinely exceeded the 5 MB ceiling and was
+rejected outright.
+
+The server stores three sizes — 1600, **800** and 320. Read them by the box being drawn into and
+narrow through the chain, because media stored before the 800 existed has neither derivative:
+
+```ts
+const src = item.mediumUrl ?? item.thumbUrl ?? item.url;
+```
+
+**Videos** are not transcoded in the browser. It is possible — WebCodecs, or ffmpeg in wasm — and
+it is the wrong trade: WebCodecs needs a muxer and gives different output on every device, and
+ffmpeg.wasm is a ~30 MB download needing cross-origin isolation headers the app does not set. The
+server has a real ffmpeg and gets the same result every time. What the browser does is the cheap
+half — capture a poster frame, and refuse an oversized file **before** the upload rather than
+after fifty megabytes have gone out.
+
+A poster is best-effort: the server extracts one when none arrives. Sending one anyway is what
+makes the tile fill in the instant the transfer completes rather than after the transcode.
+
+**The tile shows "Memproses…" once the transfer hits 100%.** The server is still working — three
+image encodes, or a video transcode that runs tens of seconds — and a percentage frozen at 100 is
+indistinguishable from a hung request to the user watching it.
 
 Deleting a tile removes it from the array only. The bytes go when the product is saved; doing it
 sooner would strand a live product's image if the user then cancelled.

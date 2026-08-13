@@ -8,6 +8,7 @@ import { ImageCropDialog } from "./ImageCropDialog";
 import { mediaService } from "@/services/media.service";
 import { ApiError } from "@/services/api-error";
 import { cn } from "@/lib/utils";
+import { captureVideoPoster, formatMegabytes } from "@/utils/media";
 import type { ProductMedia } from "@/types/inventory";
 
 /**
@@ -27,12 +28,31 @@ import type { ProductMedia } from "@/types/inventory";
  * merely avoidable.
  *
  * CROP RUNS BEFORE UPLOAD, on the file the user picked, so the server receives
- * bytes that are already final — see ImageCropDialog for why that beats sending
- * coordinates. Videos skip it: there is nothing to crop and no canvas to do it
- * with.
+ * bytes that are already cropped and downscaled — see ImageCropDialog for why
+ * that beats sending coordinates. Videos skip it: there is nothing to crop and
+ * no canvas to do it with.
+ *
+ * A VIDEO UPLOAD HAS TWO PHASES AND THE UI SHOWS BOTH. The bytes go out, and
+ * then the server transcodes them, which takes tens of seconds on a long clip.
+ * A percentage that reaches 100 and sits there is indistinguishable from a hung
+ * request, and a user who concludes that starts again — so the tile switches to
+ * "Memproses…" the moment the transfer completes.
  */
 
 const ACCEPT = "image/png,image/jpeg,image/webp,video/mp4";
+
+/**
+ * The server's own ceilings, mirrored so a file that cannot possibly be accepted
+ * is refused before the upload rather than after it.
+ *
+ * A DUPLICATED CONSTANT, KNOWINGLY. These are `MEDIA_MAX_IMAGE_BYTES` and
+ * `MEDIA_MAX_VIDEO_BYTES`, and the API remains the authority — this check does
+ * not replace the server's, it just spares a user fifty megabytes of upload
+ * ending in a 400. Raising the limits server-side without touching these makes
+ * the form stricter than the API, which is the safe direction to drift.
+ */
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 
 interface MediaGalleryProps {
   value: ProductMedia[];
@@ -74,7 +94,18 @@ export function MediaGallery({
     setUploadError(null);
 
     if (file.type.startsWith("video/")) {
-      void upload(file);
+      // Checked here and not for images, because an image is downscaled by the
+      // cropper before it is sent — the file the user picked is not the file
+      // that goes out, so its size says nothing about whether it will be
+      // accepted. A video is uploaded as-is and compressed by the server.
+      if (file.size > MAX_VIDEO_BYTES) {
+        setUploadError(
+          `Video terlalu besar (${formatMegabytes(file.size)}). Maksimal ${formatMegabytes(MAX_VIDEO_BYTES)}.`,
+        );
+        return;
+      }
+
+      void uploadVideo(file);
       return;
     }
 
@@ -83,13 +114,49 @@ export function MediaGallery({
     setPending({ file, src: URL.createObjectURL(file) });
   }
 
-  async function upload(file: File | Blob, name = "image.jpg") {
+  /**
+   * A video: grab a poster frame, then upload both.
+   *
+   * The poster is best-effort. `captureVideoPoster` returns null rather than
+   * throwing when the browser cannot decode a frame, and the server extracts
+   * one itself in that case — so a failure here costs nothing and is not worth
+   * showing the user.
+   */
+  async function uploadVideo(file: File) {
     setProgress(0);
-    try {
-      const asset = await mediaService.upload(
-        file instanceof File ? file : new File([file], name, { type: file.type }),
-        { onProgress: setProgress },
+    const poster = await captureVideoPoster(file);
+    await send(file, { poster });
+  }
+
+  /**
+   * An image, already cropped and downscaled to 2048px by the dialog.
+   *
+   * The size check is on the ENCODED blob, not on what the user picked — after
+   * the downscale those two numbers have nothing to do with each other, and a
+   * 12 MB photo that becomes a 400 KB upload must not be refused for the size
+   * it used to be. Reaching the ceiling here now takes a genuinely pathological
+   * image, which is exactly when a specific message beats a generic 400.
+   */
+  async function upload(file: File | Blob, name = "image.webp") {
+    if (file.size > MAX_IMAGE_BYTES) {
+      setUploadError(
+        `Gambar terlalu besar (${formatMegabytes(file.size)}). Maksimal ${formatMegabytes(MAX_IMAGE_BYTES)}.`,
       );
+      return;
+    }
+
+    setProgress(0);
+    await send(
+      file instanceof File ? file : new File([file], name, { type: file.type }),
+    );
+  }
+
+  async function send(file: File, options: { poster?: Blob | null } = {}) {
+    try {
+      const asset = await mediaService.upload(file, {
+        ...options,
+        onProgress: setProgress,
+      });
       onChange([...value, asset]);
     } catch (err) {
       setUploadError(
@@ -218,8 +285,14 @@ export function MediaGallery({
                 <Plus className="size-5" />
                 <span className="text-[10px]">Tambah</span>
               </>
-            ) : (
+            ) : progress < 100 ? (
               <span className="text-xs tabular-nums">{progress}%</span>
+            ) : (
+              // The bytes have landed and the server is still working — an
+              // image is being re-encoded into three sizes, a video transcoded,
+              // which on a long clip is tens of seconds. Leaving "100%" on
+              // screen for that reads as frozen.
+              <span className="text-[10px]">Memproses…</span>
             )}
           </button>
         )}
@@ -238,8 +311,9 @@ export function MediaGallery({
 
       <p className="text-xs text-muted">
         Maksimal {max} file. Gambar PNG/JPG/WebP (maks 5 MB) dan video MP4 (maks
-        50 MB). Urutan kiri-ke-kanan adalah urutan tampil; yang pertama jadi
-        gambar utama. Geser tile atau pakai tombol{" "}
+        50 MB) — keduanya dikompres otomatis tanpa mengubah kualitas tampilan.
+        Urutan kiri-ke-kanan adalah urutan tampil; yang pertama jadi gambar
+        utama. Geser tile atau pakai tombol{" "}
         <ChevronLeft className="inline size-3" />
         <ChevronRight className="inline size-3" /> untuk mengurutkan.
       </p>
