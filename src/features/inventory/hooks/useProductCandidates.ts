@@ -12,7 +12,7 @@ const PAGE_LIMIT = 50;
 /** Long enough that typing a SKU is one request, short enough to feel live. */
 const DEBOUNCE_MS = 300;
 
-export interface OpnameCandidates {
+export interface ProductCandidates {
   products: Product[];
   /** How many products match, which is usually more than `products` carries. */
   total: number;
@@ -23,7 +23,8 @@ export interface OpnameCandidates {
 }
 
 /**
- * The products a count sheet may be opened over, for the start card's picker.
+ * The products a stock DOCUMENT may be built over — a count sheet, a transfer —
+ * behind ProductMultiPicker.
  *
  * SEARCHED ON THE SERVER, NOT FILTERED IN THE BROWSER. A picker that loaded the
  * whole catalogue to filter it locally is fine at fifty products and a hang at
@@ -32,19 +33,20 @@ export interface OpnameCandidates {
  *
  * `holdsStock=true` IS THE SERVER'S OWN LIST of the types stock may be posted
  * against. A `parent` is an abstraction over its variants and a `bundle`
- * consumes its components; the API refuses a count line against either, so
- * offering them would be an invitation to a 400 after the user had chosen. Same
- * flag, and the same reasoning, as useStockCardLookups.
+ * consumes its components; the API refuses a line against either, so offering
+ * them would be an invitation to a 400 after the user had chosen. Same flag, and
+ * the same reasoning, as useStockCardLookups.
  *
  * ACTIVE PRODUCTS ONLY, unlike the stock card's lookup. That one feeds a READ,
- * where a deactivated product still owns its history; this one opens a sheet
+ * where a deactivated product still owns its history; this one feeds a WRITE
  * somebody has to walk a shelf for, and a discontinued line is not on that
  * shelf. The whole-warehouse count the server builds applies the same rule.
  */
-export function useOpnameCandidates(
+export function useProductCandidates(
   search: string,
-  categoryId: string,
-): OpnameCandidates {
+  /** Narrows the list. "" is every category. */
+  categoryId = "",
+): ProductCandidates {
   const [products, setProducts] = useState<Product[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);

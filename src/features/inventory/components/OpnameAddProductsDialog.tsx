@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import type { Product } from "@/types/inventory";
 
-import { OpnameProductPicker } from "./OpnameProductPicker";
+import { ProductMultiPicker } from "./ProductMultiPicker";
 
 /**
  * Adding products to a count that is already open.
@@ -82,7 +82,7 @@ export function OpnameAddProductsDialog({
 
         {error && <Alert variant="error">{error}</Alert>}
 
-        <OpnameProductPicker
+        <ProductMultiPicker
           categoryId=""
           selected={selected}
           onChange={setSelected}

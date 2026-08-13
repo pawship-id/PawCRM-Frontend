@@ -116,18 +116,16 @@ describe("stockMovementService", () => {
 
     const written = await stockMovementService.create({
       operation: "transfer",
-      productId: "p1",
       fromWarehouseId: "wh1",
       toWarehouseId: "wh2",
-      qty: "6",
+      items: [{ productId: "p1", qty: "6" }],
     });
 
     expect(post).toHaveBeenCalledWith("/stock-movements", {
       operation: "transfer",
-      productId: "p1",
       fromWarehouseId: "wh1",
       toWarehouseId: "wh2",
-      qty: "6",
+      items: [{ productId: "p1", qty: "6" }],
     });
     // An ARRAY, always: FEFO splits a withdrawal across lots and a transfer
     // writes a pair per lot. A caller assuming one object would drop the rest.

@@ -562,6 +562,8 @@ function mv(
     bundleSourceId: null,
     reference,
     createdBy: "u1",
+    notes: null,
+    lineNotes: null,
     createdAt,
     updatedAt: createdAt,
 
@@ -942,79 +944,112 @@ export function postAdjustment(input: CreateAdjustmentInput): StockMovement[] {
 }
 
 /**
- * Posts a manual transfer. Returns AT LEAST two movements: for every lot FEFO
- * drew from, one `transfer_out` at the source and one `transfer_in` at the
- * destination — the mirror row carrying that lot's code, expiry and cost across.
+ * Posts a manual transfer of ONE OR MORE products. Returns AT LEAST two
+ * movements per product: for every lot FEFO drew from, one `transfer_out` at the
+ * source and one `transfer_in` at the destination — the mirror row carrying that
+ * lot's code, expiry and cost across.
+ *
+ * ONE `reference.id` FOR THE WHOLE TRANSFER, whatever it carries. That id is
+ * what ties the products together into one movement; minting one per product
+ * would write the same rows and lose the only thing that says they belong
+ * together.
  *
  * `receiptId` is dropped on the copy: the goods did not arrive on that receipt,
  * they arrived from another warehouse.
  */
 export function postTransfer(input: CreateTransferInput): StockMovement[] {
-  const product = state.products.find((p) => p._id === input.productId);
-  if (!product) throw new Error(`Unknown product: ${input.productId}`);
   if (input.fromWarehouseId === input.toWarehouseId) {
     throw new Error("Source and destination warehouse must be different");
   }
+  if (input.items.length === 0) {
+    throw new Error("A transfer needs at least one product");
+  }
 
-  const qty = toMinor(input.qty);
-  if (qty === null || qty <= 0n) throw new Error("Quantity must be positive");
+  const seen = new Set<string>();
+  for (const item of input.items) {
+    if (seen.has(item.productId)) {
+      // Mirrors the API: FEFO reads the lots once per line, so a product twice
+      // would allocate the same goods twice.
+      throw new Error(`Duplicate product in transfer: ${item.productId}`);
+    }
+    seen.add(item.productId);
+  }
 
   const now = new Date().toISOString();
   const transferId = nextId("tf");
   const reference = { type: "transfer_manual" as const, id: transferId };
-  const allocations = previewFefo(
-    input.productId,
-    input.fromWarehouseId,
-    toDecimalString(qty),
-  );
+  const notes = input.notes ?? null;
   const written: StockMovement[] = [];
 
-  for (const allocation of allocations) {
-    if (allocation.batch)
-      applyToBatch(allocation.batch._id, `-${allocation.qty}`);
+  for (const item of input.items) {
+    const product = state.products.find((p) => p._id === item.productId);
+    if (!product) throw new Error(`Unknown product: ${item.productId}`);
 
-    written.push(
-      mv(
-        input.productId,
-        input.fromWarehouseId,
-        "transfer_out",
-        `-${allocation.qty}`,
-        product.hppAvg,
-        allocation.batch?._id ?? null,
-        reference,
-        now,
-        { destinationWarehouseId: input.toWarehouseId },
-      ),
+    const qty = toMinor(item.qty);
+    if (qty === null || qty <= 0n) throw new Error("Quantity must be positive");
+
+    const lineNotes = item.notes ?? null;
+    const allocations = previewFefo(
+      item.productId,
+      input.fromWarehouseId,
+      toDecimalString(qty),
     );
 
-    let mirrorBatchId: string | null = null;
-    if (allocation.batch) {
-      const mirror: ProductBatch = {
-        ...allocation.batch,
-        _id: nextId("bt"),
-        warehouseId: input.toWarehouseId,
-        receiptId: null,
-        initialQty: allocation.qty,
-        qtyRemaining: allocation.qty,
-        createdAt: now,
-        updatedAt: now,
-      };
-      state.batches = [...state.batches, mirror];
-      mirrorBatchId = mirror._id;
+    for (const allocation of allocations) {
+      if (allocation.batch)
+        applyToBatch(allocation.batch._id, `-${allocation.qty}`);
+
+      written.push(
+        mv(
+          item.productId,
+          input.fromWarehouseId,
+          "transfer_out",
+          `-${allocation.qty}`,
+          product.hppAvg,
+          allocation.batch?._id ?? null,
+          reference,
+          now,
+          {
+            destinationWarehouseId: input.toWarehouseId,
+            notes,
+            lineNotes,
+          },
+        ),
+      );
+
+      let mirrorBatchId: string | null = null;
+      if (allocation.batch) {
+        const mirror: ProductBatch = {
+          ...allocation.batch,
+          _id: nextId("bt"),
+          warehouseId: input.toWarehouseId,
+          receiptId: null,
+          initialQty: allocation.qty,
+          qtyRemaining: allocation.qty,
+          createdAt: now,
+          updatedAt: now,
+        };
+        state.batches = [...state.batches, mirror];
+        mirrorBatchId = mirror._id;
+      }
+
+      written.push(
+        mv(
+          item.productId,
+          input.toWarehouseId,
+          "transfer_in",
+          allocation.qty,
+          product.hppAvg,
+          mirrorBatchId,
+          reference,
+          now,
+          // The inbound half inherits the line's reason from the outbound half
+          // it mirrors — otherwise the destination warehouse's card is the one
+          // that cannot explain itself.
+          { notes, lineNotes },
+        ),
+      );
     }
-
-    written.push(
-      mv(
-        input.productId,
-        input.toWarehouseId,
-        "transfer_in",
-        allocation.qty,
-        product.hppAvg,
-        mirrorBatchId,
-        reference,
-        now,
-      ),
-    );
   }
 
   state.movements = [...written, ...state.movements];

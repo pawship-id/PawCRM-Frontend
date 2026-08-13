@@ -77,6 +77,17 @@ export interface StockMovement {
   bundleSourceId: string | null;
   reference: { type: ReferenceType; id: string | null };
   createdBy: string | null;
+  /**
+   * WHY this happened, in the words of whoever did it — the one thing a stock
+   * card cannot reconstruct from its own numbers.
+   *
+   * `notes` belongs to the whole posting and is repeated on every row of it;
+   * `lineNotes` belongs to the one product line this row came from, and a
+   * transfer's `transfer_in` inherits it from the `transfer_out` it mirrors.
+   * Both null for the movements no human typed.
+   */
+  notes: string | null;
+  lineNotes: string | null;
   createdAt: string;
   updatedAt: string;
   /** No `deletedAt`: the ledger is append-only. Corrections are new rows. */
@@ -259,6 +270,8 @@ export interface CreateAdjustmentInput {
   expiryDate?: string;
   costPerUnit?: string;
   isConsignment?: boolean;
+  /** Why the balance was corrected. Stored on the ledger row, ≤500 characters. */
+  notes?: string;
   /**
    * A token that makes a RETRY safe, 8–64 characters.
    *
@@ -270,14 +283,37 @@ export interface CreateAdjustmentInput {
   idempotencyKey?: string;
 }
 
-/** POST /api/stock-movements — the manual transfer payload. */
-export interface CreateTransferInput {
-  operation: "transfer";
+/** One product line of a transfer. */
+export interface TransferItemInput {
   productId: string;
-  fromWarehouseId: string;
-  toWarehouseId: string;
   /** Decimal STRING, and must be POSITIVE — direction comes from the two ids. */
   qty: string;
+  /** This line's own reason, distinct from the transfer's. ≤500 characters. */
+  notes?: string;
+}
+
+/**
+ * POST /api/stock-movements — the manual transfer payload.
+ *
+ * ONE SOURCE, ONE DESTINATION, MANY PRODUCTS. "Siapkan barang untuk bazar" is
+ * normally several products leaving the same warehouse at the same moment, and
+ * filing them as separate requests would give each one its own `reference.id` —
+ * so nothing could answer "what went to the bazaar", and a failure halfway would
+ * leave some goods moved and some not, with no document to unwind.
+ *
+ * Each product may appear ONCE. The API refuses a duplicate: FEFO reads the
+ * source lots once per line and does not subtract what an earlier line of the
+ * same posting already took, so two lines for one product would allocate the
+ * same goods twice.
+ */
+export interface CreateTransferInput {
+  operation: "transfer";
+  fromWarehouseId: string;
+  toWarehouseId: string;
+  /** At least one, at most 50, and `productId` unique across them. */
+  items: TransferItemInput[];
+  /** Why the whole transfer happened. Stamped on every row it writes. */
+  notes?: string;
   /** See CreateAdjustmentInput — same token, same reason. */
   idempotencyKey?: string;
 }
@@ -303,6 +339,11 @@ export interface PreviewMovementRow {
   warehouseId: string;
   warehouseName: string;
   productId: string;
+  /**
+   * Resolved by the server, because a transfer may move several products and a
+   * panel that groups its rows by product cannot label the groups from ids.
+   */
+  productName: string;
   movementType: MovementType;
   /** Decimal string. Signed, as the ledger stores it. */
   qty: string;
@@ -321,6 +362,8 @@ export interface PreviewMovementRow {
    * unrecorded withdrawal is an invisible one.
    */
   short: boolean;
+  /** The note on the requested line this row came from, echoed back. */
+  lineNotes: string | null;
 }
 
 /**

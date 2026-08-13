@@ -9,10 +9,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { Product } from "@/types/inventory";
 
-import { useOpnameCandidates } from "../hooks/useOpnameCandidates";
+import { useProductCandidates } from "../hooks/useProductCandidates";
 
 /**
- * Which products go on the count sheet.
+ * Which products go onto a stock document — a count sheet, a transfer.
+ *
+ * SHARED BY BOTH, and worth sharing rather than copying: the two rules below are
+ * the whole reason a search box and a checkbox list can coexist at all, and a
+ * second implementation would get one of them wrong the first time somebody
+ * searched twice.
  *
  * SELECTION IS HELD AS WHOLE PRODUCTS, not ids, and that is what makes the
  * search usable: the chips have to keep naming what was chosen after the search
@@ -30,27 +35,28 @@ import { useOpnameCandidates } from "../hooks/useOpnameCandidates";
  * products off page 7, and a pager here would compete with the checkboxes for
  * the same clicks.
  */
-export function OpnameProductPicker({
-  categoryId,
+export function ProductMultiPicker({
+  categoryId = "",
   selected,
   onChange,
   excludeIds,
   disabled = false,
 }: {
   /** Narrows the candidate list. "" is every category. */
-  categoryId: string;
+  categoryId?: string;
   selected: Product[];
   onChange: (products: Product[]) => void;
   /**
-   * Products the sheet already carries. HIDDEN rather than shown ticked: a
-   * product may appear once on a count sheet, and the API refuses the second —
-   * so a tick that could only ever produce a refusal is worse than an absence.
+   * Products the document already carries. HIDDEN rather than shown ticked: a
+   * product may appear once on a count sheet and once in a transfer, and both
+   * APIs refuse the second — so a tick that could only ever produce a refusal is
+   * worse than an absence.
    */
   excludeIds?: string[];
   disabled?: boolean;
 }) {
   const [search, setSearch] = useState("");
-  const { products: matched, total, loading, error } = useOpnameCandidates(
+  const { products: matched, total, loading, error } = useProductCandidates(
     search,
     categoryId,
   );
@@ -91,7 +97,7 @@ export function OpnameProductPicker({
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder="Cari nama atau SKU…"
-          aria-label="Cari produk untuk dihitung"
+          aria-label="Cari produk"
           className="max-w-xs"
           disabled={disabled}
         />
@@ -135,7 +141,7 @@ export function OpnameProductPicker({
         {!loading && products.length === 0 && !error && (
           <p className="px-4 py-10 text-center text-sm text-muted">
             {matched.length > 0
-              ? "Semua produk yang cocok sudah ada di lembar ini."
+              ? "Semua produk yang cocok sudah ditambahkan."
               : search.trim()
                 ? `Tidak ada produk yang cocok dengan "${search.trim()}".`
                 : "Belum ada produk yang menyimpan stok di katalog ini."}
@@ -152,13 +158,13 @@ export function OpnameProductPicker({
                 className="flex items-center gap-3 border-b border-border/60 px-3 py-2 last:border-0"
               >
                 <Checkbox
-                  id={`opname-pick-${product._id}`}
+                  id={`pick-${product._id}`}
                   checked={checked}
                   onCheckedChange={() => toggle(product)}
                   disabled={disabled}
                 />
                 <Label
-                  htmlFor={`opname-pick-${product._id}`}
+                  htmlFor={`pick-${product._id}`}
                   className="flex flex-1 cursor-pointer flex-wrap items-baseline gap-x-2 font-normal"
                 >
                   <span className="text-sm text-foreground">{product.name}</span>
