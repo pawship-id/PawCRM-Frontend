@@ -29,6 +29,18 @@ jest.mock("@/utils/xlsx", () => ({
 }));
 
 /**
+ * The screen seeds its first filters from `?productId=&warehouseId=`, so it
+ * needs a router context. `useSearchParams` is typed non-null in the App Router
+ * and is null here only because there is none — mocked rather than guarded with
+ * `?.` in the component, which would be defensive code for a state the type
+ * says cannot happen in the app.
+ */
+let searchParams = new URLSearchParams();
+jest.mock("next/navigation", () => ({
+  useSearchParams: () => searchParams,
+}));
+
+/**
  * The stock card, against mocked services.
  *
  * WHAT THESE TESTS ARE FOR. The screen now renders what the API computes rather
@@ -198,6 +210,60 @@ function mockHappyPath(
 afterEach(() => jest.restoreAllMocks());
 
 describe("StockCardScreen", () => {
+  // Reset between cases: the deep-link tests below set it, and a leaked value
+  // would silently change which pair every later test is reading.
+  beforeEach(() => {
+    searchParams = new URLSearchParams();
+  });
+
+  /**
+   * The deep link a product detail hands over. Without it the user lands on a
+   * screen still asking which product and which shelf they meant — while they
+   * are looking at that exact row.
+   */
+  describe("seeding from the URL", () => {
+    /**
+     * The ids here are deliberately NOT the fixtures' first product and first
+     * warehouse. Those are what the default-selection effect picks, so seeding
+     * with them would pass whether or not the URL is read at all — the test
+     * would prove nothing and look like it proved everything.
+     */
+    it("opens on the pair the link names, not on the first of each", async () => {
+      searchParams = new URLSearchParams(
+        "productId=p9&warehouseId=wh9",
+      );
+      mockHappyPath([movement()], []);
+
+      renderWithAuth(<StockCardScreen />);
+
+      await waitFor(() =>
+        expect(stockMovementService.list).toHaveBeenCalledWith(
+          expect.objectContaining({ productId: "p9", warehouseId: "wh9" }),
+        ),
+      );
+    });
+
+    // Without params the screen keeps its old behaviour exactly: the first
+    // warehouse and product fill an empty selection.
+    it("falls back to the first of each when the URL says nothing", async () => {
+      mockHappyPath([movement()], []);
+
+      renderWithAuth(<StockCardScreen />);
+
+      // The default-selection effect fills an EMPTY selection with the first
+      // warehouse and product — unchanged behaviour, pinned so the URL seeding
+      // above cannot quietly replace it.
+      await waitFor(() =>
+        expect(stockMovementService.list).toHaveBeenCalledWith(
+          expect.objectContaining({
+            warehouseId: WAREHOUSE,
+            productId: PRODUCT,
+          }),
+        ),
+      );
+    });
+  });
+
   it("renders the balance the API computed, without recomputing it", async () => {
     mockHappyPath(
       [

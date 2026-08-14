@@ -17,6 +17,7 @@ import { ApiError } from "@/services/api-error";
 import { productBatchService } from "@/services/productBatch.service";
 import { formatMoney, formatQty } from "@/utils/decimal";
 import { exportToXlsx, type XlsxColumn } from "@/utils/xlsx";
+import { ConsignmentProductsTable } from "@/features/purchasing";
 import type { SupplierConsignmentRow } from "@/types/api";
 
 /**
@@ -110,6 +111,19 @@ export function ConsignmentScreen() {
         <Tile label="Lot di gudang" value={String(totalLots)} />
         <Tile label="Nilai titipan" value={formatMoney(totalValue)} />
       </div>
+
+      {/*
+        THE DRILL-DOWN, and it stays on this screen rather than linking away.
+        "Which of their goods" is the next question after "how much", and
+        bouncing the reader into a supplier page for it costs them the
+        cross-supplier context they came here for.
+      */}
+      <Card
+        title="Semua produk titipan"
+        description="Setiap produk yang masih di gudang, dari semua supplier — paling bernilai di atas."
+      >
+        <ConsignmentProductsTable showSupplier />
+      </Card>
 
       <Card title="Per supplier">
         <div className="mb-4 flex justify-end">

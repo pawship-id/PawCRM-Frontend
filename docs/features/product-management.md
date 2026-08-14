@@ -318,6 +318,20 @@ Prices and quantities are decimal **strings** end to end, never JSON numbers.
 Arithmetic goes through `utils/decimal.ts` (`toMinor`, `sumDecimals`,
 `multiplyDecimals`); nothing parses them at the type boundary.
 
+## Each warehouse row links to its stock card
+
+PCR-010 asks for the movement history on the detail. The link carries **both** the product
+and the warehouse, because the stock card is a ledger of that pair — one naming only the
+product would land the user on a screen still asking which shelf, while they are looking at
+the row.
+
+Withheld in two cases, for two different reasons:
+
+| | |
+| --- | --- |
+| no `stockMovements:read` | a link that leads to access-denied is worse than no link |
+| a `parent` or a `bundle` | neither owns a ledger — the quantity beside it is its variants' or its components', so the card would open empty and read as a bug in the ledger rather than a property of the type |
+
 ## Tests
 
 - `tests/ProductsScreen.test.tsx` — the list against a mocked service: the

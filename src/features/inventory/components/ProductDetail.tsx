@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import dynamic from "next/dynamic";
 
-import { Can } from "@/features/permissions";
+import { Can, usePermissions } from "@/features/permissions";
 import { cn } from "@/lib/utils";
 import {
   formatMoney,
@@ -137,6 +137,7 @@ function accountLabel(
  * arrangement the catalogue list uses, and for the same reason.
  */
 export function ProductDetail({ productId }: { productId: string }) {
+  const { can } = usePermissions();
   const { product, variants, parent, loading, error } =
     useProductDetail(productId);
   // Inactive locations included: a closed warehouse still owns the stock it
@@ -509,6 +510,7 @@ export function ProductDetail({ productId }: { productId: string }) {
             rows={rows}
             warehouseId={warehouseId}
             warehouses={lookups.warehouses}
+            canReadLedger={can("stockMovements", "read")}
           />
 
           {product.productType === "parent" && (
@@ -547,16 +549,26 @@ export function ProductDetail({ productId }: { productId: string }) {
  * different fact from having run out, and the backend draws the same
  * distinction.
  */
+/** The two types that own a ledger of their own — see the link below. */
+const HOLDS_STOCK = ["standalone", "variant"];
+
 function StockByWarehouse({
   product,
   rows,
   warehouseId,
   warehouses,
+  canReadLedger,
 }: {
   product: Product;
   rows: ProductStockRow[];
   warehouseId: string;
   warehouses: Array<{ _id: string; name: string }>;
+  /**
+   * `stockMovements:read`. The stock card route enforces it too, so this only
+   * decides whether the link is offered — a link that leads to access-denied is
+   * worse than no link.
+   */
+  canReadLedger: boolean;
 }) {
   const visible =
     warehouseId === ALL
@@ -589,6 +601,8 @@ function StockByWarehouse({
                 <th className="py-2 text-right font-medium">
                   {product.productType === "bundle" ? "Bisa dibuat" : "Stok"}
                 </th>
+                {/* Empty header for the per-row link column. */}
+                <th className="py-2 pl-4" />
               </tr>
             </thead>
             <tbody>
@@ -612,6 +626,27 @@ function StockByWarehouse({
                   >
                     {formatQty(row.qty)}{" "}
                     <span className="text-xs text-muted">{product.unit}</span>
+                  </td>
+                  <td className="py-2 pl-4 text-right">
+                    {/*
+                      PER ROW, carrying BOTH ids — the stock card is a ledger of
+                      one product at one warehouse, so a link naming only the
+                      product would land the user on a screen still asking them
+                      which shelf they meant. Which is the whole friction this
+                      closes: they are looking at the row already.
+
+                      Hidden on a `parent` and a `bundle`: neither holds stock of
+                      its own, so neither has a ledger — the quantity beside it is
+                      its variants' or its components'.
+                    */}
+                    {canReadLedger && HOLDS_STOCK.includes(product.productType) && (
+                      <Link
+                        href={`/dashboard/inventory/stock-card?productId=${product._id}&warehouseId=${String(row.warehouseId)}`}
+                        className="text-xs whitespace-nowrap text-primary hover:underline"
+                      >
+                        Kartu stok →
+                      </Link>
+                    )}
                   </td>
                 </tr>
               ))}

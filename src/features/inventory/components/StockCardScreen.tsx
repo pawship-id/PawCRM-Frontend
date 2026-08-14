@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 import { Alert, Card, Spinner } from "@/components";
 import { usePermissions } from "@/features/permissions";
@@ -89,7 +90,24 @@ export function StockCardScreen() {
   const { can } = usePermissions();
   const mayReadBatches = can("productBatches", "read");
 
-  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  /**
+   * The URL seeds the first view, so a product detail can link straight here.
+   *
+   * A `useState` INITIALISER, not an effect: the pair arrives with the first
+   * render, and seeding it afterwards would show one product's ledger for a
+   * frame before swapping to another's — and would fight the default-selection
+   * effect below, which exists to fill an EMPTY selection.
+   *
+   * The URL is read ONCE and then ignored. After this the filters are the user's
+   * to change, and rewriting the address bar on every dropdown would put a
+   * dozen entries in their back button for one screen.
+   */
+  const searchParams = useSearchParams();
+  const [filters, setFilters] = useState<Filters>(() => ({
+    ...EMPTY_FILTERS,
+    productId: searchParams.get("productId") ?? EMPTY_FILTERS.productId,
+    warehouseId: searchParams.get("warehouseId") ?? EMPTY_FILTERS.warehouseId,
+  }));
   const [page, setPage] = useState(1);
   const [refreshKey, setRefreshKey] = useState(0);
   const [tab, setTab] = useState<Tab>("ledger");

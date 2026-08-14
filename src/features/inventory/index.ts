@@ -18,3 +18,16 @@ export { OpnameSheet } from "./components/OpnameSheet";
 export { OpnameStatusBadge } from "./components/OpnameStatusBadge";
 export { StockAdjustmentForm } from "./components/StockAdjustmentForm";
 export { StockTransferForm } from "./components/StockTransferForm";
+
+/**
+ * The two stock alerts, exported because the DASHBOARD renders them too.
+ *
+ * They were internal while only the inventory hub used them. PCR-013 and
+ * PCR-018 both put these cards on the dashboard specifically, so a second
+ * feature now consumes them — and a second copy of "what counts as low" is
+ * exactly the drift this barrel exists to prevent. Both take an `enabled` flag
+ * so the caller's permission check decides whether the request is made at all.
+ */
+export { useLowStockAlert } from "./hooks/useLowStockAlert";
+export type { LowStockProduct } from "./hooks/useLowStockAlert";
+export { useExpiringAlert } from "./hooks/useExpiringAlert";

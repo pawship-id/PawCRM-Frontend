@@ -272,4 +272,86 @@ describe("ProductDetail", () => {
 
     expect(await screen.findByText("Product not found")).toBeInTheDocument();
   });
+
+  /**
+   * The friction this closes: the stock card is a ledger of ONE product at ONE
+   * warehouse, and the user is already looking at that row. Without the link
+   * they land on a screen still asking them which pair they meant.
+   */
+  describe("the stock card link", () => {
+    it("carries both ids, per warehouse row", async () => {
+      mockLookups();
+      jest.spyOn(productService, "getById").mockResolvedValue(
+        makeProduct({
+          stockByWarehouse: [
+            { warehouseId: WAREHOUSE, qty: "8.0000" },
+            { warehouseId: OTHER_WAREHOUSE, qty: "4.0000" },
+          ],
+        }),
+      );
+
+      renderWithAuth(<ProductDetail productId="p1" />);
+      await screen.findByText("Shampoo Anjing");
+
+      const links = screen.getAllByRole("link", { name: /kartu stok/i });
+      expect(links).toHaveLength(2);
+      expect(links[0]).toHaveAttribute(
+        "href",
+        `/dashboard/inventory/stock-card?productId=p1&warehouseId=${WAREHOUSE}`,
+      );
+      expect(links[1]).toHaveAttribute(
+        "href",
+        `/dashboard/inventory/stock-card?productId=p1&warehouseId=${OTHER_WAREHOUSE}`,
+      );
+    });
+
+    // A link that leads to access-denied is worse than no link.
+    it("is withheld from a role without stockMovements:read", async () => {
+      mockLookups();
+      jest.spyOn(productService, "getById").mockResolvedValue(
+        makeProduct({
+          stockByWarehouse: [{ warehouseId: WAREHOUSE, qty: "8.0000" }],
+        }),
+      );
+
+      renderWithAuth(<ProductDetail productId="p1" />, {
+        isSuperAdmin: false,
+        permissions: [{ feature: "products", actions: ["read"] }],
+      });
+      await screen.findByText("Shampoo Anjing");
+
+      expect(
+        screen.queryByRole("link", { name: /kartu stok/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    /**
+     * Neither type owns a ledger: a parent's quantity is its variants' and a
+     * bundle's is its components'. A link would open an empty stock card and
+     * read as a bug in the ledger rather than as a property of the type.
+     */
+    it("is absent on a parent, which holds no stock of its own", async () => {
+      mockLookups();
+      const parent = makeProduct({
+        productType: "parent",
+        sellPrice: null,
+        // A parent's quantity is reported as its variants' totals, which is
+        // exactly the number a stock card could not explain.
+        variantStock: [{ warehouseId: WAREHOUSE, qty: "8.0000" }],
+      });
+      jest.spyOn(productService, "getById").mockResolvedValue(parent);
+      // The detail fetches the family for a parent; without this the screen
+      // renders "Unable to reach the server" instead of the product.
+      jest
+        .spyOn(productService, "listVariants")
+        .mockResolvedValue({ parent, items: [] });
+
+      renderWithAuth(<ProductDetail productId="p1" />);
+      await screen.findByText("Shampoo Anjing");
+
+      expect(
+        screen.queryByRole("link", { name: /kartu stok/i }),
+      ).not.toBeInTheDocument();
+    });
+  });
 });

@@ -1,5 +1,9 @@
 import { apiClient } from "./api-client";
-import type { PageResult, SupplierConsignmentSummary } from "@/types/api";
+import type {
+  ConsignmentProductsResult,
+  PageResult,
+  SupplierConsignmentSummary,
+} from "@/types/api";
 import type {
   BatchExpirySummary,
   ExpiringBatchListQuery,
@@ -102,6 +106,22 @@ export const productBatchService = {
   consignmentSummary: (query: { supplierId?: string } = {}) =>
     apiClient.get<SupplierConsignmentSummary>(
       "/product-batches/consignment-summary",
+      { query: { supplierId: query.supplierId } },
+    ),
+
+  /**
+   * GET /product-batches/consignment-products — the same stock, per product.
+   *
+   * The question that follows `consignmentSummary` every time: it reports how
+   * MANY of a vendor's products are still here, this reports WHICH. A supplier
+   * phoning about their goods is not asking for a count.
+   *
+   * Same filter shape as the summary on purpose, so a screen drilling from one
+   * to the other passes its `supplierId` straight through.
+   */
+  consignmentProducts: (query: { supplierId?: string } = {}) =>
+    apiClient.get<ConsignmentProductsResult>(
+      "/product-batches/consignment-products",
       { query: { supplierId: query.supplierId } },
     ),
 

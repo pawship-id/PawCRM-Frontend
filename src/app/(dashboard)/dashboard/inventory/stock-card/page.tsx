@@ -1,10 +1,25 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 
-import { Breadcrumb } from "@/components";
+import { Breadcrumb, Spinner } from "@/components";
 import { StockCardScreen } from "@/features/inventory";
 import { RequirePermission } from "@/features/permissions";
 
 export const metadata: Metadata = { title: "Kartu stok · PawShip" };
+
+/**
+ * What the prerendered HTML shows while the search-param-dependent screen
+ * hydrates. A spinner rather than a skeleton of the filter bar: the wait is the
+ * length of one hydration, and a skeleton that flashes into a different layout
+ * is more distracting than a plain one.
+ */
+function StockCardFallback() {
+  return (
+    <div className="flex items-center justify-center gap-2 rounded-xl border border-border bg-surface p-16 text-sm text-muted">
+      <Spinner /> Menyiapkan kartu stok…
+    </div>
+  );
+}
 
 export default function StockCardPage() {
   return (
@@ -29,7 +44,20 @@ export default function StockCardPage() {
           covers direct URL entry. The batch tab carries its own check — the two
           halves of the screen are two permissions. */}
       <RequirePermission feature="stockMovements">
-        <StockCardScreen />
+        {/*
+          SUSPENSE IS REQUIRED, not stylistic. `StockCardScreen` reads
+          `?productId=&warehouseId=` through `useSearchParams` so a product
+          detail can link straight into one pair's ledger — and a statically
+          prerendered route that calls it without a boundary FAILS THE
+          PRODUCTION BUILD.
+
+          Worth stating because the failure hides: in development every route is
+          rendered on demand, so `useSearchParams` never suspends and this works
+          perfectly right up until `next build`.
+        */}
+        <Suspense fallback={<StockCardFallback />}>
+          <StockCardScreen />
+        </Suspense>
       </RequirePermission>
     </div>
   );

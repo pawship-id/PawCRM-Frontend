@@ -15,6 +15,7 @@ import type { GoodsReceiptListRow } from "@/types/api";
 
 import { useSupplier } from "../hooks/useSupplier";
 import { useSupplierSummaries } from "../hooks/useSupplierSummaries";
+import { ConsignmentProductsTable } from "./ConsignmentProductsTable";
 import { SupplierStatusBadge } from "./SupplierStatusBadge";
 import { SupplierTypeBadge } from "./SupplierTypeBadge";
 
@@ -206,6 +207,19 @@ export function SupplierDetail({ supplierId }: { supplierId: string }) {
                   {consigned.productCount}
                 </dd>
               </dl>
+
+              {/*
+                THE COUNT ABOVE WAS THE WHOLE ANSWER UNTIL NOW, and it is not one
+                a vendor can act on: "3 produk" does not tell them which of their
+                goods to collect, restock or write off. The list is what the
+                phone call is actually about.
+              */}
+              <div className="mt-4 border-t border-border pt-3">
+                <p className="mb-2 text-xs font-medium text-foreground">
+                  Produk yang dititipkan
+                </p>
+                <ConsignmentProductsTable supplierId={supplierId} />
+              </div>
             </Card>
           )}
         </div>

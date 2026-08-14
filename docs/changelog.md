@@ -7,6 +7,78 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — The last four MVP gaps in Inventory & Purchasing
+
+Frontend half of backend `0.38.0`. Four acceptance criteria that were never built, all
+small, all found by re-auditing the PRD against the code rather than against memory.
+
+### A supplier can be told WHICH of their goods are here
+
+PCR-015 asks for "produk yang di-titip + qty remaining". The supplier screen showed
+`productCount: 3` — a number a vendor cannot act on. They phone to ask which items to
+collect, restock or write off.
+
+`ConsignmentProductsTable` lists them, and is **shared by two screens**: the supplier
+detail passes a `supplierId`, the consignment report drills in without leaving the page.
+A table per screen would be two ideas of "still on the shelf" that disagree the first
+time either changes. It lives in `features/purchasing` because consigned stock is a
+vendor relationship; reports borrows it.
+
+A null `nearestExpiry` renders as an em dash, never a date — for dry goods that is the
+ordinary case, and "does not expire" versus "expires today" are opposite conversations.
+
+### The stock card is reachable from the product you are looking at
+
+PCR-010 asks for the movement history on the product detail. The screen existed; nothing
+linked to it, so the user re-picked the warehouse and product they were already looking at.
+
+Each per-warehouse row now carries a link with **both ids**, and `StockCardScreen` seeds
+its first filters from `?productId=&warehouseId=`. Absent params leave the old
+first-of-each behaviour exactly as it was.
+
+> **`useSearchParams` needs a `Suspense` boundary or `next build` fails** — and the failure
+> hides: in development every route renders on demand, so it never suspends and this works
+> perfectly right up until the production build. The page wraps the screen; the plan
+> flagged this as a risk to verify and it was real.
+
+The link is withheld on a `parent` and a `bundle`: neither owns a ledger, so it would open
+an empty stock card and read as a bug rather than as a property of the type.
+
+### The dashboard shows the two alerts PCR-013 and PCR-018 put there
+
+Both cards worked — on the inventory hub, one click further in than the screen somebody
+opens every morning. The dashboard itself still showed four tiles reading "—" and "No data
+yet".
+
+Restock and expiry now carry real counts, each gated on the grant its own endpoint
+enforces, and **a role without the grant makes no request at all** — not a request that
+403s. Zero is rendered as a real, reassuring answer rather than hiding the tile. A failure
+is never rendered as zero: a zero that is really an error is the most dangerous number a
+landing page can show, because nobody goes and looks.
+
+The two tiles with no data source (bookings, POS sales) are badged **Segera** with the
+reason, the same treatment the Sales card gets on the reports hub. A dash reads as a
+number that failed to load.
+
+### Stock opname can be exported
+
+PCR-014's "riwayat opname bisa dilihat + export Excel". Two exports, because the AC is
+ambiguous and only one of them is what an accountant reconciles:
+
+- **the history**, from the list — one row per counting session, page-scoped and labelled;
+- **the lines**, from a sheet — one row per product, which is how a variance is actually
+  investigated.
+
+The per-sheet export sits **outside** the draft-only action block: a submitted sheet is the
+one that gets reconciled, and it is exactly the state with no other actions on screen.
+Uncounted lines are kept and marked, because "we did not get to it" is a finding.
+
+Signs are preserved and typed as numbers on both. A shrinkage is negative in the ledger and
+must be negative in the file, or the column cannot be summed to "what did counting cost us
+this quarter".
+
+---
+
 ## [Unreleased] — Reports has a hub, three screens, and one honest gap
 
 Frontend half of backend `0.37.0`. See `docs/features/reports.md`.

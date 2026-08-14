@@ -116,6 +116,12 @@ beforeEach(() => {
     totalValue: "0",
     totalLots: 0,
   });
+  // The drill-down table this screen embeds fetches its own rows.
+  asMock(productBatchService.consignmentProducts).mockResolvedValue({
+    items: [],
+    totalValue: "0",
+    totalLots: 0,
+  });
 });
 
 describe("ReportsHub", () => {

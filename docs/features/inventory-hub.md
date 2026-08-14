@@ -67,6 +67,21 @@ behind it.
 - **Join the catalogue.** `productName`, `productSku` and `warehouseName` arrive resolved on
   the lot rows.
 
+## The two alerts also live on the dashboard now
+
+PCR-013 and PCR-018 put the restock badge and the expiry card on the **dashboard**
+specifically — the screen somebody opens first every morning, one click out from here.
+
+`useLowStockAlert` and `useExpiringAlert` are therefore exported from
+`features/inventory` and consumed by `DashboardOverview` as well. A second copy of "what
+counts as low" is exactly the drift the barrel exists to prevent. Both take an `enabled`
+flag, so each caller's permission check decides whether the request is made at all rather
+than making one that 403s.
+
+The hub keeps its versions: they list the five most urgent rows, where the dashboard shows
+only the count. "Is there anything to do today" and "what, exactly" are two questions, and
+the hub is where the second one is answered.
+
 ## Files
 
 ```

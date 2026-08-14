@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { ApiError } from "@/services/api-error";
 import { stockOpnameService } from "@/services/stockOpname.service";
 import type { OpnameItem } from "@/types/inventory";
+import { exportToXlsx, type XlsxColumn } from "@/utils/xlsx";
 import { formatMoney, formatQty, toMinor } from "@/utils/decimal";
 
 import { useOpnamePreview } from "../hooks/useOpnamePreview";
@@ -50,6 +51,31 @@ import { OpnameStatusBadge } from "./OpnameStatusBadge";
  * the indicator says so explicitly, because an auto-save nobody can see is one
  * nobody trusts.
  */
+/**
+ * One count sheet's lines, as exported columns.
+ *
+ * SIGNS ARE PRESERVED on both difference columns. A shortage is negative in the
+ * ledger and must be negative here — an export that moved the direction into a
+ * separate "jenis selisih" column would be one nobody can sum to "what did this
+ * count cost us", which is the whole reason the file is opened.
+ */
+const SHEET_EXPORT_COLUMNS: XlsxColumn<OpnameItem>[] = [
+  { header: "SKU", value: (item) => item.productSku ?? "" },
+  { header: "Produk", value: (item) => item.productName ?? "" },
+  { header: "Satuan", value: (item) => item.productUnit ?? "" },
+  { header: "Qty sistem", value: (item) => item.systemQty, type: "number" },
+  { header: "Qty fisik", value: (item) => item.physicalQty, type: "number" },
+  { header: "Selisih qty", value: (item) => item.diffQty, type: "number" },
+  { header: "HPP saat opname", value: (item) => item.hppAtOpname, type: "number" },
+  { header: "Selisih nilai", value: (item) => item.diffValue, type: "number" },
+  // The column that tells "not counted yet" from "counted, and it matched" —
+  // both post nothing, and only one of them means the sheet is unfinished.
+  { header: "Dihitung", value: (item) => (item.countedAt ? "ya" : "belum") },
+  { header: "Kode batch", value: (item) => item.batchCode ?? "" },
+  { header: "Kedaluwarsa", value: (item) => item.expiryDate ?? "", type: "date" },
+  { header: "Catatan", value: (item) => item.notes ?? "" },
+];
+
 export function OpnameSheet({ opnameId }: { opnameId: string }) {
   const router = useRouter();
   const { can } = usePermissions();
@@ -81,6 +107,7 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
   const [confirming, setConfirming] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   if (loading) {
     return (
@@ -164,6 +191,31 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
     }
   }
 
+  /**
+   * The sheet's LINES, as a workbook.
+   *
+   * `hppAtOpname` is exported alongside the value because a variance is argued
+   * about in two currencies at once — "twelve bottles short" and "Rp 360.000
+   * short" — and a file with only the second cannot be checked against a shelf.
+   *
+   * Uncounted lines are INCLUDED, not filtered out. A line nobody reached posts
+   * nothing, but "we did not get to it" is a finding in its own right, and the
+   * `Dihitung` column is what tells it from "counted, and it matched".
+   */
+  const exportSheet = async () => {
+    setExporting(true);
+    try {
+      await exportToXlsx(
+        SHEET_EXPORT_COLUMNS,
+        items,
+        `opname-${opname?.opnameNumber ?? "draft"}.xlsx`,
+        { sheetName: "Selisih" },
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6">
       {error && (
@@ -209,6 +261,31 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
           )}
         </div>
       </div>
+
+      {/**
+       * THE EXPORT AN ACCOUNTANT ACTUALLY USES, and it is deliberately outside
+       * the `!done` block below: a SUBMITTED sheet is the one that gets
+       * reconciled, and that is exactly the state with no other actions on
+       * screen. A draft can be exported too — a half-finished count is a useful
+       * thing to hand somebody walking the shelves.
+       *
+       * Per-LINE, unlike the history export on the list screen. The list answers
+       * "which counts happened"; this answers "which products were off, and by
+       * how much" — the question a variance is actually investigated with.
+       */}
+      {items.length > 0 && (
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={exportSheet}
+            disabled={exporting}
+          >
+            {exporting ? <Spinner /> : null}
+            Export selisih (.xlsx)
+          </Button>
+        </div>
+      )}
 
       {!done && items.length > 0 && countedCount < items.length && (
         <Alert variant="info">

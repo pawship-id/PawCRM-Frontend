@@ -1,5 +1,6 @@
 "use client";
 
+import { Button, Spinner } from "@/components";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -33,10 +34,18 @@ export function OpnameToolbar({
   filters,
   warehouses,
   onChange,
+  onExport,
+  exporting = false,
+  canExport = false,
 }: {
   filters: OpnameFilters;
   warehouses: StockWarehouse[];
   onChange: (next: OpnameFilters) => void;
+  /** Absent on a screen that offers no export — the button then does not render. */
+  onExport?: () => void;
+  exporting?: boolean;
+  /** False while the list is empty or loading: an empty workbook helps nobody. */
+  canExport?: boolean;
 }) {
   const set = <K extends keyof OpnameFilters>(
     key: K,
@@ -146,6 +155,24 @@ export function OpnameToolbar({
           className="w-40"
         />
       </div>
+
+      {onExport && (
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={onExport}
+          disabled={exporting || !canExport}
+          className="ml-auto"
+        >
+          {exporting ? <Spinner /> : null}
+          {/*
+            "Halaman ini" said on the button, not in a tooltip. The list is
+            paged, and a file quietly holding 20 of 140 rows is one somebody
+            reconciles against and finds short — the label is what stops that.
+          */}
+          Export halaman ini (.xlsx)
+        </Button>
+      )}
     </div>
   );
 }
