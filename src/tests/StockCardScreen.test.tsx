@@ -8,6 +8,7 @@ import { warehouseService } from "@/services/warehouse.service";
 import { stockMovementService } from "@/services/stockMovement.service";
 import { productBatchService } from "@/services/productBatch.service";
 import { ApiError } from "@/services/api-error";
+import { csvToXlsx, saveBlob } from "@/utils/xlsx";
 import type { PageResult, Warehouse } from "@/types/api";
 import type {
   Product,
@@ -15,6 +16,17 @@ import type {
   StockMovement,
   StockMovementPage,
 } from "@/types/inventory";
+
+/**
+ * The workbook writer, mocked. This screen owns the hand-off to it, not the
+ * file it produces — that belongs to `xlsx.test.ts`, and loading the real
+ * 500 KB SheetJS build in every suite that merely offers an export button is
+ * what made the parallel run start timing out in unrelated places.
+ */
+jest.mock("@/utils/xlsx", () => ({
+  csvToXlsx: jest.fn(async () => new Blob(["workbook"])),
+  saveBlob: jest.fn(),
+}));
 
 /**
  * The stock card, against mocked services.
@@ -335,21 +347,38 @@ describe("StockCardScreen", () => {
     );
   });
 
-  it("exports the filters, and saves what the server sends back", async () => {
+  /**
+   * The server still streams CSV; the BUTTON now saves a typed `.xlsx`. A CSV
+   * carries no types, so every quantity and date in it is text the recipient's
+   * Excel re-guesses on open, differently depending on their locale.
+   *
+   * `@/utils/xlsx` is MOCKED, and deliberately: what this screen owns is the
+   * hand-off — the right filters out, the server's CSV in, the right column
+   * types along with it. Whether that produces a valid workbook is
+   * `xlsx.test.ts`'s job, and loading the real 500 KB writer in every suite that
+   * merely offers an export button is what made the parallel run start timing
+   * out elsewhere.
+   */
+  it("exports the filters, and hands the server's CSV to the workbook writer", async () => {
     mockHappyPath([movement()], []);
-    const blob = new Blob(["Waktu,Tipe\r\n"], { type: "text/csv" });
+
+    const csv = "Waktu,Tipe,Saldo\r\n2026-08-14T00:00:00.000Z,adjustment,12\r\n";
+    // jsdom's Blob implements no `text()`, which browsers have had since 2019.
+    // Polyfilled on the instance rather than worked around in the component.
+    const blob = Object.assign(new Blob([csv], { type: "text/csv" }), {
+      text: () => Promise.resolve(csv),
+    }) as Blob;
+
     const exportCall = jest
       .spyOn(stockMovementService, "export")
       .mockResolvedValue({ blob, filename: "kartu-stok.csv" });
 
-    const createObjectURL = jest.fn(() => "blob:url");
-    const revokeObjectURL = jest.fn();
-    Object.assign(URL, { createObjectURL, revokeObjectURL });
-
     const user = userEvent.setup();
     renderWithAuth(<StockCardScreen />);
 
-    await user.click(await screen.findByRole("button", { name: /Export CSV/ }));
+    await user.click(
+      await screen.findByRole("button", { name: /Export \.xlsx/ }),
+    );
 
     await waitFor(() =>
       expect(exportCall).toHaveBeenCalledWith(
@@ -359,9 +388,17 @@ describe("StockCardScreen", () => {
         }),
       ),
     );
-    // Revoked in the same turn: an object URL left behind pins the whole file in
-    // memory for the life of the tab.
-    expect(revokeObjectURL).toHaveBeenCalledWith("blob:url");
+
+    // The CSV the server sent, plus the types that turn its numeric columns into
+    // numbers the recipient can sum.
+    await waitFor(() => expect(csvToXlsx).toHaveBeenCalled());
+    expect(csvToXlsx).toHaveBeenCalledWith(
+      csv,
+      expect.objectContaining({
+        types: expect.objectContaining({ Saldo: "number" }),
+      }),
+    );
+    expect(saveBlob).toHaveBeenCalledWith(expect.anything(), "kartu-stok.xlsx");
   });
 
   it("surfaces an export failure instead of saving an error as a file", async () => {
@@ -373,7 +410,9 @@ describe("StockCardScreen", () => {
     const user = userEvent.setup();
     renderWithAuth(<StockCardScreen />);
 
-    await user.click(await screen.findByRole("button", { name: /Export CSV/ }));
+    await user.click(
+      await screen.findByRole("button", { name: /Export \.xlsx/ }),
+    );
 
     // A plain anchor to the endpoint would have downloaded a file containing
     // {"success":false}, which is the worst possible outcome.

@@ -22,6 +22,8 @@ import {
   useStockCard,
   type StockCardFilters as Filters,
 } from "../hooks/useStockCard";
+import { csvToXlsx, saveBlob } from "@/utils/xlsx";
+
 import { useStockCardLookups } from "../hooks/useStockCardLookups";
 import { useStockCardSummary } from "../hooks/useStockCardSummary";
 import { BatchLotTable } from "./BatchLotTable";
@@ -62,6 +64,26 @@ type Tab = "ledger" | "batches";
  * error where its data would be, never an empty table that reads as "no stock
  * movements ever happened here".
  */
+/**
+ * How the exported columns are typed, keyed by the Indonesian header the SERVER
+ * writes (see `EXPORT_COLUMNS` in its stockMovement controller).
+ *
+ * BY HEADER NAME, never by position: the server owns the column list, so one
+ * added there flows through as text and nothing breaks. A positional map would
+ * silently retype every column after the new one.
+ *
+ * "Waktu" is deliberately absent. The server writes a full ISO timestamp, and
+ * this module's date type reads only the date half — typing it would quietly
+ * throw the time away, and a stock card read to settle a dispute is exactly
+ * where the time matters. Left as text, it is complete.
+ */
+const STOCK_CARD_EXPORT_TYPES = {
+  Kedaluwarsa: "date",
+  "Masuk/keluar": "number",
+  Saldo: "number",
+  "HPP saat itu": "number",
+} as const;
+
 export function StockCardScreen() {
   const lookups = useStockCardLookups();
   const { can } = usePermissions();
@@ -112,17 +134,24 @@ export function StockCardScreen() {
   const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
 
   /**
-   * Saves the CSV the API streams.
+   * Saves the ledger as a typed `.xlsx`.
    *
-   * The blob is fetched rather than linked to, so a 403 arrives as an error the
-   * screen can show. An anchor pointing at the endpoint would be shorter and
-   * would silently save a file containing an error envelope.
+   * THE SERVER STILL STREAMS CSV and that has not changed — the endpoint is
+   * unchanged, and it remains the escape hatch for anyone hitting it directly.
+   * What changed is the file the BUTTON produces: a CSV carries no types, so
+   * every quantity and date in it is text the recipient's Excel re-guesses on
+   * open, differently depending on their locale. `csvToXlsx` re-types the
+   * columns by header name on the way through.
+   *
+   * FETCHED, NOT LINKED TO, so a 403 arrives as an error the screen can show. An
+   * anchor pointing at the endpoint would be shorter and would silently save a
+   * file containing an error envelope.
    */
-  const exportCsv = useCallback(async () => {
+  const exportXlsx = useCallback(async () => {
     setExporting(true);
     setExportError(null);
     try {
-      const { blob, filename } = await stockMovementService.export({
+      const { blob } = await stockMovementService.export({
         productId: filters.productId,
         warehouseId: filters.warehouseId,
         movementType: filters.movementType || undefined,
@@ -130,15 +159,12 @@ export function StockCardScreen() {
         to: filters.to ? `${filters.to}T23:59:59.999Z` : undefined,
       });
 
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = filename;
-      anchor.click();
-      // Revoked immediately: the click has already handed the blob to the
-      // browser's download manager, and an object URL left behind pins the whole
-      // file in memory for the life of the tab.
-      URL.revokeObjectURL(url);
+      const workbook = await csvToXlsx(await blob.text(), {
+        types: STOCK_CARD_EXPORT_TYPES,
+        sheetName: "Kartu Stok",
+      });
+
+      saveBlob(workbook, "kartu-stok.xlsx");
     } catch (err) {
       setExportError(
         err instanceof ApiError ? err.message : "Export gagal. Coba lagi.",
@@ -200,7 +226,7 @@ export function StockCardScreen() {
             exporting={exporting}
             onChange={patchFilters}
             onRefresh={refresh}
-            onExport={exportCsv}
+            onExport={exportXlsx}
           />
         </div>
       </Card>

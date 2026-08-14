@@ -7,6 +7,89 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Reports has a hub, three screens, and one honest gap
+
+Frontend half of backend `0.37.0`. See `docs/features/reports.md`.
+
+`/dashboard/reports` was a placeholder. It is now a hub of seven cards: three lead
+to screens built here, three lead to screens that already existed, and one is
+disabled with the reason on it.
+
+### Half of them are links, and that is the design
+
+The stock card, the batch list and the opname history are complete screens with
+their own filters and exports. Building "report" versions would have been the
+fastest possible way to end up with two screens that answer the same question and
+slowly stop agreeing. Reports is a table of contents for them, plus the three that
+had no home: **Stok per Cabang**, **Stok Minim**, **Konsinyasi Outstanding**.
+
+### Permissions are per card, not per page
+
+The hub carries no `RequirePermission` — each card names the grant its own
+destination enforces (`products:read`, `stockMovements:read`,
+`productBatches:read`). Gating the page on one feature would either hide it from
+people who can read half of it, or show a page whose links all lead to 403s. A
+role holding nothing gets a sentence rather than an empty grid.
+
+### The sales card is shown and disabled
+
+There is no POS and no invoice, so there is no sales data. The card renders greyed
+and badged **Segera** with the reason on it. A hidden card leaves an owner
+wondering whether the feature exists; a dead one says what blocks it.
+
+### Stok per Cabang computes almost nothing
+
+`totals` covers the entire filtered set and is rendered as it arrives — summing
+the page would produce a figure that changes as you page, looks like an answer and
+is not one. A caption says which set the tiles count, because three big numbers
+above a paged table are otherwise read as its sum. Per-branch subtotals are
+labelled "subtotal halaman ini".
+
+A warehouse with no branch groups under **"Tanpa cabang"** rather than
+disappearing: `defaultBranchId` is nullable by design, and forgotten stock in a
+location nobody visits is exactly what the report is for.
+
+A missing cost basis renders as an em dash, never `Rp 0`.
+
+### Export is `.xlsx` everywhere, through one writer
+
+`utils/xlsx.ts` is the only place that writes a workbook. Columns are typed — a
+quantity is a number the reader can sum, a date is a date they can sort, and a SKU
+of digits keeps its leading zero because **text is the default**.
+
+Two routes in: big exports (Stok per Cabang, Kartu Stok) take the server's
+streaming CSV and re-type it by **header name, never by position**; small ones
+build from rows already in memory. The big ones do not page the JSON endpoint —
+`limit` caps at 100, so a six-thousand-row catalogue would be sixty round trips.
+
+**The stock card's button now saves `.xlsx`; its endpoint is unchanged.** `Waktu`
+is deliberately not typed as a date — the server writes a full ISO timestamp and
+the date type reads only the date half, so typing it would throw the time away,
+and a stock card read to settle a dispute is where the time matters.
+
+### `utils/csv.ts`
+
+The CSV scanner moved out of the inventory feature, which is now the second thing
+that reads CSV. `sheet.ts` re-exports it so the import parser and the exports
+cannot drift into different ideas of what a quoted field is.
+
+### Two things the test run taught us
+
+**Mock the workbook writer in screen suites.** Loading the real 500 KB SheetJS
+build in every suite that merely offers an export button slowed the parallel run
+from 29s to 97s and timed out **seventeen tests in unrelated suites**. What a
+screen owns is the hand-off — which rows, through which endpoint, with which
+column types — and `xlsx.test.ts` owns the bytes.
+
+**`testTimeout` is now 15s, against Jest's default 5.** Not a workaround for a slow
+test: a guard against the result depending on how busy the machine is.
+`ProductForm.test.tsx` is 44 `userEvent` tests and ~27 seconds, and its longest
+case sat close enough to five seconds that adding suites elsewhere pushed it over —
+a failure that says nothing about the code under test. A ceiling still worth
+having, so a genuinely hung test fails rather than running until CI is killed.
+
+---
+
 ## [Unreleased] — A spreadsheet is a way into the catalogue
 
 Frontend half of backend `0.36.0`. See `docs/features/product-import.md`.

@@ -157,7 +157,7 @@ export function StockCardFilters({
           </Button>
           <Button onClick={onExport} disabled={disabled || exporting}>
             <Download />
-            {exporting ? "Menyiapkan…" : "Export CSV"}
+            {exporting ? "Menyiapkan…" : "Export .xlsx"}
           </Button>
         </div>
       </div>
