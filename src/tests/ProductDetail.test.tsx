@@ -5,6 +5,8 @@ import { ProductDetail } from "@/features/inventory";
 import { productService } from "@/services/product.service";
 import { categoryService } from "@/services/category.service";
 import { warehouseService } from "@/services/warehouse.service";
+import { branchService } from "@/services/branch.service";
+import { productBatchService } from "@/services/productBatch.service";
 import { ApiError } from "@/services/api-error";
 import type { Warehouse } from "@/types/api";
 import type { Product } from "@/types/inventory";
@@ -36,12 +38,20 @@ function makeProduct(overrides: Partial<Product> = {}): Product {
   };
 }
 
-function warehouse(id: string, name: string, isActive = true): Warehouse {
+const BRANCH = "b1";
+const OTHER_BRANCH = "b2";
+
+function warehouse(
+  id: string,
+  name: string,
+  isActive = true,
+  defaultBranchId: string | null = null,
+): Warehouse {
   return {
     _id: id,
     tenantId: "t1",
     name,
-    defaultBranchId: null,
+    defaultBranchId,
     address: null,
     location: { lat: null, lng: null, source: "manual" },
     picName: null,
@@ -54,7 +64,11 @@ function warehouse(id: string, name: string, isActive = true): Warehouse {
   };
 }
 
-function mockLookups() {
+/**
+ * `branchless` puts the SECOND warehouse outside any branch — a bazaar location,
+ * which PCR-019 makes a legitimate state rather than bad data.
+ */
+function mockLookups({ branchless = false } = {}) {
   jest.spyOn(categoryService, "list").mockResolvedValue({
     items: [
       {
@@ -69,10 +83,22 @@ function mockLookups() {
     ],
     pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
   });
+  jest.spyOn(branchService, "list").mockResolvedValue({
+    items: [
+      { _id: BRANCH, name: "Cabang Timur" },
+      { _id: OTHER_BRANCH, name: "Cabang Barat" },
+    ],
+    pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
+  } as never);
   return jest.spyOn(warehouseService, "list").mockResolvedValue({
     items: [
-      warehouse(WAREHOUSE, "Gudang Pusat"),
-      warehouse(OTHER_WAREHOUSE, "Gudang Cabang", false),
+      warehouse(WAREHOUSE, "Gudang Pusat", true, BRANCH),
+      warehouse(
+        OTHER_WAREHOUSE,
+        "Gudang Cabang",
+        false,
+        branchless ? null : OTHER_BRANCH,
+      ),
     ],
     pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
   });
@@ -271,6 +297,155 @@ describe("ProductDetail", () => {
     renderWithAuth(<ProductDetail productId="p1" />);
 
     expect(await screen.findByText("Product not found")).toBeInTheDocument();
+  });
+
+  /**
+   * PCR-010's "grouped by branch di UI". A warehouse belongs to a branch by soft
+   * default, so the grouping has to survive one belonging to none.
+   */
+  describe("stock grouped by branch", () => {
+    it("puts each warehouse under the branch it belongs to", async () => {
+      mockLookups();
+      jest.spyOn(productService, "getById").mockResolvedValue(
+        makeProduct({
+          stockByWarehouse: [
+            { warehouseId: WAREHOUSE, qty: "8.0000" },
+            { warehouseId: OTHER_WAREHOUSE, qty: "4.0000" },
+          ],
+        }),
+      );
+
+      renderWithAuth(<ProductDetail productId="p1" />);
+      await screen.findByText("Shampoo Anjing");
+
+      expect(await screen.findByText("Cabang Timur")).toBeInTheDocument();
+      expect(screen.getByText("Cabang Barat")).toBeInTheDocument();
+    });
+
+    /**
+     * `defaultBranchId` is nullable by design (PCR-019) — a bazaar warehouse
+     * belongs to none. Dropping it would hide the stock; the heading names it.
+     */
+    it("collects a branchless warehouse under 'Tanpa cabang'", async () => {
+      mockLookups({ branchless: true });
+      jest.spyOn(productService, "getById").mockResolvedValue(
+        makeProduct({
+          stockByWarehouse: [
+            { warehouseId: WAREHOUSE, qty: "8.0000" },
+            { warehouseId: OTHER_WAREHOUSE, qty: "4.0000" },
+          ],
+        }),
+      );
+
+      renderWithAuth(<ProductDetail productId="p1" />);
+      await screen.findByText("Shampoo Anjing");
+
+      expect(await screen.findByText("Tanpa cabang")).toBeInTheDocument();
+      // The row itself survives — that is the point of not dropping it.
+      expect(screen.getByText("Gudang Cabang")).toBeInTheDocument();
+    });
+
+    /**
+     * A grouping that groups nothing is noise: a single-branch tenant would get
+     * a heading above every row saying the same thing.
+     */
+    it("renders no heading when everything is in one branch", async () => {
+      mockLookups();
+      jest.spyOn(productService, "getById").mockResolvedValue(
+        makeProduct({
+          stockByWarehouse: [{ warehouseId: WAREHOUSE, qty: "8.0000" }],
+        }),
+      );
+
+      renderWithAuth(<ProductDetail productId="p1" />);
+      await screen.findByText("Shampoo Anjing");
+
+      expect(screen.queryByText("Cabang Timur")).not.toBeInTheDocument();
+    });
+  });
+
+  /**
+   * PCR-013's "tab Batch + hari ke expired", on the product it is about.
+   */
+  describe("the batch panel", () => {
+    it("lists the lots still holding stock, with their expiry", async () => {
+      mockLookups();
+      jest.spyOn(productService, "getById").mockResolvedValue(
+        makeProduct({
+          hasExpiry: true,
+          stockByWarehouse: [{ warehouseId: WAREHOUSE, qty: "8.0000" }],
+        }),
+      );
+      jest.spyOn(productBatchService, "list").mockResolvedValue({
+        items: [
+          {
+            _id: "b1",
+            batchCode: "RC-2608",
+            warehouseName: "Gudang Pusat",
+            qtyRemaining: "8.0000",
+            expiryDate: "2027-08-01T00:00:00.000Z",
+          },
+        ],
+        pagination: { page: 1, limit: 50, total: 1, totalPages: 1 },
+      } as never);
+
+      renderWithAuth(<ProductDetail productId="p1" />);
+
+      expect(await screen.findByText("RC-2608")).toBeInTheDocument();
+      // Only lots with something left — an emptied one is history the stock card
+      // tells better, with the movement that emptied it.
+      expect(productBatchService.list).toHaveBeenCalledWith(
+        expect.objectContaining({ productId: "p1", hasRemaining: true }),
+      );
+    });
+
+    /**
+     * A product that does not expire still has one internal lot per receipt —
+     * plumbing the API creates so quantities have somewhere to live. Showing it
+     * to somebody who never asked about batches is noise.
+     */
+    it("is absent on a product that does not expire", async () => {
+      mockLookups();
+      jest.spyOn(productService, "getById").mockResolvedValue(
+        makeProduct({
+          hasExpiry: false,
+          stockByWarehouse: [{ warehouseId: WAREHOUSE, qty: "8.0000" }],
+        }),
+      );
+      const list = jest.spyOn(productBatchService, "list");
+
+      renderWithAuth(<ProductDetail productId="p1" />);
+      await screen.findByText("Shampoo Anjing");
+
+      expect(screen.queryByText(/batch & kedaluwarsa/i)).not.toBeInTheDocument();
+      expect(list).not.toHaveBeenCalled();
+    });
+
+    // `productBatches:read` is its own grant, and a request that 403s is one
+    // that should not have been made.
+    it("is withheld, and asks nothing, without productBatches:read", async () => {
+      mockLookups();
+      jest.spyOn(productService, "getById").mockResolvedValue(
+        makeProduct({
+          hasExpiry: true,
+          stockByWarehouse: [{ warehouseId: WAREHOUSE, qty: "8.0000" }],
+        }),
+      );
+      const list = jest.spyOn(productBatchService, "list");
+
+      renderWithAuth(<ProductDetail productId="p1" />, {
+        isSuperAdmin: false,
+        permissions: [
+          { feature: "products", actions: ["read"] },
+          { feature: "warehouses", actions: ["read"] },
+          { feature: "categories", actions: ["read"] },
+        ],
+      });
+      await screen.findByText("Shampoo Anjing");
+
+      expect(screen.queryByText(/batch & kedaluwarsa/i)).not.toBeInTheDocument();
+      expect(list).not.toHaveBeenCalled();
+    });
   });
 
   /**

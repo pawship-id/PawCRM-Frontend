@@ -7,6 +7,53 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Three MVP acceptance criteria that had been missed
+
+A second pass over the PRD found three ACs in Inventory & Purchasing that were never
+built and are **not** blocked on POS. The previous entry claimed the module would be
+clean after four items; it was not — these had not been checked when that list was drawn
+up. All three are on the product screens.
+
+### Stock is grouped by branch — PCR-010
+
+*"Detail produk: stok per warehouse **(grouped by branch di UI)**"*. The table listed
+warehouses flat.
+
+A warehouse belongs to a branch by **soft default** (PCR-019), so one set up for a bazaar
+belongs to none — those collect under **"Tanpa cabang"** rather than being dropped, the
+same rule the stock-on-hand report follows. The heading renders only when there is more
+than one group: a single-branch tenant would otherwise get the same label above every row.
+
+`useCatalogLookups` gained an opt-in `withBranches`, mirroring `withAccounting`, and it
+**fails softly** — without `branches:read` the table renders exactly as it did before
+grouping existed.
+
+### A batch panel on the product — PCR-013
+
+*"Detail produk: tab 'Batch' + hari ke expired"*. The backend already supported
+`?productId=`; nothing had ever called it.
+
+A **card**, not a tab: the rest of the screen is a column of cards, and a tab strip for one
+extra view would hide it behind a click and make the page two shapes.
+
+Gated on `hasExpiry` as well as `productBatches:read`. A product that does not expire still
+has one internal lot per receipt — plumbing so quantities have somewhere to live — and
+showing it to somebody who never asked about batches is noise.
+
+### The barcode field warns while you type — PCR-018
+
+*"Warning duplicate barcode saat input"*. The data was never at risk: the API enforces a
+partial unique index and answers a clash with a 409. What was missing is **when** the user
+finds out — after filling in a whole product and pressing save.
+
+**Advisory, never a gate.** The save button stays enabled: the check races anything another
+user does in the same second, and the server is the authority either way. Debounced at
+500ms because a barcode is usually *scanned* — a burst of keystrokes — and firing per
+character would be a dozen requests for one scan. A `404` is the good answer, and editing
+the product that already owns the code is not a clash with itself.
+
+---
+
 ## [Unreleased] — The last four MVP gaps in Inventory & Purchasing
 
 Frontend half of backend `0.38.0`. Four acceptance criteria that were never built, all

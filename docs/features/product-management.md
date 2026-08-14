@@ -318,6 +318,63 @@ Prices and quantities are decimal **strings** end to end, never JSON numbers.
 Arithmetic goes through `utils/decimal.ts` (`toMinor`, `sumDecimals`,
 `multiplyDecimals`); nothing parses them at the type boundary.
 
+## Stock is grouped by branch, and a branchless warehouse still shows
+
+PCR-010's "grouped by branch di UI". A warehouse belongs to a branch by **soft
+default** (PCR-019), so one set up for a bazaar genuinely belongs to none — those
+collect under **"Tanpa cabang"** rather than being dropped. Same rule the
+stock-on-hand report follows: stock nobody visits is exactly what these screens
+exist to surface.
+
+The heading renders only when there is **more than one group**. A single-branch
+tenant would otherwise get the same label above every row, and a grouping that
+groups nothing is noise.
+
+`branches:read` is its own permission, so the lookup **fails softly**: without it
+every row lands in one unnamed group and the table renders exactly as it did
+before grouping existed — which is the right thing for a missing optional lookup
+to degrade to.
+
+## A batch panel, for products that expire
+
+PCR-013's "tab Batch + hari ke expired" — a **card** rather than a tab. The rest
+of this screen is a column of cards read top to bottom; a tab strip for one extra
+view would hide it behind a click and make the page two shapes. What the AC asks
+for is that somebody looking at a product can see its lots without going
+elsewhere.
+
+Gated twice, and both matter:
+
+| | |
+| --- | --- |
+| `hasExpiry` | a product that does not expire still has one internal lot per receipt — plumbing the API creates so quantities have somewhere to live, and showing it to somebody who never asked about batches is noise |
+| `productBatches:read` | a separate grant from `products:read`, and a request that 403s is one that should not have been made |
+
+Only lots with something left (`hasRemaining`). An emptied lot is history the
+stock card tells better — with the movement that emptied it — while this card
+answers "what is on the shelf, and when does it turn".
+
+## The barcode field warns while you type
+
+PCR-018's "warning duplicate barcode saat input". **The data was never at risk**:
+the API enforces a partial unique index and answers a clash with a 409. What was
+missing is *when* the user finds out — after filling in a whole product and
+pressing save, at which point the fix is to go and work out which existing product
+owns the code.
+
+**Advisory, never a gate.** The save button stays enabled: the check races
+anything another user does in the same second, and the server is the authority
+either way. Disabling it would block a save the API would have accepted.
+
+Debounced at 500ms because a barcode is usually **scanned** — a burst of
+keystrokes ending in a newline. Firing per character would be a dozen requests for
+one scan.
+
+A `404` is the *good* answer: the endpoint reports "nothing has this barcode" by
+not finding one, so the miss is the success case. Editing the product that already
+owns the code is not a clash, or the edit form would warn on every save that never
+touched the barcode.
+
 ## Each warehouse row links to its stock card
 
 PCR-010 asks for the movement history on the detail. The link carries **both** the product

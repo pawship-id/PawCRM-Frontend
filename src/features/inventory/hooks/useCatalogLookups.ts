@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 
+import { branchService } from "@/services/branch.service";
 import { categoryService } from "@/services/category.service";
 import { warehouseService } from "@/services/warehouse.service";
 import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
 import { businessLineService } from "@/services/businessLine.service";
 import type { BusinessLine } from "@/services/businessLine.service";
 import { ApiError } from "@/services/api-error";
-import type { Category, PageResult } from "@/types/api";
+import type { Branch, Category, PageResult } from "@/types/api";
 import type { ChartOfAccount } from "@/types/accounting";
 import type { StockWarehouse } from "@/types/inventory";
 
@@ -28,6 +29,8 @@ interface CatalogLookups {
    */
   salesAccounts: ChartOfAccount[];
   businessLines: BusinessLine[];
+  /** Empty unless `withBranches` asked for them, or the read was refused. */
+  branches: Branch[];
   loading: boolean;
   /** Non-null when either list failed — the screen shows this instead of guessing. */
   error: string | null;
@@ -69,6 +72,21 @@ interface CatalogLookupsOptions {
    * is a cost with no buyer.
    */
   withAccounting?: boolean;
+  /**
+   * Also load branches, so a warehouse can be shown under the branch it belongs
+   * to rather than on its own.
+   *
+   * OPT-IN like `withAccounting`, and for the same reason: only the detail
+   * screen groups by branch, and a third round trip on every catalogue read to
+   * label a grouping nobody rendered is a cost with no buyer.
+   *
+   * FAILS SOFTLY, unlike categories and warehouses. `branches:read` is its own
+   * permission, and a role that manages the catalogue without seeing the branch
+   * list is ordinary — the grouping then falls back to a single "Semua gudang"
+   * heading, which is exactly what the screen looked like before it grouped at
+   * all.
+   */
+  withBranches?: boolean;
 }
 
 /**
@@ -89,9 +107,11 @@ interface CatalogLookupsOptions {
 export function useCatalogLookups({
   includeInactive = false,
   withAccounting = false,
+  withBranches = false,
 }: CatalogLookupsOptions = {}): CatalogLookups {
   const [categories, setCategories] = useState<Category[]>([]);
   const [warehouses, setWarehouses] = useState<StockWarehouse[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [salesAccounts, setSalesAccounts] = useState<ChartOfAccount[]>([]);
   const [businessLines, setBusinessLines] = useState<BusinessLine[]>([]);
   const [accountingError, setAccountingError] = useState<{
@@ -120,8 +140,13 @@ export function useCatalogLookups({
          * Categories and warehouses stay unguarded deliberately: without them
          * there is no product to save, so their failure IS the form's failure.
          */
-        const [categoryResult, warehouseResult, accountResult, lineResult] =
-          await Promise.all([
+        const [
+          categoryResult,
+          warehouseResult,
+          accountResult,
+          lineResult,
+          branchResult,
+        ] = await Promise.all([
             categoryService.list(),
             warehouseService.list(includeInactive ? {} : { isActive: true }),
             withAccounting
@@ -132,10 +157,16 @@ export function useCatalogLookups({
             withAccounting
               ? businessLineService.list().catch((err: unknown) => err as ApiError)
               : Promise.resolve(null),
+            // Swallows its own rejection, like the accounting pair: a missing
+            // branch list degrades the grouping, it does not break the screen.
+            withBranches
+              ? branchService.list({ limit: 100 }).catch(() => null)
+              : Promise.resolve(null),
           ]);
         if (!active) return;
         setCategories(categoryResult.items);
         setWarehouses(warehouseResult.items);
+        setBranches(branchResult ? branchResult.items : []);
         // The rejection is carried through as the value, so the reason survives
         // rather than collapsing to "something failed".
         const accountFailure =
@@ -173,11 +204,12 @@ export function useCatalogLookups({
     return () => {
       active = false;
     };
-  }, [includeInactive, withAccounting]);
+  }, [includeInactive, withAccounting, withBranches]);
 
   return {
     categories,
     warehouses,
+    branches,
     salesAccounts,
     businessLines,
     loading,

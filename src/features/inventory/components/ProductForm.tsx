@@ -2,6 +2,7 @@
 
 import { Fragment, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 import { Alert, Button, Card, Spinner, TextField } from "@/components";
 import { Badge } from "@/components/ui/badge";
@@ -52,6 +53,7 @@ import type {
 } from "@/types/inventory";
 
 import { useBundleCandidates } from "../hooks/useBundleCandidates";
+import { useBarcodeCheck } from "../hooks/useBarcodeCheck";
 import { useCatalogLookups } from "../hooks/useCatalogLookups";
 import { useProductDetail } from "../hooks/useProductDetail";
 import {
@@ -365,6 +367,9 @@ function ProductFormFields({
       ? existing.unit
       : null;
   const [barcode, setBarcode] = useState(existing?.barcode ?? "");
+  // Debounced advisory lookup — see the hook. Passes the product being edited so
+  // it does not report itself as its own duplicate.
+  const { takenBy: barcodeTaken } = useBarcodeCheck(barcode, existing?._id);
   const [sellPrice, setSellPrice] = useState(existing?.sellPrice ?? "");
   const [minStock, setMinStock] = useState(String(existing?.minStock ?? 0));
   const [hasExpiry, setHasExpiry] = useState(existing?.hasExpiry ?? false);
@@ -1453,16 +1458,38 @@ function ProductFormFields({
             </div>
 
             {mode !== "variants" && (
-              <TextField
-                label="Barcode"
-                name="barcode"
-                value={barcode}
-                onChange={(event) => setBarcode(event.target.value)}
-                error={fieldErrors.barcode}
-                hint="Opsional, unik per tenant"
-                placeholder="899…"
-                className="font-mono"
-              />
+              <div>
+                <TextField
+                  label="Barcode"
+                  name="barcode"
+                  value={barcode}
+                  onChange={(event) => setBarcode(event.target.value)}
+                  error={fieldErrors.barcode}
+                  hint="Opsional, unik per tenant"
+                  placeholder="899…"
+                  className="font-mono"
+                />
+                {/*
+                  ADVISORY, NOT A GATE — the save button stays enabled. The check
+                  races anything another user does in the same second and the
+                  server is the authority regardless; what this buys is learning
+                  about the clash while there is still time to go and look,
+                  rather than after filling in the whole product.
+                */}
+                {barcodeTaken && (
+                  <p className="mt-1.5 text-xs text-danger">
+                    Barcode ini sudah dipakai{" "}
+                    <Link
+                      href={`/dashboard/inventory/products/${barcodeTaken._id}`}
+                      className="underline underline-offset-2"
+                      target="_blank"
+                    >
+                      {barcodeTaken.sku ?? barcodeTaken.name}
+                    </Link>
+                    . Simpan akan ditolak.
+                  </p>
+                )}
+              </div>
             )}
 
             <TextField
