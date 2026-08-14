@@ -7,6 +7,189 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — A spreadsheet is a way into the catalogue
+
+Frontend half of backend `0.36.0`. See `docs/features/product-import.md`.
+
+A tenant's first day is four hundred SKUs in a file somebody already maintains, and
+the only door into PawCRM was a form that takes them one at a time. **Inventory →
+Produk → Import** is the second door: download a template, fill it in, upload it,
+see every problem at once, create the lot. Standalone products and variant families;
+bundles still go through the form.
+
+### Both `.xlsx` and `.csv`, through one set of rules
+
+CSV is parsed here; `.xlsx` goes through SheetJS. Both meet at `parseGrid`, so every
+decision about columns, row numbers and blank cells is written once and cannot come
+out differently depending on which button the user pressed in Save As.
+
+**The SheetJS build is not the one on npm, and that distinction is load-bearing.**
+`xlsx` on the npm registry is an abandoned artefact frozen at **0.18.5** with a live
+prototype-pollution advisory; the maintained line moved to `cdn.sheetjs.com`, which
+is what package.json pins:
+
+```json
+"xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+```
+
+The lockfile records an integrity hash, so `npm ci` verifies it like any other
+dependency, and `npm audit` reports nothing for it. Anyone tempted to tidy the
+unusual URL by installing from npm would be reintroducing a known hole into a parser
+that runs over a file the tenant was handed by a supplier. The real cost is an
+install that needs `cdn.sheetjs.com` reachable — worth knowing before a cold CI
+finds out.
+
+Loaded through a **dynamic import**, so the ~800 KB parser is fetched only by the
+user who picked a workbook. A chunk that never loads falls back to "save as CSV",
+which needs nothing but the code already running.
+
+### `.xlsx` is the better format here, and the reason is dates
+
+Excel stores a date as a serial number — `2027-08-01` is 46600 — so the workbook
+knows which part is the month, and the DD/MM ambiguity that forces the CSV reader to
+refuse `01/08/2027` does not arise at all.
+
+The serial is rendered with `SSF.format`, **arithmetic on the serial that never
+builds a `Date`**. Every route through a JS Date is a route through the runtime's
+timezone, and a user in Jakarta entering the 1st would otherwise have a fair chance
+of storing the 31st.
+
+Numbers use the raw value, never the displayed one: `cell.w` for a currency-formatted
+price is `Rp45.000,00`, which the decimal reader would refuse — a user rejected for
+formatting their own spreadsheet.
+
+### Two template downloads, behind one button
+
+"Unduh template" opens a menu with `.xlsx` and `.csv`, the first marked *disarankan*
+with its reason on the line beneath. Two equal-looking buttons would have left the
+user choosing on the strength of a file extension, and the choice is not cosmetic.
+
+The server serves CSV and only CSV — one endpoint, one place the column list lives.
+The `.xlsx` is built in the browser from it (`utils/templateWorkbook.ts`), so a
+column added server-side appears in both downloads with no frontend change.
+
+It is the recommended one because it **cannot silently corrupt a barcode**. A CSV
+carries no column format, and `0123456789012` typed into a General column is a
+number: Excel drops the leading zero and renders 13 digits as `8.9927E+12`, both
+before any code of ours runs. The template formats `barcode`, `sku`, `parent_sku`,
+`kode_batch` and every `attr_*` column as Text, and `tgl_expired` as a real date
+column. Prices stay numeric so they can still be summed.
+
+**200 empty rows are pre-formatted**, and that is what makes it real rather than a
+property of the two example rows — Excel formats the cell being typed into, not the
+column as a concept, so a barcode entered on row 40 of an unformatted sheet is a
+number again.
+
+`cellStyles: true` on the write is the one flag whose absence would make the whole
+file pointless while still producing a valid workbook, which is why the tests read
+the formats back and round-trip a leading-zero barcode through download-then-upload
+rather than asserting the blob is non-empty.
+
+### Two things found while testing the workbook path
+
+**SheetJS does not reject garbage.** Handed bytes that are not a workbook, 0.20.3
+returns a sheet made of nonsense instead of throwing — so the `catch` around
+`XLSX.read` is not what protects the wrong-file case. The required-column check is,
+and its message is the more useful one anyway. Written down in the code and in the
+test rather than left as a guard that looks like it fires and does not.
+
+**The grid is aligned to Excel's gutter**, not to the sheet's used range. A workbook
+whose data begins at A3 would otherwise report every row number two off, and the row
+number is the one thing the user navigates by. `parseGrid` now finds the header
+wherever it sits, which fixes the same class of problem for CSV.
+
+### The parser handles what spreadsheets actually emit
+
+**Semicolons**, first and most importantly: Excel writes CSV with the system list
+separator, and on an Indonesian locale that is `;`. Parsed as commas the whole file
+is one column, every header is unknown, and the error names a column the user can see
+perfectly well in front of them. Sniffed from the header line.
+
+Then quoted fields containing the delimiter, doubled quotes, embedded newlines, CRLF,
+a BOM, and grouped thousands (`1.250.000`) — all of which turn up, none of which
+`split(",")` survives.
+
+### Two things it refuses to guess
+
+**Dates.** Only `YYYY-MM-DD`. `01/08/2027` is the 1st of August in Jakarta and the
+8th of January in New York, and the cell decides when a batch of cat food comes off
+the shelf. The refusal names the format *and* says to set the Excel column to Teks,
+because that is the actual fix and nobody guesses it.
+
+**Prices with currency on them.** `Rp 45.000,-` is refused rather than repaired —
+stripping the decoration would be inventing the number every invoice is built from.
+
+### An unknown column is named, never dropped
+
+A silently-ignored `hpp_awl` is how a catalogue is imported with no cost basis: every
+row passes, the products are created, and the balance sheet is wrong in a way nobody
+looks for.
+
+### The screen decides nothing about the data
+
+Whether a SKU is free, whether a category exists, whether a family agrees with
+itself — answered once, server-side, and rendered here. `canCommit` comes from the
+preview and is passed through untouched.
+
+The exception is cell FORMAT, and the reason is worth stating: a cell that is not a
+number, not a date and not a known unit is refused by Joi as a **request-level 400
+that names no row**. One bad cell in five hundred would come back as "Validation
+failed" and send the user through the file by hand. So three format rules are
+duplicated — and the duplication is one-way: **a local problem can only make the
+commit button more disabled, never less**, because a cell the parser could not read
+was never sent and the server's verdict for that row is uninformed.
+
+A refused commit **clears the preview**: the catalogue moved between the two screens,
+so the green rows are the stale reading that let the commit be attempted.
+
+### The report is a report, not a success screen
+
+Two outcomes a green tick would hide, and both are real:
+
+- **`failed[]`** — something raced the import. The panel says the rest is already in,
+  because the instinct is to re-run the whole file.
+- **`openingStockPosted: false`** — the product exists and its stock does not. The
+  backend deliberately does not fail a create when the ledger refuses the opening
+  balance. Re-importing is never the fix: the SKU now exists and comes back as
+  `conflict`.
+
+Three outcomes, not two. Treating the last as a kind of failure rendered a run where
+nothing failed as *"selesai sebagian … 0 gagal"* — a sentence that contradicts itself
+and points at a failure that never happened.
+
+The commonest cause is `Chart of accounts is missing account 3101`, on a tenant that
+predates the COA module (`node src/seeds/backfillAccounts.js` adds it). The panel
+then names the **chart of accounts** ahead of the adjustment screen and says why: a
+manual adjustment credits 4901 Pendapatan Lain-lain, booking the goods as a *gain* —
+right for stock found in a count, wrong for stock the owner already had, which is
+capital against 3101. The obvious repair would have filed a tenant's entire starting
+inventory as profit.
+
+Messages in an `Alert` are now wrapped in a single `<p>`: `AlertDescription` is a
+`grid gap-1`, so every element child became its own row and a bare `<strong>` broke
+the sentence across lines.
+
+### Also
+
+- **`types/productImport.ts`** is its own file: a product and a lot are documents, a
+  row and a verdict live for the length of one upload.
+- **The commit's timeout is 180s**, against 60s for the preview. Five hundred products
+  is a minute of sequential transactions, and a client that gives up at fifteen
+  seconds abandons an import that is still running — leaving the user with no report
+  of what was, by then, already created.
+- **The step is derived from the data**, never stored. A `step` variable alongside
+  `sheet` / `preview` / `result` is a fourth thing that can disagree with the other
+  three.
+- **`tests/sheet.test.ts`** (48) is mostly about readings the parser must NOT invent.
+  The workbook cases round-trip through a real SheetJS-built `.xlsx` rather than a
+  mock: that the code calls SheetJS is not in doubt, what it hands back for a date, a
+  currency-formatted price and a boolean is. **`tests/templateWorkbook.test.ts`** (14)
+  reads the produced formats back and proves a leading-zero barcode survives
+  download-then-upload. **`tests/ImportScreen.test.tsx`** (20) covers the gate, the
+  merge and the two partial outcomes.
+
+---
+
 ## [Unreleased] — Uploads are compressed before they leave the browser
 
 Frontend half of backend `0.35.0`. See `docs/features/product-management.md`.

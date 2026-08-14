@@ -10,6 +10,7 @@ export { InventoryHub } from "./components/InventoryHub";
 export { ProductsScreen } from "./components/ProductsScreen";
 export { ProductDetail } from "./components/ProductDetail";
 export { ProductForm } from "./components/ProductForm";
+export { ImportScreen } from "./components/ImportScreen";
 export { StockCardScreen } from "./components/StockCardScreen";
 export { BatchesScreen } from "./components/BatchesScreen";
 export { OpnameScreen } from "./components/OpnameScreen";
