@@ -53,7 +53,7 @@ export function ProductsScreen() {
             { label: "Produk & Varian" },
           ]}
         />
-        <h1 className="mt-1 text-2xl font-semibold text-foreground">
+        <h1 className="mt-1 text-2xl font-extrabold text-foreground">
           Produk &amp; Varian
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">

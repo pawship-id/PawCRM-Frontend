@@ -118,7 +118,7 @@ export function ConsignmentProductsTable({
                   )}
                 </TableCell>
               )}
-              <TableCell className="font-mono text-xs">
+              <TableCell className="tabular-nums text-xs">
                 {row.sku ?? "—"}
               </TableCell>
               <TableCell>
@@ -129,14 +129,14 @@ export function ConsignmentProductsTable({
                   {row.name}
                 </Link>
               </TableCell>
-              <TableCell className="text-right font-mono tabular-nums">
+              <TableCell className="text-right tabular-nums">
                 {formatQty(row.qtyRemaining)}{" "}
                 <span className="text-xs text-muted">{row.unit}</span>
               </TableCell>
-              <TableCell className="text-right font-mono tabular-nums text-muted">
+              <TableCell className="text-right tabular-nums text-muted">
                 {row.lotCount}
               </TableCell>
-              <TableCell className="text-right font-mono tabular-nums">
+              <TableCell className="text-right tabular-nums">
                 {formatMoney(row.value)}
               </TableCell>
               <TableCell className="text-xs">

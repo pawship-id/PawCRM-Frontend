@@ -4,7 +4,7 @@ import { WarehouseEditForm } from "@/features/warehouses";
 import { RequirePermission } from "@/features/permissions";
 
 export const metadata: Metadata = {
-  title: "Edit warehouse · Master Data · PawShip",
+  title: "Edit warehouse · Master Data · Buloo",
 };
 
 /**

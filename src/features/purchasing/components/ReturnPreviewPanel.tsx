@@ -46,7 +46,7 @@ export function ReturnPreviewPanel({
             {preview.hppAvg.map((row) => (
               <p
                 key={row.productId}
-                className="font-mono text-[13px] leading-7 whitespace-nowrap"
+                className="tabular-nums text-[13px] leading-7 whitespace-nowrap"
               >
                 {/* `qtyIn` is NEGATIVE on a return — the goods are leaving — so
                     it reads as a subtraction without being flipped here. */}
@@ -85,17 +85,17 @@ export function ReturnPreviewPanel({
           <div className="flex flex-col gap-2 text-sm">
             <div className="flex justify-between">
               <span className="text-muted">Baris kartu stok</span>
-              <b className="font-mono tabular-nums">
+              <b className="tabular-nums">
                 {preview.movements.length}
               </b>
             </div>
             <div className="flex justify-between">
               <span className="text-muted">Produk terdampak HPP</span>
-              <b className="font-mono tabular-nums">{preview.hppAvg.length}</b>
+              <b className="tabular-nums">{preview.hppAvg.length}</b>
             </div>
             <div className="flex justify-between border-t border-border pt-2">
               <b>Nilai retur</b>
-              <b className="font-mono text-base tabular-nums text-danger">
+              <b className="tabular-nums text-base text-danger">
                 {formatMoney(preview.totalAmount)}
               </b>
             </div>

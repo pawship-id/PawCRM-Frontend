@@ -86,7 +86,7 @@ export function ReceiptsTable({
         <TableBody>
           {receipts.map((receipt) => (
             <TableRow key={receipt._id}>
-              <TableCell className="font-mono text-xs">
+              <TableCell className="tabular-nums text-xs">
                 <Link
                   href={`/dashboard/purchasing/receipts/${receipt._id}`}
                   className="text-primary-hover hover:underline"
@@ -111,13 +111,13 @@ export function ReceiptsTable({
                 <SupplierTypeBadge type={receipt.purchaseType} />
               </TableCell>
 
-              <TableCell className="text-right font-mono text-xs tabular-nums">
+              <TableCell className="text-right tabular-nums text-xs">
                 {receipt.itemCount}
               </TableCell>
 
               {/* `grandTotal` — what the supplier is owed, tax included. The
                   ex-tax `total` is on the detail, where the split is the point. */}
-              <TableCell className="text-right font-mono text-sm tabular-nums">
+              <TableCell className="text-right tabular-nums text-sm">
                 {formatMoney(receipt.grandTotal)}
               </TableCell>
 
@@ -125,7 +125,7 @@ export function ReceiptsTable({
                 {receipt.invoiceId ? (
                   <Link
                     href={`/dashboard/purchasing/payables/${receipt.invoiceId}`}
-                    className="font-mono text-xs text-primary-hover hover:underline"
+                    className="tabular-nums text-xs text-primary-hover hover:underline"
                   >
                     Lihat faktur
                   </Link>

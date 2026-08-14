@@ -189,7 +189,7 @@ export function SupplierFormFields({
             value={values.npwp}
             onChange={(event) => onChange({ npwp: event.target.value })}
             error={errors.npwp}
-            className="font-mono"
+            className="tabular-nums"
             placeholder="01.234.567.8-901.000"
             disabled={disabled}
           />

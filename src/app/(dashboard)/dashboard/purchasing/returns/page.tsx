@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { PurchaseReturnsScreen } from "@/features/purchasing";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Retur ke Supplier · PawShip" };
+export const metadata: Metadata = { title: "Retur ke Supplier · Buloo" };
 
 /**
  * The heading, the toolbar and the create button all live inside the screen —

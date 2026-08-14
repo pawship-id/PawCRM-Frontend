@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 import { ReportsHub } from "@/features/reports";
 
-export const metadata: Metadata = { title: "Reports · PawShip" };
+export const metadata: Metadata = { title: "Reports · Buloo" };
 
 /**
  * The reports index.
@@ -19,7 +19,7 @@ export default function ReportsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">Reports</h1>
+        <h1 className="text-2xl font-extrabold text-foreground">Reports</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">
           Laporan operasional yang siap dibaca, di-print, atau diekspor ke Excel.
         </p>

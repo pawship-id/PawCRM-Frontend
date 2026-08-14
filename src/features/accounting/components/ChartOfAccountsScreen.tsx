@@ -81,7 +81,7 @@ export function ChartOfAccountsScreen() {
     <div className="flex flex-col gap-6">
       <div>
         <Breadcrumb items={[ACCOUNTING_CRUMBS.hub, { label: "Daftar Akun" }]} />
-        <h1 className="mt-1 text-2xl font-semibold text-foreground">
+        <h1 className="mt-1 text-2xl font-extrabold text-foreground">
           Daftar Akun (COA)
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">
@@ -108,7 +108,7 @@ export function ChartOfAccountsScreen() {
             <p className="text-[10px] font-medium uppercase tracking-widest text-muted">
               {ACCOUNT_TYPE_LABEL[accountType]}
             </p>
-            <p className="mt-1 font-mono text-lg font-semibold tabular-nums text-foreground">
+            <p className="mt-1 tabular-nums text-lg font-semibold text-foreground">
               {countsByType.get(accountType) ?? 0}
             </p>
             <p className="text-[11px] text-muted">
@@ -244,7 +244,7 @@ export function ChartOfAccountsScreen() {
                       )}
                       <span
                         className={cn(
-                          "font-mono text-xs tabular-nums",
+                          "tabular-nums text-xs",
                           hasChildren && "font-semibold text-foreground",
                         )}
                       >

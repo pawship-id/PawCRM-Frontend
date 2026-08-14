@@ -110,13 +110,13 @@ export function ProductBatchPanel({ productId }: { productId: string }) {
             <TableBody>
               {batches.map((batch) => (
                 <TableRow key={batch._id}>
-                  <TableCell className="font-mono text-xs">
+                  <TableCell className="tabular-nums text-xs">
                     {batch.batchCode ?? "—"}
                   </TableCell>
                   <TableCell className="text-xs text-muted">
                     {batch.warehouseName ?? "—"}
                   </TableCell>
-                  <TableCell className="text-right font-mono tabular-nums">
+                  <TableCell className="text-right tabular-nums">
                     {formatQty(batch.qtyRemaining)}
                   </TableCell>
                   <TableCell>

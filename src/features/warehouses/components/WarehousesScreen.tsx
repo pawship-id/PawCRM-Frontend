@@ -26,7 +26,7 @@ export function WarehousesScreen() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">Warehouses</h1>
+        <h1 className="text-2xl font-extrabold text-foreground">Warehouses</h1>
         <p className="mt-1 text-sm text-muted">
           Manage the physical locations stock is held and moved between.
         </p>

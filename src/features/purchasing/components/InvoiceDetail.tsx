@@ -158,7 +158,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
               Terbayar {formatMoney(invoice.paidAmount)} dari{" "}
               {formatMoney(invoice.total)}
             </span>
-            <b className="font-mono tabular-nums">{percent}%</b>
+            <b className="tabular-nums">{percent}%</b>
           </div>
           <div className="h-1.5 overflow-hidden rounded-full bg-accent">
             <div
@@ -170,7 +170,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
             Sisa tagihan{" "}
             <b
               className={cn(
-                "font-mono tabular-nums",
+                "tabular-nums",
                 isPositive(invoice.outstandingAmount) && "text-danger",
               )}
             >
@@ -212,7 +212,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
                           was for, and a product renamed since must not restate
                           a document the supplier also holds a copy of. */}
                       <td className="px-2 py-2 text-xs">{item.name}</td>
-                      <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">
+                      <td className="px-2 py-2 text-right tabular-nums text-xs">
                         {formatQty(item.qty)}
                         {item.productUnit && (
                           <span className="ml-1 text-muted">
@@ -220,10 +220,10 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
                           </span>
                         )}
                       </td>
-                      <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">
+                      <td className="px-2 py-2 text-right tabular-nums text-xs">
                         {formatMoney(item.costPerUnit)}
                       </td>
-                      <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">
+                      <td className="px-2 py-2 text-right tabular-nums text-xs">
                         {formatMoney(item.subtotal)}
                       </td>
                     </tr>
@@ -236,7 +236,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
                     >
                       Subtotal (sebelum PPN)
                     </td>
-                    <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">
+                    <td className="px-2 py-2 text-right tabular-nums text-xs">
                       {formatMoney(invoice.subtotal)}
                     </td>
                   </tr>
@@ -247,7 +247,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
                     >
                       PPN
                     </td>
-                    <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">
+                    <td className="px-2 py-2 text-right tabular-nums text-xs">
                       {formatMoney(invoice.taxAmount)}
                     </td>
                   </tr>
@@ -258,7 +258,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
                     >
                       Total faktur
                     </td>
-                    <td className="px-2 py-2 text-right font-mono text-sm font-semibold tabular-nums">
+                    <td className="px-2 py-2 text-right tabular-nums text-sm font-semibold">
                       {formatMoney(invoice.total)}
                     </td>
                   </tr>
@@ -280,7 +280,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
               fallback={
                 <div className="rounded-lg border border-border bg-accent/40 px-4 py-3 text-sm">
                   Anda tidak punya izin mencatat pembayaran. Hubungi pemegang
-                  hak <span className="font-mono text-xs">purchaseInvoices:pay</span>.
+                  hak <span className="tabular-nums text-xs">purchaseInvoices:pay</span>.
                 </div>
               }
             >
@@ -337,7 +337,7 @@ function Field({
     <span
       className={cn(
         "mt-1 block text-sm font-semibold",
-        mono && "font-mono",
+        mono && "tabular-nums",
         tone === "danger" && "text-danger",
         href && "text-primary-hover hover:underline",
       )}

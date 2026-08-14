@@ -7,7 +7,7 @@ import {
 } from "@/features/purchasing";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Detail faktur · PawShip" };
+export const metadata: Metadata = { title: "Detail faktur · Buloo" };
 
 /**
  * Guarded on `read`, not `pay`. Seeing what is owed and recording money leaving

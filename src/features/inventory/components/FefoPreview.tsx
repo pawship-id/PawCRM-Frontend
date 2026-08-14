@@ -57,13 +57,13 @@ export function FefoPreview({
             key={row.batchId ?? `unbatched-${index}`}
             className="flex flex-wrap items-center gap-3 px-4 py-2.5"
           >
-            <span className="flex size-5 items-center justify-center rounded-full bg-accent font-mono text-[10px] text-muted">
+            <span className="flex size-5 items-center justify-center rounded-full bg-accent tabular-nums text-[10px] text-muted">
               {index + 1}
             </span>
 
             <div className="min-w-0 flex-1">
               {row.batchCode ? (
-                <p className="truncate font-mono text-xs text-foreground">
+                <p className="truncate tabular-nums text-xs text-foreground">
                   {row.batchCode}
                 </p>
               ) : (
@@ -77,7 +77,7 @@ export function FefoPreview({
 
             {/* The API signs its quantities; the minus here is typographic, so
                 a magnitude is what gets formatted. */}
-            <span className="font-mono text-sm font-semibold tabular-nums text-danger">
+            <span className="tabular-nums text-sm font-semibold text-danger">
               −{formatQty(absDecimal(row.qty))}
             </span>
           </li>

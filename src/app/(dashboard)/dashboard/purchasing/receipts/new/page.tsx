@@ -7,7 +7,7 @@ import {
 } from "@/features/purchasing";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Terima barang · PawShip" };
+export const metadata: Metadata = { title: "Terima barang · Buloo" };
 
 /**
  * `searchParams` is a Promise in this version of Next, like `params`. The

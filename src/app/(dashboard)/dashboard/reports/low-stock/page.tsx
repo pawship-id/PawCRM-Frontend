@@ -4,7 +4,7 @@ import { Breadcrumb } from "@/components";
 import { LowStockScreen } from "@/features/reports";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Stok Minim · PawShip" };
+export const metadata: Metadata = { title: "Stok Minim · Buloo" };
 
 /** Gated on `products:read`, matching `GET /api/products/low-stock`. */
 export default function LowStockPage() {
@@ -18,7 +18,7 @@ export default function LowStockPage() {
               { label: "Stok Minim" },
             ]}
           />
-          <h1 className="mt-1 text-2xl font-semibold text-foreground">
+          <h1 className="mt-1 text-2xl font-extrabold text-foreground">
             Stok Minim
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">

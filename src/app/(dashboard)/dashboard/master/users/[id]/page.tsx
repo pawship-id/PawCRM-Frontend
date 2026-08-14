@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { UserEditForm } from "@/features/users";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Edit user · Master Data · PawShip" };
+export const metadata: Metadata = { title: "Edit user · Master Data · Buloo" };
 
 /**
  * Per-user edit route. In Next 16 the `params` prop is a Promise, so this is an

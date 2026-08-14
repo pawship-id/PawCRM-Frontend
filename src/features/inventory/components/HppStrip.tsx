@@ -45,7 +45,7 @@ export function HppStrip({ preview }: { preview: HppCalculation | null }) {
         Perhitungan HPP rata-rata tertimbang
       </p>
 
-      <p className="mt-2 overflow-x-auto whitespace-nowrap font-mono text-[13px] leading-7 text-foreground">
+      <p className="mt-2 overflow-x-auto whitespace-nowrap tabular-nums text-[13px] leading-7 text-foreground">
         {first ? (
           <>
             Belum ada stok bernilai <span className="text-muted">→</span> HPP
@@ -69,7 +69,7 @@ export function HppStrip({ preview }: { preview: HppCalculation | null }) {
       </p>
 
       {!first && (
-        <p className="mt-1 font-mono text-xs">
+        <p className="mt-1 tabular-nums text-xs">
           {delta === 0n ? (
             <span className="text-muted">
               tidak berubah — barang masuk pada harga rata-rata yang berlaku

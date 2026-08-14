@@ -4,7 +4,7 @@ import { Breadcrumb } from "@/components";
 import { ProductDetail } from "@/features/inventory";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Detail produk · PawShip" };
+export const metadata: Metadata = { title: "Detail produk · Buloo" };
 
 /**
  * One product, read-only. Editing lives one level deeper, at `[id]/edit` — the
@@ -36,7 +36,7 @@ export default async function ProductDetailPage({
               { label: "Detail produk" },
             ]}
           />
-          <h1 className="mt-1 text-2xl font-semibold text-foreground">
+          <h1 className="mt-1 text-2xl font-extrabold text-foreground">
             Detail produk
           </h1>
         </div>

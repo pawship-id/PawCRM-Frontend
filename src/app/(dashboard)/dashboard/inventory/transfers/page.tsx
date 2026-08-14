@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { Breadcrumb } from "@/components";
 import { StockTransferForm } from "@/features/inventory";
 
-export const metadata: Metadata = { title: "Transfer stok · PawShip" };
+export const metadata: Metadata = { title: "Transfer stok · Buloo" };
 
 export default function StockTransfersPage() {
   return (
@@ -15,7 +15,7 @@ export default function StockTransfersPage() {
             { label: "Transfer stok" },
           ]}
         />
-        <h1 className="mt-1 text-2xl font-semibold text-foreground">
+        <h1 className="mt-1 text-2xl font-extrabold text-foreground">
           Transfer stok antar gudang
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">

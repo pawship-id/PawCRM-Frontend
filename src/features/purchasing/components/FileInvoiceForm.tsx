@@ -235,7 +235,7 @@ export function FileInvoiceForm({ receiptId: initialId }: { receiptId?: string }
             disabled={saving}
             error={fieldErrors.invoiceNumber}
             onChange={(event) => setInvoiceNumber(event.target.value)}
-            className="font-mono"
+            className="tabular-nums"
             placeholder="INV/2026/VIII/0142"
             // The one numbered field in the system a client chooses, because it
             // is not ours to allocate: it is printed on the vendor's paper and is
@@ -309,7 +309,7 @@ function Summary({
       <dd
         className={
           mono
-            ? `mt-0.5 font-mono text-sm tabular-nums${strong ? " font-semibold" : ""}`
+            ? `mt-0.5 tabular-nums text-sm tabular-nums${strong ? " font-semibold" : ""}`
             : "mt-0.5 text-sm font-medium"
         }
       >

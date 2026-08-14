@@ -65,7 +65,7 @@ export function ReceiptsScreen() {
           <p className="text-[10px] font-medium tracking-widest text-muted uppercase">
             Total nilai pembelian
           </p>
-          <p className="font-mono text-lg font-semibold tabular-nums">
+          <p className="tabular-nums text-lg font-semibold">
             {totalPurchased === null ? "—" : formatMoney(totalPurchased)}
           </p>
           <p className="text-[10px] text-muted">sebelum PPN, seluruh periode</p>

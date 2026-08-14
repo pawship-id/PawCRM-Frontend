@@ -155,7 +155,7 @@ function Stat({
       </p>
       <p
         className={cn(
-          "mt-1.5 font-mono text-xl font-semibold tabular-nums",
+          "mt-1.5 tabular-nums text-xl font-semibold",
           tone === "danger" && "text-danger",
         )}
       >

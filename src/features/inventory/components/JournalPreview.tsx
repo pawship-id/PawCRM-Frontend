@@ -55,12 +55,12 @@ export function JournalPreview({
         <tbody>
           {lines.map((line, index) => (
             <tr key={`${line.accountCode}-${index}`} className="border-b border-border/60 last:border-0">
-              <td className="px-3 py-2 font-mono text-xs">{line.accountCode}</td>
+              <td className="px-3 py-2 tabular-nums text-xs">{line.accountCode}</td>
               <td className="px-3 py-2 text-xs">{line.accountName}</td>
-              <td className="px-3 py-2 text-right font-mono text-xs tabular-nums">
+              <td className="px-3 py-2 text-right tabular-nums text-xs">
                 {line.debit ? formatMoney(line.debit) : "—"}
               </td>
-              <td className="px-3 py-2 text-right font-mono text-xs tabular-nums">
+              <td className="px-3 py-2 text-right tabular-nums text-xs">
                 {line.credit ? formatMoney(line.credit) : "—"}
               </td>
             </tr>
@@ -69,10 +69,10 @@ export function JournalPreview({
             <td colSpan={2} className="px-3 py-2 text-right text-xs font-semibold">
               Total
             </td>
-            <td className="px-3 py-2 text-right font-mono text-xs font-semibold tabular-nums">
+            <td className="px-3 py-2 text-right tabular-nums text-xs font-semibold">
               {formatMoney(totalDebit)}
             </td>
-            <td className="px-3 py-2 text-right font-mono text-xs font-semibold tabular-nums">
+            <td className="px-3 py-2 text-right tabular-nums text-xs font-semibold">
               {formatMoney(totalCredit)}
             </td>
           </tr>

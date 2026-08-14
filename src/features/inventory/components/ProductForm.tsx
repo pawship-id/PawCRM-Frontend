@@ -1391,7 +1391,7 @@ function ProductFormFields({
                   : "Unik per tenant"
               }
               placeholder="RC-ADULT"
-              className="font-mono"
+              className="tabular-nums"
               required={mode !== "variants"}
             />
           </div>
@@ -1467,7 +1467,7 @@ function ProductFormFields({
                   error={fieldErrors.barcode}
                   hint="Opsional, unik per tenant"
                   placeholder="899…"
-                  className="font-mono"
+                  className="tabular-nums"
                 />
                 {/*
                   ADVISORY, NOT A GATE — the save button stays enabled. The check
@@ -1859,7 +1859,7 @@ function ProductFormFields({
                                   event.target.value.toUpperCase(),
                                 )
                               }
-                              className="font-mono text-xs"
+                              className="tabular-nums text-xs"
                             />
                             {rowError && (
                               <p
@@ -1883,7 +1883,7 @@ function ProductFormFields({
                                 )
                               }
                               placeholder="opsional"
-                              className="font-mono text-xs"
+                              className="tabular-nums text-xs"
                             />
                           </td>
                           <td className="px-2 py-2">
@@ -1898,7 +1898,7 @@ function ProductFormFields({
                                   event.target.value,
                                 )
                               }
-                              className="font-mono"
+                              className="tabular-nums"
                             />
                           </td>
                           <td className="px-2 py-2">
@@ -1913,7 +1913,7 @@ function ProductFormFields({
                                   event.target.value,
                                 )
                               }
-                              className="max-w-20 font-mono"
+                              className="max-w-20 tabular-nums"
                             />
                           </td>
                           <td className="px-2 py-2">
@@ -1979,7 +1979,7 @@ function ProductFormFields({
                                       placeholder={
                                         shipping[field] || "ikut induk"
                                       }
-                                      className="font-mono"
+                                      className="tabular-nums"
                                     />
                                   </label>
                                 ))}
@@ -2115,7 +2115,7 @@ function ProductFormFields({
           <p className="text-xs text-muted">
             Bundle tidak menyimpan stok sendiri. Saat terjual, komponennya yang
             berkurang — satu baris{" "}
-            <span className="font-mono">bundle_consume</span> per komponen di
+            <span className="tabular-nums">bundle_consume</span> per komponen di
             kartu stok.
           </p>
         </>
@@ -2238,7 +2238,7 @@ function ProductFormFields({
                     error={fieldErrors.openingBatchCode}
                     hint="Wajib untuk produk kedaluwarsa."
                     placeholder="B-2026-08"
-                    className="font-mono"
+                    className="tabular-nums"
                   />
                   <TextField
                     label="Tanggal kedaluwarsa"
@@ -2299,7 +2299,7 @@ function ProductFormFields({
                                   )
                                 }
                                 placeholder="0"
-                                className="max-w-24 font-mono"
+                                className="max-w-24 tabular-nums"
                               />
                             </td>
                             <td className="px-2 py-2">
@@ -2315,7 +2315,7 @@ function ProductFormFields({
                                   )
                                 }
                                 placeholder="44000"
-                                className="max-w-32 font-mono"
+                                className="max-w-32 tabular-nums"
                               />
                             </td>
                           </tr>

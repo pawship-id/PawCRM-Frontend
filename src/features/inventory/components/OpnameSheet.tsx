@@ -440,7 +440,7 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
           </p>
           <p
             className={cn(
-              "mt-1 font-mono text-2xl font-semibold tabular-nums",
+              "mt-1 tabular-nums text-2xl font-semibold",
               totalMinor < 0n
                 ? "text-danger"
                 : totalMinor > 0n
@@ -450,7 +450,7 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
           >
             {formatMoney(opname.totalDiffValue)}
           </p>
-          <p className="mt-1 font-mono text-xs text-muted">
+          <p className="mt-1 tabular-nums text-xs text-muted">
             Σ (qty fisik − qty sistem) × HPP · opname mengubah kuantitas, bukan
             HPP
           </p>
@@ -560,7 +560,7 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
           {/* Inline fragments, not <p>: DialogDescription is itself a <p>. */}
           <>
             <b>{pendingRemove.productName ?? "Produk ini"}</b> sudah dihitung —
-            jumlah fisik <b className="font-mono">
+            jumlah fisik <b className="tabular-nums">
               {formatQty(pendingRemove.physicalQty)}
             </b>{" "}
             akan ikut terbuang bersama barisnya.
@@ -586,7 +586,7 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
           <>
             <b>{preview.preview.movements.length} baris</b> penyesuaian akan
             ditulis ke kartu stok, dengan total selisih{" "}
-            <b className="font-mono">
+            <b className="tabular-nums">
               {formatMoney(preview.preview.totalDiffValue)}
             </b>
             .
@@ -643,7 +643,7 @@ function SheetRow({
       >
         <td className="px-4 py-2.5">
           <p className="text-sm font-medium">{item.productName ?? "—"}</p>
-          <p className="font-mono text-xs text-muted">
+          <p className="tabular-nums text-xs text-muted">
             {item.productSku ?? item.productId}
             {item.productUnit && ` · ${item.productUnit}`}
           </p>
@@ -672,13 +672,13 @@ function SheetRow({
           )}
         </td>
 
-        <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums text-muted">
+        <td className="px-4 py-2.5 text-right tabular-nums text-xs text-muted">
           {formatQty(item.systemQty)}
         </td>
 
         <td className="px-4 py-2.5 text-right">
           {readOnly ? (
-            <span className="font-mono text-sm tabular-nums">
+            <span className="tabular-nums text-sm">
               {formatQty(item.physicalQty)}
             </span>
           ) : (
@@ -689,14 +689,14 @@ function SheetRow({
               onChange={(event) =>
                 onEdit(item.productId, { physicalQty: event.target.value })
               }
-              className="ml-auto max-w-24 text-right font-mono"
+              className="ml-auto max-w-24 text-right tabular-nums"
             />
           )}
         </td>
 
         <td
           className={cn(
-            "px-4 py-2.5 text-right font-mono text-sm font-semibold tabular-nums",
+            "px-4 py-2.5 text-right tabular-nums text-sm font-semibold",
             diffMinor === 0n && "text-muted",
             diffMinor < 0n && "text-danger",
             diffMinor > 0n && "text-success",
@@ -707,11 +707,11 @@ function SheetRow({
             : `${diffMinor > 0n ? "+" : ""}${formatQty(item.diffQty)}`}
         </td>
 
-        <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums text-muted">
+        <td className="px-4 py-2.5 text-right tabular-nums text-xs text-muted">
           {formatMoney(item.hppAtOpname)}
         </td>
 
-        <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums">
+        <td className="px-4 py-2.5 text-right tabular-nums text-xs">
           {diffMinor === 0n ? "—" : formatMoney(item.diffValue)}
         </td>
 
@@ -828,7 +828,7 @@ function Field({
       <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted">
         {label}
       </p>
-      <p className={cn("mt-1 text-sm font-semibold", mono && "font-mono")}>
+      <p className={cn("mt-1 text-sm font-semibold", mono && "tabular-nums")}>
         {value}
       </p>
     </div>

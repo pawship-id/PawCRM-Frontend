@@ -4,7 +4,7 @@ import { Breadcrumb } from "@/components";
 import { ACCOUNTING_CRUMBS, JournalEntryDetail } from "@/features/accounting";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Detail jurnal · PawShip" };
+export const metadata: Metadata = { title: "Detail jurnal · Buloo" };
 
 export default async function JournalEntryDetailPage({
   params,
@@ -24,7 +24,7 @@ export default async function JournalEntryDetailPage({
               { label: "Detail entri" },
             ]}
           />
-          <h1 className="mt-1 text-2xl font-semibold text-foreground">
+          <h1 className="mt-1 text-2xl font-extrabold text-foreground">
             Detail entri jurnal
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">

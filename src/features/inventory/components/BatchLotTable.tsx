@@ -103,7 +103,7 @@ function BatchRow({
     >
       <td className="px-4 py-2.5">
         {order ? (
-          <span className="flex size-6 items-center justify-center rounded-full bg-primary/12 font-mono text-xs font-semibold text-primary-hover">
+          <span className="flex size-6 items-center justify-center rounded-full bg-primary/12 tabular-nums text-xs font-semibold text-primary-hover">
             {order}
           </span>
         ) : (
@@ -111,7 +111,7 @@ function BatchRow({
         )}
       </td>
       <td className="px-4 py-2.5">
-        <span className="font-mono text-xs">{batch.batchCode}</span>
+        <span className="tabular-nums text-xs">{batch.batchCode}</span>
         {batch.isConsignment && (
           <Badge
             variant="outline"
@@ -130,17 +130,17 @@ function BatchRow({
       </td>
       <td
         className={cn(
-          "px-4 py-2.5 text-right font-mono text-sm tabular-nums",
+          "px-4 py-2.5 text-right tabular-nums text-sm",
           negative && "font-semibold text-danger",
         )}
       >
         {formatQty(batch.qtyRemaining)}
         <span className="text-xs text-muted"> / {formatQty(batch.initialQty)}</span>
       </td>
-      <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums text-muted">
+      <td className="px-4 py-2.5 text-right tabular-nums text-xs text-muted">
         {formatMoney(batch.costPerUnit)}
       </td>
-      <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums">
+      <td className="px-4 py-2.5 text-right tabular-nums text-xs">
         {spent
           ? "—"
           : formatMoney(multiplyDecimals(batch.qtyRemaining, batch.costPerUnit))}

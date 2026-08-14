@@ -101,7 +101,7 @@ function TransferLineRow({
     <tr className="border-b border-border/60">
       <td className="px-2 py-2">
         <p className="font-medium">{product?.name ?? "—"}</p>
-        <p className="font-mono text-xs text-muted">
+        <p className="tabular-nums text-xs text-muted">
           {product?.sku}
           {product?.unit && ` · ${product.unit}`}
         </p>
@@ -115,7 +115,7 @@ function TransferLineRow({
           onChange={(event) => onChange({ qty: sanitizeQty(event.target.value) })}
           aria-invalid={shortage ? true : undefined}
           className={cn(
-            "ml-auto max-w-24 text-right font-mono",
+            "ml-auto max-w-24 text-right tabular-nums",
             shortage && "border-danger focus-visible:ring-danger/40",
           )}
         />
@@ -614,7 +614,7 @@ export function StockTransferForm() {
                   <>
                     <span className="text-muted">·</span>
                     <span className="text-muted">nilai berpindah</span>
-                    <b className="font-mono tabular-nums">
+                    <b className="tabular-nums">
                       {formatMoney(movedValue)}
                     </b>
                   </>
@@ -760,13 +760,13 @@ export function StockTransferForm() {
                           className="px-4 py-3"
                         >
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-mono text-xs">
+                            <span className="tabular-nums text-xs">
                               {allocation.batchCode ?? "tanpa lot"}
                             </span>
                             {allocation.batchExpiryDate && (
                               <ExpiryBadge date={allocation.batchExpiryDate} />
                             )}
-                            <span className="ml-auto font-mono text-sm font-semibold tabular-nums">
+                            <span className="ml-auto tabular-nums text-sm font-semibold">
                               {formatQty(moved)}
                             </span>
                           </div>
@@ -776,14 +776,14 @@ export function StockTransferForm() {
                               there. */}
                           <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-[11px]">
                             <div className="rounded-md bg-danger/8 px-2 py-1.5">
-                              <p className="font-mono text-danger">
+                              <p className="tabular-nums text-danger">
                                 −{formatQty(moved)}
                               </p>
                               <p className="truncate text-muted">{fromName}</p>
                             </div>
                             <span className="text-muted">→</span>
                             <div className="rounded-md bg-success/10 px-2 py-1.5">
-                              <p className="font-mono text-success">
+                              <p className="tabular-nums text-success">
                                 +{formatQty(moved)}
                               </p>
                               <p className="truncate text-muted">{toName}</p>

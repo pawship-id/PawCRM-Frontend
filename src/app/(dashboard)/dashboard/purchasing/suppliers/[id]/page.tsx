@@ -7,7 +7,7 @@ import {
 } from "@/features/purchasing";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Detail supplier · PawShip" };
+export const metadata: Metadata = { title: "Detail supplier · Buloo" };
 
 export default async function SupplierDetailPage({
   params,

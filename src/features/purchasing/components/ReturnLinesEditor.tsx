@@ -145,26 +145,26 @@ export function ReturnLinesEditor({
                   <p className="text-sm font-medium">
                     {item.productName ?? item.name}
                   </p>
-                  <p className="font-mono text-xs text-muted">
+                  <p className="tabular-nums text-xs text-muted">
                     {item.productSku ?? "—"}
                   </p>
                 </td>
 
-                <td className="px-2 py-2 text-right font-mono text-xs tabular-nums text-muted">
+                <td className="px-2 py-2 text-right tabular-nums text-xs text-muted">
                   {formatQty(item.qty)}
                 </td>
 
-                <td className="px-2 py-2 text-right font-mono text-xs tabular-nums text-muted">
+                <td className="px-2 py-2 text-right tabular-nums text-xs text-muted">
                   {(toMinor(item.returnedQty) ?? 0n) > 0n
                     ? formatQty(item.returnedQty)
                     : "—"}
                 </td>
 
-                <td className="px-2 py-2 text-right font-mono text-xs font-semibold tabular-nums">
+                <td className="px-2 py-2 text-right tabular-nums text-xs font-semibold">
                   {formatQty(item.remainingQty)}
                 </td>
 
-                <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">
+                <td className="px-2 py-2 text-right tabular-nums text-xs">
                   {formatMoney(item.costPerUnit)}
                 </td>
 
@@ -180,7 +180,7 @@ export function ReturnLinesEditor({
                     }
                     aria-invalid={malformed || tooMuch}
                     className={cn(
-                      "ml-auto max-w-24 text-right font-mono",
+                      "ml-auto max-w-24 text-right tabular-nums",
                       (malformed || tooMuch) && "border-danger",
                     )}
                   />

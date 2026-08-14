@@ -85,7 +85,7 @@ export function BatchesTable({
                   )}
                 >
                   <td className="px-4 py-2.5">
-                    <span className="font-mono text-xs">{batch.batchCode}</span>
+                    <span className="tabular-nums text-xs">{batch.batchCode}</span>
                     {batch.isConsignment && (
                       <Badge
                         variant="outline"
@@ -101,7 +101,7 @@ export function BatchesTable({
                     <p className="text-sm font-medium">
                       {batch.productName ?? "—"}
                     </p>
-                    <p className="font-mono text-xs text-muted">
+                    <p className="tabular-nums text-xs text-muted">
                       {batch.productSku}
                     </p>
                   </td>
@@ -117,7 +117,7 @@ export function BatchesTable({
                   </td>
                   <td
                     className={cn(
-                      "px-4 py-2.5 text-right font-mono text-sm tabular-nums",
+                      "px-4 py-2.5 text-right tabular-nums text-sm",
                       // A withdrawal outran this lot. The row that needs fixing
                       // must not look like the rows that do not.
                       remaining < 0n && "font-semibold text-danger",
@@ -135,10 +135,10 @@ export function BatchesTable({
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums text-muted">
+                  <td className="px-4 py-2.5 text-right tabular-nums text-xs text-muted">
                     {formatMoney(batch.costPerUnit)}
                   </td>
-                  <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums">
+                  <td className="px-4 py-2.5 text-right tabular-nums text-xs">
                     {spent
                       ? "—"
                       : formatMoney(

@@ -4,7 +4,7 @@ import { Breadcrumb } from "@/components";
 import { OpnameScreen } from "@/features/inventory";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Stok Opname · PawShip" };
+export const metadata: Metadata = { title: "Stok Opname · Buloo" };
 
 export default function OpnamePage() {
   return (
@@ -16,7 +16,7 @@ export default function OpnamePage() {
             { label: "Stok Opname" },
           ]}
         />
-        <h1 className="mt-1 text-2xl font-semibold text-foreground">
+        <h1 className="mt-1 text-2xl font-extrabold text-foreground">
           Stok Opname
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">

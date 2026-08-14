@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { TenantDetail } from "@/features/tenant";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Business information · PawShip" };
+export const metadata: Metadata = { title: "Business information · Buloo" };
 
 /**
  * The signed-in user's own business.
@@ -28,7 +28,7 @@ export default function BusinessPage() {
     <RequirePermission feature="tenants" action="read">
       <div className="flex flex-col gap-6">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">
+          <h1 className="text-2xl font-extrabold text-foreground">
             Business information
           </h1>
           <p className="mt-1 text-sm text-muted">

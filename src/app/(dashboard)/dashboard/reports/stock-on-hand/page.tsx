@@ -4,7 +4,7 @@ import { Breadcrumb } from "@/components";
 import { StockOnHandScreen } from "@/features/reports";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Stok per Cabang · PawShip" };
+export const metadata: Metadata = { title: "Stok per Cabang · Buloo" };
 
 /**
  * Gated on `products:read`, matching `GET /api/reports/stock-on-hand`. The hub
@@ -23,7 +23,7 @@ export default function StockOnHandPage() {
               { label: "Stok per Cabang" },
             ]}
           />
-          <h1 className="mt-1 text-2xl font-semibold text-foreground">
+          <h1 className="mt-1 text-2xl font-extrabold text-foreground">
             Stok per Cabang
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">

@@ -131,7 +131,7 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
                   actionable if the reader can get to the one already there. */}
               <Link
                 href={`/dashboard/purchasing/returns/${row._id}`}
-                className="font-mono font-semibold text-primary-hover hover:underline"
+                className="tabular-nums font-semibold text-primary-hover hover:underline"
               >
                 {row.returnNumber}
               </Link>
@@ -182,7 +182,7 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
                       <p className="text-sm font-medium">
                         {item.productName ?? item.name}
                       </p>
-                      <p className="font-mono text-xs text-muted">
+                      <p className="tabular-nums text-xs text-muted">
                         {item.productSku ?? "—"}
                         {renamed && (
                           <span className="ml-1 font-sans italic">
@@ -195,7 +195,7 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
                     <td className="px-2 py-2">
                       {item.batchId ? (
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="font-mono text-xs">
+                          <span className="tabular-nums text-xs">
                             {/* The lot lookup is best-effort — see
                                 useReceiptLots. Without it the line still says a
                                 lot exists, which is the fact that matters. */}
@@ -210,7 +210,7 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
                       )}
                     </td>
 
-                    <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">
+                    <td className="px-2 py-2 text-right tabular-nums text-xs">
                       {formatQty(item.qty)}
                       {item.productUnit && (
                         <span className="ml-1 text-muted">
@@ -219,7 +219,7 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
                       )}
                     </td>
 
-                    <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">
+                    <td className="px-2 py-2 text-right tabular-nums text-xs">
                       {returnedMinor > 0n ? (
                         <>
                           <span className="text-danger">
@@ -234,11 +234,11 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
                       )}
                     </td>
 
-                    <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">
+                    <td className="px-2 py-2 text-right tabular-nums text-xs">
                       {formatMoney(item.costPerUnit)}
                     </td>
 
-                    <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">
+                    <td className="px-2 py-2 text-right tabular-nums text-xs">
                       {formatMoney(item.subtotal)}
                     </td>
                   </tr>
@@ -252,7 +252,7 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
                 >
                   Subtotal
                 </td>
-                <td className="px-2 py-2 text-right font-mono text-sm font-semibold tabular-nums">
+                <td className="px-2 py-2 text-right tabular-nums text-sm font-semibold">
                   {formatMoney(receipt.total)}
                 </td>
               </tr>
@@ -265,7 +265,7 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
                   >
                     PPN masukan
                   </td>
-                  <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">
+                  <td className="px-2 py-2 text-right tabular-nums text-xs">
                     {formatMoney(receipt.taxAmount)}
                   </td>
                 </tr>
@@ -278,7 +278,7 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
                 >
                   Total
                 </td>
-                <td className="px-2 py-2 text-right font-mono text-sm font-semibold tabular-nums">
+                <td className="px-2 py-2 text-right tabular-nums text-sm font-semibold">
                   {formatMoney(receipt.grandTotal)}
                 </td>
               </tr>
@@ -381,7 +381,7 @@ function Field({
       <p className="text-[10px] font-medium tracking-widest text-muted uppercase">
         {label}
       </p>
-      <p className={cn("mt-1 text-sm font-semibold", mono && "font-mono")}>
+      <p className={cn("mt-1 text-sm font-semibold", mono && "tabular-nums")}>
         {value}
       </p>
     </div>

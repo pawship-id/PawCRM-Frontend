@@ -119,7 +119,7 @@ export function BundleComponentEditor({
                 <tr key={component.componentProductId ?? index} className="border-b border-border/60">
                   <td className="px-2 py-2">
                     <p className="font-medium">{item?.name ?? "—"}</p>
-                    <p className="font-mono text-xs text-muted">{item?.sku}</p>
+                    <p className="tabular-nums text-xs text-muted">{item?.sku}</p>
                   </td>
                   <td className="px-2 py-2 text-right">
                     <Input
@@ -133,13 +133,13 @@ export function BundleComponentEditor({
                           ),
                         )
                       }
-                      className="ml-auto max-w-24 text-right font-mono"
+                      className="ml-auto max-w-24 text-right tabular-nums"
                     />
                   </td>
-                  <td className="px-2 py-2 text-right font-mono text-xs tabular-nums text-muted">
+                  <td className="px-2 py-2 text-right tabular-nums text-xs text-muted">
                     {formatMoney(item?.hppAvg)}
                   </td>
-                  <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">
+                  <td className="px-2 py-2 text-right tabular-nums text-xs">
                     {item?.hppAvg
                       ? formatMoney(multiplyDecimals(item.hppAvg, component.qty))
                       : "—"}
@@ -167,7 +167,7 @@ export function BundleComponentEditor({
           <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-primary-hover">
             Perhitungan bundle
           </p>
-          <p className="mt-1.5 overflow-x-auto whitespace-nowrap font-mono text-[13px] leading-7">
+          <p className="mt-1.5 overflow-x-auto whitespace-nowrap tabular-nums text-[13px] leading-7">
             HPP bundle <span className="text-muted">=</span> Σ(HPP komponen ×
             qty) <span className="text-muted">=</span>{" "}
             <b className="text-primary-hover">{formatMoney(totalHpp)}</b>

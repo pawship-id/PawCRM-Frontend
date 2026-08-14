@@ -37,7 +37,7 @@ export function CategoriesScreen() {
             { label: "Kategori" },
           ]}
         />
-        <h1 className="mt-1 text-2xl font-semibold text-foreground">Kategori</h1>
+        <h1 className="mt-1 text-2xl font-extrabold text-foreground">Kategori</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">
           Pengelompokan produk di katalog dan laporan. Sebuah kategori hanya
           punya nama — harga, stok, dan aturan lainnya ada di produknya.

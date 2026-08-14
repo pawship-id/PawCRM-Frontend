@@ -149,17 +149,17 @@ export function LowStockScreen() {
               <TableBody>
                 {rows.map((row) => (
                   <TableRow key={row._id}>
-                    <TableCell className="font-mono text-xs">
+                    <TableCell className="tabular-nums text-xs">
                       {row.sku}
                     </TableCell>
                     <TableCell>{row.name}</TableCell>
-                    <TableCell className="text-right font-mono tabular-nums">
+                    <TableCell className="text-right tabular-nums">
                       {formatQty(row.qtyOnHand)} {row.unit}
                     </TableCell>
-                    <TableCell className="text-right font-mono tabular-nums text-muted">
+                    <TableCell className="text-right tabular-nums text-muted">
                       {row.minStock}
                     </TableCell>
-                    <TableCell className="text-right font-mono tabular-nums text-destructive">
+                    <TableCell className="text-right tabular-nums text-destructive">
                       {formatQty(
                         String(
                           Number(row.minStock ?? 0) - Number(row.qtyOnHand),

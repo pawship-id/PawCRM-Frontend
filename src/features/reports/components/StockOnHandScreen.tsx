@@ -217,7 +217,7 @@ export function StockOnHandScreen() {
             groups.map((group) => (
               <section key={group.key} className="flex flex-col gap-2">
                 <div className="flex flex-wrap items-baseline gap-2">
-                  <h3 className="font-medium text-foreground">
+                  <h3 className="font-bold text-foreground">
                     {group.branchName}
                   </h3>
                   <span className="text-xs text-muted">
@@ -244,7 +244,7 @@ export function StockOnHandScreen() {
                           <TableCell className="text-xs text-muted">
                             {row.warehouseName ?? "—"}
                           </TableCell>
-                          <TableCell className="font-mono text-xs">
+                          <TableCell className="tabular-nums text-xs">
                             {row.sku ?? "—"}
                           </TableCell>
                           <TableCell>
@@ -263,10 +263,10 @@ export function StockOnHandScreen() {
                           <TableCell className="text-xs text-muted">
                             {row.categoryName ?? "—"}
                           </TableCell>
-                          <TableCell className="text-right font-mono tabular-nums">
+                          <TableCell className="text-right tabular-nums">
                             {formatQty(row.qty)} {row.unit}
                           </TableCell>
-                          <TableCell className="text-right font-mono tabular-nums">
+                          <TableCell className="text-right tabular-nums">
                             {/*
                               An em dash, never "Rp 0". A product with no cost
                               basis is not one worth nothing — and only the first
@@ -278,7 +278,7 @@ export function StockOnHandScreen() {
                               formatMoney(row.hppAvg)
                             )}
                           </TableCell>
-                          <TableCell className="text-right font-mono tabular-nums">
+                          <TableCell className="text-right tabular-nums">
                             {row.value === null ? (
                               <span className="text-muted">—</span>
                             ) : (

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { SectionPlaceholder } from "@/features/dashboard";
 import { BookingIcon } from "@/components/icons";
 
-export const metadata: Metadata = { title: "Booking · PawShip" };
+export const metadata: Metadata = { title: "Booking · Buloo" };
 
 export default function BookingPage() {
   return (

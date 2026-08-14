@@ -4,7 +4,7 @@ import { Breadcrumb } from "@/components";
 import { ImportScreen } from "@/features/inventory";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Import produk · PawShip" };
+export const metadata: Metadata = { title: "Import produk · Buloo" };
 
 /**
  * Bulk product import.
@@ -35,7 +35,7 @@ export default function ImportProductsPage() {
               { label: "Import" },
             ]}
           />
-          <h1 className="mt-1 text-2xl font-semibold text-foreground">
+          <h1 className="mt-1 text-2xl font-extrabold text-foreground">
             Import produk
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">

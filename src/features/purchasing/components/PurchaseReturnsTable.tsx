@@ -98,7 +98,7 @@ export function PurchaseReturnsTable({
 
             return (
               <TableRow key={row._id}>
-                <TableCell className="font-mono text-xs">
+                <TableCell className="tabular-nums text-xs">
                   <Link
                     href={`/dashboard/purchasing/returns/${row._id}`}
                     className="text-primary-hover hover:underline"
@@ -117,7 +117,7 @@ export function PurchaseReturnsTable({
 
                 {/* The delivery being reversed, named rather than referenced —
                     the column this list is actually scanned by. */}
-                <TableCell className="font-mono text-xs">
+                <TableCell className="tabular-nums text-xs">
                   <Link
                     href={`/dashboard/purchasing/receipts/${row.originalReceiptId}`}
                     className="text-primary-hover hover:underline"
@@ -130,15 +130,15 @@ export function PurchaseReturnsTable({
                   {row.warehouseName ?? "—"}
                 </TableCell>
 
-                <TableCell className="text-right font-mono text-xs tabular-nums">
+                <TableCell className="text-right tabular-nums text-xs">
                   {row.itemCount}
                 </TableCell>
 
                 <TableCell
                   className={
                     isDraft
-                      ? "text-right font-mono text-sm tabular-nums text-muted"
-                      : "text-right font-mono text-sm font-semibold tabular-nums text-danger"
+                      ? "text-right tabular-nums text-sm text-muted"
+                      : "text-right tabular-nums text-sm font-semibold text-danger"
                   }
                 >
                   {formatMoney(row.totalAmount)}

@@ -29,7 +29,7 @@ export function PageHeading({
   return (
     <div>
       <Breadcrumb items={crumbs} />
-      <h1 className="mt-1 text-2xl font-semibold text-foreground">{title}</h1>
+      <h1 className="mt-1 text-2xl font-extrabold text-foreground">{title}</h1>
       {children && (
         <p className="mt-1 max-w-2xl text-sm text-muted">{children}</p>
       )}

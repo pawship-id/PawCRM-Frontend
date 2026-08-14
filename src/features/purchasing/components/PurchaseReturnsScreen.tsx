@@ -135,7 +135,7 @@ export function PurchaseReturnsScreen() {
         >
           {/* Inline fragments, not <p>: DialogDescription is itself a <p>. */}
           <>
-            Draft <b className="font-mono">{pendingDiscard.returnNumber}</b>{" "}
+            Draft <b className="tabular-nums">{pendingDiscard.returnNumber}</b>{" "}
             beserta seluruh barisnya akan dibuang. Tidak ada stok yang berubah
             dan tidak ada utang yang bergerak — draft memang belum pernah
             menulis apa pun.

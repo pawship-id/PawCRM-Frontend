@@ -7,7 +7,7 @@ import {
 } from "@/features/purchasing";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Buat retur · PawShip" };
+export const metadata: Metadata = { title: "Buat retur · Buloo" };
 
 /**
  * `?receipt=` preselects the delivery, which is how the goods-receipt detail

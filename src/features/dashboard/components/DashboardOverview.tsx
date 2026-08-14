@@ -53,7 +53,7 @@ export function DashboardOverview() {
   return (
     <div className="flex flex-col gap-8">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">
+        <h1 className="text-2xl font-extrabold text-foreground">
           Welcome back{user ? `, ${user.fullName.split(" ")[0]}` : ""} 👋
         </h1>
         <p className="mt-1 text-sm text-muted">
@@ -104,7 +104,7 @@ export function DashboardOverview() {
       </section>
 
       <section aria-label="Sections">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
+        <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-muted">
           Quick access
         </h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

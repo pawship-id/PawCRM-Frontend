@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { SectionPlaceholder } from "@/features/dashboard";
 import { EcommerceSyncIcon } from "@/components/icons";
 
-export const metadata: Metadata = { title: "E-commerce Sync · PawShip" };
+export const metadata: Metadata = { title: "E-commerce Sync · Buloo" };
 
 export default function EcommerceSyncPage() {
   return (

@@ -125,7 +125,7 @@ export function TenantDetail() {
             <TenantLogo tenant={tenant} />
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="truncate text-lg font-semibold text-foreground">
+                <h2 className="truncate text-lg font-bold text-foreground">
                   {tenant.name}
                 </h2>
                 <TenantSubscriptionBadge status={subscription.status} />
@@ -281,7 +281,7 @@ function DetailList({ rows }: { rows: DetailRow[] }) {
           </dt>
           <dd
             className={`text-sm text-foreground ${
-              row.mono ? "font-mono text-xs" : ""
+              row.mono ? "tabular-nums text-xs" : ""
             }`}
           >
             {row.value}

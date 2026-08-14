@@ -86,7 +86,7 @@ export function PayablesScreen() {
           <p className="text-[10px] font-medium tracking-widest text-muted uppercase">
             Total sisa utang
           </p>
-          <p className="font-mono text-lg font-semibold tabular-nums">
+          <p className="tabular-nums text-lg font-semibold">
             {summary === null ? "—" : formatMoney(summary.totalOutstanding)}
           </p>
           <p className="text-[10px] text-muted">

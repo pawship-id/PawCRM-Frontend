@@ -96,7 +96,7 @@ export function PayablesTable({
                 key={invoice._id}
                 className={cn(invoice.isOverdue && "bg-danger/5")}
               >
-                <TableCell className="font-mono text-xs">
+                <TableCell className="tabular-nums text-xs">
                   <Link
                     href={href}
                     className="text-primary-hover hover:underline"
@@ -127,11 +127,11 @@ export function PayablesTable({
                   )}
                 </TableCell>
 
-                <TableCell className="text-right font-mono text-xs tabular-nums">
+                <TableCell className="text-right tabular-nums text-xs">
                   {formatMoney(invoice.total)}
                 </TableCell>
 
-                <TableCell className="text-right font-mono text-xs tabular-nums text-muted">
+                <TableCell className="text-right tabular-nums text-xs text-muted">
                   {formatMoney(invoice.paidAmount)}
                 </TableCell>
 
@@ -140,7 +140,7 @@ export function PayablesTable({
                     done here against two strings. */}
                 <TableCell
                   className={cn(
-                    "text-right font-mono text-sm font-semibold tabular-nums",
+                    "text-right tabular-nums text-sm font-semibold",
                     isPositive(invoice.outstandingAmount) && "text-danger",
                   )}
                 >

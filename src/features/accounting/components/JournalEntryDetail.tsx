@@ -66,7 +66,7 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
           dikoreksi oleh{" "}
           <Link
             href={`/dashboard/keuangan/journal-entries/${entry.reversedByEntryId}`}
-            className="font-mono text-xs font-semibold text-danger underline-offset-4 hover:underline"
+            className="tabular-nums text-xs font-semibold text-danger underline-offset-4 hover:underline"
           >
             {reversedBy}
           </Link>{" "}
@@ -79,7 +79,7 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
           Entri pembalik untuk{" "}
           <Link
             href={`/dashboard/keuangan/journal-entries/${entry.reversesEntryId}`}
-            className="font-mono text-xs font-semibold text-foreground underline-offset-4 hover:underline"
+            className="tabular-nums text-xs font-semibold text-foreground underline-offset-4 hover:underline"
           >
             {reverses}
           </Link>
@@ -91,7 +91,7 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
         <div className="flex flex-wrap items-start gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="font-mono text-sm font-semibold text-foreground">
+              <span className="tabular-nums text-sm font-semibold text-foreground">
                 {entry.entryNumber}
               </span>
               <Badge
@@ -197,7 +197,7 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
         {entry.attachmentUrl && (
           <p className="border-t border-border pt-3 text-xs text-muted">
             Lampiran:{" "}
-            <span className="font-mono text-foreground">
+            <span className="tabular-nums text-foreground">
               {entry.attachmentUrl}
             </span>
           </p>
@@ -245,7 +245,7 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
                         number landed in.
                       */}
                       <div className={cn(!isDebit && "pl-6")}>
-                        <span className="font-mono text-xs text-muted">
+                        <span className="tabular-nums text-xs text-muted">
                           {account?.code ?? "????"}
                         </span>
                         <span className="ml-2 text-sm font-medium text-foreground">
@@ -268,10 +268,10 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
                     <td className="px-4 py-2.5 text-xs text-muted">
                       {line.memo ?? "—"}
                     </td>
-                    <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums">
+                    <td className="px-4 py-2.5 text-right tabular-nums text-xs">
                       {isDebit ? formatMoney(line.debit) : "—"}
                     </td>
-                    <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums">
+                    <td className="px-4 py-2.5 text-right tabular-nums text-xs">
                       {isDebit ? "—" : formatMoney(line.credit)}
                     </td>
                   </tr>
@@ -285,10 +285,10 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
                 >
                   Total
                 </td>
-                <td className="px-4 py-2.5 text-right font-mono text-sm font-semibold tabular-nums">
+                <td className="px-4 py-2.5 text-right tabular-nums text-sm font-semibold">
                   {formatMoney(totalDebit)}
                 </td>
-                <td className="px-4 py-2.5 text-right font-mono text-sm font-semibold tabular-nums">
+                <td className="px-4 py-2.5 text-right tabular-nums text-sm font-semibold">
                   {formatMoney(totalCredit)}
                 </td>
               </tr>
@@ -329,7 +329,7 @@ function Field({
       <dd
         className={cn(
           "mt-1 text-sm text-foreground",
-          mono && "font-mono text-xs",
+          mono && "tabular-nums text-xs",
         )}
       >
         {value}

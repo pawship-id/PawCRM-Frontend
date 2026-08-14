@@ -4,7 +4,7 @@ import { CustomerEditForm } from "@/features/customers";
 import { RequirePermission } from "@/features/permissions";
 
 export const metadata: Metadata = {
-  title: "Edit customer · Master Data · PawShip",
+  title: "Edit customer · Master Data · Buloo",
 };
 
 /**

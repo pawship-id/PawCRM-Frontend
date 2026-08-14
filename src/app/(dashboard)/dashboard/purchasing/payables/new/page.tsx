@@ -7,7 +7,7 @@ import {
 } from "@/features/purchasing";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Catat faktur supplier · PawShip" };
+export const metadata: Metadata = { title: "Catat faktur supplier · Buloo" };
 
 /**
  * `create`, not `read`. Filing a bill is a write, and the seeded Staff role holds

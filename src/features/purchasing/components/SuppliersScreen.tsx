@@ -50,7 +50,7 @@ export function SuppliersScreen() {
           </p>
           <p
             className={cn(
-              "font-mono text-lg font-semibold tabular-nums",
+              "tabular-nums text-lg font-semibold",
               owedMinor > 0n && "text-danger",
             )}
           >

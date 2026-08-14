@@ -288,12 +288,12 @@ export function StockAdjustmentForm() {
 
               <div className="flex flex-wrap items-center gap-2 rounded-lg bg-accent/60 px-3 py-2 text-sm">
                 <span className="text-muted">Stok saat ini</span>
-                <b className="font-mono tabular-nums">
+                <b className="tabular-nums">
                   {formatQty(qtyOnHand)} {product.unit}
                 </b>
                 <span className="text-muted">·</span>
                 <span className="text-muted">HPP</span>
-                <b className="font-mono tabular-nums">
+                <b className="tabular-nums">
                   {product.hppAvg
                     ? formatMoney(product.hppAvg)
                     : "belum terbentuk"}
