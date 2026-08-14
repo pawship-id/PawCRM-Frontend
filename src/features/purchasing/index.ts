@@ -28,4 +28,11 @@ export { PurchaseReturnForm } from "./components/PurchaseReturnForm";
 // screen that can still change it: edit the draft, preview, submit, discard.
 export { PurchaseReturnDetail } from "./components/PurchaseReturnDetail";
 export { PageHeading } from "./components/PageHeading";
+/**
+ * Exported because the REPORTS feature drills into it too. Consigned stock is a
+ * purchasing concept — it belongs to a vendor relationship — so the table lives
+ * here and the report borrows it, rather than a second copy growing over there
+ * with its own idea of what "still on the shelf" means.
+ */
+export { ConsignmentProductsTable } from "./components/ConsignmentProductsTable";
 export { PURCHASING_CRUMBS, supplierCrumb } from "./crumbs";

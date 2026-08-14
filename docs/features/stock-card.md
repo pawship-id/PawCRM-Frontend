@@ -73,6 +73,24 @@ byte of CSV.
 The file obeys the filters and contains **every** matching row, not the current page — the
 button says so, next to the filters it obeys.
 
+## It can be linked into, and that needs a Suspense boundary
+
+A product detail links here per warehouse row, carrying **both ids** —
+`?productId=&warehouseId=`. The stock card is a ledger of one product at one warehouse, so
+a link naming only the product would land the user on a screen still asking which shelf
+they meant, while they are looking at that exact row.
+
+The URL is read **once**, through a `useState` initialiser rather than an effect: seeding
+afterwards would show one product's ledger for a frame before swapping, and would fight the
+default-selection effect, which exists to fill an *empty* selection. After that the filters
+are the user's; the address bar is not rewritten as they change, because a dozen history
+entries for one screen is a back button nobody can use.
+
+> **`useSearchParams` in a statically prerendered route fails `next build` without a
+> `Suspense` boundary** — and the failure hides. In development every route renders on
+> demand, so it never suspends and the screen works perfectly until the production build.
+> The page wraps it; `StockCardScreen` itself stays unaware.
+
 ## Permissions
 
 Four separate grants, and the screen degrades one section at a time:

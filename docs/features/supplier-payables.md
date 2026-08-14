@@ -176,6 +176,26 @@ offering a "batalkan pembayaran" action that would not do what its label claims.
 Closing that loop needs a backend change this feature did not make — see the
 changelog.
 
+## The supplier detail lists the goods on consignment, not just how many
+
+It used to report `productCount: 3` and stop. That is not a number a vendor can act on:
+they phone to ask **which** of their items to collect, restock or write off, and three
+answers none of it. PCR-015 asked for the list and only the total had been built.
+
+`ConsignmentProductsTable` is **shared with the reports feature** — the supplier detail
+passes a `supplierId`, the consignment report renders the same table with a Supplier column
+and no filter. It lives here because consigned stock is a vendor relationship; reports
+borrows it. A table per screen would be two ideas of "still on the shelf" that disagree the
+first time either changes.
+
+> **These figures are still not a debt.** Consigned goods belong to the supplier until they
+> sell, so nothing here is owed — it is the other half of a vendor's position, not more of
+> the same half. The list makes the amount more concrete, which makes it easier to add to
+> the payables by mistake.
+
+A null nearest-expiry renders as an em dash. For dry goods that is the ordinary case, and
+"does not expire" versus "expires today" are opposite conversations to have with a vendor.
+
 ## Files
 
 **Services** — `purchaseInvoice.service.ts` (5 methods),

@@ -183,9 +183,40 @@ Reordering is native HTML5 drag **plus ◀ ▶ buttons**. The buttons are the to
 path and the only path testable in jsdom, which is what makes a drag-and-drop library unnecessary
 for nine one-dimensional items rather than merely avoidable.
 
-Cropping happens in the browser before upload, so the server receives final bytes. Videos skip it —
-there is nothing to crop — and carry an optional poster frame; without one the tile shows a play
-icon.
+Cropping happens in the browser before upload, so the server receives already-cropped bytes.
+
+#### Compression
+
+Split between the browser and the server, and the split is on purpose: the browser decides what is
+**sent**, the server decides what is **stored**.
+
+**Images** are downscaled to 2048px and re-encoded (WebP, JPEG where that is unsupported) by the
+crop dialog. The cap is deliberately above the server's 1600 — a canvas downscale is a crude
+filter, so leaving the final resample to sharp produces a sharper stored image than sending
+exactly 1600 would. What this fixes is not only bandwidth: the dialog used to encode at full
+natural resolution, so a photo straight off a phone routinely exceeded the 5 MB ceiling and was
+rejected outright.
+
+The server stores three sizes — 1600, **800** and 320. Read them by the box being drawn into and
+narrow through the chain, because media stored before the 800 existed has neither derivative:
+
+```ts
+const src = item.mediumUrl ?? item.thumbUrl ?? item.url;
+```
+
+**Videos** are not transcoded in the browser. It is possible — WebCodecs, or ffmpeg in wasm — and
+it is the wrong trade: WebCodecs needs a muxer and gives different output on every device, and
+ffmpeg.wasm is a ~30 MB download needing cross-origin isolation headers the app does not set. The
+server has a real ffmpeg and gets the same result every time. What the browser does is the cheap
+half — capture a poster frame, and refuse an oversized file **before** the upload rather than
+after fifty megabytes have gone out.
+
+A poster is best-effort: the server extracts one when none arrives. Sending one anyway is what
+makes the tile fill in the instant the transfer completes rather than after the transcode.
+
+**The tile shows "Memproses…" once the transfer hits 100%.** The server is still working — three
+image encodes, or a video transcode that runs tens of seconds — and a percentage frozen at 100 is
+indistinguishable from a hung request to the user watching it.
 
 Deleting a tile removes it from the array only. The bytes go when the product is saved; doing it
 sooner would strand a live product's image if the user then cancelled.
@@ -286,6 +317,77 @@ suggests deactivating instead, which is the only actionable part.
 Prices and quantities are decimal **strings** end to end, never JSON numbers.
 Arithmetic goes through `utils/decimal.ts` (`toMinor`, `sumDecimals`,
 `multiplyDecimals`); nothing parses them at the type boundary.
+
+## Stock is grouped by branch, and a branchless warehouse still shows
+
+PCR-010's "grouped by branch di UI". A warehouse belongs to a branch by **soft
+default** (PCR-019), so one set up for a bazaar genuinely belongs to none — those
+collect under **"Tanpa cabang"** rather than being dropped. Same rule the
+stock-on-hand report follows: stock nobody visits is exactly what these screens
+exist to surface.
+
+The heading renders only when there is **more than one group**. A single-branch
+tenant would otherwise get the same label above every row, and a grouping that
+groups nothing is noise.
+
+`branches:read` is its own permission, so the lookup **fails softly**: without it
+every row lands in one unnamed group and the table renders exactly as it did
+before grouping existed — which is the right thing for a missing optional lookup
+to degrade to.
+
+## A batch panel, for products that expire
+
+PCR-013's "tab Batch + hari ke expired" — a **card** rather than a tab. The rest
+of this screen is a column of cards read top to bottom; a tab strip for one extra
+view would hide it behind a click and make the page two shapes. What the AC asks
+for is that somebody looking at a product can see its lots without going
+elsewhere.
+
+Gated twice, and both matter:
+
+| | |
+| --- | --- |
+| `hasExpiry` | a product that does not expire still has one internal lot per receipt — plumbing the API creates so quantities have somewhere to live, and showing it to somebody who never asked about batches is noise |
+| `productBatches:read` | a separate grant from `products:read`, and a request that 403s is one that should not have been made |
+
+Only lots with something left (`hasRemaining`). An emptied lot is history the
+stock card tells better — with the movement that emptied it — while this card
+answers "what is on the shelf, and when does it turn".
+
+## The barcode field warns while you type
+
+PCR-018's "warning duplicate barcode saat input". **The data was never at risk**:
+the API enforces a partial unique index and answers a clash with a 409. What was
+missing is *when* the user finds out — after filling in a whole product and
+pressing save, at which point the fix is to go and work out which existing product
+owns the code.
+
+**Advisory, never a gate.** The save button stays enabled: the check races
+anything another user does in the same second, and the server is the authority
+either way. Disabling it would block a save the API would have accepted.
+
+Debounced at 500ms because a barcode is usually **scanned** — a burst of
+keystrokes ending in a newline. Firing per character would be a dozen requests for
+one scan.
+
+A `404` is the *good* answer: the endpoint reports "nothing has this barcode" by
+not finding one, so the miss is the success case. Editing the product that already
+owns the code is not a clash, or the edit form would warn on every save that never
+touched the barcode.
+
+## Each warehouse row links to its stock card
+
+PCR-010 asks for the movement history on the detail. The link carries **both** the product
+and the warehouse, because the stock card is a ledger of that pair — one naming only the
+product would land the user on a screen still asking which shelf, while they are looking at
+the row.
+
+Withheld in two cases, for two different reasons:
+
+| | |
+| --- | --- |
+| no `stockMovements:read` | a link that leads to access-denied is worse than no link |
+| a `parent` or a `bundle` | neither owns a ledger — the quantity beside it is its variants' or its components', so the card would open empty and read as a bug in the ledger rather than a property of the type |
 
 ## Tests
 

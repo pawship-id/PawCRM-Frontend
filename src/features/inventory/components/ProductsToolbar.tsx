@@ -159,6 +159,14 @@ export function ProductsToolbar({
 
         <Can feature="products" action="create">
           <div className="ml-auto flex flex-wrap gap-2">
+            {/*
+              Import sits FIRST and quietest of the three. It is the entry point
+              for a catalogue that does not exist yet — a tenant's first day —
+              while the other two are what everyone uses forever after.
+            */}
+            <Button variant="secondary" asChild>
+              <Link href="/dashboard/inventory/products/import">Import</Link>
+            </Button>
             <Button variant="secondary" asChild>
               <Link href="/dashboard/inventory/products/new?type=bundle">
                 + Bundle

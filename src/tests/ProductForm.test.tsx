@@ -1297,4 +1297,110 @@ describe("ProductForm", () => {
       expect(screen.getByPlaceholderText("RC-ADULT")).not.toBeRequired();
     });
   });
+
+  /**
+   * PCR-018's "warning duplicate barcode saat input".
+   *
+   * THE DATA WAS NEVER AT RISK — the API has always refused a duplicate with a
+   * 409. What was missing is WHEN the user finds out: after filling in a whole
+   * product and pressing save, at which point the fix is to go and work out
+   * which existing product owns the code.
+   */
+  describe("the duplicate barcode warning", () => {
+    it("names the product already holding the code, and links to it", async () => {
+      const user = userEvent.setup();
+      jest.spyOn(productService, "getByBarcode").mockResolvedValue(
+        makeProduct({ _id: "p9", sku: "OTHER-1", name: "Produk Lain" }),
+      );
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await user.type(screen.getByLabelText(/Barcode/), "8992700001234");
+
+      const link = await screen.findByRole("link", { name: "OTHER-1" });
+      expect(link).toHaveAttribute("href", "/dashboard/inventory/products/p9");
+    });
+
+    /**
+     * ADVISORY, NEVER A GATE. The check races anything another user does in the
+     * same second and the server is the authority either way — disabling the
+     * button would block a save the API would have accepted.
+     */
+    it("leaves the save button enabled", async () => {
+      const user = userEvent.setup();
+      jest
+        .spyOn(productService, "getByBarcode")
+        .mockResolvedValue(makeProduct({ _id: "p9", sku: "OTHER-1" }));
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+      await user.type(screen.getByLabelText(/Barcode/), "8992700001234");
+      await screen.findByRole("link", { name: "OTHER-1" });
+
+      expect(
+        screen.getByRole("button", { name: /Simpan produk/ }),
+      ).toBeEnabled();
+    });
+
+    // A 404 is the GOOD answer: the endpoint reports "nothing has this barcode"
+    // by not finding one, so the miss is the success case.
+    it("says nothing when the barcode is free", async () => {
+      const user = userEvent.setup();
+      jest
+        .spyOn(productService, "getByBarcode")
+        .mockRejectedValue(new ApiError("Product not found", 404));
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+      await user.type(screen.getByLabelText(/Barcode/), "8992700001234");
+
+      await waitFor(() =>
+        expect(productService.getByBarcode).toHaveBeenCalled(),
+      );
+      expect(screen.queryByText(/sudah dipakai/i)).not.toBeInTheDocument();
+    });
+
+    /**
+     * Editing the product that already owns the code is not a clash. Without
+     * this the edit form would warn on every save that never touched the
+     * barcode.
+     */
+    it("does not report a product as its own duplicate", async () => {
+      const user = userEvent.setup();
+      const existing = makeProduct({ _id: "p1", barcode: "899270000123" });
+      jest.spyOn(productService, "getById").mockResolvedValue(existing);
+      // The lookup finds THIS product — which is not a clash with itself.
+      jest.spyOn(productService, "getByBarcode").mockResolvedValue(existing);
+
+      renderWithAuth(<ProductForm productId="p1" />);
+      await screen.findByDisplayValue("899270000123");
+      // One more character so the debounced check fires at all.
+      await user.type(screen.getByLabelText(/Barcode/), "4");
+
+      await waitFor(() =>
+        expect(productService.getByBarcode).toHaveBeenCalled(),
+      );
+      expect(screen.queryByText(/sudah dipakai/i)).not.toBeInTheDocument();
+    });
+
+    // A scanner arrives as a burst of keystrokes; firing per character would be
+    // a dozen requests for one scan.
+    it("asks once for a whole scanned code, not once per character", async () => {
+      const user = userEvent.setup();
+      jest
+        .spyOn(productService, "getByBarcode")
+        .mockRejectedValue(new ApiError("Product not found", 404));
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+      await user.type(screen.getByLabelText(/Barcode/), "8992700001234");
+
+      await waitFor(() =>
+        expect(productService.getByBarcode).toHaveBeenCalled(),
+      );
+      expect(productService.getByBarcode).toHaveBeenCalledTimes(1);
+      expect(productService.getByBarcode).toHaveBeenCalledWith("8992700001234");
+    });
+  });
 });

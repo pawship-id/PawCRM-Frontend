@@ -7,6 +7,438 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Three MVP acceptance criteria that had been missed
+
+A second pass over the PRD found three ACs in Inventory & Purchasing that were never
+built and are **not** blocked on POS. The previous entry claimed the module would be
+clean after four items; it was not — these had not been checked when that list was drawn
+up. All three are on the product screens.
+
+### Stock is grouped by branch — PCR-010
+
+*"Detail produk: stok per warehouse **(grouped by branch di UI)**"*. The table listed
+warehouses flat.
+
+A warehouse belongs to a branch by **soft default** (PCR-019), so one set up for a bazaar
+belongs to none — those collect under **"Tanpa cabang"** rather than being dropped, the
+same rule the stock-on-hand report follows. The heading renders only when there is more
+than one group: a single-branch tenant would otherwise get the same label above every row.
+
+`useCatalogLookups` gained an opt-in `withBranches`, mirroring `withAccounting`, and it
+**fails softly** — without `branches:read` the table renders exactly as it did before
+grouping existed.
+
+### A batch panel on the product — PCR-013
+
+*"Detail produk: tab 'Batch' + hari ke expired"*. The backend already supported
+`?productId=`; nothing had ever called it.
+
+A **card**, not a tab: the rest of the screen is a column of cards, and a tab strip for one
+extra view would hide it behind a click and make the page two shapes.
+
+Gated on `hasExpiry` as well as `productBatches:read`. A product that does not expire still
+has one internal lot per receipt — plumbing so quantities have somewhere to live — and
+showing it to somebody who never asked about batches is noise.
+
+### The barcode field warns while you type — PCR-018
+
+*"Warning duplicate barcode saat input"*. The data was never at risk: the API enforces a
+partial unique index and answers a clash with a 409. What was missing is **when** the user
+finds out — after filling in a whole product and pressing save.
+
+**Advisory, never a gate.** The save button stays enabled: the check races anything another
+user does in the same second, and the server is the authority either way. Debounced at
+500ms because a barcode is usually *scanned* — a burst of keystrokes — and firing per
+character would be a dozen requests for one scan. A `404` is the good answer, and editing
+the product that already owns the code is not a clash with itself.
+
+---
+
+## [Unreleased] — The last four MVP gaps in Inventory & Purchasing
+
+Frontend half of backend `0.38.0`. Four acceptance criteria that were never built, all
+small, all found by re-auditing the PRD against the code rather than against memory.
+
+### A supplier can be told WHICH of their goods are here
+
+PCR-015 asks for "produk yang di-titip + qty remaining". The supplier screen showed
+`productCount: 3` — a number a vendor cannot act on. They phone to ask which items to
+collect, restock or write off.
+
+`ConsignmentProductsTable` lists them, and is **shared by two screens**: the supplier
+detail passes a `supplierId`, the consignment report drills in without leaving the page.
+A table per screen would be two ideas of "still on the shelf" that disagree the first
+time either changes. It lives in `features/purchasing` because consigned stock is a
+vendor relationship; reports borrows it.
+
+A null `nearestExpiry` renders as an em dash, never a date — for dry goods that is the
+ordinary case, and "does not expire" versus "expires today" are opposite conversations.
+
+### The stock card is reachable from the product you are looking at
+
+PCR-010 asks for the movement history on the product detail. The screen existed; nothing
+linked to it, so the user re-picked the warehouse and product they were already looking at.
+
+Each per-warehouse row now carries a link with **both ids**, and `StockCardScreen` seeds
+its first filters from `?productId=&warehouseId=`. Absent params leave the old
+first-of-each behaviour exactly as it was.
+
+> **`useSearchParams` needs a `Suspense` boundary or `next build` fails** — and the failure
+> hides: in development every route renders on demand, so it never suspends and this works
+> perfectly right up until the production build. The page wraps the screen; the plan
+> flagged this as a risk to verify and it was real.
+
+The link is withheld on a `parent` and a `bundle`: neither owns a ledger, so it would open
+an empty stock card and read as a bug rather than as a property of the type.
+
+### The dashboard shows the two alerts PCR-013 and PCR-018 put there
+
+Both cards worked — on the inventory hub, one click further in than the screen somebody
+opens every morning. The dashboard itself still showed four tiles reading "—" and "No data
+yet".
+
+Restock and expiry now carry real counts, each gated on the grant its own endpoint
+enforces, and **a role without the grant makes no request at all** — not a request that
+403s. Zero is rendered as a real, reassuring answer rather than hiding the tile. A failure
+is never rendered as zero: a zero that is really an error is the most dangerous number a
+landing page can show, because nobody goes and looks.
+
+The two tiles with no data source (bookings, POS sales) are badged **Segera** with the
+reason, the same treatment the Sales card gets on the reports hub. A dash reads as a
+number that failed to load.
+
+### Stock opname can be exported
+
+PCR-014's "riwayat opname bisa dilihat + export Excel". Two exports, because the AC is
+ambiguous and only one of them is what an accountant reconciles:
+
+- **the history**, from the list — one row per counting session, page-scoped and labelled;
+- **the lines**, from a sheet — one row per product, which is how a variance is actually
+  investigated.
+
+The per-sheet export sits **outside** the draft-only action block: a submitted sheet is the
+one that gets reconciled, and it is exactly the state with no other actions on screen.
+Uncounted lines are kept and marked, because "we did not get to it" is a finding.
+
+Signs are preserved and typed as numbers on both. A shrinkage is negative in the ledger and
+must be negative in the file, or the column cannot be summed to "what did counting cost us
+this quarter".
+
+---
+
+## [Unreleased] — Reports has a hub, three screens, and one honest gap
+
+Frontend half of backend `0.37.0`. See `docs/features/reports.md`.
+
+`/dashboard/reports` was a placeholder. It is now a hub of seven cards: three lead
+to screens built here, three lead to screens that already existed, and one is
+disabled with the reason on it.
+
+### Half of them are links, and that is the design
+
+The stock card, the batch list and the opname history are complete screens with
+their own filters and exports. Building "report" versions would have been the
+fastest possible way to end up with two screens that answer the same question and
+slowly stop agreeing. Reports is a table of contents for them, plus the three that
+had no home: **Stok per Cabang**, **Stok Minim**, **Konsinyasi Outstanding**.
+
+### Permissions are per card, not per page
+
+The hub carries no `RequirePermission` — each card names the grant its own
+destination enforces (`products:read`, `stockMovements:read`,
+`productBatches:read`). Gating the page on one feature would either hide it from
+people who can read half of it, or show a page whose links all lead to 403s. A
+role holding nothing gets a sentence rather than an empty grid.
+
+### The sales card is shown and disabled
+
+There is no POS and no invoice, so there is no sales data. The card renders greyed
+and badged **Segera** with the reason on it. A hidden card leaves an owner
+wondering whether the feature exists; a dead one says what blocks it.
+
+### Stok per Cabang computes almost nothing
+
+`totals` covers the entire filtered set and is rendered as it arrives — summing
+the page would produce a figure that changes as you page, looks like an answer and
+is not one. A caption says which set the tiles count, because three big numbers
+above a paged table are otherwise read as its sum. Per-branch subtotals are
+labelled "subtotal halaman ini".
+
+A warehouse with no branch groups under **"Tanpa cabang"** rather than
+disappearing: `defaultBranchId` is nullable by design, and forgotten stock in a
+location nobody visits is exactly what the report is for.
+
+A missing cost basis renders as an em dash, never `Rp 0`.
+
+### Export is `.xlsx` everywhere, through one writer
+
+`utils/xlsx.ts` is the only place that writes a workbook. Columns are typed — a
+quantity is a number the reader can sum, a date is a date they can sort, and a SKU
+of digits keeps its leading zero because **text is the default**.
+
+Two routes in: big exports (Stok per Cabang, Kartu Stok) take the server's
+streaming CSV and re-type it by **header name, never by position**; small ones
+build from rows already in memory. The big ones do not page the JSON endpoint —
+`limit` caps at 100, so a six-thousand-row catalogue would be sixty round trips.
+
+**The stock card's button now saves `.xlsx`; its endpoint is unchanged.** `Waktu`
+is deliberately not typed as a date — the server writes a full ISO timestamp and
+the date type reads only the date half, so typing it would throw the time away,
+and a stock card read to settle a dispute is where the time matters.
+
+### `utils/csv.ts`
+
+The CSV scanner moved out of the inventory feature, which is now the second thing
+that reads CSV. `sheet.ts` re-exports it so the import parser and the exports
+cannot drift into different ideas of what a quoted field is.
+
+### Two things the test run taught us
+
+**Mock the workbook writer in screen suites.** Loading the real 500 KB SheetJS
+build in every suite that merely offers an export button slowed the parallel run
+from 29s to 97s and timed out **seventeen tests in unrelated suites**. What a
+screen owns is the hand-off — which rows, through which endpoint, with which
+column types — and `xlsx.test.ts` owns the bytes.
+
+**`testTimeout` is now 15s, against Jest's default 5.** Not a workaround for a slow
+test: a guard against the result depending on how busy the machine is.
+`ProductForm.test.tsx` is 44 `userEvent` tests and ~27 seconds, and its longest
+case sat close enough to five seconds that adding suites elsewhere pushed it over —
+a failure that says nothing about the code under test. A ceiling still worth
+having, so a genuinely hung test fails rather than running until CI is killed.
+
+---
+
+## [Unreleased] — A spreadsheet is a way into the catalogue
+
+Frontend half of backend `0.36.0`. See `docs/features/product-import.md`.
+
+A tenant's first day is four hundred SKUs in a file somebody already maintains, and
+the only door into PawCRM was a form that takes them one at a time. **Inventory →
+Produk → Import** is the second door: download a template, fill it in, upload it,
+see every problem at once, create the lot. Standalone products and variant families;
+bundles still go through the form.
+
+### Both `.xlsx` and `.csv`, through one set of rules
+
+CSV is parsed here; `.xlsx` goes through SheetJS. Both meet at `parseGrid`, so every
+decision about columns, row numbers and blank cells is written once and cannot come
+out differently depending on which button the user pressed in Save As.
+
+**The SheetJS build is not the one on npm, and that distinction is load-bearing.**
+`xlsx` on the npm registry is an abandoned artefact frozen at **0.18.5** with a live
+prototype-pollution advisory; the maintained line moved to `cdn.sheetjs.com`, which
+is what package.json pins:
+
+```json
+"xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+```
+
+The lockfile records an integrity hash, so `npm ci` verifies it like any other
+dependency, and `npm audit` reports nothing for it. Anyone tempted to tidy the
+unusual URL by installing from npm would be reintroducing a known hole into a parser
+that runs over a file the tenant was handed by a supplier. The real cost is an
+install that needs `cdn.sheetjs.com` reachable — worth knowing before a cold CI
+finds out.
+
+Loaded through a **dynamic import**, so the ~800 KB parser is fetched only by the
+user who picked a workbook. A chunk that never loads falls back to "save as CSV",
+which needs nothing but the code already running.
+
+### `.xlsx` is the better format here, and the reason is dates
+
+Excel stores a date as a serial number — `2027-08-01` is 46600 — so the workbook
+knows which part is the month, and the DD/MM ambiguity that forces the CSV reader to
+refuse `01/08/2027` does not arise at all.
+
+The serial is rendered with `SSF.format`, **arithmetic on the serial that never
+builds a `Date`**. Every route through a JS Date is a route through the runtime's
+timezone, and a user in Jakarta entering the 1st would otherwise have a fair chance
+of storing the 31st.
+
+Numbers use the raw value, never the displayed one: `cell.w` for a currency-formatted
+price is `Rp45.000,00`, which the decimal reader would refuse — a user rejected for
+formatting their own spreadsheet.
+
+### Two template downloads, behind one button
+
+"Unduh template" opens a menu with `.xlsx` and `.csv`, the first marked *disarankan*
+with its reason on the line beneath. Two equal-looking buttons would have left the
+user choosing on the strength of a file extension, and the choice is not cosmetic.
+
+The server serves CSV and only CSV — one endpoint, one place the column list lives.
+The `.xlsx` is built in the browser from it (`utils/templateWorkbook.ts`), so a
+column added server-side appears in both downloads with no frontend change.
+
+It is the recommended one because it **cannot silently corrupt a barcode**. A CSV
+carries no column format, and `0123456789012` typed into a General column is a
+number: Excel drops the leading zero and renders 13 digits as `8.9927E+12`, both
+before any code of ours runs. The template formats `barcode`, `sku`, `parent_sku`,
+`kode_batch` and every `attr_*` column as Text, and `tgl_expired` as a real date
+column. Prices stay numeric so they can still be summed.
+
+**200 empty rows are pre-formatted**, and that is what makes it real rather than a
+property of the two example rows — Excel formats the cell being typed into, not the
+column as a concept, so a barcode entered on row 40 of an unformatted sheet is a
+number again.
+
+`cellStyles: true` on the write is the one flag whose absence would make the whole
+file pointless while still producing a valid workbook, which is why the tests read
+the formats back and round-trip a leading-zero barcode through download-then-upload
+rather than asserting the blob is non-empty.
+
+### Two things found while testing the workbook path
+
+**SheetJS does not reject garbage.** Handed bytes that are not a workbook, 0.20.3
+returns a sheet made of nonsense instead of throwing — so the `catch` around
+`XLSX.read` is not what protects the wrong-file case. The required-column check is,
+and its message is the more useful one anyway. Written down in the code and in the
+test rather than left as a guard that looks like it fires and does not.
+
+**The grid is aligned to Excel's gutter**, not to the sheet's used range. A workbook
+whose data begins at A3 would otherwise report every row number two off, and the row
+number is the one thing the user navigates by. `parseGrid` now finds the header
+wherever it sits, which fixes the same class of problem for CSV.
+
+### The parser handles what spreadsheets actually emit
+
+**Semicolons**, first and most importantly: Excel writes CSV with the system list
+separator, and on an Indonesian locale that is `;`. Parsed as commas the whole file
+is one column, every header is unknown, and the error names a column the user can see
+perfectly well in front of them. Sniffed from the header line.
+
+Then quoted fields containing the delimiter, doubled quotes, embedded newlines, CRLF,
+a BOM, and grouped thousands (`1.250.000`) — all of which turn up, none of which
+`split(",")` survives.
+
+### Two things it refuses to guess
+
+**Dates.** Only `YYYY-MM-DD`. `01/08/2027` is the 1st of August in Jakarta and the
+8th of January in New York, and the cell decides when a batch of cat food comes off
+the shelf. The refusal names the format *and* says to set the Excel column to Teks,
+because that is the actual fix and nobody guesses it.
+
+**Prices with currency on them.** `Rp 45.000,-` is refused rather than repaired —
+stripping the decoration would be inventing the number every invoice is built from.
+
+### An unknown column is named, never dropped
+
+A silently-ignored `hpp_awl` is how a catalogue is imported with no cost basis: every
+row passes, the products are created, and the balance sheet is wrong in a way nobody
+looks for.
+
+### The screen decides nothing about the data
+
+Whether a SKU is free, whether a category exists, whether a family agrees with
+itself — answered once, server-side, and rendered here. `canCommit` comes from the
+preview and is passed through untouched.
+
+The exception is cell FORMAT, and the reason is worth stating: a cell that is not a
+number, not a date and not a known unit is refused by Joi as a **request-level 400
+that names no row**. One bad cell in five hundred would come back as "Validation
+failed" and send the user through the file by hand. So three format rules are
+duplicated — and the duplication is one-way: **a local problem can only make the
+commit button more disabled, never less**, because a cell the parser could not read
+was never sent and the server's verdict for that row is uninformed.
+
+A refused commit **clears the preview**: the catalogue moved between the two screens,
+so the green rows are the stale reading that let the commit be attempted.
+
+### The report is a report, not a success screen
+
+Two outcomes a green tick would hide, and both are real:
+
+- **`failed[]`** — something raced the import. The panel says the rest is already in,
+  because the instinct is to re-run the whole file.
+- **`openingStockPosted: false`** — the product exists and its stock does not. The
+  backend deliberately does not fail a create when the ledger refuses the opening
+  balance. Re-importing is never the fix: the SKU now exists and comes back as
+  `conflict`.
+
+Three outcomes, not two. Treating the last as a kind of failure rendered a run where
+nothing failed as *"selesai sebagian … 0 gagal"* — a sentence that contradicts itself
+and points at a failure that never happened.
+
+The commonest cause is `Chart of accounts is missing account 3101`, on a tenant that
+predates the COA module (`node src/seeds/backfillAccounts.js` adds it). The panel
+then names the **chart of accounts** ahead of the adjustment screen and says why: a
+manual adjustment credits 4901 Pendapatan Lain-lain, booking the goods as a *gain* —
+right for stock found in a count, wrong for stock the owner already had, which is
+capital against 3101. The obvious repair would have filed a tenant's entire starting
+inventory as profit.
+
+Messages in an `Alert` are now wrapped in a single `<p>`: `AlertDescription` is a
+`grid gap-1`, so every element child became its own row and a bare `<strong>` broke
+the sentence across lines.
+
+### Also
+
+- **`types/productImport.ts`** is its own file: a product and a lot are documents, a
+  row and a verdict live for the length of one upload.
+- **The commit's timeout is 180s**, against 60s for the preview. Five hundred products
+  is a minute of sequential transactions, and a client that gives up at fifteen
+  seconds abandons an import that is still running — leaving the user with no report
+  of what was, by then, already created.
+- **The step is derived from the data**, never stored. A `step` variable alongside
+  `sheet` / `preview` / `result` is a fourth thing that can disagree with the other
+  three.
+- **`tests/sheet.test.ts`** (48) is mostly about readings the parser must NOT invent.
+  The workbook cases round-trip through a real SheetJS-built `.xlsx` rather than a
+  mock: that the code calls SheetJS is not in doubt, what it hands back for a date, a
+  currency-formatted price and a boolean is. **`tests/templateWorkbook.test.ts`** (14)
+  reads the produced formats back and proves a leading-zero barcode survives
+  download-then-upload. **`tests/ImportScreen.test.tsx`** (20) covers the gate, the
+  merge and the two partial outcomes.
+
+---
+
+## [Unreleased] — Uploads are compressed before they leave the browser
+
+Frontend half of backend `0.35.0`. See `docs/features/product-management.md`.
+
+### Images are downscaled before upload
+
+`ImageCropDialog` encoded the crop at its full natural resolution, so a 4000×3000 photo off a
+phone became a multi-megabyte upload — often above the 5 MB ceiling, which meant the most ordinary
+thing a user can do was rejected outright. It now downscales to 2048px through the new
+`src/utils/media.ts`, and prefers WebP with a JPEG fallback.
+
+**2048 and not 1600**, which is what the server stores. A canvas `drawImage` downscale is a crude
+filter; leaving the last resampling step to sharp gives a sharper stored image than sending
+exactly the target size. The headroom is the point.
+
+### Videos send a poster frame, and oversized ones are refused up front
+
+`mediaService.upload` has always accepted a `poster` option and nothing ever passed one, so
+`posterUrl` was null on every video and the gallery tile was a blank rectangle. `MediaGallery` now
+captures a frame — seeking past the opening second, because video opens on black more often than
+not — and sends it.
+
+Best-effort throughout: the server extracts a frame when none arrives, so a browser that cannot
+decode one is not an error. `captureVideoPoster` and `probeVideo` both time out after ten seconds,
+because a media element is permitted to fire neither `loadedmetadata` nor `error` and the upload
+awaits them.
+
+A file over 50 MB is now refused before the upload starts rather than after it. Checked for videos
+only: an image is downscaled before it is sent, so the size the user picked says nothing about
+whether it will be accepted.
+
+### The tile says "Memproses…" instead of freezing at 100%
+
+The transfer finishing is not the upload finishing — the server still has three image encodes or a
+video transcode to run, which on a long clip is tens of seconds. A percentage stuck at 100 reads
+as a hung request, and a user who concludes that starts the upload again.
+
+### `mediumUrl` on `ProductMedia`
+
+The product detail grid drew the 320px thumbnail into a tile a few hundred pixels wide, visibly
+soft on a 2× screen. It now uses the new 800px derivative, narrowing
+`mediumUrl ?? thumbUrl ?? posterUrl ?? url` so media stored before it still renders. The
+catalogue table keeps the 320 — right for a 40px row — with the 800 as its fallback instead of the
+full-size image.
+
+---
+
 ## [Unreleased] — Products become publishable
 
 Branch: `feature/product-expansion` (phases 3–7). Frontend half of backend `0.33.0`.

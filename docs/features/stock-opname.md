@@ -102,6 +102,33 @@ counter sees the sheet, fills it in, and is told plainly who finishes it.
 The nav entry is gated on `stockOpnames:read`. It previously used
 `stockMovements:create`, which hid the whole feature from exactly the people who do it.
 
+## Two exports, and only one is what an accountant reconciles
+
+PCR-014 asks for "riwayat opname bisa dilihat + export Excel". The AC is ambiguous, so
+both readings are built:
+
+| From | Contains | Answers |
+| --- | --- | --- |
+| the list | one row per counting session | *which counts happened* |
+| a sheet | one row per product | *which products were off, and by how much* |
+
+The second is the one a variance is actually investigated with, and it sits **outside** the
+draft-only action block — a submitted sheet is the one that gets reconciled, and it is
+exactly the state with no other actions left on screen.
+
+**Uncounted lines are kept and marked**, not filtered out. A line nobody reached posts
+nothing, but "we did not get to it" is a finding in its own right, and the `Dihitung`
+column is what tells it from "counted, and it matched".
+
+**Signs are preserved and typed as numbers.** A shrinkage is negative in the ledger and is
+negative in the file. An export that moved the direction into a separate column would be
+one nobody can sum to *"what did counting cost us this quarter"*, which is the whole reason
+the file is opened.
+
+The history export is **page-scoped and says so on the button**. The endpoint streams no
+CSV, and the history is bounded by its nature — one row per session, not one per product —
+so walking every page would be a loop that mostly runs when something else is wrong.
+
 ## Files
 
 ```

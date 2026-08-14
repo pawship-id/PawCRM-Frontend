@@ -8,6 +8,7 @@ import { warehouseService } from "@/services/warehouse.service";
 import { stockMovementService } from "@/services/stockMovement.service";
 import { productBatchService } from "@/services/productBatch.service";
 import { ApiError } from "@/services/api-error";
+import { csvToXlsx, saveBlob } from "@/utils/xlsx";
 import type { PageResult, Warehouse } from "@/types/api";
 import type {
   Product,
@@ -15,6 +16,29 @@ import type {
   StockMovement,
   StockMovementPage,
 } from "@/types/inventory";
+
+/**
+ * The workbook writer, mocked. This screen owns the hand-off to it, not the
+ * file it produces — that belongs to `xlsx.test.ts`, and loading the real
+ * 500 KB SheetJS build in every suite that merely offers an export button is
+ * what made the parallel run start timing out in unrelated places.
+ */
+jest.mock("@/utils/xlsx", () => ({
+  csvToXlsx: jest.fn(async () => new Blob(["workbook"])),
+  saveBlob: jest.fn(),
+}));
+
+/**
+ * The screen seeds its first filters from `?productId=&warehouseId=`, so it
+ * needs a router context. `useSearchParams` is typed non-null in the App Router
+ * and is null here only because there is none — mocked rather than guarded with
+ * `?.` in the component, which would be defensive code for a state the type
+ * says cannot happen in the app.
+ */
+let searchParams = new URLSearchParams();
+jest.mock("next/navigation", () => ({
+  useSearchParams: () => searchParams,
+}));
 
 /**
  * The stock card, against mocked services.
@@ -186,6 +210,60 @@ function mockHappyPath(
 afterEach(() => jest.restoreAllMocks());
 
 describe("StockCardScreen", () => {
+  // Reset between cases: the deep-link tests below set it, and a leaked value
+  // would silently change which pair every later test is reading.
+  beforeEach(() => {
+    searchParams = new URLSearchParams();
+  });
+
+  /**
+   * The deep link a product detail hands over. Without it the user lands on a
+   * screen still asking which product and which shelf they meant — while they
+   * are looking at that exact row.
+   */
+  describe("seeding from the URL", () => {
+    /**
+     * The ids here are deliberately NOT the fixtures' first product and first
+     * warehouse. Those are what the default-selection effect picks, so seeding
+     * with them would pass whether or not the URL is read at all — the test
+     * would prove nothing and look like it proved everything.
+     */
+    it("opens on the pair the link names, not on the first of each", async () => {
+      searchParams = new URLSearchParams(
+        "productId=p9&warehouseId=wh9",
+      );
+      mockHappyPath([movement()], []);
+
+      renderWithAuth(<StockCardScreen />);
+
+      await waitFor(() =>
+        expect(stockMovementService.list).toHaveBeenCalledWith(
+          expect.objectContaining({ productId: "p9", warehouseId: "wh9" }),
+        ),
+      );
+    });
+
+    // Without params the screen keeps its old behaviour exactly: the first
+    // warehouse and product fill an empty selection.
+    it("falls back to the first of each when the URL says nothing", async () => {
+      mockHappyPath([movement()], []);
+
+      renderWithAuth(<StockCardScreen />);
+
+      // The default-selection effect fills an EMPTY selection with the first
+      // warehouse and product — unchanged behaviour, pinned so the URL seeding
+      // above cannot quietly replace it.
+      await waitFor(() =>
+        expect(stockMovementService.list).toHaveBeenCalledWith(
+          expect.objectContaining({
+            warehouseId: WAREHOUSE,
+            productId: PRODUCT,
+          }),
+        ),
+      );
+    });
+  });
+
   it("renders the balance the API computed, without recomputing it", async () => {
     mockHappyPath(
       [
@@ -335,21 +413,38 @@ describe("StockCardScreen", () => {
     );
   });
 
-  it("exports the filters, and saves what the server sends back", async () => {
+  /**
+   * The server still streams CSV; the BUTTON now saves a typed `.xlsx`. A CSV
+   * carries no types, so every quantity and date in it is text the recipient's
+   * Excel re-guesses on open, differently depending on their locale.
+   *
+   * `@/utils/xlsx` is MOCKED, and deliberately: what this screen owns is the
+   * hand-off — the right filters out, the server's CSV in, the right column
+   * types along with it. Whether that produces a valid workbook is
+   * `xlsx.test.ts`'s job, and loading the real 500 KB writer in every suite that
+   * merely offers an export button is what made the parallel run start timing
+   * out elsewhere.
+   */
+  it("exports the filters, and hands the server's CSV to the workbook writer", async () => {
     mockHappyPath([movement()], []);
-    const blob = new Blob(["Waktu,Tipe\r\n"], { type: "text/csv" });
+
+    const csv = "Waktu,Tipe,Saldo\r\n2026-08-14T00:00:00.000Z,adjustment,12\r\n";
+    // jsdom's Blob implements no `text()`, which browsers have had since 2019.
+    // Polyfilled on the instance rather than worked around in the component.
+    const blob = Object.assign(new Blob([csv], { type: "text/csv" }), {
+      text: () => Promise.resolve(csv),
+    }) as Blob;
+
     const exportCall = jest
       .spyOn(stockMovementService, "export")
       .mockResolvedValue({ blob, filename: "kartu-stok.csv" });
 
-    const createObjectURL = jest.fn(() => "blob:url");
-    const revokeObjectURL = jest.fn();
-    Object.assign(URL, { createObjectURL, revokeObjectURL });
-
     const user = userEvent.setup();
     renderWithAuth(<StockCardScreen />);
 
-    await user.click(await screen.findByRole("button", { name: /Export CSV/ }));
+    await user.click(
+      await screen.findByRole("button", { name: /Export \.xlsx/ }),
+    );
 
     await waitFor(() =>
       expect(exportCall).toHaveBeenCalledWith(
@@ -359,9 +454,17 @@ describe("StockCardScreen", () => {
         }),
       ),
     );
-    // Revoked in the same turn: an object URL left behind pins the whole file in
-    // memory for the life of the tab.
-    expect(revokeObjectURL).toHaveBeenCalledWith("blob:url");
+
+    // The CSV the server sent, plus the types that turn its numeric columns into
+    // numbers the recipient can sum.
+    await waitFor(() => expect(csvToXlsx).toHaveBeenCalled());
+    expect(csvToXlsx).toHaveBeenCalledWith(
+      csv,
+      expect.objectContaining({
+        types: expect.objectContaining({ Saldo: "number" }),
+      }),
+    );
+    expect(saveBlob).toHaveBeenCalledWith(expect.anything(), "kartu-stok.xlsx");
   });
 
   it("surfaces an export failure instead of saving an error as a file", async () => {
@@ -373,7 +476,9 @@ describe("StockCardScreen", () => {
     const user = userEvent.setup();
     renderWithAuth(<StockCardScreen />);
 
-    await user.click(await screen.findByRole("button", { name: /Export CSV/ }));
+    await user.click(
+      await screen.findByRole("button", { name: /Export \.xlsx/ }),
+    );
 
     // A plain anchor to the endpoint would have downloaded a file containing
     // {"success":false}, which is the worst possible outcome.

@@ -9,7 +9,19 @@ import { productService } from "@/services/product.service";
 import { ApiError } from "@/services/api-error";
 import type { Opname, OpnameItem, Product } from "@/types/inventory";
 
+import { exportToXlsx } from "@/utils/xlsx";
+
 import { renderWithAuth } from "./helpers/renderWithAuth";
+
+/**
+ * The workbook writer, mocked. These screens own WHICH rows and columns go into
+ * the file; whether the bytes are a valid workbook belongs to `xlsx.test.ts`.
+ * Loading the real 500 KB SheetJS build in every suite offering an export button
+ * is what previously slowed the parallel run enough to time out other suites.
+ */
+jest.mock("@/utils/xlsx", () => ({
+  exportToXlsx: jest.fn(async () => undefined),
+}));
 
 jest.mock("@/services/stockOpname.service");
 jest.mock("@/services/category.service");
@@ -341,6 +353,70 @@ describe("OpnameScreen", () => {
     expect(
       screen.queryByRole("button", { name: "Buang" }),
     ).not.toBeInTheDocument();
+  });
+
+  describe("exporting the history", () => {
+    /**
+     * The list is paged, so the file is too — and the button says so. A file
+     * quietly holding 20 of 140 rows is one somebody reconciles against and
+     * finds short.
+     */
+    it("exports this page, and says so on the button", async () => {
+      asMock(stockOpnameService.list).mockResolvedValue(page([sheet()]));
+
+      renderWithAuth(<OpnameScreen />);
+      await screen.findByText("OPN-2026-0001");
+
+      await userEvent.click(
+        screen.getByRole("button", { name: /export halaman ini/i }),
+      );
+
+      await waitFor(() => expect(exportToXlsx).toHaveBeenCalled());
+      const [columns, rows, filename] = asMock(exportToXlsx).mock.calls[0];
+      expect(rows).toHaveLength(1);
+      expect(filename).toBe("riwayat-opname.xlsx");
+      // Names, not ObjectIds: the list response already resolves them.
+      expect(columns.map((column) => column.header)).toEqual(
+        expect.arrayContaining(["Nomor", "Gudang", "Selisih nilai"]),
+      );
+    });
+
+    /**
+     * The sign is the finding. A shrinkage is negative in the ledger and must be
+     * negative here, typed as a number — otherwise the column cannot be summed to
+     * "what did counting cost us this quarter".
+     */
+    it("types the variance as a signed number", async () => {
+      asMock(stockOpnameService.list).mockResolvedValue(
+        page([sheet({ totalDiffValue: "-120000.0000" })]),
+      );
+
+      renderWithAuth(<OpnameScreen />);
+      await screen.findByText("OPN-2026-0001");
+      await userEvent.click(
+        screen.getByRole("button", { name: /export halaman ini/i }),
+      );
+
+      await waitFor(() => expect(exportToXlsx).toHaveBeenCalled());
+      const [columns, rows] = asMock(exportToXlsx).mock.calls[0];
+      const variance = columns.find((c) => c.header === "Selisih nilai")!;
+      expect(variance.type).toBe("number");
+      expect(variance.value(rows[0])).toBe("-120000.0000");
+    });
+
+    // An empty workbook helps nobody, and the button not being clickable is
+    // clearer than a file with one header row in it.
+    it("disables the button while the list is empty", async () => {
+      asMock(stockOpnameService.list).mockResolvedValue(page([]));
+
+      renderWithAuth(<OpnameScreen />);
+
+      await waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: /export halaman ini/i }),
+        ).toBeDisabled(),
+      );
+    });
   });
 });
 
@@ -1026,6 +1102,87 @@ describe("OpnameSheet", () => {
       expect(
         screen.queryByRole("button", { name: /Tambah produk/ }),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  describe("exporting the sheet's lines", () => {
+    /**
+     * THE EXPORT AN ACCOUNTANT ACTUALLY USES. The history export answers "which
+     * counts happened"; this answers "which products were off, and by how much"
+     * — the question a variance is investigated with.
+     */
+    it("exports one row per line, named after the opname", async () => {
+      asMock(stockOpnameService.getById).mockResolvedValue(
+        sheet({
+          opnameNumber: "OPN-2026-0007",
+          items: [item({ diffQty: "-2.0000", diffValue: "-30000.0000" })],
+        }),
+      );
+
+      renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+      await screen.findByText("Shampoo Anjing");
+
+      await userEvent.click(
+        screen.getByRole("button", { name: /export selisih/i }),
+      );
+
+      await waitFor(() => expect(exportToXlsx).toHaveBeenCalled());
+      const [columns, rows, filename] = asMock(exportToXlsx).mock.calls[0];
+      expect(rows).toHaveLength(1);
+      expect(filename).toBe("opname-OPN-2026-0007.xlsx");
+      expect(columns.map((column) => column.header)).toEqual(
+        expect.arrayContaining([
+          "SKU",
+          "Qty sistem",
+          "Qty fisik",
+          "Selisih qty",
+          "HPP saat opname",
+        ]),
+      );
+    });
+
+    /**
+     * OUTSIDE the `!done` block, deliberately: a submitted sheet is the one that
+     * gets reconciled, and it is exactly the state with no other actions left on
+     * screen.
+     */
+    it("is available on a submitted sheet, where every other action is gone", async () => {
+      asMock(stockOpnameService.getById).mockResolvedValue(
+        sheet({ status: "submitted", items: [item()] }),
+      );
+
+      renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+      await screen.findByText("Shampoo Anjing");
+
+      expect(
+        screen.getByRole("button", { name: /export selisih/i }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /selesaikan opname/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    /**
+     * A line nobody reached posts nothing, but "we did not get to it" is a
+     * finding in its own right — and this column is what tells it from "counted,
+     * and it matched".
+     */
+    it("keeps uncounted lines, and marks them as such", async () => {
+      asMock(stockOpnameService.getById).mockResolvedValue(
+        sheet({ items: [item({ countedAt: null })] }),
+      );
+
+      renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+      await screen.findByText("Shampoo Anjing");
+      await userEvent.click(
+        screen.getByRole("button", { name: /export selisih/i }),
+      );
+
+      await waitFor(() => expect(exportToXlsx).toHaveBeenCalled());
+      const [columns, rows] = asMock(exportToXlsx).mock.calls[0];
+      const counted = columns.find((c) => c.header === "Dihitung")!;
+      expect(rows).toHaveLength(1);
+      expect(counted.value(rows[0])).toBe("belum");
     });
   });
 });

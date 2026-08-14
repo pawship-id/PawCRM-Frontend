@@ -1600,3 +1600,39 @@ export function isApiSuccess<T>(
 ): response is ApiSuccess<T> {
   return response.success === true;
 }
+
+/**
+ * One product a supplier still has sitting in the warehouse.
+ *
+ * The row behind `SupplierConsignmentRow.productCount` — the summary says how
+ * many, this says which. Both come from the same lots; only the grouping
+ * differs.
+ */
+export interface ConsignmentProductRow {
+  supplierId: string;
+  /** Null when the vendor was soft-deleted since. The goods are still there. */
+  supplierName: string | null;
+  productId: string;
+  sku: string | null;
+  name: string;
+  unit: string;
+  /** Distinct lots of this product still holding stock. */
+  lotCount: number;
+  qtyRemaining: string;
+  /** `qtyRemaining × costPerUnit` — what the supplier invoices as it sells. */
+  value: string;
+  /**
+   * The soonest expiry across this product's lots.
+   *
+   * NULL IS THE ORDINARY CASE for dry goods and is not "expires today" — it
+   * changes what the conversation with the vendor is about, so the absence is
+   * rendered rather than substituted with a date.
+   */
+  nearestExpiry: string | null;
+}
+
+export interface ConsignmentProductsResult {
+  items: ConsignmentProductRow[];
+  totalValue: string;
+  totalLots: number;
+}

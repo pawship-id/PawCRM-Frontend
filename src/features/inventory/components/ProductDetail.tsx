@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import Link from "next/link";
 
 import { Alert, Card, Spinner } from "@/components";
@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import dynamic from "next/dynamic";
 
-import { Can } from "@/features/permissions";
+import { Can, usePermissions } from "@/features/permissions";
 import { cn } from "@/lib/utils";
 import {
   formatMoney,
@@ -32,6 +32,7 @@ import { useCatalogLookups } from "../hooks/useCatalogLookups";
 import { useProductDetail } from "../hooks/useProductDetail";
 import { limitedByAt, qtyIn } from "../utils/catalogue";
 import type { WarehouseScope } from "../utils/catalogue";
+import { ProductBatchPanel } from "./ProductBatchPanel";
 import { ProductTypeBadge } from "./ProductTypeBadge";
 
 /**
@@ -137,6 +138,7 @@ function accountLabel(
  * arrangement the catalogue list uses, and for the same reason.
  */
 export function ProductDetail({ productId }: { productId: string }) {
+  const { can } = usePermissions();
   const { product, variants, parent, loading, error } =
     useProductDetail(productId);
   // Inactive locations included: a closed warehouse still owns the stock it
@@ -148,6 +150,9 @@ export function ProductDetail({ productId }: { productId: string }) {
   const lookups = useCatalogLookups({
     includeInactive: true,
     withAccounting: true,
+    // For grouping the stock table by branch — PCR-010. Fails softly: without
+    // `branches:read` the table renders exactly as it did before grouping.
+    withBranches: true,
   });
   // Only a bundle pays for this — it is the one type whose components are ids
   // the screen has to turn into names.
@@ -373,7 +378,15 @@ export function ProductDetail({ productId }: { productId: string }) {
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={item.thumbUrl ?? item.posterUrl ?? item.url}
+                      // The 800px derivative, not the 320px thumbnail: this tile
+                      // is a third of a card wide, where the thumb is visibly
+                      // soft on a 2× screen. Narrows to what older media has.
+                      src={
+                        item.mediumUrl ??
+                        item.thumbUrl ??
+                        item.posterUrl ??
+                        item.url
+                      }
                       alt={item.alt ?? "Media produk"}
                       className="h-full w-full object-cover"
                     />
@@ -501,7 +514,23 @@ export function ProductDetail({ productId }: { productId: string }) {
             rows={rows}
             warehouseId={warehouseId}
             warehouses={lookups.warehouses}
+            branches={lookups.branches}
+            canReadLedger={can("stockMovements", "read")}
           />
+
+          {/*
+            PCR-013's batch view, on the product it is about.
+
+            Gated twice, and both are load-bearing: `hasExpiry` because a product
+            that does not expire still has one internal lot per receipt — plumbing
+            the API creates so quantities have somewhere to live, and showing it
+            to somebody who never asked about batches is noise. And
+            `productBatches:read`, because it is a separate grant from
+            `products:read`.
+          */}
+          {product.hasExpiry && can("productBatches", "read") && (
+            <ProductBatchPanel productId={product._id} />
+          )}
 
           {product.productType === "parent" && (
             <VariantTable
@@ -539,21 +568,97 @@ export function ProductDetail({ productId }: { productId: string }) {
  * different fact from having run out, and the backend draws the same
  * distinction.
  */
+/** The two types that own a ledger of their own — see the link below. */
+const HOLDS_STOCK = ["standalone", "variant"];
+
+/** One branch's warehouses, in the order the warehouse list gave them. */
+interface BranchGroup {
+  key: string;
+  branchName: string;
+  rows: ProductStockRow[];
+}
+
+/**
+ * Groups the stock rows by the BRANCH each warehouse belongs to — PCR-010's
+ * "grouped by branch di UI".
+ *
+ * A warehouse belongs to a branch by SOFT DEFAULT (PCR-019), so one set up for a
+ * bazaar genuinely belongs to none; those collect under "Tanpa cabang" rather
+ * than being dropped. Same rule the stock-on-hand report follows, and for the
+ * same reason: stock nobody visits is exactly what these screens exist to
+ * surface.
+ *
+ * WITH NO BRANCH LIST — a role without `branches:read`, or a failed fetch —
+ * every row lands in ONE unnamed group, and the caller renders no headings at
+ * all. That is precisely the screen as it looked before grouping existed, which
+ * is the right thing for a missing optional lookup to degrade to.
+ */
+function groupByBranch(
+  rows: ProductStockRow[],
+  warehouses: Array<{ _id: string; name: string; defaultBranchId?: string | null }>,
+  branches: Array<{ _id: string; name: string }>,
+): BranchGroup[] {
+  const branchOf = new Map(
+    warehouses.map((warehouse) => [
+      warehouse._id,
+      warehouse.defaultBranchId ?? null,
+    ]),
+  );
+  const nameOf = new Map(branches.map((branch) => [branch._id, branch.name]));
+
+  const groups = new Map<string, BranchGroup>();
+
+  rows.forEach((row) => {
+    const branchId = branchOf.get(String(row.warehouseId)) ?? null;
+    const key = branchId ?? "__none__";
+
+    if (!groups.has(key)) {
+      groups.set(key, {
+        key,
+        branchName:
+          (branchId && nameOf.get(branchId)) ??
+          (branches.length === 0 ? "" : "Tanpa cabang"),
+        rows: [],
+      });
+    }
+
+    groups.get(key)!.rows.push(row);
+  });
+
+  return [...groups.values()];
+}
+
 function StockByWarehouse({
   product,
   rows,
   warehouseId,
   warehouses,
+  branches,
+  canReadLedger,
 }: {
   product: Product;
   rows: ProductStockRow[];
   warehouseId: string;
-  warehouses: Array<{ _id: string; name: string }>;
+  warehouses: Array<{
+    _id: string;
+    name: string;
+    defaultBranchId?: string | null;
+  }>;
+  /** Empty when the role cannot read them — the grouping then collapses to one. */
+  branches: Array<{ _id: string; name: string }>;
+  /**
+   * `stockMovements:read`. The stock card route enforces it too, so this only
+   * decides whether the link is offered — a link that leads to access-denied is
+   * worse than no link.
+   */
+  canReadLedger: boolean;
 }) {
   const visible =
     warehouseId === ALL
       ? rows
       : rows.filter((row) => String(row.warehouseId) === warehouseId);
+
+  const groups = groupByBranch(visible, warehouses, branches);
 
   return (
     <Card
@@ -581,10 +686,31 @@ function StockByWarehouse({
                 <th className="py-2 text-right font-medium">
                   {product.productType === "bundle" ? "Bisa dibuat" : "Stok"}
                 </th>
+                {/* Empty header for the per-row link column. */}
+                <th className="py-2 pl-4" />
               </tr>
             </thead>
             <tbody>
-              {visible.map((row) => (
+              {groups.map((group) => (
+                <Fragment key={group.key}>
+                  {/*
+                    THE BRANCH HEADING, and it renders only when there is more
+                    than one group. A single-branch tenant would otherwise get a
+                    heading above every row that says the same thing — a grouping
+                    that groups nothing is noise.
+                  */}
+                  {groups.length > 1 && (
+                    <tr className="border-b border-border/60 bg-muted/5">
+                      <td
+                        colSpan={3}
+                        className="py-1.5 pr-4 text-[10px] font-medium tracking-widest text-muted uppercase"
+                      >
+                        {group.branchName}
+                      </td>
+                    </tr>
+                  )}
+
+                  {group.rows.map((row) => (
                 <tr
                   key={String(row.warehouseId)}
                   className="border-b border-border/60 last:border-0"
@@ -605,7 +731,30 @@ function StockByWarehouse({
                     {formatQty(row.qty)}{" "}
                     <span className="text-xs text-muted">{product.unit}</span>
                   </td>
+                  <td className="py-2 pl-4 text-right">
+                    {/*
+                      PER ROW, carrying BOTH ids — the stock card is a ledger of
+                      one product at one warehouse, so a link naming only the
+                      product would land the user on a screen still asking them
+                      which shelf they meant. Which is the whole friction this
+                      closes: they are looking at the row already.
+
+                      Hidden on a `parent` and a `bundle`: neither holds stock of
+                      its own, so neither has a ledger — the quantity beside it is
+                      its variants' or its components'.
+                    */}
+                    {canReadLedger && HOLDS_STOCK.includes(product.productType) && (
+                      <Link
+                        href={`/dashboard/inventory/stock-card?productId=${product._id}&warehouseId=${String(row.warehouseId)}`}
+                        className="text-xs whitespace-nowrap text-primary hover:underline"
+                      >
+                        Kartu stok →
+                      </Link>
+                    )}
+                  </td>
                 </tr>
+                  ))}
+                </Fragment>
               ))}
             </tbody>
             {visible.length > 1 && (

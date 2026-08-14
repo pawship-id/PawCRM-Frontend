@@ -11,6 +11,7 @@ import { ApiError } from "@/services/api-error";
 import { stockOpnameService } from "@/services/stockOpname.service";
 import type { Opname } from "@/types/inventory";
 import { formatMoney, toMinor } from "@/utils/decimal";
+import { exportToXlsx, type XlsxColumn } from "@/utils/xlsx";
 
 import { useCatalogLookups } from "../hooks/useCatalogLookups";
 import {
@@ -39,6 +40,32 @@ import { OpnameToolbar } from "./OpnameToolbar";
  * that happened to agree, and submitting the first believing it was the second
  * silently certifies shelves nobody looked at.
  */
+/**
+ * The exported columns, in the order a printed count history is read.
+ *
+ * `selisih nilai` IS TYPED AS A NUMBER and the sign is preserved. A shrinkage is
+ * negative, and an export that rendered it as text — or worse, as an absolute
+ * value with the direction moved into another column — is one nobody can sum to
+ * "what did counting cost us this quarter", which is the question the file
+ * exists to answer.
+ *
+ * `opnameDate` is the date the shelves were walked, not the row's `createdAt`.
+ * Those differ whenever a count is entered the morning after, and the shelf date
+ * is the one an auditor reconciles against.
+ */
+const OPNAME_EXPORT_COLUMNS: XlsxColumn<Opname>[] = [
+  { header: "Nomor", value: (row) => row.opnameNumber },
+  { header: "Tanggal", value: (row) => row.opnameDate, type: "date" },
+  { header: "Gudang", value: (row) => row.warehouseName ?? "" },
+  { header: "Status", value: (row) => row.status },
+  { header: "Item dihitung", value: (row) => row.countedCount, type: "number" },
+  { header: "Total item", value: (row) => row.itemCount, type: "number" },
+  { header: "Selisih nilai", value: (row) => row.totalDiffValue, type: "number" },
+  { header: "Disubmit oleh", value: (row) => row.submittedByName ?? "" },
+  { header: "Disubmit pada", value: (row) => row.submittedAt ?? "" },
+  { header: "Catatan", value: (row) => row.notes ?? "" },
+];
+
 export function OpnameScreen() {
   const { can } = usePermissions();
   const lookups = useCatalogLookups();
@@ -49,6 +76,7 @@ export function OpnameScreen() {
   const [pendingDelete, setPendingDelete] = useState<Opname | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const { opnames, pagination, loading, error } = useOpnames(
     filters,
@@ -57,6 +85,32 @@ export function OpnameScreen() {
   );
 
   const refresh = () => setRefreshKey((key) => key + 1);
+
+  /**
+   * Exports the sheets ON THIS PAGE.
+   *
+   * Page-scoped, and the button says so. The opname endpoint streams no CSV, and
+   * the history is bounded by its nature — one row per counting session, not one
+   * per product — so walking every page would be a loop that mostly runs when
+   * something else is already wrong.
+   *
+   * Names rather than ids throughout: the list response already resolves
+   * `warehouseName` and `submittedByName`, so the file reads the way the screen
+   * does instead of handing somebody a column of ObjectIds.
+   */
+  const exportPage = async () => {
+    setExporting(true);
+    try {
+      await exportToXlsx(
+        OPNAME_EXPORT_COLUMNS,
+        opnames,
+        "riwayat-opname.xlsx",
+        { sheetName: "Riwayat Opname" },
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
 
   function handleFilters(next: OpnameFilters) {
     setFilters(next);
@@ -103,6 +157,9 @@ export function OpnameScreen() {
         filters={filters}
         warehouses={lookups.warehouses}
         onChange={handleFilters}
+        onExport={exportPage}
+        exporting={exporting}
+        canExport={!loading && opnames.length > 0}
       />
 
       {error && <Alert variant="error">{error}</Alert>}

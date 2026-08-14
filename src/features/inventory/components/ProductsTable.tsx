@@ -201,8 +201,13 @@ export function ProductsTable({
                         {product.resolved?.image ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
+                            // The 320px thumb is the right size for a 40px row.
+                            // The 800px one is only a fallback for media that
+                            // predates the thumbnail, and it beats dropping
+                            // forty full-size images into one table.
                             src={
                               product.resolved.image.thumbUrl ??
+                              product.resolved.image.mediumUrl ??
                               product.resolved.image.url
                             }
                             alt=""

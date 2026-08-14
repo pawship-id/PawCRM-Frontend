@@ -1,11 +1,26 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { MediaGallery } from "@/components/MediaGallery";
+import { mediaService } from "@/services/media.service";
+import { captureVideoPoster } from "@/utils/media";
 import type { ProductMedia } from "@/types/inventory";
 
 jest.mock("@/services/media.service", () => ({
   mediaService: { upload: jest.fn() },
+}));
+
+/**
+ * `@/utils/media` is mocked because jsdom has neither a canvas 2D context nor a
+ * media element that decodes anything — a real `captureVideoPoster` would hit
+ * its ten-second timeout and return null in every case, which is the one
+ * outcome that proves nothing. Stubbing it makes "was a poster sent" an
+ * assertion instead of a coin toss. The helper's own behaviour is covered in
+ * media-utils.test.ts against stubbed canvas and video elements.
+ */
+jest.mock("@/utils/media", () => ({
+  captureVideoPoster: jest.fn(),
+  formatMegabytes: (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`,
 }));
 
 /**
@@ -158,5 +173,134 @@ describe("MediaGallery", () => {
       "src",
       "http://localhost:5000/media/clip_poster.webp",
     );
+  });
+
+  /**
+   * Uploading a video.
+   *
+   * The file input is hidden and driven by the add tile, so these upload through
+   * `userEvent.upload` on the input itself — the same event React sees when a
+   * user picks a file through the tile.
+   */
+  describe("a video upload", () => {
+    /**
+     * Renders and returns the hidden file input.
+     *
+     * Queried out of the container rather than by label, because it has none —
+     * the visible add tile is its label, and the input is deliberately kept in
+     * the accessibility tree (not `aria-hidden`) but unreachable by name.
+     */
+    function renderGallery(onChange = jest.fn()) {
+      const { container } = render(
+        <MediaGallery value={[]} onChange={onChange} />,
+      );
+
+      return container.querySelector(
+        "input[type=file]",
+      ) as HTMLInputElement;
+    }
+
+    const video = (bytes: number, name = "clip.mp4") => {
+      const file = new File(["x"], name, { type: "video/mp4" });
+      // `size` is a getter on File and jsdom builds it from the content, so a
+      // 50 MB fixture would mean a 50 MB string. Redefining it is the only way
+      // to exercise a size limit in jsdom.
+      Object.defineProperty(file, "size", { value: bytes });
+      return file;
+    };
+
+    const upload = mediaService.upload as jest.Mock;
+    const capture = captureVideoPoster as jest.Mock;
+
+    beforeEach(() => {
+      upload.mockResolvedValue({
+        mediaType: "video",
+        url: "http://localhost:5000/media/clip.mp4",
+        storageKey: "clip",
+        driver: "local",
+        mimeType: "video/mp4",
+      });
+      capture.mockResolvedValue(new Blob(["poster"], { type: "image/webp" }));
+    });
+
+    it("sends the captured poster frame alongside the file", async () => {
+      const user = userEvent.setup();
+      const input = renderGallery();
+
+      await user.upload(input, video(5 * 1024 * 1024));
+
+      // Without this the server has to extract a frame itself, and on a
+      // deployment with transcoding off the tile stays a blank rectangle.
+      await waitFor(() => expect(upload).toHaveBeenCalled());
+      expect(upload.mock.calls[0][1]).toMatchObject({
+        poster: expect.any(Blob),
+      });
+    });
+
+    it("uploads anyway when no frame could be captured", async () => {
+      // A poster is best-effort: the server extracts one when none arrives, so
+      // a browser that cannot decode a frame must not block the upload.
+      capture.mockResolvedValue(null);
+      const user = userEvent.setup();
+      const input = renderGallery();
+
+      await user.upload(input, video(5 * 1024 * 1024));
+
+      await waitFor(() => expect(upload).toHaveBeenCalled());
+      expect(upload.mock.calls[0][1]).toMatchObject({ poster: null });
+    });
+
+    it("refuses an oversized video before uploading a byte of it", async () => {
+      // The API would refuse it too — after the user waited out a 60 MB upload.
+      const user = userEvent.setup();
+      const input = renderGallery();
+
+      await user.upload(input, video(60 * 1024 * 1024));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        /Video terlalu besar \(60\.0 MB\)\. Maksimal 50\.0 MB\./,
+      );
+      expect(upload).not.toHaveBeenCalled();
+    });
+
+    it("says it is processing once the bytes have landed", async () => {
+      // The transfer finishing is not the upload finishing: the server still
+      // has to transcode, which on a long clip is tens of seconds. A tile stuck
+      // on "100%" reads as frozen, and a user who concludes that starts again.
+      let settle: (asset: ProductMedia) => void = () => {};
+      upload.mockImplementation((_file, options) => {
+        options.onProgress(100);
+        return new Promise<ProductMedia>((resolve) => {
+          settle = resolve;
+        });
+      });
+
+      const user = userEvent.setup();
+      const input = renderGallery();
+
+      await user.upload(input, video(5 * 1024 * 1024));
+
+      expect(await screen.findByText("Memproses…")).toBeInTheDocument();
+      expect(screen.queryByText("100%")).not.toBeInTheDocument();
+
+      settle(asset("clip", { mediaType: "video" }));
+      await waitFor(() =>
+        expect(screen.queryByText("Memproses…")).not.toBeInTheDocument(),
+      );
+    });
+
+    it("still shows a percentage while the bytes are going out", async () => {
+      upload.mockImplementation((_file, options) => {
+        options.onProgress(40);
+        return new Promise(() => {});
+      });
+
+      const user = userEvent.setup();
+      const input = renderGallery();
+
+      await user.upload(input, video(5 * 1024 * 1024));
+
+      expect(await screen.findByText("40%")).toBeInTheDocument();
+    });
   });
 });

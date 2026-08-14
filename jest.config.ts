@@ -40,6 +40,22 @@ const config: Config = {
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
   },
+  /**
+   * Fifteen seconds, against Jest's default of five.
+   *
+   * NOT A WORKAROUND FOR A SLOW TEST — a guard against the suite's result
+   * depending on how busy the machine is. The heavy component suites drive
+   * `userEvent`, which types character by character through the real React
+   * event loop: `ProductForm.test.tsx` alone is 44 tests and ~27 seconds, and
+   * under a full parallel run its longest case sat close enough to five seconds
+   * that adding suites elsewhere in the project pushed it over. That failure
+   * says nothing about the code under test.
+   *
+   * A ceiling still worth having: a test that genuinely hangs — an unresolved
+   * promise, a `waitFor` on something that never arrives — fails here rather
+   * than running until the CI job is killed.
+   */
+  testTimeout: 15_000,
   testMatch: ["<rootDir>/src/**/*.test.{ts,tsx}"],
   collectCoverageFrom: [
     "src/**/*.{ts,tsx}",
