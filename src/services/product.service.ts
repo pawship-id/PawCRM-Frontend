@@ -49,6 +49,7 @@ export const productService = {
         excludeVariants: query.excludeVariants,
         holdsStock: query.holdsStock,
         includeDeleted: query.includeDeleted,
+        sort: query.sort,
       },
     }),
 

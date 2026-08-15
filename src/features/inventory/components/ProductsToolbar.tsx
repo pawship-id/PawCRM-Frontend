@@ -15,7 +15,6 @@ import {
   withAll,
   type FilterOption,
 } from "@/components";
-import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -23,48 +22,46 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import { Can } from "@/features/permissions";
-import { useMediaQuery } from "@/hooks/useMediaQuery";
 import type { Category } from "@/types/api";
-import type { ProductType, StockWarehouse } from "@/types/inventory";
+import type {
+  ProductSort,
+  ProductType,
+  StockWarehouse,
+} from "@/types/inventory";
 
 import type { WarehouseScope } from "../utils/catalogue";
 import type { ProductsQuery } from "../hooks/useProducts";
 import { NewProductMenu } from "./NewProductMenu";
 
 /**
- * The catalogue's controls: search, the type/category/warehouse filters, and the
- * two rare ones behind "Filter lain".
+ * The catalogue's controls: one row — search, one Filter button, one create
+ * menu — with every filter and the sort order inside the panel.
  *
- * Purely presentational — it renders the current query and reports changes up to
+ * Purely presentational: it renders the current query and reports changes up to
  * useProducts.
  *
- * THE BAR HAS FIVE FILTERS AND ROOM FOR THREE. Rule §8 gives this screen a quick
- * bar, and a quick bar is one line: with search and the actions on it too, five
- * triggers wrap into a second row that looks like a mistake. So the two nobody
- * touches daily — whether to show inactive products, and whether to show deleted
- * ones — move behind a `Filter lain` popover with its own Reset and Terapkan,
- * which is the escape hatch the filter spec names for exactly this. They are
- * also the pair that belongs together: both ask whether a product is still in
- * play, and neither is a question anyone opens the catalogue to ask.
+ * ONE BUTTON RATHER THAN A ROW OF TRIGGERS, at every width. Rule §8 hands a
+ * quick bar to a screen of four-or-fewer single-selects, and this screen has six
+ * things to set — type, category, warehouse scope, status, deleted, and now an
+ * ordering. That is the panel's own threshold, and it is what the panel is for:
+ * the table is queried once for a decision somebody made in one sitting, rather
+ * than three times while they compose it.
  *
- * BELOW 600px THE BAR IS NOT A BAR. Four triggers and a search stacked on a
- * phone is a screen of controls above a table nobody can see, so all five
- * filters collapse into a single `Filter` button opening a FilterPanel
- * — the same arrangement rule §8 gives a module with eight fields, reached here
- * because of the viewport rather than the field count. The two are branches of
- * one component rather than two trees hidden from each other by CSS: two copies
- * of "Kategori" in the DOM is one control for a sighted user and two for
- * everyone else.
+ * IT ALSO BUYS THE ROW BACK. With the triggers gone, search is the only thing
+ * on the line that can usefully grow, so it takes everything the two buttons do
+ * not — which matters because what people type here is product names, and the
+ * old 320px box truncated them mid-word.
+ *
+ * THE PRICE IS THAT NOTHING IS VISIBLE AT A GLANCE. A quick bar shows its
+ * current values on its triggers; a panel hides them behind a button, and a
+ * hidden filter is one people forget is on and then read the wrong numbers
+ * from. The count on the trigger (`Filter (2)`) is what pays that back — not
+ * decoration, the whole reason the collapsed form is safe.
  *
  * THE WAREHOUSE PICKER IS NOT PART OF THE QUERY. Every product response already
  * carries its quantities for every warehouse, so changing the selection re-reads
- * what is on screen instead of re-fetching it — which is why it sits beside the
+ * what is on screen instead of re-fetching it — which is why it sits among the
  * filters but is handed a separate setter.
  */
 const TYPE_FILTERS = withAll<ProductType | "">(
@@ -83,21 +80,48 @@ const STATUSES: FilterOption<ProductsQuery["status"]>[] = [
 ];
 
 /**
- * The width at which the bar stops being one. Not a Tailwind breakpoint: `sm`
- * (640) is a hair too late — at 600 the three triggers already fit — and the
- * number belongs to this layout rather than to the scale.
+ * The orderings the API accepts — PRODUCT_SORTS in product.model.js.
+ *
+ * NO "HARGA" OR "STOK" HERE, and their absence is deliberate. A parent and a
+ * bundle carry no `sellPrice` of their own (the table prints "—"), so ordering
+ * by price would sort a column that is empty for two of the three row types;
+ * and stock is summed across whichever warehouses are picked, on the page, from
+ * an array — the server cannot order by a number it has not been asked to
+ * compute. Offering either would be a control that quietly does something else.
  */
-const BAR_FITS = "(min-width: 600px)";
+const SORTS: FilterOption<ProductSort>[] = [
+  { value: "newest", label: "Terbaru" },
+  { value: "oldest", label: "Terlama" },
+  { value: "nameAsc", label: "Nama A–Z" },
+  { value: "nameDesc", label: "Nama Z–A" },
+  { value: "skuAsc", label: "SKU A–Z" },
+];
 
-/** Everything the filters hold, in the shape the panel edits it as a draft. */
+/** Everything the panel edits, as one draft. */
 interface CatalogueFilters {
   productType: ProductsQuery["productType"];
   categoryId: string;
   status: ProductsQuery["status"];
   includeDeleted: boolean;
+  sort: ProductSort;
   /** Empty means every warehouse — see WarehouseField. */
   warehouseIds: string[];
 }
+
+/**
+ * What Reset returns to — the query's own defaults, not "empty".
+ *
+ * The ordering is included: a list with no ordering is not a thing, so Reset
+ * puts it back to the API's default rather than clearing it to nothing.
+ */
+const CLEARED: CatalogueFilters = {
+  productType: "",
+  categoryId: "",
+  status: "",
+  includeDeleted: false,
+  sort: "newest",
+  warehouseIds: [],
+};
 
 /**
  * Whether two warehouse selections are the same set. Order is never meaningful
@@ -107,14 +131,6 @@ interface CatalogueFilters {
 function sameScope(a: readonly string[], b: readonly string[]) {
   return a.length === b.length && a.every((id) => b.includes(id));
 }
-
-const CLEARED: CatalogueFilters = {
-  productType: "",
-  categoryId: "",
-  status: "",
-  includeDeleted: false,
-  warehouseIds: [],
-};
 
 export function ProductsToolbar({
   query,
@@ -131,24 +147,21 @@ export function ProductsToolbar({
   onWarehouseChange: (ids: string[]) => void;
   onChange: (patch: Partial<ProductsQuery>) => void;
 }) {
-  // The wide bar is the fallback: it is what the server prerenders, so a desktop
-  // load never starts collapsed. A phone corrects itself on hydration.
-  const compact = !useMediaQuery(BAR_FITS, true);
-
   const applied: CatalogueFilters = {
     productType: query.productType,
     categoryId: query.categoryId,
     status: query.status,
     includeDeleted: query.includeDeleted,
+    sort: query.sort,
     warehouseIds: [...warehouseIds],
   };
 
   /**
-   * Commits a whole draft — the query half to useProducts, the view half here.
+   * Commits the draft — the query half to useProducts, the view half here.
    *
-   * ONLY WHAT ACTUALLY MOVED. A panel hands back every field it holds, and
+   * ONLY WHAT ACTUALLY MOVED. The panel hands back every field it holds, and
    * `setQuery` builds a new object out of whatever it is passed — which the
-   * fetch effect keys on by identity. Posting all four back would mean pressing
+   * fetch effect keys on by identity. Posting all of it back would mean pressing
    * Terapkan after changing nothing but the warehouse scope re-queried the whole
    * catalogue, which is the one thing that control exists not to do.
    */
@@ -160,41 +173,31 @@ export function ProductsToolbar({
     if (rest.status !== query.status) patch.status = rest.status;
     if (rest.includeDeleted !== query.includeDeleted)
       patch.includeDeleted = rest.includeDeleted;
+    if (rest.sort !== query.sort) patch.sort = rest.sort;
 
     if (Object.keys(patch).length > 0) onChange(patch);
     if (!sameScope(nextWarehouses, warehouseIds))
       onWarehouseChange(nextWarehouses);
   }
 
-  const categoryOptions = withAll(namedOptions(categories), "Semua kategori");
-
   return (
     <FilterBar
-      /*
-        WIDE: filters on one line, then search and the create menu on a line of
-        their own. Four triggers already fill the first line, and a search box
-        that flex-wrap parks wherever there happened to be room is one people
-        have to hunt for after every filter change.
-
-        NARROW: one wrapping row instead. Search takes the whole first line, so
-        the `Filter` button and the create menu fall onto the second together
-        and nearly fill it — three stacked full-width controls above a table
-        nobody can see yet is the thing to avoid on a phone.
-      */
-      searchPlacement={compact ? "inline" : "own-row"}
-      searchClassName={compact ? "order-first w-full" : undefined}
+      // Search leads the row and takes what is left of it: with the triggers
+      // collapsed there is nothing else on the line that grows, and product
+      // names are long.
+      searchPlacement="leading"
+      searchClassName="min-w-[12rem] flex-1"
+      // Below sm the row cannot hold all three, so the create button takes a
+      // line of its own — and takes all of it. A button hugging its label at
+      // one end of an otherwise empty row reads as something left behind.
+      actionsClassName="max-sm:w-full"
       search={
         <FilterSearch
           value={query.search}
           onChange={(search) => onChange({ search })}
           placeholder="Cari nama atau SKU…"
           ariaLabel="Cari produk"
-          // Wider than the shared default, because here it has a row to itself
-          // rather than a gap at the end of the filters — and what gets typed
-          // into it is product names, which run long. Both halves of the pair
-          // are needed: the shared `sm:max-w-xs` would otherwise win back above
-          // 640px and leave this capped only in the 600–640 band.
-          className={compact ? "max-w-none" : "max-w-md sm:max-w-md"}
+          fill
         />
       }
       actions={
@@ -203,143 +206,24 @@ export function ProductsToolbar({
         </Can>
       }
     >
-      {compact ? (
-        <CompactFilters
-          applied={applied}
-          categoryOptions={categoryOptions}
-          warehouses={warehouses}
-          onApply={apply}
-        />
-      ) : (
-        <>
-          <FilterSelect
-            label="Tipe"
-            ariaLabel="Filter tipe"
-            value={query.productType}
-            options={TYPE_FILTERS}
-            onChange={(productType) => onChange({ productType })}
-          />
-          <FilterSelect
-            label="Kategori"
-            ariaLabel="Filter kategori"
-            value={query.categoryId}
-            options={categoryOptions}
-            onChange={(categoryId) => onChange({ categoryId })}
-          />
-          {/*
-            On the bar this one applies on every tick rather than behind a
-            Terapkan, which no other multi-select in the app does. It is not a
-            query: every product already arrives carrying its quantities for
-            every warehouse, so ticking a location re-reads the page instead of
-            asking the server anything. A draft would make people confirm a
-            change they can already see.
-          */}
-          <WarehouseField
-            warehouses={warehouses}
-            selected={warehouseIds}
-            onChange={onWarehouseChange}
-          />
-          <MoreFilters applied={applied} onApply={apply} />
-        </>
-      )}
+      <CatalogueFilterPanel
+        applied={applied}
+        categoryOptions={withAll(namedOptions(categories), "Semua kategori")}
+        warehouses={warehouses}
+        onApply={apply}
+      />
     </FilterBar>
   );
 }
 
 /**
- * The rare pair — active status and deleted products — behind one trigger.
+ * Every filter and the sort order, behind one button.
  *
- * Its own Reset and Terapkan: two combined fields are a panel, and a panel gets
- * one pair of verbs (§8). Both are about whether a product is still in play,
- * which is why they are the two that travel together off the bar.
+ * The fields wait for Terapkan — that is what a panel is (§8). Reset returns
+ * the whole set to its defaults and applies at once, because clearing a filter
+ * is not a change anyone composes.
  */
-function MoreFilters({
-  applied,
-  onApply,
-}: {
-  applied: CatalogueFilters;
-  onApply: (next: CatalogueFilters) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState(applied);
-
-  const active = applied.includeDeleted || applied.status !== "";
-
-  function onOpenChange(next: boolean) {
-    // Seeded on every open, so clicking away abandons the draft rather than
-    // leaving it half-edited for the next visit.
-    if (next) setDraft(applied);
-    setOpen(next);
-  }
-
-  return (
-    <Popover open={open} onOpenChange={onOpenChange}>
-      <PopoverTrigger asChild>
-        <FilterTrigger
-          label="Filter lain"
-          active={active}
-          icon={<ListFilter className="size-4" />}
-          aria-label="Filter lain"
-        />
-      </PopoverTrigger>
-
-      <PopoverContent align="end" className="w-72 p-0">
-        <div className="space-y-4 p-4">
-          <FilterSelect
-            layout="field"
-            label="Status"
-            ariaLabel="Filter status"
-            value={draft.status}
-            options={STATUSES}
-            onChange={(status) => setDraft((prev) => ({ ...prev, status }))}
-          />
-          <FilterToggle
-            label="Tampilkan produk terhapus"
-            checked={draft.includeDeleted}
-            onChange={(includeDeleted) =>
-              setDraft((prev) => ({ ...prev, includeDeleted }))
-            }
-          />
-        </div>
-
-        {/* The same footer FilterMultiSelect carries, for the same reason: this
-            popover is one composed decision, so it needs one pair of verbs. */}
-        <div className="flex items-center justify-between border-t border-border bg-background px-3 py-2.5">
-          <button
-            type="button"
-            onClick={() => {
-              // Reset applies at once, at every level — clearing a filter is
-              // not a change anyone composes.
-              onApply({ ...applied, status: "", includeDeleted: false });
-              setOpen(false);
-            }}
-            className="rounded-sm text-sm font-semibold text-warning outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
-          >
-            Reset
-          </button>
-          <Button
-            size="sm"
-            onClick={() => {
-              onApply(draft);
-              setOpen(false);
-            }}
-          >
-            Terapkan
-          </Button>
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-/**
- * The whole bar as one button, for a screen too narrow to lay it out.
- *
- * Every filter is in the panel, including the three that auto-apply on the wide
- * bar: inside a panel they wait for Terapkan (§8), because the panel exists so
- * the table is queried once for a decision someone made in one sitting.
- */
-function CompactFilters({
+function CatalogueFilterPanel({
   applied,
   categoryOptions,
   warehouses,
@@ -353,6 +237,14 @@ function CompactFilters({
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(applied);
 
+  /**
+   * How many filters are narrowing the list right now.
+   *
+   * THE ORDERING IS NOT COUNTED. Every list has one, so it is never "on" — a
+   * badge that read `Filter (1)` on a screen showing every product would train
+   * people to ignore the number, which is the one thing here that must stay
+   * worth reading.
+   */
   const count = [
     applied.productType !== "",
     applied.categoryId !== "",
@@ -366,6 +258,8 @@ function CompactFilters({
   }
 
   function onOpenChange(next: boolean) {
+    // Seeded on every open, so clicking away abandons the draft rather than
+    // leaving it half-edited for the next visit.
     if (next) setDraft(applied);
     setOpen(next);
   }
@@ -392,6 +286,18 @@ function CompactFilters({
           setOpen(false);
         }}
       >
+        {/* Sort leads: it is the one field here that is always set, and the
+            only one that changes what the top of the list is rather than what
+            is in it. */}
+        <FilterSelect
+          layout="field"
+          label="Urutkan"
+          ariaLabel="Urutkan"
+          value={draft.sort}
+          options={SORTS}
+          unsetValue="newest"
+          onChange={(sort) => patch({ sort })}
+        />
         <FilterSelect
           layout="field"
           label="Tipe"
@@ -417,7 +323,6 @@ function CompactFilters({
           onChange={(status) => patch({ status })}
         />
         <WarehouseField
-          layout="field"
           warehouses={warehouses}
           selected={draft.warehouseIds}
           onChange={(warehouseIds) => patch({ warehouseIds })}
@@ -435,18 +340,16 @@ function CompactFilters({
 /**
  * Which warehouses the Stok column is reported for — any number of them.
  *
- * NOT A FilterMultiSelect, and deliberately so. That control holds a draft
- * behind a Terapkan because picking several things is usually one decision;
- * this one applies on every tick, because it changes a column on data already
- * in hand rather than asking the server a new question. It also inverts the
- * empty case, and its trigger label is a count rather than a value. Bending the
+ * NOT A FilterMultiSelect, and deliberately so. That control holds its own draft
+ * behind its own Terapkan; this one sits inside a panel that already has a pair,
+ * so a second pair inside it would ask the same question twice. It also inverts
+ * the empty case, and its trigger reads a count rather than a value. Bending the
  * shared control around those three would put four props on it for one call
  * site — the failure mode this whole folder exists to avoid.
  *
- * What it DOES share is the shell: FilterTrigger, and FilterField when it is
- * inside the panel — so it sits in the bar looking like the selects beside it
- * and in the panel looking like the ones above it, and a design change still
- * lands in one file.
+ * What it DOES share is the shell: FilterField and FilterTrigger, so it sits in
+ * the panel looking like the selects above it, and a design change still lands
+ * in one file.
  *
  * A MENU OF CHECKBOXES RATHER THAN A SELECT, because Radix Select has no
  * multiple mode and a native `<select multiple>` is a ctrl-click affordance
@@ -467,12 +370,10 @@ function WarehouseField({
   warehouses,
   selected,
   onChange,
-  layout = "inline",
 }: {
   warehouses: StockWarehouse[];
   selected: WarehouseScope;
   onChange: (ids: string[]) => void;
-  layout?: "inline" | "field";
 }) {
   const names = warehouses
     .filter((warehouse) => selected.includes(warehouse._id))
@@ -495,50 +396,43 @@ function WarehouseField({
     );
   }
 
-  const control = (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <FilterTrigger
-          layout={layout}
-          // The caption says STOK, not "Gudang" — this is the only control on
-          // the bar that changes a number rather than which rows are on the
-          // page, and "Gudang: 2 gudang" would have said nothing about that.
-          // The aria-label repeats it so the accessible name reads as one
-          // phrase either way, since in the panel the caption is drawn above.
-          label="Stok gudang"
-          value={label}
-          active={selected.length > 0}
-          aria-label={`Stok gudang ${label}`}
-          title={names.length > 1 ? names.join(", ") : undefined}
-        />
-      </DropdownMenuTrigger>
+  return (
+    <FilterField label="Stok gudang">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <FilterTrigger
+            layout="field"
+            // The caption says STOK, not "Gudang" — this is the only control
+            // here that changes a number rather than which rows are on the
+            // page. The aria-label repeats the field's own caption so the
+            // accessible name still reads as one phrase.
+            label="Stok gudang"
+            value={label}
+            active={selected.length > 0}
+            aria-label={`Stok gudang ${label}`}
+            title={names.length > 1 ? names.join(", ") : undefined}
+          />
+        </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="start" className="w-52">
-        <DropdownMenuCheckboxItem
-          checked={selected.length === 0}
-          onCheckedChange={() => onChange([])}
-        >
-          Semua gudang
-        </DropdownMenuCheckboxItem>
-        <DropdownMenuSeparator />
-        {warehouses.map((warehouse) => (
+        <DropdownMenuContent align="start" className="w-52">
           <DropdownMenuCheckboxItem
-            key={warehouse._id}
-            checked={selected.includes(warehouse._id)}
-            onCheckedChange={() => toggle(warehouse._id)}
+            checked={selected.length === 0}
+            onCheckedChange={() => onChange([])}
           >
-            {warehouse.name}
+            Semua gudang
           </DropdownMenuCheckboxItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+          <DropdownMenuSeparator />
+          {warehouses.map((warehouse) => (
+            <DropdownMenuCheckboxItem
+              key={warehouse._id}
+              checked={selected.includes(warehouse._id)}
+              onCheckedChange={() => toggle(warehouse._id)}
+            >
+              {warehouse.name}
+            </DropdownMenuCheckboxItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </FilterField>
   );
-
-  if (layout === "field") {
-    return (
-      <FilterField label="Stok gudang">{control}</FilterField>
-    );
-  }
-
-  return control;
 }

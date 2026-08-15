@@ -10,6 +10,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { FilterOption } from "./codecs";
 import { FilterField } from "./FilterField";
+import { useFilterPanelContainer } from "./FilterPanel";
 import { FilterOptionList } from "./FilterOptionList";
 import { FilterTrigger } from "./FilterTrigger";
 
@@ -77,6 +78,9 @@ export function FilterSelect<T>({
   className,
 }: FilterSelectProps<T>) {
   const [open, setOpen] = React.useState(false);
+  // Null on a bar, the panel's element inside one — see useFilterPanelContainer.
+  // Without it the option list cannot be scrolled inside a panel at all.
+  const container = useFilterPanelContainer();
 
   const current = options.find((option) => Object.is(option.value, value));
   const active = !Object.is(value, unsetValue);
@@ -99,6 +103,7 @@ export function FilterSelect<T>({
       </PopoverTrigger>
 
       <PopoverContent
+        container={container ?? undefined}
         align={align}
         // A field fills its panel, so its list should too — anything narrower
         // reads as a stray popover rather than the field opening.

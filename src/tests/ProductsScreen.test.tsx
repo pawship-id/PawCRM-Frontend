@@ -127,20 +127,36 @@ async function openRowMenu(user: UserEvent, name = "Shampoo Anjing") {
   return screen.getByRole("menu");
 }
 
+/**
+ * Opens the one filter panel and returns it.
+ *
+ * EVERY filter lives inside it, so each filter assertion starts here — which is
+ * also the cheapest way to notice if the button ever stops being reachable. The
+ * trigger's text carries a count (`Filter (2)`); its accessible name does not,
+ * so it is found by the stable half.
+ */
+async function openFilters(user: UserEvent) {
+  await user.click(screen.getByRole("button", { name: "Filter" }));
+  return screen.findByRole("dialog");
+}
+
 /** The warehouse picker's trigger, whose name doubles as its current value. */
 function warehouseTrigger() {
   return screen.getByRole("button", { name: /Stok gudang/ });
 }
 
 /**
- * Ticks warehouses in the picker, then closes it.
+ * Ticks warehouses in the picker inside the panel, then applies.
  *
  * ONE OPEN FOR ALL OF THEM, which is the behaviour being exercised as much as
  * asserted: a menu that closed after each tick would need one trip per
- * warehouse. Closing at the end matters too — Radix marks the rest of the page
- * aria-hidden while the menu is up, so the table is unreachable until it is.
+ * warehouse. Escape shuts the menu without shutting the panel under it — Radix
+ * stops the key at the topmost layer — and Terapkan commits and closes, which
+ * also matters because Radix marks the rest of the page aria-hidden while
+ * either is up, so the table is unreachable until both are down.
  */
 async function tickWarehouses(user: UserEvent, ...names: string[]) {
+  const panel = await openFilters(user);
   await user.click(warehouseTrigger());
   const menu = screen.getByRole("menu");
 
@@ -148,6 +164,14 @@ async function tickWarehouses(user: UserEvent, ...names: string[]) {
     await user.click(within(menu).getByRole("menuitemcheckbox", { name }));
   }
 
+  await user.keyboard("{Escape}");
+  await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+}
+
+/** Reads the warehouse trigger's label back, then puts the panel away. */
+async function expectWarehouseLabel(user: UserEvent, label: string) {
+  await openFilters(user);
+  expect(warehouseTrigger()).toHaveTextContent(label);
   await user.keyboard("{Escape}");
 }
 
@@ -285,6 +309,7 @@ describe("ProductsScreen", () => {
   });
 
   it("opens on every warehouse added up, so the total is not one location's", async () => {
+    const user = userEvent.setup();
     const list = mockList([stockedEverywhere()]);
 
     renderWithAuth(<ProductsScreen />);
@@ -294,7 +319,7 @@ describe("ProductsScreen", () => {
     // a number that reads as the total while being short by everything held
     // anywhere else.
     expect(await screen.findByText("22")).toBeInTheDocument();
-    expect(warehouseTrigger()).toHaveTextContent("Semua gudang");
+    await expectWarehouseLabel(user, "Semua gudang");
     // The summing is a read of the rows already on the page, not a request for
     // an aggregate the backend would have to compute.
     expect(list).toHaveBeenCalledTimes(1);
@@ -310,7 +335,7 @@ describe("ProductsScreen", () => {
 
     await tickWarehouses(user, "Gudang Cabang");
     expect(await screen.findByText("3")).toBeInTheDocument();
-    expect(warehouseTrigger()).toHaveTextContent("Gudang Cabang");
+    await expectWarehouseLabel(user, "Gudang Cabang");
 
     await tickWarehouses(user, "Gudang Cabang", "Gudang Pusat");
     expect(await screen.findByText("14")).toBeInTheDocument();
@@ -333,7 +358,7 @@ describe("ProductsScreen", () => {
     await tickWarehouses(user, "Gudang Pusat", "Gudang Timur");
 
     expect(await screen.findByText("19")).toBeInTheDocument();
-    expect(warehouseTrigger()).toHaveTextContent("2 gudang");
+    await expectWarehouseLabel(user, "2 gudang");
   });
 
   it("falls back to every warehouse when the last tick is removed", async () => {
@@ -350,7 +375,7 @@ describe("ProductsScreen", () => {
     // zeros, which is never what emptying a filter is asking for.
     await tickWarehouses(user, "Gudang Pusat");
     expect(await screen.findByText("22")).toBeInTheDocument();
-    expect(warehouseTrigger()).toHaveTextContent("Semua gudang");
+    await expectWarehouseLabel(user, "Semua gudang");
   });
 
   it('clears the selection through "Semua gudang" without unticking each one', async () => {
@@ -367,7 +392,7 @@ describe("ProductsScreen", () => {
     expect(await screen.findByText("22")).toBeInTheDocument();
   });
 
-  it("holds the rare filters behind Filter lain until they are applied", async () => {
+  it("holds every field as a draft until Terapkan", async () => {
     const user = userEvent.setup();
     const list = mockList([makeProduct()]);
 
@@ -375,16 +400,17 @@ describe("ProductsScreen", () => {
     await screen.findByText("Shampoo Anjing");
     expect(list).toHaveBeenCalledTimes(1);
 
-    await user.click(screen.getByRole("button", { name: "Filter lain" }));
-    await user.click(screen.getByRole("button", { name: "Filter status" }));
+    const panel = await openFilters(user);
+    await user.click(
+      within(panel).getByRole("button", { name: "Filter status" }),
+    );
     await user.click(screen.getByRole("option", { name: "Nonaktif" }));
 
-    // Two combined fields are a panel, and a panel does not query while it is
-    // being filled in — that is the whole reason status left the bar, where it
-    // would have applied on the click.
+    // The whole reason the triggers collapsed into a panel: composing a query
+    // does not query. On the old bar this click alone would have re-fetched.
     expect(list).toHaveBeenCalledTimes(1);
 
-    await user.click(screen.getByRole("button", { name: "Terapkan" }));
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
 
     await waitFor(() =>
       expect(list).toHaveBeenLastCalledWith(
@@ -393,30 +419,118 @@ describe("ProductsScreen", () => {
     );
   });
 
-  it("clears Filter lain in the same click, without waiting for Terapkan", async () => {
+  it("counts what is applied on the button, so a closed panel is not a hidden filter", async () => {
+    const user = userEvent.setup();
+    mockList([makeProduct()]);
+
+    renderWithAuth(<ProductsScreen />);
+    await screen.findByText("Shampoo Anjing");
+
+    let panel = await openFilters(user);
+    await user.click(
+      within(panel).getByRole("button", { name: "Filter status" }),
+    );
+    await user.click(screen.getByRole("option", { name: "Aktif" }));
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Filter" }),
+    ).toHaveTextContent("Filter (1)");
+
+    // The ordering is deliberately not counted — every list has one, so a badge
+    // that read "Filter (1)" over an unnarrowed list would train people to
+    // ignore the number.
+    panel = await openFilters(user);
+    await user.click(within(panel).getByRole("button", { name: "Urutkan" }));
+    await user.click(screen.getByRole("option", { name: "Nama A–Z" }));
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Filter" }),
+    ).toHaveTextContent("Filter (1)");
+  });
+
+  it("opens the panel's option lists inside it, so they can be scrolled", async () => {
+    const user = userEvent.setup();
+    mockList([makeProduct()]);
+
+    renderWithAuth(<ProductsScreen />);
+    await screen.findByText("Shampoo Anjing");
+
+    const panel = await openFilters(user);
+    await user.click(within(panel).getByRole("button", { name: "Urutkan" }));
+
+    /**
+     * A DOM assertion, because the bug is a DOM fact with no visible symptom
+     * under jsdom: Radix locks a modal dialog with
+     * `RemoveScroll shards={[content]}`, so a list portaled to `document.body`
+     * sits outside the one subtree allowed to scroll and silently refuses the
+     * wheel. Portaled into the panel it is inside the shard.
+     *
+     * Nothing about the rendered filter changes, which is exactly why this
+     * needs pinning — the regression would look like nothing at all.
+     */
+    const list = screen.getByRole("listbox");
+    expect(panel).toContainElement(list);
+  });
+
+  it("re-orders the list through the panel, by a name the API accepts", async () => {
     const user = userEvent.setup();
     const list = mockList([makeProduct()]);
 
     renderWithAuth(<ProductsScreen />);
     await screen.findByText("Shampoo Anjing");
 
-    await user.click(screen.getByRole("button", { name: "Filter lain" }));
-    await user.click(screen.getByRole("button", { name: "Filter status" }));
+    // The default is stated rather than omitted: every page of a walk has to
+    // agree on the ordering.
+    expect(list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sort: "newest" }),
+    );
+
+    const panel = await openFilters(user);
+    await user.click(within(panel).getByRole("button", { name: "Urutkan" }));
+    await user.click(screen.getByRole("option", { name: "SKU A–Z" }));
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+    await waitFor(() =>
+      expect(list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "skuAsc" }),
+      ),
+    );
+  });
+
+  it("clears every filter in the same click on Reset, ordering included", async () => {
+    const user = userEvent.setup();
+    const list = mockList([makeProduct()]);
+
+    renderWithAuth(<ProductsScreen />);
+    await screen.findByText("Shampoo Anjing");
+
+    let panel = await openFilters(user);
+    await user.click(
+      within(panel).getByRole("button", { name: "Filter status" }),
+    );
     await user.click(screen.getByRole("option", { name: "Aktif" }));
-    await user.click(screen.getByRole("button", { name: "Terapkan" }));
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
     await waitFor(() =>
       expect(list).toHaveBeenLastCalledWith(
         expect.objectContaining({ isActive: true }),
       ),
     );
 
-    await user.click(screen.getByRole("button", { name: "Filter lain" }));
-    await user.click(screen.getByRole("button", { name: "Reset" }));
+    // Reset never waits for Terapkan — at any level, in this app.
+    panel = await openFilters(user);
+    await user.click(within(panel).getByRole("button", { name: "Reset" }));
 
     await waitFor(() =>
       expect(list).toHaveBeenLastCalledWith(
         expect.not.objectContaining({ isActive: expect.anything() }),
       ),
+    );
+    // A list with no ordering is not a thing: Reset puts it back to the
+    // default rather than clearing it to nothing.
+    expect(list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sort: "newest" }),
     );
   });
 
@@ -581,144 +695,5 @@ describe("ProductsScreen", () => {
     renderWithAuth(<ProductsScreen />);
 
     expect(await screen.findByText(/forbidden/i)).toBeInTheDocument();
-  });
-
-  /**
-   * Below 600px the bar is not a bar: the five filters collapse into one button
-   * opening a panel, and the panel holds them as a draft.
-   *
-   * jsdom implements no matchMedia at all, so every test above lands on the
-   * toolbar's wide fallback. These install one that says "narrow" — which is
-   * also the only way to reach this branch, since the two arrangements are
-   * deliberately not both in the DOM.
-   */
-  describe("on a screen too narrow for the bar", () => {
-    beforeEach(() => {
-      window.matchMedia = ((media: string) => ({
-        media,
-        matches: false,
-        onchange: null,
-        addEventListener: () => {},
-        removeEventListener: () => {},
-        addListener: () => {},
-        removeListener: () => {},
-        dispatchEvent: () => false,
-      })) as unknown as typeof window.matchMedia;
-    });
-
-    afterEach(() => {
-      delete (window as Partial<Window & typeof globalThis>).matchMedia;
-    });
-
-    /** Opens the panel and returns it. */
-    async function openPanel(user: UserEvent, name: string | RegExp = "Filter") {
-      await user.click(screen.getByRole("button", { name }));
-      return screen.findByRole("dialog");
-    }
-
-    it("puts every filter behind one button instead of a row of triggers", async () => {
-      const user = userEvent.setup();
-      mockList([makeProduct()]);
-
-      renderWithAuth(<ProductsScreen />);
-      await screen.findByText("Shampoo Anjing");
-
-      // The bar's own triggers are gone — not hidden. Two controls named
-      // "Filter tipe" on one page is one control to look at and two to a
-      // screen reader.
-      expect(
-        screen.queryByRole("button", { name: "Filter tipe" }),
-      ).not.toBeInTheDocument();
-
-      const panel = await openPanel(user);
-      for (const field of [
-        "Filter tipe",
-        "Filter kategori",
-        "Filter status",
-        /Stok gudang/,
-      ]) {
-        expect(
-          within(panel).getByRole("button", { name: field }),
-        ).toBeInTheDocument();
-      }
-      expect(
-        within(panel).getByLabelText("Tampilkan produk terhapus"),
-      ).toBeInTheDocument();
-    });
-
-    it("holds the panel's fields as a draft until Terapkan", async () => {
-      const user = userEvent.setup();
-      const list = mockList([makeProduct()]);
-
-      renderWithAuth(<ProductsScreen />);
-      await screen.findByText("Shampoo Anjing");
-      expect(list).toHaveBeenCalledTimes(1);
-
-      const panel = await openPanel(user);
-      await user.click(
-        within(panel).getByRole("button", { name: "Filter tipe" }),
-      );
-      await user.click(screen.getByRole("option", { name: "Bundle" }));
-
-      // The whole reason a panel exists: composing a query does not query.
-      expect(list).toHaveBeenCalledTimes(1);
-
-      await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
-
-      await waitFor(() =>
-        expect(list).toHaveBeenLastCalledWith(
-          expect.objectContaining({ productType: "bundle" }),
-        ),
-      );
-    });
-
-    it("counts what is applied on the button, so a closed panel is not a hidden filter", async () => {
-      const user = userEvent.setup();
-      mockList([makeProduct()]);
-
-      renderWithAuth(<ProductsScreen />);
-      await screen.findByText("Shampoo Anjing");
-
-      const panel = await openPanel(user);
-      await user.click(
-        within(panel).getByRole("button", { name: "Filter status" }),
-      );
-      await user.click(screen.getByRole("option", { name: "Aktif" }));
-      await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
-
-      expect(
-        await screen.findByRole("button", { name: "Filter" }),
-      ).toHaveTextContent("Filter (1)");
-    });
-
-    it("clears and re-queries in the same click on Reset", async () => {
-      const user = userEvent.setup();
-      const list = mockList([makeProduct()]);
-
-      renderWithAuth(<ProductsScreen />);
-      await screen.findByText("Shampoo Anjing");
-
-      let panel = await openPanel(user);
-      await user.click(
-        within(panel).getByRole("button", { name: "Filter status" }),
-      );
-      await user.click(screen.getByRole("option", { name: "Aktif" }));
-      await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
-      await waitFor(() =>
-        expect(list).toHaveBeenLastCalledWith(
-          expect.objectContaining({ isActive: true }),
-        ),
-      );
-
-      // Reset never waits for Terapkan — at any level, in this app.
-      panel = await openPanel(user, /Filter/);
-      await user.click(within(panel).getByRole("button", { name: "Reset" }));
-
-      await waitFor(() =>
-        expect(list).toHaveBeenLastCalledWith(
-          expect.not.objectContaining({ isActive: expect.anything() }),
-        ),
-      );
-    });
   });
 });

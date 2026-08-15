@@ -128,9 +128,9 @@ export function CategoriesToolbar({
           onChange={(search) => onChange({ search })}
           placeholder="Cari nama kategori…"
           ariaLabel="Cari kategori"
-          // Back to the shared width now that it shares the line with the
-          // filters: the wider box was for a row it had to itself.
-          className={compact ? "max-w-none" : undefined}
+          // The shared 320px while it shares the line with the filters; the
+          // whole line once they have collapsed into one button.
+          fill={compact}
         />
       }
       actions={

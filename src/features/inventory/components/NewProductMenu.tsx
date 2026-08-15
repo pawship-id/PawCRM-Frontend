@@ -75,9 +75,10 @@ export function NewProductMenu() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        {/* Sized to its label in both layouts: on a phone it shares the line
-            with the `Filter` button, and the two of them nearly fill it. */}
-        <Button>
+        {/* Sized to its label while it shares the line with search and the
+            filter button; full width once it has dropped below them, which the
+            toolbar decides by widening the wrapper this sits in. */}
+        <Button className="w-full">
           + Produk baru
           <ChevronDown className="size-4" />
         </Button>

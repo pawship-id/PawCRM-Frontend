@@ -752,7 +752,22 @@ export interface ProductListQuery {
    */
   holdsStock?: boolean;
   includeDeleted?: boolean;
+  /**
+   * Which ordering to page through. A NAME, not a field plus a direction —
+   * the API accepts a closed list, so a client cannot ask for an ordering with
+   * no index behind it. Omitted means `newest`, which is what the API defaults
+   * to anyway.
+   */
+  sort?: ProductSort;
 }
+
+/** The orderings `GET /api/products` accepts — PRODUCT_SORTS in the model. */
+export type ProductSort =
+  | "newest"
+  | "oldest"
+  | "nameAsc"
+  | "nameDesc"
+  | "skuAsc";
 
 /** GET /api/products/:id/variants — the parent and every variant of it. */
 export interface ProductVariantsResult {

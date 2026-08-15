@@ -57,6 +57,12 @@ export interface FilterBarProps {
    * with the viewport — full width on a narrow one, pinned right on a wide one.
    */
   searchClassName?: string;
+  /**
+   * Classes for the actions' wrapper. Its counterpart, and wanted for the same
+   * reason: once flex-wrap has put the buttons on a line of their own, a button
+   * hugging its label at one end of an empty row reads as something left over.
+   */
+  actionsClassName?: string;
   /** Explanatory text under the row, usually tied to a disabled control. */
   hint?: ReactNode;
   chips?: AppliedFilter[];
@@ -71,6 +77,7 @@ export function FilterBar({
   actions,
   searchPlacement = "inline",
   searchClassName,
+  actionsClassName,
   hint,
   chips,
   onClearAll,
@@ -92,7 +99,13 @@ export function FilterBar({
     <>
       {!leading && searchSlot}
       {actions && (
-        <div className={cn("flex shrink-0 gap-2", (ownRow || leading) && "ml-auto")}>
+        <div
+          className={cn(
+            "flex shrink-0 gap-2",
+            (ownRow || leading) && "ml-auto",
+            actionsClassName,
+          )}
+        >
           {actions}
         </div>
       )}

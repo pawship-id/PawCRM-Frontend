@@ -102,19 +102,27 @@ interface FilterPanelProps {
 }
 ```
 
-Anatomy — a sheet from the bottom edge, capped at 560 px and centred past that:
+Anatomy — **two shapes, one component, split at `sm`**. A full-bleed sheet from the bottom edge on a phone; a centred modal on web. Geometry only, so it is CSS rather than a JS branch:
 
 ```
-<DialogContent class="inset-x-0 bottom-0 top-auto mx-auto max-h-[85dvh] rounded-t-2xl sm:max-w-140">
+<DialogContent class="inset-x-0 bottom-0 top-auto max-h-[85dvh] rounded-t-2xl
+                      sm:inset-x-auto sm:top-1/2 sm:bottom-auto sm:left-1/2
+                      sm:max-w-2xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl">
   <header class="px-5 pt-5 pb-1">
     <DialogTitle class="text-lg font-bold">Filter</DialogTitle>          ← the dialog's X sits right
-  <div class="space-y-4 overflow-y-auto px-5 py-4">{children}</div>
-  <footer class="flex gap-2 border-t border-border px-5 py-4">
-    <Button variant="secondary" size="lg" class="flex-1">Reset</Button>  ← equal halves
-    <Button size="lg" class="flex-1">Terapkan</Button>
+  <div class="grid gap-4 overflow-y-auto px-5 py-4 sm:grid-cols-2">{children}</div>
+  <footer class="flex gap-2 border-t border-border px-5 py-4 sm:justify-end">
+    <Button variant="secondary" size="lg" class="flex-1 sm:flex-none sm:min-w-32">Reset</Button>
+    <Button size="lg" class="flex-1 sm:flex-none sm:min-w-32">Terapkan</Button>
 ```
 
-**Bottom, not centre:** it is reached almost entirely from a phone, where the bottom of the screen is the half a thumb reaches and a centred box puts Terapkan under the keyboard. Reset is a real button rather than the quiet text link it is inside a popover — at this width, a text button beside a filled one reads as a caption.
+**Sheet on a phone, modal on web.** The reason for a sheet is a thumb: the bottom of the screen is the half it reaches, and a centred box puts Terapkan under the keyboard. A mouse has no thumb, and a full-bleed strip pinned to the bottom of a 1440 px window reads as a cookie banner rather than as the thing the screen is waiting on.
+
+**`sm:right-auto` is the one that is easy to forget.** `inset-x-0` set it to 0; a box with `left:50%` and `right:0` stretches instead of centring.
+
+**Two fields abreast past `sm`**, which is what the modal's width is for. One per line leaves a tall thin column with nothing beside it; three make each too narrow for a label like "Stok gudang: Semua gudang". On a phone it is one column.
+
+**The footer changes shape with it:** equal halves on a phone, where a thumb wants the whole width; sized to their labels and pushed right on the modal, where two buttons stretched across 672 px would be the loudest thing on it. Reset stays a real button rather than the quiet text link it is inside a popover — at either width, a text button beside a filled one reads as a caption.
 
 **One** Reset and **one** Terapkan for the whole panel. Fields inside stay draft until Terapkan; Reset clears *and* re-queries immediately. The panel owns no field state: the caller holds the draft, seeds it on open, and commits it on Terapkan.
 

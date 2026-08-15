@@ -26,14 +26,27 @@ function PopoverTrigger({
   return <PopoverPrimitive.Trigger data-slot="popover-trigger" {...props} />;
 }
 
+/**
+ * `container` is Radix's own Portal prop, surfaced rather than added: the
+ * wrapper swallowed it, and a popover opened from inside a modal Dialog needs
+ * it. Radix locks scrolling with `RemoveScroll shards={[dialogContent]}`, so a
+ * popover portaled to `document.body` sits OUTSIDE the one subtree allowed to
+ * scroll and its own list silently refuses the wheel. Portaling into the dialog's
+ * content puts it back inside the shard. Positioning is unaffected — Radix's
+ * popper is `position: fixed`, so it neither joins the parent's layout nor is
+ * clipped by it.
+ */
 function PopoverContent({
   className,
   align = "start",
   sideOffset = 8,
+  container,
   ...props
-}: React.ComponentProps<typeof PopoverPrimitive.Content>) {
+}: React.ComponentProps<typeof PopoverPrimitive.Content> & {
+  container?: React.ComponentProps<typeof PopoverPrimitive.Portal>["container"];
+}) {
   return (
-    <PopoverPrimitive.Portal>
+    <PopoverPrimitive.Portal container={container}>
       <PopoverPrimitive.Content
         data-slot="popover-content"
         align={align}

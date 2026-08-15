@@ -5,7 +5,12 @@ import { useCallback, useEffect, useState } from "react";
 import { productService } from "@/services/product.service";
 import { ApiError } from "@/services/api-error";
 import type { PageResult } from "@/types/api";
-import type { Product, ProductListQuery, ProductType } from "@/types/inventory";
+import type {
+  Product,
+  ProductListQuery,
+  ProductSort,
+  ProductType,
+} from "@/types/inventory";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 
 /** The query knobs the catalogue screen drives (page + the visible filters). */
@@ -19,6 +24,8 @@ export interface ProductsQuery {
   /** "" = active and inactive both. */
   status: "" | "active" | "inactive";
   includeDeleted: boolean;
+  /** Which ordering to page through. */
+  sort: ProductSort;
 }
 
 const PAGE_SIZE = 20;
@@ -30,6 +37,9 @@ const DEFAULT_QUERY: ProductsQuery = {
   categoryId: "",
   status: "",
   includeDeleted: false,
+  // The API's own default, restated rather than left out: the toolbar renders
+  // the current value, and a select whose value is `undefined` shows nothing.
+  sort: "newest",
 };
 
 /** Empty page so the table shell renders before the first load returns. */
@@ -109,6 +119,7 @@ export function useProducts(): UseProductsResult {
       search: settled.search.trim() || undefined,
       categoryId: settled.categoryId || undefined,
       includeDeleted: settled.includeDeleted || undefined,
+      sort: settled.sort,
       ...(settled.productType === ""
         ? { excludeVariants: true }
         : { productType: settled.productType }),
