@@ -54,6 +54,16 @@ export interface FilterSelectProps<T> {
    * hands it a layout, rather than keeping two lists in step by hand.
    */
   layout?: "inline" | "field";
+  /**
+   * Overrides the applied-filter state the trigger shows.
+   *
+   * Normally derived: a value other than `unsetValue` means a filter is on, and
+   * the trigger goes navy. A control that is a CHOICE rather than a filter — the
+   * warehouse an opname sheet will be opened for, which always has a value —
+   * would then be permanently navy, announcing an applied filter on a form.
+   * `active={false}` says there is no such thing here.
+   */
+  active?: boolean;
   disabled?: boolean;
   /**
    * Shown by the bar when this control is disabled. A control that greys out
@@ -73,6 +83,7 @@ export function FilterSelect<T>({
   ariaLabel,
   searchable,
   layout = "inline",
+  active: activeOverride,
   disabled,
   disabledHint,
   align = "start",
@@ -84,7 +95,7 @@ export function FilterSelect<T>({
   const container = useFilterPanelContainer();
 
   const current = options.find((option) => Object.is(option.value, value));
-  const active = !Object.is(value, unsetValue);
+  const active = activeOverride ?? !Object.is(value, unsetValue);
   const withSearch = searchable ?? options.length > 8;
 
   const control = (
