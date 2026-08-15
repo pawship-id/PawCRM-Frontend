@@ -512,7 +512,7 @@ describe("StockCardScreen", () => {
     // Without naming the search this reads as "this product has no lots" — a
     // different and alarming claim.
     expect(
-      await screen.findByText(/Tidak ada lot dengan kode "rusak"/),
+      await screen.findByText(/Tidak ada batch dengan kode "rusak"/),
     ).toBeInTheDocument();
   });
 

@@ -86,7 +86,7 @@ export function FefoPreview({
 
       {short && (
         <p className="border-t border-border bg-secondary/15 px-4 py-2.5 text-xs text-secondary-foreground">
-          <b>Stok lot tidak mencukupi.</b> Kekurangannya dibebankan ke lot
+          <b>Stok batch tidak mencukupi.</b> Kekurangannya dibebankan ke batch
           terakhir sehingga sisanya menjadi minus. Transaksi tetap dicatat —
           barangnya memang sudah keluar dari rak, dan selisih yang terlihat lebih
           baik daripada penjualan yang tidak tercatat. Selesaikan lewat opname.

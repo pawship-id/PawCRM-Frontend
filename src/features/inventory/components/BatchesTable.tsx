@@ -61,7 +61,7 @@ export function BatchesTable({
                   <p className="font-medium text-foreground">
                     {searching
                       ? "Kode batch itu tidak ditemukan"
-                      : "Tidak ada lot di rentang ini"}
+                      : "Tidak ada batch di rentang ini"}
                   </p>
                   <p className="mt-1 text-sm text-muted">
                     {searching
@@ -152,7 +152,7 @@ export function BatchesTable({
         </table>
 
         <p className="border-t border-border px-4 py-2.5 text-xs text-muted">
-          Lot dibuat otomatis saat barang masuk untuk produk yang punya masa
+          Batch dibuat otomatis saat barang masuk untuk produk yang punya masa
           kedaluwarsa, atau yang datang sebagai konsinyasi. Urutannya sekaligus
           urutan pengambilan: <b>yang paling dekat kedaluwarsa keluar duluan</b>.
         </p>
@@ -162,8 +162,8 @@ export function BatchesTable({
         page={page}
         totalPages={totalPages}
         total={total}
-        unit="lot"
-        unitPlural="lot"
+        unit="batch"
+        unitPlural="batch"
         onPageChange={onPageChange}
       />
     </div>

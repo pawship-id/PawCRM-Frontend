@@ -403,7 +403,7 @@ export function StockAdjustmentForm() {
                         <p className="text-xs font-medium text-secondary-foreground">
                           {product.hasExpiry
                             ? "Produk ini punya masa kedaluwarsa — batch dan tanggal wajib diisi."
-                            : "Konsinyasi selalu dibuatkan lot tersendiri."}
+                            : "Konsinyasi selalu dibuatkan batch tersendiri."}
                         </p>
                       </div>
                       <TextField

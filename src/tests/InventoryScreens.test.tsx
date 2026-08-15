@@ -158,7 +158,7 @@ describe("InventoryHub", () => {
       screen.getByText(/\+35 produk lain juga di bawah batas minimum/),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/\+6 lot lain juga di dalam rentang ini/),
+      screen.getByText(/\+6 batch lain juga di dalam rentang ini/),
     ).toBeInTheDocument();
   });
 

@@ -233,7 +233,7 @@ describe("BatchesScreen", () => {
     // endpoint has no opinion to offer and the toggle is not in the panel.
     let panel = await openFilters(user);
     expect(
-      within(panel).queryByLabelText(/Tampilkan lot yang sudah habis/),
+      within(panel).queryByLabelText(/Tampilkan batch yang sudah habis/),
     ).not.toBeInTheDocument();
     await user.keyboard("{Escape}");
 
@@ -242,7 +242,7 @@ describe("BatchesScreen", () => {
 
     panel = await openFilters(user);
     expect(
-      within(panel).getByLabelText(/Tampilkan lot yang sudah habis/),
+      within(panel).getByLabelText(/Tampilkan batch yang sudah habis/),
     ).toBeInTheDocument();
   });
 
@@ -262,7 +262,7 @@ describe("BatchesScreen", () => {
 
     const panel = await openFilters(user);
     await user.click(
-      within(panel).getByLabelText(/Tampilkan lot yang sudah habis/),
+      within(panel).getByLabelText(/Tampilkan batch yang sudah habis/),
     );
     await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
 
@@ -373,7 +373,7 @@ describe("BatchesScreen", () => {
     render(<BatchesScreen />);
 
     expect(
-      await screen.findByText("Tidak ada lot di rentang ini"),
+      await screen.findByText("Tidak ada batch di rentang ini"),
     ).toBeInTheDocument();
 
     await user.type(screen.getByLabelText("Cari kode batch"), "ZZZ");

@@ -79,7 +79,7 @@ const ACTIONS: Array<{
     href: "/dashboard/inventory/batches",
     title: "Batch & Expired",
     description:
-      "Semua lot, diurutkan dari yang paling dekat kedaluwarsa. Urutan FEFO.",
+      "Semua batch, diurutkan dari yang paling dekat kedaluwarsa. Urutan FEFO.",
     feature: "productBatches",
     action: "read",
   },
@@ -95,7 +95,7 @@ const ACTIONS: Array<{
     href: "/dashboard/inventory/transfers",
     title: "Transfer Stok",
     description:
-      "Pindahkan barang antar gudang. Lot beserta tanggal kedaluwarsanya ikut pindah.",
+      "Pindahkan barang antar gudang. Batch beserta tanggal kedaluwarsanya ikut pindah.",
     feature: "stockMovements",
     action: "create",
   },
@@ -190,10 +190,10 @@ export function InventoryHub() {
           error={expiring.error}
           allowed={mayReadBatches}
           empty={`Tidak ada lot yang kedaluwarsa dalam ${expiring.withinDays} hari.`}
-          moreLabel="lot lain juga di dalam rentang ini"
+          moreLabel="batch lain juga di dalam rentang ini"
           seeAll={{
             href: "/dashboard/inventory/batches",
-            label: "Lihat semua lot",
+            label: "Lihat semua batch",
           }}
         >
           {expiring.items.map((batch) => (

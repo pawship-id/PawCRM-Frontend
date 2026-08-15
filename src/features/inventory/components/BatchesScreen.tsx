@@ -75,7 +75,7 @@ export function BatchesScreen() {
           label={`Kritis — kurang ${summary.summary?.criticalDays ?? 7} hari`}
           value={summary.summary?.critical.count}
           loading={summary.loading}
-          note="lot perlu tindakan minggu ini"
+          note="batch perlu tindakan minggu ini"
           tone={summary.summary?.critical.count ? "danger" : "default"}
         />
         <Stat
@@ -91,7 +91,7 @@ export function BatchesScreen() {
             summary.summary ? formatMoney(summary.summary.atRisk.value) : undefined
           }
           loading={summary.loading}
-          note="sisa qty × harga beli lot, ketiga bucket di atas"
+          note="sisa qty × harga beli batch, ketiga bucket di atas"
         />
       </div>
 
@@ -113,7 +113,7 @@ export function BatchesScreen() {
 
       {list.loading ? (
         <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
-          <Spinner /> Memuat daftar lot…
+          <Spinner /> Memuat daftar batch…
         </div>
       ) : (
         <BatchesTable

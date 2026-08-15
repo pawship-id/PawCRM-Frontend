@@ -50,7 +50,7 @@ const HORIZONS: FilterOption<Horizon>[] = [
   { value: "7", label: "Kritis — 7 hari" },
   { value: "30", label: "Perhatian — 30 hari" },
   { value: "90", label: "3 bulan" },
-  { value: "all", label: "Semua lot" },
+  { value: "all", label: "Semua batch" },
 ];
 
 /**
@@ -146,7 +146,7 @@ export function BatchesToolbar({
       hint={
         searching && (
           <>
-            Pencarian kode batch berlaku di <b>seluruh lot</b> — termasuk yang
+            Pencarian kode batch berlaku di <b>seluruh batch</b> — termasuk yang
             sudah habis dan yang tidak punya tanggal kedaluwarsa — jadi rentang
             kedaluwarsa dinonaktifkan selama kotak pencarian terisi.
           </>
@@ -264,13 +264,13 @@ function BatchFilterPanel({
           unsetValue="all"
           options={HORIZONS}
           disabled={searching}
-          disabledHint="Nonaktif selama kotak pencarian terisi — pencarian kode batch berlaku di seluruh lot."
+          disabledHint="Nonaktif selama kotak pencarian terisi — pencarian kode batch berlaku di seluruh batch."
           onChange={(horizon) => patch({ horizon })}
         />
 
         {auditMode && (
           <FilterToggle
-            label="Tampilkan lot yang sudah habis"
+            label="Tampilkan batch yang sudah habis"
             checked={draft.includeSpent}
             onChange={(includeSpent) => patch({ includeSpent })}
           />

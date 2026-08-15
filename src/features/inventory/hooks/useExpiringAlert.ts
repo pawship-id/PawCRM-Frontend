@@ -65,7 +65,7 @@ export function useExpiringAlert(enabled: boolean): UseExpiringAlertResult {
         setError(
           err instanceof ApiError
             ? err.message
-            : "Daftar lot mendekati kedaluwarsa gagal dimuat.",
+            : "Daftar batch mendekati kedaluwarsa gagal dimuat.",
         );
       })
       .finally(() => {

@@ -137,7 +137,7 @@ export function useBatches(
         setBatches([]);
         setPagination(EMPTY_PAGINATION);
         setError(
-          err instanceof ApiError ? err.message : "Daftar lot gagal dimuat.",
+          err instanceof ApiError ? err.message : "Daftar batch gagal dimuat.",
         );
       })
       .finally(() => {

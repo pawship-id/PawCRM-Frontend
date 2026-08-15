@@ -48,15 +48,15 @@ export function BatchLotTable({
       <div className="rounded-xl border border-border bg-surface py-16 text-center">
         <p className="font-medium text-foreground">
           {searching
-            ? `Tidak ada lot dengan kode "${search.trim()}"`
-            : "Tidak ada lot di gudang ini"}
+            ? `Tidak ada batch dengan kode "${search.trim()}"`
+            : "Tidak ada batch di gudang ini"}
         </p>
         <p className="mx-auto mt-1 max-w-md text-sm text-muted">
           {searching
-            ? "Kotak pencarian di atas mencocokkan kode lot di tab ini, dan catatan maupun kode lot di tab Pergerakan — jadi kata yang cuma ada di catatan akan mengosongkan daftar ini."
+            ? "Kotak pencarian di atas mencocokkan kode batch di tab ini, dan catatan maupun kode batch di tab Pergerakan — jadi kata yang cuma ada di catatan akan mengosongkan daftar ini."
             : hasExpiry
-              ? "Lot dibuat otomatis saat barang diterima."
-              : "Lot hanya dibuat untuk barang yang punya masa kedaluwarsa atau datang sebagai konsinyasi — produk ini tidak melacak lot."}
+              ? "Batch dibuat otomatis saat barang diterima."
+              : "Batch hanya dibuat untuk barang yang punya masa kedaluwarsa atau datang sebagai konsinyasi — produk ini tidak melacak batch."}
         </p>
       </div>
     );
@@ -73,7 +73,7 @@ export function BatchLotTable({
             <th className="px-4 py-2.5 text-left font-medium">Kode batch</th>
             <th className="px-4 py-2.5 text-left font-medium">Kedaluwarsa</th>
             <th className="px-4 py-2.5 text-right font-medium">Sisa / awal</th>
-            <th className="px-4 py-2.5 text-right font-medium">Harga beli lot</th>
+            <th className="px-4 py-2.5 text-right font-medium">Harga beli batch</th>
             <th className="px-4 py-2.5 text-right font-medium">Nilai sisa</th>
           </tr>
         </thead>
@@ -89,13 +89,13 @@ export function BatchLotTable({
 
       {batches.length < total && (
         <p className="border-t border-border px-4 py-2.5 text-xs text-muted">
-          Menampilkan {batches.length} lot pertama dari {total}.
+          Menampilkan {batches.length} batch pertama dari {total}.
         </p>
       )}
 
       <p className="border-t border-border px-4 py-2.5 text-xs text-muted">
         Urutan di kolom pertama adalah urutan pengambilan: <b>yang paling dekat
-        kedaluwarsa keluar duluan</b>. Lot yang sudah habis tetap ditampilkan di
+        kedaluwarsa keluar duluan</b>. Batch yang sudah habis tetap ditampilkan di
         bawah sebagai riwayat — kuantitas tidak pernah dihapus, hanya menjadi nol.
       </p>
     </div>

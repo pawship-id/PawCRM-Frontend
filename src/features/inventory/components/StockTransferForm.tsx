@@ -735,7 +735,7 @@ export function StockTransferForm() {
             <div className="rounded-lg border border-border bg-surface">
               <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
                 <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted">
-                  Lot yang berpindah
+                  Batch yang berpindah
                 </p>
                 <Badge variant="outline" className="ml-auto">
                   {movementRows} baris movement
@@ -761,7 +761,7 @@ export function StockTransferForm() {
                         >
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="tabular-nums text-xs">
-                              {allocation.batchCode ?? "tanpa lot"}
+                              {allocation.batchCode ?? "tanpa kode batch"}
                             </span>
                             {allocation.batchExpiryDate && (
                               <ExpiryBadge date={allocation.batchExpiryDate} />
@@ -803,7 +803,7 @@ export function StockTransferForm() {
               ))}
 
               <p className="border-t border-border px-4 py-2.5 text-xs text-muted">
-                Setiap lot dibuat ulang di gudang tujuan dengan <b>kode, tanggal
+                Setiap batch dibuat ulang di gudang tujuan dengan <b>kode, tanggal
                 kedaluwarsa, dan harga beli yang sama</b>. Tanpa itu, memindahkan
                 barang berkedaluwarsa akan menghapus tanggalnya — dan gudang
                 tujuan menyimpan stok yang tidak bisa diurutkan FEFO.

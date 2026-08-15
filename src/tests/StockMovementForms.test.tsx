@@ -356,7 +356,7 @@ describe("StockAdjustmentForm", () => {
 
     // The backend does not refuse a short pick either — the goods left the shelf.
     expect(
-      await screen.findByText(/Stok lot tidak mencukupi/),
+      await screen.findByText(/Stok batch tidak mencukupi/),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /Simpan penyesuaian/ }),
@@ -617,7 +617,7 @@ describe("StockTransferForm", () => {
     await settlePreview();
 
     // Two lots × an out/in pair each.
-    expect(await screen.findByText("Lot yang berpindah")).toBeInTheDocument();
+    expect(await screen.findByText("Batch yang berpindah")).toBeInTheDocument();
     expect(screen.getByText("4 baris movement")).toBeInTheDocument();
   });
 
