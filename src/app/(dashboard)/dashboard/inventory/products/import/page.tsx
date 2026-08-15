@@ -39,7 +39,7 @@ export default function ImportProductsPage() {
             Import produk
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            Buat banyak produk sekaligus dari satu file — produk biasa maupun
+            Buat banyak produk sekaligus dari satu file — produk satuan maupun
             produk bervarian. Bundle tetap dibuat lewat form.
           </p>
         </div>

@@ -1006,7 +1006,7 @@ function BundleComponents({
 /* ------------------------------------------------------------------ helpers */
 
 const TYPE_LABELS: Record<Product["productType"], string> = {
-  standalone: "Produk biasa",
+  standalone: "Satuan",
   parent: "Produk induk",
   variant: "Varian",
   bundle: "Bundle",

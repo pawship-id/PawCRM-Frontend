@@ -204,18 +204,26 @@ interface VariantRow {
 const MODES: Array<{ value: Mode; label: string; hint: string }> = [
   {
     value: "standalone",
-    label: "Produk biasa",
+    // Named after what a shop counts in — one item, one price — rather than
+    // after what it is not. "Biasa" only means anything once you already know
+    // the other two, which is the wrong way round for the first choice on the
+    // form. Matches the catalogue's create menu, which offers the same three.
+    label: "Satuan",
     hint: "Satu barang, satu harga, satu stok.",
   },
   {
     value: "variants",
-    label: "Punya varian",
+    label: "Varian",
     hint: "Satu produk induk yang mekar jadi beberapa ukuran atau rasa.",
   },
   {
     value: "bundle",
-    label: "Bundle / multi-satuan",
-    hint: "Paket yang memotong stok komponennya saat terjual.",
+    // "Bundle / multi-satuan" until Satuan took that word: "multi-satuan" now
+    // reads as "several standalone products", which is the opposite of what a
+    // bundle is. The meaning it carried — a dus of twelve is a bundle too —
+    // moved into the hint, where it was always clearer anyway.
+    label: "Bundle",
+    hint: "Paket atau satuan besar yang memotong stok komponennya saat terjual.",
   },
 ];
 

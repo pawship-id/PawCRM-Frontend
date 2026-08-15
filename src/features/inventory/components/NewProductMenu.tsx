@@ -60,7 +60,7 @@ const SHAPES: Entry[] = [
     href: "/dashboard/inventory/products/new?type=bundle",
     icon: Boxes,
     label: "Bundle",
-    hint: "Paket yang memotong stok komponennya saat terjual.",
+    hint: "Paket atau satuan besar yang memotong stok komponennya saat terjual.",
   },
 ];
 

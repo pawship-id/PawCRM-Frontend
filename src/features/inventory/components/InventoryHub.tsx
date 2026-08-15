@@ -55,7 +55,7 @@ const ACTIONS: Array<{
     href: "/dashboard/inventory/products",
     title: "Produk & Varian",
     description:
-      "Katalog: produk biasa, keluarga varian dua tingkat, dan bundle multi-satuan.",
+      "Katalog: produk satuan, keluarga varian dua tingkat, dan bundle.",
     feature: "products",
     action: "read",
   },

@@ -158,7 +158,9 @@ describe("ProductForm", () => {
       await screen.findByLabelText(/Nama produk/);
 
       expect(
-        screen.getByText("Paket yang memotong stok komponennya saat terjual."),
+        screen.getByText(
+          "Paket atau satuan besar yang memotong stok komponennya saat terjual.",
+        ),
       ).toBeInTheDocument();
     });
 
@@ -427,7 +429,7 @@ describe("ProductForm", () => {
     }
 
     async function switchToFamily(user: ReturnType<typeof userEvent.setup>) {
-      await user.click(screen.getByRole("button", { name: "Punya varian" }));
+      await user.click(screen.getByRole("button", { name: "Varian" }));
     }
 
     it("creates the parent and every variant in ONE request", async () => {
@@ -1089,7 +1091,7 @@ describe("ProductForm", () => {
       await screen.findByDisplayValue("Shampoo Anjing");
 
       expect(
-        screen.getByRole("button", { name: "Punya varian" }),
+        screen.getByRole("button", { name: "Varian" }),
       ).toBeDisabled();
       // And no opening stock: an existing product's quantity moves through the
       // stock screens, where the movement gets a reason.
@@ -1161,7 +1163,7 @@ describe("ProductForm", () => {
       await screen.findByLabelText(/Nama produk/);
 
       await user.click(
-        screen.getByRole("button", { name: /Bundle \/ multi-satuan/ }),
+        screen.getByRole("button", { name: "Bundle" }),
       );
 
       expect(
@@ -1206,7 +1208,7 @@ describe("ProductForm", () => {
       renderWithAuth(<ProductForm />);
       await screen.findByLabelText(/Nama produk/);
       await user.click(
-        screen.getByRole("button", { name: /Bundle \/ multi-satuan/ }),
+        screen.getByRole("button", { name: "Bundle" }),
       );
 
       const weight = screen.getByLabelText(/^Berat/) as HTMLInputElement;
@@ -1226,7 +1228,7 @@ describe("ProductForm", () => {
 
       await user.type(screen.getByLabelText(/Nama produk/), "Paket Grooming");
       await user.click(
-        screen.getByRole("button", { name: /Bundle \/ multi-satuan/ }),
+        screen.getByRole("button", { name: "Bundle" }),
       );
       await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
 
@@ -1319,7 +1321,7 @@ describe("ProductForm", () => {
       // SKUs — so what changes is only whether it is marked required.
       expect(screen.getByPlaceholderText("RC-ADULT")).toBeRequired();
 
-      await user.click(screen.getByRole("button", { name: "Punya varian" }));
+      await user.click(screen.getByRole("button", { name: "Varian" }));
 
       expect(screen.getByPlaceholderText("RC-ADULT")).not.toBeRequired();
     });

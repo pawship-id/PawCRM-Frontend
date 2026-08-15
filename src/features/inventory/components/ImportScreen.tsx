@@ -168,7 +168,7 @@ function Counters({
         value={String(problems)}
         tone={problems > 0 ? "bad" : undefined}
       />
-      <Tile label="Produk biasa" value={String(summary.standaloneProducts)} />
+      <Tile label="Satuan" value={String(summary.standaloneProducts)} />
       <Tile
         label="Varian"
         value={`${summary.variants} dalam ${summary.families} induk`}

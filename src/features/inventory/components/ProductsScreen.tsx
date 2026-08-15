@@ -57,7 +57,7 @@ export function ProductsScreen() {
           Produk &amp; Varian
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">
-          Produk biasa, produk dengan varian dua tingkat (ukuran × rasa), dan
+          Produk satuan, produk dengan varian dua tingkat (ukuran × rasa), dan
           bundle.
         </p>
       </div>

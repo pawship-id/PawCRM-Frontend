@@ -69,8 +69,8 @@ import { NewProductMenu } from "./NewProductMenu";
  */
 const TYPE_FILTERS = withAll<ProductType | "">(
   [
-    { value: "standalone", label: "Standalone" },
-    { value: "parent", label: "Punya varian" },
+    { value: "standalone", label: "Satuan" },
+    { value: "parent", label: "Varian" },
     { value: "bundle", label: "Bundle" },
   ],
   "Semua tipe",

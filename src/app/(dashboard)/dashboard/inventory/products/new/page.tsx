@@ -41,8 +41,8 @@ export default async function NewProductPage({
             Produk baru
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            Pilih bentuknya dulu: produk biasa, produk yang punya varian, atau
-            bundle. Bentuk ini dikunci setelah produk dibuat.
+            Pilih bentuknya dulu: satuan, varian, atau bundle. Bentuk ini
+            dikunci setelah produk dibuat.
           </p>
         </div>
 

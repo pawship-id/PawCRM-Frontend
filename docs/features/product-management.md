@@ -88,11 +88,11 @@ parent carries none of. A **variant** fetches its parent for the reverse reason 
 
 ### Three shapes, one form
 
-| Mode        | Writes                                                    |
-| ----------- | --------------------------------------------------------- |
-| Produk biasa | one `standalone`                                          |
-| Punya varian | a `parent` **plus every combination**, in ONE request      |
-| Bundle       | one `bundle` with its components                          |
+| Mode   | Writes                                                |
+| ------ | ----------------------------------------------------- |
+| Satuan | one `standalone`                                      |
+| Varian | a `parent` **plus every combination**, in ONE request |
+| Bundle | one `bundle` with its components                      |
 
 The mode is **locked after creation**, mirroring the backend: changing it would
 strand the stock rows and sales history written against the old shape.
