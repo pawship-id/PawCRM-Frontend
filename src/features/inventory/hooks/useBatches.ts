@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { productBatchService } from "@/services/productBatch.service";
 import { ApiError } from "@/services/api-error";
 import type { PageResult } from "@/types/api";
-import type { ProductBatch } from "@/types/inventory";
+import type { BatchSort, ProductBatch } from "@/types/inventory";
 
 /**
  * How far ahead to look. `all` is not a horizon — it switches the screen from
@@ -22,6 +22,13 @@ export interface BatchesQuery {
   includeSpent: boolean;
   /** A batch code. Forces the audit endpoint — see below. */
   search: string;
+  /**
+   * Which ordering to page through. ONE CONTROL FOR BOTH ENDPOINTS: the two
+   * answer different questions but return the same rows, and a sort that
+   * silently reset when a search flipped the screen into audit mode would be a
+   * control that undoes itself.
+   */
+  sort: BatchSort;
 }
 
 export const DEFAULT_BATCHES_QUERY: BatchesQuery = {
@@ -31,6 +38,9 @@ export const DEFAULT_BATCHES_QUERY: BatchesQuery = {
   horizon: "30",
   includeSpent: false,
   search: "",
+  // The API's own default on both endpoints — and the order this screen exists
+  // to show: what goes bad first, first.
+  sort: "expirySoonest",
 };
 
 const PAGE_SIZE = 20;
@@ -84,7 +94,7 @@ export function useBatches(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const { warehouseId, horizon, includeSpent, search } = query;
+  const { warehouseId, horizon, includeSpent, search, sort } = query;
   const alertMode = horizon !== "all" && search.trim() === "";
 
   const fetchPage = useCallback(() => {
@@ -94,6 +104,7 @@ export function useBatches(
         limit: PAGE_SIZE,
         warehouseId: warehouseId || undefined,
         withinDays: Number(horizon),
+        sort,
       });
     }
 
@@ -105,8 +116,9 @@ export function useBatches(
       // Tri-state: `undefined` returns exhausted lots too, which is what the
       // toggle asks for. `true` is the narrower question.
       hasRemaining: includeSpent ? undefined : true,
+      sort,
     });
-  }, [alertMode, page, warehouseId, horizon, includeSpent, search]);
+  }, [alertMode, page, warehouseId, horizon, includeSpent, search, sort]);
 
   useEffect(() => {
     let active = true;

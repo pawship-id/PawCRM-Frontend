@@ -74,6 +74,7 @@ export function FilterSelect<T>({
   searchable,
   layout = "inline",
   disabled,
+  disabledHint,
   align = "start",
   className,
 }: FilterSelectProps<T>) {
@@ -129,7 +130,15 @@ export function FilterSelect<T>({
 
   if (layout === "field") {
     return (
-      <FilterField label={label} className={className}>
+      <FilterField
+        label={label}
+        // Only while it is actually greyed out: a permanent caption explaining
+        // a state the field is not in reads as a warning about nothing. This is
+        // the prop's first use — it was declared with the interface and left
+        // dead, because on a bar the explanation went to FilterBar's `hint`.
+        hint={disabled ? disabledHint : undefined}
+        className={className}
+      >
         {control}
       </FilterField>
     );

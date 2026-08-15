@@ -99,11 +99,13 @@ export function BatchesScreen() {
           load while the report itself renders perfectly well. */}
       {warehouses.error && <Alert variant="error">{warehouses.error}</Alert>}
 
+      {/* `total` is gone: the pager under the table already prints "N lot",
+          and two copies of one number a screen apart is one of them being
+          wrong the moment a request is in flight. */}
       <BatchesToolbar
         query={query}
         warehouses={warehouses.warehouses}
         auditMode={!list.alertMode}
-        total={list.pagination.total}
         onChange={setQuery}
       />
 

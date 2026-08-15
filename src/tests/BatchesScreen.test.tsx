@@ -126,6 +126,19 @@ function mockAll(lots: ProductBatch[] = [lot()]) {
 
 afterEach(() => jest.restoreAllMocks());
 
+/**
+ * Opens the one filter panel and returns it.
+ *
+ * The warehouse, the horizon, the ordering and the spent-lot toggle all live
+ * inside it, so every filter assertion starts here. The trigger's text carries a
+ * count (`Filter (1)`); its accessible name does not, so it is found by the
+ * stable half.
+ */
+async function openFilters(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: "Filter" }));
+  return screen.findByRole("dialog");
+}
+
 describe("BatchesScreen", () => {
   it("takes the tiles from the summary endpoint, not from the page", async () => {
     const { summaryCall } = mockAll([lot()]);
@@ -191,12 +204,21 @@ describe("BatchesScreen", () => {
     await screen.findByRole("table");
     await user.type(screen.getByLabelText("Cari kode batch"), "WSK");
 
-    // A control that silently does nothing is worse than one that explains
-    // itself.
+    // Said twice over, and deliberately: on the bar, where somebody who never
+    // opens the panel can still see why their horizon stopped mattering...
     expect(
       await screen.findByText(/rentang\s+kedaluwarsa dinonaktifkan/),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("Rentang kedaluwarsa")).toBeDisabled();
+
+    // ...and beside the greyed control itself, which is the only place that
+    // explains the control rather than the page.
+    const panel = await openFilters(user);
+    expect(
+      within(panel).getByRole("button", { name: "Rentang kedaluwarsa" }),
+    ).toBeDisabled();
+    expect(
+      within(panel).getByText(/Nonaktif selama kotak pencarian terisi/),
+    ).toBeInTheDocument();
   });
 
   it("offers the exhausted-lot toggle only where it means something", async () => {
@@ -206,16 +228,21 @@ describe("BatchesScreen", () => {
     render(<BatchesScreen />);
 
     await screen.findByRole("table");
+
     // In alert mode an exhausted lot cannot expire into anything, so the
-    // endpoint has no opinion to offer and the toggle is not shown.
+    // endpoint has no opinion to offer and the toggle is not in the panel.
+    let panel = await openFilters(user);
     expect(
-      screen.queryByLabelText(/Tampilkan lot yang sudah habis/),
+      within(panel).queryByLabelText(/Tampilkan lot yang sudah habis/),
     ).not.toBeInTheDocument();
+    await user.keyboard("{Escape}");
 
     await user.type(screen.getByLabelText("Cari kode batch"), "WSK");
+    await screen.findByRole("table");
 
+    panel = await openFilters(user);
     expect(
-      await screen.findByLabelText(/Tampilkan lot yang sudah habis/),
+      within(panel).getByLabelText(/Tampilkan lot yang sudah habis/),
     ).toBeInTheDocument();
   });
 
@@ -233,13 +260,61 @@ describe("BatchesScreen", () => {
       expect.objectContaining({ hasRemaining: true }),
     );
 
-    await user.click(screen.getByLabelText(/Tampilkan lot yang sudah habis/));
+    const panel = await openFilters(user);
+    await user.click(
+      within(panel).getByLabelText(/Tampilkan lot yang sudah habis/),
+    );
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
 
     // Tri-state: undefined is "both", which is what the toggle asks for.
     await waitFor(() =>
       expect(listCall).toHaveBeenLastCalledWith(
         expect.objectContaining({ hasRemaining: undefined }),
       ),
+    );
+  });
+
+  it("re-orders both endpoints through one control", async () => {
+    const { listCall, expiringCall } = mockAll();
+
+    const user = userEvent.setup();
+    render(<BatchesScreen />);
+    await screen.findByRole("table");
+
+    // Stated rather than omitted: every page of a walk has to agree, and this
+    // screen exists to show what goes bad first.
+    expect(expiringCall).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sort: "expirySoonest" }),
+    );
+
+    const panel = await openFilters(user);
+    await user.click(within(panel).getByRole("button", { name: "Urutkan" }));
+    await user.click(screen.getByRole("option", { name: "Terbaru diterima" }));
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+    await waitFor(() =>
+      expect(expiringCall).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "newest" }),
+      ),
+    );
+
+    // The ordering SURVIVES the switch to the audit endpoint. A sort that reset
+    // itself when a search flipped the screen would be a control that undoes
+    // its own last click.
+    await user.type(screen.getByLabelText("Cari kode batch"), "WSK");
+
+    await waitFor(() =>
+      expect(listCall).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "newest" }),
+      ),
+    );
+
+    // And the badge counts neither the ordering nor the horizon: both are
+    // always set, so a number over an unnarrowed report would be noise. Read
+    // with the panel SHUT — Radix hides the trigger from the accessibility
+    // tree while its own dialog is up.
+    expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
+      /^Filter$/,
     );
   });
 

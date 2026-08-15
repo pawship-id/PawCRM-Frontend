@@ -51,6 +51,7 @@ export const productBatchService = {
         search: query.search,
         expiryFrom: query.expiryFrom,
         expiryTo: query.expiryTo,
+        sort: query.sort,
       },
     }),
 
@@ -87,6 +88,7 @@ export const productBatchService = {
         limit: query.limit,
         warehouseId: query.warehouseId,
         withinDays: query.withinDays,
+        sort: query.sort,
       },
     }),
 

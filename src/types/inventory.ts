@@ -1351,7 +1351,19 @@ export interface ProductBatchListQuery {
    */
   expiryFrom?: string;
   expiryTo?: string;
+  /**
+   * Which ordering to page through. A NAME, not a field plus a direction — the
+   * API accepts a closed list. Omitted means `expirySoonest`, its own default.
+   */
+  sort?: BatchSort;
 }
+
+/** The orderings the batch endpoints accept — BATCH_SORTS in the model. */
+export type BatchSort =
+  | "expirySoonest"
+  | "expiryLatest"
+  | "newest"
+  | "oldest";
 
 /** GET /api/product-batches/expiring. */
 export interface ExpiringBatchListQuery {
@@ -1360,6 +1372,8 @@ export interface ExpiringBatchListQuery {
   warehouseId?: string;
   /** 0–365, default 30. Zero means "expired or expiring today". */
   withinDays?: number;
+  /** Same closed list as the audit endpoint's — both screens share one control. */
+  sort?: BatchSort;
 }
 
 /**
