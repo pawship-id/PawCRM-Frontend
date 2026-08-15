@@ -4,7 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 
 import { categoryService } from "@/services/category.service";
 import { ApiError } from "@/services/api-error";
-import type { Category, CategoryListQuery, PageResult } from "@/types/api";
+import type {
+  Category,
+  CategoryListQuery,
+  CategorySort,
+  PageResult,
+} from "@/types/api";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 
 /** The query knobs the list screen drives (page + the visible filters). */
@@ -14,6 +19,8 @@ export interface CategoriesQuery {
   /** "" = retired and live both. */
   status: "" | "active" | "inactive";
   includeDeleted: boolean;
+  /** Which ordering to page through. */
+  sort: CategorySort;
 }
 
 const PAGE_SIZE = 20;
@@ -30,6 +37,9 @@ const DEFAULT_QUERY: CategoriesQuery = {
   search: "",
   status: "",
   includeDeleted: false,
+  // The API's own default, restated rather than left out: the panel renders the
+  // current value, and a select whose value is `undefined` shows nothing.
+  sort: "newest",
 };
 
 /** Empty page so consumers can render a table shell before the first load. */
@@ -108,6 +118,7 @@ export function useCategories(): UseCategoriesResult {
         ? {}
         : { isActive: settled.status === "active" }),
       includeDeleted: settled.includeDeleted || undefined,
+      sort: settled.sort,
     };
 
     categoryService

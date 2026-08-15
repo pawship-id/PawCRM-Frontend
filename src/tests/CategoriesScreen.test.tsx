@@ -38,6 +38,31 @@ function page(items: Category[]): PageResult<Category> {
   };
 }
 
+/**
+ * Opens the one filter panel and returns it.
+ *
+ * Every filter lives inside it — status, the deleted toggle and the ordering —
+ * so each filter assertion starts here. The trigger's text carries a count
+ * (`Filter (1)`); its accessible name does not, so it is found by the stable
+ * half.
+ */
+async function openFilters() {
+  await userEvent.click(screen.getByRole("button", { name: "Filter" }));
+  return screen.findByRole("dialog");
+}
+
+/**
+ * Opens a row's kebab menu. Every row action lives behind it — the same shape
+ * the catalogue uses — so each action assertion starts here, which is also the
+ * cheapest way to notice if the trigger stops being reachable by its name.
+ */
+async function openRowMenu(name = "Makanan Kucing") {
+  await userEvent.click(
+    screen.getByRole("button", { name: `Aksi untuk ${name}` }),
+  );
+  return screen.getByRole("menu");
+}
+
 /** Stubs the list call, which every screen render performs on mount. */
 function mockList(items: Category[]) {
   return jest.spyOn(categoryService, "list").mockResolvedValue(page(items));
@@ -183,7 +208,10 @@ describe("CategoriesScreen", () => {
     renderWithAuth(<CategoriesScreen />);
     await screen.findByText("Makanan Kucing");
 
-    await userEvent.click(screen.getByRole("button", { name: /ubah nama/i }));
+    const menu = await openRowMenu();
+    await userEvent.click(
+      within(menu).getByRole("menuitem", { name: /^edit$/i }),
+    );
 
     const field = screen.getByRole("textbox", { name: /nama kategori/i });
     expect(field).toHaveValue("Makanan Kucing");
@@ -204,7 +232,10 @@ describe("CategoriesScreen", () => {
     renderWithAuth(<CategoriesScreen />);
     await screen.findByText("Makanan Kucing");
 
-    await userEvent.click(screen.getByRole("button", { name: /ubah nama/i }));
+    const menu = await openRowMenu();
+    await userEvent.click(
+      within(menu).getByRole("menuitem", { name: /^edit$/i }),
+    );
     await userEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
 
     // The API rejects an empty patch body, and "save" on an untouched form is
@@ -221,7 +252,10 @@ describe("CategoriesScreen", () => {
     renderWithAuth(<CategoriesScreen />);
     await screen.findByText("Makanan Kucing");
 
-    await userEvent.click(screen.getByRole("button", { name: /ubah nama/i }));
+    const menu = await openRowMenu();
+    await userEvent.click(
+      within(menu).getByRole("menuitem", { name: /^edit$/i }),
+    );
     await userEvent.click(screen.getByRole("switch", { name: /aktif/i }));
     await userEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
 
@@ -245,15 +279,24 @@ describe("CategoriesScreen", () => {
     expect(screen.getByText("Nonaktif")).toBeInTheDocument();
   });
 
-  it("narrows to one status through the bar", async () => {
+  it("narrows to one status through the panel", async () => {
     const list = mockList([makeCategory()]);
 
     renderWithAuth(<CategoriesScreen />);
     await screen.findByText("Makanan Kucing");
 
-    await userEvent.click(screen.getByRole("button", { name: "Filter status" }));
+    const panel = await openFilters();
+    await userEvent.click(
+      within(panel).getByRole("button", { name: "Filter status" }),
+    );
     await userEvent.click(screen.getByRole("option", { name: "Nonaktif" }));
+    await userEvent.click(
+      within(panel).getByRole("button", { name: "Terapkan" }),
+    );
 
+    // isActive rather than a status string, and `false` rather than absent —
+    // this is the pair that was silently dropped between the hook and the
+    // request until category.service.test.ts pinned it.
     await waitFor(() =>
       expect(list).toHaveBeenLastCalledWith(
         expect.objectContaining({ isActive: false }),
@@ -261,21 +304,24 @@ describe("CategoriesScreen", () => {
     );
   });
 
-  it("keeps deleted categories behind Filter lain, applied on Terapkan", async () => {
+  it("holds every field as a draft until Terapkan", async () => {
     const list = mockList([makeCategory()]);
 
     renderWithAuth(<CategoriesScreen />);
     await screen.findByText("Makanan Kucing");
-
-    await userEvent.click(screen.getByRole("button", { name: "Filter lain" }));
-    await userEvent.click(
-      screen.getByLabelText("Tampilkan kategori terhapus"),
-    );
-
-    // Ticking inside the popover composes; it does not query.
     expect(list).toHaveBeenCalledTimes(1);
 
-    await userEvent.click(screen.getByRole("button", { name: "Terapkan" }));
+    const panel = await openFilters();
+    await userEvent.click(
+      within(panel).getByLabelText("Tampilkan kategori terhapus"),
+    );
+
+    // Composing a query does not query — the whole reason for a panel.
+    expect(list).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(
+      within(panel).getByRole("button", { name: "Terapkan" }),
+    );
 
     await waitFor(() =>
       expect(list).toHaveBeenLastCalledWith(
@@ -283,97 +329,58 @@ describe("CategoriesScreen", () => {
       ),
     );
   });
-});
 
-/**
- * Below 600px both triggers collapse into one button opening a panel, exactly
- * as the catalogue does.
- *
- * jsdom implements no matchMedia at all, so every test above lands on the
- * toolbar's wide fallback. These install one that says "narrow" — the only way
- * to reach this branch, since the two arrangements are deliberately not both in
- * the DOM.
- */
-describe("CategoriesToolbar on a narrow screen", () => {
-  beforeEach(() => {
-    window.matchMedia = ((media: string) => ({
-      media,
-      matches: false,
-      onchange: null,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-      dispatchEvent: () => false,
-    })) as unknown as typeof window.matchMedia;
-  });
-
-  afterEach(() => {
-    delete (window as Partial<Window & typeof globalThis>).matchMedia;
-    jest.restoreAllMocks();
-  });
-
-  it("puts both filters behind one button instead of a row of triggers", async () => {
-    mockList([makeCategory()]);
-
-    renderWithAuth(<CategoriesScreen />);
-    await screen.findByText("Makanan Kucing");
-
-    // Not hidden — absent. Two controls named "Filter status" on one page is
-    // one control to look at and two to a screen reader.
-    expect(
-      screen.queryByRole("button", { name: "Filter lain" }),
-    ).not.toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("button", { name: "Filter" }));
-    const panel = await screen.findByRole("dialog");
-
-    expect(
-      within(panel).getByRole("button", { name: "Filter status" }),
-    ).toBeInTheDocument();
-    expect(
-      within(panel).getByLabelText("Tampilkan kategori terhapus"),
-    ).toBeInTheDocument();
-  });
-
-  it("holds the panel's fields as a draft until Terapkan", async () => {
+  it("re-orders the list through the panel, by a name the API accepts", async () => {
     const list = mockList([makeCategory()]);
 
     renderWithAuth(<CategoriesScreen />);
     await screen.findByText("Makanan Kucing");
-    expect(list).toHaveBeenCalledTimes(1);
 
-    await userEvent.click(screen.getByRole("button", { name: "Filter" }));
-    const panel = await screen.findByRole("dialog");
-    await userEvent.click(
-      within(panel).getByRole("button", { name: "Filter status" }),
+    // Stated rather than omitted: every page of a walk has to agree.
+    expect(list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sort: "newest" }),
     );
-    await userEvent.click(screen.getByRole("option", { name: "Nonaktif" }));
 
-    // Status auto-applies on the wide bar; inside a panel it waits.
-    expect(list).toHaveBeenCalledTimes(1);
-
-    await userEvent.click(within(panel).getByRole("button", { name: "Terapkan" }));
+    const panel = await openFilters();
+    await userEvent.click(within(panel).getByRole("button", { name: "Urutkan" }));
+    await userEvent.click(screen.getByRole("option", { name: "Nama A–Z" }));
+    await userEvent.click(
+      within(panel).getByRole("button", { name: "Terapkan" }),
+    );
 
     await waitFor(() =>
       expect(list).toHaveBeenLastCalledWith(
-        expect.objectContaining({ isActive: false }),
+        expect.objectContaining({ sort: "nameAsc" }),
       ),
     );
   });
 
-  it("counts what is applied on the button, so a closed panel is not a hidden filter", async () => {
+  it("counts what is applied on the button, but never the ordering", async () => {
     mockList([makeCategory()]);
 
     renderWithAuth(<CategoriesScreen />);
     await screen.findByText("Makanan Kucing");
 
-    await userEvent.click(screen.getByRole("button", { name: "Filter" }));
-    const panel = await screen.findByRole("dialog");
+    let panel = await openFilters();
     await userEvent.click(
       within(panel).getByLabelText("Tampilkan kategori terhapus"),
     );
-    await userEvent.click(within(panel).getByRole("button", { name: "Terapkan" }));
+    await userEvent.click(
+      within(panel).getByRole("button", { name: "Terapkan" }),
+    );
+
+    expect(
+      await screen.findByRole("button", { name: "Filter" }),
+    ).toHaveTextContent("Filter (1)");
+
+    // Every list has an ordering, so counting it would put a (1) over a screen
+    // showing everything and teach people to ignore the number.
+    panel = await openFilters();
+    await userEvent.click(within(panel).getByRole("button", { name: "Urutkan" }));
+    await userEvent.click(screen.getByRole("option", { name: "Terlama" }));
+    await userEvent.click(
+      within(panel).getByRole("button", { name: "Terapkan" }),
+    );
 
     expect(
       await screen.findByRole("button", { name: "Filter" }),
@@ -399,9 +406,12 @@ describe("CategoriesTable", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: /hapus/i }));
+    const menu = await openRowMenu();
+    await userEvent.click(
+      within(menu).getByRole("menuitem", { name: /hapus/i }),
+    );
 
-    const dialog = screen.getByRole("dialog");
+    const dialog = await screen.findByRole("dialog");
     await userEvent.click(
       within(dialog).getByRole("button", { name: /^hapus$/i }),
     );
@@ -429,8 +439,11 @@ describe("CategoriesTable", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: /hapus/i }));
-    const dialog = screen.getByRole("dialog");
+    const menu = await openRowMenu();
+    await userEvent.click(
+      within(menu).getByRole("menuitem", { name: /hapus/i }),
+    );
+    const dialog = await screen.findByRole("dialog");
     await userEvent.click(
       within(dialog).getByRole("button", { name: /^hapus$/i }),
     );
@@ -454,13 +467,20 @@ describe("CategoriesTable", () => {
       />,
     );
 
-    expect(
-      screen.queryByRole("button", { name: /ubah nama/i }),
-    ).not.toBeInTheDocument();
     expect(screen.getByText("Dihapus")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /pulihkan/i }));
-    const dialog = screen.getByRole("dialog");
+    const menu = await openRowMenu();
+    expect(
+      within(menu).queryByRole("menuitem", { name: /^edit$/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(menu).queryByRole("menuitem", { name: /hapus/i }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(
+      within(menu).getByRole("menuitem", { name: /pulihkan/i }),
+    );
+    const dialog = await screen.findByRole("dialog");
     await userEvent.click(
       within(dialog).getByRole("button", { name: /^pulihkan$/i }),
     );
@@ -485,8 +505,10 @@ describe("CategoriesTable", () => {
     expect(
       screen.queryByRole("columnheader", { name: /aksi/i }),
     ).not.toBeInTheDocument();
+    // Not even the kebab: unlike a product row, a category has no detail page,
+    // so a menu here would open onto nothing.
     expect(
-      screen.queryByRole("button", { name: /hapus/i }),
+      screen.queryByRole("button", { name: /^Aksi untuk/ }),
     ).not.toBeInTheDocument();
   });
 });

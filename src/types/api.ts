@@ -582,7 +582,15 @@ export interface CategoryListQuery {
   isActive?: boolean;
   /** Include soft-deleted categories (default false on the backend). */
   includeDeleted?: boolean;
+  /**
+   * Which ordering to page through. A NAME, not a field plus a direction — the
+   * API accepts a closed list. Omitted means `newest`, its own default.
+   */
+  sort?: CategorySort;
 }
+
+/** The orderings `GET /api/categories` accepts — CATEGORY_SORTS in the model. */
+export type CategorySort = "newest" | "oldest" | "nameAsc" | "nameDesc";
 
 /** Body of POST /api/categories. `kind` defaults to "product" server-side. */
 export interface CreateCategoryInput {

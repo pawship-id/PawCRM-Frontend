@@ -13,23 +13,29 @@ import {
   type FilterOption,
 } from "@/components";
 import { Button } from "@/components/ui/button";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import { Can } from "@/features/permissions";
-import { useMediaQuery } from "@/hooks/useMediaQuery";
+import type { CategorySort } from "@/types/api";
 
 import type { CategoriesQuery } from "../hooks/useCategories";
 
 /**
- * The list controls: a status filter, the deleted toggle behind "Filter lain",
- * free-text search, and the create button.
+ * The list controls: one row — search, one Filter button, one create button —
+ * with the status filter, the deleted toggle and the sort order inside a panel.
  *
- * Purely presentational — it renders the current query and reports changes up.
+ * Purely presentational: it renders the current query and reports changes up.
  *
- * TWO AXES, NOT ONE, and keeping them apart is the whole design of this bar:
+ * THE SAME SHAPE AS THE CATALOGUE'S, deliberately. These two screens sit one
+ * click apart in the nav and are two halves of the same job; a filter that is a
+ * row of triggers on one and a button on the other is two things to learn for no
+ * reason. It also gives search the whole row on both, which is what narrowing a
+ * list of names actually starts with.
+ *
+ * ONE ARRANGEMENT AT EVERY WIDTH, so there is no `useMediaQuery` here any more.
+ * A panel is what a bar collapses into on a phone; once the wide layout is a
+ * panel too, the two branches are the same tree and the media query was only
+ * choosing between it and itself.
+ *
+ * TWO AXES, NOT ONE, and keeping them apart is the point of the status field:
  *
  *   Status  — retired or in use. A retired category keeps every product filed
  *             under it; it just stops being offered for new ones.
@@ -37,21 +43,8 @@ import type { CategoriesQuery } from "../hooks/useCategories";
  *
  * They used to be one checkbox, because a category had nowhere to be anything
  * but live or deleted. It does now (`isActive`), and a shop that stops stocking
- * a line wants the first, not the second — deleting is refused outright while a
- * live product is still filed under the category.
- *
- * DELETED SITS BEHIND "Filter lain" while status is on the bar, mirroring the
- * catalogue. Retiring and reinstating is ordinary weekly housekeeping; digging
- * through deleted categories is something somebody does twice a year, and a bar
- * that gives both the same prominence is a bar that has not chosen.
- *
- * BELOW 600px BOTH TRIGGERS COLLAPSE into a single `Filter` button opening a
- * FilterPanel, exactly as the catalogue does. Two triggers do fit on a phone
- * where the catalogue's four do not — but these screens sit one click apart in
- * the nav, and a filter control that is a row of triggers on one and a button on
- * the other is two things to learn for no reason. The branches are alternatives
- * rather than a CSS hide, so there is never a second control carrying the same
- * accessible name in the DOM.
+ * a line wants the first — deleting is refused outright while a live product is
+ * still filed under the category.
  *
  * The create button opens a dialog rather than navigating, so `onCreate` is a
  * callback instead of a Link — see CategoryFormDialog for why. FilterBar's
@@ -63,16 +56,37 @@ const STATUSES: FilterOption<CategoriesQuery["status"]>[] = [
   { value: "inactive", label: "Nonaktif" },
 ];
 
-/** The width at which the bar stops being one. Matches the catalogue's. */
-const BAR_FITS = "(min-width: 600px)";
+/**
+ * The orderings the API accepts — CATEGORY_SORTS in category.model.js.
+ *
+ * No SKU here, unlike the catalogue's: a category is a name and a date, and
+ * those are the only two things there are to order it by.
+ */
+const SORTS: FilterOption<CategorySort>[] = [
+  { value: "newest", label: "Terbaru" },
+  { value: "oldest", label: "Terlama" },
+  { value: "nameAsc", label: "Nama A–Z" },
+  { value: "nameDesc", label: "Nama Z–A" },
+];
 
-/** The filters, in the shape the panel edits them as a draft. */
+/** Everything the panel edits, as one draft. */
 interface CategoryFilters {
   status: CategoriesQuery["status"];
   includeDeleted: boolean;
+  sort: CategorySort;
 }
 
-const CLEARED: CategoryFilters = { status: "", includeDeleted: false };
+/**
+ * What Reset returns to — the query's own defaults, not "empty".
+ *
+ * The ordering is included: a list with no ordering is not a thing, so Reset
+ * puts it back to the API's default rather than clearing it to nothing.
+ */
+const CLEARED: CategoryFilters = {
+  status: "",
+  includeDeleted: false,
+  sort: "newest",
+};
 
 export function CategoriesToolbar({
   query,
@@ -83,20 +97,17 @@ export function CategoriesToolbar({
   onChange: (patch: Partial<CategoriesQuery>) => void;
   onCreate: () => void;
 }) {
-  // The wide bar is the fallback: it is what the server prerenders, so a desktop
-  // load never starts collapsed. A phone corrects itself on hydration.
-  const compact = !useMediaQuery(BAR_FITS, true);
-
   const applied: CategoryFilters = {
     status: query.status,
     includeDeleted: query.includeDeleted,
+    sort: query.sort,
   };
 
   /**
-   * Commits a whole draft, sending only what actually moved.
+   * Commits the draft, sending only what actually moved.
    *
    * `setQuery` builds a new object out of whatever it is handed and the fetch
-   * effect keys on that object's identity, so posting both fields back would
+   * effect keys on that object's identity, so posting every field back would
    * make Terapkan re-query the list even when nothing changed.
    */
   function apply(next: CategoryFilters) {
@@ -104,75 +115,51 @@ export function CategoriesToolbar({
     if (next.status !== query.status) patch.status = next.status;
     if (next.includeDeleted !== query.includeDeleted)
       patch.includeDeleted = next.includeDeleted;
+    if (next.sort !== query.sort) patch.sort = next.sort;
 
     if (Object.keys(patch).length > 0) onChange(patch);
   }
 
   return (
     <FilterBar
-      /*
-        SEARCH LEADS THE ROW, ahead of the filters. Narrowing a category list
-        almost always starts by typing a name — there are two filters and
-        hundreds of names — so the reading order matches the order people work
-        in. The create button stays pinned at the far end, the one control here
-        that is not about narrowing anything.
-
-        NARROW: the same row, wrapping. Search takes the whole first line, so
-        the `Filter` button and the create button fall onto the second together.
-      */
+      // Search leads the row and takes what is left of it: with the filters
+      // behind one button there is nothing else on the line that grows.
       searchPlacement="leading"
-      searchClassName={compact ? "w-full" : undefined}
+      searchClassName="min-w-[12rem] flex-1"
+      // Below sm the row cannot hold all three, so the create button takes a
+      // line of its own — and takes all of it.
+      actionsClassName="max-sm:w-full"
       search={
         <FilterSearch
           value={query.search}
           onChange={(search) => onChange({ search })}
           placeholder="Cari nama kategori…"
           ariaLabel="Cari kategori"
-          // The shared 320px while it shares the line with the filters; the
-          // whole line once they have collapsed into one button.
-          fill={compact}
+          fill
         />
       }
       actions={
         <Can feature="categories" action="create">
-          {/* Sized to its label in both layouts: on a phone it shares the line
-              with the `Filter` button, and the two nearly fill it. */}
-          <Button onClick={onCreate}>
+          <Button onClick={onCreate} className="w-full">
             <Plus className="size-4" />
             Kategori baru
           </Button>
         </Can>
       }
     >
-      {compact ? (
-        <CompactFilters applied={applied} onApply={apply} />
-      ) : (
-        <>
-          <FilterSelect
-            label="Status"
-            ariaLabel="Filter status"
-            value={query.status}
-            options={STATUSES}
-            onChange={(status) => onChange({ status })}
-          />
-          <MoreFilters
-            includeDeleted={query.includeDeleted}
-            onApply={(includeDeleted) => onChange({ includeDeleted })}
-          />
-        </>
-      )}
+      <CategoryFilterPanel applied={applied} onApply={apply} />
     </FilterBar>
   );
 }
 
 /**
- * Both filters as one button, for a screen too narrow to lay them out.
+ * The status filter, the deleted toggle and the sort order, behind one button.
  *
- * Status auto-applies on the wide bar and waits for Terapkan here, which is the
- * rule for a select inside a panel (§8): a panel exists so the list is queried
- * once for a decision somebody made in one sitting.
+ * The fields wait for Terapkan — that is what a panel is (§8). Reset returns the
+ * whole set to its defaults and applies at once, because clearing a filter is
+ * not a change anyone composes.
  */
-function CompactFilters({
+function CategoryFilterPanel({
   applied,
   onApply,
 }: {
@@ -182,11 +169,25 @@ function CompactFilters({
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(applied);
 
+  /**
+   * How many filters are narrowing the list right now.
+   *
+   * THE ORDERING IS NOT COUNTED. Every list has one, so it is never "on" — a
+   * badge reading `Filter (1)` over a screen showing every category would train
+   * people to ignore the number, which is the one thing here that must stay
+   * worth reading now that the triggers are hidden.
+   */
   const count = [applied.status !== "", applied.includeDeleted].filter(
     Boolean,
   ).length;
 
+  function patch(change: Partial<CategoryFilters>) {
+    setDraft((prev) => ({ ...prev, ...change }));
+  }
+
   function onOpenChange(next: boolean) {
+    // Seeded on every open, so clicking away abandons the draft rather than
+    // leaving it half-edited for the next visit.
     if (next) setDraft(applied);
     setOpen(next);
   }
@@ -213,93 +214,32 @@ function CompactFilters({
           setOpen(false);
         }}
       >
+        {/* Sort leads: it is the one field here that is always set, and the
+            only one that changes what the top of the list is rather than what
+            is in it. */}
+        <FilterSelect
+          layout="field"
+          label="Urutkan"
+          ariaLabel="Urutkan"
+          value={draft.sort}
+          options={SORTS}
+          unsetValue="newest"
+          onChange={(sort) => patch({ sort })}
+        />
         <FilterSelect
           layout="field"
           label="Status"
           ariaLabel="Filter status"
           value={draft.status}
           options={STATUSES}
-          onChange={(status) => setDraft((prev) => ({ ...prev, status }))}
+          onChange={(status) => patch({ status })}
         />
         <FilterToggle
           label="Tampilkan kategori terhapus"
           checked={draft.includeDeleted}
-          onChange={(includeDeleted) =>
-            setDraft((prev) => ({ ...prev, includeDeleted }))
-          }
+          onChange={(includeDeleted) => patch({ includeDeleted })}
         />
       </FilterPanel>
     </>
-  );
-}
-
-/**
- * The rare filter — deleted categories — behind one trigger.
- *
- * Its own Reset and Terapkan even though it holds a single field, because that
- * field is not on the bar: a checkbox in a popover that applied on the tick
- * would leave people wondering whether it took, with the list hidden behind the
- * popover they are still standing in. Reset applies at once, as everywhere.
- */
-function MoreFilters({
-  includeDeleted,
-  onApply,
-}: {
-  includeDeleted: boolean;
-  onApply: (includeDeleted: boolean) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState(includeDeleted);
-
-  function onOpenChange(next: boolean) {
-    // Seeded on every open, so clicking away abandons the draft rather than
-    // leaving it half-edited for the next visit.
-    if (next) setDraft(includeDeleted);
-    setOpen(next);
-  }
-
-  return (
-    <Popover open={open} onOpenChange={onOpenChange}>
-      <PopoverTrigger asChild>
-        <FilterTrigger
-          label="Filter lain"
-          active={includeDeleted}
-          icon={<ListFilter className="size-4" />}
-          aria-label="Filter lain"
-        />
-      </PopoverTrigger>
-
-      <PopoverContent align="end" className="w-72 p-0">
-        <div className="p-4">
-          <FilterToggle
-            label="Tampilkan kategori terhapus"
-            checked={draft}
-            onChange={setDraft}
-          />
-        </div>
-
-        <div className="flex items-center justify-between border-t border-border bg-background px-3 py-2.5">
-          <button
-            type="button"
-            onClick={() => {
-              onApply(false);
-              setOpen(false);
-            }}
-            className="rounded-sm text-sm font-semibold text-warning outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
-          >
-            Reset
-          </button>
-          <Button
-            size="sm"
-            onClick={() => {
-              onApply(draft);
-              setOpen(false);
-            }}
-          >
-            Terapkan
-          </Button>
-        </div>
-      </PopoverContent>
-    </Popover>
   );
 }
