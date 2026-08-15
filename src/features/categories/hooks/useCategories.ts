@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { categoryService } from "@/services/category.service";
 import { ApiError } from "@/services/api-error";
 import type { Category, CategoryListQuery, PageResult } from "@/types/api";
+import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 
 /** The query knobs the list screen drives (page + the visible filters). */
 export interface CategoriesQuery {
@@ -62,6 +63,10 @@ export function useCategories(): UseCategoriesResult {
   // Bumped by refetch() to force the effect to re-run without changing query.
   const [nonce, setNonce] = useState(0);
 
+  // The toolbar keeps the live query so typing stays responsive; only the
+  // request waits for the search box to settle.
+  const settled = useDebouncedQuery(query);
+
   const setQuery = useCallback((patch: Partial<CategoriesQuery>) => {
     setQueryState((prev) => {
       const next = { ...prev, ...patch };
@@ -84,10 +89,10 @@ export function useCategories(): UseCategoriesResult {
     setError(null);
 
     const apiQuery: CategoryListQuery = {
-      page: query.page,
+      page: settled.page,
       limit: PAGE_SIZE,
-      search: query.search.trim() || undefined,
-      includeDeleted: query.includeDeleted || undefined,
+      search: settled.search.trim() || undefined,
+      includeDeleted: settled.includeDeleted || undefined,
     };
 
     categoryService
@@ -113,7 +118,7 @@ export function useCategories(): UseCategoriesResult {
     return () => {
       active = false;
     };
-  }, [query, nonce]);
+  }, [settled, nonce]);
 
   return {
     categories,

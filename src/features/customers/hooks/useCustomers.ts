@@ -10,6 +10,7 @@ import type {
   PageResult,
   VipTier,
 } from "@/types/api";
+import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 
 /** The query knobs the list screen drives (page + the visible filters). */
 export interface CustomersQuery {
@@ -68,6 +69,10 @@ export function useCustomers(): UseCustomersResult {
   // Bumped by refetch() to force the effect to re-run without changing query.
   const [nonce, setNonce] = useState(0);
 
+  // The toolbar keeps the live query so typing stays responsive; only the
+  // request waits for the search box to settle.
+  const settled = useDebouncedQuery(query);
+
   const setQuery = useCallback((patch: Partial<CustomersQuery>) => {
     setQueryState((prev) => {
       const next = { ...prev, ...patch };
@@ -90,11 +95,11 @@ export function useCustomers(): UseCustomersResult {
     setError(null);
 
     const apiQuery: CustomerListQuery = {
-      page: query.page,
+      page: settled.page,
       limit: PAGE_SIZE,
-      search: query.search.trim() || undefined,
-      vipTier: query.vipTier === "" ? undefined : query.vipTier,
-      includeDeleted: query.includeDeleted || undefined,
+      search: settled.search.trim() || undefined,
+      vipTier: settled.vipTier === "" ? undefined : settled.vipTier,
+      includeDeleted: settled.includeDeleted || undefined,
     };
 
     customerService
@@ -120,7 +125,7 @@ export function useCustomers(): UseCustomersResult {
     return () => {
       active = false;
     };
-  }, [query, nonce]);
+  }, [settled, nonce]);
 
   return { customers, pagination, query, loading, error, setQuery, refetch };
 }

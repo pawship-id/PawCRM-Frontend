@@ -10,6 +10,7 @@ import type {
   PurchaseInvoiceListQuery,
   PurchaseInvoiceListRow,
 } from "@/types/api";
+import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 
 /**
  * The one filter that is not a plain field.
@@ -151,6 +152,10 @@ export function usePurchaseInvoices(
   // Bumped by refetch() to force the effect to re-run without changing query.
   const [nonce, setNonce] = useState(0);
 
+  // The toolbar keeps the live query so typing stays responsive; only the
+  // request waits for the search box to settle.
+  const settled = useDebouncedQuery(query);
+
   const setQuery = useCallback((patch: Partial<PurchaseInvoicesQuery>) => {
     setQueryState((prev) => {
       const next = { ...prev, ...patch };
@@ -173,13 +178,13 @@ export function usePurchaseInvoices(
     setError(null);
 
     const apiQuery: PurchaseInvoiceListQuery = {
-      page: query.page,
+      page: settled.page,
       limit: PAGE_SIZE,
-      search: query.search.trim() || undefined,
-      supplierId: query.supplierId || undefined,
-      dateFrom: orUndefined(query.dateFrom),
-      dateTo: orUndefined(query.dateTo),
-      ...viewFilters(query.view),
+      search: settled.search.trim() || undefined,
+      supplierId: settled.supplierId || undefined,
+      dateFrom: orUndefined(settled.dateFrom),
+      dateTo: orUndefined(settled.dateTo),
+      ...viewFilters(settled.view),
     };
 
     purchaseInvoiceService
@@ -205,7 +210,7 @@ export function usePurchaseInvoices(
     return () => {
       active = false;
     };
-  }, [query, nonce]);
+  }, [settled, nonce]);
 
   return { invoices, pagination, query, loading, error, setQuery, refetch };
 }

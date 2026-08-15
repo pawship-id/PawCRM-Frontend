@@ -1,25 +1,27 @@
 "use client";
 
-import { Button, Spinner } from "@/components";
-import { Input } from "@/components/ui/input";
+import { Download } from "lucide-react";
+
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  FilterBar,
+  FilterDateRange,
+  FilterSearch,
+  FilterSelect,
+  Spinner,
+  namedOptions,
+  withAll,
+} from "@/components";
+import { Button } from "@/components/ui/button";
 import type { StockWarehouse } from "@/types/inventory";
 
 import type { OpnameFilters } from "../hooks/useOpnames";
 
 /**
- * The count-sheet list's controls: status, warehouse, a date range and a search
- * over the sheet number.
+ * The opname list controls: free-text search, status, warehouse, a date range,
+ * and the export button.
  *
  * Purely presentational — it renders the current filters and reports changes up
- * to the screen. The `ALL` sentinel is the same one every other toolbar here
- * uses: Radix Select forbids an empty item value.
+ * to the screen.
  *
  * INACTIVE WAREHOUSES ARE INCLUDED, unlike the picker on the create page. This
  * is a READ: a warehouse closed last month still owns the counts taken there,
@@ -27,8 +29,18 @@ import type { OpnameFilters } from "../hooks/useOpnames";
  * exactly the moment somebody is auditing it. The picker that OPENS a sheet
  * filters them out, because the API refuses a count at an inactive location —
  * offering one there would produce a rejection after the choice.
+ *
+ * `onChange` takes a PATCH, like every other toolbar in the codebase. It used to
+ * take the whole object and rebuild it through a local `set()` closure, which
+ * made this the one file that could not be read by analogy with its neighbours.
  */
-const ALL = "all";
+const STATUSES = withAll<OpnameFilters["status"]>(
+  [
+    { value: "draft", label: "Draft" },
+    { value: "submitted", label: "Final" },
+  ],
+  "Semua status",
+);
 
 export function OpnameToolbar({
   filters,
@@ -40,139 +52,61 @@ export function OpnameToolbar({
 }: {
   filters: OpnameFilters;
   warehouses: StockWarehouse[];
-  onChange: (next: OpnameFilters) => void;
+  onChange: (patch: Partial<OpnameFilters>) => void;
   /** Absent on a screen that offers no export — the button then does not render. */
   onExport?: () => void;
   exporting?: boolean;
   /** False while the list is empty or loading: an empty workbook helps nobody. */
   canExport?: boolean;
 }) {
-  const set = <K extends keyof OpnameFilters>(
-    key: K,
-    value: OpnameFilters[K],
-  ) => onChange({ ...filters, [key]: value });
-
   return (
-    <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-surface p-4">
-      <div className="min-w-52 flex-1">
-        <label
-          htmlFor="opname-search"
-          className="mb-1.5 block text-[10px] font-medium uppercase tracking-[0.14em] text-muted"
-        >
-          Cari
-        </label>
-        <Input
-          id="opname-search"
+    <FilterBar
+      search={
+        <FilterSearch
           value={filters.search}
-          onChange={(event) => set("search", event.target.value)}
+          onChange={(search) => onChange({ search })}
           placeholder="Nomor opname atau catatan…"
+          ariaLabel="Cari opname"
         />
-      </div>
-
-      <div>
-        <label
-          htmlFor="opname-status"
-          className="mb-1.5 block text-[10px] font-medium uppercase tracking-[0.14em] text-muted"
-        >
-          Status
-        </label>
-        <Select
-          value={filters.status || ALL}
-          onValueChange={(value) =>
-            set("status", value === ALL ? "" : (value as "draft" | "submitted"))
-          }
-        >
-          <SelectTrigger id="opname-status" className="w-40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>Semua status</SelectItem>
-            <SelectItem value="draft">Draft</SelectItem>
-            <SelectItem value="submitted">Final</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div>
-        <label
-          htmlFor="opname-warehouse"
-          className="mb-1.5 block text-[10px] font-medium uppercase tracking-[0.14em] text-muted"
-        >
-          Gudang
-        </label>
-        <Select
-          value={filters.warehouseId || ALL}
-          onValueChange={(value) =>
-            set("warehouseId", value === ALL ? "" : value)
-          }
-        >
-          <SelectTrigger id="opname-warehouse" className="w-52">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>Semua gudang</SelectItem>
-            {warehouses.map((warehouse) => (
-              <SelectItem key={warehouse._id} value={warehouse._id}>
-                {warehouse.name}
-                {!warehouse.isActive && " (nonaktif)"}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div>
-        <label
-          htmlFor="opname-from"
-          className="mb-1.5 block text-[10px] font-medium uppercase tracking-[0.14em] text-muted"
-        >
-          Dari tanggal
-        </label>
-        <Input
-          id="opname-from"
-          type="date"
-          value={filters.dateFrom}
-          onChange={(event) => set("dateFrom", event.target.value)}
-          className="w-40"
-        />
-      </div>
-
-      <div>
-        <label
-          htmlFor="opname-to"
-          className="mb-1.5 block text-[10px] font-medium uppercase tracking-[0.14em] text-muted"
-        >
-          Sampai
-        </label>
-        <Input
-          id="opname-to"
-          type="date"
-          value={filters.dateTo}
-          /* The API refuses a `dateTo` before `dateFrom`; stopping it here means
-             the user learns about it from the picker rather than from a 400. */
-          min={filters.dateFrom || undefined}
-          onChange={(event) => set("dateTo", event.target.value)}
-          className="w-40"
-        />
-      </div>
-
-      {onExport && (
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={onExport}
-          disabled={exporting || !canExport}
-          className="ml-auto"
-        >
-          {exporting ? <Spinner /> : null}
-          {/*
-            "Halaman ini" said on the button, not in a tooltip. The list is
-            paged, and a file quietly holding 20 of 140 rows is one somebody
-            reconciles against and finds short — the label is what stops that.
-          */}
-          Export halaman ini (.xlsx)
-        </Button>
-      )}
-    </div>
+      }
+      actions={
+        onExport && (
+          <Button
+            variant="secondary"
+            onClick={onExport}
+            disabled={exporting || !canExport}
+          >
+            {exporting ? <Spinner /> : <Download className="size-4" />}
+            Export halaman ini (.xlsx)
+          </Button>
+        )
+      }
+    >
+      <FilterSelect
+        label="Status"
+        ariaLabel="Filter status opname"
+        value={filters.status}
+        options={STATUSES}
+        onChange={(status) => onChange({ status })}
+      />
+      <FilterSelect
+        label="Gudang"
+        ariaLabel="Filter gudang"
+        value={filters.warehouseId}
+        options={withAll(
+          namedOptions(warehouses, (w) =>
+            w.isActive ? w.name : `${w.name} (nonaktif)`,
+          ),
+          "Semua gudang",
+        )}
+        onChange={(warehouseId) => onChange({ warehouseId })}
+      />
+      <FilterDateRange
+        label="Tanggal opname"
+        from={filters.dateFrom}
+        to={filters.dateTo}
+        onApply={({ from, to }) => onChange({ dateFrom: from, dateTo: to })}
+      />
+    </FilterBar>
   );
 }

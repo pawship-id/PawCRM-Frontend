@@ -2,16 +2,14 @@
 
 import { Download, RotateCw } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  FilterBar,
+  FilterDateRange,
+  FilterSelect,
+  withAll,
+  type FilterOption,
+} from "@/components";
+import { Button } from "@/components/ui/button";
 import type { MovementType } from "@/types/inventory";
 
 import type { StockCardFilters as Filters } from "../hooks/useStockCard";
@@ -21,9 +19,12 @@ import type { StockCardFilters as Filters } from "../hooks/useStockCard";
  * export.
  *
  * Purely presentational — it renders the current filters and reports changes up
- * to the screen, which owns them. The `ALL` sentinel is the same one
- * ProductsToolbar uses, and for the same reason: Radix Select forbids an empty
- * item value.
+ * to the screen, which owns them.
+ *
+ * THE WAREHOUSE AND PRODUCT PICKERS ARE NOT HERE, deliberately. They live in
+ * WarehouseProductPicker on the screen above, because they are required INPUTS
+ * rather than filters — nothing loads until both are chosen, which is why every
+ * control here takes `disabled` until they are.
  *
  * NO FILTER COSTS THE BALANCE COLUMN ANY MORE, and this component used to carry
  * a paragraph explaining that it did. Narrowing by movement type or setting an
@@ -37,9 +38,7 @@ import type { StockCardFilters as Filters } from "../hooks/useStockCard";
  * putting the button anywhere else would invite the assumption that it dumps
  * everything.
  */
-const ALL = "all";
-
-const MOVEMENT_FILTERS: Array<{ value: MovementType; label: string }> = [
+const MOVEMENT_FILTERS: FilterOption<MovementType | "">[] = [
   { value: "receipt", label: "Penerimaan" },
   { value: "pos_sale", label: "Penjualan" },
   { value: "adjustment", label: "Penyesuaian" },
@@ -50,6 +49,8 @@ const MOVEMENT_FILTERS: Array<{ value: MovementType; label: string }> = [
   { value: "purchase_return", label: "Retur supplier" },
   { value: "bundle_consume", label: "Bundle consume" },
 ];
+
+const TYPES = withAll(MOVEMENT_FILTERS, "Semua tipe");
 
 export function StockCardFilters({
   filters,
@@ -72,72 +73,15 @@ export function StockCardFilters({
     filters.movementType !== "" || filters.from !== "" || filters.to !== "";
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="movementType" className="text-xs text-muted">
-            Tipe pergerakan
-          </Label>
-          <Select
-            value={filters.movementType === "" ? ALL : filters.movementType}
-            onValueChange={(value) =>
-              onChange({
-                movementType: value === ALL ? "" : (value as MovementType),
-              })
-            }
-            disabled={disabled}
-          >
-            <SelectTrigger
-              id="movementType"
-              className="w-48"
-              aria-label="Tipe pergerakan"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>Semua tipe</SelectItem>
-              {MOVEMENT_FILTERS.map((filter) => (
-                <SelectItem key={filter.value} value={filter.value}>
-                  {filter.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="from" className="text-xs text-muted">
-            Dari tanggal
-          </Label>
-          <Input
-            id="from"
-            type="date"
-            className="w-44"
-            value={filters.from}
-            max={filters.to || undefined}
-            disabled={disabled}
-            onChange={(event) => onChange({ from: event.target.value })}
-          />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="to" className="text-xs text-muted">
-            Sampai tanggal
-          </Label>
-          <Input
-            id="to"
-            type="date"
-            className="w-44"
-            value={filters.to}
-            // The API refuses a `to` that precedes `from` with a 400; bounding
-            // the input means the user never sends one.
-            min={filters.from || undefined}
-            disabled={disabled}
-            onChange={(event) => onChange({ to: event.target.value })}
-          />
-        </div>
-
-        <div className="ml-auto flex items-center gap-2">
+    <FilterBar
+      hint={
+        <>
+          Export mengikuti filter di atas dan berisi <b>seluruh</b> pergerakan
+          yang cocok — bukan hanya halaman yang sedang tampil.
+        </>
+      }
+      actions={
+        <>
           {narrowed && (
             <Button
               variant="ghost"
@@ -159,13 +103,24 @@ export function StockCardFilters({
             <Download />
             {exporting ? "Menyiapkan…" : "Export .xlsx"}
           </Button>
-        </div>
-      </div>
-
-      <p className="text-xs text-muted">
-        Export mengikuti filter di atas dan berisi <b>seluruh</b> pergerakan yang
-        cocok — bukan hanya halaman yang sedang tampil.
-      </p>
-    </div>
+        </>
+      }
+    >
+      <FilterSelect
+        label="Tipe pergerakan"
+        ariaLabel="Tipe pergerakan"
+        value={filters.movementType}
+        options={TYPES}
+        disabled={disabled}
+        onChange={(movementType) => onChange({ movementType })}
+      />
+      <FilterDateRange
+        label="Tanggal"
+        from={filters.from}
+        to={filters.to}
+        disabled={disabled}
+        onApply={({ from, to }) => onChange({ from, to })}
+      />
+    </FilterBar>
   );
 }

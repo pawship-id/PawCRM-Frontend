@@ -1,11 +1,9 @@
 "use client";
 
-import { Plus, Search } from "lucide-react";
+import { Plus } from "lucide-react";
 
+import { FilterBar, FilterSearch, FilterToggle } from "@/components";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Can } from "@/features/permissions";
 
 import type { CategoriesQuery } from "../hooks/useCategories";
@@ -20,7 +18,8 @@ import type { CategoriesQuery } from "../hooks/useCategories";
  * the whole of it.
  *
  * The create button opens a dialog rather than navigating, so `onCreate` is a
- * callback instead of a Link — see CategoryFormDialog for why.
+ * callback instead of a Link — see CategoryFormDialog for why. FilterBar's
+ * `actions` takes a node precisely so both shapes fit without it caring which.
  */
 export function CategoriesToolbar({
   query,
@@ -32,40 +31,29 @@ export function CategoriesToolbar({
   onCreate: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative flex-1 sm:max-w-xs">
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="search"
-            value={query.search}
-            onChange={(event) => onChange({ search: event.target.value })}
-            placeholder="Cari nama kategori…"
-            aria-label="Cari kategori"
-            className="pl-9"
-          />
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="show-deleted-categories"
-            checked={query.includeDeleted}
-            onCheckedChange={(checked) =>
-              onChange({ includeDeleted: checked === true })
-            }
-          />
-          <Label htmlFor="show-deleted-categories" className="font-normal">
-            Tampilkan yang dihapus
-          </Label>
-        </div>
-      </div>
-
-      <Can feature="categories" action="create">
-        <Button onClick={onCreate}>
-          <Plus className="size-4" />
-          Kategori baru
-        </Button>
-      </Can>
-    </div>
+    <FilterBar
+      search={
+        <FilterSearch
+          value={query.search}
+          onChange={(search) => onChange({ search })}
+          placeholder="Cari nama kategori…"
+          ariaLabel="Cari kategori"
+        />
+      }
+      actions={
+        <Can feature="categories" action="create">
+          <Button onClick={onCreate}>
+            <Plus className="size-4" />
+            Kategori baru
+          </Button>
+        </Can>
+      }
+    >
+      <FilterToggle
+        label="Tampilkan yang dihapus"
+        checked={query.includeDeleted}
+        onChange={(includeDeleted) => onChange({ includeDeleted })}
+      />
+    </FilterBar>
   );
 }

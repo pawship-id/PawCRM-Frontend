@@ -112,8 +112,8 @@ export function OpnameScreen() {
     }
   };
 
-  function handleFilters(next: OpnameFilters) {
-    setFilters(next);
+  function handleFilters(patch: Partial<OpnameFilters>) {
+    setFilters((prev) => ({ ...prev, ...patch }));
     // A filter change re-asks the question; keeping page 4 would answer it with
     // a page that may no longer exist.
     setPage(1);

@@ -2,17 +2,36 @@
 
 Rules in [`docs/ui-rules.md`](./ui-rules.md) override this file.
 
-Everything here is **specified, not built**. Nothing in this document exists in `src/` yet. Build a component when the work actually calls for one — and when you do, build it to this spec rather than inventing a parallel version. Delete its "not built" note here once it ships.
-
 Each entry gives: when to use → props → anatomy → states → copy → accessibility.
+
+**The filter layer is built** and lives in [`src/components/filters/`](../src/components/filters/), exported through `@/components`. All 15 toolbars use it. Where this document and the code disagree, the code is right and this document is stale — say so in a PR rather than "fixing" the code back.
+
+Everything under *Page structure*, *Status* and *Tables* is still **specified, not built**. Build one when the work actually calls for it, to this spec rather than to a parallel invention, and delete its "not built" note once it ships.
+
+## What the real toolbars changed about this spec
+
+Seven amendments, each discovered by holding the original spec against the fifteen toolbars it was meant to describe:
+
+1. **`FilterToggle` was missing entirely.** The census found nine boolean filters — eight on the shadcn `Checkbox`, one on a raw `<input type="checkbox">`. It is specified below now.
+2. **`FilterSelect` takes `value: T` and `unsetValue?: NoInfer<T>`,** not `value: T | null`. The repo's unset convention is `""` or `false`, never null — and three different conventions coexist, so which value means "not filtering" has to be nameable per field. `NoInfer` keeps that prop from voting on the generic, which is what lets `unsetValue="all"` type-check without a cast.
+3. **`FilterSelect` gained `disabled` and `disabledHint`.** Batches suspends its horizon during a search and StockCard disables everything until a product is picked. Both already carried prose explaining it; a disabled control with no explanation reads as a bug.
+4. **`FilterPills` options gained `tone`.** Payables' overdue lens is the one filter value that carries urgency.
+5. **`FilterBar` gained `meta`, `actions` and `hint`, and `search` became a `ReactNode`** rather than a `{value, onChange, placeholder}` object. Ten of the buttons that land in `actions` are wrapped in a `<Can>` permission gate, so a config shape would drag permissions into a shared component; and the object form for search would have needed `ariaLabel`, `disabled` and `className` within a month.
+6. **`FilterDateRange` takes `string`, not `string | null`,** and the default presets are `Hari ini / 7 hari / 30 hari / Bulan ini`. The "Kustom" chip is gone — the two inputs beneath it *are* custom. Reset applies immediately, so there is no separate `onReset`: `onApply({from:"", to:""})` already says it.
+7. **Search sits far right**, per this spec, where fourteen of fifteen toolbars used to put it first-left. That and Payables' segmented control becoming a pill row are the only two changes a user will visibly notice.
 
 ---
 
 # Filters
 
-The single highest-leverage area: 15 hand-rolled toolbars currently implement this in two incompatible layouts. Read [`docs/ui-rules.md`](./ui-rules.md) §8 for the *decisions* (which arrangement, when a control applies); this file gives the *anatomy*.
+**Built.** `src/components/filters/`, re-exported from `@/components`. Read [`docs/ui-rules.md`](./ui-rules.md) §8 for the *decisions* (which arrangement, when a control applies); this file gives the *anatomy*.
 
 Source of the design: [`docs/brand/buloo-filter-section-v2.html`](./brand/buloo-filter-section-v2.html) — open it, the demos are interactive.
+
+Two things worth knowing before you change any of it:
+
+- **`FilterTrigger.tsx` is the point of the folder.** Every filter control in the app opens from it, so a design change is one `cn()` call there rather than fifteen toolbars. It is exported publicly so the catalogue's warehouse-scope control — the one control that could not be expressed declaratively — still wears the same shell.
+- **The popovers decline Radix's auto-focus** (`onOpenAutoFocus`), because Radix parks focus on the content wrapper, which is the *ancestor* of the listbox's key handler; arrow keys would fire above it and never arrive. `FilterOptionList` takes focus itself.
 
 ## Shared trigger
 
@@ -356,3 +375,49 @@ TableRow:   border-b border-border transition hover:bg-surface-hover
 Numeric columns: `text-right tabular-nums` on both head and cell.
 
 Wrap in `<div class="overflow-x-auto rounded-xl border border-border">` so wide tables scroll inside their own container and the page body never scrolls sideways.
+
+---
+
+# Sorting
+
+**Not built, and blocked — read the backend note before starting.**
+
+Sorting does not exist at any layer today: no `*ListQuery` carries it, no service sends it, and no backend list endpoint accepts it. So there is nothing inconsistent to unify here — this is a feature, not a cleanup, and it is specified rather than built for that reason.
+
+## `SortSelect`
+
+```ts
+interface SortSelectProps<T extends string> {
+  value: { by: T; order: "asc" | "desc" };
+  options: { value: T; label: string; defaultOrder?: "asc" | "desc" }[];
+  onChange: (value: { by: T; order: "asc" | "desc" }) => void;
+}
+```
+
+Built on `FilterTrigger`, reading `Urutkan: Nama A–Z ⌄`.
+
+**Direction lives inside the option label** — `Nama A–Z`, `Nama Z–A`, `Terbaru`, `Terlama` — not in a separate arrow toggle beside it. Two controls for one concept is how these toolbars drifted apart in the first place, and "sort by name, descending" is one decision a person makes once, not two they compose.
+
+## The backend has to go first
+
+`middlewares/validate.middleware.js` sets `stripUnknown: true`, and `validations/common.validation.js` defines the shared list contract as `page` + `limit` only. **A frontend that sends `?sortBy=name` before the schema knows the field gets no 400 and no log — Joi silently drops it and the old order comes back.** A control that looks live and changes nothing, with no diagnostic, is the worst failure mode available.
+
+In order:
+
+1. `common.validation.js` — add a `sorting(allowed)` helper returning `{ sortBy: Joi.string().valid(...allowed), sortOrder: Joi.string().valid("asc","desc").default("desc") }`. **Whitelist per resource, never free-form**: then `stripUnknown` turns a typo into a 400 instead of eating it.
+2. **Add the compound index before exposing the field** — `{tenantId:1, deletedAt:1, name:1, _id:1}` and the `sku` equivalent. Sorting by name without one is an in-memory sort that MongoDB aborts past 32 MB: a production incident triggered by a dropdown.
+3. Repository — `.sort({ [sortBy]: dir, _id: dir })`, **always with the `_id` tiebreaker**. The codebase already understands this (`goodsReceipt.repository.js`, `purchaseInvoice.repository.js`): without it, rows skip across page boundaries on a non-unique key.
+4. Frontend — `sortBy` / `sortOrder` on the `*ListQuery` types and in each `*.service.ts` explicit param whitelist (`product.service.ts` is the pattern). The hooks' `setQuery` needs no change: its rule is "anything but `page` resets to page 1", which is already field-agnostic.
+5. Pilot on **products, suppliers, customers** — three lists with real find-by-name pressure and a small index surface.
+
+## Lists that must never get a sort control
+
+Recorded so this stays a decision rather than an oversight:
+
+| Resource | Why |
+| --- | --- |
+| Batch & Expired | The FEFO order (`noExpiry`, `expiryDate`, `createdAt`) **is** the report's meaning. `BatchesTable.tsx` argues it. |
+| Kartu Stok | The running `Saldo` column depends on row order; re-sorting makes it a lie. `StockLedgerTable.tsx`: "NEWEST FIRST IS NOT A SORT PREFERENCE." |
+| Audit log, Jurnal Umum | A log is chronological by definition. |
+
+`SortableTableHead` is a separate question and is **blocked** until `ui/table` is retuned and the 20 raw-`<table>` files migrate — `ProductsTable` is one of them, so a header-based sort could not land on the flagship list anyway.

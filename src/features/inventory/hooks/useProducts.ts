@@ -6,6 +6,7 @@ import { productService } from "@/services/product.service";
 import { ApiError } from "@/services/api-error";
 import type { PageResult } from "@/types/api";
 import type { Product, ProductListQuery, ProductType } from "@/types/inventory";
+import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 
 /** The query knobs the catalogue screen drives (page + the visible filters). */
 export interface ProductsQuery {
@@ -80,6 +81,10 @@ export function useProducts(): UseProductsResult {
   // Bumped by refetch() to re-run the effect without changing the query.
   const [nonce, setNonce] = useState(0);
 
+  // The toolbar keeps the live query so typing stays responsive; only the
+  // request waits for the search box to settle.
+  const settled = useDebouncedQuery(query);
+
   const setQuery = useCallback((patch: Partial<ProductsQuery>) => {
     setQueryState((prev) => {
       const next = { ...prev, ...patch };
@@ -99,15 +104,15 @@ export function useProducts(): UseProductsResult {
     setError(null);
 
     const apiQuery: ProductListQuery = {
-      page: query.page,
+      page: settled.page,
       limit: PAGE_SIZE,
-      search: query.search.trim() || undefined,
-      categoryId: query.categoryId || undefined,
-      includeDeleted: query.includeDeleted || undefined,
-      ...(query.productType === ""
+      search: settled.search.trim() || undefined,
+      categoryId: settled.categoryId || undefined,
+      includeDeleted: settled.includeDeleted || undefined,
+      ...(settled.productType === ""
         ? { excludeVariants: true }
-        : { productType: query.productType }),
-      ...(query.status === "" ? {} : { isActive: query.status === "active" }),
+        : { productType: settled.productType }),
+      ...(settled.status === "" ? {} : { isActive: settled.status === "active" }),
     };
 
     productService
@@ -133,7 +138,7 @@ export function useProducts(): UseProductsResult {
     return () => {
       active = false;
     };
-  }, [query, nonce]);
+  }, [settled, nonce]);
 
   return { products, pagination, query, loading, error, setQuery, refetch };
 }

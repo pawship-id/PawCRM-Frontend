@@ -26,7 +26,10 @@ The fastest way to be consistent here. Check this table before writing markup.
 | Instead of writing… | Write | Why |
 | --- | --- | --- |
 | `bg-card`, `text-muted-foreground`, `text-destructive` | `bg-surface`, `text-muted`, `text-danger` | Identical values. App vocabulary wins outside `components/ui/`. §3 |
-| a hand-rolled `flex flex-col gap-3 sm:flex-row…` toolbar | `<FilterBar>` (spec'd, not yet built) | 15 copies exist in two incompatible layouts. §8 |
+| a hand-rolled toolbar `<div>` | `<FilterBar>` + the filter controls, from `@/components` | 15 copies used to exist in two incompatible layouts. §8 |
+| `ui/select` for a filter, plus a `const ALL = "all"` sentinel | `<FilterSelect>` with `withAll(…)` / `triState(…)` | The sentinel only existed because Radix Select forbids `value=""`. §8 |
+| a `w-40` / `w-44` / `w-52` guess on a filter | nothing — width comes from content | One number, in `FilterTrigger.tsx`. |
+| a bare `<input type="date">` pair with an `s/d` between them | `<FilterDateRange>` | It bounds the two ends against each other and holds a draft until Terapkan. |
 | `rounded-xl border border-border bg-surface` | `<Card>` from `@/components` | Hand-written 52 times. |
 | `Breadcrumb` + `h1` + `p` assembled by hand | `<PageHeading>` | ~25 pages hand-roll it in 3 drifted variants. |
 | a new `XxxStatusBadge` in a feature folder | `<StatusBadge tone label>` (spec'd) | 15 exist with 3 incompatible tinting conventions. §9 |
@@ -286,13 +289,13 @@ From [`docs/architecture.md`](./architecture.md), unchanged: a component lives i
 
 ## 15. Not yet decided, and the migration list
 
-**Decided but not yet built** — specs exist in [`docs/ui-component-specs.md`](./ui-component-specs.md); no implementation yet. Build them when the work calls for one, don't invent a parallel version:
-`FilterBar`, `FilterPanel`, `FilterSearch`, `FilterSelect`, `FilterMultiSelect`, `FilterDateRange`, `FilterPills`, `FilterChips`, `StatusBadge`, `EmptyState`, and a promoted `PageHeading`.
-`FilterSelect` / `FilterMultiSelect` will need shadcn `popover` and `command`, which are not installed yet.
+**Built** — `src/components/filters/`, exported from `@/components`, used by all 15 toolbars: `FilterBar`, `FilterTrigger`, `FilterSearch`, `FilterSelect`, `FilterMultiSelect`, `FilterDateRange`, `FilterToggle`, `FilterPills`, `FilterChips`, plus the `withAll` / `triState` / `namedOptions` option builders.
+
+**Decided but not yet built** — specs exist in [`docs/ui-component-specs.md`](./ui-component-specs.md). Build them when the work calls for one, don't invent a parallel version: `FilterPanel`, `StatusBadge`, `EmptyState`, and a promoted `PageHeading`.
 
 **Migration list** — existing code that violates these rules. Fix opportunistically when you are already in the file; do not open a sweep without being asked:
 
-- 15 hand-rolled toolbars (~2,100 lines) in `src/features/*/components/*Toolbar.tsx` → `FilterBar` / `FilterPanel`
+- 4 screens with filters written inline rather than in a toolbar — `JournalEntriesScreen`, `ChartOfAccountsScreen`, `StockOnHandScreen`, `ProductDetail` — still carry their own `const ALL = "all"` sentinel and a raw `ui/select`. They were not part of the 15-toolbar census; migrate them to `@/components` filters.
 - ~25 hand-rolled page headings → promoted `PageHeading`
 - 52 hand-written `rounded-xl border border-border bg-surface` → `<Card>`
 - 15 feature status badges with 3 tinting conventions → `StatusBadge`

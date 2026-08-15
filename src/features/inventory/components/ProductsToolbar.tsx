@@ -1,10 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronDownIcon } from "lucide-react";
 
+import {
+  FilterBar,
+  FilterSearch,
+  FilterSelect,
+  FilterToggle,
+  FilterTrigger,
+  namedOptions,
+  withAll,
+  type FilterOption,
+} from "@/components";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -12,15 +20,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Can } from "@/features/permissions";
 import type { Category } from "@/types/api";
 import type { ProductType, StockWarehouse } from "@/types/inventory";
@@ -34,23 +33,28 @@ import type { ProductsQuery } from "../hooks/useProducts";
  * entry points.
  *
  * Purely presentational — it renders the current query and reports changes up to
- * useProducts. The "all" sentinels exist because Radix Select forbids an empty
- * item value, exactly as in CustomersToolbar.
+ * useProducts.
  *
  * THE WAREHOUSE PICKER IS NOT PART OF THE QUERY. Every product response already
  * carries its quantities for every warehouse, so changing the selection re-reads
  * what is on screen instead of re-fetching it — which is why it lives beside the
- * filters but is handed a separate setter.
+ * filters but is handed a separate setter, and why it is the one control here
+ * that is not a FilterSelect.
  */
-const ALL = "all";
-
-const TYPE_FILTERS: Array<{ value: ProductType | typeof ALL; label: string }> =
+const TYPE_FILTERS = withAll<ProductType | "">(
   [
-    { value: ALL, label: "Semua tipe" },
     { value: "standalone", label: "Standalone" },
     { value: "parent", label: "Punya varian" },
     { value: "bundle", label: "Bundle" },
-  ];
+  ],
+  "Semua tipe",
+);
+
+const STATUSES: FilterOption<ProductsQuery["status"]>[] = [
+  { value: "", label: "Semua status" },
+  { value: "active", label: "Aktif" },
+  { value: "inactive", label: "Nonaktif" },
+];
 
 export function ProductsToolbar({
   query,
@@ -68,124 +72,85 @@ export function ProductsToolbar({
   onChange: (patch: Partial<ProductsQuery>) => void;
 }) {
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <Input
-          type="search"
-          placeholder="Cari nama atau SKU…"
+    <FilterBar
+      search={
+        <FilterSearch
           value={query.search}
-          onChange={(event) => onChange({ search: event.target.value })}
-          className="max-w-xs"
-          aria-label="Cari produk"
+          onChange={(search) => onChange({ search })}
+          placeholder="Cari nama atau SKU…"
+          ariaLabel="Cari produk"
         />
-
-        <Select
-          value={query.productType === "" ? ALL : query.productType}
-          onValueChange={(value) =>
-            onChange({
-              productType: value === ALL ? "" : (value as ProductType),
-            })
-          }
-        >
-          <SelectTrigger className="w-40" aria-label="Filter tipe">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {TYPE_FILTERS.map((filter) => (
-              <SelectItem key={filter.value} value={filter.value}>
-                {filter.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select
-          value={query.categoryId === "" ? ALL : query.categoryId}
-          onValueChange={(value) =>
-            onChange({ categoryId: value === ALL ? "" : value })
-          }
-        >
-          <SelectTrigger className="w-44" aria-label="Filter kategori">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>Semua kategori</SelectItem>
-            {categories.map((category) => (
-              <SelectItem key={category._id} value={category._id}>
-                {category.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select
-          value={query.status === "" ? ALL : query.status}
-          onValueChange={(value) =>
-            onChange({
-              status: value === ALL ? "" : (value as "active" | "inactive"),
-            })
-          }
-        >
-          <SelectTrigger className="w-36" aria-label="Filter status">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>Semua status</SelectItem>
-            <SelectItem value="active">Aktif</SelectItem>
-            <SelectItem value="inactive">Nonaktif</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <WarehouseFilter
-          warehouses={warehouses}
-          selected={warehouseIds}
-          onChange={onWarehouseChange}
-        />
-      </div>
-
-      <div className="flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="includeDeleted"
-            checked={query.includeDeleted}
-            onCheckedChange={(checked) =>
-              onChange({ includeDeleted: checked === true })
-            }
-          />
-          <Label htmlFor="includeDeleted" className="text-xs text-muted">
-            Tampilkan produk terhapus
-          </Label>
-        </div>
-
+      }
+      actions={
         <Can feature="products" action="create">
-          <div className="ml-auto flex flex-wrap gap-2">
-            {/*
-              Import sits FIRST and quietest of the three. It is the entry point
-              for a catalogue that does not exist yet — a tenant's first day —
-              while the other two are what everyone uses forever after.
-            */}
-            <Button variant="secondary" asChild>
-              <Link href="/dashboard/inventory/products/import">Import</Link>
-            </Button>
-            <Button variant="secondary" asChild>
-              <Link href="/dashboard/inventory/products/new?type=bundle">
-                + Bundle
-              </Link>
-            </Button>
-            <Button asChild>
-              <Link href="/dashboard/inventory/products/new">
-                + Produk baru
-              </Link>
-            </Button>
-          </div>
+          {/*
+            Import sits FIRST and quietest of the three. It is the entry point
+            for a catalogue that does not exist yet — a tenant's first day —
+            while the other two are what everyone uses forever after.
+          */}
+          <Button variant="secondary" asChild>
+            <Link href="/dashboard/inventory/products/import">Import</Link>
+          </Button>
+          <Button variant="secondary" asChild>
+            <Link href="/dashboard/inventory/products/new?type=bundle">
+              + Bundle
+            </Link>
+          </Button>
+          <Button asChild>
+            <Link href="/dashboard/inventory/products/new">+ Produk baru</Link>
+          </Button>
         </Can>
-      </div>
-    </div>
+      }
+    >
+      <FilterSelect
+        label="Tipe"
+        ariaLabel="Filter tipe"
+        value={query.productType}
+        options={TYPE_FILTERS}
+        onChange={(productType) => onChange({ productType })}
+      />
+      <FilterSelect
+        label="Kategori"
+        ariaLabel="Filter kategori"
+        value={query.categoryId}
+        options={withAll(namedOptions(categories), "Semua kategori")}
+        onChange={(categoryId) => onChange({ categoryId })}
+      />
+      <FilterSelect
+        label="Status"
+        ariaLabel="Filter status"
+        value={query.status}
+        options={STATUSES}
+        onChange={(status) => onChange({ status })}
+      />
+      <FilterToggle
+        label="Tampilkan produk terhapus"
+        checked={query.includeDeleted}
+        onChange={(includeDeleted) => onChange({ includeDeleted })}
+      />
+
+      <WarehouseFilter
+        warehouses={warehouses}
+        selected={warehouseIds}
+        onChange={onWarehouseChange}
+      />
+    </FilterBar>
   );
 }
 
 /**
  * Which warehouses the Stok column is reported for — any number of them.
+ *
+ * NOT A FilterMultiSelect, and deliberately so. That control holds a draft
+ * behind a Terapkan because picking several things is usually one decision;
+ * this one applies on every tick because it changes a column on data already in
+ * hand rather than asking the server a new question. It also inverts the empty
+ * case, and its trigger label is a count rather than a value. Bending the shared
+ * control around those three would put four props on it for one call site —
+ * which is the failure mode this whole folder exists to avoid.
+ *
+ * What it DOES share is the shell: FilterTrigger, so it sits in the row looking
+ * like everything beside it, and a design change still lands in one file.
  *
  * A MENU OF CHECKBOXES RATHER THAN A SELECT, because Radix Select has no
  * multiple mode and a native `<select multiple>` is a ctrl-click affordance
@@ -233,50 +198,41 @@ function WarehouseFilter({
   }
 
   return (
-    <div className="ml-auto flex flex-wrap items-center gap-2">
-      {/* The caption is half the control's name — "Gudang: 2 gudang" says
-          nothing about what the choice does to the page, and this button is the
-          only thing on the toolbar that changes a number rather than a row. */}
-      <span
-        id="warehouse-scope-caption"
-        className="text-[10px] font-medium tracking-[0.14em] text-muted uppercase"
-      >
-        Stok ditampilkan untuk
-      </span>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="outline"
-            className="w-52 justify-between border-input bg-transparent font-normal"
-            aria-labelledby="warehouse-scope-caption warehouse-scope-value"
-            title={names.length > 1 ? names.join(", ") : undefined}
-          >
-            <span id="warehouse-scope-value" className="truncate">
-              {label}
-            </span>
-            <ChevronDownIcon className="size-4 opacity-50" />
-          </Button>
-        </DropdownMenuTrigger>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <FilterTrigger
+          // The caption is half the control's name — "Gudang: 2 gudang" says
+          // nothing about what the choice does to the page, and this is the only
+          // control on the toolbar that changes a number rather than a row. It
+          // used to be a separate span wired with aria-labelledby; inside the
+          // shared trigger it is simply the label, and the aria-label repeats it
+          // so the accessible name still reads as one phrase.
+          label="Stok ditampilkan untuk"
+          value={label}
+          active={selected.length > 0}
+          aria-label={`Stok ditampilkan untuk ${label}`}
+          title={names.length > 1 ? names.join(", ") : undefined}
+        />
+      </DropdownMenuTrigger>
 
-        <DropdownMenuContent className="w-52">
+      <DropdownMenuContent className="w-52">
+        <DropdownMenuCheckboxItem
+          checked={selected.length === 0}
+          onCheckedChange={() => onChange([])}
+        >
+          Semua gudang
+        </DropdownMenuCheckboxItem>
+        <DropdownMenuSeparator />
+        {warehouses.map((warehouse) => (
           <DropdownMenuCheckboxItem
-            checked={selected.length === 0}
-            onCheckedChange={() => onChange([])}
+            key={warehouse._id}
+            checked={selected.includes(warehouse._id)}
+            onCheckedChange={() => toggle(warehouse._id)}
           >
-            Semua gudang
+            {warehouse.name}
           </DropdownMenuCheckboxItem>
-          <DropdownMenuSeparator />
-          {warehouses.map((warehouse) => (
-            <DropdownMenuCheckboxItem
-              key={warehouse._id}
-              checked={selected.includes(warehouse._id)}
-              onCheckedChange={() => toggle(warehouse._id)}
-            >
-              {warehouse.name}
-            </DropdownMenuCheckboxItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

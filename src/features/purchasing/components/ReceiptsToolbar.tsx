@@ -1,18 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { Plus, Search } from "lucide-react";
+import { Plus } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  FilterBar,
+  FilterDateRange,
+  FilterSearch,
+  FilterSelect,
+  namedOptions,
+  withAll,
+} from "@/components";
+import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
 import type { PurchaseType } from "@/types/api";
 
@@ -24,8 +23,7 @@ import type { GoodsReceiptsQuery } from "../hooks/useGoodsReceipts";
  * purchase type, a date range, and the way to the create screen.
  *
  * Purely presentational — it renders the current query and reports changes up to
- * useGoodsReceipts. Mirrors SuppliersToolbar, including the "all" sentinel, which
- * exists because Radix Select forbids an empty item value.
+ * useGoodsReceipts. Mirrors SuppliersToolbar.
  *
  * NO "TAMPILKAN TERHAPUS" TOGGLE, unlike the supplier toolbar. There is no
  * `DELETE /goods-receipts/:id` — a posted receipt is immutable — so no receipt
@@ -37,12 +35,13 @@ import type { GoodsReceiptsQuery } from "../hooks/useGoodsReceipts";
  * belongs to last night, and that is the date somebody reconciling a supplier
  * statement is searching by.
  */
-const ALL = "all";
-
-const TYPES: Array<{ value: PurchaseType; label: string }> = [
-  { value: "beli_putus", label: "Beli putus" },
-  { value: "konsinyasi", label: "Konsinyasi" },
-];
+const TYPES = withAll<PurchaseType | "">(
+  [
+    { value: "beli_putus", label: "Beli putus" },
+    { value: "konsinyasi", label: "Konsinyasi" },
+  ],
+  "Semua jenis",
+);
 
 export function ReceiptsToolbar({
   query,
@@ -54,84 +53,19 @@ export function ReceiptsToolbar({
   const { suppliers, warehouses } = useReceiptFilterOptions();
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative flex-1 sm:max-w-xs">
-            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="search"
-              value={query.search}
-              onChange={(event) => onChange({ search: event.target.value })}
-              // Names exactly the two fields the API searches — a placeholder
-              // promising a field the server does not match is a bug report
-              // waiting to be filed.
-              placeholder="Cari nomor penerimaan atau catatan"
-              aria-label="Cari penerimaan"
-              className="pl-9"
-            />
-          </div>
-
-          <Select
-            value={query.supplierId || ALL}
-            onValueChange={(value) =>
-              onChange({ supplierId: value === ALL ? "" : value })
-            }
-          >
-            <SelectTrigger aria-label="Filter supplier" className="sm:w-48">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>Semua supplier</SelectItem>
-              {suppliers.map((supplier) => (
-                <SelectItem key={supplier._id} value={supplier._id}>
-                  {supplier.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={query.warehouseId || ALL}
-            onValueChange={(value) =>
-              onChange({ warehouseId: value === ALL ? "" : value })
-            }
-          >
-            <SelectTrigger aria-label="Filter gudang" className="sm:w-44">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>Semua gudang</SelectItem>
-              {warehouses.map((warehouse) => (
-                <SelectItem key={warehouse._id} value={warehouse._id}>
-                  {warehouse.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={query.purchaseType === "" ? ALL : query.purchaseType}
-            onValueChange={(value) =>
-              onChange({
-                purchaseType: value === ALL ? "" : (value as PurchaseType),
-              })
-            }
-          >
-            <SelectTrigger aria-label="Filter jenis pembelian" className="sm:w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>Semua jenis</SelectItem>
-              {TYPES.map((type) => (
-                <SelectItem key={type.value} value={type.value}>
-                  {type.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
+    <FilterBar
+      search={
+        <FilterSearch
+          value={query.search}
+          onChange={(search) => onChange({ search })}
+          // Names exactly the two fields the API searches — a placeholder
+          // promising a field the server does not match is a bug report
+          // waiting to be filed.
+          placeholder="Cari nomor penerimaan atau catatan"
+          ariaLabel="Cari penerimaan"
+        />
+      }
+      actions={
         <Can feature="goodsReceipts" action="create">
           <Button asChild>
             <Link href="/dashboard/purchasing/receipts/new">
@@ -140,39 +74,35 @@ export function ReceiptsToolbar({
             </Link>
           </Button>
         </Can>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <Label htmlFor="receipt-date-from" className="text-xs font-normal text-muted">
-          Tanggal terima
-        </Label>
-        <Input
-          id="receipt-date-from"
-          type="date"
-          value={query.dateFrom}
-          onChange={(event) => onChange({ dateFrom: event.target.value })}
-          aria-label="Tanggal terima dari"
-          className="w-40"
-        />
-        <span className="text-xs text-muted">s/d</span>
-        <Input
-          type="date"
-          value={query.dateTo}
-          onChange={(event) => onChange({ dateTo: event.target.value })}
-          aria-label="Tanggal terima sampai"
-          className="w-40"
-        />
-        {(query.dateFrom || query.dateTo) && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => onChange({ dateFrom: "", dateTo: "" })}
-          >
-            Reset tanggal
-          </Button>
-        )}
-      </div>
-    </div>
+      }
+    >
+      <FilterSelect
+        label="Supplier"
+        ariaLabel="Filter supplier"
+        value={query.supplierId}
+        options={withAll(namedOptions(suppliers), "Semua supplier")}
+        onChange={(supplierId) => onChange({ supplierId })}
+      />
+      <FilterSelect
+        label="Gudang"
+        ariaLabel="Filter gudang"
+        value={query.warehouseId}
+        options={withAll(namedOptions(warehouses), "Semua gudang")}
+        onChange={(warehouseId) => onChange({ warehouseId })}
+      />
+      <FilterSelect
+        label="Jenis"
+        ariaLabel="Filter jenis pembelian"
+        value={query.purchaseType}
+        options={TYPES}
+        onChange={(purchaseType) => onChange({ purchaseType })}
+      />
+      <FilterDateRange
+        label="Tanggal terima"
+        from={query.dateFrom}
+        to={query.dateTo}
+        onApply={({ from, to }) => onChange({ dateFrom: from, dateTo: to })}
+      />
+    </FilterBar>
   );
 }
