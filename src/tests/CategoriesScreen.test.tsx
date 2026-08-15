@@ -22,6 +22,7 @@ function makeCategory(overrides: Partial<Category> = {}): Category {
     _id: "c1",
     tenantId: "t1",
     kind: "product",
+    isActive: true,
     name: "Makanan Kucing",
     deletedAt: null,
     createdAt: "2026-01-01T00:00:00.000Z",
@@ -209,6 +210,174 @@ describe("CategoriesScreen", () => {
     // The API rejects an empty patch body, and "save" on an untouched form is
     // a close that should not look like a failure.
     expect(update).not.toHaveBeenCalled();
+  });
+
+  it("retires a category without touching its name", async () => {
+    mockList([makeCategory()]);
+    const update = jest
+      .spyOn(categoryService, "update")
+      .mockResolvedValue(makeCategory({ isActive: false }));
+
+    renderWithAuth(<CategoriesScreen />);
+    await screen.findByText("Makanan Kucing");
+
+    await userEvent.click(screen.getByRole("button", { name: /ubah nama/i }));
+    await userEvent.click(screen.getByRole("switch", { name: /aktif/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    // The name is deliberately absent: sending it would run the 409 check
+    // against the category's own name for an edit that never touched it.
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith("c1", { isActive: false }),
+    );
+  });
+
+  it("opens on every category, retired ones included", async () => {
+    const list = mockList([makeCategory({ isActive: false })]);
+
+    renderWithAuth(<CategoriesScreen />);
+    await screen.findByText("Makanan Kucing");
+
+    // No isActive in the first request: this screen manages the label set, and
+    // the retired half is the part most likely to need attention.
+    const [query] = list.mock.calls[0];
+    expect(query).not.toHaveProperty("isActive");
+    expect(screen.getByText("Nonaktif")).toBeInTheDocument();
+  });
+
+  it("narrows to one status through the bar", async () => {
+    const list = mockList([makeCategory()]);
+
+    renderWithAuth(<CategoriesScreen />);
+    await screen.findByText("Makanan Kucing");
+
+    await userEvent.click(screen.getByRole("button", { name: "Filter status" }));
+    await userEvent.click(screen.getByRole("option", { name: "Nonaktif" }));
+
+    await waitFor(() =>
+      expect(list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ isActive: false }),
+      ),
+    );
+  });
+
+  it("keeps deleted categories behind Filter lain, applied on Terapkan", async () => {
+    const list = mockList([makeCategory()]);
+
+    renderWithAuth(<CategoriesScreen />);
+    await screen.findByText("Makanan Kucing");
+
+    await userEvent.click(screen.getByRole("button", { name: "Filter lain" }));
+    await userEvent.click(
+      screen.getByLabelText("Tampilkan kategori terhapus"),
+    );
+
+    // Ticking inside the popover composes; it does not query.
+    expect(list).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(screen.getByRole("button", { name: "Terapkan" }));
+
+    await waitFor(() =>
+      expect(list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ includeDeleted: true }),
+      ),
+    );
+  });
+});
+
+/**
+ * Below 600px both triggers collapse into one button opening a panel, exactly
+ * as the catalogue does.
+ *
+ * jsdom implements no matchMedia at all, so every test above lands on the
+ * toolbar's wide fallback. These install one that says "narrow" — the only way
+ * to reach this branch, since the two arrangements are deliberately not both in
+ * the DOM.
+ */
+describe("CategoriesToolbar on a narrow screen", () => {
+  beforeEach(() => {
+    window.matchMedia = ((media: string) => ({
+      media,
+      matches: false,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    })) as unknown as typeof window.matchMedia;
+  });
+
+  afterEach(() => {
+    delete (window as Partial<Window & typeof globalThis>).matchMedia;
+    jest.restoreAllMocks();
+  });
+
+  it("puts both filters behind one button instead of a row of triggers", async () => {
+    mockList([makeCategory()]);
+
+    renderWithAuth(<CategoriesScreen />);
+    await screen.findByText("Makanan Kucing");
+
+    // Not hidden — absent. Two controls named "Filter status" on one page is
+    // one control to look at and two to a screen reader.
+    expect(
+      screen.queryByRole("button", { name: "Filter lain" }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Filter" }));
+    const panel = await screen.findByRole("dialog");
+
+    expect(
+      within(panel).getByRole("button", { name: "Filter status" }),
+    ).toBeInTheDocument();
+    expect(
+      within(panel).getByLabelText("Tampilkan kategori terhapus"),
+    ).toBeInTheDocument();
+  });
+
+  it("holds the panel's fields as a draft until Terapkan", async () => {
+    const list = mockList([makeCategory()]);
+
+    renderWithAuth(<CategoriesScreen />);
+    await screen.findByText("Makanan Kucing");
+    expect(list).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(screen.getByRole("button", { name: "Filter" }));
+    const panel = await screen.findByRole("dialog");
+    await userEvent.click(
+      within(panel).getByRole("button", { name: "Filter status" }),
+    );
+    await userEvent.click(screen.getByRole("option", { name: "Nonaktif" }));
+
+    // Status auto-applies on the wide bar; inside a panel it waits.
+    expect(list).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+    await waitFor(() =>
+      expect(list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ isActive: false }),
+      ),
+    );
+  });
+
+  it("counts what is applied on the button, so a closed panel is not a hidden filter", async () => {
+    mockList([makeCategory()]);
+
+    renderWithAuth(<CategoriesScreen />);
+    await screen.findByText("Makanan Kucing");
+
+    await userEvent.click(screen.getByRole("button", { name: "Filter" }));
+    const panel = await screen.findByRole("dialog");
+    await userEvent.click(
+      within(panel).getByLabelText("Tampilkan kategori terhapus"),
+    );
+    await userEvent.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Filter" }),
+    ).toHaveTextContent("Filter (1)");
   });
 });
 

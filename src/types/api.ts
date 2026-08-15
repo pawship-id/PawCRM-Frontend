@@ -555,6 +555,16 @@ export interface Category {
   tenantId: string;
   kind: CategoryKind;
   name: string;
+  /**
+   * Whether the label is still offered for new products.
+   *
+   * ORTHOGONAL TO `deletedAt`: a retired category keeps everything filed under
+   * it and can be reinstated, where a deleted one is gone from ordinary reads.
+   * Both exist because a category cannot be deleted while a live product is
+   * filed under it — retiring the label is what people mean when a shop stops
+   * stocking a line.
+   */
+  isActive: boolean;
   /** Soft-delete marker; non-null means deleted (restorable), null means live. */
   deletedAt: string | null;
   createdAt: string;
@@ -568,6 +578,8 @@ export interface CategoryListQuery {
   kind?: CategoryKind;
   /** Free-text over the name. */
   search?: string;
+  /** Retired state. Omit for both — the API applies no default, unlike `includeDeleted`. */
+  isActive?: boolean;
   /** Include soft-deleted categories (default false on the backend). */
   includeDeleted?: boolean;
 }
@@ -576,6 +588,8 @@ export interface CategoryListQuery {
 export interface CreateCategoryInput {
   name: string;
   kind?: CategoryKind;
+  /** Defaults to true server-side; a category is made because it is wanted. */
+  isActive?: boolean;
 }
 
 /**
@@ -584,6 +598,7 @@ export interface CreateCategoryInput {
  */
 export interface UpdateCategoryInput {
   name?: string;
+  isActive?: boolean;
 }
 
 /**

@@ -58,6 +58,7 @@ function mockLookups() {
         _id: CATEGORY,
         tenantId: "t1",
         kind: "product",
+        isActive: true,
         name: "Makanan",
         deletedAt: null,
         createdAt: "",
@@ -152,6 +153,78 @@ describe("ProductForm", () => {
    * which is the only thing on screen that names the current mode in words —
    * the picker itself marks its selection with colour alone.
    */
+  /**
+   * A retired category is one nobody may file NEW products under — that is the
+   * whole of what the flag means, and the category screen's own switch promises
+   * it in so many words.
+   */
+  describe("retired categories", () => {
+    /** Replaces the lookup with one live category and one retired one. */
+    function mockCategories() {
+      jest.spyOn(categoryService, "list").mockResolvedValue({
+        items: [
+          {
+            _id: CATEGORY,
+            tenantId: "t1",
+            kind: "product",
+            isActive: true,
+            name: "Makanan",
+            deletedAt: null,
+            createdAt: "",
+            updatedAt: "",
+          },
+          {
+            _id: "c-retired",
+            tenantId: "t1",
+            kind: "product",
+            isActive: false,
+            name: "Mainan Lama",
+            deletedAt: null,
+            createdAt: "",
+            updatedAt: "",
+          },
+        ],
+        pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
+      });
+    }
+
+    it("are not offered when filing a new product", async () => {
+      const user = userEvent.setup();
+      mockCategories();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await user.click(screen.getByRole("combobox", { name: "Kategori" }));
+
+      expect(
+        screen.getByRole("option", { name: "Makanan" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("option", { name: "Mainan Lama" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("stay offered on the product already filed under one", async () => {
+      const user = userEvent.setup();
+      mockCategories();
+      jest
+        .spyOn(productService, "getById")
+        .mockResolvedValue(makeProduct({ categoryId: "c-retired" }));
+
+      renderWithAuth(<ProductForm productId="p1" />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await user.click(screen.getByRole("combobox", { name: "Kategori" }));
+
+      // Dropping it would show a category the product is not filed under, and
+      // the first save would quietly re-file it.
+      expect(
+        screen.getByRole("option", { name: "Mainan Lama" }),
+      ).toBeInTheDocument();
+    });
+  });
+
   describe("the shape carried in from ?type=", () => {
     it("opens on the shape the create menu picked", async () => {
       renderWithAuth(<ProductForm initialMode="bundle" />);

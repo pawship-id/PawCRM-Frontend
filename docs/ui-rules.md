@@ -176,7 +176,7 @@ Filter controls are 40 px tall, `rounded-md`, and read `Label: Value ⌄` — a 
 
 A panel exists so the table doesn't re-query three times while someone composes a query. A quick bar exists so one click gives one result. Choosing the wrong arrangement is the only way to get this wrong.
 
-**Module mapping:** Produk & Varian (5) → quick bar, the two rare fields behind Filter lain · Batch & Expired (3) → quick bar, urgensi as pills · Kartu Stok (4) → quick bar, Produk select is searchable · Supplier (2) → quick bar, tipe as pills · Sales / Invoice / Booking when built (~8) → filter panel.
+**Module mapping:** Produk & Varian (5) → quick bar, the two rare fields behind Filter lain · Kategori (3) → quick bar, status on it and "tampilkan yang terhapus" behind Filter lain · Batch & Expired (3) → quick bar, urgensi as pills · Kartu Stok (4) → quick bar, Produk select is searchable · Supplier (2) → quick bar, tipe as pills · Sales / Invoice / Booking when built (~8) → filter panel.
 
 **A quick bar is one line, and a phone has no line.** Below ~600 px every trigger collapses into a single `Filter` button opening a `FilterPanel` — the panel arrangement reached by viewport rather than by field count, and the fields inside it wait for Terapkan like any other panel's. Both arrangements are the same controls (`FilterSelect`'s `layout` prop), so render **one** list of fields and hand it a layout. Do not render both and hide one with `hidden md:flex`: two triggers named "Kategori" is one control to look at and two to a screen reader. Branch on `useMediaQuery`, whose fallback is the wide bar so the server never prerenders the collapsed one. Produk & Varian is the worked example.
 

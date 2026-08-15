@@ -8,8 +8,8 @@ import { FilterChips } from "./FilterChips";
 
 /**
  * The horizontal arrangement: filters left, search right, actions after it —
- * or, once the triggers fill that line, search and the actions on a row of
- * their own beneath them (`searchPlacement`).
+ * or search leading the same line, or search and the actions on a row of their
+ * own beneath the filters. See `searchPlacement`.
  *
  * Deliberately only flexbox. It knows nothing about any field, so a screen that
  * needs a layout this does not cover can drop it and render the same primitives
@@ -30,23 +30,28 @@ export interface FilterBarProps {
   /** Create / Refresh / Export. Already permission-wrapped by the caller. */
   actions?: ReactNode;
   /**
-   * Whether search and the actions share the filters' line.
+   * Where search sits relative to the filters.
    *
    * "inline" is the default and what fourteen toolbars want: a bar of two or
    * three triggers has room to the right, and search pinned there is one line
    * for the whole thing.
    *
-   * "own-row" gives the two a line of their own beneath the filters — search
-   * left, actions right. Reach for it once the triggers themselves fill the
-   * line: search wrapped by flex-wrap lands wherever there happened to be room,
-   * and a search box that moves as filters are added and removed is one people
-   * have to look for every time.
+   * "leading" puts search FIRST on that same line, ahead of the triggers, with
+   * the actions pinned right. For a screen where narrowing usually starts by
+   * typing a name rather than by picking a filter — reading order then matches
+   * the order people actually work in.
    *
-   * The actions FOLLOW SEARCH wherever it goes. They are the two things on a
-   * bar that are not filters, and splitting them across rows would leave the
-   * primary action alone on a line with the triggers it has nothing to do with.
+   * "own-row" gives search and the actions a line of their own beneath the
+   * filters — search left, actions right. Reach for it once the triggers fill
+   * the line themselves: search wrapped there by flex-wrap lands wherever there
+   * happened to be room, and a box that moves as filters come and go is one
+   * people have to look for every time.
+   *
+   * The actions FOLLOW SEARCH onto its own row, but never lead: they are the
+   * one thing on a bar that is not about narrowing a list, so they sit at the
+   * far end of whichever row they are on.
    */
-  searchPlacement?: "inline" | "own-row";
+  searchPlacement?: "inline" | "leading" | "own-row";
   /**
    * Classes for the search's wrapper, for screens that want it to change shape
    * with the viewport — full width on a narrow one, pinned right on a wide one.
@@ -72,18 +77,22 @@ export function FilterBar({
   className,
 }: FilterBarProps) {
   const ownRow = searchPlacement === "own-row";
+  const leading = searchPlacement === "leading";
+
+  const searchSlot = search && (
+    // The auto margin is what pins search right on a shared line. It is dropped
+    // wherever search leads from the left instead, where it would be pushing
+    // against nothing — or, worse, shoving the box it precedes.
+    <div className={cn(!meta && !ownRow && !leading && "ml-auto", searchClassName)}>
+      {search}
+    </div>
+  );
 
   const trailing = (
     <>
-      {search && (
-        // On its own row search leads from the left, so the auto margin that
-        // pins it right on a shared line would be pushing against nothing.
-        <div className={cn(!meta && !ownRow && "ml-auto", searchClassName)}>
-          {search}
-        </div>
-      )}
+      {!leading && searchSlot}
       {actions && (
-        <div className={cn("flex shrink-0 gap-2", ownRow && "ml-auto")}>
+        <div className={cn("flex shrink-0 gap-2", (ownRow || leading) && "ml-auto")}>
           {actions}
         </div>
       )}
@@ -93,6 +102,7 @@ export function FilterBar({
   return (
     <div className={cn("flex flex-col gap-3", className)}>
       <div className="flex flex-wrap items-center gap-2">
+        {leading && searchSlot}
         {children}
 
         {meta && (

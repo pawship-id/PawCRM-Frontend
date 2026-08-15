@@ -11,14 +11,24 @@ import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 export interface CategoriesQuery {
   page: number;
   search: string;
+  /** "" = retired and live both. */
+  status: "" | "active" | "inactive";
   includeDeleted: boolean;
 }
 
 const PAGE_SIZE = 20;
 
+/**
+ * OPENS ON EVERY CATEGORY, retired ones included. This screen exists to manage
+ * the label set, and the retired labels are the half of it most likely to need
+ * attention — defaulting to Aktif would hide them from the only screen that can
+ * bring them back. Deleted rows still stay out until asked for: those are gone,
+ * not merely retired.
+ */
 const DEFAULT_QUERY: CategoriesQuery = {
   page: 1,
   search: "",
+  status: "",
   includeDeleted: false,
 };
 
@@ -92,6 +102,11 @@ export function useCategories(): UseCategoriesResult {
       page: settled.page,
       limit: PAGE_SIZE,
       search: settled.search.trim() || undefined,
+      // Sent only when narrowed: the API applies no default, so omitting it is
+      // how "both" is asked for.
+      ...(settled.status === ""
+        ? {}
+        : { isActive: settled.status === "active" }),
       includeDeleted: settled.includeDeleted || undefined,
     };
 

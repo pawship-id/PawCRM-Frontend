@@ -289,12 +289,39 @@ export function ProductForm({
     );
   }
 
+  /**
+   * A RETIRED CATEGORY IS NOT OFFERED, which is the whole of what `isActive`
+   * means — the category screen promises exactly this in the switch's own copy.
+   *
+   * THE ONE THE EDITED PRODUCT ALREADY USES STAYS, retired or not. Dropping it
+   * would leave the select showing a different category than the product is
+   * filed under, and the first save would quietly re-file it — a data change
+   * nobody asked for, caused by a label somebody retired months later.
+   *
+   * Filtered here rather than in the request, because the same hook feeds the
+   * catalogue's category FILTER, which must keep offering retired ones: that is
+   * how you find the products still filed under one.
+   */
+  const selectable = lookups.categories.filter(
+    (category) =>
+      category.isActive || category._id === detail.product?.categoryId,
+  );
+
+  if (selectable.length === 0) {
+    return (
+      <Alert variant="error">
+        Semua kategori sedang nonaktif. Aktifkan salah satu di Inventory →
+        Kategori — produk baru hanya bisa difilekan di kategori yang aktif.
+      </Alert>
+    );
+  }
+
   return (
     <ProductFormFields
       existing={detail.product ?? undefined}
       initialMode={MODES.find((option) => option.value === initialMode)?.value}
       existingVariants={detail.variants}
-      categories={lookups.categories}
+      categories={selectable}
       warehouses={lookups.warehouses}
       salesAccounts={lookups.salesAccounts}
       businessLines={lookups.businessLines}

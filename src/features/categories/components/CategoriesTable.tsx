@@ -128,12 +128,22 @@ export function CategoriesTable({
                     </div>
                   </TableCell>
                   <TableCell>
+                    {/*
+                      Three states, and deleted outranks retired: a deleted
+                      category may well also be inactive, and saying "Nonaktif"
+                      about a row that is gone from every ordinary read answers
+                      the less important half of the question.
+                    */}
                     {deleted ? (
                       <Badge variant="outline" className="text-muted">
                         Dihapus
                       </Badge>
-                    ) : (
+                    ) : category.isActive ? (
                       <Badge variant="outline">Aktif</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-muted">
+                        Nonaktif
+                      </Badge>
                     )}
                   </TableCell>
                   {showActions && (
