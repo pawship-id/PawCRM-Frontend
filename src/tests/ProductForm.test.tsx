@@ -146,6 +146,33 @@ describe("ProductForm", () => {
   });
   afterEach(() => jest.restoreAllMocks());
 
+  /**
+   * The catalogue's create menu picks the shape before the form loads, so the
+   * form has to honour it. Asserted through the hint under the mode picker,
+   * which is the only thing on screen that names the current mode in words —
+   * the picker itself marks its selection with colour alone.
+   */
+  describe("the shape carried in from ?type=", () => {
+    it("opens on the shape the create menu picked", async () => {
+      renderWithAuth(<ProductForm initialMode="bundle" />);
+      await screen.findByLabelText(/Nama produk/);
+
+      expect(
+        screen.getByText("Paket yang memotong stok komponennya saat terjual."),
+      ).toBeInTheDocument();
+    });
+
+    it("ignores a value it does not recognise rather than breaking", async () => {
+      // A hand-edited URL is not a reason to show nothing.
+      renderWithAuth(<ProductForm initialMode="paket-hemat" />);
+      await screen.findByLabelText(/Nama produk/);
+
+      expect(
+        screen.getByText("Satu barang, satu harga, satu stok."),
+      ).toBeInTheDocument();
+    });
+  });
+
   describe("standalone", () => {
     it("creates a product with no stock when the switch is left off", async () => {
       const user = userEvent.setup();

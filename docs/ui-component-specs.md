@@ -88,7 +88,7 @@ Search sits far right and apart from the filters — it is a different kind of a
 
 ## `FilterPanel`
 
-**When:** ≥ 5 fields, **or** any multi-select, radio group, or fields that only make sense together.
+**When:** ≥ 5 fields, **or** any multi-select, radio group, or fields that only make sense together — **or** a quick bar on a viewport too narrow to lay one out. Produk & Varian reaches it the third way, below 600 px.
 
 ```ts
 interface FilterPanelProps {
@@ -99,25 +99,28 @@ interface FilterPanelProps {
   onReset: () => void;
   onApply: () => void;
   applyLabel?: string;            // default "Terapkan"
-  dirty?: boolean;                // enables Terapkan
 }
 ```
 
-Anatomy — a 280 px sidebar, or a wide popover on narrow screens:
+Anatomy — a sheet from the bottom edge, capped at 560 px and centred past that:
 
 ```
-<aside class="w-70 rounded-2xl border border-border bg-surface p-5 shadow-sm">
-  <header class="flex items-baseline justify-between mb-4">
-    <h3 class="font-display text-base font-bold">Filter</h3>
-    <button class="text-sm font-semibold text-warning">Reset</button>   ← top right
-  <div class="space-y-4">{children}</div>
-  <footer class="mt-6">
-    <Button size="lg" class="w-full">Terapkan</Button>                  ← full width, navy
+<DialogContent class="inset-x-0 bottom-0 top-auto mx-auto max-h-[85dvh] rounded-t-2xl sm:max-w-140">
+  <header class="px-5 pt-5 pb-1">
+    <DialogTitle class="text-lg font-bold">Filter</DialogTitle>          ← the dialog's X sits right
+  <div class="space-y-4 overflow-y-auto px-5 py-4">{children}</div>
+  <footer class="flex gap-2 border-t border-border px-5 py-4">
+    <Button variant="secondary" size="lg" class="flex-1">Reset</Button>  ← equal halves
+    <Button size="lg" class="flex-1">Terapkan</Button>
 ```
 
-**One** Reset and **one** Terapkan for the whole panel. Fields inside stay draft until Terapkan; Reset clears *and* re-queries immediately.
+**Bottom, not centre:** it is reached almost entirely from a phone, where the bottom of the screen is the half a thumb reaches and a centred box puts Terapkan under the keyboard. Reset is a real button rather than the quiet text link it is inside a popover — at this width, a text button beside a filled one reads as a caption.
 
-`FilterField` is the labeled wrapper: `<label class="mb-1.5 block text-xs font-semibold">` above a full-width control.
+**One** Reset and **one** Terapkan for the whole panel. Fields inside stay draft until Terapkan; Reset clears *and* re-queries immediately. The panel owns no field state: the caller holds the draft, seeds it on open, and commits it on Terapkan.
+
+`FilterField` is the labeled wrapper: `<label class="mb-1.5 block text-xs font-semibold">` above a full-width control. It renders a plain span rather than a `<label>` unless given `htmlFor`, because most filter controls here are a button that opens a popover.
+
+**One control, two arrangements.** `FilterSelect` (and `FilterTrigger` under it) takes `layout="inline" | "field"`: the bar's `Gudang: Semua ⌄`, or a labeled full-width row for inside a panel. A screen with both renders one list of fields and hands it a layout, rather than keeping two lists in step by hand.
 
 ## `FilterSearch`
 

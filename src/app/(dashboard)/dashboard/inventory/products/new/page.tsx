@@ -6,7 +6,21 @@ import { RequirePermission } from "@/features/permissions";
 
 export const metadata: Metadata = { title: "Produk baru · Buloo" };
 
-export default function NewProductPage() {
+/**
+ * `searchParams` is a Promise in this version of Next, like `params`.
+ *
+ * `?type=` carries the shape chosen in the catalogue's create menu, so picking
+ * "Bundle" there opens the bundle form rather than the mode picker with the
+ * answer already known. It is a hint, not a contract: ProductForm ignores
+ * anything it does not recognise and opens on the default.
+ */
+export default async function NewProductPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ type?: string }>;
+}) {
+  const { type } = await searchParams;
+
   return (
     <RequirePermission feature="products" action="create">
       <div className="flex flex-col gap-6">
@@ -32,7 +46,7 @@ export default function NewProductPage() {
           </p>
         </div>
 
-        <ProductForm />
+        <ProductForm initialMode={type} />
       </div>
     </RequirePermission>
   );

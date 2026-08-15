@@ -239,7 +239,22 @@ const DEFAULT_UNIT = "pcs";
  * its variants) has arrived is what lets that stay true — the alternative is an
  * effect that copies server data into state and a race about which wins.
  */
-export function ProductForm({ productId }: { productId?: string }) {
+export function ProductForm({
+  productId,
+  initialMode,
+}: {
+  productId?: string;
+  /**
+   * Which shape to open on, from `?type=` — the create menu picks the shape
+   * before the form loads, so "Bundle" lands on the bundle form rather than on
+   * a mode picker with the answer already known.
+   *
+   * A raw string, narrowed here rather than at the route: an unrecognised value
+   * is a hand-edited URL, and the right answer to one is the default form, not
+   * a crash. Ignored entirely when editing — the shape is locked after creation.
+   */
+  initialMode?: string;
+}) {
   const detail = useProductDetail(productId);
   // `withAccounting` is what pulls in the income accounts and business lines the
   // accounting section picks from. Opt-in, so the list screen and the stock
@@ -269,6 +284,7 @@ export function ProductForm({ productId }: { productId?: string }) {
   return (
     <ProductFormFields
       existing={detail.product ?? undefined}
+      initialMode={MODES.find((option) => option.value === initialMode)?.value}
       existingVariants={detail.variants}
       categories={lookups.categories}
       warehouses={lookups.warehouses}
@@ -317,6 +333,7 @@ export function ProductForm({ productId }: { productId?: string }) {
  */
 function ProductFormFields({
   existing,
+  initialMode,
   existingVariants,
   categories,
   warehouses,
@@ -325,6 +342,7 @@ function ProductFormFields({
   accountingError,
 }: {
   existing?: Product;
+  initialMode?: Mode;
   existingVariants: Product[];
   categories: Category[];
   warehouses: StockWarehouse[];
@@ -335,7 +353,7 @@ function ProductFormFields({
   const router = useRouter();
 
   const [mode, setMode] = useState<Mode>(() => {
-    if (!existing) return "standalone";
+    if (!existing) return initialMode ?? "standalone";
     return existing.productType === "parent"
       ? "variants"
       : existing.productType === "bundle"

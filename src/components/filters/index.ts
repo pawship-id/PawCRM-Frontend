@@ -12,11 +12,13 @@ export {
   type DatePreset,
   type FilterDateRangeProps,
 } from "./FilterDateRange";
+export { FilterField, type FilterFieldProps } from "./FilterField";
 export {
   FilterMultiSelect,
   type FilterMultiSelectProps,
 } from "./FilterMultiSelect";
 export { FilterOptionList } from "./FilterOptionList";
+export { FilterPanel, type FilterPanelProps } from "./FilterPanel";
 export { FilterPills, type FilterPillsProps, type PillOption } from "./FilterPills";
 export { FilterSearch, type FilterSearchProps } from "./FilterSearch";
 export { FilterSelect, type FilterSelectProps } from "./FilterSelect";

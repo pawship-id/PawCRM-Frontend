@@ -24,12 +24,22 @@ export interface FilterTriggerProps
   /**
    * The right half. A string, never a node: a filter's current value has to be
    * readable as text for the trigger to be announced sensibly.
+   *
+   * OMITTED FOR A TRIGGER THAT HAS NO ONE VALUE — "Filter lain", which opens a
+   * subset panel rather than a list. That one reads as its label alone, and
+   * drops the chevron with it: there is no value for it to point at.
    */
-  value: string;
+  value?: string;
   /** Whether a filter is actually applied. Drives the navy state. */
   active?: boolean;
   /** Leading icon, e.g. a calendar on the date range. */
   icon?: React.ReactNode;
+  /**
+   * "inline" — the bar's `Gudang: Semua ⌄`, sized to its content.
+   * "field" — inside a `FilterField`, where the name is already drawn above:
+   * full width, value only, chevron pushed to the far edge.
+   */
+  layout?: "inline" | "field";
   "aria-label": string;
 }
 
@@ -37,7 +47,7 @@ export const FilterTrigger = React.forwardRef<
   HTMLButtonElement,
   FilterTriggerProps
 >(function FilterTrigger(
-  { label, value, active = false, icon, className, ...props },
+  { label, value, active = false, icon, layout = "inline", className, ...props },
   ref,
 ) {
   return (
@@ -48,7 +58,10 @@ export const FilterTrigger = React.forwardRef<
       className={cn(
         // `group` so the label and chevron can react to this button's own
         // data-active / data-state (Radix sets the latter via asChild).
-        "group inline-flex h-10 min-w-0 max-w-60 shrink-0 items-center gap-2 rounded-md border border-border bg-surface px-3 text-sm transition",
+        "group inline-flex h-10 min-w-0 items-center gap-2 rounded-md border border-border bg-surface px-3 text-sm transition",
+        layout === "field"
+          ? "w-full justify-between"
+          : "max-w-60 shrink-0",
         "hover:border-input-hover",
         // Focus is a pair: the orange halo alone is 2.33:1 on white and misses
         // the 3:1 non-text floor. See docs/ui-rules.md §7.
@@ -61,11 +74,19 @@ export const FilterTrigger = React.forwardRef<
       {...props}
     >
       {icon}
-      <span className="shrink-0 text-muted group-data-[active=true]:text-primary">
-        {label}:
-      </span>
-      <span className="truncate font-medium">{value}</span>
-      <ChevronDown className="size-3.5 shrink-0 text-muted transition-transform group-data-[active=true]:text-primary group-data-[state=open]:rotate-180" />
+      {value === undefined ? (
+        <span className="truncate font-medium">{label}</span>
+      ) : (
+        <>
+          {layout === "inline" && (
+            <span className="shrink-0 text-muted group-data-[active=true]:text-primary">
+              {label}:
+            </span>
+          )}
+          <span className="truncate font-medium">{value}</span>
+          <ChevronDown className="size-3.5 shrink-0 text-muted transition-transform group-data-[active=true]:text-primary group-data-[state=open]:rotate-180" />
+        </>
+      )}
     </button>
   );
 });

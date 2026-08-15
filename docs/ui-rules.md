@@ -176,7 +176,9 @@ Filter controls are 40 px tall, `rounded-md`, and read `Label: Value ⌄` — a 
 
 A panel exists so the table doesn't re-query three times while someone composes a query. A quick bar exists so one click gives one result. Choosing the wrong arrangement is the only way to get this wrong.
 
-**Module mapping:** Produk & Varian (4) → quick bar · Batch & Expired (3) → quick bar, urgensi as pills · Kartu Stok (4) → quick bar, Produk select is searchable · Supplier (2) → quick bar, tipe as pills · Sales / Invoice / Booking when built (~8) → filter panel.
+**Module mapping:** Produk & Varian (5) → quick bar, the two rare fields behind Filter lain · Batch & Expired (3) → quick bar, urgensi as pills · Kartu Stok (4) → quick bar, Produk select is searchable · Supplier (2) → quick bar, tipe as pills · Sales / Invoice / Booking when built (~8) → filter panel.
+
+**A quick bar is one line, and a phone has no line.** Below ~600 px every trigger collapses into a single `Filter` button opening a `FilterPanel` — the panel arrangement reached by viewport rather than by field count, and the fields inside it wait for Terapkan like any other panel's. Both arrangements are the same controls (`FilterSelect`'s `layout` prop), so render **one** list of fields and hand it a layout. Do not render both and hide one with `hidden md:flex`: two triggers named "Kategori" is one control to look at and two to a screen reader. Branch on `useMediaQuery`, whose fallback is the wide bar so the server never prerenders the collapsed one. Produk & Varian is the worked example.
 
 Applied filters render as removable chips below the bar or panel. Anatomy and props: [`docs/ui-component-specs.md`](./ui-component-specs.md).
 
@@ -289,9 +291,9 @@ From [`docs/architecture.md`](./architecture.md), unchanged: a component lives i
 
 ## 15. Not yet decided, and the migration list
 
-**Built** — `src/components/filters/`, exported from `@/components`, used by all 15 toolbars: `FilterBar`, `FilterTrigger`, `FilterSearch`, `FilterSelect`, `FilterMultiSelect`, `FilterDateRange`, `FilterToggle`, `FilterPills`, `FilterChips`, plus the `withAll` / `triState` / `namedOptions` option builders.
+**Built** — `src/components/filters/`, exported from `@/components`, used by all 15 toolbars: `FilterBar`, `FilterTrigger`, `FilterSearch`, `FilterSelect`, `FilterMultiSelect`, `FilterDateRange`, `FilterToggle`, `FilterPills`, `FilterChips`, `FilterPanel`, `FilterField`, plus the `withAll` / `triState` / `namedOptions` option builders.
 
-**Decided but not yet built** — specs exist in [`docs/ui-component-specs.md`](./ui-component-specs.md). Build them when the work calls for one, don't invent a parallel version: `FilterPanel`, `StatusBadge`, `EmptyState`, and a promoted `PageHeading`.
+**Decided but not yet built** — specs exist in [`docs/ui-component-specs.md`](./ui-component-specs.md). Build them when the work calls for one, don't invent a parallel version: `StatusBadge`, `EmptyState`, and a promoted `PageHeading`.
 
 **Migration list** — existing code that violates these rules. Fix opportunistically when you are already in the file; do not open a sweep without being asked:
 

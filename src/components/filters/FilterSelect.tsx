@@ -7,7 +7,9 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 import type { FilterOption } from "./codecs";
+import { FilterField } from "./FilterField";
 import { FilterOptionList } from "./FilterOptionList";
 import { FilterTrigger } from "./FilterTrigger";
 
@@ -41,6 +43,16 @@ export interface FilterSelectProps<T> {
   ariaLabel?: string;
   /** In-popover search. Turns itself on past eight options unless set. */
   searchable?: boolean;
+  /**
+   * "inline" — a trigger in a `FilterBar`, reading `Gudang: Semua ⌄`.
+   * "field" — a labeled full-width row inside a `FilterPanel`.
+   *
+   * The SAME control either way. The bar and the panel are two arrangements of
+   * one grammar (docs/ui-rules.md §8), so a screen that has both — a quick bar
+   * that collapses into a panel on a phone — renders one list of fields and
+   * hands it a layout, rather than keeping two lists in step by hand.
+   */
+  layout?: "inline" | "field";
   disabled?: boolean;
   /**
    * Shown by the bar when this control is disabled. A control that greys out
@@ -59,6 +71,7 @@ export function FilterSelect<T>({
   unsetValue = "" as T,
   ariaLabel,
   searchable,
+  layout = "inline",
   disabled,
   align = "start",
   className,
@@ -69,7 +82,7 @@ export function FilterSelect<T>({
   const active = !Object.is(value, unsetValue);
   const withSearch = searchable ?? options.length > 8;
 
-  return (
+  const control = (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <FilterTrigger
@@ -78,15 +91,18 @@ export function FilterSelect<T>({
           // silently reading "Semua" while the list is still filtered by it.
           value={current?.label ?? (active ? String(value) : "Semua")}
           active={active}
+          layout={layout}
           disabled={disabled}
           aria-label={ariaLabel ?? label}
-          className={className}
+          className={layout === "field" ? undefined : className}
         />
       </PopoverTrigger>
 
       <PopoverContent
         align={align}
-        className="p-0"
+        // A field fills its panel, so its list should too — anything narrower
+        // reads as a stray popover rather than the field opening.
+        className={cn("p-0", layout === "field" && "w-(--radix-popover-trigger-width)")}
         // Radix parks focus on the content wrapper, which is the ANCESTOR of
         // the listbox — so arrow keys would fire above the handler and never
         // reach it. Decline that and let the list (or its search box) take focus.
@@ -105,4 +121,14 @@ export function FilterSelect<T>({
       </PopoverContent>
     </Popover>
   );
+
+  if (layout === "field") {
+    return (
+      <FilterField label={label} className={className}>
+        {control}
+      </FilterField>
+    );
+  }
+
+  return control;
 }
