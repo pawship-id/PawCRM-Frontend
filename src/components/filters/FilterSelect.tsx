@@ -70,6 +70,8 @@ export interface FilterSelectProps<T> {
    * instead, and saying "Semua" there would claim a choice nobody made.
    */
   placeholder?: string;
+  /** Marks the choice as wrong — see FilterTrigger. */
+  invalid?: boolean;
   disabled?: boolean;
   /**
    * Shown by the bar when this control is disabled. A control that greys out
@@ -91,6 +93,7 @@ export function FilterSelect<T>({
   layout = "inline",
   active: activeOverride,
   placeholder,
+  invalid,
   disabled,
   disabledHint,
   align = "start",
@@ -122,6 +125,7 @@ export function FilterSelect<T>({
           value={display}
           active={active}
           layout={layout}
+          invalid={invalid}
           disabled={disabled}
           aria-label={ariaLabel ?? label}
           className={layout === "field" ? undefined : className}

@@ -2,18 +2,18 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { Alert, Button, Card, Spinner, TextField } from "@/components";
+import {
+  Alert,
+  Button,
+  Card,
+  FilterSelect,
+  namedOptions,
+  Spinner,
+  TextField,
+} from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button as UIButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
@@ -550,44 +550,44 @@ export function StockTransferForm() {
           <Card title="Perpindahan">
             <div className="flex flex-col gap-4">
               <div className="grid gap-4 sm:grid-cols-2">
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="from">Dari gudang</Label>
-                  <Select value={fromWarehouseId} onValueChange={setFrom}>
-                    <SelectTrigger id="from" aria-label="Dari gudang">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {active.map((warehouse) => (
-                        <SelectItem key={warehouse._id} value={warehouse._id}>
-                          {warehouse.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {/* The filter shell, like every other warehouse picker in the
+                    module. `active={false}` because these are not filters —
+                    nothing is narrowed by naming a warehouse, the transfer
+                    simply has two ends. */}
+                <FilterSelect
+                  layout="field"
+                  label="Dari gudang"
+                  ariaLabel="Dari gudang"
+                  value={fromWarehouseId}
+                  options={namedOptions(active)}
+                  active={false}
+                  placeholder="Pilih gudang"
+                  onChange={setFrom}
+                />
 
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="to">Ke gudang</Label>
-                  <Select value={toWarehouseId} onValueChange={setTo}>
-                    <SelectTrigger
-                      id="to"
-                      aria-label="Ke gudang"
-                      aria-invalid={sameWarehouse || undefined}
-                      className={sameWarehouse ? "border-danger" : undefined}
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {active.map((warehouse) => (
-                        <SelectItem key={warehouse._id} value={warehouse._id}>
-                          {warehouse.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {fieldErrors.toWarehouseId && (
+                  <FilterSelect
+                    layout="field"
+                    label="Ke gudang"
+                    ariaLabel="Ke gudang"
+                    value={toWarehouseId}
+                    options={namedOptions(active)}
+                    active={false}
+                    placeholder="Pilih gudang"
+                    // The one thing a filter never has to say: this choice can
+                    // be wrong. Both ends the same warehouse is a move that
+                    // moves nothing.
+                    invalid={sameWarehouse}
+                    onChange={setTo}
+                  />
+                  {/* Said as soon as it is true, not only after a submit
+                      attempt. The red border used to be the whole signal until
+                      somebody pressed Simpan — status by colour alone, which §1
+                      forbids, and invisible to anyone who cannot see it. */}
+                  {(fieldErrors.toWarehouseId || sameWarehouse) && (
                     <p role="alert" className="text-xs text-danger">
-                      {fieldErrors.toWarehouseId}
+                      {fieldErrors.toWarehouseId ??
+                        "Gudang asal dan tujuan harus berbeda."}
                     </p>
                   )}
                 </div>
@@ -646,9 +646,8 @@ export function StockTransferForm() {
               <div className="flex flex-col items-center gap-4 py-8 text-center">
                 <UIButton
                   type="button"
-                  variant="outline"
+                  variant="secondary"
                   onClick={() => setPicking(true)}
-                  className="border-dashed"
                 >
                   + Tambah produk
                 </UIButton>
@@ -706,11 +705,14 @@ export function StockTransferForm() {
                 </div>
 
                 <div className="mt-3 border-t border-border/60 pt-3">
+                  {/* Sized to its label, left-aligned, like the same button
+                      under the opname sheet's table. Full width made one
+                      control read as the section's own footer rather than as
+                      the row-adder it is. */}
                   <UIButton
                     type="button"
-                    variant="outline"
+                    variant="secondary"
                     onClick={() => setPicking(true)}
-                    className="w-full border-dashed"
                   >
                     + Tambah produk
                   </UIButton>

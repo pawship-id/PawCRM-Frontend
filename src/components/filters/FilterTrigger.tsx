@@ -40,6 +40,12 @@ export interface FilterTriggerProps
    * full width, value only, chevron pushed to the far edge.
    */
   layout?: "inline" | "field";
+  /**
+   * Whether the choice is currently wrong — a form-mode concern this shell did
+   * not have while it was only ever a filter. A filter cannot be invalid; a
+   * "Ke gudang" that equals "Dari gudang" is.
+   */
+  invalid?: boolean;
   "aria-label": string;
 }
 
@@ -47,7 +53,16 @@ export const FilterTrigger = React.forwardRef<
   HTMLButtonElement,
   FilterTriggerProps
 >(function FilterTrigger(
-  { label, value, active = false, icon, layout = "inline", className, ...props },
+  {
+    label,
+    value,
+    active = false,
+    icon,
+    layout = "inline",
+    invalid = false,
+    className,
+    ...props
+  },
   ref,
 ) {
   return (
@@ -55,6 +70,11 @@ export const FilterTrigger = React.forwardRef<
       ref={ref}
       type="button"
       data-active={active}
+      // `data-` only, deliberately: `aria-invalid` is not supported on
+      // role=button and assistive tech ignores it here. What carries the
+      // meaning is the message the caller renders beside the control — which
+      // §1 requires anyway, since a red border alone is status by colour.
+      data-invalid={invalid || undefined}
       className={cn(
         // `group` so the label and chevron can react to this button's own
         // data-active / data-state (Radix sets the latter via asChild).
@@ -69,6 +89,9 @@ export const FilterTrigger = React.forwardRef<
         "disabled:pointer-events-none disabled:opacity-50",
         "data-[active=true]:border-transparent data-[active=true]:bg-navy-100 data-[active=true]:text-primary",
         "data-[state=open]:border-primary data-[state=open]:ring-[3px] data-[state=open]:ring-ring/50",
+        // Last, so it wins over the active state: a wrong choice is worth
+        // saying louder than "a value is set".
+        "data-[invalid=true]:border-danger",
         className,
       )}
       {...props}

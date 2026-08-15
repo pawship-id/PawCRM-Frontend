@@ -325,7 +325,7 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
                 onClick={() => setAddingProducts(true)}
                 disabled={adding}
               >
-                Pilih produk
+                + Tambah produk
               </Button>
             </div>
           )}
@@ -397,8 +397,15 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
 
         {/* A count sheet is a plan for an afternoon, and the plan is wrong the
             moment somebody finds a shelf that was not on it. Without this the
-            only remedy was discarding the draft — and every quantity on it. */}
-        {!done && can("stockOpnames", "update") && (
+            only remedy was discarding the draft — and every quantity on it.
+
+            ONLY ONCE THE SHEET HAS LINES. The empty state above already offers
+            both of these, and while this bar rendered on an empty sheet too the
+            screen carried two identical "+ Tambah produk" buttons a few
+            centimetres apart. That was invisible for as long as one of them was
+            labelled differently, which is the argument for naming a control
+            after what it does rather than after where it sits. */}
+        {items.length > 0 && !done && can("stockOpnames", "update") && (
           <div className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-2.5">
             <Button
               variant="secondary"

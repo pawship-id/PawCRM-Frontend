@@ -983,7 +983,7 @@ describe("OpnameSheet", () => {
         screen.getByRole("button", { name: /Muat semua produk gudang ini/ }),
       ).toBeInTheDocument();
       expect(
-        screen.getByRole("button", { name: /^Pilih produk$/ }),
+        screen.getByRole("button", { name: /Tambah produk/ }),
       ).toBeInTheDocument();
     });
 

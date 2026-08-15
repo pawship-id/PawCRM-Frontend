@@ -626,6 +626,25 @@ describe("StockTransferForm", () => {
    * Ticking two and confirming must produce two rows in one payload, not two
    * transfers — that is the whole reason `items` is an array.
    */
+  /**
+   * The two ends used to be signalled only by a red border until somebody
+   * pressed Simpan — status by colour alone, and nothing at all for a reader
+   * who cannot see it.
+   */
+  it("says the two ends are the same as soon as they are, not on submit", async () => {
+    mockLookups();
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<StockTransferForm />);
+
+    await user.click(await screen.findByRole("button", { name: "Ke gudang" }));
+    await user.click(screen.getByRole("option", { name: "Gudang Pusat" }));
+
+    expect(
+      await screen.findByText("Gudang asal dan tujuan harus berbeda."),
+    ).toBeInTheDocument();
+  });
+
   it("puts every product ticked in the picker into one payload", async () => {
     const second = product({ _id: "p2", sku: "SH-1L", name: "Shampoo Anjing" });
     const { create } = mockLookups({ catalogue: [product(), second] });
