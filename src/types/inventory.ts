@@ -1207,7 +1207,15 @@ export interface OpnameListQuery {
   /** ISO date. The API refuses a `dateTo` that precedes `dateFrom`. */
   dateTo?: string;
   includeDeleted?: boolean;
+  /**
+   * Which ordering to page through. A NAME, not a field plus a direction — the
+   * API accepts a closed list. Omitted means `newest`, its own default.
+   */
+  sort?: OpnameSort;
 }
+
+/** The orderings `GET /api/stock-opnames` accepts — OPNAME_SORTS in the model. */
+export type OpnameSort = "newest" | "oldest" | "numberDesc" | "numberAsc";
 
 /**
  * One line as the CLIENT sends it — four fields, and not one of them a quantity

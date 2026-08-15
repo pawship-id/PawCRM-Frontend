@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { formatRangeShort } from "./codecs";
+import { FilterField } from "./FilterField";
 import { FilterTrigger } from "./FilterTrigger";
 
 /**
@@ -30,6 +31,13 @@ import { FilterTrigger } from "./FilterTrigger";
  *
  * Native inputs, not a calendar grid: Indonesian formatting comes free, the
  * bundle stays put, and `userEvent.type(input, "2026-08-01")` keeps working.
+ *
+ * INSIDE A PANEL IT LOSES ITS POPOVER ENTIRELY (`layout="field"`) — presets and
+ * both inputs render straight into the stack. A popover carrying its own
+ * Terapkan inside a panel carrying its own Terapkan is two pairs of verbs for
+ * one decision, and the inner one commits nothing a user can see: the panel is
+ * still holding the draft. There is also no draft to hold in that mode, because
+ * the panel already is the draft — see `onApply` below.
  */
 export interface DatePreset {
   label: string;
@@ -42,7 +50,20 @@ export interface FilterDateRangeProps {
   /** ISO `yyyy-mm-dd`, or `""` when unset. Never null — the repo's convention. */
   from: string;
   to: string;
+  /**
+   * Commits a range.
+   *
+   * On a bar this fires on the popover's own Terapkan, once. In a PANEL it
+   * fires on every edit, into the panel's draft — the panel's Terapkan is the
+   * one that reaches the query, so a second commit here would be a button that
+   * appears to do nothing.
+   */
   onApply: (range: { from: string; to: string }) => void;
+  /**
+   * "inline" — a trigger on a bar, reading `Tanggal: 1 Ags–14 Ags ⌄`.
+   * "field" — a labeled block inside a `FilterPanel`, popover and footer gone.
+   */
+  layout?: "inline" | "field";
   ariaLabel?: string;
   presets?: DatePreset[];
   disabled?: boolean;
@@ -82,6 +103,7 @@ export function FilterDateRange({
   from,
   to,
   onApply,
+  layout = "inline",
   ariaLabel,
   presets,
   disabled,
@@ -99,6 +121,74 @@ export function FilterDateRange({
   const chips = presets ?? defaultPresets();
   const active = Boolean(from || to);
 
+  const body = (
+    value: { from: string; to: string },
+    onChange: (next: { from: string; to: string }) => void,
+  ) => (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-1.5">
+        {chips.map((preset) => {
+          const picked =
+            value.from === preset.from && value.to === preset.to;
+          return (
+            <button
+              key={preset.label}
+              type="button"
+              onClick={() => onChange({ from: preset.from, to: preset.to })}
+              className={cn(
+                "rounded-full border border-border px-3 py-1 text-xs font-semibold text-muted transition",
+                "outline-none hover:border-input-hover focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                picked && "border-primary bg-primary text-primary-foreground",
+              )}
+            >
+              {preset.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="flex items-end gap-2">
+        <label className="flex-1 space-y-1">
+          <span className="block text-xs font-semibold">Dari</span>
+          <input
+            type="date"
+            value={value.from}
+            max={value.to || undefined}
+            onChange={(event) =>
+              onChange({ ...value, from: event.target.value })
+            }
+            aria-label={`${ariaLabel ?? label} dari`}
+            className="h-10 w-full rounded-md border border-border bg-surface px-2.5 text-sm outline-none focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          />
+        </label>
+        <label className="flex-1 space-y-1">
+          <span className="block text-xs font-semibold">Sampai</span>
+          <input
+            type="date"
+            value={value.to}
+            min={value.from || undefined}
+            onChange={(event) =>
+              onChange({ ...value, to: event.target.value })
+            }
+            aria-label={`${ariaLabel ?? label} sampai`}
+            className="h-10 w-full rounded-md border border-border bg-surface px-2.5 text-sm outline-none focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          />
+        </label>
+      </div>
+    </div>
+  );
+
+  if (layout === "field") {
+    return (
+      // Spans the panel's two columns: the presets alone wrap onto three lines
+      // in half a modal, and the pair of inputs beneath them go narrower than
+      // the date format they hold.
+      <FilterField label={label} className={cn("sm:col-span-2", className)}>
+        {body({ from, to }, onApply)}
+      </FilterField>
+    );
+  }
+
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
@@ -114,57 +204,7 @@ export function FilterDateRange({
       </PopoverTrigger>
 
       <PopoverContent align={align} className="w-80 p-0">
-        <div className="space-y-3 p-3.5">
-          <div className="flex flex-wrap gap-1.5">
-            {chips.map((preset) => {
-              const picked =
-                draft.from === preset.from && draft.to === preset.to;
-              return (
-                <button
-                  key={preset.label}
-                  type="button"
-                  onClick={() => setDraft({ from: preset.from, to: preset.to })}
-                  className={cn(
-                    "rounded-full border border-border px-3 py-1 text-xs font-semibold text-muted transition",
-                    "outline-none hover:border-input-hover focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50",
-                    picked && "border-primary bg-primary text-primary-foreground",
-                  )}
-                >
-                  {preset.label}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="flex items-end gap-2">
-            <label className="flex-1 space-y-1">
-              <span className="block text-xs font-semibold">Dari</span>
-              <input
-                type="date"
-                value={draft.from}
-                max={draft.to || undefined}
-                onChange={(event) =>
-                  setDraft((d) => ({ ...d, from: event.target.value }))
-                }
-                aria-label={`${ariaLabel ?? label} dari`}
-                className="h-10 w-full rounded-md border border-border bg-surface px-2.5 text-sm outline-none focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50"
-              />
-            </label>
-            <label className="flex-1 space-y-1">
-              <span className="block text-xs font-semibold">Sampai</span>
-              <input
-                type="date"
-                value={draft.to}
-                min={draft.from || undefined}
-                onChange={(event) =>
-                  setDraft((d) => ({ ...d, to: event.target.value }))
-                }
-                aria-label={`${ariaLabel ?? label} sampai`}
-                className="h-10 w-full rounded-md border border-border bg-surface px-2.5 text-sm outline-none focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50"
-              />
-            </label>
-          </div>
-        </div>
+        <div className="p-3.5">{body(draft, setDraft)}</div>
 
         <div className="flex items-center justify-between border-t border-border bg-background px-3 py-2.5">
           <button

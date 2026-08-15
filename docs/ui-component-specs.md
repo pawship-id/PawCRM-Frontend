@@ -207,6 +207,8 @@ Trigger shows `Tanggal: 1 Ags–14 Ags` when set, `Tanggal: Semua` when not. Mon
 
 Replaces the two free-standing `Tanggal awal` / `Tanggal akhir` inputs currently in `StockCardFilters`.
 
+**`layout="field"` drops the popover entirely** — presets and both inputs render straight into a `FilterPanel`'s stack, spanning its two columns. A popover carrying its own Reset/Terapkan inside a panel carrying its own is two pairs of verbs for one decision, and the inner one commits nothing the user can see. In that mode `onApply` fires on every edit, into the panel's draft; the panel's Terapkan is the one that reaches the query.
+
 ## `FilterPills`
 
 **When:** one dimension is the page's main lens and has small cardinality — status, urgensi, tipe. Lives **outside** the bar or panel.
