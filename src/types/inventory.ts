@@ -1334,7 +1334,26 @@ export interface StockMovementListQuery {
   from?: string;
   /** ISO date string. The backend refuses a `to` that precedes `from`. */
   to?: string;
+  /**
+   * Free text over the row's own note and its lot code.
+   *
+   * NOT over the document number: `referenceNo` is resolved forward from
+   * whichever collection the reference type names, and only two of the nine
+   * types carry a number at all today.
+   */
+  search?: string;
+  /**
+   * Which ordering to page through. CHRONOLOGICAL ONLY — this ledger carries a
+   * running balance, and "opening plus every row equals the closing" is a
+   * statement about order. Omitted means `newest`, the API's own default.
+   *
+   * List only. A summary has no order and an export has its own.
+   */
+  sort?: MovementSort;
 }
+
+/** The orderings `GET /api/stock-movements` accepts — MOVEMENT_SORTS in the model. */
+export type MovementSort = "newest" | "oldest";
 
 /**
  * GET /api/product-batches.

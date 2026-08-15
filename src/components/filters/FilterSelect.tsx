@@ -64,6 +64,12 @@ export interface FilterSelectProps<T> {
    * `active={false}` says there is no such thing here.
    */
   active?: boolean;
+  /**
+   * What the trigger reads when nothing is chosen yet. Defaults to "Semua",
+   * which is what an unset FILTER means — a required input means "Pilih gudang"
+   * instead, and saying "Semua" there would claim a choice nobody made.
+   */
+  placeholder?: string;
   disabled?: boolean;
   /**
    * Shown by the bar when this control is disabled. A control that greys out
@@ -84,6 +90,7 @@ export function FilterSelect<T>({
   searchable,
   layout = "inline",
   active: activeOverride,
+  placeholder,
   disabled,
   disabledHint,
   align = "start",
@@ -95,17 +102,24 @@ export function FilterSelect<T>({
   const container = useFilterPanelContainer();
 
   const current = options.find((option) => Object.is(option.value, value));
-  const active = activeOverride ?? !Object.is(value, unsetValue);
+  // Whether a value is SET, which is not the same question as whether a filter
+  // is applied — `active` may be overridden for a control that is a choice
+  // rather than a filter, and the stale-id fallback below must not follow it.
+  const chosen = !Object.is(value, unsetValue);
+  const active = activeOverride ?? chosen;
   const withSearch = searchable ?? options.length > 8;
+
+  // Falling back to the raw value keeps a stale id visible rather than silently
+  // reading "Semua" while the list is still filtered by it.
+  const display =
+    current?.label ?? (chosen ? String(value) : (placeholder ?? "Semua"));
 
   const control = (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <FilterTrigger
           label={label}
-          // Falling back to the raw value keeps a stale id visible rather than
-          // silently reading "Semua" while the list is still filtered by it.
-          value={current?.label ?? (active ? String(value) : "Semua")}
+          value={display}
           active={active}
           layout={layout}
           disabled={disabled}

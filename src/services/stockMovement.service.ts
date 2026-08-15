@@ -33,8 +33,15 @@ import type {
  * field still missing is `referenceNo`; see types/inventory.ts.
  */
 
-/** The three filters that are also the export's, minus paging. */
-type FilterQuery = Omit<StockMovementListQuery, "page" | "limit">;
+/**
+ * The filters the summary and the export share with the list.
+ *
+ * `sort` is excluded alongside paging, and for the same kind of reason: a
+ * summary is one row of totals with no order, and an export has its own, fixed
+ * oldest-first so its running balance can accumulate. The API rejects `sort` on
+ * both.
+ */
+type FilterQuery = Omit<StockMovementListQuery, "page" | "limit" | "sort">;
 
 /**
  * Spread into a fresh object literal to satisfy apiClient's
@@ -52,6 +59,7 @@ function filterParams(query: FilterQuery) {
     referenceId: query.referenceId,
     from: query.from,
     to: query.to,
+    search: query.search,
   };
 }
 
@@ -68,6 +76,8 @@ export const stockMovementService = {
       query: {
         page: query.page,
         limit: query.limit,
+        // List only — see FilterQuery.
+        sort: query.sort,
         ...filterParams(query),
       },
     }),

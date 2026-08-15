@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { stockMovementService } from "@/services/stockMovement.service";
 import { ApiError } from "@/services/api-error";
 import type {
+  MovementSort,
   MovementType,
   StockMovement,
   StockMovementPage,
@@ -18,6 +19,10 @@ export interface StockCardFilters {
   /** `yyyy-mm-dd` from a date input, or "". */
   from: string;
   to: string;
+  /** Free text over the row's note and its lot code. */
+  search: string;
+  /** Which ordering to page through. */
+  sort: MovementSort;
 }
 
 export const EMPTY_FILTERS: StockCardFilters = {
@@ -26,6 +31,10 @@ export const EMPTY_FILTERS: StockCardFilters = {
   movementType: "",
   from: "",
   to: "",
+  search: "",
+  // The API's own default, restated rather than left out: the panel renders the
+  // current value, and a select whose value is `undefined` shows nothing.
+  sort: "newest",
 };
 
 const PAGE_SIZE = 50;
@@ -80,7 +89,8 @@ export function useStockCard(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { productId, warehouseId, movementType, from, to } = filters;
+  const { productId, warehouseId, movementType, from, to, search, sort } =
+    filters;
   const ready = Boolean(productId && warehouseId);
 
   useEffect(() => {
@@ -100,6 +110,8 @@ export function useStockCard(
         productId,
         warehouseId,
         movementType: movementType || undefined,
+        search: search.trim() || undefined,
+        sort,
         // The inputs give a date; the API bounds `createdAt`, a timestamp. `to`
         // is pushed to the end of its day so "sampai 3 Agustus" includes the
         // movements posted on 3 August rather than only the stroke of midnight.
@@ -130,7 +142,18 @@ export function useStockCard(
     return () => {
       active = false;
     };
-  }, [ready, productId, warehouseId, movementType, from, to, page, refreshKey]);
+  }, [
+    ready,
+    productId,
+    warehouseId,
+    movementType,
+    from,
+    to,
+    search,
+    sort,
+    page,
+    refreshKey,
+  ]);
 
   return { movements, pagination, openingBalance, loading, error };
 }

@@ -228,6 +228,31 @@ describe("StockAdjustmentForm", () => {
     );
   });
 
+  /**
+   * The picker is a popover now, matching the filter panels next door — and the
+   * tests around it all rode on the form's auto-selection of the first
+   * warehouse, so none of them would have noticed if choosing one stopped
+   * working. This one drives it.
+   */
+  it("saves against the warehouse chosen in the picker, not the default", async () => {
+    const { create } = mockLookups();
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<StockAdjustmentForm />);
+
+    await user.click(await screen.findByRole("button", { name: "Gudang" }));
+    await user.click(screen.getByRole("option", { name: "Gudang Bazar" }));
+
+    await user.type(await screen.findByLabelText(/^Jumlah/), "5");
+    await user.click(screen.getByRole("button", { name: /Simpan penyesuaian/ }));
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ warehouseId: OTHER_WAREHOUSE }),
+      ),
+    );
+  });
+
   it("sends a NEGATIVE quantity when the direction is outbound", async () => {
     const { create } = mockLookups();
 

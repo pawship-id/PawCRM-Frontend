@@ -25,22 +25,38 @@ export function BatchLotTable({
   batches,
   total,
   hasExpiry,
+  search = "",
 }: {
   batches: ProductBatch[];
   /** How many lots exist server-side — larger than the array means it was cut. */
   total: number;
   hasExpiry: boolean;
+  /**
+   * The search the page is under, for the empty state to name.
+   *
+   * The two tabs share one box but not one match: the ledger matches a note OR
+   * a lot code, this list matches the CODE only. So a word from a note empties
+   * this tab truthfully, and without saying why it reads as "this product has
+   * no lots" — which is a different, alarming claim.
+   */
+  search?: string;
 }) {
+  const searching = search.trim() !== "";
+
   if (batches.length === 0) {
     return (
       <div className="rounded-xl border border-border bg-surface py-16 text-center">
         <p className="font-medium text-foreground">
-          Tidak ada lot di gudang ini
+          {searching
+            ? `Tidak ada lot dengan kode "${search.trim()}"`
+            : "Tidak ada lot di gudang ini"}
         </p>
         <p className="mx-auto mt-1 max-w-md text-sm text-muted">
-          {hasExpiry
-            ? "Lot dibuat otomatis saat barang diterima."
-            : "Lot hanya dibuat untuk barang yang punya masa kedaluwarsa atau datang sebagai konsinyasi — produk ini tidak melacak lot."}
+          {searching
+            ? "Kotak pencarian di atas mencocokkan kode lot di tab ini, dan catatan maupun kode lot di tab Pergerakan — jadi kata yang cuma ada di catatan akan mengosongkan daftar ini."
+            : hasExpiry
+              ? "Lot dibuat otomatis saat barang diterima."
+              : "Lot hanya dibuat untuk barang yang punya masa kedaluwarsa atau datang sebagai konsinyasi — produk ini tidak melacak lot."}
         </p>
       </div>
     );

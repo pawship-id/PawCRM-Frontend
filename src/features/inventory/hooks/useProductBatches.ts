@@ -39,11 +39,24 @@ interface UseProductBatchesResult {
  * Shares `refreshKey` with the ledger so both tabs re-read together; a user who
  * refreshes because a number looks wrong gets two consistent answers, not one
  * fresh tab and one stale one.
+ *
+ * IT TAKES THE SEARCH BOX TOO, and that is the point of a shared box: the ledger
+ * matches it against a row's note OR its lot code, and typing a lot code while
+ * this tab showed every lot regardless made the search look broken on the one
+ * tab where lot codes are the whole content.
+ *
+ * THE TWO ENDPOINTS DO NOT MATCH THE SAME THING, though, and the screen has to
+ * say so rather than hide it: `/product-batches` searches the CODE only. So a
+ * word from a movement's note narrows the ledger and empties this tab — which
+ * is the truth ("no lot is called that"), and reads as a failure unless the
+ * empty state names the search. It does; see BatchLotTable.
  */
 export function useProductBatches(
   productId: string,
   warehouseId: string,
   refreshKey: number,
+  /** Free text over the lot code. "" is every lot. */
+  search = "",
 ): UseProductBatchesResult {
   const [batches, setBatches] = useState<ProductBatch[]>([]);
   const [total, setTotal] = useState(0);
@@ -61,7 +74,12 @@ export function useProductBatches(
     setError(null);
 
     productBatchService
-      .list({ productId, warehouseId, limit: LIMIT })
+      .list({
+        productId,
+        warehouseId,
+        limit: LIMIT,
+        search: search.trim() || undefined,
+      })
       .then((result) => {
         if (!active) return;
         setBatches(result.items);
@@ -82,7 +100,7 @@ export function useProductBatches(
     return () => {
       active = false;
     };
-  }, [productId, warehouseId, refreshKey]);
+  }, [productId, warehouseId, refreshKey, search]);
 
   return { batches, total, loading, error };
 }

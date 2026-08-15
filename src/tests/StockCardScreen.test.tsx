@@ -369,6 +369,164 @@ describe("StockCardScreen", () => {
     );
   });
 
+  /**
+   * The controls moved into one panel, the products page's shape. These pin the
+   * two things that shape can get wrong — a field that queries while it is
+   * being composed, and a badge that stops being worth reading once the
+   * triggers are hidden — plus the ordering, which is new.
+   */
+  describe("the filter panel", () => {
+    /** Opens the one filter panel and returns it. */
+    async function openFilters(user: ReturnType<typeof userEvent.setup>) {
+      await user.click(screen.getByRole("button", { name: "Filter" }));
+      return screen.findByRole("dialog");
+    }
+
+    it("puts the type and the date range behind one button", async () => {
+      const user = userEvent.setup();
+      mockHappyPath([movement()], []);
+
+      renderWithAuth(<StockCardScreen />);
+      await screen.findByRole("table");
+
+      expect(
+        screen.queryByRole("button", { name: "Tipe pergerakan" }),
+      ).not.toBeInTheDocument();
+
+      const panel = await openFilters(user);
+      expect(
+        within(panel).getByRole("button", { name: "Tipe pergerakan" }),
+      ).toBeInTheDocument();
+      // The range renders as a FIELD here — two plain inputs, no popover with a
+      // second Terapkan inside the panel's own.
+      expect(
+        within(panel).getByLabelText("Tanggal dari"),
+      ).toBeInTheDocument();
+    });
+
+    it("holds the type as a draft until Terapkan", async () => {
+      const user = userEvent.setup();
+      mockHappyPath([movement()], []);
+
+      renderWithAuth(<StockCardScreen />);
+      await screen.findByRole("table");
+      const calls = jest.mocked(stockMovementService.list).mock.calls.length;
+
+      const panel = await openFilters(user);
+      await user.click(
+        within(panel).getByRole("button", { name: "Tipe pergerakan" }),
+      );
+      await user.click(screen.getByRole("option", { name: "Penyesuaian" }));
+
+      // Composing a query does not query — the whole reason for a panel.
+      expect(
+        jest.mocked(stockMovementService.list).mock.calls,
+      ).toHaveLength(calls);
+
+      await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+      await waitFor(() =>
+        expect(stockMovementService.list).toHaveBeenLastCalledWith(
+          expect.objectContaining({ movementType: "adjustment" }),
+        ),
+      );
+    });
+
+    it("re-orders the ledger, and does not count the ordering as a filter", async () => {
+      const user = userEvent.setup();
+      mockHappyPath([movement()], []);
+
+      renderWithAuth(<StockCardScreen />);
+      await screen.findByRole("table");
+
+      // Stated rather than omitted: every page of a walk has to agree.
+      expect(stockMovementService.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "newest" }),
+      );
+
+      const panel = await openFilters(user);
+      await user.click(within(panel).getByRole("button", { name: "Urutkan" }));
+      await user.click(screen.getByRole("option", { name: "Terlama dulu" }));
+      await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+      await waitFor(() =>
+        expect(stockMovementService.list).toHaveBeenLastCalledWith(
+          expect.objectContaining({ sort: "oldest" }),
+        ),
+      );
+
+      // Read with the panel SHUT — Radix hides the trigger while its dialog is
+      // up. Every ledger has an ordering, so it is never a narrowing.
+      expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
+        /^Filter$/,
+      );
+    });
+  });
+
+  it("searches the ledger by note and lot code, debounced into the query", async () => {
+    const user = userEvent.setup();
+    mockHappyPath([movement()], []);
+
+    renderWithAuth(<StockCardScreen />);
+    await screen.findByRole("table");
+
+    await user.type(screen.getByLabelText("Cari pergerakan"), "B26");
+
+    await waitFor(() =>
+      expect(stockMovementService.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: "B26" }),
+      ),
+    );
+  });
+
+  it("narrows the lot tab with the same box, since lot codes are its content", async () => {
+    const user = userEvent.setup();
+    mockHappyPath([movement()], []);
+
+    renderWithAuth(<StockCardScreen />);
+    await screen.findByRole("table");
+
+    await user.type(screen.getByLabelText("Cari pergerakan"), "B26");
+
+    // One box, two endpoints. Leaving this one out made the search look broken
+    // on the one tab where lot codes are the whole content.
+    await waitFor(() =>
+      expect(productBatchService.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: "B26" }),
+      ),
+    );
+  });
+
+  it("says why the lot tab is empty when the search only matched a note", async () => {
+    const user = userEvent.setup();
+    // The ledger matches a note; the lot endpoint matches the CODE only, so it
+    // truthfully returns nothing.
+    mockHappyPath([movement()], []);
+
+    renderWithAuth(<StockCardScreen />);
+    await screen.findByRole("table");
+
+    await user.type(screen.getByLabelText("Cari pergerakan"), "rusak");
+    await user.click(await screen.findByRole("button", { name: /Batch \/ FEFO/ }));
+
+    // Without naming the search this reads as "this product has no lots" — a
+    // different and alarming claim.
+    expect(
+      await screen.findByText(/Tidak ada lot dengan kode "rusak"/),
+    ).toBeInTheDocument();
+  });
+
+  it("offers no Muat ulang — a read nobody else can write to does not go stale", async () => {
+    mockHappyPath([movement()], []);
+
+    renderWithAuth(<StockCardScreen />);
+    await screen.findByRole("table");
+
+    expect(
+      screen.queryByRole("button", { name: /muat ulang/i }),
+    ).not.toBeInTheDocument();
+  });
+
   it("takes the period tiles from the summary endpoint, not from the page", async () => {
     mockHappyPath([movement()], []);
 
