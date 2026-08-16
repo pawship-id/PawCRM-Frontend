@@ -7,6 +7,7 @@ import { ApiError } from "@/services/api-error";
 import type {
   GoodsReceiptListQuery,
   GoodsReceiptListRow,
+  GoodsReceiptSort,
   PageResult,
   PurchaseType,
 } from "@/types/api";
@@ -25,6 +26,12 @@ export interface GoodsReceiptsQuery {
   /** `yyyy-mm-dd`, as the date inputs hold them. "" = unbounded. */
   dateFrom: string;
   dateTo: string;
+  /**
+   * Which ordering the list is paged through in. Always set — a list with no
+   * ordering is not a thing — so it has no "" and Reset returns it to the
+   * default rather than clearing it.
+   */
+  sort: GoodsReceiptSort;
 }
 
 const PAGE_SIZE = 20;
@@ -37,6 +44,7 @@ const DEFAULT_QUERY: GoodsReceiptsQuery = {
   purchaseType: "",
   dateFrom: "",
   dateTo: "",
+  sort: "newest",
 };
 
 /** Empty page so consumers can render a table shell before the first load. */
@@ -126,6 +134,7 @@ export function useGoodsReceipts(
       purchaseType: settled.purchaseType === "" ? undefined : settled.purchaseType,
       dateFrom: settled.dateFrom || undefined,
       dateTo: settled.dateTo || undefined,
+      sort: settled.sort,
     };
 
     goodsReceiptService

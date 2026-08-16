@@ -61,14 +61,22 @@ export function ReceiptsScreen() {
           Beli putus langsung mencatat utang ke supplier; konsinyasi tidak.
         </PageHeading>
 
-        <div className="text-right">
-          <p className="text-[10px] font-medium tracking-widest text-muted uppercase">
-            Total nilai pembelian
-          </p>
-          <p className="tabular-nums text-lg font-semibold">
-            {totalPurchased === null ? "—" : formatMoney(totalPurchased)}
-          </p>
-          <p className="text-[10px] text-muted">sebelum PPN, seluruh periode</p>
+        {/* Wide: a right-aligned figure beside the heading. Phone: the two have
+            wrapped onto separate lines, and a shrink-to-fit box sitting at the
+            left edge of an empty row reads as a stray caption — so it takes the
+            whole width and puts the label and the number at opposite ends of
+            one line, which is how a total is read everywhere else. The
+            qualifier stays under both, where it belongs to the pair. */}
+        <div className="max-sm:w-full sm:text-right">
+          <div className="flex items-baseline gap-3 max-sm:justify-between sm:block">
+            <p className="text-xs font-medium tracking-wide text-muted uppercase">
+              Total nilai pembelian
+            </p>
+            <p className="text-lg font-semibold tabular-nums">
+              {totalPurchased === null ? "—" : formatMoney(totalPurchased)}
+            </p>
+          </div>
+          <p className="text-xs text-muted">sebelum PPN, seluruh periode</p>
         </div>
       </div>
 

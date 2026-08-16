@@ -1,5 +1,6 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { UserEvent } from "@testing-library/user-event";
 
 import {
   ReceiptDetail,
@@ -28,6 +29,19 @@ jest.mock("@/services/productBatch.service");
 jest.mock("@/services/supplier.service");
 jest.mock("@/services/warehouse.service");
 jest.mock("@/services/product.service");
+
+/**
+ * Opens the one filter panel and returns it.
+ *
+ * EVERY filter lives inside it, so each filter assertion starts here — which is
+ * also the cheapest way to notice if the button ever stops being reachable. The
+ * trigger's text carries a count (`Filter (2)`); its accessible name does not,
+ * so it is found by the stable half.
+ */
+async function openFilters(user: UserEvent) {
+  await user.click(screen.getByRole("button", { name: "Filter" }));
+  return screen.findByRole("dialog");
+}
 
 const push = jest.fn();
 const replace = jest.fn();
@@ -288,12 +302,72 @@ describe("ReceiptsScreen", () => {
   /**
    * There is no `DELETE /goods-receipts/:id`, so nothing is ever in a deleted
    * state. A toggle for it would be a promise the data cannot keep.
+   *
+   * ASSERTED WITH THE PANEL OPEN, which is the only way this stays a real
+   * assertion: every filter moved behind one button, so a check against the
+   * closed screen would pass whether the toggle existed or not.
    */
   it("has no 'show deleted' filter, because deletion does not exist here", async () => {
+    const user = userEvent.setup();
     renderWithAuth(<ReceiptsScreen />);
 
     await screen.findByText("GR-260806-001");
-    expect(screen.queryByLabelText(/terhapus/i)).toBeNull();
+    const panel = await openFilters(user);
+
+    expect(within(panel).queryByLabelText(/terhapus/i)).toBeNull();
+    // The fields that DO exist, so the negative above is read against a panel
+    // that actually rendered rather than one that failed to open.
+    expect(within(panel).getByLabelText("Urutkan")).toBeInTheDocument();
+    expect(within(panel).getByLabelText("Filter supplier")).toBeInTheDocument();
+  });
+
+  it("orders by the ordering the panel was left on", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<ReceiptsScreen />);
+
+    await screen.findByText("GR-260806-001");
+    const panel = await openFilters(user);
+
+    await user.click(within(panel).getByLabelText("Urutkan"));
+    await user.click(
+      await screen.findByRole("option", { name: "Nomor A–Z" }),
+    );
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+    await waitFor(() =>
+      expect(goodsReceiptService.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "numberAsc" }),
+      ),
+    );
+  });
+
+  /**
+   * The ordering is not counted in the trigger's badge — every list has one, so
+   * it is never "on", and a badge reading `Filter (1)` over an unnarrowed list
+   * would train people to ignore the number.
+   */
+  it("does not count the ordering as a filter", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<ReceiptsScreen />);
+
+    await screen.findByText("GR-260806-001");
+    const panel = await openFilters(user);
+
+    await user.click(within(panel).getByLabelText("Urutkan"));
+    await user.click(await screen.findByRole("option", { name: "Terlama" }));
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+    await waitFor(() =>
+      expect(goodsReceiptService.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "oldest" }),
+      ),
+    );
+    expect(
+      screen.getByRole("button", { name: "Filter" }),
+    ).toHaveTextContent("Filter");
+    expect(
+      screen.getByRole("button", { name: "Filter" }),
+    ).not.toHaveTextContent("(1)");
   });
 
   it("distinguishes an unfiled invoice from a consignment with none", async () => {

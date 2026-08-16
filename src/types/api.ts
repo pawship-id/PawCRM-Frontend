@@ -972,6 +972,21 @@ export interface GoodsReceiptListRow {
 }
 
 /**
+ * The orderings `GET /api/goods-receipts` accepts — GOODS_RECEIPT_SORTS in the
+ * model.
+ *
+ * `newest` / `oldest` key on `receiptDate`, the day the goods arrived, never the
+ * day the row was typed. The number orderings are how you walk a sequence rather
+ * than a calendar — see the model. There is no ordering by value: `total` is
+ * unindexed, so it would be a blocking in-memory sort of every matched receipt.
+ */
+export type GoodsReceiptSort =
+  | "newest"
+  | "oldest"
+  | "numberDesc"
+  | "numberAsc";
+
+/**
  * Query parameters accepted by GET /api/goods-receipts. All optional.
  *
  * NO `includeDeleted`, though the endpoint validates one. There is no `DELETE
@@ -1000,6 +1015,13 @@ export interface GoodsReceiptListQuery {
   /** ISO dates bounding `receiptDate` (inclusive), never `createdAt`. */
   dateFrom?: string;
   dateTo?: string;
+  /**
+   * Which ordering to page through. A NAME, not a field plus a direction — the
+   * API accepts a closed list, so a client cannot ask for an ordering with no
+   * index behind it. Omitted means `newest`, which is what the API defaults to
+   * anyway.
+   */
+  sort?: GoodsReceiptSort;
 }
 
 /**

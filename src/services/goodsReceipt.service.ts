@@ -52,6 +52,7 @@ export const goodsReceiptService = {
         invoiced: query.invoiced,
         dateFrom: query.dateFrom,
         dateTo: query.dateTo,
+        sort: query.sort,
       },
     }),
 
