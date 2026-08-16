@@ -90,6 +90,24 @@ async function renderChart(roots?: ChartOfAccountNode[]) {
   await screen.findByRole("table");
 }
 
+/**
+ * Opens the one filter panel and returns it.
+ *
+ * The ordering and the deactivated-accounts toggle both live inside it — the
+ * catalogue's arrangement — so each of those assertions starts here. The
+ * trigger's text carries a count (`Filter (1)`); its accessible name does not,
+ * so it is found by the stable half.
+ */
+async function openFilters() {
+  await userEvent.click(screen.getByRole("button", { name: "Filter" }));
+  return screen.findByRole("dialog");
+}
+
+/** Commits the panel's draft, which is what a panel's fields wait for. */
+async function applyFilters() {
+  await userEvent.click(screen.getByRole("button", { name: "Terapkan" }));
+}
+
 describe("ChartOfAccountsScreen", () => {
   afterEach(() => jest.restoreAllMocks());
 
@@ -137,15 +155,73 @@ describe("ChartOfAccountsScreen", () => {
     expect(table.queryByText("Utang Supplier")).not.toBeInTheDocument();
   });
 
-  it("hides deactivated accounts until the toggle asks for them", async () => {
+  it("hides deactivated accounts until the panel's toggle asks for them", async () => {
     await renderChart();
 
     expect(screen.queryByText("Beban Penyusutan")).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByLabelText(/Tampilkan nonaktif/));
+    const panel = await openFilters();
+    await userEvent.click(
+      within(panel).getByLabelText(/Tampilkan akun nonaktif/),
+    );
+    // A panel's fields wait for Terapkan — ticking it changes nothing yet.
+    expect(screen.queryByText("Beban Penyusutan")).not.toBeInTheDocument();
+
+    await applyFilters();
 
     expect(screen.getByText("Beban Penyusutan")).toBeInTheDocument();
     expect(screen.getByText("Nonaktif")).toBeInTheDocument();
+  });
+
+  it("counts the applied filter on the trigger, and Reset clears it at once", async () => {
+    await renderChart();
+
+    const panel = await openFilters();
+    await userEvent.click(
+      within(panel).getByLabelText(/Tampilkan akun nonaktif/),
+    );
+    await applyFilters();
+
+    // The badge is what makes a collapsed panel safe — see ui-rules §8.
+    expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
+      "Filter (1)",
+    );
+
+    await openFilters();
+    await userEvent.click(screen.getByRole("button", { name: "Reset" }));
+
+    // Reset applies immediately, without waiting for Terapkan.
+    expect(screen.queryByText("Beban Penyusutan")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
+      "Filter",
+    );
+  });
+
+  it("reorders siblings without detaching them from their parents", async () => {
+    await renderChart();
+
+    const panel = await openFilters();
+    await userEvent.click(within(panel).getByLabelText("Urutkan"));
+    await userEvent.click(screen.getByRole("option", { name: "Kode 9–0" }));
+    await applyFilters();
+
+    const rows = screen
+      .getAllByRole("row")
+      .slice(1)
+      .map((row) => row.textContent ?? "");
+
+    // Siblings flip…
+    const ppn = rows.findIndex((text) => text.includes("1301"));
+    const kas = rows.findIndex((text) => text.includes("1101"));
+    expect(ppn).toBeLessThan(kas);
+
+    // …but 1101 still hangs under 1100, and the classes stay in the order the
+    // accounting equation reads them rather than being reordered too.
+    const parent = rows.findIndex((text) => text.includes("1100"));
+    expect(parent).toBeLessThan(kas);
+    expect(rows.findIndex((text) => text.startsWith("Aset"))).toBeLessThan(
+      rows.findIndex((text) => text.startsWith("Kewajiban")),
+    );
   });
 
   it("groups the flat seeded chart under its account classes", async () => {
@@ -187,19 +263,25 @@ describe("ChartOfAccountsScreen", () => {
     expect(screen.getByText("Utang Supplier")).toBeInTheDocument();
   });
 
-  it("narrows to one class when its tile is pressed, and back on a second press", async () => {
+  it("narrows to one class from the panel, carrying each class's count", async () => {
     await renderChart();
 
-    // Anchored: "Tutup kelompok Kewajiban" is a button on the class heading and
-    // would otherwise match too.
-    const tile = screen.getByRole("button", { name: /^Kewajiban/ });
+    const panel = await openFilters();
+    await userEvent.click(within(panel).getByLabelText("Filter tipe akun"));
 
-    await userEvent.click(tile);
+    // The count the tile row used to show, now on the option itself — two
+    // liability accounts in the fixture, 2000 and the 2101 under it.
+    const option = screen.getByRole("option", { name: /Kewajiban/ });
+    expect(option).toHaveTextContent("2");
+
+    await userEvent.click(option);
+    await applyFilters();
+
     expect(screen.queryByText("Kas")).not.toBeInTheDocument();
     expect(screen.getByText("Utang Supplier")).toBeInTheDocument();
-
-    await userEvent.click(tile);
-    expect(screen.getByText("Kas")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
+      "Filter (1)",
+    );
   });
 
   it("collapses a branch when its chevron is pressed", async () => {
@@ -227,14 +309,21 @@ describe("ChartOfAccountsScreen", () => {
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
-  it("re-runs the request when Muat ulang is pressed", async () => {
-    const tree = mockTree();
-    renderWithAuth(<ChartOfAccountsScreen />);
-    await screen.findByRole("table");
+  it("retries from the error banner, which is the only place that offers one", async () => {
+    const tree = jest
+      .spyOn(chartOfAccountsService, "tree")
+      .mockRejectedValueOnce(new ApiError("Server sedang sibuk", 503))
+      .mockResolvedValue(chart());
 
-    await userEvent.click(screen.getByRole("button", { name: /Muat ulang/ }));
+    renderWithAuth(<ChartOfAccountsScreen />);
+    await screen.findByText("Server sedang sibuk");
+
+    await userEvent.click(screen.getByRole("button", { name: /Coba lagi/ }));
 
     await waitFor(() => expect(tree).toHaveBeenCalledTimes(2));
+    expect(await screen.findByRole("table")).toBeInTheDocument();
+    // The banner goes with the failure that put it there.
+    expect(screen.queryByText("Server sedang sibuk")).not.toBeInTheDocument();
   });
 });
 

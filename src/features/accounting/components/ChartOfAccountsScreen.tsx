@@ -1,17 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Plus, RotateCcw } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
+import { ChevronDown, ChevronRight, RotateCcw } from "lucide-react";
 
-import {
-  Alert,
-  Breadcrumb,
-  FilterBar,
-  FilterSearch,
-  FilterToggle,
-  HighlightText,
-  Spinner,
-} from "@/components";
+import { Alert, Breadcrumb, HighlightText, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -21,11 +13,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Can } from "@/features/permissions";
 import { cn } from "@/lib/utils";
 import type { AccountType, ChartOfAccount } from "@/types/accounting";
 import { normalBalanceOf } from "@/types/accounting";
 
+import {
+  compareAccounts,
+  DEFAULT_ACCOUNT_SORT,
+  type AccountSort,
+} from "../accountSort";
 import { useChartOfAccounts } from "../hooks/useChartOfAccounts";
 import {
   ACCOUNT_TYPES,
@@ -33,6 +29,29 @@ import {
   ACCOUNT_TYPE_TONE,
 } from "../labels";
 import { ACCOUNTING_CRUMBS } from "../crumbs";
+import { ChartOfAccountsToolbar } from "./ChartOfAccountsToolbar";
+
+/**
+ * Everything the toolbar and the tile row set between them.
+ *
+ * ONE OBJECT rather than four `useState`s, so the toolbar takes a value and a
+ * patch setter exactly as ProductsToolbar does — and so a control added later
+ * lands in one place instead of three.
+ */
+export interface ChartOfAccountsQuery {
+  search: string;
+  /** "" is "semua tipe" — the unset convention the filter layer uses. */
+  accountType: AccountType | "";
+  showInactive: boolean;
+  sort: AccountSort;
+}
+
+const DEFAULT_QUERY: ChartOfAccountsQuery = {
+  search: "",
+  accountType: "",
+  showInactive: false,
+  sort: DEFAULT_ACCOUNT_SORT,
+};
 
 /**
  * The tenant's chart of accounts, as a tree, read from
@@ -74,10 +93,7 @@ import { ACCOUNTING_CRUMBS } from "../crumbs";
 export function ChartOfAccountsScreen() {
   const { accounts, byId, loading, error, refetch } = useChartOfAccounts();
 
-  const [search, setSearch] = useState("");
-  /** "" is "semua tipe" — the unset convention the filter layer uses. */
-  const [type, setType] = useState<AccountType | "">("");
-  const [showInactive, setShowInactive] = useState(false);
+  const [query, setQuery] = useState<ChartOfAccountsQuery>(DEFAULT_QUERY);
   /**
    * What is folded shut — account ids, plus a `groupKey()` per class. One set
    * rather than two because both answer the same question at render time, and a
@@ -85,11 +101,18 @@ export function ChartOfAccountsScreen() {
    */
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
-  const term = search.trim().toLowerCase();
+  const patchQuery = useCallback(
+    (patch: Partial<ChartOfAccountsQuery>) =>
+      setQuery((prev) => ({ ...prev, ...patch })),
+    [],
+  );
+
+  const term = query.search.trim().toLowerCase();
+  const { accountType: type, showInactive, sort } = query;
 
   const { rows, matchCount, shownCount } = useMemo(
-    () => buildRows({ accounts, byId, term, type, showInactive, collapsed }),
-    [accounts, byId, term, type, showInactive, collapsed],
+    () => buildRows({ accounts, byId, term, type, showInactive, sort, collapsed }),
+    [accounts, byId, term, type, showInactive, sort, collapsed],
   );
 
   const countsByType = useMemo(() => {
@@ -117,84 +140,29 @@ export function ChartOfAccountsScreen() {
         </p>
       </div>
 
-      {error && <Alert variant="error">{error}</Alert>}
-
-      {/*
-        The type lens, as a pill row (docs/ui-rules.md §8): one dimension, five
-        values, applied on click, and carrying the counts that are the reason it
-        is on the page rather than behind a trigger. Nothing in the bar below
-        repeats it — two controls for one dimension is one control too many.
-      */}
-      <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {ACCOUNT_TYPES.map((accountType) => {
-          const selected = type === accountType;
-          return (
-            <button
-              key={accountType}
-              type="button"
-              aria-pressed={selected}
-              onClick={() => setType(selected ? "" : accountType)}
-              className={cn(
-                "rounded-xl border bg-surface px-4 py-3 text-left transition hover:border-primary",
-                "outline-none focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50",
-                selected ? "border-primary" : "border-border",
-              )}
-            >
-              <p className="text-xs font-medium text-muted">
-                {ACCOUNT_TYPE_LABEL[accountType]}
-              </p>
-              <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">
-                {countsByType.get(accountType) ?? 0}
-              </p>
-              <p className="text-xs text-muted">
-                saldo normal{" "}
-                {normalBalanceOf(accountType) === "debit" ? "debit" : "kredit"}
-              </p>
-            </button>
-          );
-        })}
-      </div>
-
-      <FilterBar
-        searchPlacement="leading"
-        search={
-          <FilterSearch
-            value={search}
-            onChange={setSearch}
-            // Names exactly the two fields the search matches — an accountant
-            // looks up "1201" as readily as "Persediaan".
-            placeholder="Cari kode atau nama akun"
-            ariaLabel="Cari akun"
-          />
-        }
-        actions={
-          <>
-            <Button variant="secondary" onClick={refetch} disabled={loading}>
+      {error && (
+        // The retry lives HERE rather than on the toolbar: a chart of accounts
+        // is read once and only changes when somebody edits it, so a standing
+        // reload button would do nothing visible almost every time. A failed
+        // request is the one moment it is worth offering, and it is worth
+        // offering next to the sentence that says what went wrong.
+        <Alert variant="error">
+          <span className="flex flex-wrap items-center gap-3">
+            {error}
+            <Button variant="secondary" size="sm" onClick={refetch}>
               <RotateCcw className="size-4" />
-              Muat ulang
+              Coba lagi
             </Button>
-            {/*
-              Disabled rather than hidden: the create path exists on the API
-              (POST /api/chart-of-accounts) and belongs in this toolbar, so
-              leaving it out would misdescribe the module. The hint below says
-              why it does not respond yet.
-            */}
-            <Can feature="chartOfAccounts" action="create">
-              <Button disabled>
-                <Plus className="size-4" />
-                Tambah akun
-              </Button>
-            </Can>
-          </>
-        }
-        hint="Form tambah akun belum ada di halaman ini — daftar di bawah sudah dibaca langsung dari server."
-      >
-        <FilterToggle
-          label={`Tampilkan nonaktif (${inactiveCount})`}
-          checked={showInactive}
-          onChange={setShowInactive}
-        />
-      </FilterBar>
+          </span>
+        </Alert>
+      )}
+
+      <ChartOfAccountsToolbar
+        query={query}
+        countsByType={countsByType}
+        inactiveCount={inactiveCount}
+        onChange={patchQuery}
+      />
 
       {loading && accounts.length === 0 ? (
         <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
@@ -207,7 +175,7 @@ export function ChartOfAccountsScreen() {
           </p>
           <p className="mt-1 text-sm text-muted">
             {error
-              ? "Coba muat ulang setelah koneksi ke server pulih."
+              ? "Tekan Coba lagi di atas setelah koneksi ke server pulih."
               : "Akun bawaan biasanya dibuat otomatis untuk setiap tenant. Hubungi admin kalau daftar ini tetap kosong."}
           </p>
         </div>
@@ -413,7 +381,7 @@ export function ChartOfAccountsScreen() {
       {accounts.length > 0 && (
         <p className="text-xs text-muted">
           {term
-            ? `${matchCount} akun cocok dengan "${search.trim()}"`
+            ? `${matchCount} akun cocok dengan "${query.search.trim()}"`
             : `${shownCount} akun ditampilkan dari ${accounts.length} akun`}
         </p>
       )}
@@ -464,6 +432,7 @@ function buildRows({
   term,
   type,
   showInactive,
+  sort,
   collapsed,
 }: {
   accounts: ChartOfAccount[];
@@ -471,6 +440,7 @@ function buildRows({
   term: string;
   type: AccountType | "";
   showInactive: boolean;
+  sort: AccountSort;
   collapsed: Set<string>;
 }): { rows: Row[]; matchCount: number; shownCount: number } {
   const matches = accounts.filter((account) => {
@@ -510,6 +480,14 @@ function buildRows({
     siblings.push(account);
     childrenOf.set(parentId, siblings);
   }
+
+  // The ordering lands HERE, on each set of siblings, and nowhere else — see
+  // compareAccounts for why sorting the chart flat would take every sub-account
+  // away from the account it belongs to. Applied even for the default by-code
+  // order, so what is on screen does not depend on the order the server happened
+  // to send.
+  const bySort = compareAccounts(sort);
+  for (const siblings of childrenOf.values()) siblings.sort(bySort);
 
   const rows: Row[] = [];
   let shownCount = 0;
