@@ -55,6 +55,27 @@ export interface ChartOfAccountTreeQuery {
   isActive?: boolean;
 }
 
+/**
+ * The writable half of an account.
+ *
+ * `isDefault` is absent, and cannot be added: the backend's validation layer
+ * strips it, because it is the flag the delete and immutability guards hang off
+ * — a client that could set it (or clear it) could escape them.
+ *
+ * `parentAccountId: null` is a VALUE, not an omission — it is how an account is
+ * moved to the root of the tree. Which is why the update payload is a Partial:
+ * omitting the key leaves the parent alone, and sending null detaches it, and
+ * those are different requests.
+ */
+export interface ChartOfAccountPayload {
+  code: string;
+  name: string;
+  accountType: ChartOfAccount["accountType"];
+  parentAccountId: string | null;
+  /** Defaults to true on the server — for a chart imported ahead of go-live. */
+  isActive?: boolean;
+}
+
 export const chartOfAccountsService = {
   /**
    * GET /chart-of-accounts — paginated, searchable, filterable by class.
@@ -106,4 +127,29 @@ export const chartOfAccountsService = {
   /** GET /chart-of-accounts/:id — a single account. */
   getById: (id: string) =>
     apiClient.get<ChartOfAccount>(`/chart-of-accounts/${id}`),
+
+  /**
+   * POST /chart-of-accounts — a new account, always `isDefault: false`.
+   *
+   * The refusals worth handling at the call site: 409 when the code is taken,
+   * and 400 for each structural rule on the parent — unknown, a different
+   * class, or already at the maximum depth.
+   */
+  create: (payload: ChartOfAccountPayload) =>
+    apiClient.post<ChartOfAccount>("/chart-of-accounts", payload),
+
+  /**
+   * PATCH /chart-of-accounts/:id — send only what changed.
+   *
+   * AN EMPTY BODY IS A 400, not a no-op: the server treats a request that
+   * changes nothing as a client bug. Callers compare against the current values
+   * and skip the request entirely when nothing moved.
+   *
+   * On a SEEDED account (`isDefault`), `code` and `accountType` come back 403 —
+   * every posting resolves its target by code, so renumbering 1201 would
+   * silently redirect every inventory entry in the tenant. `name`, `isActive`
+   * and the parent stay editable.
+   */
+  update: (id: string, payload: Partial<ChartOfAccountPayload>) =>
+    apiClient.patch<ChartOfAccount>(`/chart-of-accounts/${id}`, payload),
 };

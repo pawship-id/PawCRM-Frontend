@@ -12,6 +12,10 @@
  * came from.
  */
 export { AccountingHub } from "./components/AccountingHub";
+export {
+  ChartOfAccountCreateForm,
+  ChartOfAccountEditForm,
+} from "./components/ChartOfAccountForm";
 export { ChartOfAccountsScreen } from "./components/ChartOfAccountsScreen";
 export { JournalEntriesScreen } from "./components/JournalEntriesScreen";
 export { JournalEntryDetail } from "./components/JournalEntryDetail";

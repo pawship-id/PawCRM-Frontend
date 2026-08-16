@@ -1,10 +1,24 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, RotateCcw } from "lucide-react";
+import Link from "next/link";
+import {
+  ChevronDown,
+  ChevronRight,
+  EllipsisVertical,
+  Pencil,
+  RotateCcw,
+} from "lucide-react";
 
 import { Alert, Breadcrumb, HighlightText, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Can, usePermissions } from "@/features/permissions";
 import {
   Table,
   TableBody,
@@ -100,6 +114,7 @@ export function ChartOfAccountsScreen() {
    * class key ("tipe:asset") cannot collide with a 24-character ObjectId.
    */
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const { can } = usePermissions();
 
   const patchQuery = useCallback(
     (patch: Partial<ChartOfAccountsQuery>) =>
@@ -124,6 +139,11 @@ export function ChartOfAccountsScreen() {
   }, [accounts]);
 
   const inactiveCount = accounts.filter((account) => !account.isActive).length;
+
+  // The column exists only when somebody could act in it — a read-only role
+  // gets no empty column, the same per-row reasoning CategoriesTable applies.
+  const showActions = can("chartOfAccounts", "update");
+  const columnCount = showActions ? 7 : 6;
 
   return (
     <div className="flex flex-col gap-6">
@@ -190,12 +210,16 @@ export function ChartOfAccountsScreen() {
                 <TableHead>Saldo normal</TableHead>
                 <TableHead>Sumber</TableHead>
                 <TableHead>Status</TableHead>
+                {showActions && <TableHead className="text-right">Aksi</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="px-4 py-16 text-center">
+                  <TableCell
+                    colSpan={columnCount}
+                    className="px-4 py-16 text-center"
+                  >
                     <p className="font-medium text-foreground">
                       Tidak ada akun yang cocok
                     </p>
@@ -230,7 +254,7 @@ export function ChartOfAccountsScreen() {
                       key={key}
                       className="hover:bg-transparent has-aria-expanded:bg-transparent"
                     >
-                      <TableCell colSpan={6} className="px-4 py-2">
+                      <TableCell colSpan={columnCount} className="px-4 py-2">
                         <div className="flex items-center gap-1.5">
                           <button
                             type="button"
@@ -370,6 +394,50 @@ export function ChartOfAccountsScreen() {
                         </span>
                       )}
                     </TableCell>
+                    {showActions && (
+                      <TableCell className="px-4 py-2.5">
+                        <div className="flex justify-end">
+                          {/*
+                            The same kebab every other list uses — SuppliersTable
+                            and CategoriesTable — so a row means the same thing
+                            wherever it is read. It holds one item today: Edit.
+                            Deleting an account is refused for every seeded one
+                            and for any account a live journal line still points
+                            at, so what people actually want is to retire it,
+                            which is the Aktif switch inside the form.
+
+                            The trigger's icon carries no name of its own, so the
+                            label says which row this menu belongs to — twenty
+                            identical "Aksi" buttons tell a screen-reader user
+                            nothing.
+                          */}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                aria-label={`Aksi untuk ${account.code} ${account.name}`}
+                              >
+                                <EllipsisVertical className="size-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+
+                            <DropdownMenuContent>
+                              <Can feature="chartOfAccounts" action="update">
+                                <DropdownMenuItem asChild>
+                                  <Link
+                                    href={`${ACCOUNTING_CRUMBS.accounts.href}/${account._id}/edit`}
+                                  >
+                                    <Pencil />
+                                    Edit
+                                  </Link>
+                                </DropdownMenuItem>
+                              </Can>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
                 );
               })}
@@ -385,6 +453,7 @@ export function ChartOfAccountsScreen() {
             : `${shownCount} akun ditampilkan dari ${accounts.length} akun`}
         </p>
       )}
+
     </div>
   );
 }

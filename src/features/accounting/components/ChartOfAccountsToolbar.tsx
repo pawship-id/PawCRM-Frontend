@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { ListFilter, Plus } from "lucide-react";
 
 import {
@@ -22,6 +23,7 @@ import {
   type AccountSort,
 } from "../accountSort";
 import { ACCOUNT_TYPES, ACCOUNT_TYPE_LABEL } from "../labels";
+import { ACCOUNTING_CRUMBS } from "../crumbs";
 import type { ChartOfAccountsQuery } from "./ChartOfAccountsScreen";
 
 /**
@@ -128,18 +130,15 @@ export function ChartOfAccountsToolbar({
         // that does nothing visible almost every time it is pressed. The one
         // case that genuinely needs it — a request that failed — carries its
         // own retry, on the error banner where the problem is stated.
-        //
-        // Disabled rather than hidden: the create path exists on the API
-        // (POST /api/chart-of-accounts) and belongs in this toolbar, so
-        // leaving it out would misdescribe the module.
         <Can feature="chartOfAccounts" action="create">
-          <Button disabled>
-            <Plus className="size-4" />
-            Tambah akun
+          <Button asChild>
+            <Link href={`${ACCOUNTING_CRUMBS.accounts.href}/new`}>
+              <Plus className="size-4" />
+              Tambah akun
+            </Link>
           </Button>
         </Can>
       }
-      hint="Form tambah akun belum ada di halaman ini — daftar di bawah sudah dibaca langsung dari server."
     >
       <AccountFilterPanel
         applied={{

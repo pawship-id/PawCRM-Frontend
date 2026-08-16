@@ -3,6 +3,8 @@ import userEvent from "@testing-library/user-event";
 
 import { renderWithAuth } from "./helpers/renderWithAuth";
 import {
+  ChartOfAccountCreateForm,
+  ChartOfAccountEditForm,
   ChartOfAccountsScreen,
   JournalEntriesScreen,
   JournalEntryDetail,
@@ -11,6 +13,21 @@ import { DUMMY_ENTRIES } from "@/features/accounting/data/dummy";
 import { ApiError } from "@/services/api-error";
 import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
 import type { AccountType, ChartOfAccountNode } from "@/types/accounting";
+
+// The form toasts on success; mock the library so no real dialog is created.
+jest.mock("sweetalert2", () => ({
+  __esModule: true,
+  default: { fire: jest.fn().mockResolvedValue({ isConfirmed: true }) },
+}));
+
+// The form navigates back to the list once a save lands, which is the half of
+// "it worked" that the dialog never had to do.
+const push = jest.fn();
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: (href: string) => push(href) }),
+}));
+
+beforeEach(() => push.mockClear());
 
 /**
  * Mount tests for the accounting screens.
@@ -106,6 +123,20 @@ async function openFilters() {
 /** Commits the panel's draft, which is what a panel's fields wait for. */
 async function applyFilters() {
   await userEvent.click(screen.getByRole("button", { name: "Terapkan" }));
+}
+
+/** Mounts the create form and waits for the chart its parent picker needs. */
+async function renderCreateForm(roots?: ChartOfAccountNode[]) {
+  mockTree(roots);
+  renderWithAuth(<ChartOfAccountCreateForm />);
+  await screen.findByLabelText(/Kode akun/);
+}
+
+/** Mounts the edit form for one account and waits for it to be seeded. */
+async function renderEditForm(accountId: string, roots?: ChartOfAccountNode[]) {
+  mockTree(roots);
+  renderWithAuth(<ChartOfAccountEditForm accountId={accountId} />);
+  await screen.findByLabelText(/Kode akun/);
 }
 
 describe("ChartOfAccountsScreen", () => {
@@ -309,6 +340,19 @@ describe("ChartOfAccountsScreen", () => {
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
+  it("opens the edit page from the row's kebab", async () => {
+    await renderChart();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Aksi untuk 1101 Kas" }),
+    );
+
+    expect(within(screen.getByRole("menu")).getByRole("menuitem")).toHaveAttribute(
+      "href",
+      "/dashboard/keuangan/chart-of-accounts/1101/edit",
+    );
+  });
+
   it("retries from the error banner, which is the only place that offers one", async () => {
     const tree = jest
       .spyOn(chartOfAccountsService, "tree")
@@ -324,6 +368,117 @@ describe("ChartOfAccountsScreen", () => {
     expect(await screen.findByRole("table")).toBeInTheDocument();
     // The banner goes with the failure that put it there.
     expect(screen.queryByText("Server sedang sibuk")).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * The create/edit form.
+ *
+ * What is pinned here is the half of the form that mirrors a SERVER rule, since
+ * that is the half that silently rots when the backend moves: which fields a
+ * seeded account may not change, which parents may be offered, that a patch
+ * carries only what moved, and that a taken code lands on the field rather than
+ * in a banner.
+ */
+describe("ChartOfAccountForm", () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it("creates an account from what was typed, uppercasing the code", async () => {
+    await renderCreateForm();
+    const create = jest
+      .spyOn(chartOfAccountsService, "create")
+      .mockResolvedValue({} as never);
+
+    await userEvent.type(screen.getByLabelText(/Kode akun/), "1102a");
+    await userEvent.type(screen.getByLabelText(/Nama akun/), "Bank BCA");
+    await userEvent.click(screen.getByRole("button", { name: "Buat akun" }));
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith({
+        code: "1102A",
+        name: "Bank BCA",
+        accountType: "asset",
+        parentAccountId: null,
+      }),
+    );
+    // Back to the list once it lands — the page's job, where the dialog used to
+    // just close itself.
+    expect(push).toHaveBeenCalledWith("/dashboard/keuangan/chart-of-accounts");
+  });
+
+  it("puts a taken code on the field, not in a banner", async () => {
+    await renderCreateForm();
+    jest
+      .spyOn(chartOfAccountsService, "create")
+      .mockRejectedValue(new ApiError("Account code '1101' already exists", 409));
+
+    await userEvent.type(screen.getByLabelText(/Kode akun/), "1101");
+    await userEvent.type(screen.getByLabelText(/Nama akun/), "Kas Kecil");
+    await userEvent.click(screen.getByRole("button", { name: "Buat akun" }));
+
+    expect(
+      await screen.findByText(/sudah dipakai akun lain/),
+    ).toBeInTheDocument();
+    // And the user stays on the form, with what they typed still in it.
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("freezes the code and the type of a seeded account", async () => {
+    await renderEditForm("1101");
+
+    // The two fields every posting resolves against — the server answers 403.
+    expect(screen.getByLabelText(/Kode akun/)).toBeDisabled();
+    expect(screen.getByLabelText("Tipe akun")).toBeDisabled();
+    // The name is still editable, because relabelling moves no money.
+    expect(screen.getByLabelText(/Nama akun/)).toBeEnabled();
+    expect(screen.getByText(/kodenya dipakai modul lain/)).toBeInTheDocument();
+  });
+
+  it("freezes only the type of an account that has sub-accounts", async () => {
+    await renderEditForm("1100");
+
+    expect(screen.getByLabelText(/Kode akun/)).toBeEnabled();
+    expect(screen.getByLabelText("Tipe akun")).toBeDisabled();
+    expect(screen.getByText(/punya sub-akun/)).toBeInTheDocument();
+  });
+
+  it("sends only what moved, because an empty patch is a 400", async () => {
+    await renderEditForm("1101");
+    const update = jest
+      .spyOn(chartOfAccountsService, "update")
+      .mockResolvedValue({} as never);
+
+    const name = screen.getByLabelText(/Nama akun/);
+    await userEvent.clear(name);
+    await userEvent.type(name, "Kas Besar");
+    await userEvent.click(screen.getByRole("button", { name: "Simpan" }));
+
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith("1101", { name: "Kas Besar" }),
+    );
+  });
+
+  it("offers only parents the server would accept", async () => {
+    await renderEditForm("1100");
+
+    await userEvent.click(screen.getByLabelText("Induk akun"));
+    const options = screen.getAllByRole("option").map((o) => o.textContent ?? "");
+
+    // The asset root is a legal parent…
+    expect(options.some((text) => text.includes("1000"))).toBe(true);
+    // …itself is not, nor its own child (either would detach the branch)…
+    expect(options.some((text) => text.includes("1100"))).toBe(false);
+    expect(options.some((text) => text.includes("1101"))).toBe(false);
+    // …and neither is an account of another class.
+    expect(options.some((text) => text.includes("2000"))).toBe(false);
+  });
+
+  it("explains an id that is not in the chart instead of rendering a blank form", async () => {
+    mockTree();
+    renderWithAuth(<ChartOfAccountEditForm accountId="tidak-ada" />);
+
+    expect(await screen.findByText("Akun tidak ditemukan")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Kode akun/)).not.toBeInTheDocument();
   });
 });
 
