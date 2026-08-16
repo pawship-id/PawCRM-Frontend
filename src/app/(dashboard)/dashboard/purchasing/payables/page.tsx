@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { PayablesScreen } from "@/features/purchasing";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Utang Supplier · Buloo" };
+export const metadata: Metadata = { title: "Faktur Pembelian · Buloo" };
 
 /**
  * The nav already hides this entry from a role without `purchaseInvoices:read`;

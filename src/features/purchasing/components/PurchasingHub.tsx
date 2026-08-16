@@ -41,7 +41,7 @@ const SECTIONS: Array<{
   },
   {
     href: "/dashboard/purchasing/payables",
-    title: "Utang Supplier",
+    title: "Faktur Pembelian",
     description:
       "Faktur dari penerimaan beli putus, pembayaran, dan sisa yang belum lunas.",
     feature: "purchaseInvoices",
@@ -87,7 +87,7 @@ const SECTIONS: Array<{
  * "20 retur" forever.
  *
  * EACH CARD IS GATED ON ITS OWN GRANT and the two lists on `purchaseInvoices`,
- * matching the sidebar exactly — a user whose menu has no Utang Supplier link
+ * matching the sidebar exactly — a user whose menu has no Faktur Pembelian link
  * must not land on a page that opens with their supplier debt. Both hooks are
  * handed those same answers so a denied role issues no requests at all.
  */

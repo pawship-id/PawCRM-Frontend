@@ -123,7 +123,7 @@ describe("filterNavItems", () => {
       "Ringkasan",
       "Supplier",
       "Penerimaan Barang",
-      "Utang Supplier",
+      "Faktur Pembelian",
       "Retur ke Supplier",
     ]);
   });

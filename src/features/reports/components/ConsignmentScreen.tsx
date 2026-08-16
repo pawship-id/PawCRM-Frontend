@@ -100,7 +100,7 @@ export function ConsignmentScreen() {
             href="/dashboard/purchasing/payables"
             className="underline underline-offset-2"
           >
-            Utang Supplier
+            Faktur Pembelian
           </Link>
           . Jangan dijumlahkan dengan halaman itu.
         </p>

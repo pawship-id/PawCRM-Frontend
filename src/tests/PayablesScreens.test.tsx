@@ -35,7 +35,7 @@ jest.mock("next/navigation", () => ({
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
 
 /**
- * The Utang Supplier screens, against mocked services.
+ * The Faktur Pembelian screens, against mocked services.
  *
  * WHAT THESE TESTS GUARD. These screens replaced a prototype that computed the
  * outstanding balance, the overdue flag and the running total in the browser, and
@@ -971,7 +971,7 @@ describe("PurchasingHub payables panels", () => {
 
     await screen.findByText("Supplier");
 
-    expect(screen.queryByText("Utang Supplier")).not.toBeInTheDocument();
+    expect(screen.queryByText("Faktur Pembelian")).not.toBeInTheDocument();
     expect(screen.queryByText("Lewat jatuh tempo")).not.toBeInTheDocument();
     expect(purchaseInvoiceService.list).not.toHaveBeenCalled();
     expect(purchaseInvoiceService.outstandingSummary).not.toHaveBeenCalled();

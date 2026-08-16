@@ -218,7 +218,7 @@ export function usePurchaseInvoices(
         setError(
           err instanceof ApiError
             ? err.fullMessage
-            : "Gagal memuat data utang supplier. Coba lagi.",
+            : "Gagal memuat data faktur pembelian. Coba lagi.",
         );
       })
       .finally(() => {

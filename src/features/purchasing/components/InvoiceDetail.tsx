@@ -89,7 +89,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
         </p>
         <Button variant="secondary" asChild>
           <Link href="/dashboard/purchasing/payables">
-            ← Semua utang supplier
+            ← Semua faktur pembelian
           </Link>
         </Button>
       </div>
@@ -312,7 +312,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
       <div>
         <Button variant="ghost" asChild>
           <Link href="/dashboard/purchasing/payables">
-            ← Semua utang supplier
+            ← Semua faktur pembelian
           </Link>
         </Button>
       </div>

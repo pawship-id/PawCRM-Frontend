@@ -348,7 +348,7 @@ describe("ConsignmentScreen", () => {
 
     expect(await screen.findByText(/bukan utang/i)).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: /utang supplier/i }),
+      screen.getByRole("link", { name: /faktur pembelian/i }),
     ).toBeInTheDocument();
   });
 

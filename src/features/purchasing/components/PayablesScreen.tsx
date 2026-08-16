@@ -74,8 +74,8 @@ export function PayablesScreen() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <PageHeading
-          crumbs={[PURCHASING_CRUMBS.hub, { label: "Utang Supplier" }]}
-          title="Utang Supplier"
+          crumbs={[PURCHASING_CRUMBS.hub, { label: "Faktur Pembelian" }]}
+          title="Faktur Pembelian"
         >
           Utang tercatat otomatis saat penerimaan beli putus diposting. Faktur
           dari supplier dicatat terpisah — itu yang membawa nomor tagihan dan
@@ -144,7 +144,7 @@ export function PayablesScreen() {
 
       {loading && invoices.length === 0 ? (
         <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
-          <Spinner /> Memuat data utang supplier…
+          <Spinner /> Memuat data faktur pembelian…
         </div>
       ) : (
         <>
