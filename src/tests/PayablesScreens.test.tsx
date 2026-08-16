@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { UserEvent } from "@testing-library/user-event";
 
 import {
   FileInvoiceForm,
@@ -59,6 +60,20 @@ jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
  */
 const asMock = <T extends (...args: never[]) => unknown>(fn: T) =>
   fn as jest.MockedFunction<T>;
+
+/**
+ * Opens the one filter panel and returns it.
+ *
+ * Supplier, the date range and the ordering all live inside it, so each of those
+ * assertions starts here — which is also the cheapest way to notice if the
+ * button ever stops being reachable. The trigger's text carries a count
+ * (`Filter (2)`); its accessible name does not, so it is found by the stable
+ * half. The VIEW pills are deliberately not in here — they sit outside the bar.
+ */
+async function openFilters(user: UserEvent) {
+  await user.click(screen.getByRole("button", { name: "Filter" }));
+  return screen.findByRole("dialog");
+}
 
 const INVOICE_ID = "inv1";
 const RECEIPT_ID = "gr1";
@@ -308,6 +323,86 @@ describe("PayablesScreen", () => {
       const calls = asMock(purchaseInvoiceService.list).mock.calls;
       expect(calls[calls.length - 1][0]).toMatchObject({ overdue: true });
     });
+  });
+
+  /**
+   * The lens narrows; the ordering arranges. "Overdue, latest deadline first"
+   * is an ordinary question, so the two controls must compose rather than one
+   * reaching into the other.
+   */
+  it("orders by deadline without disturbing the view", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PayablesScreen />);
+
+    await waitFor(() => expect(purchaseInvoiceService.list).toHaveBeenCalled());
+    await user.click(screen.getByRole("button", { name: "Jatuh tempo" }));
+
+    const panel = await openFilters(user);
+    await user.click(within(panel).getByLabelText("Urutkan"));
+    await user.click(
+      await screen.findByRole("option", { name: "Jatuh tempo terdekat" }),
+    );
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+    await waitFor(() => {
+      const calls = asMock(purchaseInvoiceService.list).mock.calls;
+      expect(calls[calls.length - 1][0]).toMatchObject({
+        overdue: true,
+        sort: "dueSoonest",
+      });
+    });
+  });
+
+  /**
+   * THE LENS IS NOT IN THE PANEL, and Reset must not reach it. Reset clears what
+   * the panel holds; the view is a row of pills outside it that somebody set on
+   * purpose, and throwing the screen back to "Belum lunas" would undo a choice
+   * the button does not appear to be about.
+   */
+  it("leaves the view alone when the panel is reset", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PayablesScreen />);
+
+    await waitFor(() => expect(purchaseInvoiceService.list).toHaveBeenCalled());
+    await user.click(screen.getByRole("button", { name: "Lunas" }));
+
+    const panel = await openFilters(user);
+    await user.click(within(panel).getByRole("button", { name: "Reset" }));
+
+    await waitFor(() => {
+      const calls = asMock(purchaseInvoiceService.list).mock.calls;
+      expect(calls[calls.length - 1][0]).toMatchObject({ status: "paid" });
+    });
+    expect(screen.getByRole("button", { name: "Lunas" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  /**
+   * The ordering is not counted in the trigger's badge, and neither is the view
+   * — that one narrows the list but is never hidden, so a number covering it
+   * would double-count the one filter that needs no announcing.
+   */
+  it("counts neither the ordering nor the view in the filter badge", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PayablesScreen />);
+
+    await waitFor(() => expect(purchaseInvoiceService.list).toHaveBeenCalled());
+    await user.click(screen.getByRole("button", { name: "Jatuh tempo" }));
+
+    const panel = await openFilters(user);
+    await user.click(within(panel).getByLabelText("Urutkan"));
+    await user.click(await screen.findByRole("option", { name: "Terlama" }));
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+    await waitFor(() => {
+      const calls = asMock(purchaseInvoiceService.list).mock.calls;
+      expect(calls[calls.length - 1][0]).toMatchObject({ sort: "oldest" });
+    });
+    expect(screen.getByRole("button", { name: "Filter" })).not.toHaveTextContent(
+      "(",
+    );
   });
 
   /**

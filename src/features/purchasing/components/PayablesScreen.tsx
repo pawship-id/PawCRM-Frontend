@@ -82,14 +82,22 @@ export function PayablesScreen() {
           tanggal jatuh temponya. Pembayaran boleh dicicil sampai lunas.
         </PageHeading>
 
-        <div className="text-right">
-          <p className="text-[10px] font-medium tracking-widest text-muted uppercase">
-            Total sisa utang
-          </p>
-          <p className="tabular-nums text-lg font-semibold">
-            {summary === null ? "—" : formatMoney(summary.totalOutstanding)}
-          </p>
-          <p className="text-[10px] text-muted">
+        {/* Wide: a right-aligned figure beside the heading. Phone: the two have
+            wrapped onto separate lines, and a shrink-to-fit box sitting at the
+            left edge of an empty row reads as a stray caption — so it takes the
+            whole width and puts the label and the number at opposite ends of
+            one line, which is how a total is read everywhere else. The
+            qualifier stays under both, where it belongs to the pair. */}
+        <div className="max-sm:w-full sm:text-right">
+          <div className="flex items-baseline gap-3 max-sm:justify-between sm:block">
+            <p className="text-xs font-medium tracking-wide text-muted uppercase">
+              Total sisa utang
+            </p>
+            <p className="text-lg font-semibold tabular-nums">
+              {summary === null ? "—" : formatMoney(summary.totalOutstanding)}
+            </p>
+          </div>
+          <p className="text-xs text-muted">
             {summary === null
               ? "seluruh supplier"
               : `${summary.totalInvoices} faktur belum lunas`}
@@ -108,7 +116,7 @@ export function PayablesScreen() {
       )}
 
       {dueSoonCount > 0 && summary && (
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 rounded-lg border border-border bg-accent px-4 py-3 text-sm">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 rounded-lg border border-border bg-surface-hover px-4 py-3 text-sm">
           <span>
             <b>
               {dueSoonCount} faktur jatuh tempo dalam {summary.horizonDays} hari

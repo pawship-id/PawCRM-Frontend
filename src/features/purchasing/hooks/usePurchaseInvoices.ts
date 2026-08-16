@@ -9,6 +9,7 @@ import type {
   PageResult,
   PurchaseInvoiceListQuery,
   PurchaseInvoiceListRow,
+  PurchaseInvoiceSort,
 } from "@/types/api";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 
@@ -52,6 +53,17 @@ export interface PurchaseInvoicesQuery {
   /** `yyyy-mm-dd`, as the date inputs hold them. "" = unbounded. */
   dateFrom: string;
   dateTo: string;
+  /**
+   * Which ordering the list is paged through in. Always set — a list with no
+   * ordering is not a thing — so it has no "" and Reset returns it to the
+   * default rather than clearing it.
+   *
+   * INDEPENDENT OF `view`. The lens decides WHICH bills are on the page and the
+   * ordering decides what the top of it is; "Jatuh tempo" with "Terlama" is a
+   * perfectly ordinary question (the oldest late bills), so neither control may
+   * quietly reach into the other.
+   */
+  sort: PurchaseInvoiceSort;
 }
 
 const PAGE_SIZE = 20;
@@ -66,6 +78,11 @@ const DEFAULT_QUERY: PurchaseInvoicesQuery = {
   view: "outstanding",
   dateFrom: "",
   dateTo: "",
+  // NEWEST BILL FIRST, matching the endpoint's own default rather than
+  // second-guessing it. Urgency is what the `overdue` / `dueSoon` views are
+  // for; somebody who wants the book ordered by deadline picks "Jatuh tempo
+  // terdekat", and that is one click away.
+  sort: "newest",
 };
 
 /** Empty page so consumers can render a table shell before the first load. */
@@ -184,6 +201,7 @@ export function usePurchaseInvoices(
       supplierId: settled.supplierId || undefined,
       dateFrom: orUndefined(settled.dateFrom),
       dateTo: orUndefined(settled.dateTo),
+      sort: settled.sort,
       ...viewFilters(settled.view),
     };
 

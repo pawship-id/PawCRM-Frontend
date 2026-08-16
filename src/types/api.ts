@@ -1358,7 +1358,33 @@ export interface PurchaseInvoiceListQuery {
    * they computed, not a date a human typed.
    */
   dueBefore?: string;
+  /**
+   * Which ordering to page through. A NAME, not a field plus a direction — the
+   * API accepts a closed list, so a client cannot ask for an ordering with no
+   * index behind it. Omitted means `newest`, which is what the API defaults to
+   * anyway.
+   */
+  sort?: PurchaseInvoiceSort;
 }
+
+/**
+ * The orderings `GET /api/purchase-invoices` accepts — PURCHASE_INVOICE_SORTS in
+ * the model.
+ *
+ * TWO DATE AXES, which is why this is not the usual newest/oldest pair.
+ * `newest` / `oldest` key on `invoiceDate` — the day the supplier issued the
+ * bill. `dueSoonest` / `dueLatest` key on `dueDate` — the day we have to pay,
+ * which is the question a payables screen exists for.
+ *
+ * Named after the axis rather than a direction, matching the batch list's
+ * `expirySoonest`: on a date that means a deadline, "ascending" is not what
+ * anybody calls it.
+ */
+export type PurchaseInvoiceSort =
+  | "newest"
+  | "oldest"
+  | "dueSoonest"
+  | "dueLatest";
 
 /**
  * POST /api/purchase-invoices — file the supplier's bill against a delivery.

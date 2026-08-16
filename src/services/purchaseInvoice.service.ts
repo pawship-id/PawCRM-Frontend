@@ -60,6 +60,7 @@ export const purchaseInvoiceService = {
         dateFrom: query.dateFrom,
         dateTo: query.dateTo,
         dueBefore: query.dueBefore,
+        sort: query.sort,
       },
     }),
 
