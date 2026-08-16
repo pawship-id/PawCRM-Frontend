@@ -1528,7 +1528,29 @@ export interface PurchaseReturnListQuery {
   /** ISO dates bounding `returnDate` — the day the goods went back. */
   dateFrom?: string;
   dateTo?: string;
+  /**
+   * Which ordering to page through. A NAME, not a field plus a direction — the
+   * API accepts a closed list, so a client cannot ask for an ordering with no
+   * index behind it. Omitted means `newest`, which is what the API defaults to
+   * anyway.
+   */
+  sort?: PurchaseReturnSort;
 }
+
+/**
+ * The orderings `GET /api/purchase-returns` accepts — PURCHASE_RETURN_SORTS in
+ * the model.
+ *
+ * `newest` / `oldest` key on `returnDate`, the day the goods physically went
+ * back, never the day the row was typed. The number orderings walk a sequence —
+ * the return number is ours, sequential, and what the supplier quotes on their
+ * credit note. There is no ordering by value or by status; see the model.
+ */
+export type PurchaseReturnSort =
+  | "newest"
+  | "oldest"
+  | "numberDesc"
+  | "numberAsc";
 
 /** One line going back, as a client sends it. Three fields, and that is the design. */
 export interface PurchaseReturnItemInput {

@@ -60,6 +60,7 @@ export const purchaseReturnService = {
         status: query.status,
         dateFrom: query.dateFrom,
         dateTo: query.dateTo,
+        sort: query.sort,
       },
     }),
 

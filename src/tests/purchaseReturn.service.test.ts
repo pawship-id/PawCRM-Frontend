@@ -1,5 +1,6 @@
 import { purchaseReturnService } from "@/services/purchaseReturn.service";
 import { apiClient } from "@/services/api-client";
+import type { PurchaseReturnListQuery } from "@/types/api";
 
 /**
  * The purchase-return module's HTTP contract: paths, verbs and query shapes.
@@ -13,38 +14,65 @@ import { apiClient } from "@/services/api-client";
  * a write by accident and end up with two ways to return goods. The screens are
  * converted; the writes are the point now.
  */
+/**
+ * Every filter `PurchaseReturnListQuery` carries, each with a value that is not
+ * `undefined` — so a key the service forgets to forward reads as missing.
+ *
+ * `Required<…>` IS THE POINT. `list` spells its query out as an object literal,
+ * one key at a time, and anything absent from that literal is dropped in
+ * silence — which is how `sort` reached the catalogue and the supplier list
+ * without ever reaching the wire (see product.service.test.ts and
+ * supplier.service.test.ts). A screen test cannot catch it because it mocks the
+ * service.
+ *
+ * With this type, adding a field to `PurchaseReturnListQuery` breaks THIS OBJECT
+ * at compile time until it is listed here, and then breaks the assertion below
+ * until `list` actually sends it.
+ */
+const EVERY_FILTER: Required<PurchaseReturnListQuery> = {
+  page: 2,
+  limit: 20,
+  search: "PR-2608",
+  supplierId: "s1",
+  warehouseId: "wh1",
+  originalReceiptId: "gr1",
+  status: "draft",
+  dateFrom: "2026-08-01",
+  dateTo: "2026-08-31",
+  sort: "numberAsc",
+};
+
 describe("purchaseReturnService", () => {
   afterEach(() => jest.restoreAllMocks());
 
   describe("list", () => {
-    it("forwards every supported filter", async () => {
+    it("forwards every filter it is given — nothing is dropped on the way out", async () => {
       const get = jest.spyOn(apiClient, "get").mockResolvedValue({} as never);
 
-      await purchaseReturnService.list({
-        page: 2,
-        limit: 20,
-        search: "PR-2608",
-        supplierId: "s1",
-        warehouseId: "wh1",
-        originalReceiptId: "gr1",
-        status: "draft",
-        dateFrom: "2026-08-01",
-        dateTo: "2026-08-31",
-      });
+      await purchaseReturnService.list(EVERY_FILTER);
 
-      expect(get).toHaveBeenCalledWith("/purchase-returns", {
-        query: {
-          page: 2,
-          limit: 20,
-          search: "PR-2608",
-          supplierId: "s1",
-          warehouseId: "wh1",
-          originalReceiptId: "gr1",
-          status: "draft",
-          dateFrom: "2026-08-01",
-          dateTo: "2026-08-31",
-        },
-      });
+      const [path, options] = get.mock.calls[0] as [
+        string,
+        { query: Record<string, unknown> },
+      ];
+      expect(path).toBe("/purchase-returns");
+
+      for (const [key, value] of Object.entries(EVERY_FILTER)) {
+        expect(options.query[key]).toBe(value);
+      }
+    });
+
+    it("sends the ordering the caller asked for", async () => {
+      const get = jest.spyOn(apiClient, "get").mockResolvedValue({} as never);
+
+      await purchaseReturnService.list({ sort: "numberDesc" });
+
+      expect(get).toHaveBeenCalledWith(
+        "/purchase-returns",
+        expect.objectContaining({
+          query: expect.objectContaining({ sort: "numberDesc" }),
+        }),
+      );
     });
 
     /** How a goods-receipt screen answers "has this already been sent back?". */

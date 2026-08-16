@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { UserEvent } from "@testing-library/user-event";
 
 import {
   PurchaseReturnDetail,
@@ -69,6 +70,20 @@ jest.mock("next/navigation", () => ({
  * behaviour — including the `beli_putus`-only rule these screens no longer have —
  * is still covered where it belongs, in purchasingStore.test.ts.
  */
+/**
+ * Opens the one filter panel and returns it.
+ *
+ * Supplier, warehouse, status, the date range and the ordering all live inside
+ * it, so each of those assertions starts here — which is also the cheapest way
+ * to notice if the button ever stops being reachable. The trigger's text carries
+ * a count (`Filter (2)`); its accessible name does not, so it is found by the
+ * stable half.
+ */
+async function openFilters(user: UserEvent) {
+  await user.click(screen.getByRole("button", { name: "Filter" }));
+  return screen.findByRole("dialog");
+}
+
 const asMock = <T extends (...args: never[]) => unknown>(fn: T) =>
   fn as jest.MockedFunction<T>;
 
@@ -328,6 +343,66 @@ describe("PurchaseReturnsScreen", () => {
 
     await screen.findByText("PR-2");
     expect(screen.queryByRole("button", { name: "Buang" })).toBeNull();
+  });
+
+  it("orders by the number sequence when the panel asks for it", async () => {
+    const user = userEvent.setup();
+    asMock(purchaseReturnService.list).mockResolvedValue(
+      page([listRow()]) as never,
+    );
+
+    renderWithAuth(<PurchaseReturnsScreen />);
+    await screen.findByText("PR-260807-001");
+
+    const panel = await openFilters(user);
+    await user.click(within(panel).getByLabelText("Urutkan"));
+    await user.click(await screen.findByRole("option", { name: "Nomor A–Z" }));
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+    await waitFor(() => {
+      const calls = asMock(purchaseReturnService.list).mock.calls;
+      expect(calls[calls.length - 1][0]).toMatchObject({ sort: "numberAsc" });
+    });
+  });
+
+  /**
+   * The ordering is not counted in the trigger's badge — every list has one, so
+   * it is never "on", and a badge reading `Filter (1)` over an unnarrowed list
+   * would train people to ignore the number. A real filter beside it must still
+   * count, which is the other half of the assertion.
+   */
+  it("counts the status filter but not the ordering", async () => {
+    const user = userEvent.setup();
+    asMock(purchaseReturnService.list).mockResolvedValue(
+      page([listRow()]) as never,
+    );
+
+    renderWithAuth(<PurchaseReturnsScreen />);
+    await screen.findByText("PR-260807-001");
+
+    const panel = await openFilters(user);
+    await user.click(within(panel).getByLabelText("Urutkan"));
+    await user.click(await screen.findByRole("option", { name: "Terlama" }));
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+    await waitFor(() => {
+      const calls = asMock(purchaseReturnService.list).mock.calls;
+      expect(calls[calls.length - 1][0]).toMatchObject({ sort: "oldest" });
+    });
+    expect(
+      screen.getByRole("button", { name: "Filter" }),
+    ).not.toHaveTextContent("(");
+
+    const reopened = await openFilters(user);
+    await user.click(within(reopened).getByLabelText("Filter status"));
+    await user.click(await screen.findByRole("option", { name: "Draft" }));
+    await user.click(within(reopened).getByRole("button", { name: "Terapkan" }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Filter" }),
+      ).toHaveTextContent("Filter (1)"),
+    );
   });
 
   it("discards a draft only after confirmation, then reloads the list", async () => {
