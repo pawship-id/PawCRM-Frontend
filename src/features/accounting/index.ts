@@ -6,12 +6,37 @@
  * ledger with its per-entry detail.
  *
  * ChartOfAccountsScreen reads the API: GET /chart-of-accounts/tree, behind
- * `useChartOfAccounts`. The ledger screens and the hub still read the fixtures
- * in ./data/dummy and move behind a hook of their own when /api/journal-entries
- * is wired up — the components take plain data and none of them knows where it
- * came from.
+ * `useChartOfAccounts`. The ledger screens and the dashboard still read the
+ * fixtures in ./data/dummy and move behind a hook of their own when
+ * /api/journal-entries is wired up — the components take plain data and none of
+ * them knows where it came from.
+ *
+ * FinanceDashboardScreen replaced AccountingHub: same landing route, but it
+ * leads with the period's figures instead of two links the sidebar already has.
+ * Its arithmetic lives in ./financeSummary, exported here because the P&L, arus
+ * kas and daftar transaksi screens will fold the same ledger.
  */
-export { AccountingHub } from "./components/AccountingHub";
+export { FinanceDashboardScreen } from "./components/FinanceDashboardScreen";
+export {
+  branchesIn,
+  businessLinesIn,
+  defaultPeriod,
+  financeTransactions,
+  formatPercent,
+  fullPeriod,
+  ledgerMonths,
+  lineLabel,
+  monthRange,
+  summarise,
+  CASH_ACCOUNT_CODES,
+  SHARED_LINE,
+  SHARED_LINE_LABEL,
+  type FinanceQuery,
+  type FinanceSummary,
+  type FinanceTransaction,
+  type LineFigures,
+  type Period,
+} from "./financeSummary";
 export {
   ChartOfAccountCreateForm,
   ChartOfAccountEditForm,
