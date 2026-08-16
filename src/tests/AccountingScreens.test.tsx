@@ -1,28 +1,100 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+import { renderWithAuth } from "./helpers/renderWithAuth";
 import {
   ChartOfAccountsScreen,
   JournalEntriesScreen,
   JournalEntryDetail,
 } from "@/features/accounting";
 import { DUMMY_ENTRIES } from "@/features/accounting/data/dummy";
+import { ApiError } from "@/services/api-error";
+import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
+import type { AccountType, ChartOfAccountNode } from "@/types/accounting";
 
 /**
- * Mount tests for the two accounting screens, which still read fixtures rather
- * than the API.
+ * Mount tests for the accounting screens.
  *
- * WHAT IS WORTH ASSERTING ON A PROTOTYPE. Not the fixture values — those change
- * with the demo data and a test that pins them is a test that has to be edited
- * every time somebody adds an example row. What is pinned here is the behaviour
- * the screens exist to demonstrate, and each of these is a real bug if it
- * breaks: the COA renders as a hierarchy and not a flat list, a search keeps a
- * match's ancestors so it never reads as a root account, the ledger's two totals
- * balance, and a reversed entry says so before anyone reads its amounts.
+ * The COA screen reads GET /chart-of-accounts/tree and is driven here through a
+ * stubbed service; the ledger screens still read fixtures.
+ *
+ * WHAT IS WORTH ASSERTING. Not fixture values — those change with the demo data
+ * and a test that pins them is a test that has to be edited every time somebody
+ * adds an example row. What is pinned here is behaviour, and each of these is a
+ * real bug if it breaks: the COA renders the API's nesting as a hierarchy and
+ * not a flat list, a search keeps a match's ancestors so it never reads as a
+ * root account, a failed request says so instead of showing an empty chart, the
+ * ledger's two totals balance, and a reversed entry says so before anyone reads
+ * its amounts.
  */
+
+/** One tree node, with the fields the screen actually reads. */
+function node(
+  code: string,
+  name: string,
+  accountType: AccountType,
+  {
+    children = [],
+    isActive = true,
+    isDefault = false,
+    parentAccountId = null,
+  }: Partial<ChartOfAccountNode> = {},
+): ChartOfAccountNode {
+  return {
+    _id: code,
+    code,
+    name,
+    accountType,
+    parentAccountId,
+    isDefault,
+    isActive,
+    children: children.map((child) => ({ ...child, parentAccountId: code })),
+  };
+}
+
+/**
+ * A chart shaped like a real one: three levels under Aset, a second class to
+ * prove a search does not drag unrelated branches in, and one deactivated
+ * account for the toggle.
+ */
+function chart(): ChartOfAccountNode[] {
+  return [
+    node("1000", "Aset", "asset", {
+      children: [
+        node("1100", "Aset Lancar", "asset", {
+          children: [node("1101", "Kas", "asset", { isDefault: true })],
+        }),
+        node("1300", "Pajak Dibayar di Muka", "asset", {
+          children: [node("1301", "PPN Masukan", "asset", { isDefault: true })],
+        }),
+      ],
+    }),
+    node("2000", "Kewajiban", "liability", {
+      children: [node("2101", "Utang Supplier", "liability")],
+    }),
+    node("5000", "Beban", "expense", {
+      children: [node("5401", "Beban Penyusutan", "expense", { isActive: false })],
+    }),
+  ];
+}
+
+/** Stubs the one request the screen makes on mount. */
+function mockTree(roots: ChartOfAccountNode[] = chart()) {
+  return jest.spyOn(chartOfAccountsService, "tree").mockResolvedValue(roots);
+}
+
+/** Mounts the screen and waits for the first response to land. */
+async function renderChart(roots?: ChartOfAccountNode[]) {
+  mockTree(roots);
+  renderWithAuth(<ChartOfAccountsScreen />);
+  await screen.findByRole("table");
+}
+
 describe("ChartOfAccountsScreen", () => {
-  it("renders the chart as a tree, parents before their children", () => {
-    render(<ChartOfAccountsScreen />);
+  afterEach(() => jest.restoreAllMocks());
+
+  it("renders the API's nesting as a tree, parents before their children", async () => {
+    await renderChart();
 
     const codes = screen
       .getAllByRole("row")
@@ -37,8 +109,17 @@ describe("ChartOfAccountsScreen", () => {
     expect(child).toBeGreaterThan(parent);
   });
 
+  it("asks for the whole chart, unfiltered — the tiles count every class", async () => {
+    const tree = mockTree();
+    renderWithAuth(<ChartOfAccountsScreen />);
+    await screen.findByRole("table");
+
+    expect(tree).toHaveBeenCalledTimes(1);
+    expect(tree).toHaveBeenCalledWith();
+  });
+
   it("keeps a match's ancestors so it is not shown as a root account", async () => {
-    render(<ChartOfAccountsScreen />);
+    await renderChart();
 
     await userEvent.type(screen.getByLabelText("Cari akun"), "PPN Masukan");
 
@@ -57,18 +138,72 @@ describe("ChartOfAccountsScreen", () => {
   });
 
   it("hides deactivated accounts until the toggle asks for them", async () => {
-    render(<ChartOfAccountsScreen />);
+    await renderChart();
 
     expect(screen.queryByText("Beban Penyusutan")).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("switch"));
+    await userEvent.click(screen.getByLabelText(/Tampilkan nonaktif/));
 
     expect(screen.getByText("Beban Penyusutan")).toBeInTheDocument();
-    expect(screen.getByText("nonaktif")).toBeInTheDocument();
+    expect(screen.getByText("Nonaktif")).toBeInTheDocument();
+  });
+
+  it("groups the flat seeded chart under its account classes", async () => {
+    await renderChart();
+
+    const rows = screen
+      .getAllByRole("row")
+      .slice(1)
+      .map((row) => row.textContent ?? "");
+
+    // The seeded chart has no 1000/2000 header ACCOUNTS — the class heading is
+    // the screen's own, and every account of that class follows it.
+    const aset = rows.findIndex((text) => text.startsWith("Aset"));
+    const kas = rows.findIndex((text) => text.includes("1101"));
+    const kewajiban = rows.findIndex((text) => text.startsWith("Kewajiban"));
+    const utang = rows.findIndex((text) => text.includes("2101"));
+
+    expect(aset).toBeGreaterThanOrEqual(0);
+    expect(kas).toBeGreaterThan(aset);
+    expect(kewajiban).toBeGreaterThan(kas);
+    expect(utang).toBeGreaterThan(kewajiban);
+    // …and the heading counts what is under it, folded or not.
+    expect(rows[aset]).toContain("5 akun");
+  });
+
+  it("folds a whole class shut from its heading", async () => {
+    await renderChart();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Tutup kelompok Aset" }),
+    );
+
+    expect(screen.queryByText("Kas")).not.toBeInTheDocument();
+    // The heading stays, so the class can be opened again — and so does the
+    // rest of the chart.
+    expect(
+      screen.getByRole("button", { name: "Buka kelompok Aset" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Utang Supplier")).toBeInTheDocument();
+  });
+
+  it("narrows to one class when its tile is pressed, and back on a second press", async () => {
+    await renderChart();
+
+    // Anchored: "Tutup kelompok Kewajiban" is a button on the class heading and
+    // would otherwise match too.
+    const tile = screen.getByRole("button", { name: /^Kewajiban/ });
+
+    await userEvent.click(tile);
+    expect(screen.queryByText("Kas")).not.toBeInTheDocument();
+    expect(screen.getByText("Utang Supplier")).toBeInTheDocument();
+
+    await userEvent.click(tile);
+    expect(screen.getByText("Kas")).toBeInTheDocument();
   });
 
   it("collapses a branch when its chevron is pressed", async () => {
-    render(<ChartOfAccountsScreen />);
+    await renderChart();
 
     expect(screen.getByText("Kas")).toBeInTheDocument();
 
@@ -79,6 +214,27 @@ describe("ChartOfAccountsScreen", () => {
     expect(screen.queryByText("Kas")).not.toBeInTheDocument();
     // The parent stays, so the branch can be opened again.
     expect(screen.getByText("Aset Lancar")).toBeInTheDocument();
+  });
+
+  it("reports a failed request instead of rendering an empty chart", async () => {
+    jest
+      .spyOn(chartOfAccountsService, "tree")
+      .mockRejectedValue(new ApiError("Forbidden", 403));
+
+    renderWithAuth(<ChartOfAccountsScreen />);
+
+    expect(await screen.findByText("Forbidden")).toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  });
+
+  it("re-runs the request when Muat ulang is pressed", async () => {
+    const tree = mockTree();
+    renderWithAuth(<ChartOfAccountsScreen />);
+    await screen.findByRole("table");
+
+    await userEvent.click(screen.getByRole("button", { name: /Muat ulang/ }));
+
+    await waitFor(() => expect(tree).toHaveBeenCalledTimes(2));
   });
 });
 

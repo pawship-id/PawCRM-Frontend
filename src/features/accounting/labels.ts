@@ -33,11 +33,12 @@ export const ACCOUNT_TYPE_LABEL: Record<AccountType, string> = {
  * owner compares — income against expense.
  */
 export const ACCOUNT_TYPE_TONE: Record<AccountType, string> = {
-  asset: "bg-primary/10 text-primary",
-  liability: "bg-danger/10 text-danger",
-  equity: "bg-secondary/25 text-secondary-foreground",
-  income: "bg-success/12 text-success",
-  expense: "bg-accent text-muted-foreground",
+  asset: "bg-tint-info text-info",
+  liability: "bg-tint-danger text-danger",
+  // The one warm badge: an orange FILL with navy ink, never orange text (§4).
+  equity: "bg-tint-warning text-secondary-foreground",
+  income: "bg-tint-success text-success",
+  expense: "bg-tint-neutral text-muted",
 };
 
 /**

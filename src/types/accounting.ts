@@ -52,6 +52,22 @@ export interface ChartOfAccount {
 }
 
 /**
+ * One node of GET /chart-of-accounts/tree — an account plus the accounts filed
+ * under it.
+ *
+ * A SEPARATE TYPE RATHER THAN `children?` ON ChartOfAccount, because only the
+ * tree endpoint nests: the list, the by-code lookup and the single-account read
+ * all answer with flat records, and an optional `children` on the shared type
+ * would let a caller check for a field three of the four routes never send.
+ *
+ * `children` is always present on a node, empty for a leaf — the backend builds
+ * every node with the array in place.
+ */
+export interface ChartOfAccountNode extends ChartOfAccount {
+  children: ChartOfAccountNode[];
+}
+
+/**
  * What caused a ledger entry. Mirrors SOURCE_TYPES in the backend model —
  * `manual` is the only value the HTTP layer can produce; the rest are posted
  * service-to-service by the module that owns the document.

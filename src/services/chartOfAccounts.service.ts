@@ -1,5 +1,5 @@
 import { apiClient } from "./api-client";
-import type { ChartOfAccount } from "@/types/accounting";
+import type { ChartOfAccount, ChartOfAccountNode } from "@/types/accounting";
 import type { PageResult } from "@/types/api";
 
 /**
@@ -42,6 +42,19 @@ export interface ChartOfAccountListQuery {
   isActive?: boolean;
 }
 
+/**
+ * The tree endpoint's filters — the only two it accepts, and neither is a page.
+ *
+ * There is no `search` here on purpose: the API does not offer one on /tree,
+ * because a text filter applied server-side would return matches with their
+ * ancestors missing, which is not a tree. The COA screen searches the tree it
+ * already holds and drags each match's ancestors along with it.
+ */
+export interface ChartOfAccountTreeQuery {
+  accountType?: ChartOfAccount["accountType"];
+  isActive?: boolean;
+}
+
 export const chartOfAccountsService = {
   /**
    * GET /chart-of-accounts — paginated, searchable, filterable by class.
@@ -64,6 +77,27 @@ export const chartOfAccountsService = {
         page: query.page,
         limit: Math.min(query.limit ?? MAX_PAGE_LIMIT, MAX_PAGE_LIMIT),
         search: query.search,
+        accountType: query.accountType,
+        isActive: query.isActive,
+      },
+    }),
+
+  /**
+   * GET /chart-of-accounts/tree — the whole live chart, nested by
+   * `parentAccountId`. Roots come back as a bare array; each node carries its
+   * own `children`.
+   *
+   * NO PAGINATION, and none to add: a tree cut off at page 1 is not a tree. The
+   * response is bounded by how many accounts a business keeps (tens to low
+   * hundreds), which is why the COA screen can filter and search in the browser
+   * instead of asking again per keystroke.
+   *
+   * Deleted accounts are excluded by the backend and cannot be asked for here —
+   * unlike `list`, the tree has no `includeDeleted`.
+   */
+  tree: (query: ChartOfAccountTreeQuery = {}) =>
+    apiClient.get<ChartOfAccountNode[]>("/chart-of-accounts/tree", {
+      query: {
         accountType: query.accountType,
         isActive: query.isActive,
       },
