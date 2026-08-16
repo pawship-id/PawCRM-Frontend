@@ -42,6 +42,7 @@ export const supplierService = {
         search: query.search,
         isActive: query.isActive,
         includeDeleted: query.includeDeleted,
+        sort: query.sort,
       },
     }),
 

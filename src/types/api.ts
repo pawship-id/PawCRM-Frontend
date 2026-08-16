@@ -748,6 +748,15 @@ export function isSupplierActive(supplier: Pick<Supplier, "isActive">): boolean 
   return supplier.isActive !== false;
 }
 
+/**
+ * The orderings `GET /api/suppliers` accepts — SUPPLIER_SORTS in the model.
+ *
+ * No "termin" or "sisa utang": the first is a negotiated property rather than a
+ * ranking, and the second is aggregated by a different endpoint, so the database
+ * cannot order by it.
+ */
+export type SupplierSort = "newest" | "oldest" | "nameAsc" | "nameDesc";
+
 /** Query parameters accepted by GET /api/suppliers. All optional. */
 export interface SupplierListQuery {
   page?: number;
@@ -759,6 +768,13 @@ export interface SupplierListQuery {
   isActive?: boolean;
   /** Include soft-deleted suppliers (default false on the backend). */
   includeDeleted?: boolean;
+  /**
+   * Which ordering to page through. A NAME, not a field plus a direction — the
+   * API accepts a closed list, so a client cannot ask for an ordering with no
+   * index behind it. Omitted means `newest`, which is what the API defaults to
+   * anyway.
+   */
+  sort?: SupplierSort;
 }
 
 /**

@@ -44,13 +44,18 @@ export function SuppliersScreen() {
           Data pemasok, termin pembayaran, dan sisa utang yang belum dibayar.
         </PageHeading>
 
-        <div className="text-right">
-          <p className="text-[10px] font-medium tracking-widest text-muted uppercase">
+        {/* Wide: a right-aligned figure beside the heading. Phone: the two have
+            wrapped onto separate lines, and a shrink-to-fit box sitting at the
+            left edge of an empty row reads as a stray caption — so it takes the
+            whole width and puts the label and the number at opposite ends of
+            one line, which is how a total is read everywhere else. */}
+        <div className="flex items-baseline gap-3 max-sm:w-full max-sm:justify-between sm:block sm:text-right">
+          <p className="text-xs font-medium tracking-wide text-muted uppercase">
             Total sisa utang
           </p>
           <p
             className={cn(
-              "tabular-nums text-lg font-semibold",
+              "text-lg font-semibold tabular-nums",
               owedMinor > 0n && "text-danger",
             )}
           >

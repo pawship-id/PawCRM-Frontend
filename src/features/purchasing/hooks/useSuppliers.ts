@@ -8,6 +8,7 @@ import type {
   PageResult,
   Supplier,
   SupplierListQuery,
+  SupplierSort,
   SupplierType,
 } from "@/types/api";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
@@ -29,6 +30,12 @@ export interface SuppliersQuery {
   type: SupplierType | "";
   activity: SupplierActivityFilter;
   includeDeleted: boolean;
+  /**
+   * Which ordering the list is paged through in. Always set — a list with no
+   * ordering is not a thing — so it has no "" and Reset returns it to the
+   * default rather than clearing it.
+   */
+  sort: SupplierSort;
 }
 
 const PAGE_SIZE = 20;
@@ -39,6 +46,7 @@ const DEFAULT_QUERY: SuppliersQuery = {
   type: "",
   activity: "all",
   includeDeleted: false,
+  sort: "newest",
 };
 
 /** Empty page so consumers can render a table shell before the first load. */
@@ -118,6 +126,7 @@ export function useSuppliers(): UseSuppliersResult {
       type: settled.type === "" ? undefined : settled.type,
       isActive: activityToFlag(settled.activity),
       includeDeleted: settled.includeDeleted || undefined,
+      sort: settled.sort,
     };
 
     supplierService
