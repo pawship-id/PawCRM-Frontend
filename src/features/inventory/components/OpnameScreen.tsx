@@ -112,8 +112,8 @@ export function OpnameScreen() {
     }
   };
 
-  function handleFilters(next: OpnameFilters) {
-    setFilters(next);
+  function handleFilters(patch: Partial<OpnameFilters>) {
+    setFilters((prev) => ({ ...prev, ...patch }));
     // A filter change re-asks the question; keeping page 4 would answer it with
     // a page that may no longer exist.
     setPage(1);
@@ -214,7 +214,7 @@ export function OpnameScreen() {
                     key={opname._id}
                     className="border-b border-border/60 last:border-0"
                   >
-                    <td className="px-4 py-2.5 font-mono text-xs">
+                    <td className="px-4 py-2.5 tabular-nums text-xs">
                       {opname.opnameNumber}
                     </td>
                     <td className="px-4 py-2.5 text-xs">
@@ -227,7 +227,7 @@ export function OpnameScreen() {
                     <td className="px-4 py-2.5 text-xs text-muted">
                       {opname.warehouseName ?? "—"}
                     </td>
-                    <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums">
+                    <td className="px-4 py-2.5 text-right tabular-nums text-xs">
                       {opname.itemCount === undefined ? (
                         "—"
                       ) : (
@@ -244,7 +244,7 @@ export function OpnameScreen() {
                     </td>
                     <td
                       className={cn(
-                        "px-4 py-2.5 text-right font-mono text-sm font-semibold tabular-nums",
+                        "px-4 py-2.5 text-right tabular-nums text-sm font-semibold",
                         totalMinor < 0n && "text-danger",
                         totalMinor > 0n && "text-success",
                       )}
@@ -309,7 +309,7 @@ export function OpnameScreen() {
         >
           {/* Inline fragments, not <p>: DialogDescription is itself a <p>. */}
           <>
-            Draft <b className="font-mono">{pendingDelete.opnameNumber}</b>{" "}
+            Draft <b className="tabular-nums">{pendingDelete.opnameNumber}</b>{" "}
             beserta seluruh hitungan yang sudah diisi akan dibuang. Tidak ada
             stok yang berubah — draft memang belum pernah menulis apa pun.
             <span className="mt-2 block">

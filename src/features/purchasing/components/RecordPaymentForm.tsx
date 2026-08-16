@@ -209,7 +209,7 @@ export function RecordPaymentForm({
         value={ref}
         disabled={saving}
         onChange={(event) => setRef(event.target.value)}
-        className="font-mono"
+        className="tabular-nums"
         placeholder="opsional"
         hint="Nomor transfer, nomor giro, atau id transaksi QRIS."
       />

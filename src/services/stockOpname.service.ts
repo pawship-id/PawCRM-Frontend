@@ -50,6 +50,7 @@ export const stockOpnameService = {
         dateFrom: query.dateFrom,
         dateTo: query.dateTo,
         includeDeleted: query.includeDeleted,
+        sort: query.sort,
       },
     }),
 

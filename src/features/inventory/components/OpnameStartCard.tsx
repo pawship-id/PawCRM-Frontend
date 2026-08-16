@@ -4,25 +4,15 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { Alert } from "@/components";
+import { Alert, FilterSelect, namedOptions, withAll } from "@/components";
 // The shadcn button rather than the app wrapper: `asChild` is what makes
 // "continue the open draft" a real <Link> rather than a button that pushes.
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { ApiError } from "@/services/api-error";
 import { stockOpnameService } from "@/services/stockOpname.service";
 import type { Category, StockWarehouse } from "@/types/inventory";
 
 import { useOpenDraft } from "../hooks/useOpenDraft";
-
-/** Radix Select forbids an empty item value, so "no category" needs a sentinel. */
-const ALL_CATEGORIES = "all";
 
 /**
  * The entry point to a count: a warehouse, optionally one category, and the
@@ -60,7 +50,10 @@ export function OpnameStartCard({
   const router = useRouter();
 
   const [warehouseId, setWarehouseId] = useState("");
-  const [categoryId, setCategoryId] = useState(ALL_CATEGORIES);
+  // "" is the repo's unset convention, and reachable now that this is a
+  // FilterSelect: the `"all"` sentinel this used to carry existed only because
+  // Radix Select forbids an empty item value.
+  const [categoryId, setCategoryId] = useState("");
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -82,8 +75,7 @@ export function OpnameStartCard({
     try {
       const opname = await stockOpnameService.create({
         warehouseId,
-        categoryFilter:
-          categoryId === ALL_CATEGORIES ? undefined : categoryId,
+        categoryFilter: categoryId || undefined,
         /**
          * EMPTY, and that is not the same as omitting it: an absent `items` asks
          * the server for the whole catalogue. The sheet opens with no lines and
@@ -113,8 +105,8 @@ export function OpnameStartCard({
   if (active.length === 0) {
     return (
       <Alert variant="info">
-        Belum ada gudang aktif. Aktifkan atau buat gudang dulu sebelum menghitung
-        stok fisik.
+        Belum ada gudang aktif. Aktifkan atau buat gudang dulu sebelum
+        menghitung stok fisik.
       </Alert>
     );
   }
@@ -123,18 +115,29 @@ export function OpnameStartCard({
     <div className="flex flex-col gap-3">
       {error && <Alert variant="error">{error}</Alert>}
 
-      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-surface p-4">
-        <div className="min-w-56 flex-1">
-          <p className="text-[10px] font-medium tracking-[0.14em] text-muted uppercase">
+      {/*
+        A COLUMN, not a row: the copy explains the choice the controls below it
+        make, and beside them it was a paragraph competing for width with three
+        controls that each need a fixed one. Reading it first is the point —
+        "this warehouse already has an unfinished sheet" is the reason the
+        button says Lanjutkan rather than Mulai.
+      */}
+      <div className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-4">
+        <div>
+          {/* text-xs, not text-[10px]: §1 puts the floor at 13px and bans the
+              latter outright. */}
+          <p className="text-xs font-medium tracking-[0.14em] text-muted uppercase">
             Mulai hitung fisik
           </p>
-          <p className="mt-1 text-sm text-muted">
+          {/* Capped: the paragraph now has the whole card to run across, and a
+              line of prose 1400px wide is one the eye loses its place in. */}
+          <p className="mt-1 max-w-3xl text-sm text-muted">
             {draft ? (
               <>
-                Gudang ini masih punya lembar yang belum selesai. Lanjutkan yang
-                itu — satu gudang hanya boleh punya satu draft, karena lembar
-                kedua akan menghitung selisih yang sudah dikoreksi lembar
-                pertama.
+                Satu gudang hanya boleh punya <b>satu draft</b> sekaligus. Dua
+                lembar untuk gudang yang sama akan menghitung selisih yang sudah
+                dikoreksi lembar pertama dan mencatatnya dua kali. Gudang ini
+                masih punya lembar yang belum selesai, lanjutkan draft
               </>
             ) : (
               <>
@@ -145,76 +148,65 @@ export function OpnameStartCard({
           </p>
         </div>
 
-        <div>
-          <label
-            htmlFor="opname-start-warehouse"
-            className="mb-1.5 block text-[10px] font-medium tracking-[0.14em] text-muted uppercase"
-          >
-            Gudang
-          </label>
-          <Select value={warehouseId} onValueChange={setWarehouseId}>
-            <SelectTrigger id="opname-start-warehouse" className="w-52">
-              <SelectValue placeholder="Pilih gudang" />
-            </SelectTrigger>
-            <SelectContent>
-              {active.map((warehouse) => (
-                <SelectItem key={warehouse._id} value={warehouse._id}>
-                  {warehouse.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        {/* The controls, on their own line. Each takes the full width on a
+            phone and its own on anything wider — three 208px boxes side by side
+            do not fit 320px, and half-width selects truncate the warehouse
+            names they exist to show. */}
+        <div className="flex flex-wrap items-end gap-3">
+          {/*
+            THE FILTER SHELL ON A FORM, which FilterTrigger is exported to
+            allow. These two sit a few centimetres from the list's own filter
+            panel and pick from the same two lists; a second select convention
+            on the same screen is a second thing to recognise for no gain. The
+            long option lists also get the popover's search for free, which
+            Radix Select cannot do.
 
-        <div>
-          <label
-            htmlFor="opname-start-category"
-            className="mb-1.5 block text-[10px] font-medium tracking-[0.14em] text-muted uppercase"
-          >
-            Kategori (opsional)
-          </label>
-          <Select
+            `active={false}` on both: the trigger's navy state means "a filter
+            is applied", and a warehouse that always has a value would wear it
+            permanently.
+          */}
+          <FilterSelect
+            layout="field"
+            label="Gudang"
+            ariaLabel="Gudang"
+            value={warehouseId}
+            options={namedOptions(active)}
+            active={false}
+            onChange={setWarehouseId}
+            className="w-full sm:w-52"
+          />
+
+          <FilterSelect
+            layout="field"
+            label="Kategori (opsional)"
+            ariaLabel="Kategori"
             value={categoryId}
-            onValueChange={setCategoryId}
+            options={withAll(namedOptions(categories), "Semua kategori")}
+            active={false}
             // Meaningless while a draft is in the way: the scope belongs to the
             // sheet being opened, and that sheet already exists with its own.
             disabled={Boolean(draft)}
-          >
-            <SelectTrigger id="opname-start-category" className="w-52">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_CATEGORIES}>Semua kategori</SelectItem>
-              {categories.map((category) => (
-                <SelectItem key={category._id} value={category._id}>
-                  {category.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            onChange={setCategoryId}
+            className="w-full sm:w-52"
+          />
+
+          {draft ? (
+            <Button variant="secondary" asChild className="w-full sm:w-auto">
+              <Link href={`/dashboard/inventory/opname/${draft._id}`}>
+                Lanjutkan {draft.opnameNumber}
+              </Link>
+            </Button>
+          ) : (
+            <Button
+              onClick={handleStart}
+              disabled={starting || checking || !warehouseId}
+              className="w-full sm:w-auto"
+            >
+              {starting ? "Menyiapkan…" : "+ Mulai opname"}
+            </Button>
+          )}
         </div>
-
-        {draft ? (
-          <Button variant="secondary" asChild>
-            <Link href={`/dashboard/inventory/opname/${draft._id}`}>
-              Lanjutkan {draft.opnameNumber}
-            </Link>
-          </Button>
-        ) : (
-          <Button
-            onClick={handleStart}
-            disabled={starting || checking || !warehouseId}
-          >
-            {starting ? "Menyiapkan…" : "+ Mulai opname"}
-          </Button>
-        )}
       </div>
-
-      <p className="text-xs text-muted">
-        Satu gudang hanya boleh punya <b>satu draft</b> sekaligus. Dua lembar
-        untuk gudang yang sama akan menghitung selisih yang sudah dikoreksi
-        lembar pertama — dan mencatatnya dua kali.
-      </p>
     </div>
   );
 }

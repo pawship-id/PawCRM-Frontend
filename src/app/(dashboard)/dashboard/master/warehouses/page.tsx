@@ -4,7 +4,7 @@ import { WarehousesScreen } from "@/features/warehouses";
 import { RequirePermission } from "@/features/permissions";
 
 export const metadata: Metadata = {
-  title: "Warehouse · Master Data · PawShip",
+  title: "Warehouse · Master Data · Buloo",
 };
 
 export default function MasterWarehousesPage() {

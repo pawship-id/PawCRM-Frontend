@@ -100,7 +100,7 @@ export function ConsignmentScreen() {
             href="/dashboard/purchasing/payables"
             className="underline underline-offset-2"
           >
-            Utang Supplier
+            Faktur Pembelian
           </Link>
           . Jangan dijumlahkan dengan halaman itu.
         </p>
@@ -175,16 +175,16 @@ export function ConsignmentScreen() {
                         </span>
                       )}
                     </TableCell>
-                    <TableCell className="text-right font-mono tabular-nums">
+                    <TableCell className="text-right tabular-nums">
                       {row.lotCount}
                     </TableCell>
-                    <TableCell className="text-right font-mono tabular-nums">
+                    <TableCell className="text-right tabular-nums">
                       {row.productCount}
                     </TableCell>
-                    <TableCell className="text-right font-mono tabular-nums">
+                    <TableCell className="text-right tabular-nums">
                       {formatQty(row.qtyRemaining)}
                     </TableCell>
-                    <TableCell className="text-right font-mono tabular-nums">
+                    <TableCell className="text-right tabular-nums">
                       {formatMoney(row.value)}
                     </TableCell>
                   </TableRow>

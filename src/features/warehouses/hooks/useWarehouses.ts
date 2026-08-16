@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { warehouseService } from "@/services/warehouse.service";
 import { ApiError } from "@/services/api-error";
 import type { Warehouse, WarehouseListQuery, PageResult } from "@/types/api";
+import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 
 /** The query knobs the list screen drives (page + the visible filters). */
 export interface WarehousesQuery {
@@ -68,6 +69,10 @@ export function useWarehouses(): UseWarehousesResult {
   // Bumped by refetch() to force the effect to re-run without changing query.
   const [nonce, setNonce] = useState(0);
 
+  // The toolbar keeps the live query so typing stays responsive; only the
+  // request waits for the search box to settle.
+  const settled = useDebouncedQuery(query);
+
   const setQuery = useCallback((patch: Partial<WarehousesQuery>) => {
     setQueryState((prev) => {
       const next = { ...prev, ...patch };
@@ -90,12 +95,12 @@ export function useWarehouses(): UseWarehousesResult {
     setError(null);
 
     const apiQuery: WarehouseListQuery = {
-      page: query.page,
+      page: settled.page,
       limit: PAGE_SIZE,
-      search: query.search.trim() || undefined,
-      isActive: query.active === "" ? undefined : query.active,
-      defaultBranchId: query.branchId || undefined,
-      includeDeleted: query.includeDeleted || undefined,
+      search: settled.search.trim() || undefined,
+      isActive: settled.active === "" ? undefined : settled.active,
+      defaultBranchId: settled.branchId || undefined,
+      includeDeleted: settled.includeDeleted || undefined,
     };
 
     warehouseService
@@ -121,7 +126,7 @@ export function useWarehouses(): UseWarehousesResult {
     return () => {
       active = false;
     };
-  }, [query, nonce]);
+  }, [settled, nonce]);
 
   return { warehouses, pagination, query, loading, error, setQuery, refetch };
 }

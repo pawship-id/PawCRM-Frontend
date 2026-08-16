@@ -72,10 +72,10 @@ export function ImportPreviewTable({ rows }: { rows: ImportVerdict[] }) {
               key={row.rowNumber}
               className={cn(row.status !== "ok" && "bg-destructive/5")}
             >
-              <TableCell className="font-mono tabular-nums">
+              <TableCell className="tabular-nums">
                 {row.rowNumber}
               </TableCell>
-              <TableCell className="font-mono text-xs">
+              <TableCell className="tabular-nums text-xs">
                 {row.sku || "—"}
               </TableCell>
               <TableCell>
@@ -95,7 +95,7 @@ export function ImportPreviewTable({ rows }: { rows: ImportVerdict[] }) {
                           user acts on: they are looking for a cell, and the
                           sentence explains it once they have found it.
                         */}
-                        <code className="rounded bg-muted/20 px-1 py-0.5 font-mono">
+                        <code className="rounded bg-muted/20 px-1 py-0.5 tabular-nums">
                           {problem.field}
                         </code>{" "}
                         {problem.message}

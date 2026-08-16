@@ -299,11 +299,11 @@ export function PurchaseReturnForm({ receiptId }: { receiptId?: string }) {
         <div className="flex flex-col gap-2 text-sm">
           <div className="flex justify-between">
             <span className="text-muted">Baris diretur</span>
-            <b className="font-mono tabular-nums">{chosen.length}</b>
+            <b className="tabular-nums">{chosen.length}</b>
           </div>
           <div className="flex justify-between border-t border-border pt-2">
             <b>Perkiraan nilai retur</b>
-            <b className="font-mono text-base tabular-nums text-danger">
+            <b className="tabular-nums text-base text-danger">
               {formatMoney(total)}
             </b>
           </div>

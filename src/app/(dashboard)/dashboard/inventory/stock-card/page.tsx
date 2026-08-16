@@ -5,7 +5,7 @@ import { Breadcrumb, Spinner } from "@/components";
 import { StockCardScreen } from "@/features/inventory";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Kartu stok · PawShip" };
+export const metadata: Metadata = { title: "Kartu stok · Buloo" };
 
 /**
  * What the prerendered HTML shows while the search-param-dependent screen
@@ -31,7 +31,7 @@ export default function StockCardPage() {
             { label: "Kartu stok & batch" },
           ]}
         />
-        <h1 className="mt-1 text-2xl font-semibold text-foreground">
+        <h1 className="mt-1 text-2xl font-extrabold text-foreground">
           Kartu stok &amp; batch
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">

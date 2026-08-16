@@ -8,8 +8,10 @@ import type {
   PageResult,
   PurchaseReturnListQuery,
   PurchaseReturnListRow,
+  PurchaseReturnSort,
   PurchaseReturnStatus,
 } from "@/types/api";
+import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 
 /** The query knobs the list screen drives (page + the visible filters). */
 export interface PurchaseReturnsQuery {
@@ -24,6 +26,12 @@ export interface PurchaseReturnsQuery {
   /** `yyyy-mm-dd`, as the date inputs hold them. "" = unbounded. */
   dateFrom: string;
   dateTo: string;
+  /**
+   * Which ordering the list is paged through in. Always set — a list with no
+   * ordering is not a thing — so it has no "" and Reset returns it to the
+   * default rather than clearing it.
+   */
+  sort: PurchaseReturnSort;
 }
 
 const PAGE_SIZE = 20;
@@ -36,6 +44,7 @@ const DEFAULT_QUERY: PurchaseReturnsQuery = {
   status: "",
   dateFrom: "",
   dateTo: "",
+  sort: "newest",
 };
 
 /** Empty page so consumers can render a table shell before the first load. */
@@ -90,6 +99,10 @@ export function usePurchaseReturns(
   // Bumped by refetch() to force the effect to re-run without changing query.
   const [nonce, setNonce] = useState(0);
 
+  // The toolbar keeps the live query so typing stays responsive; only the
+  // request waits for the search box to settle.
+  const settled = useDebouncedQuery(query);
+
   const setQuery = useCallback((patch: Partial<PurchaseReturnsQuery>) => {
     setQueryState((prev) => {
       const next = { ...prev, ...patch };
@@ -112,14 +125,15 @@ export function usePurchaseReturns(
     setError(null);
 
     const apiQuery: PurchaseReturnListQuery = {
-      page: query.page,
+      page: settled.page,
       limit: PAGE_SIZE,
-      search: query.search.trim() || undefined,
-      supplierId: query.supplierId || undefined,
-      warehouseId: query.warehouseId || undefined,
-      status: query.status === "" ? undefined : query.status,
-      dateFrom: query.dateFrom || undefined,
-      dateTo: query.dateTo || undefined,
+      search: settled.search.trim() || undefined,
+      supplierId: settled.supplierId || undefined,
+      warehouseId: settled.warehouseId || undefined,
+      status: settled.status === "" ? undefined : settled.status,
+      dateFrom: settled.dateFrom || undefined,
+      dateTo: settled.dateTo || undefined,
+      sort: settled.sort,
     };
 
     purchaseReturnService
@@ -145,7 +159,7 @@ export function usePurchaseReturns(
     return () => {
       active = false;
     };
-  }, [query, nonce]);
+  }, [settled, nonce]);
 
   return { returns, pagination, query, loading, error, setQuery, refetch };
 }

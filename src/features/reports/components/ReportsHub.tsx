@@ -127,7 +127,7 @@ export function ReportsHub() {
             className="rounded-2xl border border-border bg-surface p-5 opacity-60"
           >
             <div className="flex items-start justify-between gap-2">
-              <h2 className="font-medium text-foreground">{card.title}</h2>
+              <h2 className="font-bold text-foreground">{card.title}</h2>
               <Badge variant="outline">Segera</Badge>
             </div>
             <p className="mt-1 text-sm text-muted">{card.description}</p>
@@ -142,7 +142,7 @@ export function ReportsHub() {
               "hover:border-primary/40",
             )}
           >
-            <h2 className="font-medium text-foreground">{card.title}</h2>
+            <h2 className="font-bold text-foreground">{card.title}</h2>
             <p className="mt-1 text-sm text-muted">{card.description}</p>
           </Link>
         ),

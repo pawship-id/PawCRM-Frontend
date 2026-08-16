@@ -1,6 +1,9 @@
 import { goodsReceiptService } from "@/services/goodsReceipt.service";
 import { apiClient } from "@/services/api-client";
-import type { CreateGoodsReceiptInput } from "@/types/api";
+import type {
+  CreateGoodsReceiptInput,
+  GoodsReceiptListQuery,
+} from "@/types/api";
 
 /**
  * The goods-receipt module's HTTP contract: paths, verbs and query shapes.
@@ -13,35 +16,65 @@ import type { CreateGoodsReceiptInput } from "@/types/api";
  * design decisions, and a frontend that quietly grew a method for one of them
  * would ship a button that 404s.
  */
+
+/**
+ * Every filter `GoodsReceiptListQuery` carries, each with a value that is not
+ * `undefined` — so a key the service forgets to forward reads as missing.
+ *
+ * `Required<…>` IS THE POINT. `list` spells its query out as an object literal,
+ * one key at a time, and anything absent from that literal is dropped in
+ * silence — which is how `sort` reached the catalogue and the supplier list
+ * without ever reaching the wire, twice (see product.service.test.ts and
+ * supplier.service.test.ts). A screen test cannot catch it because it mocks the
+ * service.
+ *
+ * With this type, adding a field to `GoodsReceiptListQuery` breaks THIS OBJECT
+ * at compile time until it is listed here, and then breaks the assertion below
+ * until `list` actually sends it.
+ */
+const EVERY_FILTER: Required<GoodsReceiptListQuery> = {
+  page: 2,
+  limit: 20,
+  search: "GR-2608",
+  supplierId: "s1",
+  warehouseId: "wh1",
+  purchaseType: "konsinyasi",
+  invoiced: false,
+  dateFrom: "2026-08-01",
+  dateTo: "2026-08-31",
+  sort: "numberAsc",
+};
+
 describe("goodsReceiptService", () => {
   afterEach(() => jest.restoreAllMocks());
 
-  it("lists with every supported filter forwarded", async () => {
+  it("forwards every filter it is given — nothing is dropped on the way out", async () => {
     const get = jest.spyOn(apiClient, "get").mockResolvedValue({} as never);
 
-    await goodsReceiptService.list({
-      page: 2,
-      limit: 20,
-      search: "GR-2608",
-      supplierId: "s1",
-      warehouseId: "wh1",
-      purchaseType: "konsinyasi",
-      dateFrom: "2026-08-01",
-      dateTo: "2026-08-31",
-    });
+    await goodsReceiptService.list(EVERY_FILTER);
 
-    expect(get).toHaveBeenCalledWith("/goods-receipts", {
-      query: {
-        page: 2,
-        limit: 20,
-        search: "GR-2608",
-        supplierId: "s1",
-        warehouseId: "wh1",
-        purchaseType: "konsinyasi",
-        dateFrom: "2026-08-01",
-        dateTo: "2026-08-31",
-      },
-    });
+    const [path, options] = get.mock.calls[0] as [
+      string,
+      { query: Record<string, unknown> },
+    ];
+    expect(path).toBe("/goods-receipts");
+
+    for (const [key, value] of Object.entries(EVERY_FILTER)) {
+      expect(options.query[key]).toBe(value);
+    }
+  });
+
+  it("sends the ordering the caller asked for", async () => {
+    const get = jest.spyOn(apiClient, "get").mockResolvedValue({} as never);
+
+    await goodsReceiptService.list({ sort: "numberDesc" });
+
+    expect(get).toHaveBeenCalledWith(
+      "/goods-receipts",
+      expect.objectContaining({
+        query: expect.objectContaining({ sort: "numberDesc" }),
+      }),
+    );
   });
 
   /**

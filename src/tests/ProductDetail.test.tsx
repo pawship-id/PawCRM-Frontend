@@ -75,6 +75,7 @@ function mockLookups({ branchless = false } = {}) {
         _id: "c1",
         tenantId: "t1",
         kind: "product",
+        isActive: true,
         name: "Makanan",
         deletedAt: null,
         createdAt: "",

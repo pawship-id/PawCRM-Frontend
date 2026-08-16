@@ -110,7 +110,7 @@ export function ImportResultPanel({
           <ul className="flex flex-col gap-2 text-sm">
             {result.failed.map((entry) => (
               <li key={entry.sku} className="flex flex-col gap-0.5">
-                <span className="font-mono text-xs">
+                <span className="tabular-nums text-xs">
                   {entry.sku}{" "}
                   <span className="text-muted">
                     (baris {entry.rowNumbers.join(", ")})
@@ -131,7 +131,7 @@ export function ImportResultPanel({
           <ul className="flex flex-col gap-2 text-sm">
             {unposted.map((entry) => (
               <li key={entry.productId} className="flex flex-col gap-0.5">
-                <span className="font-mono text-xs">{entry.sku}</span>
+                <span className="tabular-nums text-xs">{entry.sku}</span>
                 <span className="text-destructive">
                   {entry.openingStockError}
                 </span>
@@ -192,7 +192,7 @@ export function ImportResultPanel({
               >
                 {entry.name}
               </Link>
-              <span className="font-mono text-xs text-muted">{entry.sku}</span>
+              <span className="tabular-nums text-xs text-muted">{entry.sku}</span>
               {entry.variantCount > 0 && (
                 <span className="text-xs text-muted">
                   {entry.variantCount} varian

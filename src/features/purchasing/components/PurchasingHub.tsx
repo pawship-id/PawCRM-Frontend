@@ -41,7 +41,7 @@ const SECTIONS: Array<{
   },
   {
     href: "/dashboard/purchasing/payables",
-    title: "Utang Supplier",
+    title: "Faktur Pembelian",
     description:
       "Faktur dari penerimaan beli putus, pembayaran, dan sisa yang belum lunas.",
     feature: "purchaseInvoices",
@@ -87,7 +87,7 @@ const SECTIONS: Array<{
  * "20 retur" forever.
  *
  * EACH CARD IS GATED ON ITS OWN GRANT and the two lists on `purchaseInvoices`,
- * matching the sidebar exactly — a user whose menu has no Utang Supplier link
+ * matching the sidebar exactly — a user whose menu has no Faktur Pembelian link
  * must not land on a page that opens with their supplier debt. Both hooks are
  * handed those same answers so a denied role issues no requests at all.
  */
@@ -124,7 +124,7 @@ export function PurchasingHub() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">Purchasing</h1>
+        <h1 className="text-2xl font-extrabold text-foreground">Purchasing</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">
           Termin tiap supplier yang menentukan kapan sebuah faktur jatuh tempo.
           Dua daftar di bawah adalah faktur yang tanggalnya sudah lewat, dan
@@ -143,7 +143,7 @@ export function PurchasingHub() {
               {section.title}
             </p>
             <p className="mt-1.5 text-sm text-muted">{section.description}</p>
-            <p className="mt-3 font-mono text-xs tabular-nums text-muted">
+            <p className="mt-3 tabular-nums text-xs text-muted">
               {counts[section.href]}
             </p>
           </Link>
@@ -223,7 +223,7 @@ function PayablePanel({
   return (
     <section className="flex flex-col rounded-xl border border-border bg-surface">
       <header className="flex items-baseline gap-2 border-b border-border px-5 py-3">
-        <h2 className="font-semibold">{title}</h2>
+        <h2 className="font-bold">{title}</h2>
         {caption && <span className="text-xs text-muted">{caption}</span>}
         <Badge
           variant="outline"
@@ -245,7 +245,7 @@ function PayablePanel({
               <span className="text-xs text-muted">{totalLabel}</span>
               <span
                 className={cn(
-                  "ml-auto font-mono text-[15px] font-semibold tabular-nums",
+                  "ml-auto tabular-nums text-[15px] font-semibold",
                   urgent && "text-danger",
                 )}
               >
@@ -270,13 +270,13 @@ function PayablePanel({
                         placeholder rather than being dropped. */}
                     {invoice.supplierName ?? "—"}
                   </Link>
-                  <p className="truncate font-mono text-xs text-muted">
+                  <p className="truncate tabular-nums text-xs text-muted">
                     {invoice.invoiceNumber}
                   </p>
                 </div>
                 <span
                   className={cn(
-                    "font-mono text-sm font-semibold tabular-nums",
+                    "tabular-nums text-sm font-semibold",
                     urgent && "text-danger",
                   )}
                 >

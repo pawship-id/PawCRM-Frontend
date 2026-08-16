@@ -4,7 +4,12 @@ import { useEffect, useState } from "react";
 
 import { stockOpnameService } from "@/services/stockOpname.service";
 import { ApiError } from "@/services/api-error";
-import type { Opname, OpnamePage, OpnameStatus } from "@/types/inventory";
+import type {
+  Opname,
+  OpnamePage,
+  OpnameSort,
+  OpnameStatus,
+} from "@/types/inventory";
 
 /** The filters the opname toolbar drives. Empty string = unset. */
 export interface OpnameFilters {
@@ -14,6 +19,8 @@ export interface OpnameFilters {
   /** `yyyy-mm-dd` from a date input, or "". */
   dateFrom: string;
   dateTo: string;
+  /** Which ordering to page through. */
+  sort: OpnameSort;
 }
 
 export const EMPTY_OPNAME_FILTERS: OpnameFilters = {
@@ -22,6 +29,9 @@ export const EMPTY_OPNAME_FILTERS: OpnameFilters = {
   status: "",
   dateFrom: "",
   dateTo: "",
+  // The API's own default, restated rather than left out: the panel renders the
+  // current value, and a select whose value is `undefined` shows nothing.
+  sort: "newest",
 };
 
 const PAGE_SIZE = 20;
@@ -64,7 +74,7 @@ export function useOpnames(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const { search, warehouseId, status, dateFrom, dateTo } = filters;
+  const { search, warehouseId, status, dateFrom, dateTo, sort } = filters;
 
   useEffect(() => {
     let active = true;
@@ -82,6 +92,7 @@ export function useOpnames(
         // The inputs give a date; the API bounds `opnameDate`, a timestamp.
         // `dateTo` is pushed to the end of its day so "sampai 3 Agustus"
         // includes the sheets counted on the 3rd rather than only midnight.
+        sort,
         dateFrom: dateFrom ? `${dateFrom}T00:00:00.000Z` : undefined,
         dateTo: dateTo ? `${dateTo}T23:59:59.999Z` : undefined,
       })
@@ -107,7 +118,7 @@ export function useOpnames(
     return () => {
       active = false;
     };
-  }, [search, warehouseId, status, dateFrom, dateTo, page, refreshKey]);
+  }, [search, warehouseId, status, dateFrom, dateTo, sort, page, refreshKey]);
 
   return { opnames, pagination, loading, error };
 }

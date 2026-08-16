@@ -7,9 +7,11 @@ import { ApiError } from "@/services/api-error";
 import type {
   GoodsReceiptListQuery,
   GoodsReceiptListRow,
+  GoodsReceiptSort,
   PageResult,
   PurchaseType,
 } from "@/types/api";
+import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 
 /** The query knobs the list screen drives (page + the visible filters). */
 export interface GoodsReceiptsQuery {
@@ -24,6 +26,12 @@ export interface GoodsReceiptsQuery {
   /** `yyyy-mm-dd`, as the date inputs hold them. "" = unbounded. */
   dateFrom: string;
   dateTo: string;
+  /**
+   * Which ordering the list is paged through in. Always set — a list with no
+   * ordering is not a thing — so it has no "" and Reset returns it to the
+   * default rather than clearing it.
+   */
+  sort: GoodsReceiptSort;
 }
 
 const PAGE_SIZE = 20;
@@ -36,6 +44,7 @@ const DEFAULT_QUERY: GoodsReceiptsQuery = {
   purchaseType: "",
   dateFrom: "",
   dateTo: "",
+  sort: "newest",
 };
 
 /** Empty page so consumers can render a table shell before the first load. */
@@ -91,6 +100,10 @@ export function useGoodsReceipts(
   // Bumped by refetch() to force the effect to re-run without changing query.
   const [nonce, setNonce] = useState(0);
 
+  // The toolbar keeps the live query so typing stays responsive; only the
+  // request waits for the search box to settle.
+  const settled = useDebouncedQuery(query);
+
   const setQuery = useCallback((patch: Partial<GoodsReceiptsQuery>) => {
     setQueryState((prev) => {
       const next = { ...prev, ...patch };
@@ -113,14 +126,15 @@ export function useGoodsReceipts(
     setError(null);
 
     const apiQuery: GoodsReceiptListQuery = {
-      page: query.page,
+      page: settled.page,
       limit: PAGE_SIZE,
-      search: query.search.trim() || undefined,
-      supplierId: query.supplierId || undefined,
-      warehouseId: query.warehouseId || undefined,
-      purchaseType: query.purchaseType === "" ? undefined : query.purchaseType,
-      dateFrom: query.dateFrom || undefined,
-      dateTo: query.dateTo || undefined,
+      search: settled.search.trim() || undefined,
+      supplierId: settled.supplierId || undefined,
+      warehouseId: settled.warehouseId || undefined,
+      purchaseType: settled.purchaseType === "" ? undefined : settled.purchaseType,
+      dateFrom: settled.dateFrom || undefined,
+      dateTo: settled.dateTo || undefined,
+      sort: settled.sort,
     };
 
     goodsReceiptService
@@ -146,7 +160,7 @@ export function useGoodsReceipts(
     return () => {
       active = false;
     };
-  }, [query, nonce]);
+  }, [settled, nonce]);
 
   return { receipts, pagination, query, loading, error, setQuery, refetch };
 }

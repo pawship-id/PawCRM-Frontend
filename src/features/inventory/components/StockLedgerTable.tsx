@@ -87,7 +87,7 @@ export function StockLedgerTable({
             <tr className="border-b border-border text-[10px] uppercase tracking-widest text-muted">
               <th className="px-4 py-2.5 text-left font-medium">Waktu</th>
               <th className="px-4 py-2.5 text-left font-medium">Tipe</th>
-              <th className="px-4 py-2.5 text-left font-medium">Lot</th>
+              <th className="px-4 py-2.5 text-left font-medium">Kode batch</th>
               <th className="px-4 py-2.5 text-right font-medium">
                 Masuk / keluar
               </th>
@@ -110,7 +110,7 @@ export function StockLedgerTable({
                   key={movement._id}
                   className="border-b border-border/60 last:border-0"
                 >
-                  <td className="whitespace-nowrap px-4 py-2.5 font-mono text-xs text-muted">
+                  <td className="whitespace-nowrap px-4 py-2.5 tabular-nums text-xs text-muted">
                     {new Date(movement.createdAt).toLocaleString("id-ID", {
                       day: "2-digit",
                       month: "short",
@@ -122,31 +122,31 @@ export function StockLedgerTable({
                   <td className="px-4 py-2.5">
                     <MovementBadge type={movement.movementType} />
                   </td>
-                  <td className="px-4 py-2.5 font-mono text-xs text-muted">
+                  <td className="px-4 py-2.5 tabular-nums text-xs text-muted">
                     {/* A movement CAN legitimately have no lot: most stock is
                         not batch-tracked at all. */}
                     {movement.batchCode ?? "—"}
                   </td>
                   <td
                     className={cn(
-                      "px-4 py-2.5 text-right font-mono text-sm font-semibold tabular-nums",
+                      "px-4 py-2.5 text-right tabular-nums text-sm font-semibold",
                       positive ? "text-success" : "text-danger",
                     )}
                   >
                     {positive ? "+" : ""}
                     {formatQty(movement.qty)}
                   </td>
-                  <td className="px-4 py-2.5 text-right font-mono text-sm tabular-nums">
+                  <td className="px-4 py-2.5 text-right tabular-nums text-sm">
                     {formatQty(movement.balanceAfter)}{" "}
                     <span className="text-xs text-muted">{unit}</span>
                   </td>
-                  <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums text-muted">
+                  <td className="px-4 py-2.5 text-right tabular-nums text-xs text-muted">
                     {movement.hppAtTime ? formatMoney(movement.hppAtTime) : "—"}
                   </td>
                   <td className="px-4 py-2.5 text-xs text-muted">
                     {movement.referenceNo ? (
                       <>
-                        <span className="block font-mono text-foreground">
+                        <span className="block tabular-nums text-foreground">
                           {movement.referenceNo}
                         </span>
                         <span className="block text-[11px]">
@@ -191,7 +191,7 @@ export function StockLedgerTable({
                 <td className="px-4 py-2.5 text-muted" colSpan={4}>
                   Saldo sebelum baris terakhir di halaman ini
                 </td>
-                <td className="px-4 py-2.5 text-right font-mono tabular-nums">
+                <td className="px-4 py-2.5 text-right tabular-nums">
                   {formatQty(openingBalance)}{" "}
                   <span className="text-muted">{unit}</span>
                 </td>

@@ -355,6 +355,144 @@ describe("OpnameScreen", () => {
     ).not.toBeInTheDocument();
   });
 
+  /**
+   * Every filter lives behind one button now, the same shape the catalogue
+   * uses. These pin the two things that shape can get wrong: a field that
+   * queries while it is being composed, and a badge that stops being worth
+   * reading once the triggers are hidden.
+   */
+  describe("the filter panel", () => {
+    /** Opens the one filter panel and returns it. */
+    async function openFilters(user: ReturnType<typeof userEvent.setup>) {
+      await user.click(screen.getByRole("button", { name: "Filter" }));
+      return screen.findByRole("dialog");
+    }
+
+    /**
+     * Matches the LIST request specifically.
+     *
+     * This screen fires `list()` twice for different reasons: the paged history
+     * below, and the start card's own lookup for a draft the warehouse already
+     * has (`{limit: 1, status: "draft"}`). `toHaveBeenLastCalledWith` catches
+     * whichever landed last — and since the lookup also carries
+     * `status: "draft"`, an assertion about the status filter can pass while
+     * the filter does nothing at all. `limit` is what tells them apart.
+     */
+    const listRequest = (fields: Record<string, unknown>) =>
+      expect.objectContaining({ limit: 20, ...fields });
+
+    beforeEach(() => {
+      asMock(stockOpnameService.list).mockResolvedValue(page([sheet()]));
+    });
+
+    it("puts all three filters behind one button", async () => {
+      const user = userEvent.setup();
+      renderWithAuth(<OpnameScreen />);
+      await screen.findByText("OPN-2026-0001");
+
+      // Absent, not hidden: two controls named "Filter gudang" on one page is
+      // one control to look at and two to a screen reader.
+      expect(
+        screen.queryByRole("button", { name: "Filter gudang" }),
+      ).not.toBeInTheDocument();
+
+      const panel = await openFilters(user);
+      expect(
+        within(panel).getByRole("button", { name: "Filter status opname" }),
+      ).toBeInTheDocument();
+      expect(
+        within(panel).getByRole("button", { name: "Filter gudang" }),
+      ).toBeInTheDocument();
+      // The range renders as a FIELD here — two plain inputs, no popover of its
+      // own, so there is exactly one Terapkan on screen for one decision.
+      expect(
+        within(panel).getByLabelText("Tanggal opname dari"),
+      ).toBeInTheDocument();
+      expect(
+        within(panel).queryByRole("button", { name: /Tanggal opname/ }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("holds the fields as a draft until Terapkan", async () => {
+      const user = userEvent.setup();
+      renderWithAuth(<OpnameScreen />);
+      await screen.findByText("OPN-2026-0001");
+
+      const calls = asMock(stockOpnameService.list).mock.calls.length;
+
+      const panel = await openFilters(user);
+      await user.click(
+        within(panel).getByRole("button", { name: "Filter status opname" }),
+      );
+      await user.click(screen.getByRole("option", { name: "Draft" }));
+
+      // Composing a query does not query — the whole reason for a panel.
+      expect(asMock(stockOpnameService.list).mock.calls).toHaveLength(calls);
+
+      await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+      await waitFor(() =>
+        expect(stockOpnameService.list).toHaveBeenCalledWith(
+          listRequest({ status: "draft" }),
+        ),
+      );
+    });
+
+    it("re-orders the list by a name the API accepts", async () => {
+      const user = userEvent.setup();
+      renderWithAuth(<OpnameScreen />);
+      await screen.findByText("OPN-2026-0001");
+
+      // Stated rather than omitted: every page of a walk has to agree.
+      expect(stockOpnameService.list).toHaveBeenCalledWith(
+        listRequest({ sort: "newest" }),
+      );
+
+      const panel = await openFilters(user);
+      await user.click(within(panel).getByRole("button", { name: "Urutkan" }));
+      await user.click(screen.getByRole("option", { name: "Nomor A–Z" }));
+      await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+      await waitFor(() =>
+        expect(stockOpnameService.list).toHaveBeenCalledWith(
+          listRequest({ sort: "numberAsc" }),
+        ),
+      );
+
+      // Read with the panel SHUT — Radix hides the trigger from the
+      // accessibility tree while its own dialog is up. The ordering is not
+      // counted: every list has one.
+      expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
+        /^Filter$/,
+      );
+    });
+
+    it("commits the date range with the panel, not with a second button", async () => {
+      const user = userEvent.setup();
+      renderWithAuth(<OpnameScreen />);
+      await screen.findByText("OPN-2026-0001");
+
+      const panel = await openFilters(user);
+      await user.type(
+        within(panel).getByLabelText("Tanggal opname dari"),
+        "2026-08-01",
+      );
+      await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+      // The hook widens the date to a UTC instant before sending it.
+      await waitFor(() =>
+        expect(stockOpnameService.list).toHaveBeenCalledWith(
+          listRequest({ dateFrom: "2026-08-01T00:00:00.000Z" }),
+        ),
+      );
+
+      // And the badge counts the range ONCE, not once per bound.
+      expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
+        "Filter (1)",
+      );
+    });
+  });
+
   describe("exporting the history", () => {
     /**
      * The list is paged, so the file is too — and the button says so. A file
@@ -845,7 +983,7 @@ describe("OpnameSheet", () => {
         screen.getByRole("button", { name: /Muat semua produk gudang ini/ }),
       ).toBeInTheDocument();
       expect(
-        screen.getByRole("button", { name: /^Pilih produk$/ }),
+        screen.getByRole("button", { name: /Tambah produk/ }),
       ).toBeInTheDocument();
     });
 

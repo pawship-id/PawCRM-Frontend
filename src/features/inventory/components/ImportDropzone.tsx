@@ -122,7 +122,7 @@ export function ImportDropzone({
           </DropdownMenu>
 
           <p className="mt-2 text-xs text-muted">
-            Template sudah berisi contoh: satu produk biasa dan satu produk
+            Template sudah berisi contoh: satu produk satuan dan satu produk
             bervarian.
           </p>
         </div>

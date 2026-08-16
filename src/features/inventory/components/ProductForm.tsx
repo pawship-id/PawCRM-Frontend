@@ -204,18 +204,26 @@ interface VariantRow {
 const MODES: Array<{ value: Mode; label: string; hint: string }> = [
   {
     value: "standalone",
-    label: "Produk biasa",
+    // Named after what a shop counts in — one item, one price — rather than
+    // after what it is not. "Biasa" only means anything once you already know
+    // the other two, which is the wrong way round for the first choice on the
+    // form. Matches the catalogue's create menu, which offers the same three.
+    label: "Satuan",
     hint: "Satu barang, satu harga, satu stok.",
   },
   {
     value: "variants",
-    label: "Punya varian",
+    label: "Varian",
     hint: "Satu produk induk yang mekar jadi beberapa ukuran atau rasa.",
   },
   {
     value: "bundle",
-    label: "Bundle / multi-satuan",
-    hint: "Paket yang memotong stok komponennya saat terjual.",
+    // "Bundle / multi-satuan" until Satuan took that word: "multi-satuan" now
+    // reads as "several standalone products", which is the opposite of what a
+    // bundle is. The meaning it carried — a dus of twelve is a bundle too —
+    // moved into the hint, where it was always clearer anyway.
+    label: "Bundle",
+    hint: "Paket atau satuan besar yang memotong stok komponennya saat terjual.",
   },
 ];
 
@@ -239,7 +247,22 @@ const DEFAULT_UNIT = "pcs";
  * its variants) has arrived is what lets that stay true — the alternative is an
  * effect that copies server data into state and a race about which wins.
  */
-export function ProductForm({ productId }: { productId?: string }) {
+export function ProductForm({
+  productId,
+  initialMode,
+}: {
+  productId?: string;
+  /**
+   * Which shape to open on, from `?type=` — the create menu picks the shape
+   * before the form loads, so "Bundle" lands on the bundle form rather than on
+   * a mode picker with the answer already known.
+   *
+   * A raw string, narrowed here rather than at the route: an unrecognised value
+   * is a hand-edited URL, and the right answer to one is the default form, not
+   * a crash. Ignored entirely when editing — the shape is locked after creation.
+   */
+  initialMode?: string;
+}) {
   const detail = useProductDetail(productId);
   // `withAccounting` is what pulls in the income accounts and business lines the
   // accounting section picks from. Opt-in, so the list screen and the stock
@@ -266,11 +289,39 @@ export function ProductForm({ productId }: { productId?: string }) {
     );
   }
 
+  /**
+   * A RETIRED CATEGORY IS NOT OFFERED, which is the whole of what `isActive`
+   * means — the category screen promises exactly this in the switch's own copy.
+   *
+   * THE ONE THE EDITED PRODUCT ALREADY USES STAYS, retired or not. Dropping it
+   * would leave the select showing a different category than the product is
+   * filed under, and the first save would quietly re-file it — a data change
+   * nobody asked for, caused by a label somebody retired months later.
+   *
+   * Filtered here rather than in the request, because the same hook feeds the
+   * catalogue's category FILTER, which must keep offering retired ones: that is
+   * how you find the products still filed under one.
+   */
+  const selectable = lookups.categories.filter(
+    (category) =>
+      category.isActive || category._id === detail.product?.categoryId,
+  );
+
+  if (selectable.length === 0) {
+    return (
+      <Alert variant="error">
+        Semua kategori sedang nonaktif. Aktifkan salah satu di Inventory →
+        Kategori — produk baru hanya bisa difilekan di kategori yang aktif.
+      </Alert>
+    );
+  }
+
   return (
     <ProductFormFields
       existing={detail.product ?? undefined}
+      initialMode={MODES.find((option) => option.value === initialMode)?.value}
       existingVariants={detail.variants}
-      categories={lookups.categories}
+      categories={selectable}
       warehouses={lookups.warehouses}
       salesAccounts={lookups.salesAccounts}
       businessLines={lookups.businessLines}
@@ -317,6 +368,7 @@ export function ProductForm({ productId }: { productId?: string }) {
  */
 function ProductFormFields({
   existing,
+  initialMode,
   existingVariants,
   categories,
   warehouses,
@@ -325,6 +377,7 @@ function ProductFormFields({
   accountingError,
 }: {
   existing?: Product;
+  initialMode?: Mode;
   existingVariants: Product[];
   categories: Category[];
   warehouses: StockWarehouse[];
@@ -335,7 +388,7 @@ function ProductFormFields({
   const router = useRouter();
 
   const [mode, setMode] = useState<Mode>(() => {
-    if (!existing) return "standalone";
+    if (!existing) return initialMode ?? "standalone";
     return existing.productType === "parent"
       ? "variants"
       : existing.productType === "bundle"
@@ -1391,7 +1444,7 @@ function ProductFormFields({
                   : "Unik per tenant"
               }
               placeholder="RC-ADULT"
-              className="font-mono"
+              className="tabular-nums"
               required={mode !== "variants"}
             />
           </div>
@@ -1467,7 +1520,7 @@ function ProductFormFields({
                   error={fieldErrors.barcode}
                   hint="Opsional, unik per tenant"
                   placeholder="899…"
-                  className="font-mono"
+                  className="tabular-nums"
                 />
                 {/*
                   ADVISORY, NOT A GATE — the save button stays enabled. The check
@@ -1859,7 +1912,7 @@ function ProductFormFields({
                                   event.target.value.toUpperCase(),
                                 )
                               }
-                              className="font-mono text-xs"
+                              className="tabular-nums text-xs"
                             />
                             {rowError && (
                               <p
@@ -1883,7 +1936,7 @@ function ProductFormFields({
                                 )
                               }
                               placeholder="opsional"
-                              className="font-mono text-xs"
+                              className="tabular-nums text-xs"
                             />
                           </td>
                           <td className="px-2 py-2">
@@ -1898,7 +1951,7 @@ function ProductFormFields({
                                   event.target.value,
                                 )
                               }
-                              className="font-mono"
+                              className="tabular-nums"
                             />
                           </td>
                           <td className="px-2 py-2">
@@ -1913,7 +1966,7 @@ function ProductFormFields({
                                   event.target.value,
                                 )
                               }
-                              className="max-w-20 font-mono"
+                              className="max-w-20 tabular-nums"
                             />
                           </td>
                           <td className="px-2 py-2">
@@ -1979,7 +2032,7 @@ function ProductFormFields({
                                       placeholder={
                                         shipping[field] || "ikut induk"
                                       }
-                                      className="font-mono"
+                                      className="tabular-nums"
                                     />
                                   </label>
                                 ))}
@@ -2115,7 +2168,7 @@ function ProductFormFields({
           <p className="text-xs text-muted">
             Bundle tidak menyimpan stok sendiri. Saat terjual, komponennya yang
             berkurang — satu baris{" "}
-            <span className="font-mono">bundle_consume</span> per komponen di
+            <span className="tabular-nums">bundle_consume</span> per komponen di
             kartu stok.
           </p>
         </>
@@ -2238,7 +2291,7 @@ function ProductFormFields({
                     error={fieldErrors.openingBatchCode}
                     hint="Wajib untuk produk kedaluwarsa."
                     placeholder="B-2026-08"
-                    className="font-mono"
+                    className="tabular-nums"
                   />
                   <TextField
                     label="Tanggal kedaluwarsa"
@@ -2299,7 +2352,7 @@ function ProductFormFields({
                                   )
                                 }
                                 placeholder="0"
-                                className="max-w-24 font-mono"
+                                className="max-w-24 tabular-nums"
                               />
                             </td>
                             <td className="px-2 py-2">
@@ -2315,7 +2368,7 @@ function ProductFormFields({
                                   )
                                 }
                                 placeholder="44000"
-                                className="max-w-32 font-mono"
+                                className="max-w-32 tabular-nums"
                               />
                             </td>
                           </tr>

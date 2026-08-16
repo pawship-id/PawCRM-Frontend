@@ -12,7 +12,7 @@ export function DummyNotice({ endpoint }: { endpoint: string }) {
     <div className="rounded-lg border border-dashed border-border bg-accent/40 px-4 py-3 text-xs text-muted">
       <b className="text-foreground">Tampilan contoh.</b> Angka di halaman ini
       masih data dummy di frontend. Endpoint{" "}
-      <code className="font-mono text-[11px] text-foreground">{endpoint}</code>{" "}
+      <code className="tabular-nums text-[11px] text-foreground">{endpoint}</code>{" "}
       sudah tersedia di backend dan belum disambungkan, jadi tombol aksi belum
       aktif.
     </div>

@@ -8,8 +8,10 @@ import type {
   PageResult,
   Supplier,
   SupplierListQuery,
+  SupplierSort,
   SupplierType,
 } from "@/types/api";
+import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 
 /**
  * The activity filter, as the toolbar drives it.
@@ -28,6 +30,12 @@ export interface SuppliersQuery {
   type: SupplierType | "";
   activity: SupplierActivityFilter;
   includeDeleted: boolean;
+  /**
+   * Which ordering the list is paged through in. Always set — a list with no
+   * ordering is not a thing — so it has no "" and Reset returns it to the
+   * default rather than clearing it.
+   */
+  sort: SupplierSort;
 }
 
 const PAGE_SIZE = 20;
@@ -38,6 +46,7 @@ const DEFAULT_QUERY: SuppliersQuery = {
   type: "",
   activity: "all",
   includeDeleted: false,
+  sort: "newest",
 };
 
 /** Empty page so consumers can render a table shell before the first load. */
@@ -85,6 +94,10 @@ export function useSuppliers(): UseSuppliersResult {
   // Bumped by refetch() to force the effect to re-run without changing query.
   const [nonce, setNonce] = useState(0);
 
+  // The toolbar keeps the live query so typing stays responsive; only the
+  // request waits for the search box to settle.
+  const settled = useDebouncedQuery(query);
+
   const setQuery = useCallback((patch: Partial<SuppliersQuery>) => {
     setQueryState((prev) => {
       const next = { ...prev, ...patch };
@@ -107,12 +120,13 @@ export function useSuppliers(): UseSuppliersResult {
     setError(null);
 
     const apiQuery: SupplierListQuery = {
-      page: query.page,
+      page: settled.page,
       limit: PAGE_SIZE,
-      search: query.search.trim() || undefined,
-      type: query.type === "" ? undefined : query.type,
-      isActive: activityToFlag(query.activity),
-      includeDeleted: query.includeDeleted || undefined,
+      search: settled.search.trim() || undefined,
+      type: settled.type === "" ? undefined : settled.type,
+      isActive: activityToFlag(settled.activity),
+      includeDeleted: settled.includeDeleted || undefined,
+      sort: settled.sort,
     };
 
     supplierService
@@ -138,7 +152,7 @@ export function useSuppliers(): UseSuppliersResult {
     return () => {
       active = false;
     };
-  }, [query, nonce]);
+  }, [settled, nonce]);
 
   return { suppliers, pagination, query, loading, error, setQuery, refetch };
 }

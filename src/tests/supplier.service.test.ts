@@ -3,6 +3,7 @@ import { goodsReceiptService } from "@/services/goodsReceipt.service";
 import { purchaseInvoiceService } from "@/services/purchaseInvoice.service";
 import { productBatchService } from "@/services/productBatch.service";
 import { apiClient } from "@/services/api-client";
+import type { SupplierListQuery } from "@/types/api";
 
 /**
  * The supplier module's HTTP contract: paths, verbs and query shapes.
@@ -10,31 +11,63 @@ import { apiClient } from "@/services/api-client";
  * apiClient is spied on rather than fetch, so these assert what each service
  * ASKS FOR without a server — the same level branch.service.test.ts works at.
  */
+
+/**
+ * Every filter `SupplierListQuery` carries, each with a value that is not
+ * `undefined` — so a key the service forgets to forward reads as missing.
+ *
+ * `Required<…>` IS THE POINT, and it is here because the thing it guards against
+ * has now happened twice: `list` spells its query out as an object literal, one
+ * key at a time, and anything absent from that literal is dropped in silence.
+ * `sort` was added to the query type, to the hook and to the toolbar, and the
+ * request went out without it — the picker moved and the list did not, exactly
+ * as it had on the catalogue (see product.service.test.ts). A screen test cannot
+ * catch it because it mocks the service.
+ *
+ * With this type, adding a field to `SupplierListQuery` breaks THIS OBJECT at
+ * compile time until it is listed here, and then breaks the assertion below
+ * until `list` actually sends it.
+ */
+const EVERY_FILTER: Required<SupplierListQuery> = {
+  page: 2,
+  limit: 20,
+  type: "konsinyasi",
+  search: "sumber",
+  isActive: true,
+  includeDeleted: false,
+  sort: "nameAsc",
+};
+
 describe("supplierService", () => {
   afterEach(() => jest.restoreAllMocks());
 
-  it("lists with every filter forwarded", async () => {
+  it("forwards every filter it is given — nothing is dropped on the way out", async () => {
     const get = jest.spyOn(apiClient, "get").mockResolvedValue({} as never);
 
-    await supplierService.list({
-      page: 2,
-      limit: 20,
-      type: "konsinyasi",
-      search: "sumber",
-      isActive: true,
-      includeDeleted: false,
-    });
+    await supplierService.list(EVERY_FILTER);
 
-    expect(get).toHaveBeenCalledWith("/suppliers", {
-      query: {
-        page: 2,
-        limit: 20,
-        type: "konsinyasi",
-        search: "sumber",
-        isActive: true,
-        includeDeleted: false,
-      },
-    });
+    const [path, options] = get.mock.calls[0] as [
+      string,
+      { query: Record<string, unknown> },
+    ];
+    expect(path).toBe("/suppliers");
+
+    for (const [key, value] of Object.entries(EVERY_FILTER)) {
+      expect(options.query[key]).toBe(value);
+    }
+  });
+
+  it("sends the ordering the caller asked for", async () => {
+    const get = jest.spyOn(apiClient, "get").mockResolvedValue({} as never);
+
+    await supplierService.list({ sort: "nameDesc" });
+
+    expect(get).toHaveBeenCalledWith(
+      "/suppliers",
+      expect.objectContaining({
+        query: expect.objectContaining({ sort: "nameDesc" }),
+      }),
+    );
   });
 
   /**

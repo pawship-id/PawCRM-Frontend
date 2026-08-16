@@ -54,7 +54,7 @@ export function AccountingHub() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">Keuangan</h1>
+        <h1 className="text-2xl font-extrabold text-foreground">Keuangan</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">
           Pembukuan double-entry: daftar akun sebagai fondasinya, jurnal umum
           sebagai buku besarnya. Laporan laba rugi, neraca, dan arus kas nanti
@@ -73,7 +73,7 @@ export function AccountingHub() {
               {section.title}
             </p>
             <p className="mt-1.5 text-sm text-muted">{section.description}</p>
-            <p className="mt-3 font-mono text-xs tabular-nums text-muted">
+            <p className="mt-3 tabular-nums text-xs text-muted">
               {counts[section.href]}
             </p>
           </Link>
@@ -83,7 +83,7 @@ export function AccountingHub() {
       {can("journalEntries", "read") && (
         <section className="flex flex-col rounded-xl border border-border bg-surface">
           <header className="flex items-baseline gap-2 border-b border-border px-5 py-3">
-            <h2 className="font-semibold">Entri terakhir</h2>
+            <h2 className="font-bold">Entri terakhir</h2>
             <span className="text-xs text-muted">data contoh</span>
             <Link
               href="/dashboard/keuangan/journal-entries"
@@ -103,11 +103,11 @@ export function AccountingHub() {
                   >
                     {entry.description}
                   </Link>
-                  <p className="truncate font-mono text-xs text-muted">
+                  <p className="truncate tabular-nums text-xs text-muted">
                     {entry.entryNumber} · {formatDate(entry.date)}
                   </p>
                 </div>
-                <span className="font-mono text-sm font-semibold tabular-nums">
+                <span className="tabular-nums text-sm font-semibold">
                   {formatMoney(entryTotal(entry))}
                 </span>
               </li>
@@ -116,7 +116,7 @@ export function AccountingHub() {
 
           <div className="border-t border-border px-5 py-2.5 text-right text-xs text-muted">
             Total {latest.length} entri terakhir{" "}
-            <b className="ml-1 font-mono text-foreground">
+            <b className="ml-1 tabular-nums text-foreground">
               {formatMoney(sumDecimals(latest.map(entryTotal)))}
             </b>
           </div>

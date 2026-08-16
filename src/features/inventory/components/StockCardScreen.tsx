@@ -85,6 +85,20 @@ const STOCK_CARD_EXPORT_TYPES = {
   "HPP saat itu": "number",
 } as const;
 
+/**
+ * The four read hooks here take a refresh key, and nothing on this screen turns
+ * it any more.
+ *
+ * It existed for a "Muat ulang" button, now gone: it asked the screen to
+ * re-fetch what every filter change already re-fetches, on a ledger nobody else
+ * can write to while you are reading it. The parameter stays on the hooks
+ * because `useProductStock` has a second caller — the adjustment form, which
+ * posts movements and genuinely needs to re-read after one. A constant says
+ * "this screen never signals a refresh" more plainly than a piece of state that
+ * is only ever read.
+ */
+const NO_REFRESH = 0;
+
 export function StockCardScreen() {
   const lookups = useStockCardLookups();
   const { can } = usePermissions();
@@ -109,7 +123,6 @@ export function StockCardScreen() {
     warehouseId: searchParams.get("warehouseId") ?? EMPTY_FILTERS.warehouseId,
   }));
   const [page, setPage] = useState(1);
-  const [refreshKey, setRefreshKey] = useState(0);
   const [tab, setTab] = useState<Tab>("ledger");
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -127,20 +140,20 @@ export function StockCardScreen() {
     }));
   }, [lookups.warehouses, lookups.products, filters.warehouseId]);
 
-  const {
-    product,
-    qtyOnHand,
-    loading: stockLoading,
-    error: stockError,
-  } = useProductStock(filters.productId, filters.warehouseId, refreshKey);
+  const { product, qtyOnHand, error: stockError } = useProductStock(
+    filters.productId,
+    filters.warehouseId,
+    NO_REFRESH,
+  );
 
-  const ledger = useStockCard(filters, page, refreshKey);
-  const period = useStockCardSummary(filters, refreshKey);
+  const ledger = useStockCard(filters, page, NO_REFRESH);
+  const period = useStockCardSummary(filters, NO_REFRESH);
 
   const batches = useProductBatches(
     mayReadBatches ? filters.productId : "",
     mayReadBatches ? filters.warehouseId : "",
-    refreshKey,
+    NO_REFRESH,
+    filters.search,
   );
 
   /** Any filter change is a new question, so it starts at page 1. */
@@ -148,8 +161,6 @@ export function StockCardScreen() {
     setFilters((prev) => ({ ...prev, ...patch }));
     setPage(1);
   }, []);
-
-  const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
 
   /**
    * Saves the ledger as a typed `.xlsx`.
@@ -224,7 +235,17 @@ export function StockCardScreen() {
         </Alert>
       )}
 
-      <Card title="Pilih barang">
+      {/*
+        The requirement is stated HERE, on the picker, rather than only in the
+        empty state below it. The empty state is what somebody sees when they
+        have not chosen — but it disappears the moment they do, which is exactly
+        when a reader wonders what the two boxes are for. A card that names its
+        own precondition answers that without needing to be empty first.
+      */}
+      <Card
+        title="Pilih Gudang dan Produk"
+        description="Pilih gudang dan produk dulu untuk melihat kartu stok dan daftar batch-nya."
+      >
         <div className="flex flex-col gap-4">
           <WarehouseProductPicker
             warehouses={lookups.warehouses}
@@ -240,10 +261,8 @@ export function StockCardScreen() {
           <StockCardFilters
             filters={filters}
             disabled={nothingSelected}
-            refreshing={ledger.loading || stockLoading}
             exporting={exporting}
             onChange={patchFilters}
-            onRefresh={refresh}
             onExport={exportXlsx}
           />
         </div>
@@ -251,9 +270,13 @@ export function StockCardScreen() {
 
       {nothingSelected ? (
         <div className="rounded-xl border border-dashed border-border bg-surface py-16 text-center">
-          <p className="font-medium text-foreground">
-            Pilih gudang dan produk dulu
-          </p>
+          {/*
+            No longer "Pilih gudang dan produk dulu" — the card above now says
+            that, and the same instruction twice on one screen reads as two
+            instructions that happen to agree. What is left is the half the card
+            does not carry: WHY the pair is required.
+          */}
+          <p className="font-medium text-foreground">Belum ada yang dibaca</p>
           <p className="mx-auto mt-1 max-w-md text-sm text-muted">
             Kartu stok selalu dibaca untuk satu produk di satu gudang — itulah
             yang membuat saldonya bisa dicocokkan.
@@ -391,6 +414,7 @@ export function StockCardScreen() {
                       batches={batches.batches}
                       total={batches.total}
                       hasExpiry={product?.hasExpiry ?? false}
+                      search={filters.search}
                     />
                   )}
                 </>
@@ -431,7 +455,7 @@ function Stat({
       </p>
       <p
         className={cn(
-          "mt-1.5 font-mono text-xl font-semibold tabular-nums",
+          "mt-1.5 tabular-nums text-xl font-semibold",
           tone === "danger" && "text-danger",
           tone === "success" && "text-success",
         )}

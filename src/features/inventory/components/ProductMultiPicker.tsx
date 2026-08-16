@@ -171,7 +171,7 @@ export function ProductMultiPicker({
                   {/* The SKU is how a counter matches a row to a shelf label —
                       two variants of one product differ by nothing else here. */}
                   {product.sku && (
-                    <span className="font-mono text-[11px] text-muted">
+                    <span className="tabular-nums text-[11px] text-muted">
                       {product.sku}
                     </span>
                   )}

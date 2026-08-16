@@ -4,7 +4,7 @@ import { Breadcrumb } from "@/components";
 import { OpnameSheet } from "@/features/inventory";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Lembar opname · PawShip" };
+export const metadata: Metadata = { title: "Lembar opname · Buloo" };
 
 export default async function OpnameSheetPage({
   params,
@@ -23,7 +23,7 @@ export default async function OpnameSheetPage({
             { label: "Lembar penghitungan" },
           ]}
         />
-        <h1 className="mt-1 text-2xl font-semibold text-foreground">
+        <h1 className="mt-1 text-2xl font-extrabold text-foreground">
           Lembar penghitungan
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">

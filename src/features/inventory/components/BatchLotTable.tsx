@@ -25,22 +25,38 @@ export function BatchLotTable({
   batches,
   total,
   hasExpiry,
+  search = "",
 }: {
   batches: ProductBatch[];
   /** How many lots exist server-side — larger than the array means it was cut. */
   total: number;
   hasExpiry: boolean;
+  /**
+   * The search the page is under, for the empty state to name.
+   *
+   * The two tabs share one box but not one match: the ledger matches a note OR
+   * a lot code, this list matches the CODE only. So a word from a note empties
+   * this tab truthfully, and without saying why it reads as "this product has
+   * no lots" — which is a different, alarming claim.
+   */
+  search?: string;
 }) {
+  const searching = search.trim() !== "";
+
   if (batches.length === 0) {
     return (
       <div className="rounded-xl border border-border bg-surface py-16 text-center">
         <p className="font-medium text-foreground">
-          Tidak ada lot di gudang ini
+          {searching
+            ? `Tidak ada batch dengan kode "${search.trim()}"`
+            : "Tidak ada batch di gudang ini"}
         </p>
         <p className="mx-auto mt-1 max-w-md text-sm text-muted">
-          {hasExpiry
-            ? "Lot dibuat otomatis saat barang diterima."
-            : "Lot hanya dibuat untuk barang yang punya masa kedaluwarsa atau datang sebagai konsinyasi — produk ini tidak melacak lot."}
+          {searching
+            ? "Kotak pencarian di atas mencocokkan kode batch di tab ini, dan catatan maupun kode batch di tab Pergerakan — jadi kata yang cuma ada di catatan akan mengosongkan daftar ini."
+            : hasExpiry
+              ? "Batch dibuat otomatis saat barang diterima."
+              : "Batch hanya dibuat untuk barang yang punya masa kedaluwarsa atau datang sebagai konsinyasi — produk ini tidak melacak batch."}
         </p>
       </div>
     );
@@ -57,7 +73,7 @@ export function BatchLotTable({
             <th className="px-4 py-2.5 text-left font-medium">Kode batch</th>
             <th className="px-4 py-2.5 text-left font-medium">Kedaluwarsa</th>
             <th className="px-4 py-2.5 text-right font-medium">Sisa / awal</th>
-            <th className="px-4 py-2.5 text-right font-medium">Harga beli lot</th>
+            <th className="px-4 py-2.5 text-right font-medium">Harga beli batch</th>
             <th className="px-4 py-2.5 text-right font-medium">Nilai sisa</th>
           </tr>
         </thead>
@@ -73,13 +89,13 @@ export function BatchLotTable({
 
       {batches.length < total && (
         <p className="border-t border-border px-4 py-2.5 text-xs text-muted">
-          Menampilkan {batches.length} lot pertama dari {total}.
+          Menampilkan {batches.length} batch pertama dari {total}.
         </p>
       )}
 
       <p className="border-t border-border px-4 py-2.5 text-xs text-muted">
         Urutan di kolom pertama adalah urutan pengambilan: <b>yang paling dekat
-        kedaluwarsa keluar duluan</b>. Lot yang sudah habis tetap ditampilkan di
+        kedaluwarsa keluar duluan</b>. Batch yang sudah habis tetap ditampilkan di
         bawah sebagai riwayat — kuantitas tidak pernah dihapus, hanya menjadi nol.
       </p>
     </div>
@@ -103,7 +119,7 @@ function BatchRow({
     >
       <td className="px-4 py-2.5">
         {order ? (
-          <span className="flex size-6 items-center justify-center rounded-full bg-primary/12 font-mono text-xs font-semibold text-primary-hover">
+          <span className="flex size-6 items-center justify-center rounded-full bg-primary/12 tabular-nums text-xs font-semibold text-primary-hover">
             {order}
           </span>
         ) : (
@@ -111,7 +127,7 @@ function BatchRow({
         )}
       </td>
       <td className="px-4 py-2.5">
-        <span className="font-mono text-xs">{batch.batchCode}</span>
+        <span className="tabular-nums text-xs">{batch.batchCode}</span>
         {batch.isConsignment && (
           <Badge
             variant="outline"
@@ -130,17 +146,17 @@ function BatchRow({
       </td>
       <td
         className={cn(
-          "px-4 py-2.5 text-right font-mono text-sm tabular-nums",
+          "px-4 py-2.5 text-right tabular-nums text-sm",
           negative && "font-semibold text-danger",
         )}
       >
         {formatQty(batch.qtyRemaining)}
         <span className="text-xs text-muted"> / {formatQty(batch.initialQty)}</span>
       </td>
-      <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums text-muted">
+      <td className="px-4 py-2.5 text-right tabular-nums text-xs text-muted">
         {formatMoney(batch.costPerUnit)}
       </td>
-      <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums">
+      <td className="px-4 py-2.5 text-right tabular-nums text-xs">
         {spent
           ? "—"
           : formatMoney(multiplyDecimals(batch.qtyRemaining, batch.costPerUnit))}

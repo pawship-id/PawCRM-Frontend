@@ -1,13 +1,6 @@
 "use client";
 
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { FilterSelect, namedOptions } from "@/components";
 import type { Product, StockWarehouse } from "@/types/inventory";
 
 /**
@@ -17,7 +10,19 @@ import type { Product, StockWarehouse } from "@/types/inventory";
  * getting them out of step — one calling it "gudang", another "lokasi" — is how
  * a set of forms stops feeling like one module.
  *
- * TWO FILTERS, both matching a backend rule rather than a preference:
+ * THE FILTER SHELL ON A FORM, which FilterTrigger is exported to allow. These
+ * two pick from the same lists as the filter panel a few centimetres away on
+ * the stock card, and a second select convention on one screen is a second thing
+ * to recognise for no gain. The product list also gets the popover's own search
+ * for free, which matters more here than anywhere: it is a whole catalogue, and
+ * the stock card already warns when it had to be truncated.
+ *
+ * `active={false}` on both. The trigger's navy state means "a filter is
+ * applied", and these are not filters — nothing is narrowed by choosing a
+ * warehouse here, the screen simply cannot load until one is chosen.
+ *
+ * TWO FILTERS ON THE OPTIONS, both matching a backend rule rather than a
+ * preference:
  *
  *   warehouses — ACTIVE only. An inactive warehouse still owns its stock and its
  *                history, but must not accept new movement, so offering it would
@@ -55,50 +60,40 @@ export function WarehouseProductPicker({
   /** Shown before anything is chosen — a read screen may open with no selection. */
   productPlaceholder?: string;
 }) {
+  const selectableWarehouses = warehouses.filter(
+    (warehouse) => includeInactiveWarehouses || warehouse.isActive,
+  );
+
+  const selectableProducts = products.filter(
+    (product) =>
+      product.productType === "standalone" || product.productType === "variant",
+  );
+
   return (
     <div className="grid gap-4 sm:grid-cols-2">
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="warehouse">{warehouseLabel}</Label>
-        <Select value={warehouseId} onValueChange={onWarehouseChange}>
-          <SelectTrigger id="warehouse" aria-label={warehouseLabel}>
-            <SelectValue placeholder="Pilih gudang" />
-          </SelectTrigger>
-          <SelectContent>
-            {warehouses
-              .filter(
-                (warehouse) => includeInactiveWarehouses || warehouse.isActive,
-              )
-              .map((warehouse) => (
-                <SelectItem key={warehouse._id} value={warehouse._id}>
-                  {warehouse.name}
-                  {!warehouse.isActive && " (nonaktif)"}
-                </SelectItem>
-              ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <FilterSelect
+        layout="field"
+        label={warehouseLabel}
+        ariaLabel={warehouseLabel}
+        value={warehouseId}
+        options={namedOptions(selectableWarehouses, (warehouse) =>
+          warehouse.isActive ? warehouse.name : `${warehouse.name} (nonaktif)`,
+        )}
+        active={false}
+        placeholder="Pilih gudang"
+        onChange={onWarehouseChange}
+      />
 
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="product">Produk</Label>
-        <Select value={productId} onValueChange={onProductChange}>
-          <SelectTrigger id="product" aria-label="Produk">
-            <SelectValue placeholder={productPlaceholder} />
-          </SelectTrigger>
-          <SelectContent>
-            {products
-              .filter(
-                (product) =>
-                  product.productType === "standalone" ||
-                  product.productType === "variant",
-              )
-              .map((product) => (
-                <SelectItem key={product._id} value={product._id}>
-                  {product.name}
-                </SelectItem>
-              ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <FilterSelect
+        layout="field"
+        label="Produk"
+        ariaLabel="Produk"
+        value={productId}
+        options={namedOptions(selectableProducts)}
+        active={false}
+        placeholder={productPlaceholder ?? "Pilih produk"}
+        onChange={onProductChange}
+      />
     </div>
   );
 }

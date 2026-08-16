@@ -1,11 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { Pencil, RotateCcw, Trash2 } from "lucide-react";
+import { EllipsisVertical, Pencil, RotateCcw, Trash2 } from "lucide-react";
 
 import { ConfirmDialog, HighlightText } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -128,57 +135,91 @@ export function CategoriesTable({
                     </div>
                   </TableCell>
                   <TableCell>
+                    {/*
+                      Three states, and deleted outranks retired: a deleted
+                      category may well also be inactive, and saying "Nonaktif"
+                      about a row that is gone from every ordinary read answers
+                      the less important half of the question.
+                    */}
                     {deleted ? (
                       <Badge variant="outline" className="text-muted">
                         Dihapus
                       </Badge>
-                    ) : (
+                    ) : category.isActive ? (
                       <Badge variant="outline">Aktif</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-muted">
+                        Nonaktif
+                      </Badge>
                     )}
                   </TableCell>
                   {showActions && (
                     <TableCell>
-                      <div className="flex items-center justify-end gap-1">
-                        {deleted ? (
-                          <Can feature="categories" action="restore">
+                      <div className="flex items-center justify-end">
+                        {/*
+                          A KEBAB, like the catalogue's — and gated on the same
+                          `rowHasActions` as before, so the trigger never opens
+                          onto an empty menu. Unlike the catalogue's it is not
+                          rendered unconditionally: a product row always has
+                          Detail to offer, and a category has no detail page, so
+                          a read-only role here would get a button that does
+                          nothing at all.
+                        */}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() =>
-                                setPending({ kind: "restore", category })
-                              }
+                              // The icon carries no name of its own, so the
+                              // label says which row this menu belongs to — a
+                              // screen-reader user hearing twenty identical
+                              // "Aksi" buttons has learnt nothing.
+                              aria-label={`Aksi untuk ${category.name}`}
                             >
-                              <RotateCcw className="size-4" />
-                              Pulihkan
+                              <EllipsisVertical className="size-4" />
                             </Button>
-                          </Can>
-                        ) : (
-                          <>
-                            <Can feature="categories" action="update">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => onEdit(category)}
-                              >
-                                <Pencil className="size-4" />
-                                Ubah nama
-                              </Button>
-                            </Can>
-                            <Can feature="categories" action="delete">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-danger hover:bg-danger/10 hover:text-danger"
-                                onClick={() =>
-                                  setPending({ kind: "delete", category })
-                                }
-                              >
-                                <Trash2 className="size-4" />
-                                Hapus
-                              </Button>
-                            </Can>
-                          </>
-                        )}
+                          </DropdownMenuTrigger>
+
+                          <DropdownMenuContent>
+                            {deleted ? (
+                              <Can feature="categories" action="restore">
+                                <DropdownMenuItem
+                                  onSelect={() =>
+                                    setPending({ kind: "restore", category })
+                                  }
+                                >
+                                  <RotateCcw />
+                                  Pulihkan
+                                </DropdownMenuItem>
+                              </Can>
+                            ) : (
+                              <>
+                                <Can feature="categories" action="update">
+                                  <DropdownMenuItem
+                                    onSelect={() => onEdit(category)}
+                                  >
+                                    <Pencil />
+                                    Edit
+                                  </DropdownMenuItem>
+                                </Can>
+                                <Can feature="categories" action="delete">
+                                  {/* Separated and tinted: the item above only
+                                      opens a form, and this one writes. */}
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    variant="destructive"
+                                    onSelect={() =>
+                                      setPending({ kind: "delete", category })
+                                    }
+                                  >
+                                    <Trash2 />
+                                    Hapus
+                                  </DropdownMenuItem>
+                                </Can>
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </TableCell>
                   )}

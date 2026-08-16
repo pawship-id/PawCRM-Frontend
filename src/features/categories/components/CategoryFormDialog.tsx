@@ -4,6 +4,8 @@ import { useState } from "react";
 
 import { Alert, Spinner, TextField } from "@/components";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -23,7 +25,7 @@ const NAME_MAX_LENGTH = 120;
 /**
  * Create or rename a category, in a dialog rather than on its own route.
  *
- * A CATEGORY HAS EXACTLY ONE EDITABLE FIELD. Branches and users get /new and
+ * A CATEGORY HAS TWO EDITABLE FIELDS. Branches and users get /new and
  * /:id pages because they have a screenful of fields worth a screen; sending
  * somebody to a separate page, and then back, to type one word would make the
  * common case — adding three categories in a row — three round trips through
@@ -33,6 +35,16 @@ const NAME_MAX_LENGTH = 120;
  * ONE COMPONENT FOR BOTH VERBS because the form is identical; only the request
  * and the wording differ. Splitting them would be two copies of the same field
  * kept in step by hand.
+ *
+ * THE ACTIVE SWITCH ONLY APPEARS WHEN EDITING. A category is created because
+ * somebody wants to use it — offering "make this one and retire it immediately"
+ * is a control that answers a question nobody asked. Retiring is a decision
+ * taken later, about a label that has been around a while.
+ *
+ * RETIRING IS NOT DELETING, and the copy under the switch says so, because the
+ * two are one click apart in this dialog's own row. A category cannot be deleted
+ * at all while a live product is filed under it — retiring is what people
+ * actually want when a shop stops stocking a line, and it keeps the history.
  *
  * THE 409 IS THE INTERESTING FAILURE, and it is shown against the field rather
  * than as a banner: the name is what is wrong, and a message at the top of a
@@ -54,6 +66,7 @@ export function CategoryFormDialog({
   const editing = category !== undefined;
 
   const [name, setName] = useState(category?.name ?? "");
+  const [isActive, setIsActive] = useState(category?.isActive ?? true);
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -71,9 +84,12 @@ export function CategoryFormDialog({
       setFieldError(`Maksimal ${NAME_MAX_LENGTH} karakter.`);
       return;
     }
-    // Renaming to the same name would be a request that changes nothing, and
-    // the backend rejects an empty patch body anyway.
-    if (editing && trimmed === category.name) {
+    // A patch that changes nothing is a request the backend rejects outright
+    // (`.min(1)` on the body), so both fields have to be compared, not just the
+    // name — otherwise flipping only the switch would submit an empty body.
+    const renamed = editing && trimmed !== category.name;
+    const retired = editing && isActive !== category.isActive;
+    if (editing && !renamed && !retired) {
       onClose();
       return;
     }
@@ -84,7 +100,12 @@ export function CategoryFormDialog({
 
     try {
       if (editing) {
-        await categoryService.update(category._id, { name: trimmed });
+        // Only what moved: the name is left out of a patch that merely retires
+        // a category, so the 409 name check never runs against its own name.
+        await categoryService.update(category._id, {
+          ...(renamed ? { name: trimmed } : {}),
+          ...(retired ? { isActive } : {}),
+        });
       } else {
         await categoryService.create({ name: trimmed });
       }
@@ -120,11 +141,11 @@ export function CategoryFormDialog({
         <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
           <DialogHeader>
             <DialogTitle>
-              {editing ? "Ubah nama kategori" : "Kategori baru"}
+              {editing ? "Ubah kategori" : "Kategori baru"}
             </DialogTitle>
             <DialogDescription>
               {editing
-                ? "Nama baru langsung berlaku untuk semua produk yang sudah difilekan di sini."
+                ? "Perubahan langsung berlaku untuk semua produk yang sudah difilekan di sini."
                 : "Kategori hanya mengelompokkan produk — tidak punya harga, stok, maupun aturan sendiri."}
             </DialogDescription>
           </DialogHeader>
@@ -145,6 +166,25 @@ export function CategoryFormDialog({
             autoFocus
             required
           />
+
+          {editing && (
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <Label htmlFor="category-active">Aktif</Label>
+                <p className="mt-1 text-xs text-muted">
+                  Kategori nonaktif tidak ditawarkan lagi untuk produk baru.
+                  Produk yang sudah difilekan di sini tetap ada, dan kategorinya
+                  bisa diaktifkan lagi kapan saja.
+                </p>
+              </div>
+              <Switch
+                id="category-active"
+                checked={isActive}
+                onCheckedChange={setIsActive}
+                disabled={busy}
+              />
+            </div>
+          )}
 
           <DialogFooter>
             <Button

@@ -185,7 +185,7 @@ export function ProductDetail({ productId }: { productId: string }) {
       <div className="flex flex-wrap items-start gap-4 rounded-xl border border-border bg-surface p-5">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-lg font-semibold">{product.name}</h2>
+            <h2 className="text-lg font-bold">{product.name}</h2>
             <ProductTypeBadge
               type={product.productType}
               variantCount={
@@ -205,7 +205,7 @@ export function ProductDetail({ productId }: { productId: string }) {
             {!product.isActive && <Badge variant="outline">nonaktif</Badge>}
             {deleted && <Badge variant="outline">terhapus</Badge>}
           </div>
-          <p className="mt-1 font-mono text-xs text-muted">
+          <p className="mt-1 tabular-nums text-xs text-muted">
             {/* Null on a parent, which is never sold or scanned. */}
             {product.sku ?? "—"}
             {product.barcode && ` · ⦀ ${product.barcode}`}
@@ -323,9 +323,9 @@ export function ProductDetail({ productId }: { productId: string }) {
           <Card title="Informasi produk">
             <dl className="grid grid-cols-[120px_1fr] gap-y-2 text-sm">
               <dt className="text-muted">SKU</dt>
-              <dd className="font-mono text-xs">{product.sku ?? "—"}</dd>
+              <dd className="tabular-nums text-xs">{product.sku ?? "—"}</dd>
               <dt className="text-muted">Barcode</dt>
-              <dd className="font-mono text-xs">{product.barcode ?? "—"}</dd>
+              <dd className="tabular-nums text-xs">{product.barcode ?? "—"}</dd>
               <dt className="text-muted">Tipe</dt>
               <dd className="font-medium">
                 {TYPE_LABELS[product.productType]}
@@ -342,7 +342,7 @@ export function ProductDetail({ productId }: { productId: string }) {
               <dt className="text-muted">Satuan</dt>
               <dd className="font-medium">{product.unit}</dd>
               <dt className="text-muted">Minimum stok</dt>
-              <dd className="font-mono tabular-nums">
+              <dd className="tabular-nums">
                 {product.minStock > 0
                   ? `${product.minStock} ${product.unit}`
                   : "—"}
@@ -404,7 +404,7 @@ export function ProductDetail({ productId }: { productId: string }) {
           <Card title="Informasi pengiriman">
             <dl className="grid grid-cols-[120px_1fr] gap-y-2 text-sm">
               <dt className="text-muted">Berat</dt>
-              <dd className="font-mono tabular-nums">
+              <dd className="tabular-nums">
                 {product.resolved?.shipping.weight
                   ? `${product.resolved.shipping.weight} ${
                       product.resolved.shipping.weightUnit ?? "gr"
@@ -413,7 +413,7 @@ export function ProductDetail({ productId }: { productId: string }) {
                 <InheritedNote product={product} field="shipping.weight" />
               </dd>
               <dt className="text-muted">Dimensi</dt>
-              <dd className="font-mono tabular-nums">
+              <dd className="tabular-nums">
                 {formatDimensions(product)}
                 <InheritedNote product={product} field="shipping.length" />
               </dd>
@@ -717,14 +717,14 @@ function StockByWarehouse({
                 >
                   <td className="py-2 pr-4">
                     {warehouseName(warehouses, String(row.warehouseId)) ?? (
-                      <span className="font-mono text-xs text-muted">
+                      <span className="tabular-nums text-xs text-muted">
                         {String(row.warehouseId)}
                       </span>
                     )}
                   </td>
                   <td
                     className={cn(
-                      "py-2 text-right font-mono tabular-nums",
+                      "py-2 text-right tabular-nums",
                       isLow(product, row.qty) && "font-semibold text-danger",
                     )}
                   >
@@ -761,7 +761,7 @@ function StockByWarehouse({
               <tfoot>
                 <tr className="border-t border-border">
                   <td className="py-2 pr-4 text-xs text-muted">Total</td>
-                  <td className="py-2 text-right font-mono font-semibold tabular-nums">
+                  <td className="py-2 text-right tabular-nums font-semibold">
                     {formatQty(sumDecimals(visible.map((row) => row.qty)))}{" "}
                     <span className="text-xs font-normal text-muted">
                       {product.unit}
@@ -847,7 +847,7 @@ function VariantTable({
                           " / ",
                         ) || variant.name}
                       </Link>
-                      <p className="font-mono text-xs text-muted">
+                      <p className="tabular-nums text-xs text-muted">
                         {variant.sku}
                         {variant.barcode && ` · ⦀ ${variant.barcode}`}
                       </p>
@@ -857,18 +857,18 @@ function VariantTable({
                         </Badge>
                       )}
                     </td>
-                    <td className="py-2 pr-4 text-right font-mono text-xs tabular-nums">
+                    <td className="py-2 pr-4 text-right tabular-nums text-xs">
                       {formatMoney(variant.hppAvg)}
                     </td>
-                    <td className="py-2 pr-4 text-right font-mono text-xs tabular-nums">
+                    <td className="py-2 pr-4 text-right tabular-nums text-xs">
                       {formatMoney(variant.sellPrice)}
                     </td>
-                    <td className="py-2 pr-4 text-right font-mono text-xs tabular-nums">
+                    <td className="py-2 pr-4 text-right tabular-nums text-xs">
                       {variant.minStock > 0 ? variant.minStock : "—"}
                     </td>
                     <td
                       className={cn(
-                        "py-2 text-right font-mono tabular-nums",
+                        "py-2 text-right tabular-nums",
                         isLow(variant, qty) && "font-semibold text-danger",
                       )}
                     >
@@ -883,7 +883,7 @@ function VariantTable({
                 <td colSpan={4} className="py-2 pr-4 text-xs text-muted">
                   Total stok varian
                 </td>
-                <td className="py-2 text-right font-mono font-semibold tabular-nums">
+                <td className="py-2 text-right tabular-nums font-semibold">
                   {formatQty(total)}{" "}
                   <span className="text-xs font-normal text-muted">{unit}</span>
                 </td>
@@ -969,7 +969,7 @@ function BundleComponents({
                           {item.name}
                         </Link>
                       ) : (
-                        <span className="font-mono text-xs text-muted">
+                        <span className="tabular-nums text-xs text-muted">
                           {id}
                         </span>
                       )}
@@ -979,13 +979,13 @@ function BundleComponents({
                         </Badge>
                       )}
                     </td>
-                    <td className="py-2 pr-4 text-right font-mono tabular-nums">
+                    <td className="py-2 pr-4 text-right tabular-nums">
                       {formatQty(component.qty)}{" "}
                       <span className="text-xs text-muted">
                         {item?.unit ?? ""}
                       </span>
                     </td>
-                    <td className="py-2 text-right font-mono text-xs tabular-nums">
+                    <td className="py-2 text-right tabular-nums text-xs">
                       {item?.hppAvg
                         ? formatMoney(
                             multiplyDecimals(item.hppAvg, component.qty),
@@ -1006,7 +1006,7 @@ function BundleComponents({
 /* ------------------------------------------------------------------ helpers */
 
 const TYPE_LABELS: Record<Product["productType"], string> = {
-  standalone: "Produk biasa",
+  standalone: "Satuan",
   parent: "Produk induk",
   variant: "Varian",
   bundle: "Bundle",
@@ -1082,7 +1082,7 @@ function Stat({
       </p>
       <p
         className={cn(
-          "mt-1 font-mono text-lg font-semibold tabular-nums",
+          "mt-1 tabular-nums text-lg font-semibold",
           tone === "danger" && "text-danger",
         )}
       >

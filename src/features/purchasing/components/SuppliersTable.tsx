@@ -241,18 +241,18 @@ export function SuppliersTable({
                     <SupplierTypeBadge type={supplier.type} />
                   </TableCell>
 
-                  <TableCell className="text-right font-mono text-xs tabular-nums">
+                  <TableCell className="text-right tabular-nums text-xs">
                     {supplier.paymentTermDays} hari
                   </TableCell>
 
-                  <TableCell className="text-right font-mono text-xs tabular-nums">
+                  <TableCell className="text-right tabular-nums text-xs">
                     {receiptCount}
                   </TableCell>
 
                   <TableCell className="text-right">
                     <p
                       className={cn(
-                        "font-mono text-sm tabular-nums",
+                        "tabular-nums text-sm",
                         owedMinor > 0n && "font-semibold text-danger",
                       )}
                     >
@@ -265,12 +265,12 @@ export function SuppliersTable({
                         both are subsets the server cut from the amount above
                         at one instant. */}
                     {overdueMinor > 0n && (
-                      <p className="font-mono text-[11px] tabular-nums text-danger">
+                      <p className="tabular-nums text-[11px] text-danger">
                         {formatMoney(debt!.overdueOutstanding)} lewat tempo
                       </p>
                     )}
                     {dueSoonMinor > 0n && (
-                      <p className="font-mono text-[11px] tabular-nums text-muted">
+                      <p className="tabular-nums text-[11px] text-muted">
                         {formatMoney(debt!.dueSoonOutstanding)}
                         {horizonDays == null
                           ? " jatuh tempo"

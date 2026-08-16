@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1803 600" width="1803" height="600" role="img" aria-label="Buloo">
+  <title>Buloo — reversed logo</title>
+  <g transform="translate(99 30)">
+    <path d="M0 0 C52 64 58 102 58 142 A58 58 0 1 1 -58 142 C-58 102 -52 64 0 0 Z" transform="translate(50 250) rotate(30)" fill="#FFFFFF"/>
+    <g fill="none" stroke="#FFFFFF" stroke-width="104" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M120 72 L120 468"/>
+      <circle cx="248" cy="340" r="128"/>
+      <path d="M528 252 L528 360 A108 108 0 0 0 744 360 L744 252"/>
+      <path d="M896 72 L896 468"/>
+      <circle cx="1156" cy="360" r="108"/>
+    </g>
+    <circle cx="1524" cy="360" r="108" fill="none" stroke="#F5921E" stroke-width="104"/>
+    <g stroke="#F5921E" stroke-width="26" stroke-linecap="round" fill="none">
+      <path d="M1431 75 L1454 143"/>
+      <path d="M1524 60 L1524 132"/>
+      <path d="M1617 75 L1594 143"/>
+    </g>
+  </g>
+</svg>

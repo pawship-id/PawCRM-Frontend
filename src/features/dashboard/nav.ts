@@ -235,7 +235,7 @@ export const NAV_ITEMS: NavItem[] = [
         permission: { feature: "goodsReceipts", action: "read" },
       },
       {
-        label: "Utang Supplier",
+        label: "Faktur Pembelian",
         href: "/dashboard/purchasing/payables",
         icon: PayableIcon,
         permission: { feature: "purchaseInvoices", action: "read" },

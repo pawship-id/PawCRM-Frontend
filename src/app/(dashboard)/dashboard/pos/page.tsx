@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { SectionPlaceholder } from "@/features/dashboard";
 import { PosIcon } from "@/components/icons";
 
-export const metadata: Metadata = { title: "POS · PawShip" };
+export const metadata: Metadata = { title: "POS · Buloo" };
 
 export default function PosPage() {
   return (

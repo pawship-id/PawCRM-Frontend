@@ -18,7 +18,9 @@ export interface AlertProps {
 
 const TINTS: Record<"success" | "info", string> = {
   success: "border-success/30 bg-success/10 text-success",
-  info: "border-secondary/40 bg-secondary/15 text-secondary-foreground",
+  // Info is navy. It used to ride on --secondary, which is now orange — an
+  // orange info banner would read as "act now" and eat the 5% orange budget.
+  info: "border-info/30 bg-info/10 text-info",
 };
 
 export function Alert({ variant = "info", children, className }: AlertProps) {

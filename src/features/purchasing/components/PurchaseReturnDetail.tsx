@@ -274,7 +274,7 @@ export function PurchaseReturnDetail({ returnId }: { returnId: string }) {
       <Card title="Retur">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Nomor retur">
-            <span className="font-mono">{purchaseReturn.returnNumber}</span>
+            <span className="tabular-nums">{purchaseReturn.returnNumber}</span>
           </Field>
 
           <Field label="Status">
@@ -288,7 +288,7 @@ export function PurchaseReturnDetail({ returnId }: { returnId: string }) {
           <Field label="Penerimaan asal">
             <Link
               href={`/dashboard/purchasing/receipts/${purchaseReturn.originalReceiptId}`}
-              className="font-mono text-primary-hover hover:underline"
+              className="tabular-nums text-primary-hover hover:underline"
             >
               {purchaseReturn.originalReceiptNumber ?? "Lihat penerimaan"}
             </Link>
@@ -314,7 +314,7 @@ export function PurchaseReturnDetail({ returnId }: { returnId: string }) {
           </Field>
 
           <Field label="Nilai retur">
-            <span className="font-mono text-base font-semibold text-danger">
+            <span className="tabular-nums text-base font-semibold text-danger">
               {formatMoney(purchaseReturn.totalAmount)}
             </span>
           </Field>
@@ -325,7 +325,7 @@ export function PurchaseReturnDetail({ returnId }: { returnId: string }) {
             Jurnal yang diposting:{" "}
             <Link
               href={`/dashboard/keuangan/journal-entries/${purchaseReturn.journalEntryId}`}
-              className="font-mono text-primary-hover hover:underline"
+              className="tabular-nums text-primary-hover hover:underline"
             >
               lihat entri jurnal
             </Link>
@@ -465,7 +465,7 @@ export function PurchaseReturnDetail({ returnId }: { returnId: string }) {
           <>
             <b>{preview.preview.movements.length} baris</b> akan ditulis ke kartu
             stok dengan total{" "}
-            <b className="font-mono">
+            <b className="tabular-nums">
               {formatMoney(preview.preview.totalAmount)}
             </b>
             , dan HPP <b>{preview.preview.hppAvg.length} produk</b> dihitung
@@ -478,7 +478,7 @@ export function PurchaseReturnDetail({ returnId }: { returnId: string }) {
               ) : (
                 <>
                   Utang supplier berkurang{" "}
-                  <b className="font-mono">
+                  <b className="tabular-nums">
                     {formatMoney(preview.preview.totalAmount)}
                   </b>
                   .
@@ -505,7 +505,7 @@ export function PurchaseReturnDetail({ returnId }: { returnId: string }) {
           onCancel={() => setConfirming(null)}
         >
           <>
-            Draft <b className="font-mono">{purchaseReturn.returnNumber}</b>{" "}
+            Draft <b className="tabular-nums">{purchaseReturn.returnNumber}</b>{" "}
             beserta seluruh barisnya akan dibuang. Tidak ada stok yang berubah
             dan tidak ada utang yang bergerak — draft memang belum pernah menulis
             apa pun.
@@ -582,23 +582,23 @@ function StoredLines({
                 <p className="text-sm font-medium">
                   {item.productName ?? "—"}
                 </p>
-                <p className="font-mono text-xs text-muted">
+                <p className="tabular-nums text-xs text-muted">
                   {item.productSku ?? "—"}
                 </p>
               </td>
-              <td className="px-2 py-2 font-mono text-xs text-muted">
+              <td className="px-2 py-2 tabular-nums text-xs text-muted">
                 {item.batchCode ?? "—"}
               </td>
-              <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">
+              <td className="px-2 py-2 text-right tabular-nums text-xs">
                 {formatQty(item.qty)}
                 {item.productUnit ? (
                   <span className="text-muted"> {item.productUnit}</span>
                 ) : null}
               </td>
-              <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">
+              <td className="px-2 py-2 text-right tabular-nums text-xs">
                 {formatMoney(item.costPerUnit)}
               </td>
-              <td className="px-2 py-2 text-right font-mono text-sm tabular-nums text-danger">
+              <td className="px-2 py-2 text-right tabular-nums text-sm text-danger">
                 {formatMoney(item.subtotal)}
               </td>
               <td className="px-2 py-2 text-xs">{item.reason}</td>

@@ -27,7 +27,7 @@ export function ProductTypeBadge({
     type === "parent" && variantCount !== undefined
       ? `${variantCount} varian`
       : type === "standalone"
-        ? "standalone"
+        ? "satuan"
         : type === "variant"
           ? "varian"
           : "bundle";

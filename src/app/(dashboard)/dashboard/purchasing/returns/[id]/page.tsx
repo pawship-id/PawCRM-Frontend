@@ -7,7 +7,7 @@ import {
 } from "@/features/purchasing";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Detail retur · PawShip" };
+export const metadata: Metadata = { title: "Detail retur · Buloo" };
 
 /**
  * Gated on `read`, not on `update` or `submit` — the screen itself hides the

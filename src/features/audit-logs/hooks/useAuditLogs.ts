@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { auditLogService } from "@/services/auditLog.service";
 import { ApiError } from "@/services/api-error";
 import type { AuditLog, AuditLogListQuery, PageResult } from "@/types/api";
+import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 
 /** The query knobs the audit-log screen drives (page + the visible filters). */
 export interface AuditLogsQuery {
@@ -60,6 +61,10 @@ export function useAuditLogs(): UseAuditLogsResult {
   // Bumped by refetch() to force the effect to re-run without changing query.
   const [nonce, setNonce] = useState(0);
 
+  // The toolbar keeps the live query so typing stays responsive; only the
+  // request waits for the search box to settle.
+  const settled = useDebouncedQuery(query);
+
   const setQuery = useCallback((patch: Partial<AuditLogsQuery>) => {
     setQueryState((prev) => {
       const next = { ...prev, ...patch };
@@ -81,10 +86,10 @@ export function useAuditLogs(): UseAuditLogsResult {
     setError(null);
 
     const apiQuery: AuditLogListQuery = {
-      page: query.page,
+      page: settled.page,
       limit: 20,
-      action: query.action || undefined,
-      search: query.search.trim() || undefined,
+      action: settled.action || undefined,
+      search: settled.search.trim() || undefined,
     };
 
     auditLogService
@@ -110,7 +115,7 @@ export function useAuditLogs(): UseAuditLogsResult {
     return () => {
       active = false;
     };
-  }, [query, nonce]);
+  }, [settled, nonce]);
 
   return { logs, pagination, query, loading, error, setQuery, refetch };
 }

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { SectionPlaceholder } from "@/features/dashboard";
 import { SalesIcon } from "@/components/icons";
 
-export const metadata: Metadata = { title: "Sales & Invoice · PawShip" };
+export const metadata: Metadata = { title: "Sales & Invoice · Buloo" };
 
 export default function SalesPage() {
   return (

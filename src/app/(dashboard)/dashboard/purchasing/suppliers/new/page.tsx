@@ -7,7 +7,7 @@ import {
 } from "@/features/purchasing";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Supplier baru · PawShip" };
+export const metadata: Metadata = { title: "Supplier baru · Buloo" };
 
 export default function NewSupplierPage() {
   return (

@@ -752,7 +752,22 @@ export interface ProductListQuery {
    */
   holdsStock?: boolean;
   includeDeleted?: boolean;
+  /**
+   * Which ordering to page through. A NAME, not a field plus a direction —
+   * the API accepts a closed list, so a client cannot ask for an ordering with
+   * no index behind it. Omitted means `newest`, which is what the API defaults
+   * to anyway.
+   */
+  sort?: ProductSort;
 }
+
+/** The orderings `GET /api/products` accepts — PRODUCT_SORTS in the model. */
+export type ProductSort =
+  | "newest"
+  | "oldest"
+  | "nameAsc"
+  | "nameDesc"
+  | "skuAsc";
 
 /** GET /api/products/:id/variants — the parent and every variant of it. */
 export interface ProductVariantsResult {
@@ -1192,7 +1207,15 @@ export interface OpnameListQuery {
   /** ISO date. The API refuses a `dateTo` that precedes `dateFrom`. */
   dateTo?: string;
   includeDeleted?: boolean;
+  /**
+   * Which ordering to page through. A NAME, not a field plus a direction — the
+   * API accepts a closed list. Omitted means `newest`, its own default.
+   */
+  sort?: OpnameSort;
 }
+
+/** The orderings `GET /api/stock-opnames` accepts — OPNAME_SORTS in the model. */
+export type OpnameSort = "newest" | "oldest" | "numberDesc" | "numberAsc";
 
 /**
  * One line as the CLIENT sends it — four fields, and not one of them a quantity
@@ -1311,7 +1334,26 @@ export interface StockMovementListQuery {
   from?: string;
   /** ISO date string. The backend refuses a `to` that precedes `from`. */
   to?: string;
+  /**
+   * Free text over the row's own note and its lot code.
+   *
+   * NOT over the document number: `referenceNo` is resolved forward from
+   * whichever collection the reference type names, and only two of the nine
+   * types carry a number at all today.
+   */
+  search?: string;
+  /**
+   * Which ordering to page through. CHRONOLOGICAL ONLY — this ledger carries a
+   * running balance, and "opening plus every row equals the closing" is a
+   * statement about order. Omitted means `newest`, the API's own default.
+   *
+   * List only. A summary has no order and an export has its own.
+   */
+  sort?: MovementSort;
 }
+
+/** The orderings `GET /api/stock-movements` accepts — MOVEMENT_SORTS in the model. */
+export type MovementSort = "newest" | "oldest";
 
 /**
  * GET /api/product-batches.
@@ -1336,7 +1378,19 @@ export interface ProductBatchListQuery {
    */
   expiryFrom?: string;
   expiryTo?: string;
+  /**
+   * Which ordering to page through. A NAME, not a field plus a direction — the
+   * API accepts a closed list. Omitted means `expirySoonest`, its own default.
+   */
+  sort?: BatchSort;
 }
+
+/** The orderings the batch endpoints accept — BATCH_SORTS in the model. */
+export type BatchSort =
+  | "expirySoonest"
+  | "expiryLatest"
+  | "newest"
+  | "oldest";
 
 /** GET /api/product-batches/expiring. */
 export interface ExpiringBatchListQuery {
@@ -1345,6 +1399,8 @@ export interface ExpiringBatchListQuery {
   warehouseId?: string;
   /** 0–365, default 30. Zero means "expired or expiring today". */
   withinDays?: number;
+  /** Same closed list as the audit endpoint's — both screens share one control. */
+  sort?: BatchSort;
 }
 
 /**

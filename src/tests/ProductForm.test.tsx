@@ -58,6 +58,7 @@ function mockLookups() {
         _id: CATEGORY,
         tenantId: "t1",
         kind: "product",
+        isActive: true,
         name: "Makanan",
         deletedAt: null,
         createdAt: "",
@@ -145,6 +146,107 @@ describe("ProductForm", () => {
     toast.mockClear();
   });
   afterEach(() => jest.restoreAllMocks());
+
+  /**
+   * The catalogue's create menu picks the shape before the form loads, so the
+   * form has to honour it. Asserted through the hint under the mode picker,
+   * which is the only thing on screen that names the current mode in words —
+   * the picker itself marks its selection with colour alone.
+   */
+  /**
+   * A retired category is one nobody may file NEW products under — that is the
+   * whole of what the flag means, and the category screen's own switch promises
+   * it in so many words.
+   */
+  describe("retired categories", () => {
+    /** Replaces the lookup with one live category and one retired one. */
+    function mockCategories() {
+      jest.spyOn(categoryService, "list").mockResolvedValue({
+        items: [
+          {
+            _id: CATEGORY,
+            tenantId: "t1",
+            kind: "product",
+            isActive: true,
+            name: "Makanan",
+            deletedAt: null,
+            createdAt: "",
+            updatedAt: "",
+          },
+          {
+            _id: "c-retired",
+            tenantId: "t1",
+            kind: "product",
+            isActive: false,
+            name: "Mainan Lama",
+            deletedAt: null,
+            createdAt: "",
+            updatedAt: "",
+          },
+        ],
+        pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
+      });
+    }
+
+    it("are not offered when filing a new product", async () => {
+      const user = userEvent.setup();
+      mockCategories();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await user.click(screen.getByRole("combobox", { name: "Kategori" }));
+
+      expect(
+        screen.getByRole("option", { name: "Makanan" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("option", { name: "Mainan Lama" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("stay offered on the product already filed under one", async () => {
+      const user = userEvent.setup();
+      mockCategories();
+      jest
+        .spyOn(productService, "getById")
+        .mockResolvedValue(makeProduct({ categoryId: "c-retired" }));
+
+      renderWithAuth(<ProductForm productId="p1" />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await user.click(screen.getByRole("combobox", { name: "Kategori" }));
+
+      // Dropping it would show a category the product is not filed under, and
+      // the first save would quietly re-file it.
+      expect(
+        screen.getByRole("option", { name: "Mainan Lama" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe("the shape carried in from ?type=", () => {
+    it("opens on the shape the create menu picked", async () => {
+      renderWithAuth(<ProductForm initialMode="bundle" />);
+      await screen.findByLabelText(/Nama produk/);
+
+      expect(
+        screen.getByText(
+          "Paket atau satuan besar yang memotong stok komponennya saat terjual.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("ignores a value it does not recognise rather than breaking", async () => {
+      // A hand-edited URL is not a reason to show nothing.
+      renderWithAuth(<ProductForm initialMode="paket-hemat" />);
+      await screen.findByLabelText(/Nama produk/);
+
+      expect(
+        screen.getByText("Satu barang, satu harga, satu stok."),
+      ).toBeInTheDocument();
+    });
+  });
 
   describe("standalone", () => {
     it("creates a product with no stock when the switch is left off", async () => {
@@ -400,7 +502,7 @@ describe("ProductForm", () => {
     }
 
     async function switchToFamily(user: ReturnType<typeof userEvent.setup>) {
-      await user.click(screen.getByRole("button", { name: "Punya varian" }));
+      await user.click(screen.getByRole("button", { name: "Varian" }));
     }
 
     it("creates the parent and every variant in ONE request", async () => {
@@ -1062,7 +1164,7 @@ describe("ProductForm", () => {
       await screen.findByDisplayValue("Shampoo Anjing");
 
       expect(
-        screen.getByRole("button", { name: "Punya varian" }),
+        screen.getByRole("button", { name: "Varian" }),
       ).toBeDisabled();
       // And no opening stock: an existing product's quantity moves through the
       // stock screens, where the movement gets a reason.
@@ -1134,7 +1236,7 @@ describe("ProductForm", () => {
       await screen.findByLabelText(/Nama produk/);
 
       await user.click(
-        screen.getByRole("button", { name: /Bundle \/ multi-satuan/ }),
+        screen.getByRole("button", { name: "Bundle" }),
       );
 
       expect(
@@ -1179,7 +1281,7 @@ describe("ProductForm", () => {
       renderWithAuth(<ProductForm />);
       await screen.findByLabelText(/Nama produk/);
       await user.click(
-        screen.getByRole("button", { name: /Bundle \/ multi-satuan/ }),
+        screen.getByRole("button", { name: "Bundle" }),
       );
 
       const weight = screen.getByLabelText(/^Berat/) as HTMLInputElement;
@@ -1199,7 +1301,7 @@ describe("ProductForm", () => {
 
       await user.type(screen.getByLabelText(/Nama produk/), "Paket Grooming");
       await user.click(
-        screen.getByRole("button", { name: /Bundle \/ multi-satuan/ }),
+        screen.getByRole("button", { name: "Bundle" }),
       );
       await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
 
@@ -1292,7 +1394,7 @@ describe("ProductForm", () => {
       // SKUs — so what changes is only whether it is marked required.
       expect(screen.getByPlaceholderText("RC-ADULT")).toBeRequired();
 
-      await user.click(screen.getByRole("button", { name: "Punya varian" }));
+      await user.click(screen.getByRole("button", { name: "Varian" }));
 
       expect(screen.getByPlaceholderText("RC-ADULT")).not.toBeRequired();
     });

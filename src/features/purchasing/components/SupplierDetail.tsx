@@ -75,7 +75,7 @@ export function SupplierDetail({ supplierId }: { supplierId: string }) {
       <div className="flex flex-wrap items-start gap-4 rounded-xl border border-border bg-surface p-5">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-lg font-semibold">{supplier.name}</h2>
+            <h2 className="text-lg font-bold">{supplier.name}</h2>
             <SupplierTypeBadge type={supplier.type} />
             <SupplierStatusBadge supplier={supplier} />
           </div>
@@ -179,7 +179,7 @@ export function SupplierDetail({ supplierId }: { supplierId: string }) {
               <dt className="text-muted">Email</dt>
               <dd className="truncate font-medium">{supplier.email ?? "—"}</dd>
               <dt className="text-muted">NPWP</dt>
-              <dd className="font-mono text-xs">{supplier.npwp ?? "—"}</dd>
+              <dd className="tabular-nums text-xs">{supplier.npwp ?? "—"}</dd>
               <dt className="text-muted">Catatan</dt>
               <dd className="text-xs">{supplier.notes ?? "—"}</dd>
             </dl>
@@ -193,17 +193,17 @@ export function SupplierDetail({ supplierId }: { supplierId: string }) {
               </p>
               <dl className="mt-3 grid grid-cols-[110px_1fr] gap-y-2 text-sm">
                 <dt className="text-muted">Nilai</dt>
-                <dd className="font-mono font-semibold tabular-nums">
+                <dd className="tabular-nums font-semibold">
                   {formatMoney(consigned.value)}
                 </dd>
                 <dt className="text-muted">Kuantitas</dt>
-                <dd className="font-mono tabular-nums">
+                <dd className="tabular-nums">
                   {formatQty(consigned.qtyRemaining)}
                 </dd>
                 <dt className="text-muted">Batch</dt>
-                <dd className="font-mono tabular-nums">{consigned.lotCount}</dd>
+                <dd className="tabular-nums">{consigned.lotCount}</dd>
                 <dt className="text-muted">Produk</dt>
-                <dd className="font-mono tabular-nums">
+                <dd className="tabular-nums">
                   {consigned.productCount}
                 </dd>
               </dl>
@@ -306,7 +306,7 @@ function SupplierReceiptHistory({ supplierId }: { supplierId: string }) {
                   <td className="py-2 pr-4">
                     <Link
                       href={`/dashboard/purchasing/receipts/${receipt._id}`}
-                      className="font-mono text-xs hover:text-primary-hover hover:underline"
+                      className="tabular-nums text-xs hover:text-primary-hover hover:underline"
                     >
                       {receipt.receiptNumber}
                     </Link>
@@ -322,10 +322,10 @@ function SupplierReceiptHistory({ supplierId }: { supplierId: string }) {
                   <td className="py-2 pr-4 text-xs">
                     {receipt.warehouseName ?? "—"}
                   </td>
-                  <td className="py-2 pr-4 text-right font-mono text-xs tabular-nums">
+                  <td className="py-2 pr-4 text-right tabular-nums text-xs">
                     {receipt.itemCount}
                   </td>
-                  <td className="py-2 text-right font-mono text-xs tabular-nums">
+                  <td className="py-2 text-right tabular-nums text-xs">
                     {formatMoney(receipt.grandTotal)}
                   </td>
                 </tr>
@@ -378,7 +378,7 @@ function Stat({
       </p>
       <p
         className={cn(
-          "mt-1 font-mono text-lg font-semibold tabular-nums",
+          "mt-1 tabular-nums text-lg font-semibold",
           tone === "danger" && "text-danger",
         )}
       >

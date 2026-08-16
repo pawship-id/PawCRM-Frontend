@@ -7,7 +7,7 @@ import {
 } from "@/features/purchasing";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Detail penerimaan · PawShip" };
+export const metadata: Metadata = { title: "Detail penerimaan · Buloo" };
 
 export default async function ReceiptDetailPage({
   params,

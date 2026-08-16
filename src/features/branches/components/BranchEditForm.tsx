@@ -70,7 +70,7 @@ export function BranchEditForm({ id }: { id: string }) {
       {/* The header stays visible while the body loads. */}
       <div>
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold text-foreground">Edit Branch</h1>
+          <h1 className="text-2xl font-extrabold text-foreground">Edit Branch</h1>
           {branch && (
             <BranchStatusBadge
               isActive={branch.isActive}

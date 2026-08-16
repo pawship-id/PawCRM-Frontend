@@ -71,7 +71,7 @@ export function RoleEditForm({ id }: { id: string }) {
     <div className="flex flex-col gap-6">
       <div>
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold text-foreground">Edit Role</h1>
+          <h1 className="text-2xl font-extrabold text-foreground">Edit Role</h1>
           {role && <RoleStatusBadge role={role} />}
         </div>
         <p className="mt-1 text-sm text-muted">

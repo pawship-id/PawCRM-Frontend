@@ -555,6 +555,16 @@ export interface Category {
   tenantId: string;
   kind: CategoryKind;
   name: string;
+  /**
+   * Whether the label is still offered for new products.
+   *
+   * ORTHOGONAL TO `deletedAt`: a retired category keeps everything filed under
+   * it and can be reinstated, where a deleted one is gone from ordinary reads.
+   * Both exist because a category cannot be deleted while a live product is
+   * filed under it — retiring the label is what people mean when a shop stops
+   * stocking a line.
+   */
+  isActive: boolean;
   /** Soft-delete marker; non-null means deleted (restorable), null means live. */
   deletedAt: string | null;
   createdAt: string;
@@ -568,14 +578,26 @@ export interface CategoryListQuery {
   kind?: CategoryKind;
   /** Free-text over the name. */
   search?: string;
+  /** Retired state. Omit for both — the API applies no default, unlike `includeDeleted`. */
+  isActive?: boolean;
   /** Include soft-deleted categories (default false on the backend). */
   includeDeleted?: boolean;
+  /**
+   * Which ordering to page through. A NAME, not a field plus a direction — the
+   * API accepts a closed list. Omitted means `newest`, its own default.
+   */
+  sort?: CategorySort;
 }
+
+/** The orderings `GET /api/categories` accepts — CATEGORY_SORTS in the model. */
+export type CategorySort = "newest" | "oldest" | "nameAsc" | "nameDesc";
 
 /** Body of POST /api/categories. `kind` defaults to "product" server-side. */
 export interface CreateCategoryInput {
   name: string;
   kind?: CategoryKind;
+  /** Defaults to true server-side; a category is made because it is wanted. */
+  isActive?: boolean;
 }
 
 /**
@@ -584,6 +606,7 @@ export interface CreateCategoryInput {
  */
 export interface UpdateCategoryInput {
   name?: string;
+  isActive?: boolean;
 }
 
 /**
@@ -725,6 +748,15 @@ export function isSupplierActive(supplier: Pick<Supplier, "isActive">): boolean 
   return supplier.isActive !== false;
 }
 
+/**
+ * The orderings `GET /api/suppliers` accepts — SUPPLIER_SORTS in the model.
+ *
+ * No "termin" or "sisa utang": the first is a negotiated property rather than a
+ * ranking, and the second is aggregated by a different endpoint, so the database
+ * cannot order by it.
+ */
+export type SupplierSort = "newest" | "oldest" | "nameAsc" | "nameDesc";
+
 /** Query parameters accepted by GET /api/suppliers. All optional. */
 export interface SupplierListQuery {
   page?: number;
@@ -736,6 +768,13 @@ export interface SupplierListQuery {
   isActive?: boolean;
   /** Include soft-deleted suppliers (default false on the backend). */
   includeDeleted?: boolean;
+  /**
+   * Which ordering to page through. A NAME, not a field plus a direction — the
+   * API accepts a closed list, so a client cannot ask for an ordering with no
+   * index behind it. Omitted means `newest`, which is what the API defaults to
+   * anyway.
+   */
+  sort?: SupplierSort;
 }
 
 /**
@@ -933,6 +972,21 @@ export interface GoodsReceiptListRow {
 }
 
 /**
+ * The orderings `GET /api/goods-receipts` accepts — GOODS_RECEIPT_SORTS in the
+ * model.
+ *
+ * `newest` / `oldest` key on `receiptDate`, the day the goods arrived, never the
+ * day the row was typed. The number orderings are how you walk a sequence rather
+ * than a calendar — see the model. There is no ordering by value: `total` is
+ * unindexed, so it would be a blocking in-memory sort of every matched receipt.
+ */
+export type GoodsReceiptSort =
+  | "newest"
+  | "oldest"
+  | "numberDesc"
+  | "numberAsc";
+
+/**
  * Query parameters accepted by GET /api/goods-receipts. All optional.
  *
  * NO `includeDeleted`, though the endpoint validates one. There is no `DELETE
@@ -961,6 +1015,13 @@ export interface GoodsReceiptListQuery {
   /** ISO dates bounding `receiptDate` (inclusive), never `createdAt`. */
   dateFrom?: string;
   dateTo?: string;
+  /**
+   * Which ordering to page through. A NAME, not a field plus a direction — the
+   * API accepts a closed list, so a client cannot ask for an ordering with no
+   * index behind it. Omitted means `newest`, which is what the API defaults to
+   * anyway.
+   */
+  sort?: GoodsReceiptSort;
 }
 
 /**
@@ -1297,7 +1358,33 @@ export interface PurchaseInvoiceListQuery {
    * they computed, not a date a human typed.
    */
   dueBefore?: string;
+  /**
+   * Which ordering to page through. A NAME, not a field plus a direction — the
+   * API accepts a closed list, so a client cannot ask for an ordering with no
+   * index behind it. Omitted means `newest`, which is what the API defaults to
+   * anyway.
+   */
+  sort?: PurchaseInvoiceSort;
 }
+
+/**
+ * The orderings `GET /api/purchase-invoices` accepts — PURCHASE_INVOICE_SORTS in
+ * the model.
+ *
+ * TWO DATE AXES, which is why this is not the usual newest/oldest pair.
+ * `newest` / `oldest` key on `invoiceDate` — the day the supplier issued the
+ * bill. `dueSoonest` / `dueLatest` key on `dueDate` — the day we have to pay,
+ * which is the question a payables screen exists for.
+ *
+ * Named after the axis rather than a direction, matching the batch list's
+ * `expirySoonest`: on a date that means a deadline, "ascending" is not what
+ * anybody calls it.
+ */
+export type PurchaseInvoiceSort =
+  | "newest"
+  | "oldest"
+  | "dueSoonest"
+  | "dueLatest";
 
 /**
  * POST /api/purchase-invoices — file the supplier's bill against a delivery.
@@ -1441,7 +1528,29 @@ export interface PurchaseReturnListQuery {
   /** ISO dates bounding `returnDate` — the day the goods went back. */
   dateFrom?: string;
   dateTo?: string;
+  /**
+   * Which ordering to page through. A NAME, not a field plus a direction — the
+   * API accepts a closed list, so a client cannot ask for an ordering with no
+   * index behind it. Omitted means `newest`, which is what the API defaults to
+   * anyway.
+   */
+  sort?: PurchaseReturnSort;
 }
+
+/**
+ * The orderings `GET /api/purchase-returns` accepts — PURCHASE_RETURN_SORTS in
+ * the model.
+ *
+ * `newest` / `oldest` key on `returnDate`, the day the goods physically went
+ * back, never the day the row was typed. The number orderings walk a sequence —
+ * the return number is ours, sequential, and what the supplier quotes on their
+ * credit note. There is no ordering by value or by status; see the model.
+ */
+export type PurchaseReturnSort =
+  | "newest"
+  | "oldest"
+  | "numberDesc"
+  | "numberAsc";
 
 /** One line going back, as a client sends it. Three fields, and that is the design. */
 export interface PurchaseReturnItemInput {

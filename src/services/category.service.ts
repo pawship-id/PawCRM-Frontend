@@ -37,7 +37,9 @@ export const categoryService = {
         limit: query.limit ?? 100,
         kind: query.kind,
         search: query.search,
+        isActive: query.isActive,
         includeDeleted: query.includeDeleted,
+        sort: query.sort,
       },
     }),
 

@@ -102,7 +102,7 @@ export function JournalEntriesScreen() {
     <div className="flex flex-col gap-6">
       <div>
         <Breadcrumb items={[ACCOUNTING_CRUMBS.hub, { label: "Jurnal Umum" }]} />
-        <h1 className="mt-1 text-2xl font-semibold text-foreground">
+        <h1 className="mt-1 text-2xl font-extrabold text-foreground">
           Jurnal Umum
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">
@@ -256,7 +256,7 @@ export function JournalEntriesScreen() {
                   >
                     {month}
                   </td>
-                  <td className="px-4 py-1.5 text-right font-mono text-xs font-semibold tabular-nums">
+                  <td className="px-4 py-1.5 text-right tabular-nums text-xs font-semibold">
                     {formatMoney(sumDecimals(entries.map(entryTotal)))}
                   </td>
                   <td className="px-4 py-1.5 text-[10px] uppercase tracking-widest text-muted">
@@ -275,7 +275,7 @@ export function JournalEntriesScreen() {
                     <td className="px-4 py-2.5">
                       <Link
                         href={`/dashboard/keuangan/journal-entries/${entry._id}`}
-                        className="font-mono text-xs hover:text-primary-hover"
+                        className="tabular-nums text-xs hover:text-primary-hover"
                       >
                         {entry.entryNumber}
                       </Link>
@@ -284,7 +284,7 @@ export function JournalEntriesScreen() {
                       <p className="truncate text-sm font-medium">
                         {entry.description}
                       </p>
-                      <p className="truncate font-mono text-[11px] text-muted">
+                      <p className="truncate tabular-nums text-[11px] text-muted">
                         {entry.source.reference ?? `${entry.lines.length} baris`}
                       </p>
                     </td>
@@ -302,7 +302,7 @@ export function JournalEntriesScreen() {
                     <td className="whitespace-nowrap px-4 py-2.5 text-xs text-muted">
                       {entry.branchName}
                     </td>
-                    <td className="px-4 py-2.5 text-right font-mono text-sm font-semibold tabular-nums">
+                    <td className="px-4 py-2.5 text-right tabular-nums text-sm font-semibold">
                       {formatMoney(entryTotal(entry))}
                     </td>
                     <td className="px-4 py-2.5">
@@ -382,7 +382,7 @@ function SummaryTile({
       <p
         className={cn(
           "mt-1 text-lg font-semibold tabular-nums text-foreground",
-          mono && "font-mono",
+          mono && "tabular-nums",
           tone,
         )}
       >

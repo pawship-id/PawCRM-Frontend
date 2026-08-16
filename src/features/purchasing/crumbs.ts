@@ -24,7 +24,10 @@ export const PURCHASING_CRUMBS = {
     label: "Penerimaan Barang",
     href: "/dashboard/purchasing/receipts",
   },
-  payables: { label: "Utang Supplier", href: "/dashboard/purchasing/payables" },
+  payables: {
+    label: "Faktur Pembelian",
+    href: "/dashboard/purchasing/payables",
+  },
   returns: { label: "Retur ke Supplier", href: "/dashboard/purchasing/returns" },
 } satisfies Record<string, Crumb>;
 

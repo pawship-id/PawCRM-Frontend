@@ -12,7 +12,8 @@ are untouched by this work.
 Under **Dashboard → Inventory → Produk & Varian** a permitted user can:
 
 - **List** the catalogue — one row per family, paginated, with free-text search,
-  type/category/status filters and a "show deleted" toggle.
+  type/category/warehouse filters on the bar, and status plus "show deleted"
+  behind `Filter lain`.
 - **Expand** a parent into its variants, fetched on demand.
 - **Open** one product read-only — every stored field, its stock per warehouse,
   and, for a parent, the whole family with each variant's quantity.
@@ -88,11 +89,11 @@ parent carries none of. A **variant** fetches its parent for the reverse reason 
 
 ### Three shapes, one form
 
-| Mode        | Writes                                                    |
-| ----------- | --------------------------------------------------------- |
-| Produk biasa | one `standalone`                                          |
-| Punya varian | a `parent` **plus every combination**, in ONE request      |
-| Bundle       | one `bundle` with its components                          |
+| Mode   | Writes                                                |
+| ------ | ----------------------------------------------------- |
+| Satuan | one `standalone`                                      |
+| Varian | a `parent` **plus every combination**, in ONE request |
+| Bundle | one `bundle` with its components                      |
 
 The mode is **locked after creation**, mirroring the backend: changing it would
 strand the stock rows and sales history written against the old shape.
@@ -262,7 +263,11 @@ that await the Next 16 `params` Promise.
   - `hooks/useCatalogLookups.ts` — categories and warehouses, in parallel. Active
     warehouses by default (an inactive one cannot take an opening balance);
     `{ includeInactive: true }` for the detail screen, which names locations
-    rather than offering them.
+    rather than offering them. Categories come back whole, retired ones
+    included — the catalogue's category FILTER needs them, since finding the
+    products still filed under a retired label is the point of retiring it.
+    `ProductForm` narrows the list itself, to the active ones plus whichever the
+    product being edited already uses.
   - `hooks/useBundleCandidates.ts` — standalone + variant products for the
     component picker, fetched only in bundle mode.
   - `utils/catalogue.ts` — `qtyAt`, `stockOf`, `limitedByAt`,

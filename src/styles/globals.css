@@ -4,71 +4,206 @@
 @import "tw-animate-css";
 
 /**
- * The single source of truth for the PawShip brand palette.
+ * Pins the `dark:` variant to an opt-in class instead of the OS preference.
  *
- * Colors are sampled from the logo and declared ONCE here as Tailwind v4 theme
- * tokens. Every component consumes them through utilities (`bg-primary`,
- * `text-primary`, `border-secondary`, ...). To rebrand, change a value here and
- * nothing else — no component hard-codes a hex.
+ * Tailwind v4 defaults `dark` to `@media (prefers-color-scheme: dark)`. Without
+ * this line the ~13 `dark:` rules that ship inside components/ui/ fire on any
+ * machine set to dark mode, against a palette that only defines light values —
+ * so a handful of inputs and badges render wrong for those users today. Nothing
+ * sets `.dark` on <html> yet; see the .dark block below.
+ */
+@custom-variant dark (&:is(.dark *));
+
+/**
+ * The single source of truth for the Buloo brand palette.
+ *
+ * Declared ONCE here as CSS variables and consumed through utilities
+ * (`bg-primary`, `text-muted`, `border-secondary`, ...). To retheme, change a
+ * value here and nothing else — no component hard-codes a hex.
+ *
+ * Navy is the working colour: money screens, records, reports. Orange is the
+ * accent and always means a human must act. Orange is a FILL, never text —
+ * #F5921E is 2.1:1 on white. Full rules in docs/ui-rules.md; the brand book and
+ * the original handoff are in docs/brand/.
  */
 :root {
-  /* Surface + text neutrals */
-  --background: #fff7f4; /* warm off-white so the coral reads as brand, not alert */
-  --foreground: #3f342f; /* soft near-black with a warm cast */
-  --muted: #8a7a72; /* secondary text */
+  /* ---------- Raw scales ----------
+     For composing the semantic tokens below. Components use the semantic
+     names, not these — the one sanctioned exception is bg-navy-100 for a
+     selected row, which has no better semantic name yet. */
+  --navy-900: #0e1d38;
+  --navy-800: #14284b;
+  --navy-700: #1e3a6b; /* the brand colour */
+  --navy-600: #2b4e8c;
+  --navy-500: #3e66ac;
+  --navy-100: #e9eff9; /* badges, selected rows, chart fills */
+  --navy-50: #f6f8fc;
+
+  --orange-700: #b96a05; /* the only text-safe orange */
+  --orange-600: #d97f0f;
+  --orange-500: #f5921e; /* the accent. FILLS ONLY */
+  --orange-100: #fff6ea;
+
+  --slate-500: #667691; /* brand slate — icons, dividers, placeholders */
+
+  /* ---------- Surface + text neutrals ---------- */
+  --background: var(--navy-50); /* app background behind cards */
+  --foreground: var(--navy-800); /* all body text — never pure black */
   --surface: #ffffff; /* cards, inputs */
-  --border: #f0e2da; /* hairlines on the warm background */
-
-  /* Brand — coral (the "Paw"/"ship" wordmark) */
-  --primary: #ef8a78;
-  --primary-hover: #e5745f;
-  --primary-foreground: #ffffff;
-
-  /* Brand — peach (the paw pad + the three dots) */
-  --secondary: #f5b77c;
-  --secondary-hover: #f0a45c;
-  --secondary-foreground: #5b3a2e;
-
-  /* Feedback */
-  --danger: #d64545;
-  --danger-foreground: #ffffff;
-  --success: #3f9d6f;
+  --border: #dfe5ef;
 
   /*
-   * shadcn/ui semantic tokens, mapped onto the PawShip palette above so the
-   * imported components in components/ui/ inherit the brand rather than
-   * shadcn's default neutral. Kept ADDITIVE — the tokens above keep their
-   * meaning, so existing hand-rolled classes (bg-surface, text-muted,
-   * text-danger, ...) are unaffected.
+   * DEVIATION from the brand book, on purpose. Brand slate #667691 is 4.60:1 on
+   * white but 4.33:1 on --background, and text-muted has ~579 uses, many of
+   * them on that background. This is the same hue two steps darker: 5.39:1 on
+   * white, 5.06:1 on --background. The brand value survives as --slate-500 for
+   * icons and dividers, where the text floor does not apply.
+   */
+  --muted: #5b6b87;
+
+  /* ---------- Brand — navy ---------- */
+  --primary: var(--navy-700);
+  --primary-hover: var(--navy-600);
+  --primary-foreground: #ffffff;
+
+  /* ---------- Accent — orange ----------
+     A fill. `text-secondary` is never correct; use --warning for orange text.
+     Orange fills take navy-800 labels, never white. */
+  --secondary: var(--orange-500);
+  --secondary-hover: var(--orange-600);
+  --secondary-foreground: var(--navy-800);
+
+  /* ---------- Feedback ---------- */
+  /*
+   * DEVIATION, same reason as --muted: brand #178A5F is 4.34:1 on white, and
+   * lower still as text sitting on a success tint. This is 6.52:1. The brand
+   * value survives as --success-fill for solid fills, dots and icons.
+   */
+  --success: #0f6b49;
+  --success-fill: #178a5f;
+  --warning: var(--orange-700);
+  --info: var(--navy-600);
+  --danger: #d64545;
+  --danger-foreground: #ffffff;
+  /* Known debt: --danger is 4.38:1 as text, marginally under the 4.5 floor. It
+     is the pre-existing value on ~126 sites, so changing it is churn unrelated
+     to the rebrand. --danger-ink (6.37:1) is here for when that is repaid. */
+  --danger-ink: #b3312f;
+
+  /* ---------- Status tints ----------
+     Named fills rather than opacity arithmetic (bg-success/12). A translucent
+     fill composites against whatever is behind it and goes muddy over a
+     navy-100 selected row — and selected rows are a real state now. */
+  --tint-neutral: #eef1f6;
+  --tint-info: var(--navy-100);
+  --tint-brand: var(--navy-100);
+  --tint-success: #e4f3ec;
+  --tint-warning: var(--orange-100);
+  --tint-danger: #fbeaea;
+
+  /*
+   * shadcn/ui semantic tokens, mapped onto the palette above so the imported
+   * components in components/ui/ inherit the brand rather than shadcn's default
+   * neutral. Kept ADDITIVE — the tokens above keep their meaning. These names
+   * are legal ONLY inside components/ui/; app code uses the names above.
    */
   --card: var(--surface);
   --card-foreground: var(--foreground);
   --popover: var(--surface);
   --popover-foreground: var(--foreground);
-  /* shadcn's secondary muted TEXT; the same value the app's text-muted uses. */
   --muted-foreground: var(--muted);
   /* Subtle hover/selected background (ghost/outline buttons, menu items). */
-  --accent: #fbeee9;
-  --accent-foreground: var(--foreground);
+  --accent: var(--navy-100);
+  --accent-foreground: var(--primary);
   --destructive: var(--danger);
   --destructive-foreground: var(--danger-foreground);
-  /* Input hairline — a touch stronger than --border so fields read as fields. */
-  --input: #e6d6cc;
-  --ring: var(--primary);
+  --input: var(--border);
+  /* Hover border on inputs and filter triggers. */
+  --input-hover: #c7d2e5;
+  /* Focus is a PAIR: this orange halo plus a navy border. The halo alone is
+     2.33:1 on white and would miss the 3:1 non-text floor. See ui-rules.md §7. */
+  --ring: var(--orange-500);
+
+  /* App-layer aliases for the two states shadcn calls "accent". */
+  --surface-hover: var(--accent);
+  --surface-selected: var(--navy-100);
 }
 
 /**
- * Expose the variables above to Tailwind's utility generator. `@theme inline`
- * means `bg-primary`, `text-muted`, `ring-primary`, etc. all resolve to the
- * :root variables, so a runtime theme swap (or a future dark mode) only has to
- * reassign the variables.
+ * Dark theme — PREPARED, NOT SHIPPED.
+ *
+ * Nothing sets `.dark` on <html> and there is no toggle. Navy cannot be the
+ * action colour on a navy field, so primary actions invert to orange with
+ * navy-800 labels. Don't build a toggle without being asked.
+ */
+.dark {
+  --background: var(--navy-900);
+  --surface: #1b3157;
+  --foreground: #e8eef8;
+  --muted: #9fb0cb;
+  --border: #27406b;
+
+  --navy-100: #27406b; /* badge and selected-row fills invert */
+  --orange-100: #3a2a12;
+
+  --primary: var(--orange-500);
+  --primary-hover: var(--orange-600);
+  --primary-foreground: var(--navy-800);
+
+  --tint-neutral: #22345a;
+  --tint-success: #10362a;
+  --tint-danger: #3d1f22;
+
+  --input-hover: #35528a;
+}
+
+/**
+ * Design tokens with literal values. PLAIN `@theme` (not `inline`) so Tailwind
+ * also emits them as :root variables for hand-written CSS.
+ *
+ * The radius and shadow entries deliberately RETARGET Tailwind's defaults onto
+ * the Buloo scale, which restyles every existing call site with no edits:
+ * rounded-md is 8 (input), rounded-lg 12 (button), rounded-xl 16 (card),
+ * rounded-2xl 24 (panel). Do not write rounded-[16px].
+ */
+@theme {
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 24px;
+
+  /* Elevation is navy-tinted, never grey. */
+  --shadow-xs: 0 1px 2px rgb(20 40 75 / 0.06);
+  --shadow-sm: 0 1px 2px rgb(20 40 75 / 0.06);
+  --shadow-md: 0 4px 16px rgb(20 40 75 / 0.08);
+  --shadow-lg: 0 12px 32px rgb(20 40 75 / 0.1);
+
+  /* Buloo's label size. Nothing in the product goes below this. */
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.45;
+
+  /* Motion: plain `transition` already lands on the brand curve and duration. */
+  --ease-brand: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --default-transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --default-transition-duration: 160ms;
+  --duration-240: 240ms; /* panels; nothing exceeds 400ms */
+}
+
+/**
+ * Colour and font bindings. MUST stay `inline` — that is what lets a runtime
+ * theme swap (the .dark block above, or a future tenant theme) work by
+ * reassigning :root alone.
+ *
+ * Every token needs its entry here or Tailwind generates no utility for it.
  */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-muted: var(--muted);
   --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-selected: var(--surface-selected);
   --color-border: var(--border);
+  --color-muted: var(--muted);
 
   --color-primary: var(--primary);
   --color-primary-hover: var(--primary-hover);
@@ -78,9 +213,33 @@
   --color-secondary-hover: var(--secondary-hover);
   --color-secondary-foreground: var(--secondary-foreground);
 
-  --color-danger: var(--danger);
-  --color-danger-foreground: var(--danger-foreground);
   --color-success: var(--success);
+  --color-success-fill: var(--success-fill);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --color-danger: var(--danger);
+  --color-danger-ink: var(--danger-ink);
+  --color-danger-foreground: var(--danger-foreground);
+
+  --color-tint-neutral: var(--tint-neutral);
+  --color-tint-info: var(--tint-info);
+  --color-tint-brand: var(--tint-brand);
+  --color-tint-success: var(--tint-success);
+  --color-tint-warning: var(--tint-warning);
+  --color-tint-danger: var(--tint-danger);
+
+  --color-navy-900: var(--navy-900);
+  --color-navy-800: var(--navy-800);
+  --color-navy-700: var(--navy-700);
+  --color-navy-600: var(--navy-600);
+  --color-navy-500: var(--navy-500);
+  --color-navy-100: var(--navy-100);
+  --color-navy-50: var(--navy-50);
+  --color-orange-700: var(--orange-700);
+  --color-orange-600: var(--orange-600);
+  --color-orange-500: var(--orange-500);
+  --color-orange-100: var(--orange-100);
+  --color-slate-500: var(--slate-500);
 
   /* shadcn/ui token bindings (see :root above). */
   --color-card: var(--card);
@@ -93,10 +252,15 @@
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-input: var(--input);
+  --color-input-hover: var(--input-hover);
   --color-ring: var(--ring);
 
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Two families, and only two. Plus Jakarta Sans for headings; Inter for
+     body, labels, and every number — its tabular figures are what keep rupiah
+     columns aligned, which is the job a monospace face used to do here. There
+     is deliberately no --font-mono: a third typeface is a brand violation. */
+  --font-display: var(--font-plus-jakarta);
+  --font-sans: var(--font-inter);
 }
 
 /**
@@ -108,6 +272,33 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+  }
+
+  /**
+   * Headings are always Plus Jakarta Sans with tight negative tracking.
+   *
+   * Set on the element rather than per component: ~45 headings already exist
+   * as bare `text-2xl font-semibold`, and a codemod across them would be churn
+   * for a rule that has no exceptions. Utilities still win, so a heading that
+   * genuinely needs to opt out can say so. Weight and size are NOT set here —
+   * those stay with the call site, and moving them to the brand scale is on
+   * the migration list in docs/ui-rules.md §15.
+   */
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-display tracking-tight;
+  }
+
+  /* Honoured globally — don't re-implement it per component. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }
 

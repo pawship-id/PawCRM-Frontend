@@ -231,7 +231,7 @@ export function ProductsTable({
                               {product.resolved.brand}
                             </p>
                           )}
-                          <p className="font-mono text-xs text-muted">
+                          <p className="tabular-nums text-xs text-muted">
                             {/* A parent carries no SKU — its variants do. "—"
                                 rather than a blank line, which reads as a
                                 rendering bug. */}
@@ -274,19 +274,19 @@ export function ProductsTable({
                       {categories.find((c) => c._id === product.categoryId)
                         ?.name ?? "—"}
                     </td>
-                    <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums">
+                    <td className="px-4 py-2.5 text-right tabular-nums text-xs">
                       {product.productType === "parent" ? (
                         <span className="text-muted">—</span>
                       ) : (
                         formatMoney(product.hppAvg)
                       )}
                     </td>
-                    <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums">
+                    <td className="px-4 py-2.5 text-right tabular-nums text-xs">
                       {formatMoney(product.sellPrice)}
                     </td>
                     <td
                       className={cn(
-                        "px-4 py-2.5 text-right font-mono text-sm tabular-nums",
+                        "px-4 py-2.5 text-right tabular-nums text-sm",
                         low && "font-semibold text-danger",
                       )}
                     >
@@ -427,7 +427,7 @@ export function ProductsTable({
                                 variant.variantAttributes ?? {},
                               ).join(" / ")}
                             </Link>
-                            <p className="font-mono text-xs text-muted">
+                            <p className="tabular-nums text-xs text-muted">
                               {variant.sku}
                               {variant.barcode && ` · ⦀ ${variant.barcode}`}
                             </p>
@@ -438,15 +438,15 @@ export function ProductsTable({
                           <td className="px-4 py-2.5 text-xs text-muted">
                             ↳ ikut induk
                           </td>
-                          <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums">
+                          <td className="px-4 py-2.5 text-right tabular-nums text-xs">
                             {formatMoney(variant.hppAvg)}
                           </td>
-                          <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums">
+                          <td className="px-4 py-2.5 text-right tabular-nums text-xs">
                             {formatMoney(variant.sellPrice)}
                           </td>
                           <td
                             className={cn(
-                              "px-4 py-2.5 text-right font-mono text-sm tabular-nums",
+                              "px-4 py-2.5 text-right tabular-nums text-sm",
                               variantLow && "font-semibold text-danger",
                             )}
                           >

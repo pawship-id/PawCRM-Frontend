@@ -17,7 +17,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
           {children}
         </div>
         <p className="mt-6 text-center text-xs text-muted">
-          © PawShip — pet care, organized.
+          © Buloo — petshop Anda, tercatat rapi.
         </p>
       </div>
     </main>

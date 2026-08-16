@@ -569,7 +569,7 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
                     >
                       <td className="px-2 py-2">
                         <p className="font-medium">{product?.name ?? "—"}</p>
-                        <p className="font-mono text-xs text-muted">
+                        <p className="tabular-nums text-xs text-muted">
                           {product?.sku}
                           {product?.unit && ` · ${product.unit}`}
                         </p>
@@ -583,7 +583,7 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
                           onChange={(event) =>
                             updateLine(index, { qty: event.target.value })
                           }
-                          className="ml-auto max-w-20 text-right font-mono"
+                          className="ml-auto max-w-20 text-right tabular-nums"
                         />
                       </td>
 
@@ -597,7 +597,7 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
                               costPerUnit: event.target.value,
                             })
                           }
-                          className="ml-auto max-w-28 text-right font-mono"
+                          className="ml-auto max-w-28 text-right tabular-nums"
                         />
                       </td>
 
@@ -612,7 +612,7 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
                               })
                             }
                             placeholder="wajib"
-                            className="max-w-32 font-mono text-xs"
+                            className="max-w-32 tabular-nums text-xs"
                           />
                         ) : (
                           <span className="text-xs text-muted">—</span>
@@ -637,7 +637,7 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
                         )}
                       </td>
 
-                      <td className="px-2 py-2 text-right font-mono text-xs tabular-nums">
+                      <td className="px-2 py-2 text-right tabular-nums text-xs">
                         {isDecimal(line.qty) && isDecimal(line.costPerUnit)
                           ? formatMoney(
                               multiplyDecimals(line.qty, line.costPerUnit),
@@ -725,12 +725,12 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
                         {productById.get(movement.productId)?.name ??
                           movement.productId}
                       </span>
-                      <span className="font-mono text-xs text-muted">
+                      <span className="tabular-nums text-xs text-muted">
                         {movement.batchCode ?? "—"}
                         {movement.batchExpiryDate &&
                           ` · exp ${movement.batchExpiryDate.slice(0, 10)}`}
                       </span>
-                      <span className="ml-auto font-mono text-xs tabular-nums">
+                      <span className="ml-auto tabular-nums text-xs">
                         {formatQty(movement.qty)}
                       </span>
                     </li>
@@ -757,14 +757,14 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
           <div className="flex flex-col gap-2 text-sm">
             <div className="flex justify-between">
               <span className="text-muted">Subtotal</span>
-              <b className="font-mono tabular-nums">
+              <b className="tabular-nums">
                 {formatMoney(preview?.total ?? localSubtotal)}
               </b>
             </div>
             {!consignment && (
               <div className="flex justify-between">
                 <span className="text-muted">PPN</span>
-                <b className="font-mono tabular-nums">
+                <b className="tabular-nums">
                   {formatMoney(
                     preview?.taxAmount ??
                       (isDecimal(taxAmount.trim()) ? taxAmount.trim() : "0"),
@@ -774,14 +774,14 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
             )}
             <div className="mt-1 flex justify-between border-t border-border pt-2">
               <b>Total</b>
-              <b className="font-mono text-base tabular-nums">
+              <b className="tabular-nums text-base">
                 {formatMoney(preview?.grandTotal ?? localSubtotal)}
               </b>
             </div>
             {preview ? (
               <p className="mt-1 text-xs text-muted">
                 Nomor sementara{" "}
-                <span className="font-mono">{preview.receiptNumber}</span> —
+                <span className="tabular-nums">{preview.receiptNumber}</span> —
                 masih bisa berubah kalau ada penerimaan lain lebih dulu.
               </p>
             ) : (

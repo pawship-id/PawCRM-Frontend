@@ -59,7 +59,7 @@ export function PaymentHistory({
               className="flex flex-col gap-1 border-l-2 border-primary pl-3"
             >
               <div className="flex flex-wrap items-center gap-3">
-                <b className="font-mono tabular-nums">
+                <b className="tabular-nums">
                   {formatMoney(payment.amount)}
                 </b>
                 <Badge variant="outline">{METHOD_LABEL[payment.method]}</Badge>
@@ -70,7 +70,7 @@ export function PaymentHistory({
               </div>
               <p className="text-[11px] text-muted">
                 {payment.byUserName ?? "Pengguna terhapus"} · jurnal{" "}
-                <span className="font-mono">{payment.journalEntryId}</span>
+                <span className="tabular-nums">{payment.journalEntryId}</span>
               </p>
             </li>
           ))}

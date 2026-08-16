@@ -53,12 +53,12 @@ export function ProductsScreen() {
             { label: "Produk & Varian" },
           ]}
         />
-        <h1 className="mt-1 text-2xl font-semibold text-foreground">
+        <h1 className="mt-1 text-2xl font-extrabold text-foreground">
           Produk &amp; Varian
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">
-          Produk biasa, produk dengan varian dua tingkat (ukuran × rasa), dan
-          bundle. Produk induk tidak menyimpan stok — stoknya ada di varian.
+          Produk satuan, produk dengan varian dua tingkat (ukuran × rasa), dan
+          bundle.
         </p>
       </div>
 

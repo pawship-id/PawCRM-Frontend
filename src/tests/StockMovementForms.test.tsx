@@ -5,11 +5,13 @@ import { StockAdjustmentForm, StockTransferForm } from "@/features/inventory";
 import { productService } from "@/services/product.service";
 import { warehouseService } from "@/services/warehouse.service";
 import { stockMovementService } from "@/services/stockMovement.service";
+import { productBatchService } from "@/services/productBatch.service";
 import { ApiError } from "@/services/api-error";
 import type { PageResult, Warehouse } from "@/types/api";
 import type {
   PreviewMovementRow,
   Product,
+  ProductBatch,
   StockMovementPreview,
 } from "@/types/inventory";
 
@@ -155,6 +157,31 @@ function previewOf(
 }
 
 /** Everything both forms load on mount, plus the preview endpoint. */
+/** One lot, as the picker reads it: a code and what is left in it. */
+function lot(overrides: Partial<ProductBatch> = {}): ProductBatch {
+  return {
+    _id: "lot-a",
+    tenantId: "t1",
+    warehouseId: WAREHOUSE,
+    productId: PRODUCT,
+    receiptId: null,
+    batchCode: "WSK-A26",
+    expiryDate: "2026-12-31T00:00:00.000Z",
+    initialQty: "10.0000",
+    qtyRemaining: "8.0000",
+    costPerUnit: "200000.0000",
+    isConsignment: false,
+    createdBy: null,
+    createdAt: "",
+    updatedAt: "",
+    productName: null,
+    productSku: null,
+    productUnit: null,
+    warehouseName: null,
+    ...overrides,
+  };
+}
+
 function mockLookups({
   warehouses = [
     warehouse(WAREHOUSE, "Gudang Pusat"),
@@ -206,14 +233,55 @@ async function settlePreview() {
   await waitFor(() => jest.advanceTimersByTime(400));
 }
 
+/**
+ * Picks the goods the adjustment is about.
+ *
+ * The form no longer opens on the first warehouse and the first product — a
+ * default on a screen that writes stock is a suggestion somebody can save
+ * without reading. So every test that fills this form starts here, which is
+ * also the cheapest way to notice if either picker stops working.
+ */
+async function pickGoods(
+  user: ReturnType<typeof userEvent.setup>,
+  warehouse = "Gudang Pusat",
+  product = "Royal Canin Adult 3kg",
+  /**
+   * False for a product that tracks lots: there the system figure belongs to a
+   * BATCH, so the count field stays disabled until one is chosen and waiting
+   * for it here would hang.
+   */
+  waitForStock = true,
+) {
+  await user.click(await screen.findByRole("button", { name: "Gudang" }));
+  await user.click(screen.getByRole("option", { name: warehouse }));
+  await user.click(screen.getByRole("button", { name: "Produk" }));
+  await user.click(screen.getByRole("option", { name: product }));
+
+  // The count field stays disabled until the system's own figure arrives —
+  // there is nothing to subtract from until then. Typing into a disabled input
+  // is a silent no-op, so a test that raced this would fill in nothing and fail
+  // somewhere else entirely.
+  if (waitForStock) {
+    await waitFor(() =>
+      expect(screen.getByLabelText(/^Stok baru/)).toBeEnabled(),
+    );
+  }
+}
+
 describe("StockAdjustmentForm", () => {
-  it("sends a POSITIVE quantity when the direction is inbound", async () => {
+  /**
+   * Nobody picks a direction any more: the field holds the quantity that is
+   * really on the shelf, and the sign falls out of `baru − sistem`. The fixture
+   * holds 20 at this warehouse, so a count of 25 is "+5".
+   */
+  it("derives a POSITIVE quantity from a count above the system's", async () => {
     const { create } = mockLookups();
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(<StockAdjustmentForm />);
+    await pickGoods(user);
 
-    await user.type(await screen.findByLabelText(/^Jumlah/), "5");
+    await user.type(await screen.findByLabelText(/^Stok baru/), "25");
     await user.click(screen.getByRole("button", { name: /Simpan penyesuaian/ }));
 
     await waitFor(() =>
@@ -222,31 +290,120 @@ describe("StockAdjustmentForm", () => {
           operation: "adjustment",
           productId: PRODUCT,
           warehouseId: WAREHOUSE,
-          qty: "5",
+          // Four decimals, as the ledger stores them — the subtraction is done
+          // in minor units, not by string concatenation.
+          qty: "5.0000",
         }),
       ),
     );
   });
 
-  it("sends a NEGATIVE quantity when the direction is outbound", async () => {
+  /**
+   * The picker is a popover now, matching the filter panels next door — and the
+   * tests around it all rode on the form's auto-selection of the first
+   * warehouse, so none of them would have noticed if choosing one stopped
+   * working. This one drives it.
+   */
+  it("saves against the warehouse chosen in the picker, not the default", async () => {
     const { create } = mockLookups();
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(<StockAdjustmentForm />);
+    await pickGoods(user, "Gudang Bazar");
 
-    await user.click(
-      await screen.findByRole("button", { name: "Barang keluar (−)" }),
-    );
-    await user.type(screen.getByLabelText(/^Jumlah/), "3");
+    await user.type(await screen.findByLabelText(/^Stok baru/), "5");
     await user.click(screen.getByRole("button", { name: /Simpan penyesuaian/ }));
 
-    // The toggle owns the sign — the field only ever holds a magnitude, so
-    // nobody has to remember to type a minus on a Monday morning.
     await waitFor(() =>
       expect(create).toHaveBeenCalledWith(
-        expect.objectContaining({ qty: "-3" }),
+        expect.objectContaining({ warehouseId: OTHER_WAREHOUSE }),
       ),
     );
+  });
+
+  it("derives a NEGATIVE quantity from a count below the system's", async () => {
+    const { create } = mockLookups();
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<StockAdjustmentForm />);
+    await pickGoods(user);
+
+    // 20 on the system, 17 counted. Nobody types a minus, and nobody classifies
+    // their own arithmetic before doing it.
+    await user.type(await screen.findByLabelText(/^Stok baru/), "17");
+    await user.click(screen.getByRole("button", { name: /Simpan penyesuaian/ }));
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ qty: "-3.0000" }),
+      ),
+    );
+  });
+
+  /**
+   * The rule the business owner asked for, and the form's shape rather than a
+   * message: the field holds what IS there, and a count is never below nothing.
+   */
+  it("refuses a count below zero", async () => {
+    const { create } = mockLookups();
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<StockAdjustmentForm />);
+    await pickGoods(user);
+
+    await user.type(await screen.findByLabelText(/^Stok baru/), "-4");
+
+    // The button does not wait to be pressed to refuse — and it says why,
+    // because a greyed-out primary action that explains nothing sends people
+    // filling fields at random to find the one it minds about.
+    expect(
+      screen.getByRole("button", { name: /Simpan penyesuaian/ }),
+    ).toBeDisabled();
+    expect(
+      await screen.findByText("Stok tidak bisa kurang dari nol."),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Simpan penyesuaian/ }));
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("becomes pressable the moment the form is whole", async () => {
+    mockLookups();
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<StockAdjustmentForm />);
+
+    // Nothing chosen: the button already knows it cannot save.
+    expect(
+      await screen.findByRole("button", { name: /Simpan penyesuaian/ }),
+    ).toBeDisabled();
+
+    await pickGoods(user);
+    // Goods chosen, count still empty — still not enough.
+    expect(
+      screen.getByRole("button", { name: /Simpan penyesuaian/ }),
+    ).toBeDisabled();
+
+    await user.type(screen.getByLabelText(/^Stok baru/), "25");
+    expect(
+      screen.getByRole("button", { name: /Simpan penyesuaian/ }),
+    ).toBeEnabled();
+  });
+
+  it("writes nothing when the count agrees with the system", async () => {
+    const { create } = mockLookups();
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<StockAdjustmentForm />);
+    await pickGoods(user);
+
+    await user.type(await screen.findByLabelText(/^Stok baru/), "20");
+    await user.click(screen.getByRole("button", { name: /Simpan penyesuaian/ }));
+
+    expect(
+      await screen.findByText(/tidak ada yang perlu dicatat/i),
+    ).toBeInTheDocument();
+    expect(create).not.toHaveBeenCalled();
   });
 
   it("previews the SAME payload it would save", async () => {
@@ -254,8 +411,9 @@ describe("StockAdjustmentForm", () => {
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(<StockAdjustmentForm />);
+    await pickGoods(user);
 
-    await user.type(await screen.findByLabelText(/^Jumlah/), "5");
+    await user.type(await screen.findByLabelText(/^Stok baru/), "25");
     await settlePreview();
     await user.click(screen.getByRole("button", { name: /Simpan penyesuaian/ }));
 
@@ -270,19 +428,24 @@ describe("StockAdjustmentForm", () => {
     expect(String(idempotencyKey).length).toBeGreaterThanOrEqual(8);
   });
 
-  it("renders the weighted average the SERVER computed", async () => {
+  /**
+   * The strip used to explain the weighted average here. It is gone: the
+   * average is the system's own arithmetic over every movement, and showing the
+   * working invited a decision this screen does not have.
+   */
+  it("does not show the HPP working — the system owns that arithmetic", async () => {
     mockLookups();
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(<StockAdjustmentForm />);
+    await pickGoods(user);
 
-    await user.type(await screen.findByLabelText(/^Jumlah/), "5");
+    await user.type(await screen.findByLabelText(/^Stok baru/), "25");
     await settlePreview();
 
-    // 210.000, from the mocked response — not recomputed from the product.
     expect(
-      await screen.findByText(/Perhitungan HPP rata-rata tertimbang/),
-    ).toBeInTheDocument();
+      screen.queryByText(/Perhitungan HPP rata-rata tertimbang/),
+    ).not.toBeInTheDocument();
   });
 
   it("renders the FEFO split the SERVER returned, one row per lot", async () => {
@@ -301,11 +464,9 @@ describe("StockAdjustmentForm", () => {
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(<StockAdjustmentForm />);
+    await pickGoods(user);
 
-    await user.click(
-      await screen.findByRole("button", { name: "Barang keluar (−)" }),
-    );
-    await user.type(screen.getByLabelText(/^Jumlah/), "6");
+    await user.type(await screen.findByLabelText(/^Stok baru/), "14");
     await settlePreview();
 
     expect(await screen.findByText(/Alokasi FEFO/)).toBeInTheDocument();
@@ -313,43 +474,165 @@ describe("StockAdjustmentForm", () => {
     expect(screen.getByText("RC-B26-0456")).toBeInTheDocument();
   });
 
-  it("warns on the short row the server flagged, without blocking the save", async () => {
-    mockLookups({
-      preview: previewOf({
-        movements: [outboundRow({ qty: "-999.0000", short: true })],
-      }),
-    });
+  /**
+   * This used to assert the opposite: a short withdrawal was previewed with a
+   * warning and saved anyway. It can no longer be ASKED FOR. The field holds
+   * the count, the count is at least zero, and the largest reduction it can
+   * express is therefore exactly what the shelf holds — the guarantee is the
+   * form's arithmetic, not a check somebody could route around.
+   */
+  it("cannot ask for more than the shelf holds", async () => {
+    const { create } = mockLookups();
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(<StockAdjustmentForm />);
+    await pickGoods(user);
 
-    await user.click(
-      await screen.findByRole("button", { name: "Barang keluar (−)" }),
+    // 20 on the system. The most that can leave is 20, reached by counting 0.
+    await user.type(await screen.findByLabelText(/^Stok baru/), "0");
+    await user.click(screen.getByRole("button", { name: /Simpan penyesuaian/ }));
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ qty: "-20.0000" }),
+      ),
     );
-    await user.type(screen.getByLabelText(/^Jumlah/), "999");
-    await settlePreview();
-
-    // The backend does not refuse a short pick either — the goods left the shelf.
-    expect(
-      await screen.findByText(/Stok lot tidak mencukupi/),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /Simpan penyesuaian/ }),
-    ).toBeEnabled();
   });
 
-  it("collects the batch and expiry a hasExpiry product requires, before sending", async () => {
+  /**
+   * A product that tracks lots has no single balance to correct — it has one
+   * per lot, and the person counting is holding a particular box. So the lot
+   * comes first, and it is CHOSEN rather than typed.
+   */
+  it("insists on a batch before anything else, for a product that tracks them", async () => {
     const { create } = mockLookups({ detail: product({ hasExpiry: true }) });
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(<StockAdjustmentForm />);
+    await pickGoods(user, "Gudang Pusat", "Royal Canin Adult 3kg", false);
+    await screen.findByRole("button", { name: "Kode batch" });
 
-    await user.type(await screen.findByLabelText(/^Jumlah/), "5");
     await user.click(screen.getByRole("button", { name: /Simpan penyesuaian/ }));
 
-    // The API would answer 400; asking here costs no round trip.
-    expect(screen.getByText(/kode batch wajib diisi/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/pilih batch mana yang disesuaikan/i),
+    ).toBeInTheDocument();
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it("offers the lots the warehouse already holds, not a blank picker", async () => {
+    mockLookups({ detail: product({ hasExpiry: true }) });
+    jest.spyOn(productBatchService, "list").mockResolvedValue({
+      items: [lot()],
+      pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+    });
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<StockAdjustmentForm />);
+    await pickGoods(user, "Gudang Pusat", "Royal Canin Adult 3kg", false);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Kode batch" }),
+    );
+
+    // The lot is named with what a person needs to recognise it by — its code
+    // and what is left in it.
+    expect(
+      await screen.findByRole("option", { name: /WSK-A26 · sisa 8/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("says an empty picker is empty, rather than showing one lonely option", async () => {
+    mockLookups({ detail: product({ hasExpiry: true }) });
+    jest.spyOn(productBatchService, "list").mockResolvedValue({
+      items: [],
+      pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
+    });
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<StockAdjustmentForm />);
+    await pickGoods(user, "Gudang Pusat", "Royal Canin Adult 3kg", false);
+
+    // Without this, "no lots here" and "the read was refused" look identical:
+    // a picker with nothing but "+ Batch baru…" in it.
+    expect(
+      await screen.findByText(/Belum ada batch untuk produk ini/),
+    ).toBeInTheDocument();
+
+    // And it goes away once its advice has been taken — a prompt telling
+    // somebody to do what they have just done is noise.
+    await user.click(screen.getByRole("button", { name: "Kode batch" }));
+    await user.click(screen.getByRole("option", { name: /Batch baru/ }));
+
+    expect(
+      screen.queryByText(/Belum ada batch untuk produk ini/),
+    ).not.toBeInTheDocument();
+  });
+
+  /**
+   * A lot id belongs to one product at one warehouse. Left behind after a
+   * switch it pointed at a lot the new product does not have — visible as a raw
+   * ObjectId in the picker, and dangerous underneath: the id stayed in state,
+   * so a save would have attached the adjustment to another product's lot.
+   */
+  it("forgets the batch and the count when the goods change", async () => {
+    mockLookups({ detail: product({ hasExpiry: true }) });
+    jest.spyOn(productBatchService, "list").mockResolvedValue({
+      items: [lot()],
+      pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+    });
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<StockAdjustmentForm />);
+    await pickGoods(user, "Gudang Pusat", "Royal Canin Adult 3kg", false);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Kode batch" }),
+    );
+    await user.click(await screen.findByRole("option", { name: /WSK-A26/ }));
+    expect(
+      screen.getByRole("button", { name: "Kode batch" }),
+    ).toHaveTextContent("WSK-A26");
+
+    // Switch warehouses. The picker must fall back to its placeholder, not to
+    // the id of a lot that lives somewhere else.
+    await user.click(screen.getByRole("button", { name: "Gudang" }));
+    await user.click(screen.getByRole("option", { name: "Gudang Bazar" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Kode batch" }),
+    ).toHaveTextContent("Pilih batch");
+  });
+
+  it("describes a brand-new batch, and never sends it beside an existing id", async () => {
+    const { create } = mockLookups({ detail: product({ hasExpiry: true }) });
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<StockAdjustmentForm />);
+    await pickGoods(user, "Gudang Pusat", "Royal Canin Adult 3kg", false);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Kode batch" }),
+    );
+    await user.click(screen.getByRole("option", { name: /Batch baru/ }));
+
+    await user.type(screen.getByLabelText(/Kode batch baru/), "WSK-B26-0640");
+    await user.type(screen.getByLabelText(/Tanggal kedaluwarsa/), "2026-12-31");
+    // A new lot starts at nothing, so whatever is counted is the whole arrival.
+    await user.type(screen.getByLabelText(/^Stok baru/), "6");
+    await user.click(screen.getByRole("button", { name: /Simpan penyesuaian/ }));
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          qty: "6.0000",
+          batchCode: "WSK-B26-0640",
+          // Naming a lot and creating one are mutually exclusive — the API
+          // refuses the pair, so the form never assembles it.
+          batchId: undefined,
+        }),
+      ),
+    );
   });
 
   it("reports the row count the SERVER wrote, not the one it previewed", async () => {
@@ -362,8 +645,9 @@ describe("StockAdjustmentForm", () => {
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(<StockAdjustmentForm />);
+    await pickGoods(user);
 
-    await user.type(await screen.findByLabelText(/^Jumlah/), "5");
+    await user.type(await screen.findByLabelText(/^Stok baru/), "25");
     await user.click(screen.getByRole("button", { name: /Simpan penyesuaian/ }));
 
     await waitFor(() =>
@@ -381,8 +665,9 @@ describe("StockAdjustmentForm", () => {
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(<StockAdjustmentForm />);
+    await pickGoods(user);
 
-    await user.type(await screen.findByLabelText(/^Jumlah/), "5");
+    await user.type(await screen.findByLabelText(/^Stok baru/), "25");
     await user.click(screen.getByRole("button", { name: /Simpan penyesuaian/ }));
     await screen.findByText("Network error");
 
@@ -396,7 +681,7 @@ describe("StockAdjustmentForm", () => {
     expect(second.idempotencyKey).toBe(first.idempotencyKey);
 
     // And a NEW intent gets a new one, or it would replay the last save.
-    await user.type(screen.getByLabelText(/^Jumlah/), "2");
+    await user.type(screen.getByLabelText(/^Stok baru/), "2");
     await user.click(screen.getByRole("button", { name: /Simpan penyesuaian/ }));
     await waitFor(() => expect(create).toHaveBeenCalledTimes(3));
     const third = create.mock.calls[2][0] as { idempotencyKey?: string };
@@ -414,8 +699,9 @@ describe("StockAdjustmentForm", () => {
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(<StockAdjustmentForm />);
+    await pickGoods(user);
 
-    await user.type(await screen.findByLabelText(/^Jumlah/), "5");
+    await user.type(await screen.findByLabelText(/^Stok baru/), "25");
     await user.click(screen.getByRole("button", { name: /Simpan penyesuaian/ }));
 
     // `message` alone would say "Cannot post movement" and leave the user with
@@ -431,12 +717,21 @@ describe("StockAdjustmentForm", () => {
       ],
     });
 
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(<StockAdjustmentForm />);
 
-    await screen.findByLabelText(/^Jumlah/);
+    // Read from the picker's own list rather than from the page: the options
+    // only exist while it is open.
+    await user.click(await screen.findByRole("button", { name: "Gudang" }));
+
+    expect(
+      screen.getByRole("option", { name: "Gudang Pusat" }),
+    ).toBeInTheDocument();
     // The stock card lists inactive warehouses because it only reads; here one
     // would be a rejection waiting to happen.
-    expect(screen.queryByText("Gudang Tutup")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: /Gudang Tutup/ }),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -592,7 +887,7 @@ describe("StockTransferForm", () => {
     await settlePreview();
 
     // Two lots × an out/in pair each.
-    expect(await screen.findByText("Lot yang berpindah")).toBeInTheDocument();
+    expect(await screen.findByText("Batch yang berpindah")).toBeInTheDocument();
     expect(screen.getByText("4 baris movement")).toBeInTheDocument();
   });
 
@@ -601,6 +896,25 @@ describe("StockTransferForm", () => {
    * Ticking two and confirming must produce two rows in one payload, not two
    * transfers — that is the whole reason `items` is an array.
    */
+  /**
+   * The two ends used to be signalled only by a red border until somebody
+   * pressed Simpan — status by colour alone, and nothing at all for a reader
+   * who cannot see it.
+   */
+  it("says the two ends are the same as soon as they are, not on submit", async () => {
+    mockLookups();
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<StockTransferForm />);
+
+    await user.click(await screen.findByRole("button", { name: "Ke gudang" }));
+    await user.click(screen.getByRole("option", { name: "Gudang Pusat" }));
+
+    expect(
+      await screen.findByText("Gudang asal dan tujuan harus berbeda."),
+    ).toBeInTheDocument();
+  });
+
   it("puts every product ticked in the picker into one payload", async () => {
     const second = product({ _id: "p2", sku: "SH-1L", name: "Shampoo Anjing" });
     const { create } = mockLookups({ catalogue: [product(), second] });

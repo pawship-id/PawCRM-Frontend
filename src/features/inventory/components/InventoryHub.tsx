@@ -55,7 +55,7 @@ const ACTIONS: Array<{
     href: "/dashboard/inventory/products",
     title: "Produk & Varian",
     description:
-      "Katalog: produk biasa, keluarga varian dua tingkat, dan bundle multi-satuan.",
+      "Katalog: produk satuan, keluarga varian dua tingkat, dan bundle.",
     feature: "products",
     action: "read",
   },
@@ -79,7 +79,7 @@ const ACTIONS: Array<{
     href: "/dashboard/inventory/batches",
     title: "Batch & Expired",
     description:
-      "Semua lot, diurutkan dari yang paling dekat kedaluwarsa. Urutan FEFO.",
+      "Semua batch, diurutkan dari yang paling dekat kedaluwarsa. Urutan FEFO.",
     feature: "productBatches",
     action: "read",
   },
@@ -95,7 +95,7 @@ const ACTIONS: Array<{
     href: "/dashboard/inventory/transfers",
     title: "Transfer Stok",
     description:
-      "Pindahkan barang antar gudang. Lot beserta tanggal kedaluwarsanya ikut pindah.",
+      "Pindahkan barang antar gudang. Batch beserta tanggal kedaluwarsanya ikut pindah.",
     feature: "stockMovements",
     action: "create",
   },
@@ -125,7 +125,7 @@ export function InventoryHub() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">Inventory</h1>
+        <h1 className="text-2xl font-extrabold text-foreground">Inventory</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">
           Stok dihitung dari buku besar pergerakan — bukan angka yang disimpan
           terpisah. Setiap saldo di layar ini bisa dihitung ulang dari nol.
@@ -167,11 +167,11 @@ export function InventoryHub() {
                 >
                   {product.name}
                 </Link>
-                <p className="truncate font-mono text-xs text-muted">
+                <p className="truncate tabular-nums text-xs text-muted">
                   {product.sku ?? "—"}
                 </p>
               </div>
-              <span className="font-mono text-sm font-semibold tabular-nums text-danger">
+              <span className="tabular-nums text-sm font-semibold text-danger">
                 {formatQty(product.qtyOnHand)}
               </span>
               <span className="whitespace-nowrap text-xs text-muted">
@@ -190,10 +190,10 @@ export function InventoryHub() {
           error={expiring.error}
           allowed={mayReadBatches}
           empty={`Tidak ada lot yang kedaluwarsa dalam ${expiring.withinDays} hari.`}
-          moreLabel="lot lain juga di dalam rentang ini"
+          moreLabel="batch lain juga di dalam rentang ini"
           seeAll={{
             href: "/dashboard/inventory/batches",
-            label: "Lihat semua lot",
+            label: "Lihat semua batch",
           }}
         >
           {expiring.items.map((batch) => (
@@ -204,15 +204,15 @@ export function InventoryHub() {
                 <p className="truncate text-sm font-medium">
                   {batch.productName ?? "—"}
                 </p>
-                <p className="truncate font-mono text-xs text-muted">
+                <p className="truncate tabular-nums text-xs text-muted">
                   {batch.batchCode}
                 </p>
               </div>
               <div className="text-right">
-                <p className="font-mono text-sm tabular-nums">
+                <p className="tabular-nums text-sm">
                   {formatQty(batch.qtyRemaining)}
                 </p>
-                <p className="font-mono text-[11px] text-muted">
+                <p className="tabular-nums text-[11px] text-muted">
                   {formatMoney(
                     multiplyDecimals(batch.qtyRemaining, batch.costPerUnit),
                   )}
@@ -271,7 +271,7 @@ function AlertSection({
   return (
     <section className="rounded-xl border border-border bg-surface">
       <header className="flex items-center gap-2 border-b border-border px-5 py-3">
-        <h2 className="font-semibold">{title}</h2>
+        <h2 className="font-bold">{title}</h2>
         {caption && <span className="text-xs text-muted">{caption}</span>}
         <Badge variant="outline" className="ml-auto tabular-nums">
           {allowed ? (loading ? "…" : total) : "—"}
