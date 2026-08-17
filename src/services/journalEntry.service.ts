@@ -63,6 +63,33 @@ export interface JournalEntryListQuery extends LedgerPeriodQuery {
   tag?: string;
 }
 
+/**
+ * The list's filters without its pagination — what `totals` is scoped by.
+ *
+ * Derived from the list query rather than declared again, so the two cannot
+ * drift: a total narrowed differently from the rows it sits over would look
+ * authoritative while being about other entries.
+ */
+export type JournalTotalsQuery = Omit<JournalEntryListQuery, "page" | "limit">;
+
+export interface JournalTotals {
+  period: {
+    dateFrom: string | null;
+    dateTo: string | null;
+    /** The IANA zone the period was expanded in — `tenants.timezone`. */
+    timezone: string;
+  };
+  /**
+   * Σdebit and Σcredit over every entry the filter selects, at every page.
+   *
+   * Equal on a healthy ledger — that is the invariant the backend refuses a
+   * posting over — so a client that renders both has a running integrity check
+   * rather than two copies of one number.
+   */
+  debit: string;
+  credit: string;
+}
+
 /** One row of `byBusinessLine`. `businessLineId: null` is the shared bucket. */
 export interface BusinessLineFigures {
   businessLineId: string | null;
@@ -174,6 +201,36 @@ export const journalEntryService = {
         limit: query.limit
           ? Math.min(query.limit, MAX_PAGE_LIMIT)
           : undefined,
+        search: query.search,
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+        sourceType: query.sourceType,
+        sourceId: query.sourceId,
+        accountId: query.accountId,
+        businessLineId: query.businessLineId,
+        branchId: query.branchId,
+        cashflowType: query.cashflowType,
+        tag: query.tag,
+      },
+    }),
+
+  /**
+   * GET /journal-entries/totals — Σdebit and Σcredit over the whole of `list`'s
+   * result, ignoring its pagination.
+   *
+   * SEPARATE FROM `list` ON PURPOSE, and the reason is worth knowing before
+   * calling it: the answer depends on the filter and not on the page, so the
+   * server would otherwise re-aggregate the entire matched set on every page
+   * turn. Ask once per filter change and page for free.
+   *
+   * NOT `summary`, which also folds a period. That one is a P&L — it joins to
+   * the chart of accounts, keeps only the income and expense classes, and takes
+   * neither `search` nor `sourceType`, so its figures cannot be put over a
+   * filtered list without quietly meaning something else.
+   */
+  totals: (query: JournalTotalsQuery = {}) =>
+    apiClient.get<JournalTotals>("/journal-entries/totals", {
+      query: {
         search: query.search,
         dateFrom: query.dateFrom,
         dateTo: query.dateTo,

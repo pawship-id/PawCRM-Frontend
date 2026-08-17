@@ -1,20 +1,25 @@
 "use client";
 
 import Link from "next/link";
+import { RotateCcw } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
+import { Alert, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import type { JournalEntry } from "@/types/accounting";
-import { normalBalanceOf } from "@/types/accounting";
-import { formatMoney, sumDecimals } from "@/utils/decimal";
-
 import {
-  ACCOUNTS_BY_ID,
-  BUSINESS_LINES_BY_ID,
-  entryNumberOf,
-  findEntry,
-} from "../data/dummy";
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { cn } from "@/lib/utils";
+import type { ChartOfAccount, JournalEntry } from "@/types/accounting";
+import { normalBalanceOf } from "@/types/accounting";
+import { formatMoney, isPositive, sumDecimals } from "@/utils/decimal";
+
+import { ACCOUNTING_CRUMBS } from "../crumbs";
+import { useJournalEntry } from "../hooks/useJournalEntry";
 import {
   ACCOUNT_TYPE_LABEL,
   CASHFLOW_LABEL,
@@ -24,31 +29,57 @@ import {
 } from "../labels";
 
 /**
- * One entry, and the double entry it is made of.
+ * One entry, and the double entry it is made of, read from
+ * GET /api/journal-entries/:id through `useJournalEntry`.
  *
  * THE BALANCE MARKER IS THE POINT OF THE PAGE. Σdebit === Σcredit is what makes
  * a row a journal entry rather than a note about money, and it is the invariant
  * the backend refuses a posting over. Showing the two totals side by side — with
  * the verdict spelled out — is what lets somebody trust the number without
- * re-adding the column.
+ * re-adding the column. It is computed here from the lines the API sent rather
+ * than taken on trust, which is the only version of the check worth drawing.
  *
  * THE REVERSAL LINK IS AT THE TOP, not buried in the metadata. An entry that has
  * been reversed no longer affects any report, and reading its amounts without
  * knowing that is the single most expensive mistake this screen can cause. The
  * same banner, mirrored, tells a reversal which entry it undoes.
+ *
+ * ACCOUNT AND BUSINESS-LINE NAMES ARE RESOLVED CLIENT-SIDE — see the hook. Both
+ * fall back to the id, which is a worse label than a name and a far better one
+ * than a blank cell on a page somebody is auditing.
  */
 export function JournalEntryDetail({ entryId }: { entryId: string }) {
-  const entry = findEntry(entryId);
+  const {
+    entry,
+    accountsById,
+    businessLineNames,
+    relatedNumbers,
+    loading,
+    notFound,
+    error,
+    refetch,
+  } = useJournalEntry(entryId);
 
-  if (!entry) {
+  if (loading && !entry) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
+        <Spinner /> Memuat entri…
+      </div>
+    );
+  }
+
+  // A 404 is not a failure to retry — this id does not exist in the tenant — so
+  // the way out is the list, not a reload button.
+  if (notFound) {
     return (
       <div className="rounded-xl border border-dashed border-border bg-surface px-6 py-16 text-center">
-        <p className="font-medium text-foreground">Entri tidak ditemukan</p>
+        <p className="font-medium text-foreground">Entri tidak ditemukan.</p>
         <p className="mt-1 text-sm text-muted">
-          Nomor jurnal ini tidak ada di data contoh.
+          Nomor jurnal ini tidak ada di buku besar tenant kamu. Mungkin
+          tautannya sudah usang.
         </p>
-        <Button variant="ghost" size="sm" asChild className="mt-4">
-          <Link href="/dashboard/keuangan/journal-entries">
+        <Button variant="secondary" size="sm" asChild className="mt-4">
+          <Link href={ACCOUNTING_CRUMBS.journal.href}>
             Kembali ke jurnal umum
           </Link>
         </Button>
@@ -56,37 +87,62 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
     );
   }
 
+  if (!entry) {
+    return (
+      <Alert variant="error">
+        <span className="flex flex-wrap items-center gap-3">
+          {error ?? "Gagal memuat entri jurnal."}
+          <Button variant="secondary" size="sm" onClick={refetch}>
+            <RotateCcw className="size-4" />
+            Coba lagi
+          </Button>
+        </span>
+      </Alert>
+    );
+  }
+
   const totalDebit = sumDecimals(entry.lines.map((line) => line.debit));
   const totalCredit = sumDecimals(entry.lines.map((line) => line.credit));
   const balanced = totalDebit === totalCredit;
 
-  const reversedBy = entryNumberOf(entry.reversedByEntryId);
-  const reverses = entryNumberOf(entry.reversesEntryId);
-
   return (
     <div className="flex flex-col gap-6">
+      {error && (
+        // The entry itself is on screen — this only reports that a refresh
+        // failed, so it sits above the data rather than replacing it.
+        <Alert variant="error">
+          <span className="flex flex-wrap items-center gap-3">
+            {error}
+            <Button variant="secondary" size="sm" onClick={refetch}>
+              <RotateCcw className="size-4" />
+              Coba lagi
+            </Button>
+          </span>
+        </Alert>
+      )}
+
       {entry.reversedByEntryId && (
-        <div className="rounded-lg border border-danger/40 bg-danger/5 px-4 py-3 text-sm">
-          <b className="text-danger">Entri ini sudah dibalik.</b> Nilainya sudah
-          dikoreksi oleh{" "}
+        <div className="rounded-lg bg-tint-danger px-4 py-3 text-sm">
+          <b className="font-semibold text-danger">Entri ini sudah dibalik.</b>{" "}
+          Nilainya sudah dikoreksi oleh{" "}
           <Link
-            href={`/dashboard/keuangan/journal-entries/${entry.reversedByEntryId}`}
-            className="tabular-nums text-xs font-semibold text-danger underline-offset-4 hover:underline"
+            href={`${ACCOUNTING_CRUMBS.journal.href}/${entry.reversedByEntryId}`}
+            className="rounded-md font-semibold tabular-nums text-danger underline-offset-4 hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
           >
-            {reversedBy}
+            {relatedNumbers.get(entry.reversedByEntryId) ?? "entri pembalik"}
           </Link>{" "}
           dan tidak lagi berpengaruh ke laporan.
         </div>
       )}
 
       {entry.reversesEntryId && (
-        <div className="rounded-lg border border-border bg-accent/50 px-4 py-3 text-sm">
+        <div className="rounded-lg border border-border bg-surface-hover px-4 py-3 text-sm">
           Entri pembalik untuk{" "}
           <Link
-            href={`/dashboard/keuangan/journal-entries/${entry.reversesEntryId}`}
-            className="tabular-nums text-xs font-semibold text-foreground underline-offset-4 hover:underline"
+            href={`${ACCOUNTING_CRUMBS.journal.href}/${entry.reversesEntryId}`}
+            className="rounded-md font-semibold tabular-nums text-foreground underline-offset-4 hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
           >
-            {reverses}
+            {relatedNumbers.get(entry.reversesEntryId) ?? "entri asli"}
           </Link>
           . Debit dan kreditnya adalah kebalikan dari entri asli.
         </div>
@@ -96,26 +152,24 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
         <div className="flex flex-wrap items-start gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="tabular-nums text-sm font-semibold text-foreground">
+              <span className="text-sm font-semibold tabular-nums text-foreground">
                 {entry.entryNumber}
               </span>
-              <Badge
-                variant="outline"
+              <span
                 className={cn(
-                  entry.source.type !== "manual" && "border-transparent",
+                  "inline-block rounded-full px-2 py-0.5 text-xs font-medium",
                   SOURCE_TONE[entry.source.type],
                 )}
               >
                 {SOURCE_LABEL[entry.source.type]}
-              </Badge>
+              </span>
               {entry.recurring.enabled && (
-                <Badge
-                  variant="outline"
-                  className="border-transparent bg-accent text-muted"
+                <span
+                  className="inline-block rounded-full bg-tint-neutral px-2 py-0.5 text-xs font-medium text-muted"
                   title="Konfigurasi pengulangan tersimpan; penjadwalnya belum ada di backend."
                 >
                   berulang
-                </Badge>
+                </span>
               )}
             </div>
             <p className="mt-1.5 text-lg font-semibold text-foreground">
@@ -124,16 +178,19 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
           </div>
 
           {/*
-            Disabled, like the create buttons: POST /:id/reverse exists and is
-            the only legal correction, but nothing here calls it yet. Hidden
-            entirely on an entry that has already been reversed — the backend
-            refuses a second reversal, and offering it would promise otherwise.
+            Disabled, and the reason has changed since it was written: POST
+            /:id/reverse is reachable now — journalEntryService.reverse calls it
+            — but a reversal needs a date and a description confirmed by a human
+            before it posts a second permanent entry into the ledger, and that
+            dialog does not exist yet. Hidden entirely on an entry that has
+            already been reversed: the backend refuses a second reversal, and
+            offering it would promise otherwise.
           */}
           {!entry.reversedByEntryId && (
             <Button
-              variant="outline"
+              variant="secondary"
               disabled
-              title="Belum tersambung ke API"
+              title="Dialog konfirmasi pembalikan belum tersedia"
             >
               Balik entri
             </Button>
@@ -164,7 +221,7 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
             label="Dicatat pada"
             value={formatDate(entry.createdAt)}
             hint={
-              entry.createdAt !== entry.date
+              entry.createdAt.slice(0, 10) !== entry.date.slice(0, 10)
                 ? "Berbeda dari tanggal transaksi — laporan memakai tanggal transaksi."
                 : undefined
             }
@@ -178,7 +235,7 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
             }
           />
           <div>
-            <dt className="text-[10px] font-medium uppercase tracking-widest text-muted">
+            <dt className="text-xs font-medium tracking-widest text-muted uppercase">
               Tag
             </dt>
             <dd className="mt-1 flex flex-wrap gap-1">
@@ -186,13 +243,12 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
                 <span className="text-sm text-muted">—</span>
               ) : (
                 entry.tags.map((tag) => (
-                  <Badge
+                  <span
                     key={tag}
-                    variant="outline"
-                    className="border-border text-xs font-normal text-muted"
+                    className="inline-block rounded-full bg-tint-neutral px-2 py-0.5 text-xs text-muted"
                   >
                     {tag}
-                  </Badge>
+                  </span>
                 ))
               )}
             </dd>
@@ -202,104 +258,110 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
         {entry.attachmentUrl && (
           <p className="border-t border-border pt-3 text-xs text-muted">
             Lampiran:{" "}
-            <span className="tabular-nums text-foreground">
+            <a
+              href={entry.attachmentUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-md tabular-nums text-primary-hover underline-offset-4 hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
               {entry.attachmentUrl}
-            </span>
+            </a>
           </p>
         )}
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border bg-surface">
-        <div className="flex items-center gap-2 border-b border-border bg-foreground px-4 py-2 text-[10px] font-medium uppercase tracking-widest text-background">
+        <div className="flex items-center gap-2 border-b border-border bg-foreground px-4 py-2 text-xs font-medium tracking-widest text-background uppercase">
           <span>Baris jurnal ({entry.lines.length})</span>
+          {/* Always a word beside the mark — a tick alone is colour-only status
+              (§9), and this is the one verdict on the page that has to survive
+              being read quickly. */}
           <span className={cn("ml-auto", balanced ? "text-success" : "text-danger")}>
             {balanced ? "✓ seimbang" : "✕ tidak seimbang"}
           </span>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-[10px] uppercase tracking-widest text-muted">
-                <th className="px-4 py-2.5 text-left font-medium">Akun</th>
-                <th className="px-4 py-2.5 text-left font-medium">Tipe</th>
-                <th className="px-4 py-2.5 text-left font-medium">
-                  Lini bisnis
-                </th>
-                <th className="px-4 py-2.5 text-left font-medium">Memo</th>
-                <th className="px-4 py-2.5 text-right font-medium">Debit</th>
-                <th className="px-4 py-2.5 text-right font-medium">Kredit</th>
-              </tr>
-            </thead>
-            <tbody>
-              {entry.lines.map((line, index) => {
-                const account = ACCOUNTS_BY_ID.get(line.accountId);
-                const isDebit = line.debit !== "0";
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Akun</TableHead>
+              <TableHead>Tipe</TableHead>
+              <TableHead>Lini bisnis</TableHead>
+              <TableHead>Memo</TableHead>
+              <TableHead className="text-right">Debit</TableHead>
+              <TableHead className="text-right">Kredit</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {entry.lines.map((line, index) => {
+              const account = accountsById.get(line.accountId);
+              /**
+               * WHICH SIDE THIS LINE IS ON, decided on the VALUE rather than on
+               * the string. The API renders money at four decimal places, so a
+               * credit line's debit arrives as `"0.0000"` — which is not `"0"`,
+               * and a `!== "0"` test therefore called every credit a debit,
+               * printing "Rp 0" in the debit column and a dash where the amount
+               * belonged. The totals row summed the decimals properly, so the
+               * page said SEIMBANG over a table where no credit had a number.
+               */
+              const isDebit = isPositive(line.debit);
 
-                return (
-                  <tr
-                    key={`${line.accountId}-${index}`}
-                    className="border-b border-border/60 last:border-0"
-                  >
-                    <td className="px-4 py-2.5">
-                      {/*
-                        The credit side is indented, the way a hand-written
-                        journal has always been laid out: debits at the margin,
-                        credits stepped in. It is the fastest way to read which
-                        side a line is on without checking which column the
-                        number landed in.
-                      */}
-                      <div className={cn(!isDebit && "pl-6")}>
-                        <span className="tabular-nums text-xs text-muted">
-                          {account?.code ?? "????"}
-                        </span>
-                        <span className="ml-2 text-sm font-medium text-foreground">
-                          {account?.name ?? "Akun tidak dikenal"}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-2.5 text-xs text-muted">
-                      {account
-                        ? `${ACCOUNT_TYPE_LABEL[account.accountType]} · normal ${
-                            normalBalanceOf(account.accountType) === "debit"
-                              ? "debit"
-                              : "kredit"
-                          }`
-                        : "—"}
-                    </td>
-                    <td className="px-4 py-2.5 text-xs text-muted">
-                      {businessLineName(line.businessLineId)}
-                    </td>
-                    <td className="px-4 py-2.5 text-xs text-muted">
-                      {line.memo ?? "—"}
-                    </td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-xs">
-                      {isDebit ? formatMoney(line.debit) : "—"}
-                    </td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-xs">
-                      {isDebit ? "—" : formatMoney(line.credit)}
-                    </td>
-                  </tr>
-                );
-              })}
+              return (
+                <TableRow key={`${line.accountId}-${index}`}>
+                  <TableCell className="px-4 py-2.5">
+                    {/*
+                      The credit side is indented, the way a hand-written journal
+                      has always been laid out: debits at the margin, credits
+                      stepped in. It is the fastest way to read which side a line
+                      is on without checking which column the number landed in.
+                    */}
+                    <div className={cn(!isDebit && "pl-6")}>
+                      <span className="text-xs tabular-nums text-muted">
+                        {account?.code ?? "????"}
+                      </span>
+                      <span className="ml-2 text-sm font-medium text-foreground">
+                        {account?.name ?? accountLabelFallback(line.accountId)}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="px-4 py-2.5 text-xs text-muted">
+                    {account ? describeAccount(account) : "—"}
+                  </TableCell>
+                  <TableCell className="px-4 py-2.5 text-xs text-muted">
+                    {line.businessLineId
+                      ? (businessLineNames.get(line.businessLineId) ??
+                        line.businessLineId)
+                      : "—"}
+                  </TableCell>
+                  <TableCell className="px-4 py-2.5 text-xs text-muted">
+                    {line.memo ?? "—"}
+                  </TableCell>
+                  <TableCell className="px-4 py-2.5 text-right text-sm tabular-nums">
+                    {isDebit ? formatMoney(line.debit) : "—"}
+                  </TableCell>
+                  <TableCell className="px-4 py-2.5 text-right text-sm tabular-nums">
+                    {isDebit ? "—" : formatMoney(line.credit)}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
 
-              <tr className="bg-accent/60">
-                <td
-                  colSpan={4}
-                  className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-widest text-muted"
-                >
-                  Total
-                </td>
-                <td className="px-4 py-2.5 text-right tabular-nums text-sm font-semibold">
-                  {formatMoney(totalDebit)}
-                </td>
-                <td className="px-4 py-2.5 text-right tabular-nums text-sm font-semibold">
-                  {formatMoney(totalCredit)}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+            <TableRow className="bg-surface-hover hover:bg-surface-hover">
+              <TableCell
+                colSpan={4}
+                className="px-4 py-2.5 text-right text-xs font-semibold tracking-widest text-muted uppercase"
+              >
+                Total
+              </TableCell>
+              <TableCell className="px-4 py-2.5 text-right text-sm font-semibold tabular-nums">
+                {formatMoney(totalDebit)}
+              </TableCell>
+              <TableCell className="px-4 py-2.5 text-right text-sm font-semibold tabular-nums">
+                {formatMoney(totalCredit)}
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
       </div>
     </div>
   );
@@ -315,18 +377,22 @@ const RECURRING_LABEL: Record<
   yearly: "tahun",
 };
 
+/** "Aset · normal debit" — the fact somebody needs to read which side is which. */
+function describeAccount(account: ChartOfAccount): string {
+  const side = normalBalanceOf(account.accountType) === "debit" ? "debit" : "kredit";
+  return `${ACCOUNT_TYPE_LABEL[account.accountType]} · normal ${side}`;
+}
+
 /**
- * A line's business line by name.
+ * What a line's account column says when the chart could not be read.
  *
- * Resolved here rather than sent by the API, for the reason stated in
- * types/accounting.ts: the business lines are a short, cacheable list a client
- * already holds, and resolving ids locally is what keeps a renamed line renamed
- * everywhere at once. Falls back to the id, which is a worse label than a name
- * and a better one than a blank cell.
+ * The id rather than "Akun tidak dikenal", which is what this used to say and was
+ * wrong twice over: the account almost certainly exists — the usual reason it is
+ * missing here is that the user lacks `chartOfAccounts:read` — and a label naming
+ * nothing is unusable to whoever has to go and look it up.
  */
-function businessLineName(businessLineId: string | null): string {
-  if (!businessLineId) return "—";
-  return BUSINESS_LINES_BY_ID.get(businessLineId)?.name ?? businessLineId;
+function accountLabelFallback(accountId: string): string {
+  return accountId;
 }
 
 function Field({
@@ -342,18 +408,15 @@ function Field({
 }) {
   return (
     <div>
-      <dt className="text-[10px] font-medium uppercase tracking-widest text-muted">
+      <dt className="text-xs font-medium tracking-widest text-muted uppercase">
         {label}
       </dt>
       <dd
-        className={cn(
-          "mt-1 text-sm text-foreground",
-          mono && "tabular-nums text-xs",
-        )}
+        className={cn("mt-1 text-sm text-foreground", mono && "tabular-nums")}
       >
         {value}
       </dd>
-      {hint && <p className="mt-0.5 text-[11px] text-muted">{hint}</p>}
+      {hint && <p className="mt-0.5 text-xs text-muted">{hint}</p>}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { renderWithAuth } from "./helpers/renderWithAuth";
@@ -9,10 +9,18 @@ import {
   JournalEntriesScreen,
   JournalEntryDetail,
 } from "@/features/accounting";
-import { DUMMY_ENTRIES } from "@/features/accounting/data/dummy";
 import { ApiError } from "@/services/api-error";
+import { branchService } from "@/services/branch.service";
+import { businessLineService } from "@/services/businessLine.service";
 import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
-import type { AccountType, ChartOfAccountNode } from "@/types/accounting";
+import { journalEntryService } from "@/services/journalEntry.service";
+import type {
+  AccountType,
+  ChartOfAccountNode,
+  JournalEntry,
+  JournalLine,
+} from "@/types/accounting";
+import type { PageResult } from "@/types/api";
 
 // The form toasts on success; mock the library so no real dialog is created.
 jest.mock("sweetalert2", () => ({
@@ -32,17 +40,19 @@ beforeEach(() => push.mockClear());
 /**
  * Mount tests for the accounting screens.
  *
- * The COA screen reads GET /chart-of-accounts/tree and is driven here through a
- * stubbed service; the ledger screens still read fixtures.
+ * EVERY SCREEN HERE IS DRIVEN THROUGH A STUBBED SERVICE — the COA reads
+ * GET /chart-of-accounts/tree, the ledger reads GET /journal-entries and
+ * GET /journal-entries/:id. The fixtures are built in this file rather than
+ * imported, so a change to the demo data cannot quietly change what a test
+ * asserts.
  *
- * WHAT IS WORTH ASSERTING. Not fixture values — those change with the demo data
- * and a test that pins them is a test that has to be edited every time somebody
- * adds an example row. What is pinned here is behaviour, and each of these is a
- * real bug if it breaks: the COA renders the API's nesting as a hierarchy and
- * not a flat list, a search keeps a match's ancestors so it never reads as a
- * root account, a failed request says so instead of showing an empty chart, the
- * ledger's two totals balance, and a reversed entry says so before anyone reads
- * its amounts.
+ * WHAT IS WORTH ASSERTING. Behaviour, not values, and each of these is a real
+ * bug if it breaks: the COA renders the API's nesting as a hierarchy and not a
+ * flat list, a search keeps a match's ancestors so it never reads as a root
+ * account, a failed request says so instead of showing an empty chart, the
+ * ledger asks the SERVER for the filter it was given rather than narrowing a
+ * page in the browser, its two totals balance, and a reversed entry says so
+ * before anyone reads its amounts.
  */
 
 /** One tree node, with the fields the screen actually reads. */
@@ -482,77 +492,357 @@ describe("ChartOfAccountForm", () => {
   });
 });
 
-describe("JournalEntriesScreen", () => {
-  it("groups the ledger by month", () => {
-    render(<JournalEntriesScreen />);
+/* ------------------------------------------------------------------ ledger */
 
-    expect(screen.getByText("Agustus 2026")).toBeInTheDocument();
+/** One side of one transaction. Exactly one of debit/credit is non-zero. */
+/**
+ * One journal line, with money shaped the way the API really sends it.
+ *
+ * FOUR DECIMAL PLACES ON BOTH SIDES, `"0.0000"` INCLUDED. The backend renders
+ * every amount at SCALE = 4 (utils/money.js), so the unused side of a line is
+ * `"0.0000"` and never `"0"` — and a fixture that wrote the short form let a
+ * `line.debit !== "0"` test pass here while calling every credit a debit on the
+ * real screen.
+ */
+function line(
+  accountId: string,
+  debit: string,
+  credit: string,
+): JournalLine {
+  return { accountId, businessLineId: null, debit, credit, memo: null };
+}
+
+/**
+ * A balanced entry with the fields the two ledger screens read.
+ *
+ * Balanced by default because that is what the backend refuses a posting over —
+ * an unbalanced fixture would be testing a state the API cannot produce.
+ */
+function entry(overrides: Partial<JournalEntry> & { _id: string }): JournalEntry {
+  return {
+    entryNumber: `JE-2026-08-${overrides._id}`,
+    date: "2026-08-07T00:00:00.000Z",
+    description: "Penjualan POS",
+    branchId: "b1",
+    branchName: "Cabang Kemang",
+    source: { type: "pos", id: null, reference: null },
+    lines: [
+      line("1101", "150000.0000", "0.0000"),
+      line("4101", "0.0000", "150000.0000"),
+    ],
+    cashflowType: "operating",
+    tags: [],
+    attachmentUrl: null,
+    recurring: { enabled: false, interval: null },
+    reversedByEntryId: null,
+    reversesEntryId: null,
+    createdByName: null,
+    createdAt: "2026-08-07T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+/** One page of the ledger, shaped as GET /journal-entries answers. */
+function ledgerPage(items: JournalEntry[]): PageResult<JournalEntry> {
+  return {
+    items,
+    pagination: {
+      page: 1,
+      limit: 20,
+      total: items.length,
+      totalPages: items.length === 0 ? 0 : 1,
+    },
+  };
+}
+
+/**
+ * Stubs the lookups both ledger screens make beside their own request.
+ *
+ * All three are allowed to fail in production and none of them sets an error —
+ * they only label a filter or a column — so they are stubbed rather than left to
+ * reject, which would leave an unhandled rejection in every test.
+ */
+function mockLedgerLookups() {
+  jest.spyOn(journalEntryService, "totals").mockResolvedValue({
+    period: { dateFrom: null, dateTo: null, timezone: "Asia/Jakarta" },
+    debit: "300000.0000",
+    credit: "300000.0000",
+  });
+  jest
+    .spyOn(branchService, "list")
+    .mockResolvedValue({
+      items: [{ _id: "b1", name: "Cabang Kemang" }],
+      pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+    } as never);
+  jest.spyOn(businessLineService, "list").mockResolvedValue({
+    items: [],
+    pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
+  } as never);
+  jest.spyOn(chartOfAccountsService, "tree").mockResolvedValue([
+    node("1101", "Kas", "asset"),
+    node("4101", "Pendapatan Penjualan", "income"),
+  ]);
+}
+
+describe("JournalEntriesScreen", () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  /** Mounts the ledger over one page of entries and waits for it to land. */
+  async function renderLedger(items: JournalEntry[]) {
+    mockLedgerLookups();
+    const list = jest
+      .spyOn(journalEntryService, "list")
+      .mockResolvedValue(ledgerPage(items));
+
+    renderWithAuth(<JournalEntriesScreen />);
+    await waitFor(() => expect(list).toHaveBeenCalled());
+
+    return list;
+  }
+
+  it("groups the page by month", async () => {
+    await renderLedger([
+      entry({ _id: "1", date: "2026-08-07T00:00:00.000Z" }),
+      entry({ _id: "2", date: "2026-07-30T00:00:00.000Z" }),
+    ]);
+
+    expect(await screen.findByText("Agustus 2026")).toBeInTheDocument();
     expect(screen.getByText("Juli 2026")).toBeInTheDocument();
   });
 
-  it("filters by source, so only manual entries remain", async () => {
-    render(<JournalEntriesScreen />);
+  /**
+   * The filter goes to the SERVER, which is the whole difference from the
+   * fixture-backed screen this replaced. Narrowing a 20-row page in the browser
+   * would silently answer "manual entries" with "the manual entries that
+   * happened to be on page 1".
+   */
+  it("asks the server for the source the panel picked", async () => {
+    const list = await renderLedger([entry({ _id: "1" })]);
+    await screen.findByText("Agustus 2026");
 
-    // Two POS sales in the fixtures, hence getAllBy — the point is that they
-    // are there before the filter and gone after it.
-    expect(screen.getAllByText(/Penjualan POS/).length).toBeGreaterThan(0);
-
-    await userEvent.click(screen.getByLabelText("Filter sumber entri"));
+    await userEvent.click(screen.getByRole("button", { name: "Filter" }));
+    const panel = await screen.findByRole("dialog");
+    await userEvent.click(within(panel).getByLabelText("Filter sumber entri"));
     await userEvent.click(screen.getByRole("option", { name: "Manual" }));
 
-    expect(screen.queryByText(/Penjualan POS/)).not.toBeInTheDocument();
-    expect(screen.getByText(/Beban sewa ruko Kemang/)).toBeInTheDocument();
+    // A panel's fields wait for Terapkan — picking one sends nothing yet.
+    expect(list).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(screen.getByRole("button", { name: "Terapkan" }));
+
+    await waitFor(() =>
+      expect(list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sourceType: "manual", page: 1 }),
+      ),
+    );
+    // And the choice is visible on the trigger, because a hidden filter is one
+    // people forget is on and then read the wrong numbers from.
+    expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
+      "Filter (1)",
+    );
   });
 
-  it("says so when a date range matches nothing", async () => {
-    render(<JournalEntriesScreen />);
+  it("distinguishes an empty book from an empty filter", async () => {
+    const list = await renderLedger([]);
 
-    await userEvent.type(
-      screen.getByLabelText("Tanggal transaksi dari"),
-      "2027-01-01",
+    expect(
+      await screen.findByText("Belum ada entri di buku besar."),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Filter" }));
+    const panel = await screen.findByRole("dialog");
+    await userEvent.click(within(panel).getByLabelText("Filter sumber entri"));
+    await userEvent.click(screen.getByRole("option", { name: "Manual" }));
+    await userEvent.click(screen.getByRole("button", { name: "Terapkan" }));
+
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+    expect(
+      await screen.findByText("Tidak ada entri di filter ini."),
+    ).toBeInTheDocument();
+  });
+
+  it("reports a failed request instead of rendering an empty ledger", async () => {
+    mockLedgerLookups();
+    const list = jest
+      .spyOn(journalEntryService, "list")
+      .mockRejectedValueOnce(new ApiError("Server sedang sibuk", 503))
+      .mockResolvedValue(ledgerPage([entry({ _id: "1" })]));
+
+    renderWithAuth(<JournalEntriesScreen />);
+    await screen.findByText("Server sedang sibuk");
+
+    await userEvent.click(screen.getByRole("button", { name: /Coba lagi/ }));
+
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText("Agustus 2026")).toBeInTheDocument();
+    expect(screen.queryByText("Server sedang sibuk")).not.toBeInTheDocument();
+  });
+
+  /** "dibalik" is the row's most important word — its amounts reach no report. */
+  it("marks a reversed entry before anyone reads its amount", async () => {
+    await renderLedger([entry({ _id: "1", reversedByEntryId: "2" })]);
+
+    expect(await screen.findByText("dibalik")).toBeInTheDocument();
+  });
+
+  /**
+   * The headline total comes from the AGGREGATE endpoint, not from adding up the
+   * page. Summing the rows on screen would give 150.000 here and call it the
+   * total — a figure that changes with the page while its label does not.
+   */
+  it("takes the total from the server, not from the rows on screen", async () => {
+    await renderLedger([entry({ _id: "1" })]);
+
+    expect(await screen.findByText("Rp 300.000")).toBeInTheDocument();
+    expect(screen.getAllByText("seluruh buku besar").length).toBe(2);
+  });
+
+  it("re-asks for the total when the filter changes, but not when the page does", async () => {
+    mockLedgerLookups();
+    const totals = jest.spyOn(journalEntryService, "totals");
+    jest.spyOn(journalEntryService, "list").mockResolvedValue({
+      items: [entry({ _id: "1" })],
+      // Two pages, so the pager renders and can be clicked.
+      pagination: { page: 1, limit: 20, total: 40, totalPages: 2 },
+    });
+
+    renderWithAuth(<JournalEntriesScreen />);
+    await screen.findByText("Agustus 2026");
+    await waitFor(() => expect(totals).toHaveBeenCalledTimes(1));
+
+    // Paging asks for rows, not for a figure that cannot have changed.
+    await userEvent.click(screen.getByRole("button", { name: "Page 2" }));
+    await waitFor(() =>
+      expect(journalEntryService.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 2 }),
+      ),
     );
+    expect(totals).toHaveBeenCalledTimes(1);
 
-    expect(screen.getByText("Tidak ada entri di filter ini")).toBeInTheDocument();
+    // A filter does change it, and it goes with the same narrowing the list got.
+    await userEvent.click(screen.getByRole("button", { name: "Filter" }));
+    const panel = await screen.findByRole("dialog");
+    await userEvent.click(within(panel).getByLabelText("Filter sumber entri"));
+    await userEvent.click(screen.getByRole("option", { name: "Manual" }));
+    await userEvent.click(screen.getByRole("button", { name: "Terapkan" }));
+
+    await waitFor(() =>
+      expect(totals).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sourceType: "manual" }),
+      ),
+    );
+    // And it carries no page — a page is not a scope.
+    const [sent] = totals.mock.calls.at(-1)!;
+    expect(sent).not.toHaveProperty("page");
+  });
+
+  /** Rendering 0 would state a fact about the books that was never checked. */
+  it("shows an em dash rather than zero when the total could not be read", async () => {
+    mockLedgerLookups();
+    jest
+      .spyOn(journalEntryService, "totals")
+      .mockRejectedValue(new ApiError("Forbidden", 403));
+    jest
+      .spyOn(journalEntryService, "list")
+      .mockResolvedValue(ledgerPage([entry({ _id: "1" })]));
+
+    renderWithAuth(<JournalEntriesScreen />);
+
+    // The rows still render — a missing headline figure does not fail the screen.
+    expect(await screen.findByText("Agustus 2026")).toBeInTheDocument();
+    expect(screen.getByText("—")).toBeInTheDocument();
+    expect(screen.queryByText("Forbidden")).not.toBeInTheDocument();
   });
 });
 
 describe("JournalEntryDetail", () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  /**
+   * Stubs GET /journal-entries/:id over a small book, so the reversal banner's
+   * counterpart lookup resolves too.
+   */
+  function mockBook(entries: JournalEntry[]) {
+    mockLedgerLookups();
+    return jest
+      .spyOn(journalEntryService, "getById")
+      .mockImplementation(async (id: string) => {
+        const found = entries.find((item) => item._id === id);
+        if (!found) throw new ApiError("Journal entry not found", 404);
+        return found;
+      });
+  }
+
   /** Σdebit === Σcredit is what makes a row a journal entry. */
-  it("shows every fixture as balanced", () => {
-    for (const entry of DUMMY_ENTRIES) {
-      const { unmount } = render(<JournalEntryDetail entryId={entry._id} />);
-      expect(screen.getByText("✓ seimbang")).toBeInTheDocument();
-      unmount();
-    }
+  it("checks the balance against the lines the API sent", async () => {
+    mockBook([entry({ _id: "1" })]);
+    renderWithAuth(<JournalEntryDetail entryId="1" />);
+
+    expect(await screen.findByText("✓ seimbang")).toBeInTheDocument();
   });
 
-  it("warns that a reversed entry no longer counts, and links the correction", () => {
-    const reversed = DUMMY_ENTRIES.find((entry) => entry.reversedByEntryId);
-    expect(reversed).toBeDefined();
+  /**
+   * The credit column carries the credit.
+   *
+   * Not a tautology: the side was picked with `line.debit !== "0"`, and the API
+   * writes an unused side as `"0.0000"`, so every credit landed in the debit
+   * column as "Rp 0" while the amount itself was printed nowhere. The totals row
+   * sums the decimals properly, so the page went on saying "seimbang" over a
+   * table in which no credit had a number.
+   */
+  it("prints a credit as a credit rather than as a zero debit", async () => {
+    mockBook([entry({ _id: "1" })]);
+    renderWithAuth(<JournalEntryDetail entryId="1" />);
 
-    render(<JournalEntryDetail entryId={reversed!._id} />);
+    const creditRow = (
+      await screen.findByText("Pendapatan Penjualan")
+    ).closest("tr")!;
+    const cells = within(creditRow).getAllByRole("cell");
 
-    const banner = screen.getByText(/Entri ini sudah dibalik/).closest("div")!;
+    // …, Debit, Kredit — the last two.
+    expect(cells.at(-2)).toHaveTextContent("—");
+    expect(cells.at(-1)).toHaveTextContent("Rp 150.000");
+    expect(within(creditRow).queryByText("Rp 0")).not.toBeInTheDocument();
+  });
+
+  it("warns that a reversed entry no longer counts, and links the correction", async () => {
+    mockBook([
+      entry({ _id: "1", reversedByEntryId: "2" }),
+      entry({ _id: "2", entryNumber: "JE-2026-08-0002", reversesEntryId: "1" }),
+    ]);
+    renderWithAuth(<JournalEntryDetail entryId="1" />);
+
+    const banner = (
+      await screen.findByText(/Entri ini sudah dibalik/)
+    ).closest("div")!;
+
+    // The link's TEXT comes from a second request for the counterpart — the
+    // entry itself only carries the id.
     expect(
-      within(banner).getByRole("link", { name: /JE-/ }),
-    ).toHaveAttribute(
-      "href",
-      `/dashboard/keuangan/journal-entries/${reversed!.reversedByEntryId}`,
-    );
+      await within(banner).findByRole("link", { name: "JE-2026-08-0002" }),
+    ).toHaveAttribute("href", "/dashboard/keuangan/journal-entries/2");
   });
 
-  it("offers no reverse action on an entry already reversed", () => {
-    const reversed = DUMMY_ENTRIES.find((entry) => entry.reversedByEntryId)!;
-    render(<JournalEntryDetail entryId={reversed._id} />);
+  it("offers no reverse action on an entry already reversed", async () => {
+    mockBook([entry({ _id: "1", reversedByEntryId: "2" })]);
+    renderWithAuth(<JournalEntryDetail entryId="1" />);
 
+    await screen.findByText(/Entri ini sudah dibalik/);
     expect(
       screen.queryByRole("button", { name: "Balik entri" }),
     ).not.toBeInTheDocument();
   });
 
-  it("explains an unknown id instead of rendering an empty page", () => {
-    render(<JournalEntryDetail entryId="je-tidak-ada" />);
+  /** A 404 is not a failure to retry, so it offers the list rather than a reload. */
+  it("explains an unknown id instead of rendering an empty page", async () => {
+    mockBook([]);
+    renderWithAuth(<JournalEntryDetail entryId="je-tidak-ada" />);
 
-    expect(screen.getByText("Entri tidak ditemukan")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Entri tidak ditemukan."),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Coba lagi/ }),
+    ).not.toBeInTheDocument();
   });
 });

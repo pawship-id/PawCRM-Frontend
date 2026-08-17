@@ -5,11 +5,12 @@
  * onto the Keuangan dropdown: the hub, the chart of accounts, and the general
  * ledger with its per-entry detail.
  *
- * ChartOfAccountsScreen reads the API: GET /chart-of-accounts/tree, behind
- * `useChartOfAccounts`. The ledger screens and the dashboard still read the
- * fixtures in ./data/dummy and move behind a hook of their own when
- * /api/journal-entries is wired up — the components take plain data and none of
- * them knows where it came from.
+ * EVERY SCREEN HERE NOW READS THE API, one hook each: `useChartOfAccounts` over
+ * GET /chart-of-accounts/tree, `useFinanceDashboard` over the ledger's three
+ * shapes, `useJournalEntries` over GET /journal-entries, and `useJournalEntry`
+ * over GET /journal-entries/:id. The fixtures in ./data/dummy are gone with the
+ * last of them; the components take plain data and none of them knows where it
+ * came from.
  *
  * FinanceDashboardScreen replaced AccountingHub: same landing route, but it
  * leads with the period's figures instead of two links the sidebar already has.
@@ -51,3 +52,9 @@ export {
   useChartOfAccounts,
   type UseChartOfAccountsResult,
 } from "./hooks/useChartOfAccounts";
+export {
+  useJournalEntries,
+  DEFAULT_JOURNAL_QUERY,
+  type JournalEntriesQuery,
+  type UseJournalEntriesResult,
+} from "./hooks/useJournalEntries";

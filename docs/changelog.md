@@ -17,6 +17,44 @@ gaps and their reasoning are in
 
 Screen details in [docs/features/finance-dashboard.md](features/finance-dashboard.md).
 
+### Jurnal Umum and the entry detail came off the fixtures too
+
+`JournalEntriesScreen` reads `GET /journal-entries` behind `useJournalEntries`, and
+`JournalEntryDetail` reads `GET /journal-entries/:id` behind `useJournalEntry`. With that,
+`features/accounting/data/dummy.ts` had no readers left and is deleted, along with the
+`DummyNotice` banner that existed to warn about it.
+
+**Every filter is server-side now**, which is the difference from the chart of accounts next
+to it. A chart is tens to low hundreds of rows and can be narrowed in the browser; a ledger
+is every financial fact the tenant has ever recorded, so filtering here would mean paging the
+whole book to find one entry. No sort control, because the API orders by transaction date
+newest-first and names no alternative — offering an ordering the server does not have is how
+a picker asks for one with no index behind it.
+
+The inline toolbar went with it: search on the bar, and sumber, tanggal and cabang behind one
+`FilterPanel` from `@/components`. A date range carries its own Terapkan, and a control
+holding a draft belongs in a panel whatever else is on the row (ui-rules §8). That closes the
+`JournalEntriesScreen` entry on the migration list — the `const ALL = "all"` sentinel and the
+raw `ui/select` are gone, as is the last raw `<table>` in this feature.
+
+**The totals had to be re-thought, not just re-wired.** The old screen held the whole book in
+memory, so its tiles could count manual entries and add up a month. The API pages at 20, and
+the same tiles over one page would have been page-scoped figures wearing whole-ledger labels:
+
+- **Total debit** now comes from `GET /journal-entries/totals` (backend, unreleased), which
+  sums Σdebit over the whole filter at every page. It renders `—` while in flight or after a
+  failure rather than `0` — stating a fact about somebody's books that was never checked is
+  worse than admitting it is not known. A failure does not fail the screen; the rows are the
+  screen.
+- **Entri** is `pagination.total`, which the server already counted.
+- The **manual** and **pembalikan** counts are gone. Neither can be answered per-filter
+  without an aggregate of its own, and the Sumber filter answers the first directly.
+- The **month subtotals stay page-scoped**, because they honestly are, and each says so.
+
+`/journal-entries/summary` was the tempting shortcut for the total and is the wrong endpoint:
+it accepts neither `search` nor `sourceType`, so its figures would silently stop matching the
+rows the moment either filter was on.
+
 ### `types/accounting.ts` corrected against the live API
 
 `lines[].businessLine: string` never existed on the wire — the fixtures carried a name

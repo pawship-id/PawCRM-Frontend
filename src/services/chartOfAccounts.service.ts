@@ -5,11 +5,12 @@ import type { PageResult } from "@/types/api";
 /**
  * Chart-of-accounts calls against /api/chart-of-accounts.
  *
- * THE FIRST REAL CONSUMER OF THIS ENDPOINT. The accounting screens are still
- * prototypes running on `features/accounting/data/dummy.ts`, so nothing else has
- * ever exercised the route — expect the shapes in `types/accounting.ts` to need
- * correcting the first time something here disagrees with the API rather than
- * assuming the types are right.
+ * THE FIRST REAL CONSUMER OF THIS ENDPOINT, and no longer the only one — the
+ * COA screen, the finance dashboard and the journal-entry detail all read the
+ * tree now, the last two only to resolve account ids into names. The shapes in
+ * `types/accounting.ts` are written against the live API rather than guessed,
+ * but they are still young: correct them the first time something here disagrees
+ * with the server rather than assuming the types are right.
  *
  * What brought it here is the product form's **Akun penjualan** picker: a
  * product may name the income account a sale of it credits. Nothing posts
