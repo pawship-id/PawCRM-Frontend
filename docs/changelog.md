@@ -7,6 +7,61 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Keuangan reads the real ledger
+
+`/dashboard/keuangan` came off the fixtures. It now reads three endpoints —
+`/journal-entries/summary`, `/journal-entries/balances` and the list — instead of paging the
+ledger and summing it in the browser. Backend 0.39.0 shipped the two aggregates for it; the
+gaps and their reasoning are in
+[`PawCRM-Backend/docs/finance-dashboard-gaps.md`](../../PawCRM-Backend/docs/finance-dashboard-gaps.md).
+
+Screen details in [docs/features/finance-dashboard.md](features/finance-dashboard.md).
+
+### `types/accounting.ts` corrected against the live API
+
+`lines[].businessLine: string` never existed on the wire — the fixtures carried a name
+because they were written before anything called the endpoint, and the API has always stored
+an ObjectId. It is `businessLineId: string | null` now, resolved against `/business-lines`
+the same way `accountId` is resolved against the COA. `branchId` joined `branchName`, and
+`branchName` became nullable: only the server can answer it, and it cannot for a branch that
+is gone.
+
+### `financeSummary.ts` lost most of itself, on purpose
+
+Revenue, expense, net profit, the per-line split and the cash position were all folds over
+`JournalEntry[]`. All of them are the server's answer now. What is left is the one thing the
+server has no opinion about — how a ledger entry reads as a row in a table — plus the
+margins, which are display arithmetic.
+
+The projection's properties survived the move and are still pinned by tests: only P&L
+entries appear, a POS sale is one row rather than two, and a return reads as revenue going
+down rather than as another sale.
+
+### Lini bisnis is a single select
+
+The mockup had a multi-select. The API filters one line at a time, and issuing a request per
+selected line would put the arithmetic back in the browser that the endpoints exist to take
+out. The unfiltered call already returns the whole split, so comparing lines needs no filter
+at all.
+
+### A failed request is never rendered as zeroes
+
+Somebody quotes the number on this screen. A ledger failure replaces the cards with an error
+and a retry; a *lookup* failure degrades instead, so a user without `businessLines:read`
+gets chips reading as ids rather than no dashboard.
+
+**`useFinanceDashboard` takes `enabled`** — found by a test. The permission check lives in
+the component and a hook cannot be called conditionally, so without `journalEntries:read` it
+was firing three requests guaranteed to be refused, on every page load.
+
+### The default period comes from the server
+
+`page.tsx` is `force-dynamic` and passes `now` down. A client component reading the clock
+while rendering disagrees with the HTML the server sent, and near a month boundary the two
+genuinely differ; prerendering would freeze the month at build time instead.
+
+---
+
 ## [Unreleased] — Three MVP acceptance criteria that had been missed
 
 A second pass over the PRD found three ACs in Inventory & Purchasing that were never

@@ -3,137 +3,151 @@
 import {
   FilterBar,
   FilterDateRange,
-  FilterMultiSelect,
   FilterSelect,
+  formatRangeShort,
+  namedOptions,
   withAll,
   type AppliedFilter,
   type DatePreset,
-  type FilterOption,
 } from "@/components";
+import type { BusinessLine } from "@/services/businessLine.service";
+import type { Branch } from "@/types/api";
 
-import { formatMonth } from "../labels";
-import {
-  lineLabel,
-  monthRange,
-  type FinanceQuery,
-  type Period,
-} from "../financeSummary";
+import { SHARED_LINE_LABEL, type FinanceQuery } from "../financeSummary";
 
 /**
- * The dashboard's controls: period, branch, business lines — one quick bar.
+ * The value that means "the lines with no business line on them".
  *
- * WHY A BAR AND NOT A PANEL (§8). Three fields is quick-bar territory, and the
- * clause that would push a multi-select behind a `Filter (n)` button has no
- * component to land in: `FilterMultiSelect` has no `layout="field"`, because a
- * popover carrying its own Terapkan inside a panel carrying its own Terapkan is
- * two pairs of verbs for one decision. So each control applies on its own terms,
- * which is what a bar is for.
+ * `""` already means "not filtering", so the shared bucket needs a token of its
+ * own — and it cannot be a real id, because there is no document behind it. The
+ * screen translates it before the query leaves for the API; nothing below this
+ * layer ever sees it.
+ */
+export const SHARED_LINE_NONE = "__none__";
+
+/**
+ * The dashboard's controls: periode, cabang, lini bisnis — one quick bar.
  *
- * THE PERIOD IS NEVER A CHIP AND NEVER COUNTED. Every figure on this page is a
- * figure *for a period*; the range is not narrowing the dashboard, it is what
- * the dashboard means. Marking it as an applied filter would put a standing
- * chip over an unfiltered page — the same reason `Urutkan` is uncounted on the
- * list screens. Branch and business line genuinely narrow, so both get chips and
- * both are what "Hapus semua" clears.
+ * A BAR AND NOT A PANEL (§8): three fields, all single-select, and every one of
+ * them applies on its own terms. The mockup had lini bisnis as a multi-select,
+ * which would have forced a panel — but the API filters one line at a time, and
+ * the unfiltered call already returns the per-line split, so "compare the lines"
+ * is answered by reading the chips rather than by selecting several.
+ *
+ * THE PERIOD IS A CHIP LIKE ANY OTHER FILTER, which it did not use to be. The
+ * old rule — a figure is always a figure *for a period*, so the range is what
+ * the dashboard means rather than a narrowing of it — held only while the screen
+ * opened on a period it chose itself. It opens on "Semua" now, so a range on the
+ * trigger is a choice somebody made, and an uncounted choice is the one people
+ * forget is on and then read the wrong numbers from. It clears with
+ * "Hapus semua" for the same reason.
+ *
+ * The options come from `/branches` and `/business-lines`. Both may be empty
+ * when the user cannot read them, and an empty list renders as a select holding
+ * only "Semua" — which is honest: they are not filtering, because they cannot.
  */
 export function FinanceDashboardToolbar({
   query,
   branches,
   businessLines,
   presets,
+  disabled,
   onChange,
 }: {
   query: FinanceQuery;
-  /** Branch names present in the ledger — the filter offers nothing empty. */
-  branches: string[];
-  /** Normalised business lines; `""` is the shared bucket. */
-  businessLines: string[];
+  branches: Branch[];
+  businessLines: BusinessLine[];
   presets: DatePreset[];
+  /** True while the ledger is in flight — the controls stay readable, not live. */
+  disabled?: boolean;
   onChange: (patch: Partial<FinanceQuery>) => void;
 }) {
-  const branchOptions = withAll(
-    branches.map((name) => ({ value: name, label: name })),
-    "Semua cabang",
-  );
+  const branchOptions = withAll(namedOptions(branches), "Semua cabang");
 
-  const lineOptions: FilterOption<string>[] = businessLines.map((line) => ({
-    value: line,
-    label: lineLabel(line),
-  }));
+  const lineOptions = withAll(
+    [
+      ...namedOptions(businessLines),
+      // The unattributed bucket is a real answer, not an absence: rent, gaji
+      // kantor and listrik live there. It is filterable because "how much have
+      // we not yet charged to a line" is a question somebody asks.
+      { value: SHARED_LINE_NONE, label: SHARED_LINE_LABEL },
+    ],
+    "Semua lini bisnis",
+  );
 
   const chips: AppliedFilter[] = [];
 
-  if (query.branchName) {
+  if (query.dateFrom || query.dateTo) {
     chips.push({
-      key: `branch:${query.branchName}`,
-      label: query.branchName,
-      onRemove: () => onChange({ branchName: "" }),
+      key: "period",
+      // One chip for the range, not one per bound: an open-ended range is still
+      // one question somebody asked, and `formatRangeShort` already says which
+      // end is missing ("sejak 1 Ags").
+      label: `Periode ${formatRangeShort(query.dateFrom, query.dateTo)}`,
+      onRemove: () => onChange({ dateFrom: "", dateTo: "" }),
     });
   }
 
-  for (const line of query.businessLines) {
+  if (query.branchId) {
+    const branch = branches.find((item) => item._id === query.branchId);
     chips.push({
-      key: `line:${line || "shared"}`,
-      label: lineLabel(line),
-      onRemove: () =>
-        onChange({
-          businessLines: query.businessLines.filter((item) => item !== line),
-        }),
+      key: `branch:${query.branchId}`,
+      label: branch?.name ?? "Cabang terpilih",
+      onRemove: () => onChange({ branchId: "" }),
+    });
+  }
+
+  if (query.businessLineId) {
+    const line = businessLines.find((item) => item._id === query.businessLineId);
+    chips.push({
+      key: `line:${query.businessLineId}`,
+      label:
+        query.businessLineId === SHARED_LINE_NONE
+          ? SHARED_LINE_LABEL
+          : (line?.name ?? "Lini terpilih"),
+      onRemove: () => onChange({ businessLineId: "" }),
     });
   }
 
   return (
     <FilterBar
       chips={chips}
-      onClearAll={() => onChange({ branchName: "", businessLines: [] })}
+      onClearAll={() =>
+        onChange({
+          dateFrom: "",
+          dateTo: "",
+          branchId: "",
+          businessLineId: "",
+        })
+      }
     >
       <FilterDateRange
         label="Periode"
-        from={query.from}
-        to={query.to}
+        from={query.dateFrom}
+        to={query.dateTo}
         presets={presets}
         ariaLabel="Periode laporan"
-        onApply={({ from, to }) => onChange({ from, to })}
+        disabled={disabled}
+        onApply={({ from, to }) =>
+          onChange({ dateFrom: from, dateTo: to })
+        }
       />
       <FilterSelect
         label="Cabang"
         ariaLabel="Filter cabang"
-        value={query.branchName}
+        value={query.branchId}
         options={branchOptions}
-        onChange={(branchName) => onChange({ branchName })}
+        disabled={disabled}
+        onChange={(branchId) => onChange({ branchId })}
       />
-      <FilterMultiSelect
+      <FilterSelect
         label="Lini bisnis"
         ariaLabel="Filter lini bisnis"
-        values={query.businessLines}
+        value={query.businessLineId}
         options={lineOptions}
-        onApply={(lines) => onChange({ businessLines: lines })}
-        onReset={() => onChange({ businessLines: [] })}
-        formatValue={(values) =>
-          values.length === 1
-            ? lineLabel(values[0])
-            : `${values.length} lini`
-        }
+        disabled={disabled}
+        onChange={(businessLineId) => onChange({ businessLineId })}
       />
     </FilterBar>
   );
-}
-
-/**
- * The period presets, built from the ledger rather than from the clock.
- *
- * The two most recent months it has entries in, then everything — which is the
- * shape of the question somebody asks on a dashboard: this month, last month,
- * all of it. A preset for a month with no entries would be a control that always
- * empties the page.
- */
-export function periodPresets(months: string[], everything: Period): DatePreset[] {
-  const monthly = months.slice(0, 2).map((month) => ({
-    label: formatMonth(`${month}-01`),
-    ...monthRange(month),
-  }));
-
-  return everything.from
-    ? [...monthly, { label: "Semua periode", ...everything }]
-    : monthly;
 }

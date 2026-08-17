@@ -35,6 +35,31 @@ import type {
  * every tenant — they are what inventory, purchasing and POS resolve against.
  */
 
+/**
+ * The tenant's lines of business, as `/api/business-lines` returns them.
+ *
+ * IDS, NOT NAMES, on a journal line — that is what the API stores and what
+ * `types/accounting.ts` now declares. The fixtures used to carry the name
+ * because they were written before anything called the endpoint; a screen
+ * resolves the name through BUSINESS_LINES_BY_ID, the same way it resolves an
+ * account through ACCOUNTS_BY_ID.
+ */
+export const DUMMY_BUSINESS_LINES = [
+  { _id: "bl-grooming", name: "Grooming", color: "#0D9488" },
+  { _id: "bl-hotel", name: "Pet Hotel", color: "#7C3AED" },
+  { _id: "bl-retail", name: "Retail", color: "#B45309" },
+];
+
+export const BUSINESS_LINES_BY_ID = new Map(
+  DUMMY_BUSINESS_LINES.map((line) => [line._id, line]),
+);
+
+/** The branch every fixture entry belongs to, keyed the way the API sends it. */
+const BRANCH_IDS: Record<string, string> = {
+  "Cabang Kemang": "branch-kemang",
+  "Cabang BSD": "branch-bsd",
+};
+
 /** Root, group and leaf accounts, in account-number order — how a COA is read. */
 export const DUMMY_ACCOUNTS: ChartOfAccount[] = [
   // 1xxx — Aset
@@ -140,10 +165,10 @@ export const DUMMY_ENTRIES: JournalEntry[] = [
     createdByName: null,
     lines: [
       line("1101", "14520000", "0", null, "Tunai + QRIS + kartu"),
-      line("4101", "0", "7800000", "Retail", "Pakan, vitamin & aksesoris"),
-      line("4102", "0", "5400000", "Grooming", "18 ekor"),
+      line("4101", "0", "7800000", "bl-retail", "Pakan, vitamin & aksesoris"),
+      line("4102", "0", "5400000", "bl-grooming", "18 ekor"),
       line("2103", "0", "1320000", null, "PPN keluaran 10%"),
-      line("5101", "4680000", "0", "Retail", "HPP rata-rata tertimbang"),
+      line("5101", "4680000", "0", "bl-retail", "HPP rata-rata tertimbang"),
       line("1201", "0", "4680000", null, "Stok keluar"),
     ],
   }),
@@ -173,7 +198,7 @@ export const DUMMY_ENTRIES: JournalEntry[] = [
     createdByName: "Dimas Prasetyo",
     lines: [
       line("1103", "7700000", "0", null, "Jatuh tempo 11 Sep 2026"),
-      line("4103", "0", "7000000", "Pet Hotel", "10 kamar × 3 malam"),
+      line("4103", "0", "7000000", "bl-hotel", "10 kamar × 3 malam"),
       line("2103", "0", "700000", null, "PPN keluaran 10%"),
     ],
   }),
@@ -187,7 +212,7 @@ export const DUMMY_ENTRIES: JournalEntry[] = [
     cashflowType: null,
     createdByName: null,
     lines: [
-      line("5301", "3900000", "0", "Grooming", "7 groomer"),
+      line("5301", "3900000", "0", "bl-grooming", "7 groomer"),
       line("2102", "0", "3900000", null, "Dibayar bersama gaji September"),
     ],
   }),
@@ -202,10 +227,10 @@ export const DUMMY_ENTRIES: JournalEntry[] = [
     createdByName: null,
     lines: [
       line("1101", "15950000", "0", null, "Tunai + QRIS + kartu"),
-      line("4101", "0", "8600000", "Retail", "Pakan, pasir & mainan"),
-      line("4102", "0", "5900000", "Grooming", "21 ekor"),
+      line("4101", "0", "8600000", "bl-retail", "Pakan, pasir & mainan"),
+      line("4102", "0", "5900000", "bl-grooming", "21 ekor"),
       line("2103", "0", "1450000", null, "PPN keluaran 10%"),
-      line("5101", "5160000", "0", "Retail", "HPP rata-rata tertimbang"),
+      line("5101", "5160000", "0", "bl-retail", "HPP rata-rata tertimbang"),
       line("1201", "0", "5160000", null, "Stok keluar"),
     ],
   }),
@@ -220,7 +245,7 @@ export const DUMMY_ENTRIES: JournalEntry[] = [
     createdByName: "Rani Oktaviani",
     tags: ["operasional"],
     lines: [
-      line("5306", "3500000", "0", "Pet Hotel", "Vendor laundry mingguan"),
+      line("5306", "3500000", "0", "bl-hotel", "Vendor laundry mingguan"),
       line("1101", "0", "3500000", null, "Tunai"),
     ],
   }),
@@ -252,7 +277,7 @@ export const DUMMY_ENTRIES: JournalEntry[] = [
     tags: ["gaji"],
     recurring: { enabled: true, interval: "monthly" },
     lines: [
-      line("5301", "6000000", "0", "Retail", "4 staf toko"),
+      line("5301", "6000000", "0", "bl-retail", "4 staf toko"),
       line("1102", "0", "6000000", null, "Payroll transfer BCA"),
     ],
   }),
@@ -268,7 +293,7 @@ export const DUMMY_ENTRIES: JournalEntry[] = [
     tags: ["gaji"],
     recurring: { enabled: true, interval: "monthly" },
     lines: [
-      line("5301", "7000000", "0", "Pet Hotel", "5 penjaga kandang"),
+      line("5301", "7000000", "0", "bl-hotel", "5 penjaga kandang"),
       line("1102", "0", "7000000", null, "Payroll transfer BCA"),
     ],
   }),
@@ -284,7 +309,7 @@ export const DUMMY_ENTRIES: JournalEntry[] = [
     tags: ["gaji"],
     recurring: { enabled: true, interval: "monthly" },
     lines: [
-      line("5301", "10000000", "0", "Grooming", "7 groomer + 2 asisten"),
+      line("5301", "10000000", "0", "bl-grooming", "7 groomer + 2 asisten"),
       line("1102", "0", "10000000", null, "Payroll transfer BCA"),
     ],
   }),
@@ -299,7 +324,7 @@ export const DUMMY_ENTRIES: JournalEntry[] = [
     createdByName: null,
     lines: [
       line("1101", "7150000", "0", null, "Tunai + QRIS"),
-      line("4103", "0", "6500000", "Pet Hotel", "13 kamar × 2 malam"),
+      line("4103", "0", "6500000", "bl-hotel", "13 kamar × 2 malam"),
       line("2103", "0", "650000", null, "PPN keluaran 10%"),
     ],
   }),
@@ -333,10 +358,10 @@ export const DUMMY_ENTRIES: JournalEntry[] = [
     createdByName: null,
     lines: [
       line("1101", "13860000", "0", null, "Tunai + QRIS + kartu"),
-      line("4101", "0", "7400000", "Retail", "Pakan & perawatan"),
-      line("4102", "0", "5200000", "Grooming", "17 ekor"),
+      line("4101", "0", "7400000", "bl-retail", "Pakan & perawatan"),
+      line("4102", "0", "5200000", "bl-grooming", "17 ekor"),
       line("2103", "0", "1260000", null, "PPN keluaran 10%"),
-      line("5101", "4440000", "0", "Retail", "HPP rata-rata tertimbang"),
+      line("5101", "4440000", "0", "bl-retail", "HPP rata-rata tertimbang"),
       line("1201", "0", "4440000", null, "Stok keluar"),
     ],
   }),
@@ -351,7 +376,7 @@ export const DUMMY_ENTRIES: JournalEntry[] = [
     createdByName: null,
     lines: [
       line("1101", "5500000", "0", null, "Tunai + QRIS"),
-      line("4103", "0", "5000000", "Pet Hotel", "8 kamar × 2–3 malam"),
+      line("4103", "0", "5000000", "bl-hotel", "8 kamar × 2–3 malam"),
       line("2103", "0", "500000", null, "PPN keluaran 10%"),
     ],
   }),
@@ -366,7 +391,7 @@ export const DUMMY_ENTRIES: JournalEntry[] = [
     createdByName: "Rani Oktaviani",
     tags: ["operasional"],
     lines: [
-      line("5306", "4200000", "0", "Pet Hotel", "Pakan, alas kandang, snack"),
+      line("5306", "4200000", "0", "bl-hotel", "Pakan, alas kandang, snack"),
       line("1101", "0", "4200000", null, "Tunai"),
     ],
   }),
@@ -395,10 +420,10 @@ export const DUMMY_ENTRIES: JournalEntry[] = [
     createdByName: null,
     lines: [
       line("1101", "16830000", "0", null, "Tunai + QRIS + kartu"),
-      line("4101", "0", "9200000", "Retail", "Akhir pekan — pakan & mainan"),
-      line("4102", "0", "6100000", "Grooming", "22 ekor"),
+      line("4101", "0", "9200000", "bl-retail", "Akhir pekan — pakan & mainan"),
+      line("4102", "0", "6100000", "bl-grooming", "22 ekor"),
       line("2103", "0", "1530000", null, "PPN keluaran 10%"),
-      line("5101", "5520000", "0", "Retail", "HPP rata-rata tertimbang"),
+      line("5101", "5520000", "0", "bl-retail", "HPP rata-rata tertimbang"),
       line("1201", "0", "5520000", null, "Stok keluar"),
     ],
   }),
@@ -414,7 +439,7 @@ export const DUMMY_ENTRIES: JournalEntry[] = [
     tags: ["operasional"],
     attachmentUrl: "https://files.pawship.id/bukti/perlengkapan-agu-2026.jpg",
     lines: [
-      line("5306", "5800000", "0", "Grooming", "Stok 2 bulan"),
+      line("5306", "5800000", "0", "bl-grooming", "Stok 2 bulan"),
       line("1102", "0", "5800000", null, "Transfer ke distributor"),
     ],
   }),
@@ -445,10 +470,10 @@ export const DUMMY_ENTRIES: JournalEntry[] = [
     createdByName: null,
     lines: [
       line("1101", "12430000", "0", null, "Tunai + QRIS + kartu"),
-      line("4101", "0", "6500000", "Retail", "Pakan & aksesoris"),
-      line("4102", "0", "4800000", "Grooming", "16 ekor"),
+      line("4101", "0", "6500000", "bl-retail", "Pakan & aksesoris"),
+      line("4102", "0", "4800000", "bl-grooming", "16 ekor"),
       line("2103", "0", "1130000", null, "PPN keluaran 10%"),
-      line("5101", "3900000", "0", "Retail", "HPP rata-rata tertimbang"),
+      line("5101", "3900000", "0", "bl-retail", "HPP rata-rata tertimbang"),
       line("1201", "0", "3900000", null, "Stok keluar"),
     ],
   }),
@@ -463,7 +488,7 @@ export const DUMMY_ENTRIES: JournalEntry[] = [
     createdByName: "Dimas Prasetyo",
     lines: [
       line("1103", "9900000", "0", null, "Jatuh tempo 24 Agu 2026"),
-      line("4103", "0", "9000000", "Pet Hotel", "3 kamar × 15 malam"),
+      line("4103", "0", "9000000", "bl-hotel", "3 kamar × 15 malam"),
       line("2103", "0", "900000", null, "PPN keluaran 10%"),
     ],
   }),
@@ -478,10 +503,10 @@ export const DUMMY_ENTRIES: JournalEntry[] = [
     createdByName: null,
     lines: [
       line("1101", "14850000", "0", null, "Tunai + QRIS + kartu"),
-      line("4101", "0", "8000000", "Retail", "Pakan, vitamin & aksesoris"),
-      line("4102", "0", "5500000", "Grooming", "19 ekor"),
+      line("4101", "0", "8000000", "bl-retail", "Pakan, vitamin & aksesoris"),
+      line("4102", "0", "5500000", "bl-grooming", "19 ekor"),
       line("2103", "0", "1350000", null, "PPN keluaran 10%"),
-      line("5101", "4800000", "0", "Retail", "HPP rata-rata tertimbang"),
+      line("5101", "4800000", "0", "bl-retail", "HPP rata-rata tertimbang"),
       line("1201", "0", "4800000", null, "Stok keluar"),
     ],
   }),
@@ -496,9 +521,9 @@ export const DUMMY_ENTRIES: JournalEntry[] = [
     createdByName: null,
     lines: [
       line("1101", "385000", "0", "Tunai + QRIS"),
-      line("4101", "0", "350000", "Retail", "Pakan & aksesoris"),
+      line("4101", "0", "350000", "bl-retail", "Pakan & aksesoris"),
       line("2103", "0", "35000", null, "PPN keluaran 10%"),
-      line("5101", "210000", "0", "Retail", "HPP rata-rata tertimbang"),
+      line("5101", "210000", "0", "bl-retail", "HPP rata-rata tertimbang"),
       line("1201", "0", "210000", null, "Stok keluar 6 item"),
     ],
   }),
@@ -550,7 +575,7 @@ export const DUMMY_ENTRIES: JournalEntry[] = [
     createdByName: "Dimas Prasetyo",
     lines: [
       line("1103", "2750000", "0", null, "Jatuh tempo 18 Agu 2026"),
-      line("4102", "0", "2500000", "Grooming", "25 ekor paket full grooming"),
+      line("4102", "0", "2500000", "bl-grooming", "25 ekor paket full grooming"),
       line("2103", "0", "250000", null, "PPN keluaran 10%"),
     ],
   }),
@@ -609,7 +634,7 @@ export const DUMMY_ENTRIES: JournalEntry[] = [
     cashflowType: null,
     createdByName: null,
     lines: [
-      line("5301", "1850000", "0", "Grooming", "6 groomer"),
+      line("5301", "1850000", "0", "bl-grooming", "6 groomer"),
       line("2102", "0", "1850000", null, "Dibayar bersama gaji Agustus"),
     ],
   }),
@@ -623,10 +648,10 @@ export const DUMMY_ENTRIES: JournalEntry[] = [
     cashflowType: "operating",
     createdByName: null,
     lines: [
-      line("4101", "180000", "0", "Retail", "Pembatalan penjualan"),
+      line("4101", "180000", "0", "bl-retail", "Pembatalan penjualan"),
       line("1101", "0", "180000", null, "Uang dikembalikan tunai"),
       line("1201", "108000", "0", null, "Barang masuk kembali"),
-      line("5101", "0", "108000", "Retail", "Pembalikan HPP"),
+      line("5101", "0", "108000", "bl-retail", "Pembalikan HPP"),
     ],
   }),
   // The reversal and the entry it undoes, adjacent on purpose: this is what a
@@ -674,10 +699,10 @@ export const DUMMY_ENTRIES: JournalEntry[] = [
     createdByName: null,
     lines: [
       line("1101", "742500", "0", null, "Tunai + kartu debit"),
-      line("4101", "0", "475000", "Retail", "Pakan & vitamin"),
-      line("4102", "0", "200000", "Grooming", "2 paket basic grooming"),
+      line("4101", "0", "475000", "bl-retail", "Pakan & vitamin"),
+      line("4102", "0", "200000", "bl-grooming", "2 paket basic grooming"),
       line("2103", "0", "67500", null, "PPN keluaran 10%"),
-      line("5101", "285000", "0", "Retail", "HPP rata-rata tertimbang"),
+      line("5101", "285000", "0", "bl-retail", "HPP rata-rata tertimbang"),
       line("1201", "0", "285000", null, "Stok keluar 9 item"),
     ],
   }),
@@ -707,7 +732,7 @@ export const DUMMY_ENTRIES: JournalEntry[] = [
     createdByName: "Dimas Prasetyo",
     lines: [
       line("1103", "3300000", "0", null, "Jatuh tempo 9 Agu 2026"),
-      line("4103", "0", "3000000", "Pet Hotel", "5 kamar × 4 malam"),
+      line("4103", "0", "3000000", "bl-hotel", "5 kamar × 4 malam"),
       line("2103", "0", "300000", null, "PPN keluaran 10%"),
     ],
   }),
@@ -765,10 +790,10 @@ function line(
   code: string,
   debit: string,
   credit: string,
-  businessLine: string | null = null,
+  businessLineId: string | null = null,
   memo: string | null = null,
 ): JournalEntry["lines"][number] {
-  return { accountId: accountId(code), debit, credit, businessLine, memo };
+  return { accountId: accountId(code), debit, credit, businessLineId, memo };
 }
 
 /** Fills the fields most entries leave at their default. */
@@ -792,6 +817,9 @@ function entry(
     entryNumber: input.entryNumber,
     date: input.date,
     description: input.description,
+    // Derived from the label so a fixture reads as prose and still carries the
+    // id the API sends. A branch nobody named falls back to Kemang.
+    branchId: BRANCH_IDS[input.branchName ?? ""] ?? "branch-kemang",
     branchName: input.branchName,
     source: input.source,
     lines: input.lines,

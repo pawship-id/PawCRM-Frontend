@@ -1,62 +1,141 @@
 import type { ChartOfAccount, JournalEntry } from "@/types/accounting";
+import type { AccountBalance, JournalSummary } from "@/services/journalEntry.service";
 import { toDecimalString, toMinor } from "@/utils/decimal";
 
 /**
- * The Keuangan dashboard's arithmetic — everything it shows, derived from the
- * ledger and nothing else.
+ * What the Keuangan dashboard still computes in the browser, and nothing more.
  *
- * WHY DERIVED RATHER THAN STORED. A revenue figure, a margin and a cash position
- * are the three numbers somebody quotes in a meeting, and the fastest way to get
- * them wrong is to keep a second copy. Every value here is a fold over
- * `JournalEntry[]`, so the dashboard cannot disagree with the Jurnal Umum screen
- * reading the same list — and when those entries come from
- * `GET /api/journal-entries` instead of the fixtures, this file does not change.
+ * THIS FILE USED TO FOLD THE WHOLE LEDGER. Revenue, expense, net profit, the
+ * per-line split and the cash position were all sums over `JournalEntry[]`,
+ * because the API offered no way to ask for them. It does now —
+ * `GET /journal-entries/summary` and `/balances` — so all of that is gone, and
+ * what is left is the one thing the server has no opinion about: how a ledger
+ * entry reads as a row in a "transaksi terakhir" table.
  *
- * SIGN CONVENTION, once, here: income accounts grow on the credit side and
- * expense accounts on the debit side (`normalBalanceOf`), so revenue is
- * Σ(credit − debit) and expense is Σ(debit − credit). Both come out positive for
- * an ordinary month, and a return or a reversal makes its line negative on its
- * own — which is exactly what should happen, and why reversal pairs need no
- * special case: the entry and the one that undid it are both in the list and
- * they cancel.
+ * WHY THE PROJECTION STAYED CLIENT-SIDE. It is a reshape of ten records, not
+ * arithmetic over thousands, and it encodes a presentation decision — that a POS
+ * sale is ONE row showing the revenue rather than two showing revenue and its
+ * cost. An endpoint that made that choice would be making it for every future
+ * client.
  *
- * ARITHMETIC IS BIGINT MINOR UNITS throughout, per utils/decimal. Percentages
- * are the one place a Number appears, because a margin is a display value and
- * never feeds another calculation.
+ * MONEY IS A DECIMAL STRING throughout, parsed with utils/decimal in BigInt
+ * minor units. Nothing here touches a float.
  */
 
 /**
- * Kas and Bank — the two accounts "Saldo Kas & Bank" sums.
+ * Kas and Bank — the two account codes the cash card sums.
  *
- * Codes, not ids: these are the seeded accounts every tenant gets
- * (`isDefault` in the COA), and a code survives the account being renamed.
+ * Codes, not ids: these are the seeded accounts every tenant gets, and a code
+ * survives the account being renamed. The backend knows the same two.
  */
 export const CASH_ACCOUNT_CODES = ["1101", "1102"];
 
-/**
- * The bucket for a P&L line carrying no `businessLine` — rent, office payroll,
- * the electricity bill. Empty string is the repo's "unset" convention, and it is
- * literally true here: the line has no business line, rather than belonging to
- * one called "Bersama".
- */
-export const SHARED_LINE = "";
-
+/** The bucket a P&L line with no business line falls into. */
 export const SHARED_LINE_LABEL = "Bersama (HQ)";
 
-/** What the toolbar edits. `""` and `[]` both mean "not filtering". */
+/**
+ * What the toolbar edits, and what goes to the API verbatim.
+ *
+ * `dateFrom` / `dateTo` are CALENDAR DATES — the server expands them to whole
+ * days in the tenant's own timezone, so a client must send the date the user
+ * picked and never a UTC-converted timestamp.
+ *
+ * `businessLineId` IS SINGULAR, where the mockup had a multi-select. The API
+ * filters on one line at a time, and the alternative — one summary request per
+ * selected line, added up here — would put the arithmetic back in the browser
+ * that the endpoint exists to take out. The unfiltered call already returns the
+ * per-line split, so "compare the lines" is answered without a filter at all.
+ */
 export interface FinanceQuery {
-  /** ISO `yyyy-mm-dd`, or `""` when unbounded. */
-  from: string;
-  to: string;
-  /** Matches `JournalEntry.branchName` exactly. */
-  branchName: string;
-  /** Normalised line names; `SHARED_LINE` for the unattributed bucket. */
-  businessLines: string[];
+  dateFrom: string;
+  dateTo: string;
+  /** `""` = every branch. */
+  branchId: string;
+  /** `""` = every line, which is when `byBusinessLine` is worth reading. */
+  businessLineId: string;
 }
 
+/** One row of the dashboard's transaction table — a ledger entry, folded. */
+export interface FinanceTransaction {
+  entry: JournalEntry;
+  /** Which side of the P&L this entry moved. */
+  type: "income" | "expense";
+  /**
+   * True when it moved that side DOWNWARDS — a return, a reversal, a credited
+   * cost.
+   *
+   * Kept apart from `type` rather than folded into a signed amount, because the
+   * two answer different questions: `type` says which half of the P&L moved,
+   * this says which way. A row carrying only a negative number would render a
+   * refund as "Pemasukan −Rp 180.000", which reads as a mistake.
+   */
+  reversal: boolean;
+  /** Always positive: the direction lives in `type` and `reversal`. */
+  amount: string;
+  /** The income or expense accounts the amount landed on. */
+  accounts: ChartOfAccount[];
+  /** Business line ids touched; `null` for an unattributed one. */
+  businessLineIds: Array<string | null>;
+}
+
+/* ------------------------------------------------------------------ helpers */
+
+function minor(value: string | null | undefined): bigint {
+  return toMinor(value ?? "") ?? 0n;
+}
+
+/** A business line's name, or the shared bucket's label when it has none. */
+export function lineLabel(
+  businessLineId: string | null,
+  names: Map<string, string>,
+): string {
+  if (!businessLineId) return SHARED_LINE_LABEL;
+  // The id itself when the name could not be loaded — a user may hold
+  // `journalEntries:read` without `businessLines:read`, and an id is a worse
+  // label than a name but a better one than nothing.
+  return names.get(businessLineId) ?? businessLineId;
+}
+
+/**
+ * `part ÷ whole` as a percentage, to one decimal, or null when the base is zero.
+ *
+ * ×1000 then ÷10 in BigInt keeps the one decimal without dividing money by
+ * money in floating point — the only rounding is the one the display needs.
+ */
+export function marginPct(part: string, whole: string): number | null {
+  const base = minor(whole);
+  if (base === 0n) return null;
+  return Number((minor(part) * 1000n) / base) / 10;
+}
+
+/** "17,2%" — the one place a derived number is rendered rather than returned. */
+export function formatPercent(value: number | null): string {
+  if (value === null) return "—";
+  return `${new Intl.NumberFormat("id-ID", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(value)}%`;
+}
+
+/* ------------------------------------------------------------------- cash */
+
+/**
+ * The cash and bank position — the sum of the balances the API returned.
+ *
+ * Summed here rather than asked for, because `/balances` answers per account and
+ * the card wants one number; adding two decimal strings in BigInt is exact and
+ * the alternative would be an endpoint that returns a total nobody can check.
+ */
+export function cashPosition(accounts: AccountBalance[]): string {
+  return toDecimalString(
+    accounts.reduce((total, account) => total + minor(account.balance), 0n),
+  );
+}
+
+/* ------------------------------------------------------------- P&L reading */
+
 export interface LineFigures {
-  /** The normalised business line — `SHARED_LINE` for the shared bucket. */
-  line: string;
+  businessLineId: string | null;
   label: string;
   revenue: string;
   expense: string;
@@ -65,232 +144,32 @@ export interface LineFigures {
   netMarginPct: number | null;
 }
 
-export interface FinanceSummary {
-  revenue: string;
-  expense: string;
-  netProfit: string;
-  netMarginPct: number | null;
-  /**
-   * Σ(debit − credit) on kas & bank for every entry dated on or before
-   * `query.to` — a BALANCE, so it deliberately ignores `query.from`. A cash
-   * position is "as of a date", not "during a range", and a card that summed
-   * only the range would answer a question nobody asked.
-   */
-  cashBalance: string;
-  /** Kas & bank movements inside the range — the two halves of the balance. */
-  cashIn: string;
-  cashOut: string;
-  /** One row per line that had any activity, revenue-first. */
-  perLine: LineFigures[];
-  /** How many entries the period and branch filter left. */
-  entryCount: number;
-}
-
-/** One row of the dashboard's transaction table — a ledger entry, folded. */
-export interface FinanceTransaction {
-  entryId: string;
-  entryNumber: string;
-  date: string;
-  description: string;
-  branchName: string;
-  /** Which side of the P&L this entry moved. */
-  type: "income" | "expense";
-  /**
-   * True when the entry moved that side DOWNWARDS — a sales return, a reversal,
-   * a credited cost.
-   *
-   * Kept apart from `type` rather than folded into a signed amount, because the
-   * two answer different questions: `type` says which half of the P&L moved,
-   * this says which way. A row that only carried a negative number would render
-   * a refund as "Pemasukan −Rp 180.000", which reads as a mistake.
-   */
-  reversal: boolean;
-  /** Always positive: the direction lives in `type` and `reversal`. */
-  amount: string;
-  /** The income or expense accounts the amount landed on. */
-  accounts: ChartOfAccount[];
-  /** Normalised lines touched; `SHARED_LINE` for an unattributed one. */
-  lines: string[];
-  /** Kas & bank moved. Empty for an accrual — a faktur or a komisi accrual. */
-  cashAccounts: ChartOfAccount[];
-}
-
-/* ------------------------------------------------------------------ helpers */
-
-function minor(value: string): bigint {
-  return toMinor(value) ?? 0n;
-}
-
-/** `businessLine` as the filter and the buckets see it: null collapses to "". */
-function normaliseLine(businessLine: string | null): string {
-  return businessLine ?? SHARED_LINE;
-}
-
 /**
- * Percent, to one decimal, or null when the base is zero.
+ * The summary's per-line rows, labelled and with their margins worked out.
  *
- * ×1000 then ÷10 keeps the one decimal without a float division on money —
- * the only rounding here is the one the display needs.
+ * The arithmetic that is left — a percentage — is display arithmetic, and doing
+ * it here rather than on the server is what keeps `/summary` a statement of
+ * fact rather than of presentation.
  */
-function percentOf(part: bigint, whole: bigint): number | null {
-  if (whole === 0n) return null;
-  return Number((part * 1000n) / whole) / 10;
-}
-
-/** Both bounds inclusive; ISO dates compare correctly as strings. */
-function inPeriod(date: string, from: string, to: string): boolean {
-  if (from && date < from) return false;
-  if (to && date > to) return false;
-  return true;
-}
-
-function matchesBranch(entry: JournalEntry, branchName: string): boolean {
-  return !branchName || entry.branchName === branchName;
-}
-
-function matchesLine(lines: string[], businessLine: string | null): boolean {
-  return !lines.length || lines.includes(normaliseLine(businessLine));
-}
-
-/* -------------------------------------------------------------- vocabulary */
-
-/**
- * The branches present in the ledger, alphabetical.
- *
- * Read off the entries rather than from `GET /api/branches`, so the filter can
- * never offer a branch that has nothing to show — and so this screen keeps
- * working against a tenant whose branch list the user cannot read.
- */
-export function branchesIn(entries: JournalEntry[]): string[] {
-  return [...new Set(entries.map((entry) => entry.branchName))].sort((a, b) =>
-    a.localeCompare(b, "id"),
-  );
-}
-
-/**
- * The business lines the ledger actually tags, alphabetical, with the shared
- * bucket last when anything landed in it.
- *
- * Derived for the same reason as the branches, and one more: a business line is
- * a free label the tenant manages (services/businessLine.service.ts), not an
- * enum this screen may hardcode.
- */
-export function businessLinesIn(entries: JournalEntry[]): string[] {
-  const named = new Set<string>();
-  let shared = false;
-
-  for (const entry of entries) {
-    for (const line of entry.lines) {
-      if (line.businessLine) named.add(line.businessLine);
-      else shared = true;
-    }
-  }
-
-  const sorted = [...named].sort((a, b) => a.localeCompare(b, "id"));
-  return shared ? [...sorted, SHARED_LINE] : sorted;
-}
-
-export function lineLabel(line: string): string {
-  return line === SHARED_LINE ? SHARED_LINE_LABEL : line;
-}
-
-/* ----------------------------------------------------------------- summary */
-
-export function summarise(
-  entries: JournalEntry[],
-  accountsById: Map<string, ChartOfAccount>,
-  query: FinanceQuery,
-): FinanceSummary {
-  let revenue = 0n;
-  let expense = 0n;
-  let cashBalance = 0n;
-  let cashIn = 0n;
-  let cashOut = 0n;
-  let entryCount = 0;
-
-  const perLine = new Map<string, { revenue: bigint; expense: bigint }>();
-
-  for (const entry of entries) {
-    if (!matchesBranch(entry, query.branchName)) continue;
-
-    const withinPeriod = inPeriod(entry.date, query.from, query.to);
-    // A balance is cumulative: everything up to the end of the range counts,
-    // whatever the start of it says.
-    const uptoPeriodEnd = !query.to || entry.date <= query.to;
-
-    if (withinPeriod) entryCount += 1;
-
-    for (const line of entry.lines) {
-      const account = accountsById.get(line.accountId);
-      if (!account) continue;
-
-      const debit = minor(line.debit);
-      const credit = minor(line.credit);
-
-      if (
-        account.accountType === "asset" &&
-        CASH_ACCOUNT_CODES.includes(account.code)
-      ) {
-        if (uptoPeriodEnd) cashBalance += debit - credit;
-        if (withinPeriod) {
-          cashIn += debit;
-          cashOut += credit;
-        }
-        continue;
-      }
-
-      if (!withinPeriod) continue;
-      if (!matchesLine(query.businessLines, line.businessLine)) continue;
-
-      const key = normaliseLine(line.businessLine);
-      const bucket = perLine.get(key) ?? { revenue: 0n, expense: 0n };
-
-      if (account.accountType === "income") {
-        const effect = credit - debit;
-        revenue += effect;
-        bucket.revenue += effect;
-        perLine.set(key, bucket);
-      } else if (account.accountType === "expense") {
-        const effect = debit - credit;
-        expense += effect;
-        bucket.expense += effect;
-        perLine.set(key, bucket);
-      }
-    }
-  }
-
-  const netProfit = revenue - expense;
-
-  const lines: LineFigures[] = [...perLine.entries()]
-    .map(([line, figures]) => ({
-      line,
-      label: lineLabel(line),
-      revenue: toDecimalString(figures.revenue),
-      expense: toDecimalString(figures.expense),
-      net: toDecimalString(figures.revenue - figures.expense),
-      netMarginPct: percentOf(figures.revenue - figures.expense, figures.revenue),
-    }))
-    // Revenue-first, so the lines that earn lead and the shared bucket — which
-    // never has any — falls to the end without being special-cased.
-    .sort((a, b) => Number(minor(b.revenue) - minor(a.revenue)));
-
-  return {
-    revenue: toDecimalString(revenue),
-    expense: toDecimalString(expense),
-    netProfit: toDecimalString(netProfit),
-    netMarginPct: percentOf(netProfit, revenue),
-    cashBalance: toDecimalString(cashBalance),
-    cashIn: toDecimalString(cashIn),
-    cashOut: toDecimalString(cashOut),
-    perLine: lines,
-    entryCount,
-  };
+export function lineFigures(
+  summary: JournalSummary,
+  names: Map<string, string>,
+): LineFigures[] {
+  return summary.byBusinessLine.map((row) => ({
+    businessLineId: row.businessLineId,
+    label: lineLabel(row.businessLineId, names),
+    revenue: row.revenue,
+    expense: row.expense,
+    net: row.net,
+    netMarginPct: marginPct(row.net, row.revenue),
+  }));
 }
 
 /* ------------------------------------------------------------ transactions */
 
 /**
- * The entries that moved the P&L, newest first, folded to one row each.
+ * Ledger entries as transaction rows — the entries that moved the P&L, folded to
+ * one row each.
  *
  * ONLY P&L ENTRIES. A goods receipt and a supplier payment are real
  * transactions, but neither is income or expense — booking stock is an asset
@@ -304,28 +183,23 @@ export function summarise(
  * like separate events. The row carries the revenue side, because that is the
  * transaction — the HPP is its consequence.
  *
- * `limit` is applied AFTER filtering, so the dashboard's ten rows are the ten
- * most recent inside the period rather than the ten most recent overall.
+ * AN ENTRY WHOSE ACCOUNTS ARE NOT IN `accountsById` IS DROPPED, not guessed at.
+ * That happens when the chart of accounts failed to load, and a row that cannot
+ * say whether it was income or expense is worse than an absent one.
  */
 export function financeTransactions(
   entries: JournalEntry[],
   accountsById: Map<string, ChartOfAccount>,
-  query: FinanceQuery,
-  limit?: number,
 ): FinanceTransaction[] {
   const rows: FinanceTransaction[] = [];
 
   for (const entry of entries) {
-    if (!matchesBranch(entry, query.branchName)) continue;
-    if (!inPeriod(entry.date, query.from, query.to)) continue;
-
     let revenue = 0n;
     let expense = 0n;
     const incomeAccounts: ChartOfAccount[] = [];
     const expenseAccounts: ChartOfAccount[] = [];
-    const incomeLines = new Set<string>();
-    const expenseLines = new Set<string>();
-    const cashAccounts: ChartOfAccount[] = [];
+    const incomeLines = new Set<string | null>();
+    const expenseLines = new Set<string | null>();
 
     for (const line of entry.lines) {
       const account = accountsById.get(line.accountId);
@@ -334,55 +208,35 @@ export function financeTransactions(
       const debit = minor(line.debit);
       const credit = minor(line.credit);
 
-      if (
-        account.accountType === "asset" &&
-        CASH_ACCOUNT_CODES.includes(account.code)
-      ) {
-        if (!cashAccounts.some((item) => item._id === account._id)) {
-          cashAccounts.push(account);
-        }
-        continue;
-      }
-
-      if (!matchesLine(query.businessLines, line.businessLine)) continue;
-
       if (account.accountType === "income") {
         revenue += credit - debit;
         if (!incomeAccounts.some((item) => item._id === account._id)) {
           incomeAccounts.push(account);
         }
-        incomeLines.add(normaliseLine(line.businessLine));
+        incomeLines.add(line.businessLineId);
       } else if (account.accountType === "expense") {
         expense += debit - credit;
         if (!expenseAccounts.some((item) => item._id === account._id)) {
           expenseAccounts.push(account);
         }
-        expenseLines.add(normaliseLine(line.businessLine));
+        expenseLines.add(line.businessLineId);
       }
     }
 
     // Revenue decides the row when the entry has both sides: a sale with its
-    // HPP is a sale. An entry that moved neither — or whose only P&L lines the
-    // business-line filter excluded — is not a row here at all.
+    // HPP is a sale. An entry that moved neither is not a row here at all.
     const income = revenue !== 0n;
     const amount = income ? revenue : expense;
     if (amount === 0n) continue;
 
     rows.push({
-      entryId: entry._id,
-      entryNumber: entry.entryNumber,
-      date: entry.date,
-      description: entry.description,
-      branchName: entry.branchName,
+      entry,
       type: income ? "income" : "expense",
       reversal: amount < 0n,
       amount: toDecimalString(amount < 0n ? -amount : amount),
       accounts: income ? incomeAccounts : expenseAccounts,
-      lines: [...(income ? incomeLines : expenseLines)],
-      cashAccounts,
+      businessLineIds: [...(income ? incomeLines : expenseLines)],
     });
-
-    if (limit !== undefined && rows.length >= limit) break;
   }
 
   return rows;
@@ -391,49 +245,37 @@ export function financeTransactions(
 /* --------------------------------------------------------------- periods */
 
 export interface Period {
-  from: string;
-  to: string;
+  dateFrom: string;
+  dateTo: string;
+}
+
+const pad = (value: number) => String(value).padStart(2, "0");
+
+/** The whole of `year`-`month` (1-based), as calendar dates. */
+export function monthRange(year: number, month: number): Period {
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return {
+    dateFrom: `${year}-${pad(month)}-01`,
+    dateTo: `${year}-${pad(month)}-${pad(lastDay)}`,
+  };
 }
 
 /**
- * The months the ledger has entries in, newest first, as `yyyy-mm`.
+ * The month `now` falls in — what the dashboard opens on.
  *
- * The period controls are built from this rather than from `new Date()`, for
- * two reasons. A dashboard whose default range is "this month" shows an empty
- * month the moment the fixtures fall behind the calendar — and a client
- * component that reads the clock while rendering disagrees with the HTML the
- * server sent, which React 19 reports as a hydration mismatch.
+ * TAKES `now` RATHER THAN READING THE CLOCK, and every caller is expected to
+ * pass one it got from the server. A client component that read `Date.now()`
+ * while rendering would disagree with the HTML the server sent, which React 19
+ * reports as a hydration mismatch — and near a month boundary the two would
+ * genuinely differ.
  */
-export function ledgerMonths(entries: JournalEntry[]): string[] {
-  return [...new Set(entries.map((entry) => entry.date.slice(0, 7)))].sort((a, b) =>
-    b.localeCompare(a),
-  );
+export function currentMonthRange(now: Date): Period {
+  return monthRange(now.getFullYear(), now.getMonth() + 1);
 }
 
-/** `"2026-08"` → the whole of August. Leap years included — day 0 of the next. */
-export function monthRange(month: string): Period {
-  const [year, index] = month.split("-").map(Number);
-  const lastDay = new Date(Date.UTC(year, index, 0)).getUTCDate();
-  return { from: `${month}-01`, to: `${month}-${String(lastDay).padStart(2, "0")}` };
-}
-
-/** The month the newest entry sits in — what the dashboard opens on. */
-export function defaultPeriod(entries: JournalEntry[]): Period {
-  const [latest] = ledgerMonths(entries);
-  return latest ? monthRange(latest) : { from: "", to: "" };
-}
-
-/** Everything in the ledger, first entry to last — the "Semua periode" preset. */
-export function fullPeriod(entries: JournalEntry[]): Period {
-  const dates = entries.map((entry) => entry.date).sort();
-  return { from: dates.at(0) ?? "", to: dates.at(-1) ?? "" };
-}
-
-/** "17,2%" — the one place a derived number is rendered rather than returned. */
-export function formatPercent(value: number | null): string {
-  if (value === null) return "—";
-  return `${new Intl.NumberFormat("id-ID", {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-  }).format(value)}%`;
+/** The previous month — the dashboard's other preset. */
+export function previousMonthRange(now: Date): Period {
+  const year = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+  const month = now.getMonth() === 0 ? 12 : now.getMonth();
+  return monthRange(year, month);
 }

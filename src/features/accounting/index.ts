@@ -18,25 +18,27 @@
  */
 export { FinanceDashboardScreen } from "./components/FinanceDashboardScreen";
 export {
-  branchesIn,
-  businessLinesIn,
-  defaultPeriod,
+  cashPosition,
+  currentMonthRange,
   financeTransactions,
   formatPercent,
-  fullPeriod,
-  ledgerMonths,
+  lineFigures,
   lineLabel,
+  marginPct,
   monthRange,
-  summarise,
+  previousMonthRange,
   CASH_ACCOUNT_CODES,
-  SHARED_LINE,
   SHARED_LINE_LABEL,
   type FinanceQuery,
-  type FinanceSummary,
   type FinanceTransaction,
   type LineFigures,
   type Period,
 } from "./financeSummary";
+export {
+  useFinanceDashboard,
+  RECENT_LIMIT,
+  type UseFinanceDashboardResult,
+} from "./hooks/useFinanceDashboard";
 export {
   ChartOfAccountCreateForm,
   ChartOfAccountEditForm,

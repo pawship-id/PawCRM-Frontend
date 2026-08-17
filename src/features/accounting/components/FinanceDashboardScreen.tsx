@@ -6,13 +6,14 @@ import {
   ArrowRight,
   Banknote,
   Building2,
+  RefreshCw,
   Scale,
   TrendingDown,
   TrendingUp,
   type LucideIcon,
 } from "lucide-react";
 
-import { Card } from "@/components";
+import { Alert, Button, Card, Spinner } from "@/components";
 import {
   Table,
   TableBody,
@@ -26,80 +27,123 @@ import { cn } from "@/lib/utils";
 import { absDecimal, formatMoney } from "@/utils/decimal";
 
 import { ACCOUNTING_CRUMBS } from "../crumbs";
-import { ACCOUNTS_BY_ID, DUMMY_ACCOUNTS, DUMMY_ENTRIES } from "../data/dummy";
 import {
-  branchesIn,
-  businessLinesIn,
-  defaultPeriod,
+  cashPosition,
+  currentMonthRange,
   financeTransactions,
   formatPercent,
-  fullPeriod,
-  ledgerMonths,
+  lineFigures,
   lineLabel,
-  SHARED_LINE,
-  summarise,
+  marginPct,
+  previousMonthRange,
   type FinanceQuery,
   type FinanceTransaction,
   type LineFigures,
 } from "../financeSummary";
+import {
+  RECENT_LIMIT,
+  useFinanceDashboard,
+} from "../hooks/useFinanceDashboard";
 import { formatDate } from "../labels";
-import { DummyNotice } from "./DummyNotice";
 import {
   FinanceDashboardToolbar,
-  periodPresets,
+  SHARED_LINE_NONE,
 } from "./FinanceDashboardToolbar";
 
 /**
  * The Keuangan landing screen: where the money went this period, and the last
  * ten transactions that moved it.
  *
- * IT REPLACED A HUB whose two cards duplicated the sidebar. What earns the space
- * instead is the thing a shop owner opens the module for — pendapatan, beban,
- * laba, kas — and those four figures are DERIVED FROM THE LEDGER, never stored
- * (see ../financeSummary). The module links survive at the bottom, because a
- * sidebar is not the only way people navigate.
+ * READS THE LEDGER THROUGH THREE ENDPOINTS, and the split is deliberate.
+ * `/journal-entries/summary` folds the period, `/balances` gives the cash
+ * position as of its end, and the list supplies exactly ten rows. Every figure
+ * here used to be summed in the browser over a paged ledger; the aggregates
+ * exist so it is not. See PawCRM-Backend/docs/finance-dashboard-gaps.md.
  *
  * THE THREE REPORTS ARE NOT HERE. Laba rugi per lini, arus kas and the full
  * transaction list each get their own screen; this page carries the summary and
  * hands off. The ten rows below the cards exist so the numbers above them are
  * explicable at a glance, not so anybody reads a ledger here.
  *
- * WHAT THE PERIOD DOES NOT TOUCH: `cashBalance` is a position as of the end of
- * the range, so it ignores the start; and the business-line filter narrows the
+ * WHAT THE PERIOD DOES NOT TOUCH: the cash card is a POSITION as of the end of
+ * the range, so it ignores the start; and picking a business line narrows the
  * P&L only, because a rupiah in the bank belongs to the shop rather than to
  * grooming or retail. Both are stated on the cards themselves.
+ *
+ * IT OPENS ON "SEMUA", like every other date filter in the product. A dashboard
+ * that opened on this month answered a question nobody had asked yet — on a
+ * tenant whose ledger starts in June, an August default shows an empty screen
+ * that reads as "no data" rather than as "no data *this month*". The filter is
+ * the same `FilterDateRange` the purchasing and inventory screens use, with the
+ * same preset chips and the same Reset; only the two month presets are extra,
+ * because a P&L is read a month at a time.
+ *
+ * `now` COMES FROM THE SERVER, and still does with no default period to compute:
+ * the presets are dates too, and a client component that read the clock while
+ * rendering would disagree with the HTML the server sent.
  */
-const RECENT_LIMIT = 10;
-
-export function FinanceDashboardScreen() {
+export function FinanceDashboardScreen({ now }: { now: string }) {
   const { can } = usePermissions();
+  const today = useMemo(() => new Date(now), [now]);
 
   const [query, setQuery] = useState<FinanceQuery>(() => ({
-    ...defaultPeriod(DUMMY_ENTRIES),
-    branchName: "",
-    businessLines: [],
+    dateFrom: "",
+    dateTo: "",
+    branchId: "",
+    businessLineId: "",
   }));
 
-  const branches = useMemo(() => branchesIn(DUMMY_ENTRIES), []);
-  const businessLines = useMemo(() => businessLinesIn(DUMMY_ENTRIES), []);
-  const presets = useMemo(
-    () => periodPresets(ledgerMonths(DUMMY_ENTRIES), fullPeriod(DUMMY_ENTRIES)),
-    [],
+  // The four the shared control offers everywhere else, then the two months this
+  // screen is actually read by. Same order, so somebody who learned the picker
+  // on Penerimaan Barang finds the same chips in the same places here.
+  const presets = useMemo(() => {
+    const todayIso = isoDate(today);
+    const back = (days: number) => {
+      const start = new Date(today);
+      start.setDate(start.getDate() - (days - 1));
+      return isoDate(start);
+    };
+
+    return [
+      { label: "Hari ini", from: todayIso, to: todayIso },
+      { label: "7 hari", from: back(7), to: todayIso },
+      { label: "30 hari", from: back(30), to: todayIso },
+      { label: "Bulan ini", ...toPreset(currentMonthRange(today)) },
+      { label: "Bulan lalu", ...toPreset(previousMonthRange(today)) },
+    ];
+  }, [today]);
+
+  // The shared bucket is a client-side token; the API expresses "no business
+  // line" by filtering on the lines, which it cannot do through an id. Sending
+  // it would be a 400, so it is dropped and the split below is read instead.
+  const apiQuery = useMemo<FinanceQuery>(
+    () => ({
+      ...query,
+      businessLineId:
+        query.businessLineId === SHARED_LINE_NONE ? "" : query.businessLineId,
+    }),
+    [query],
   );
 
-  const summary = useMemo(
-    () => summarise(DUMMY_ENTRIES, ACCOUNTS_BY_ID, query),
-    [query],
+  // The gate is passed to the hook rather than wrapping the call: a hook cannot
+  // be called conditionally, and calling it anyway would fire three requests a
+  // user without the grant is guaranteed to be refused.
+  const readsLedger = can("journalEntries", "read");
+  const data = useFinanceDashboard(apiQuery, { enabled: readsLedger });
+
+  const figures = useMemo(
+    () =>
+      data.summary ? lineFigures(data.summary, data.businessLineNames) : [],
+    [data.summary, data.businessLineNames],
   );
-  const recent = useMemo(
-    () => financeTransactions(DUMMY_ENTRIES, ACCOUNTS_BY_ID, query, RECENT_LIMIT),
-    [query],
+
+  const rows = useMemo(
+    () => financeTransactions(data.entries, data.accountsById),
+    [data.entries, data.accountsById],
   );
 
   const patch = (next: Partial<FinanceQuery>) =>
     setQuery((prev) => ({ ...prev, ...next }));
-
-  const readsLedger = can("journalEntries", "read");
 
   return (
     <div className="flex flex-col gap-6">
@@ -112,45 +156,60 @@ export function FinanceDashboardScreen() {
         </p>
       </div>
 
-      <DummyNotice endpoint="GET /api/journal-entries" />
-
-      {readsLedger ? (
-        <>
-          <FinanceDashboardToolbar
-            query={query}
-            branches={branches}
-            businessLines={businessLines}
-            presets={presets}
-            onChange={patch}
-          />
-
-          <SummaryCards
-            revenue={summary.revenue}
-            expense={summary.expense}
-            netProfit={summary.netProfit}
-            netMarginPct={summary.netMarginPct}
-            cashBalance={summary.cashBalance}
-            cashIn={summary.cashIn}
-            cashOut={summary.cashOut}
-            periodTo={query.to}
-          />
-
-          <MarginInsights lines={summary.perLine} />
-
-          <RecentTransactions
-            rows={recent}
-            entryCount={summary.entryCount}
-            periodFrom={query.from}
-            periodTo={query.to}
-          />
-        </>
-      ) : (
+      {!readsLedger ? (
         <Card>
           <p className="text-sm text-muted">
             Kamu belum punya akses ke jurnal umum, jadi ringkasan keuangan tidak
             bisa ditampilkan. Minta admin menambahkan izin baca jurnal umum.
           </p>
         </Card>
+      ) : (
+        <>
+          <FinanceDashboardToolbar
+            query={query}
+            branches={data.branches}
+            businessLines={data.businessLines}
+            presets={presets}
+            disabled={data.loading}
+            onChange={patch}
+          />
+
+          {data.error ? (
+            <Alert variant="error">
+              <p className="font-semibold">Ringkasan keuangan gagal dimuat.</p>
+              <p className="mt-0.5">{data.error}</p>
+              <Button
+                type="button"
+                variant="secondary"
+                className="mt-3"
+                onClick={data.refetch}
+              >
+                <RefreshCw className="size-4" aria-hidden />
+                Muat ulang
+              </Button>
+            </Alert>
+          ) : (
+            <>
+              <SummaryCards
+                summary={data.summary}
+                cash={cashPosition(data.cashAccounts)}
+                periodTo={query.dateTo}
+                loading={data.loading}
+              />
+
+              <MarginInsights lines={figures} />
+
+              <RecentTransactions
+                rows={rows}
+                names={data.businessLineNames}
+                total={data.entryCount}
+                loading={data.loading}
+                periodFrom={query.dateFrom}
+                periodTo={query.dateTo}
+              />
+            </>
+          )}
+        </>
       )}
 
       <ModuleLinks />
@@ -168,63 +227,94 @@ export function FinanceDashboardScreen() {
  * leading the whole amount is what a ledger prints, and the one place it shows
  * up is a loss — which is exactly the number nobody may misread.
  */
-function money(value: string): string {
+function money(value: string | null | undefined): string {
+  if (!value) return formatMoney("0");
   return value.startsWith("-")
     ? `−${formatMoney(absDecimal(value))}`
     : formatMoney(value);
 }
 
 function SummaryCards({
-  revenue,
-  expense,
-  netProfit,
-  netMarginPct,
-  cashBalance,
-  cashIn,
-  cashOut,
+  summary,
+  cash,
   periodTo,
+  loading,
 }: {
-  revenue: string;
-  expense: string;
-  netProfit: string;
-  netMarginPct: number | null;
-  cashBalance: string;
-  cashIn: string;
-  cashOut: string;
+  summary: ReturnType<typeof useFinanceDashboard>["summary"];
+  cash: string;
   periodTo: string;
+  loading: boolean;
 }) {
+  const netProfit = summary?.netProfit ?? "0";
   const loss = netProfit.startsWith("-");
+  const netMargin = summary ? marginPct(summary.netProfit, summary.revenue) : null;
+
+  /**
+   * NO REVENUE MEANS NO PROFIT TO CLAIM.
+   *
+   * `marginPct` returns null exactly when revenue is zero, which is the same
+   * condition — so the card stays neutral instead of going green, and says why.
+   * Arithmetically `0 − (−1.105.100)` really is a positive number; calling it
+   * profit is what would be a lie. It happens whenever an inventory gain credits
+   * 5201 in a period with no sales, which on a tenant still being set up is
+   * every period.
+   */
+  const noRevenue = summary !== null && netMargin === null;
+
+  /**
+   * A negative total expense is legitimate — a stock surplus credits 5201
+   * Kerugian Persediaan, and a supplier credit note does the same — but it is
+   * rare enough that seeing it without explanation reads as a bug. The note is
+   * the diagnostic somebody would otherwise have to ask for.
+   */
+  const expenseCredited = Boolean(summary?.expense.startsWith("-"));
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <SummaryCard
         icon={TrendingUp}
         label="Total Revenue"
-        value={money(revenue)}
+        value={money(summary?.revenue)}
         hint="Belum termasuk PPN keluaran"
+        loading={loading}
       />
       <SummaryCard
         icon={TrendingDown}
         label="Total Expense"
-        value={money(expense)}
-        hint="HPP ditambah beban operasional"
+        value={money(summary?.expense)}
+        hint={
+          expenseCredited
+            ? "Beban negatif — ada akun beban yang dikredit, misalnya selisih lebih stok"
+            : "HPP ditambah beban operasional"
+        }
+        hintClassName={expenseCredited ? "text-warning" : undefined}
+        loading={loading}
       />
       <SummaryCard
         icon={Scale}
         label="Net Profit"
         value={money(netProfit)}
-        valueClassName={loss ? "text-danger" : "text-success"}
-        hint={`Margin bersih ${formatPercent(netMarginPct)}`}
+        valueClassName={
+          noRevenue ? undefined : loss ? "text-danger" : "text-success"
+        }
+        hint={
+          noRevenue
+            ? "Belum ada pendapatan di periode ini"
+            : `Margin bersih ${formatPercent(netMargin)}`
+        }
+        hintClassName={noRevenue ? "text-warning" : undefined}
+        loading={loading}
       />
       <SummaryCard
         icon={Banknote}
         label="Saldo Kas & Bank"
-        value={money(cashBalance)}
+        value={money(cash)}
         hint={
           periodTo
-            ? `Posisi per ${formatDate(periodTo)} · masuk ${money(cashIn)}, keluar ${money(cashOut)}`
-            : `Masuk ${money(cashIn)}, keluar ${money(cashOut)}`
+            ? `Posisi kas & bank per ${formatDate(periodTo)}`
+            : "Posisi kas & bank saat ini"
         }
+        loading={loading}
       />
     </div>
   );
@@ -236,12 +326,17 @@ function SummaryCard({
   value,
   hint,
   valueClassName,
+  hintClassName,
+  loading,
 }: {
   icon: LucideIcon;
   label: string;
   value: string;
   hint: string;
   valueClassName?: string;
+  /** For a hint that is a caveat rather than a caption. */
+  hintClassName?: string;
+  loading: boolean;
 }) {
   return (
     <Card className="gap-0 py-5">
@@ -251,15 +346,30 @@ function SummaryCard({
           {label}
         </span>
       </div>
+      {/*
+        The figure is dimmed rather than replaced while a new period loads. A
+        skeleton here would blank the one thing somebody is looking at every time
+        they nudge a filter; the previous number, visibly stale, is more useful
+        than an empty box for the third of a second it takes.
+      */}
       <p
         className={cn(
-          "mt-2 text-2xl font-extrabold tabular-nums text-foreground",
+          "mt-2 text-2xl font-extrabold tabular-nums text-foreground transition-opacity",
           valueClassName,
+          loading && "opacity-50",
         )}
+        aria-busy={loading}
       >
         {value}
       </p>
-      <p className="mt-1.5 text-xs tabular-nums text-muted">{hint}</p>
+      <p
+        className={cn(
+          "mt-1.5 text-xs tabular-nums text-muted",
+          hintClassName,
+        )}
+      >
+        {hint}
+      </p>
     </Card>
   );
 }
@@ -273,10 +383,10 @@ function SummaryCard({
  * are readable with the colour switched off, and the percentage is there for
  * anyone who wants the number rather than the verdict.
  *
- * The shared bucket gets a different sentence on purpose. It has costs and no
- * revenue, so a "margin" for it would be −∞ and meaningless; what matters about
- * it is that those rupiah have not been charged to a line yet, which is the
- * caveat on every other chip in the row.
+ * The unattributed bucket gets a different sentence on purpose. It has costs and
+ * no revenue, so a "margin" for it would be meaningless; what matters about it
+ * is that those rupiah have not been charged to a line yet, which is the caveat
+ * on every other chip in the row.
  */
 const MARGIN_BANDS = [
   { min: 25, word: "Sehat", tone: "bg-tint-success text-success" },
@@ -295,11 +405,11 @@ function marginBand(pct: number) {
 
 function MarginInsights({ lines }: { lines: LineFigures[] }) {
   // Keyed on the line, NOT on "has no margin". A named line can also come out
-  // with no revenue — a month where grooming only bought shampoo — and giving
-  // it the shared bucket's sentence would say its costs are unallocated when
-  // they are allocated to it precisely.
-  const shared = lines.find((line) => line.line === SHARED_LINE);
-  const named = lines.filter((line) => line.line !== SHARED_LINE);
+  // with no revenue — a month where grooming only bought shampoo — and giving it
+  // the shared bucket's sentence would say its costs are unallocated when they
+  // are allocated to it precisely.
+  const shared = lines.find((line) => line.businessLineId === null);
+  const named = lines.filter((line) => line.businessLineId !== null);
 
   if (!named.length && !shared) return null;
 
@@ -308,7 +418,7 @@ function MarginInsights({ lines }: { lines: LineFigures[] }) {
       {named.map((line) =>
         line.netMarginPct === null ? (
           <span
-            key={line.line}
+            key={line.businessLineId}
             className="inline-flex h-7 items-center gap-1.5 rounded-full bg-tint-danger px-3 text-xs text-danger"
           >
             {line.label}
@@ -319,7 +429,7 @@ function MarginInsights({ lines }: { lines: LineFigures[] }) {
           </span>
         ) : (
           <span
-            key={line.line}
+            key={line.businessLineId}
             className={cn(
               "inline-flex h-7 items-center gap-1.5 rounded-full px-3 text-xs",
               marginBand(line.netMarginPct).tone,
@@ -351,12 +461,16 @@ function MarginInsights({ lines }: { lines: LineFigures[] }) {
 
 function RecentTransactions({
   rows,
-  entryCount,
+  names,
+  total,
+  loading,
   periodFrom,
   periodTo,
 }: {
   rows: FinanceTransaction[];
-  entryCount: number;
+  names: Map<string, string>;
+  total: number;
+  loading: boolean;
   periodFrom: string;
   periodTo: string;
 }) {
@@ -365,7 +479,7 @@ function RecentTransactions({
       <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-5 py-3.5">
         <h2 className="text-lg font-bold">Transaksi terakhir</h2>
         <p className="text-xs text-muted">
-          {rows.length} dari {entryCount} entri
+          {rows.length} dari {total} entri
           {periodFrom && periodTo
             ? ` · ${formatDate(periodFrom)} – ${formatDate(periodTo)}`
             : ""}
@@ -379,17 +493,32 @@ function RecentTransactions({
         </Link>
       </header>
 
-      {rows.length === 0 ? (
+      {loading && rows.length === 0 ? (
+        <div className="flex items-center justify-center gap-3 px-5 py-16 text-sm text-muted">
+          <Spinner size={16} />
+          Memuat transaksi…
+        </div>
+      ) : rows.length === 0 ? (
         <div className="px-5 py-16 text-center">
+          {/*
+            The period is optional now, so the sentence cannot assume one. With
+            the filter on "Semua" there is nothing to widen, and telling somebody
+            to widen a range they never set is how a filter gets blamed for an
+            empty ledger.
+          */}
           <p className="font-semibold text-foreground">
-            Belum ada transaksi di periode ini.
+            {periodFrom || periodTo
+              ? "Belum ada transaksi di periode ini."
+              : "Belum ada transaksi di jurnal umum."}
           </p>
           <p className="mt-1 text-sm text-muted">
-            Coba lebarkan periodenya, atau lepas filter cabang dan lini bisnis.
+            {periodFrom || periodTo
+              ? "Coba lebarkan periodenya, atau lepas filter cabang dan lini bisnis."
+              : "Coba lepas filter cabang dan lini bisnis."}
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
+        <div className={cn("overflow-x-auto", loading && "opacity-50")}>
           <Table>
             <TableHeader>
               <TableRow>
@@ -398,13 +527,12 @@ function RecentTransactions({
                 <TableHead>Kategori akun</TableHead>
                 <TableHead>Lini bisnis</TableHead>
                 <TableHead>Tipe</TableHead>
-                <TableHead>Kas/Bank</TableHead>
                 <TableHead className="text-right">Nominal</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.map((row) => (
-                <TransactionRow key={row.entryId} row={row} />
+                <TransactionRow key={row.entry._id} row={row} names={names} />
               ))}
             </TableBody>
           </Table>
@@ -412,8 +540,9 @@ function RecentTransactions({
       )}
 
       <p className="border-t border-border px-5 py-2.5 text-xs text-muted">
-        Hanya transaksi yang memengaruhi laba rugi. Penerimaan barang dan
-        pembayaran utang tidak muncul di sini — semuanya ada di Jurnal Umum.
+        Hanya {RECENT_LIMIT} transaksi terakhir yang memengaruhi laba rugi.
+        Penerimaan barang dan pembayaran utang tidak muncul di sini — semuanya
+        ada di Jurnal Umum.
       </p>
     </section>
   );
@@ -442,25 +571,33 @@ function transactionTone(row: FinanceTransaction) {
   return { label, raisesProfit };
 }
 
-function TransactionRow({ row }: { row: FinanceTransaction }) {
+function TransactionRow({
+  row,
+  names,
+}: {
+  row: FinanceTransaction;
+  names: Map<string, string>;
+}) {
   const { label, raisesProfit } = transactionTone(row);
+  const { entry } = row;
   const [account, ...rest] = row.accounts;
 
   return (
     <TableRow>
       <TableCell className="whitespace-nowrap tabular-nums text-muted">
-        {formatDate(row.date)}
+        {formatDate(entry.date)}
       </TableCell>
 
       <TableCell className="max-w-xs">
         <Link
-          href={`${ACCOUNTING_CRUMBS.journal.href}/${row.entryId}`}
+          href={`${ACCOUNTING_CRUMBS.journal.href}/${entry._id}`}
           className="block truncate font-medium text-foreground transition hover:text-primary-hover focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
         >
-          {row.description}
+          {entry.description}
         </Link>
         <span className="tabular-nums text-xs text-muted">
-          {row.entryNumber} · {row.branchName}
+          {entry.source.reference ?? entry.entryNumber}
+          {entry.branchName ? ` · ${entry.branchName}` : ""}
         </span>
       </TableCell>
 
@@ -480,12 +617,12 @@ function TransactionRow({ row }: { row: FinanceTransaction }) {
 
       <TableCell>
         <span className="flex flex-wrap gap-1">
-          {row.lines.map((line) => (
+          {row.businessLineIds.map((id) => (
             <span
-              key={line || "shared"}
+              key={id ?? "shared"}
               className="rounded-full bg-tint-neutral px-2 py-0.5 text-xs font-medium text-muted"
             >
-              {lineLabel(line)}
+              {lineLabel(id, names)}
             </span>
           ))}
         </span>
@@ -502,12 +639,6 @@ function TransactionRow({ row }: { row: FinanceTransaction }) {
         >
           {label}
         </span>
-      </TableCell>
-
-      <TableCell className="text-muted">
-        {row.cashAccounts.length > 0
-          ? row.cashAccounts.map((item) => item.name).join(" · ")
-          : "Belum tunai"}
       </TableCell>
 
       <TableCell
@@ -555,13 +686,6 @@ function ModuleLinks() {
 
   if (!visible.length) return null;
 
-  const counts: Record<string, string> = {
-    [ACCOUNTING_CRUMBS.accounts.href]: `${
-      DUMMY_ACCOUNTS.filter((account) => account.isActive).length
-    } akun aktif`,
-    [ACCOUNTING_CRUMBS.journal.href]: `${DUMMY_ENTRIES.length} entri`,
-  };
-
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       {visible.map((item) => (
@@ -575,11 +699,26 @@ function ModuleLinks() {
             {item.title}
           </p>
           <p className="mt-1.5 text-sm text-muted">{item.description}</p>
-          <p className="mt-3 text-xs tabular-nums text-muted">
-            {counts[item.href]}
-          </p>
         </Link>
       ))}
     </div>
   );
+}
+
+/** `{ dateFrom, dateTo }` as `FilterDateRange` names its two ends. */
+function toPreset(period: { dateFrom: string; dateTo: string }) {
+  return { from: period.dateFrom, to: period.dateTo };
+}
+
+/**
+ * A `Date` as the calendar date it is *here*.
+ *
+ * Local parts rather than `toISOString()`: the latter is UTC and shifts the day
+ * back for everyone east of Greenwich, which is everyone using this — "Hari ini"
+ * would mean yesterday for the first seven hours of a Jakarta morning.
+ */
+function isoDate(date: Date): string {
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
 }

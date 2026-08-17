@@ -9,7 +9,12 @@ import type { JournalEntry } from "@/types/accounting";
 import { normalBalanceOf } from "@/types/accounting";
 import { formatMoney, sumDecimals } from "@/utils/decimal";
 
-import { ACCOUNTS_BY_ID, entryNumberOf, findEntry } from "../data/dummy";
+import {
+  ACCOUNTS_BY_ID,
+  BUSINESS_LINES_BY_ID,
+  entryNumberOf,
+  findEntry,
+} from "../data/dummy";
 import {
   ACCOUNT_TYPE_LABEL,
   CASHFLOW_LABEL,
@@ -137,7 +142,7 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
 
         <dl className="grid gap-x-6 gap-y-3 border-t border-border pt-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Tanggal transaksi" value={formatDate(entry.date)} />
-          <Field label="Cabang" value={entry.branchName} />
+          <Field label="Cabang" value={entry.branchName ?? "—"} />
           <Field
             label="Dokumen sumber"
             value={entry.source.reference ?? "— (jurnal manual)"}
@@ -263,7 +268,7 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
                         : "—"}
                     </td>
                     <td className="px-4 py-2.5 text-xs text-muted">
-                      {line.businessLine ?? "—"}
+                      {businessLineName(line.businessLineId)}
                     </td>
                     <td className="px-4 py-2.5 text-xs text-muted">
                       {line.memo ?? "—"}
@@ -309,6 +314,20 @@ const RECURRING_LABEL: Record<
   monthly: "bulan",
   yearly: "tahun",
 };
+
+/**
+ * A line's business line by name.
+ *
+ * Resolved here rather than sent by the API, for the reason stated in
+ * types/accounting.ts: the business lines are a short, cacheable list a client
+ * already holds, and resolving ids locally is what keeps a renamed line renamed
+ * everywhere at once. Falls back to the id, which is a worse label than a name
+ * and a better one than a blank cell.
+ */
+function businessLineName(businessLineId: string | null): string {
+  if (!businessLineId) return "—";
+  return BUSINESS_LINES_BY_ID.get(businessLineId)?.name ?? businessLineId;
+}
 
 function Field({
   label,

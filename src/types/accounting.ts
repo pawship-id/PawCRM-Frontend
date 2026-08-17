@@ -2,20 +2,26 @@
  * The Accounting module's contract — the chart of accounts (COA) and the
  * general ledger posted against it.
  *
- * BOTH ENDPOINTS ARE ALREADY LIVE ON THE BACKEND (/api/chart-of-accounts and
- * /api/journal-entries); no screen calls them yet. These types are written
- * against what those routes return so the dummy fixtures the prototype screens
- * read cannot drift into a shape the API will never produce — the same three
- * rules Inventory and Purchasing follow: money is a decimal STRING, ids are
- * strings, and nothing carries a total the server would rather derive.
+ * WRITTEN AGAINST THE LIVE API, not against a guess. Every screen in this
+ * feature now reads /api/chart-of-accounts and /api/journal-entries, and the
+ * three rules Inventory and Purchasing follow hold here too: money is a decimal
+ * STRING, ids are strings, and nothing carries a total the server would rather
+ * derive.
  *
- * WHERE THIS DEPARTS FROM THE BACKEND DOCUMENTS, and why:
- *   - a journal line here carries `accountId` only, exactly as stored. The code
- *     and the name a table shows are resolved against the COA, because that is
- *     what keeps a renamed account renamed everywhere at once;
- *   - `branchName` and `createdByName` are display labels the list endpoint
- *     populates. The ids they come from are not modelled, because no screen
- *     navigates by them.
+ * WHAT THE SERVER RESOLVES AND WHAT THIS CLIENT DOES:
+ *   - `branchName` and `createdByName` come down on every read. Only the server
+ *     can answer them without a client pulling the branch and user lists to
+ *     render a table;
+ *   - `source.reference` likewise — the number of the document that caused the
+ *     entry, and null for the source types whose collection does not exist yet;
+ *   - `lines[].accountId` and `lines[].businessLineId` stay as IDS. The chart of
+ *     accounts and the business lines are short, cacheable lists this client
+ *     already holds to render its own filters, and resolving them here is what
+ *     keeps a renamed account renamed everywhere at once.
+ *
+ * `businessLineId` REPLACED a `businessLine: string` that never existed on the
+ * wire. The fixtures carried a name because they were written before anything
+ * called the endpoint; the API has always stored an ObjectId.
  */
 
 /**
@@ -95,8 +101,18 @@ export type RecurringInterval = "daily" | "weekly" | "monthly" | "yearly";
  */
 export interface JournalLine {
   accountId: string;
-  /** Which line of business this line belongs to, when it is attributable. */
-  businessLine: string | null;
+  /**
+   * Which line of business this line belongs to, when it is attributable.
+   *
+   * PER LINE rather than per entry, which is the point: one POS sale can sell a
+   * grooming service and a bag of food, and a per-entry field could not
+   * attribute the two revenue lines separately. Null for a line that is not
+   * attributable — a cash receipt, a tax liability, the rent.
+   *
+   * Resolved to a name against `GET /business-lines`, the same way `accountId`
+   * is resolved against the COA.
+   */
+  businessLineId: string | null;
   /** Decimal string. "0" when the amount sits on the other side. */
   debit: string;
   credit: string;
@@ -112,14 +128,20 @@ export interface JournalEntry {
   /** The TRANSACTION date (ISO), not the day the row was written. */
   date: string;
   description: string;
-  branchName: string;
+  branchId: string;
+  /** Resolved by the server. Null if the branch has been hard-deleted. */
+  branchName: string | null;
   source: {
     type: JournalSourceType;
     /** The document that caused it — null for a manual entry. */
     id: string | null;
     /**
-     * That document's human-facing number ("POS-2026-08-0143"), for display.
-     * Null when the source has no number to show.
+     * That document's human-facing number ("RCP-2026-08-0021"), for display.
+     *
+     * NULL FOR EVERY SOURCE TYPE WHOSE COLLECTION DOES NOT EXIST YET — `pos`,
+     * `invoice`, `receipt` and `commission` have no documents to read a number
+     * from until those modules land. Null therefore reads as "this entry names
+     * no document we can resolve", and a client renders the type it already has.
      */
     reference: string | null;
   };
