@@ -37,7 +37,6 @@ import {
 } from "@/utils/decimal";
 import type { Category } from "@/types/api";
 import type { ChartOfAccount } from "@/types/accounting";
-import type { BusinessLine } from "@/services/businessLine.service";
 import type {
   BundleComponent,
   BundlePricingMode,
@@ -323,8 +322,8 @@ export function ProductForm({
       existingVariants={detail.variants}
       categories={selectable}
       warehouses={lookups.warehouses}
-      salesAccounts={lookups.salesAccounts}
-      businessLines={lookups.businessLines}
+      inventoryAccounts={lookups.inventoryAccounts}
+      cogsAccounts={lookups.cogsAccounts}
       accountingError={lookups.accountingError}
     />
   );
@@ -372,8 +371,8 @@ function ProductFormFields({
   existingVariants,
   categories,
   warehouses,
-  salesAccounts,
-  businessLines,
+  inventoryAccounts,
+  cogsAccounts,
   accountingError,
 }: {
   existing?: Product;
@@ -381,8 +380,8 @@ function ProductFormFields({
   existingVariants: Product[];
   categories: Category[];
   warehouses: StockWarehouse[];
-  salesAccounts: ChartOfAccount[];
-  businessLines: BusinessLine[];
+  inventoryAccounts: ChartOfAccount[];
+  cogsAccounts: ChartOfAccount[];
   accountingError: { status: number; message: string } | null;
 }) {
   const router = useRouter();
@@ -448,13 +447,12 @@ function ProductFormFields({
   // Stored HTML, seeded from the STORED value like every other inheritable
   // field — never from `resolved`, for the reason spelled out above.
   const [description, setDescription] = useState(existing?.description ?? "");
-  const [salesAccountId, setSalesAccountId] = useState(
-    existing?.salesAccountId ?? "",
+  const [inventoryAccountId, setInventoryAccountId] = useState(
+    existing?.inventoryAccountId ?? "",
   );
-  const [businessLineId, setBusinessLineId] = useState(
-    existing?.businessLineId ?? "",
+  const [cogsAccountId, setCogsAccountId] = useState(
+    existing?.cogsAccountId ?? "",
   );
-
   const [openingEnabled, setOpeningEnabled] = useState(false);
   const [openingQty, setOpeningQty] = useState("");
   const [openingCost, setOpeningCost] = useState("");
@@ -999,8 +997,8 @@ function ProductFormFields({
     return {
       ...(brand.trim() ? { brand: brand.trim() } : {}),
       ...(isPreorder ? { isPreorder: true } : {}),
-      ...(salesAccountId ? { salesAccountId } : {}),
-      ...(businessLineId ? { businessLineId } : {}),
+      ...(inventoryAccountId ? { inventoryAccountId } : {}),
+      ...(cogsAccountId ? { cogsAccountId } : {}),
       ...(isShippingEmpty(shipping)
         ? {}
         : { shipping: toShippingPayload(shipping) }),
@@ -1170,11 +1168,12 @@ function ProductFormFields({
     if (isPreorder !== (product.isPreorder ?? false)) {
       patch.isPreorder = isPreorder;
     }
-    if (salesAccountId !== (product.salesAccountId ?? "")) {
-      patch.salesAccountId = salesAccountId === "" ? null : salesAccountId;
+    if (inventoryAccountId !== (product.inventoryAccountId ?? "")) {
+      patch.inventoryAccountId =
+        inventoryAccountId === "" ? null : inventoryAccountId;
     }
-    if (businessLineId !== (product.businessLineId ?? "")) {
-      patch.businessLineId = businessLineId === "" ? null : businessLineId;
+    if (cogsAccountId !== (product.cogsAccountId ?? "")) {
+      patch.cogsAccountId = cogsAccountId === "" ? null : cogsAccountId;
     }
 
     /**
@@ -1663,9 +1662,9 @@ function ProductFormFields({
                 the reasoning belongs in the changelog. What they actually need
                 is whether they may skip it and whether skipping breaks
                 anything. */}
-            Opsional — boleh dikosongkan. Menentukan ke mana penjualan produk ini
-            dicatat nanti saat modul penjualan aktif; untuk sekarang belum
-            berpengaruh ke laporan mana pun.
+            Opsional — boleh dikosongkan. Kalau kosong, stok produk ini masuk ke
+            1201 Persediaan Barang Dagangan dan harga pokoknya ke 5101 HPP. Isi
+            kalau produk ini perlu dipisah, misalnya perlengkapan hotel.
             {mode === "variants" && " Varian mengikuti setelan induk."}
           </p>
 
@@ -1686,39 +1685,39 @@ function ProductFormFields({
             <p className="rounded-lg border border-secondary/40 bg-secondary/15 px-3 py-2 text-xs">
               {accountingError.status === 403 ? (
                 <>
-                  Role Anda tidak punya akses ke Akuntansi, jadi daftar akun dan
-                  lini bisnis tidak bisa dimuat.
+                  Role Anda tidak punya akses ke Akuntansi, jadi daftar akun
+                  tidak bisa dimuat.
                 </>
               ) : (
                 <>
-                  Daftar akun dan lini bisnis gagal dimuat
+                  Daftar akun gagal dimuat
                   {accountingError.status > 0 && ` (${accountingError.status})`}:{" "}
                   {accountingError.message}
                 </>
               )}{" "}
-              Produk tetap bisa disimpan tanpa keduanya.
+              Produk tetap bisa disimpan tanpa itu.
             </p>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="salesAccountId">Akun penjualan</Label>
+                <Label htmlFor="inventoryAccountId">Akun persediaan</Label>
                 <Select
-                  value={salesAccountId}
-                  onValueChange={setSalesAccountId}
-                  disabled={salesAccounts.length === 0}
+                  value={inventoryAccountId}
+                  onValueChange={setInventoryAccountId}
+                  disabled={inventoryAccounts.length === 0}
                 >
                   {/* w-fit by default — see the note on the category select. */}
-                  <SelectTrigger id="salesAccountId" className="w-full">
+                  <SelectTrigger id="inventoryAccountId" className="w-full">
                     <SelectValue
                       placeholder={
-                        salesAccounts.length === 0
-                          ? "Belum ada akun pendapatan"
-                          : "Pilih akun"
+                        inventoryAccounts.length === 0
+                          ? "Belum ada akun aset"
+                          : "1201 — Persediaan Barang Dagangan"
                       }
                     />
                   </SelectTrigger>
                   <SelectContent>
-                    {salesAccounts.map((account) => (
+                    {inventoryAccounts.map((account) => (
                       <SelectItem key={account._id} value={account._id}>
                         {account.code} — {account.name}
                       </SelectItem>
@@ -1726,37 +1725,38 @@ function ProductFormFields({
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted">
-                  Hanya akun bertipe pendapatan. Menentukan ke mana penjualan
-                  produk ini dikreditkan.
+                  Hanya akun bertipe aset. Menentukan di akun mana stok produk
+                  ini dicatat saat barang masuk.
                 </p>
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="businessLineId">Lini bisnis</Label>
+                <Label htmlFor="cogsAccountId">Akun HPP</Label>
                 <Select
-                  value={businessLineId}
-                  onValueChange={setBusinessLineId}
-                  disabled={businessLines.length === 0}
+                  value={cogsAccountId}
+                  onValueChange={setCogsAccountId}
+                  disabled={cogsAccounts.length === 0}
                 >
-                  <SelectTrigger id="businessLineId" className="w-full">
+                  <SelectTrigger id="cogsAccountId" className="w-full">
                     <SelectValue
                       placeholder={
-                        businessLines.length === 0
-                          ? "Belum ada lini bisnis"
-                          : "Pilih lini bisnis"
+                        cogsAccounts.length === 0
+                          ? "Belum ada akun beban"
+                          : "5101 — Harga Pokok Penjualan"
                       }
                     />
                   </SelectTrigger>
                   <SelectContent>
-                    {businessLines.map((line) => (
-                      <SelectItem key={line._id} value={line._id}>
-                        {line.name}
+                    {cogsAccounts.map((account) => (
+                      <SelectItem key={account._id} value={account._id}>
+                        {account.code} — {account.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted">
-                  Tagging jurnal — memisahkan laporan Grooming, Hotel dan Retail.
+                  Hanya akun bertipe beban. Menentukan ke akun mana harga pokok
+                  produk ini dibebankan saat terjual.
                 </p>
               </div>
             </div>

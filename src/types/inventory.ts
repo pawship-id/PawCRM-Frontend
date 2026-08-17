@@ -519,8 +519,16 @@ export interface Product {
   description?: string | null;
   isPreorder?: boolean;
   shipping?: ProductShipping;
-  /** ChartOfAccounts id, always an `income` account. Nothing posts to it yet. */
-  salesAccountId?: string | null;
+  /**
+   * Where this product's stock and its cost of sale land in the ledger.
+   *
+   * `inventoryAccountId` is an `asset` account — null means the seeded 1201
+   * Persediaan. `cogsAccountId` is an `expense` account — null means 5101 HPP.
+   * Unlike the `salesAccountId` they replaced, these ARE posted against: every
+   * receipt, opname, adjustment and sale resolves them per product.
+   */
+  inventoryAccountId?: string | null;
+  cogsAccountId?: string | null;
   businessLineId?: string | null;
 
   /**
@@ -655,7 +663,8 @@ export interface ProductMedia {
 export interface ResolvedProductFields {
   brand: string | null;
   description: string | null;
-  salesAccountId: string | null;
+  inventoryAccountId: string | null;
+  cogsAccountId: string | null;
   businessLineId: string | null;
   shipping: ProductShipping;
 
@@ -818,8 +827,8 @@ export interface CreateFamilyVariantInput {
   /**
    * The only two marketplace fields a family row takes.
    *
-   * `brand`, `salesAccountId` and `businessLineId` are absent because they are
-   * RESOLVED from the parent — repeating the same brand string across twelve
+   * `brand`, the two posting accounts and `businessLineId` are absent because
+   * they are RESOLVED from the parent — repeating the same brand string across twelve
    * rows is the payload the inheritance design exists to avoid. `description` is
    * absent for an arithmetic reason instead: the request body cap is 1 MB and
    * this array may hold 200 entries. A row that wants its own gets it with a
@@ -878,8 +887,10 @@ export interface CreateStandaloneInput extends CreateProductBase {
   isPreorder?: boolean;
   /** Partial objects are the normal case — send only the leaves you mean. */
   shipping?: Partial<ProductShipping>;
-  /** Must be an `income` account of this tenant, or the API answers 400. */
-  salesAccountId?: string | null;
+  /** Must be an `asset` account of this tenant, or the API answers 400. */
+  inventoryAccountId?: string | null;
+  /** Must be an `expense` account of this tenant, or the API answers 400. */
+  cogsAccountId?: string | null;
   businessLineId?: string | null;
 
   sellPrice: string;
@@ -909,8 +920,10 @@ export interface CreateParentInput extends Omit<CreateProductBase, "sku"> {
   isPreorder?: boolean;
   /** Partial objects are the normal case — send only the leaves you mean. */
   shipping?: Partial<ProductShipping>;
-  /** Must be an `income` account of this tenant, or the API answers 400. */
-  salesAccountId?: string | null;
+  /** Must be an `asset` account of this tenant, or the API answers 400. */
+  inventoryAccountId?: string | null;
+  /** Must be an `expense` account of this tenant, or the API answers 400. */
+  cogsAccountId?: string | null;
   businessLineId?: string | null;
 
   /**
@@ -946,8 +959,10 @@ export interface CreateVariantInput {
   isPreorder?: boolean;
   /** Partial objects are the normal case — send only the leaves you mean. */
   shipping?: Partial<ProductShipping>;
-  /** Must be an `income` account of this tenant, or the API answers 400. */
-  salesAccountId?: string | null;
+  /** Must be an `asset` account of this tenant, or the API answers 400. */
+  inventoryAccountId?: string | null;
+  /** Must be an `expense` account of this tenant, or the API answers 400. */
+  cogsAccountId?: string | null;
   businessLineId?: string | null;
 
   sku: string;
@@ -982,8 +997,10 @@ export interface CreateBundleInput extends CreateProductBase {
   isPreorder?: boolean;
   /** Partial objects are the normal case — send only the leaves you mean. */
   shipping?: Partial<ProductShipping>;
-  /** Must be an `income` account of this tenant, or the API answers 400. */
-  salesAccountId?: string | null;
+  /** Must be an `asset` account of this tenant, or the API answers 400. */
+  inventoryAccountId?: string | null;
+  /** Must be an `expense` account of this tenant, or the API answers 400. */
+  cogsAccountId?: string | null;
   businessLineId?: string | null;
 
   bundleConfig: {
@@ -1037,7 +1054,8 @@ export interface UpdateProductInput {
   description?: string | null;
   isPreorder?: boolean;
   shipping?: Partial<ProductShipping>;
-  salesAccountId?: string | null;
+  inventoryAccountId?: string | null;
+  cogsAccountId?: string | null;
   businessLineId?: string | null;
 
   /**

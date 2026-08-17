@@ -7,7 +7,6 @@ import { productService } from "@/services/product.service";
 import { categoryService } from "@/services/category.service";
 import { warehouseService } from "@/services/warehouse.service";
 import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
-import { businessLineService } from "@/services/businessLine.service";
 import { ApiError } from "@/services/api-error";
 import type { CreatedProduct, Product } from "@/types/inventory";
 
@@ -24,8 +23,8 @@ jest.mock("sweetalert2", () => ({
 
 const WAREHOUSE = "wh1";
 const CATEGORY = "c1";
-const SALES_ACCOUNT = "acc1";
-const BUSINESS_LINE = "bl1";
+const INVENTORY_ACCOUNT = "acc1";
+const COGS_ACCOUNT = "acc2";
 
 function makeProduct(overrides: Partial<Product> = {}): Product {
   return {
@@ -96,24 +95,38 @@ function mockLookups() {
    * that left them unmocked would be testing the degraded form and would never
    * notice the pickers breaking.
    */
-  jest.spyOn(chartOfAccountsService, "list").mockResolvedValue({
-    items: [
-      {
-        _id: SALES_ACCOUNT,
-        code: "4101",
-        name: "Penjualan",
-        accountType: "income",
-        parentAccountId: null,
-        isDefault: true,
-        isActive: true,
-      },
-    ],
-    pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
-  });
-  jest.spyOn(businessLineService, "list").mockResolvedValue({
-    items: [{ _id: BUSINESS_LINE, name: "Retail", color: "#1A2B3C" }],
-    pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
-  });
+  // One call per account TYPE now — the form asks for assets and expenses
+  // separately, because the API refuses each override that is not of its own
+  // type. Answered from the requested type so each picker gets its own list.
+  jest
+    .spyOn(chartOfAccountsService, "list")
+    .mockImplementation(async (query) => ({
+      items:
+        query?.accountType === "expense"
+          ? [
+              {
+                _id: COGS_ACCOUNT,
+                code: "5102",
+                name: "HPP Hotel",
+                accountType: "expense" as const,
+                parentAccountId: null,
+                isDefault: false,
+                isActive: true,
+              },
+            ]
+          : [
+              {
+                _id: INVENTORY_ACCOUNT,
+                code: "1205",
+                name: "Persediaan Hotel",
+                accountType: "asset" as const,
+                parentAccountId: null,
+                isDefault: false,
+                isActive: true,
+              },
+            ],
+      pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+    }));
 }
 
 function mockCreate(overrides: Partial<CreatedProduct> = {}) {
@@ -894,6 +907,58 @@ describe("ProductForm", () => {
       });
     });
 
+    /**
+     * The two accounts DECIDE THE JOURNAL, unlike the sales account they
+     * replaced, which was stored and never posted against. A product left alone
+     * uses the seeded 1201 and 5101; one that names its own sends its stock and
+     * its cost somewhere else on every receipt, opname and sale.
+     */
+    it("sends the inventory and COGS accounts the user picked", async () => {
+      const user = userEvent.setup();
+      const create = mockCreate();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await fillCommon(user);
+      await user.type(screen.getByLabelText(/Harga jual/), "45000");
+
+      await user.click(screen.getByLabelText("Akun persediaan"));
+      await user.click(
+        await screen.findByRole("option", {
+          name: "1205 — Persediaan Hotel",
+        }),
+      );
+      await user.click(screen.getByLabelText("Akun HPP"));
+      await user.click(
+        await screen.findByRole("option", { name: "5102 — HPP Hotel" }),
+      );
+
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      await waitFor(() => expect(create).toHaveBeenCalled());
+      expect(create.mock.calls[0][0]).toMatchObject({
+        inventoryAccountId: INVENTORY_ACCOUNT,
+        cogsAccountId: COGS_ACCOUNT,
+      });
+    });
+
+    /** Each picker offers only what its side of the ledger can accept. */
+    it("offers assets to one picker and expenses to the other", async () => {
+      const user = userEvent.setup();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await user.click(screen.getByLabelText("Akun persediaan"));
+      expect(
+        await screen.findByRole("option", { name: "1205 — Persediaan Hotel" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("option", { name: "5102 — HPP Hotel" }),
+      ).not.toBeInTheDocument();
+    });
+
     it("omits the whole section when nothing was filled in", async () => {
       // Absent is what makes a variant inherit. Sending nulls would reach the
       // same place today, but "absent means inherit" is the documented contract
@@ -912,7 +977,8 @@ describe("ProductForm", () => {
       const payload = create.mock.calls[0][0];
       expect(payload).not.toHaveProperty("brand");
       expect(payload).not.toHaveProperty("shipping");
-      expect(payload).not.toHaveProperty("salesAccountId");
+      expect(payload).not.toHaveProperty("inventoryAccountId");
+      expect(payload).not.toHaveProperty("cogsAccountId");
     });
 
     it("refuses a weight with no unit", async () => {
@@ -978,7 +1044,8 @@ describe("ProductForm", () => {
           resolved: {
             brand: "Royal Canin",
             description: null,
-            salesAccountId: null,
+            inventoryAccountId: null,
+            cogsAccountId: null,
             businessLineId: null,
             shipping: {
               weight: "500",
@@ -1025,7 +1092,8 @@ describe("ProductForm", () => {
           resolved: {
             brand: "Royal Canin",
             description: null,
-            salesAccountId: null,
+            inventoryAccountId: null,
+            cogsAccountId: null,
             businessLineId: null,
             shipping: {
               weight: "500",
@@ -1262,7 +1330,8 @@ describe("ProductForm", () => {
             resolved: {
               brand: null,
               description: null,
-              salesAccountId: null,
+              inventoryAccountId: null,
+            cogsAccountId: null,
               businessLineId: null,
               shipping: {
                 weight: "500",
