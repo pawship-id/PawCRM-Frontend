@@ -73,6 +73,11 @@ export interface ChartOfAccountPayload {
   name: string;
   accountType: ChartOfAccount["accountType"];
   parentAccountId: string | null;
+  /**
+   * `null` is a VALUE here too — it is how the line is CLEARED, where omitting
+   * the key on a PATCH leaves it in place.
+   */
+  businessLineId: string | null;
   /** Defaults to true on the server — for a chart imported ahead of go-live. */
   isActive?: boolean;
 }

@@ -285,6 +285,15 @@ export const NAV_ITEMS: NavItem[] = [
         icon: JournalIcon,
         permission: { feature: "journalEntries", action: "read" },
       },
+      {
+        // Last of the four: the chart and the ledger are opened daily, while the
+        // lines of business are set up once and revisited when the shop adds a
+        // service.
+        label: "Lini Bisnis",
+        href: "/dashboard/keuangan/business-lines",
+        icon: FinanceIcon,
+        permission: { feature: "businessLines", action: "read" },
+      },
     ],
   },
   {

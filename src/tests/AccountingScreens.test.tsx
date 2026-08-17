@@ -65,6 +65,7 @@ function node(
     isActive = true,
     isDefault = false,
     parentAccountId = null,
+    businessLineId = null,
   }: Partial<ChartOfAccountNode> = {},
 ): ChartOfAccountNode {
   return {
@@ -73,6 +74,7 @@ function node(
     name,
     accountType,
     parentAccountId,
+    businessLineId,
     isDefault,
     isActive,
     children: children.map((child) => ({ ...child, parentAccountId: code })),
@@ -110,9 +112,25 @@ function mockTree(roots: ChartOfAccountNode[] = chart()) {
   return jest.spyOn(chartOfAccountsService, "tree").mockResolvedValue(roots);
 }
 
+/** The line the chart labels its column with and the form offers in its picker. */
+const GROOMING = { _id: "bl-grooming", name: "Grooming", color: "#1A2B4C" };
+
+/**
+ * Both accounting screens read `/business-lines` now. Stubbed rather than left
+ * to reject: the read fails softly in production, so an unmocked rejection would
+ * exercise the degraded screen and never notice the picker breaking.
+ */
+function mockLines(items = [GROOMING]) {
+  return jest.spyOn(businessLineService, "list").mockResolvedValue({
+    items,
+    pagination: { page: 1, limit: 100, total: items.length, totalPages: 1 },
+  });
+}
+
 /** Mounts the screen and waits for the first response to land. */
 async function renderChart(roots?: ChartOfAccountNode[]) {
   mockTree(roots);
+  mockLines();
   renderWithAuth(<ChartOfAccountsScreen />);
   await screen.findByRole("table");
 }
@@ -138,6 +156,7 @@ async function applyFilters() {
 /** Mounts the create form and waits for the chart its parent picker needs. */
 async function renderCreateForm(roots?: ChartOfAccountNode[]) {
   mockTree(roots);
+  mockLines();
   renderWithAuth(<ChartOfAccountCreateForm />);
   await screen.findByLabelText(/Kode akun/);
 }
@@ -145,6 +164,7 @@ async function renderCreateForm(roots?: ChartOfAccountNode[]) {
 /** Mounts the edit form for one account and waits for it to be seeded. */
 async function renderEditForm(accountId: string, roots?: ChartOfAccountNode[]) {
   mockTree(roots);
+  mockLines();
   renderWithAuth(<ChartOfAccountEditForm accountId={accountId} />);
   await screen.findByLabelText(/Kode akun/);
 }
@@ -393,6 +413,44 @@ describe("ChartOfAccountsScreen", () => {
 describe("ChartOfAccountForm", () => {
   afterEach(() => jest.restoreAllMocks());
 
+  /**
+   * THE MAPPING IS MADE HERE, which is the whole point of the field: a tenant
+   * naming the line on "5102 HPP Grooming" says it once for everything that ever
+   * lands there, instead of per product or per transaction.
+   */
+  it("sends the business line the account was given", async () => {
+    await renderCreateForm();
+    const create = jest
+      .spyOn(chartOfAccountsService, "create")
+      .mockResolvedValue({} as never);
+
+    await userEvent.type(screen.getByLabelText(/Kode akun/), "5102");
+    await userEvent.type(screen.getByLabelText(/Nama akun/), "HPP Grooming");
+    await userEvent.click(screen.getByLabelText("Lini bisnis"));
+    await userEvent.click(
+      await screen.findByRole("option", { name: "Grooming" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Buat akun" }));
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ businessLineId: "bl-grooming" }),
+      ),
+    );
+  });
+
+  /** A tenant with no lines yet gets an explanation, not an empty dropdown. */
+  it("says where to make a line when the tenant has none", async () => {
+    mockTree();
+    mockLines([]);
+    renderWithAuth(<ChartOfAccountCreateForm />);
+    await screen.findByLabelText(/Kode akun/);
+
+    expect(
+      await screen.findByText(/Keuangan → Lini Bisnis/),
+    ).toBeInTheDocument();
+  });
+
   it("creates an account from what was typed, uppercasing the code", async () => {
     await renderCreateForm();
     const create = jest
@@ -409,6 +467,9 @@ describe("ChartOfAccountForm", () => {
         name: "Bank BCA",
         accountType: "asset",
         parentAccountId: null,
+        // Sent explicitly rather than omitted: null is the value that means "no
+        // line", the same way it means "no parent" above it.
+        businessLineId: null,
       }),
     );
     // Back to the list once it lands — the page's job, where the dialog used to
@@ -640,6 +701,94 @@ describe("JournalEntriesScreen", () => {
     expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
       "Filter (1)",
     );
+  });
+
+  /**
+   * The ordering goes to the SERVER too, for the same reason the filters do:
+   * reordering in the browser would only reorder the twenty rows that already
+   * arrived, which on a paged list is not a sort but a lie.
+   */
+  it("asks the server to reorder rather than reordering the page", async () => {
+    const list = await renderLedger([entry({ _id: "1" })]);
+    await screen.findByText("Agustus 2026");
+
+    // Every list starts ordered — the default is sent, not left implicit.
+    expect(list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sort: "newest" }),
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Filter" }));
+    const panel = await screen.findByRole("dialog");
+    await userEvent.click(within(panel).getByLabelText("Urutkan"));
+    await userEvent.click(
+      screen.getByRole("option", { name: "Nomor jurnal A–Z" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Terapkan" }));
+
+    await waitFor(() =>
+      expect(list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "numberAsc", page: 1 }),
+      ),
+    );
+  });
+
+  /**
+   * §8: the badge pays back what a panel CONCEALS, and it only does that if the
+   * number means "this list is narrowed". Every list has an ordering, so counting
+   * it would put a standing "(1)" over an unnarrowed ledger and teach people to
+   * ignore the one control that tells them a filter is on.
+   */
+  it("leaves the ordering out of the filter count", async () => {
+    await renderLedger([entry({ _id: "1" })]);
+    await screen.findByText("Agustus 2026");
+
+    await userEvent.click(screen.getByRole("button", { name: "Filter" }));
+    const panel = await screen.findByRole("dialog");
+    await userEvent.click(within(panel).getByLabelText("Urutkan"));
+    await userEvent.click(
+      screen.getByRole("option", { name: "Tanggal terlama" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Terapkan" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
+        "Filter",
+      ),
+    );
+    expect(
+      screen.getByRole("button", { name: "Filter" }),
+    ).not.toHaveTextContent("(1)");
+  });
+
+  /**
+   * A total is the same number whichever end of the list you read from, so
+   * reordering must not send the server off to re-aggregate the whole book.
+   */
+  it("does not re-ask for the total when only the ordering changes", async () => {
+    mockLedgerLookups();
+    const totals = jest.spyOn(journalEntryService, "totals");
+    jest
+      .spyOn(journalEntryService, "list")
+      .mockResolvedValue(ledgerPage([entry({ _id: "1" })]));
+
+    renderWithAuth(<JournalEntriesScreen />);
+    await screen.findByText("Agustus 2026");
+    await waitFor(() => expect(totals).toHaveBeenCalledTimes(1));
+
+    await userEvent.click(screen.getByRole("button", { name: "Filter" }));
+    const panel = await screen.findByRole("dialog");
+    await userEvent.click(within(panel).getByLabelText("Urutkan"));
+    await userEvent.click(
+      screen.getByRole("option", { name: "Tanggal terlama" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Terapkan" }));
+
+    await waitFor(() =>
+      expect(journalEntryService.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "oldest" }),
+      ),
+    );
+    expect(totals).toHaveBeenCalledTimes(1);
   });
 
   it("distinguishes an empty book from an empty filter", async () => {

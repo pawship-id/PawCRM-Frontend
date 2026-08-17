@@ -55,6 +55,7 @@ const account = (
   name,
   accountType,
   parentAccountId: null,
+  businessLineId: null,
   isDefault: false,
   isActive: true,
 });

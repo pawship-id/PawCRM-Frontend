@@ -51,6 +51,15 @@ export interface ChartOfAccount {
   accountType: AccountType;
   /** Parent in the hierarchy, or null for a root. Max 4 levels deep. */
   parentAccountId: string | null;
+  /**
+   * The line of business postings against this account belong to, or null.
+   *
+   * ASKED HERE because the chart is where a tenant knows the answer: naming the
+   * line on "5102 HPP Grooming" says it once for everything that ever lands
+   * there. Null is ordinary rather than missing — rent and the electricity bill
+   * belong to no single line.
+   */
+  businessLineId: string | null;
   /** True for accounts written by the per-tenant seed — undeletable. */
   isDefault: boolean;
   /** Whether the account may be picked for NEW postings. */
@@ -88,6 +97,22 @@ export type JournalSourceType =
   | "return"
   | "commission"
   | "manual";
+
+/**
+ * The orderings `GET /api/journal-entries` accepts — JOURNAL_ENTRY_SORTS in the
+ * backend model.
+ *
+ * `newest` / `oldest` key on the TRANSACTION date, the day the money moved, which
+ * is the date shown on the row. The number orderings walk the sequence entries
+ * were written in instead; the two part company whenever anything is backdated,
+ * which is what makes the second axis worth having rather than a second spelling
+ * of the first.
+ *
+ * NOTHING BY AMOUNT, though "terbesar dulu" is a fair question: an entry's total
+ * is not a stored field — it is Σdebit over its lines — so there is nothing to
+ * index and the server would have to sum the tenant's whole book to order it.
+ */
+export type JournalEntrySort = "newest" | "oldest" | "numberDesc" | "numberAsc";
 
 /** Which section of the cash flow statement an entry belongs to, if any. */
 export type CashflowType = "operating" | "investing" | "financing";

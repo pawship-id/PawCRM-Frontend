@@ -22,4 +22,8 @@ export const ACCOUNTING_CRUMBS = {
     label: "Jurnal Umum",
     href: "/dashboard/keuangan/journal-entries",
   },
+  businessLines: {
+    label: "Lini Bisnis",
+    href: "/dashboard/keuangan/business-lines",
+  },
 } satisfies Record<string, Crumb>;

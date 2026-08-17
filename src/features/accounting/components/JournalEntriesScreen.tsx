@@ -27,8 +27,9 @@ import { JournalEntriesToolbar } from "./JournalEntriesToolbar";
 const COLUMN_COUNT = 7;
 
 /**
- * The general ledger — every financial fact in the tenant, newest first, read
- * from GET /api/journal-entries through `useJournalEntries`.
+ * The general ledger — every financial fact in the tenant, newest transaction
+ * first unless the toolbar says otherwise, read from GET /api/journal-entries
+ * through `useJournalEntries`.
  *
  * ROWS ARE GROUPED BY MONTH, because that is the unit a ledger is read and
  * closed in. A flat list of 500 entries answers "what happened" but never "what
@@ -113,9 +114,7 @@ export function JournalEntriesScreen() {
       <JournalEntriesToolbar
         query={query}
         branches={branches}
-        loading={loading}
         onChange={setQuery}
-        onRefresh={refetch}
       />
 
       {/* BOTH FIGURES COVER THE WHOLE FILTER, not the page — the count from the
@@ -182,8 +181,11 @@ export function JournalEntriesScreen() {
                   </TableRow>
                 )}
 
-                {groupByMonth(entries).map(([month, monthEntries]) => (
-                  <Fragment key={month}>
+                {groupByMonth(entries).map(([month, monthEntries], index) => (
+                  // Keyed on the position, not the label: the groups are what
+                  // this page renders, and a label is only unique while the
+                  // ordering keeps each month in one run. See groupByMonth.
+                  <Fragment key={`${index}-${month}`}>
                     {/* A month heading is not an entry, so it fills no entry
                         column — the same choice ChartOfAccountsScreen makes for
                         its class headings, including switching off ui/table's
@@ -371,9 +373,20 @@ function SummaryTile({
 /**
  * Splits the page's rows into [month label, entries] pairs.
  *
- * Relies on the list arriving newest-first, exactly as the API returns it, so a
- * month is a contiguous run and no re-sorting is needed here — sorting a second
- * time in the client is how a list starts disagreeing with its own pagination.
+ * TAKES THE ORDER THE API GAVE, whichever of the four the toolbar asked for, and
+ * re-sorts nothing — sorting a second time in the client is how a list starts
+ * disagreeing with its own pagination.
+ *
+ * A month stays a CONTIGUOUS RUN under every one of those orderings, which is
+ * what lets this walk the list once and start a new group whenever the label
+ * changes. The two date orderings give it by construction; the two number
+ * orderings give it because an entry number is drawn against the entry's own
+ * date — "JE-2026-07-0001" is a July transaction whenever it was typed — so
+ * ordering by number never interleaves two months.
+ *
+ * It does not DEPEND on that, though: a run that reappeared would simply get a
+ * second header, which is why the caller keys on the group's position rather
+ * than on the month label.
  */
 function groupByMonth(entries: JournalEntry[]): Array<[string, JournalEntry[]]> {
   const groups: Array<[string, JournalEntry[]]> = [];

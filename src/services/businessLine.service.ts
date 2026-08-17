@@ -9,10 +9,12 @@ import type { PageResult } from "@/types/api";
  * uniqueness is per-tenant and two unrelated businesses may both run a
  * "Grooming".
  *
- * LIKE chartOfAccounts.service.ts, THIS IS THE ENDPOINT'S FIRST REAL CONSUMER —
- * the product form's business-line picker. The ledger already stores
- * `lines[].businessLineId` for journal tagging; naming one on the product is
- * what will let a posting derive it instead of asking at the till.
+ * WHERE A LINE IS NAMED: the chart of accounts. A tenant sets its chart up once
+ * and knows, while naming the line on "5102 HPP Grooming", that everything
+ * landing there belongs to grooming — so the mapping is made at the account
+ * rather than per product or per transaction. The ledger already stores
+ * `lines[].businessLineId` for journal tagging; carrying the account's value
+ * into it is a separate change.
  */
 
 /** One line of business. Mirrors the backend model — a label and a colour. */
@@ -32,6 +34,16 @@ export interface BusinessLineListQuery {
   search?: string;
 }
 
+/** What POST takes. Both are required — the API refuses a line with no colour. */
+export interface CreateBusinessLineInput {
+  name: string;
+  /** `#RRGGBB`. Three-digit shorthand and named colours are refused. */
+  color: string;
+}
+
+/** What PATCH takes: any subset, but never an empty body. */
+export type UpdateBusinessLineInput = Partial<CreateBusinessLineInput>;
+
 export const businessLineService = {
   /**
    * GET /business-lines — paginated, searchable list.
@@ -50,4 +62,24 @@ export const businessLineService = {
 
   /** GET /business-lines/:id — a single line. */
   getById: (id: string) => apiClient.get<BusinessLine>(`/business-lines/${id}`),
+
+  create: (body: CreateBusinessLineInput) =>
+    apiClient.post<BusinessLine>("/business-lines", body),
+
+  update: (id: string, body: UpdateBusinessLineInput) =>
+    apiClient.patch<BusinessLine>(`/business-lines/${id}`, body),
+
+  /**
+   * DELETE /business-lines/:id — a SOFT delete.
+   *
+   * Answers 409 while any product or any account still names the line, and the
+   * message carries the count. Journal entries are NOT guarded: they are
+   * immutable, so a guard on them would make a line undeletable forever the
+   * moment anything posted against it.
+   */
+  remove: (id: string) =>
+    apiClient.delete<BusinessLine>(`/business-lines/${id}`),
+
+  restore: (id: string) =>
+    apiClient.patch<BusinessLine>(`/business-lines/${id}/restore`, {}),
 };

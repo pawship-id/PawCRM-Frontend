@@ -37,6 +37,7 @@ import {
   type AccountSort,
 } from "../accountSort";
 import { useChartOfAccounts } from "../hooks/useChartOfAccounts";
+import { useBusinessLines } from "../hooks/useBusinessLines";
 import {
   ACCOUNT_TYPES,
   ACCOUNT_TYPE_LABEL,
@@ -106,6 +107,14 @@ const DEFAULT_QUERY: ChartOfAccountsQuery = {
  */
 export function ChartOfAccountsScreen() {
   const { accounts, byId, loading, error, refetch } = useChartOfAccounts();
+  // Names for the ids the accounts carry. Fails softly — `businessLines:read`
+  // is its own grant, and a column of em dashes is a better answer than a screen
+  // that refuses to render the chart over a label.
+  const { lines: businessLines } = useBusinessLines();
+  const lineNames = useMemo(
+    () => new Map(businessLines.map((line) => [line._id, line.name])),
+    [businessLines],
+  );
 
   const [query, setQuery] = useState<ChartOfAccountsQuery>(DEFAULT_QUERY);
   /**
@@ -143,7 +152,7 @@ export function ChartOfAccountsScreen() {
   // The column exists only when somebody could act in it — a read-only role
   // gets no empty column, the same per-row reasoning CategoriesTable applies.
   const showActions = can("chartOfAccounts", "update");
-  const columnCount = showActions ? 7 : 6;
+  const columnCount = showActions ? 8 : 7;
 
   return (
     <div className="flex flex-col gap-6">
@@ -208,6 +217,7 @@ export function ChartOfAccountsScreen() {
                 <TableHead>Nama akun</TableHead>
                 <TableHead>Tipe</TableHead>
                 <TableHead>Saldo normal</TableHead>
+                <TableHead>Lini bisnis</TableHead>
                 <TableHead>Sumber</TableHead>
                 <TableHead>Status</TableHead>
                 {showActions && <TableHead className="text-right">Aksi</TableHead>}
@@ -370,6 +380,14 @@ export function ChartOfAccountsScreen() {
                       {normalBalanceOf(account.accountType) === "debit"
                         ? "Debit"
                         : "Kredit"}
+                    </TableCell>
+                    {/*
+                      Shown in the list because this is where a missing mapping
+                      becomes visible: a column of em dashes is the usual answer
+                      to "kenapa laporan per lini kosong".
+                    */}
+                    <TableCell className="px-4 py-2.5 text-xs text-muted">
+                      {lineNames.get(account.businessLineId ?? "") ?? "—"}
                     </TableCell>
                     <TableCell className="px-4 py-2.5 text-xs text-muted">
                       {account.isDefault ? (

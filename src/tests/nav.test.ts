@@ -159,6 +159,9 @@ describe("filterNavItems", () => {
       "Ringkasan",
       "Daftar Akun",
       "Jurnal Umum",
+      // Last: set up once and revisited when the shop adds a service, where the
+      // two above it are opened daily.
+      "Lini Bisnis",
     ]);
   });
 

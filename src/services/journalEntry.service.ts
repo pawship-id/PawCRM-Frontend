@@ -3,6 +3,7 @@ import type {
   AccountType,
   CashflowType,
   JournalEntry,
+  JournalEntrySort,
   JournalSourceType,
   NormalBalance,
 } from "@/types/accounting";
@@ -61,6 +62,8 @@ export interface JournalEntryListQuery extends LedgerPeriodQuery {
   branchId?: string;
   cashflowType?: CashflowType;
   tag?: string;
+  /** Defaults to `newest` server-side. */
+  sort?: JournalEntrySort;
 }
 
 /**
@@ -69,8 +72,16 @@ export interface JournalEntryListQuery extends LedgerPeriodQuery {
  * Derived from the list query rather than declared again, so the two cannot
  * drift: a total narrowed differently from the rows it sits over would look
  * authoritative while being about other entries.
+ *
+ * `sort` COMES OFF WITH THE PAGINATION, for the same reason and not merely for
+ * tidiness: Σdebit over a set of entries does not depend on the order they are
+ * read in, so a sort here would be a knob that cannot move the number. The
+ * endpoint strips it; the type says so first.
  */
-export type JournalTotalsQuery = Omit<JournalEntryListQuery, "page" | "limit">;
+export type JournalTotalsQuery = Omit<
+  JournalEntryListQuery,
+  "page" | "limit" | "sort"
+>;
 
 export interface JournalTotals {
   period: {
@@ -189,10 +200,12 @@ export interface JournalEntryInput {
 
 export const journalEntryService = {
   /**
-   * GET /journal-entries — the ledger, newest TRANSACTION date first.
+   * GET /journal-entries — the ledger, newest TRANSACTION date first unless
+   * `sort` says otherwise.
    *
    * Newest-transaction, not newest-written: the two differ whenever anything is
-   * backdated, and a report reads by the date the money moved.
+   * backdated, and a report reads by the date the money moved. The `number*`
+   * orderings are the other axis — the sequence as it was written.
    */
   list: (query: JournalEntryListQuery = {}) =>
     apiClient.get<PageResult<JournalEntry>>("/journal-entries", {
@@ -211,6 +224,7 @@ export const journalEntryService = {
         branchId: query.branchId,
         cashflowType: query.cashflowType,
         tag: query.tag,
+        sort: query.sort,
       },
     }),
 

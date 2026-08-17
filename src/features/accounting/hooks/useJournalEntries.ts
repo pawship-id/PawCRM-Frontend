@@ -10,7 +10,11 @@ import {
   type JournalTotals,
   type JournalTotalsQuery,
 } from "@/services/journalEntry.service";
-import type { JournalEntry, JournalSourceType } from "@/types/accounting";
+import type {
+  JournalEntry,
+  JournalEntrySort,
+  JournalSourceType,
+} from "@/types/accounting";
 import type { Branch, PageResult } from "@/types/api";
 
 /** The query knobs the ledger screen drives — page, plus the visible filters. */
@@ -25,6 +29,11 @@ export interface JournalEntriesQuery {
   dateTo: string;
   /** "" = semua cabang. */
   branchId: string;
+  /**
+   * Which ordering to page through. Always set — a list has no "unordered"
+   * state, which is why this one is not `""`-able like the filters above.
+   */
+  sort: JournalEntrySort;
 }
 
 /**
@@ -44,6 +53,7 @@ export const DEFAULT_JOURNAL_QUERY: JournalEntriesQuery = {
   dateFrom: "",
   dateTo: "",
   branchId: "",
+  sort: "newest",
 };
 
 /** Empty page, so the screen can render its table shell before the first load. */
@@ -55,7 +65,7 @@ const EMPTY_PAGE: PageResult<JournalEntry>["pagination"] = {
 };
 
 export interface UseJournalEntriesResult {
-  /** One page of the ledger, newest TRANSACTION date first. */
+  /** One page of the ledger, in `query.sort`'s order. */
   entries: JournalEntry[];
   pagination: PageResult<JournalEntry>["pagination"];
   /**
@@ -88,12 +98,15 @@ export interface UseJournalEntriesResult {
  * book to find one entry. The endpoint takes `search`, `sourceType`, the period
  * and `branchId` directly, and each of them is a page-1 request.
  *
- * NO SORT KNOB, deliberately. The API orders by transaction date, newest first,
- * and offers no alternative — offering an ordering the server does not name is
- * how a picker ends up asking for one with no index behind it (docs/ui-rules.md
- * §8). Newest-transaction is also the right default: it differs from
- * newest-written whenever anything is backdated, and a ledger is read by the date
- * the money moved.
+ * THE SORT IS SERVER-SIDE TOO, and it is one of the closed set the API names —
+ * ordering a page in the browser would only reorder the twenty rows that already
+ * arrived, which on a paged list is not a sort but a lie. Newest-transaction
+ * stays the default: it differs from newest-written whenever anything is
+ * backdated, and a ledger is read by the date the money moved.
+ *
+ * IT DOES NOT TOUCH THE TOTAL. `sort` is deliberately outside `filterQuery`
+ * below, so changing the ordering re-pages the list without re-aggregating the
+ * book to redraw a figure that cannot have moved.
  *
  * THE BRANCH LIST IS FETCHED ONCE AND FAILS QUIETLY. It only labels a filter, and
  * a user may hold `journalEntries:read` without `branches:read` — a ledger that
@@ -178,6 +191,7 @@ export function useJournalEntries(): UseJournalEntriesResult {
     journalEntryService
       .list({
         ...filterQuery,
+        sort: settled.sort,
         page: settled.page,
         limit: PAGE_SIZE,
       })

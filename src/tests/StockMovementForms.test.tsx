@@ -1074,14 +1074,12 @@ describe("JournalPreview", () => {
       <JournalPreview
         lines={[
           {
-            accountId: "acc-hotel",
             accountCode: "1205",
             accountName: "Persediaan Hotel",
             debit: "160000.0000",
             credit: "0",
           },
           {
-            accountId: "acc-payable",
             accountCode: "2101",
             accountName: "Utang Supplier",
             debit: null,
@@ -1111,21 +1109,18 @@ describe("JournalPreview", () => {
       <JournalPreview
         lines={[
           {
-            accountId: "acc-hotel",
             accountCode: "1205",
             accountName: "Persediaan Hotel",
             debit: "160000.0000",
             credit: "0",
           },
           {
-            accountId: "acc-inventory",
             accountCode: "1201",
             accountName: "Persediaan Barang Dagangan",
             debit: "2000000.0000",
             credit: "0",
           },
           {
-            accountId: "acc-payable",
             accountCode: "2101",
             accountName: "Utang Supplier",
             debit: "0",

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ListFilter, Plus, RotateCcw } from "lucide-react";
+import { ListFilter, Plus } from "lucide-react";
 
 import {
   FilterBar,
@@ -18,7 +18,7 @@ import {
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
-import type { JournalSourceType } from "@/types/accounting";
+import type { JournalEntrySort, JournalSourceType } from "@/types/accounting";
 import type { Branch } from "@/types/api";
 
 import type { JournalEntriesQuery } from "../hooks/useJournalEntries";
@@ -42,18 +42,60 @@ const SOURCE_OPTIONS: FilterOption<JournalSourceType | "">[] = withAll(
   "Semua sumber",
 );
 
+/**
+ * The orderings the API accepts — JOURNAL_ENTRY_SORTS in journalEntry.model.js.
+ *
+ * TWO AXES, NOT ONE SPELLED TWICE. Terbaru/Terlama key on the TRANSACTION date,
+ * the date in the first column and the one somebody means by "entri terakhir".
+ * The number orderings walk the sequence entries were WRITTEN in, and on a ledger
+ * those two genuinely differ: an entry keyed in today for a payment taken last
+ * month sorts under last month by date and after everything else by number.
+ * Walking by number is how you check a series against itself — it is where a gap
+ * in the numbering becomes visible, which reading by date never shows.
+ *
+ * MONTH HEADERS SURVIVE ALL FOUR, which is what makes the number orderings safe
+ * on this screen: an entry number is drawn against the entry's own date
+ * ("JE-2026-07-0001" for a July transaction, whenever it was typed), so a month
+ * stays a contiguous run either way. See groupByMonth in JournalEntriesScreen.
+ *
+ * NOTHING BY AMOUNT. An entry's total is Σdebit over its lines, not a stored
+ * field, so there is no index to order it by — the server would have to sum the
+ * whole book to sort it, which on the collection that grows forever is the one
+ * ordering that could take this screen down.
+ */
+const SORTS: FilterOption<JournalEntrySort>[] = [
+  { value: "newest", label: "Tanggal terbaru" },
+  { value: "oldest", label: "Tanggal terlama" },
+  { value: "numberDesc", label: "Nomor jurnal Z–A" },
+  { value: "numberAsc", label: "Nomor jurnal A–Z" },
+];
+
 /** Everything the panel edits, as one draft. */
 type LedgerFilters = Pick<
   JournalEntriesQuery,
-  "sourceType" | "dateFrom" | "dateTo" | "branchId"
+  "sourceType" | "dateFrom" | "dateTo" | "branchId" | "sort"
 >;
 
-/** What Reset returns to. Every field here is genuinely "off" when empty. */
-const CLEARED: LedgerFilters = {
+/** The three narrowing fields, off. Every one of them is genuinely "off" empty. */
+const NO_FILTERS: Omit<LedgerFilters, "sort"> = {
   sourceType: "",
   dateFrom: "",
   dateTo: "",
   branchId: "",
+};
+
+/**
+ * What the panel's Reset returns to — the query's own defaults, not "empty".
+ *
+ * The ordering is included and it is the one field here that is not cleared but
+ * RESTORED: a list with no ordering is not a thing, so Reset puts it back to the
+ * API's default. That is the panel's Reset only. "Hapus semua" on the chip row
+ * passes `NO_FILTERS` instead, because the sort has no chip — a button that
+ * removes the things you can see should not also undo one you cannot.
+ */
+const CLEARED: LedgerFilters = {
+  ...NO_FILTERS,
+  sort: "newest",
 };
 
 /**
@@ -66,33 +108,24 @@ const CLEARED: LedgerFilters = {
  * arrangement `ChartOfAccountsToolbar` uses, and the two screens are read one
  * after the other by the same person.
  *
- * NO SORT FIELD, unlike the chart of accounts. GET /journal-entries orders by
- * transaction date newest-first and names no alternative, and §8 is explicit
- * that a picker only offers orderings the API has.
+ * URUTKAN IS A FIELD IN THE PANEL, not a control of its own (§8), and it leads
+ * the stack: it is the one field here that is always set, and the only one that
+ * changes what the top of the list is rather than what is in it. It is not in the
+ * trigger's `Filter (n)` count for the same reason — every list has an ordering,
+ * so counting it would put a standing number over an unnarrowed list and teach
+ * people to ignore the badge.
  *
  * SEARCH STAYS OUTSIDE THE PANEL because it applies live and debounced; burying a
  * field that needs no Terapkan behind one that does would make it feel broken.
- *
- * MUAT ULANG IS ON THE BAR, which `ChartOfAccountsToolbar` deliberately has no
- * equivalent of — and the difference is the point. A chart of accounts changes
- * only when somebody edits it, so a standing reload there would do nothing
- * visible almost every time. The ledger is written by every other module in the
- * product: POS, faktur, penerimaan barang and opname all post into it while this
- * screen is open, so "is there anything new" is a real question here.
  */
 export function JournalEntriesToolbar({
   query,
   branches,
-  loading,
   onChange,
-  onRefresh,
 }: {
   query: JournalEntriesQuery;
   branches: Branch[];
-  /** True while the ledger is in flight — the reload button says so. */
-  loading: boolean;
   onChange: (patch: Partial<JournalEntriesQuery>) => void;
-  onRefresh: () => void;
 }) {
   const chips: AppliedFilter[] = [];
 
@@ -133,7 +166,7 @@ export function JournalEntriesToolbar({
       searchClassName="min-w-[12rem] flex-1"
       actionsClassName="max-sm:w-full"
       chips={chips}
-      onClearAll={() => onChange(CLEARED)}
+      onClearAll={() => onChange(NO_FILTERS)}
       search={
         <FilterSearch
           value={query.search}
@@ -147,27 +180,20 @@ export function JournalEntriesToolbar({
         />
       }
       actions={
-        <>
-          <Button variant="secondary" onClick={onRefresh} disabled={loading}>
-            <RotateCcw className="size-4" />
-            {loading ? "Memuat…" : "Muat ulang"}
+        /*
+          Disabled rather than hidden. POST /api/journal-entries exists and
+          only ever produces a MANUAL entry — every other source posts
+          service-to-service — so the button belongs on this screen and
+          nowhere else. What is missing is the form: a manual entry is a set
+          of lines that has to balance before it can be sent, which is a
+          screen of its own rather than a dialog bolted onto a list.
+        */
+        <Can feature="journalEntries" action="create">
+          <Button disabled title="Form jurnal manual belum tersedia">
+            <Plus className="size-4" />
+            Jurnal manual
           </Button>
-
-          {/*
-            Disabled rather than hidden. POST /api/journal-entries exists and
-            only ever produces a MANUAL entry — every other source posts
-            service-to-service — so the button belongs on this screen and
-            nowhere else. What is missing is the form: a manual entry is a set
-            of lines that has to balance before it can be sent, which is a
-            screen of its own rather than a dialog bolted onto a list.
-          */}
-          <Can feature="journalEntries" action="create">
-            <Button disabled title="Form jurnal manual belum tersedia">
-              <Plus className="size-4" />
-              Jurnal manual
-            </Button>
-          </Can>
-        </>
+        </Can>
       }
     >
       <LedgerFilterPanel
@@ -176,6 +202,7 @@ export function JournalEntriesToolbar({
           dateFrom: query.dateFrom,
           dateTo: query.dateTo,
           branchId: query.branchId,
+          sort: query.sort,
         }}
         branches={branches}
         onApply={onChange}
@@ -185,7 +212,7 @@ export function JournalEntriesToolbar({
 }
 
 /**
- * Sumber, tanggal and cabang behind one button.
+ * Urutan, sumber, tanggal and cabang behind one button.
  *
  * The fields wait for Terapkan — that is what a panel is (§8) — so composing
  * "manual entries in July at Cabang Bogor" is one request rather than three.
@@ -194,7 +221,9 @@ export function JournalEntriesToolbar({
  *
  * THE COUNT ON THE TRIGGER IS NOT DECORATION. A panel hides its values, and a
  * hidden filter is one people forget is on and then read the wrong numbers from
- * — which on a ledger means quoting a total for a period they did not mean.
+ * — which on a ledger means quoting a total for a period they did not mean. The
+ * sort is excluded from it: it is never unset, so counting it would mean the
+ * badge never reads "Filter" and stopped telling anyone anything.
  */
 function LedgerFilterPanel({
   applied,
@@ -248,6 +277,18 @@ function LedgerFilterPanel({
           setOpen(false);
         }}
       >
+        {/* Sort leads the stack: it is the one field here that is always set,
+            and the only one that changes what the top of the list is rather
+            than what is in it. */}
+        <FilterSelect
+          layout="field"
+          label="Urutkan"
+          ariaLabel="Urutkan"
+          value={draft.sort}
+          options={SORTS}
+          unsetValue="newest"
+          onChange={(sort) => setDraft((prev) => ({ ...prev, sort }))}
+        />
         <FilterSelect
           layout="field"
           label="Sumber"
