@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { renderWithAuth } from "./helpers/renderWithAuth";
@@ -870,6 +870,247 @@ describe("ProductForm", () => {
         screen.queryByText(/Ada SKU varian yang kembar/),
       ).not.toBeInTheDocument();
       expect(create).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Ticking rows and filling a column in one go.
+     *
+     * What is pinned here is the RULE, not the widget: a bulk apply writes the
+     * ticked rows and NOTHING ELSE, an empty value clears rather than does
+     * nothing, and a tick cannot survive the combination it was put on. Twelve
+     * rows priced identically is the ordinary case this exists for; twelve rows
+     * where an eleventh was written by accident is the failure it must not have.
+     */
+    describe("bulk edit", () => {
+      /** Picks a column in the bulk strip and applies `value` to the ticks. */
+      async function applyBulk(
+        user: ReturnType<typeof userEvent.setup>,
+        column: string,
+        value: string,
+      ) {
+        await user.click(screen.getByLabelText("Kolom yang diubah massal"));
+        await user.click(await screen.findByRole("option", { name: column }));
+        if (value) await user.type(screen.getByLabelText("Nilai massal"), value);
+        await user.click(
+          screen.getByRole("button", { name: value ? "Terapkan" : "Kosongkan" }),
+        );
+      }
+
+      it("shows no strip at all until something is ticked", async () => {
+        const user = userEvent.setup();
+        mockCreate();
+
+        renderWithAuth(<ProductForm />);
+        await screen.findByLabelText(/Nama produk/);
+
+        await fillCommon(user, { name: "Royal Canin", sku: "RC" });
+        await switchToFamily(user);
+        await addAxisValue(user, "1kg");
+
+        expect(screen.queryByText(/varian dipilih/)).not.toBeInTheDocument();
+      });
+
+      it("writes one price onto every row the header box ticked", async () => {
+        const user = userEvent.setup();
+        const create = mockCreate();
+
+        renderWithAuth(<ProductForm />);
+        await screen.findByLabelText(/Nama produk/);
+
+        await fillCommon(user, { name: "Royal Canin", sku: "RC" });
+        await switchToFamily(user);
+        await addAxisValue(user, "1kg");
+        await addAxisValue(user, "3kg");
+        await addAxisValue(user, "10kg");
+
+        await user.click(screen.getByLabelText("Pilih semua varian"));
+        expect(screen.getByText("3 varian dipilih")).toBeInTheDocument();
+
+        await applyBulk(user, "Harga jual", "68000");
+
+        expect(screen.getByLabelText("Harga 1kg")).toHaveValue("68000");
+        expect(screen.getByLabelText("Harga 3kg")).toHaveValue("68000");
+        expect(screen.getByLabelText("Harga 10kg")).toHaveValue("68000");
+
+        await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+        await waitFor(() => expect(create).toHaveBeenCalled());
+        const variants = (
+          create.mock.calls[0][0] as { variants: Array<{ sellPrice: string }> }
+        ).variants;
+        expect(variants.map((variant) => variant.sellPrice)).toEqual([
+          "68000",
+          "68000",
+          "68000",
+        ]);
+      });
+
+      it("leaves an unticked row exactly as it was", async () => {
+        const user = userEvent.setup();
+        mockCreate();
+
+        renderWithAuth(<ProductForm />);
+        await screen.findByLabelText(/Nama produk/);
+
+        await fillCommon(user, { name: "Royal Canin", sku: "RC" });
+        await switchToFamily(user);
+        await addAxisValue(user, "1kg");
+        await addAxisValue(user, "3kg");
+
+        await user.click(screen.getByLabelText("Pilih 1kg"));
+        await applyBulk(user, "Harga jual", "68000");
+
+        expect(screen.getByLabelText("Harga 1kg")).toHaveValue("68000");
+        // The whole reason the tick exists. A bulk edit that reached the row
+        // nobody chose would be worse than no bulk edit at all.
+        expect(screen.getByLabelText("Harga 3kg")).toHaveValue("");
+      });
+
+      it("clears the column when the value is left blank", async () => {
+        const user = userEvent.setup();
+        mockCreate();
+
+        renderWithAuth(<ProductForm />);
+        await screen.findByLabelText(/Nama produk/);
+
+        await fillCommon(user, { name: "Royal Canin", sku: "RC" });
+        await switchToFamily(user);
+        await addAxisValue(user, "1kg");
+        await addAxisValue(user, "3kg");
+
+        await user.click(screen.getByLabelText("Pilih semua varian"));
+        await applyBulk(user, "Harga jual", "68000");
+        // The button renames itself rather than silently doing nothing — an
+        // empty box is how a column is emptied, and it has to say so first.
+        await applyBulk(user, "Harga jual", "");
+
+        expect(screen.getByLabelText("Harga 1kg")).toHaveValue("");
+        expect(screen.getByLabelText("Harga 3kg")).toHaveValue("");
+      });
+
+      it("reaches the per-row overrides without opening a single drawer", async () => {
+        const user = userEvent.setup();
+        const create = mockCreate();
+
+        renderWithAuth(<ProductForm />);
+        await screen.findByLabelText(/Nama produk/);
+
+        await fillCommon(user, { name: "Royal Canin", sku: "RC" });
+        await switchToFamily(user);
+        await addAxisValue(user, "1kg");
+        await addAxisValue(user, "3kg");
+        await user.type(screen.getByLabelText("Harga 1kg"), "68000");
+        await user.type(screen.getByLabelText("Harga 3kg"), "185000");
+
+        await user.click(screen.getByLabelText("Pilih semua varian"));
+        await applyBulk(user, "Berat", "1200");
+
+        await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+        await waitFor(() => expect(create).toHaveBeenCalled());
+        const variants = (
+          create.mock.calls[0][0] as {
+            variants: Array<{ shipping?: Record<string, string> }>;
+          }
+        ).variants;
+        // Only the leaf that was applied: the rest of the box still resolves
+        // from the parent, which is the same rule a typed override follows.
+        expect(variants[0].shipping).toEqual({ weight: "1200" });
+        expect(variants[1].shipping).toEqual({ weight: "1200" });
+      });
+
+      it("fills the opening balance from the same ticks", async () => {
+        const user = userEvent.setup();
+        const create = mockCreate();
+
+        renderWithAuth(<ProductForm />);
+        await screen.findByLabelText(/Nama produk/);
+
+        await fillCommon(user, { name: "Royal Canin", sku: "RC" });
+        await switchToFamily(user);
+        await addAxisValue(user, "1kg");
+        await addAxisValue(user, "3kg");
+        await user.type(screen.getByLabelText("Harga 1kg"), "68000");
+        await user.type(screen.getByLabelText("Harga 3kg"), "185000");
+
+        await user.click(screen.getByLabelText("Isi stok awal sekarang"));
+        await user.click(screen.getAllByLabelText("Pilih semua varian")[0]);
+
+        // The strip appears over BOTH tables from the one set of ticks, so the
+        // second copy — the one over the opening table — is scoped into rather
+        // than reached by index across the whole screen.
+        const openingStrip = screen.getAllByText("2 varian dipilih")[1]
+          .parentElement as HTMLElement;
+        await user.click(
+          within(openingStrip).getByLabelText("Kolom yang diubah massal"),
+        );
+        await user.click(await screen.findByRole("option", { name: "Stok awal" }));
+        await user.type(within(openingStrip).getByLabelText("Nilai massal"), "6");
+        await user.click(
+          within(openingStrip).getByRole("button", { name: "Terapkan" }),
+        );
+
+        expect(screen.getByLabelText("Stok awal 1kg")).toHaveValue("6");
+        expect(screen.getByLabelText("Stok awal 3kg")).toHaveValue("6");
+
+        await user.type(screen.getByLabelText("Harga beli 1kg"), "44000");
+        await user.type(screen.getByLabelText("Harga beli 3kg"), "120000");
+        await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+        await waitFor(() => expect(create).toHaveBeenCalled());
+        const variants = (
+          create.mock.calls[0][0] as {
+            variants: Array<{ openingStock?: { qty: string } }>;
+          }
+        ).variants;
+        expect(variants[0].openingStock).toMatchObject({ qty: "6" });
+        expect(variants[1].openingStock).toMatchObject({ qty: "6" });
+      });
+
+      it("forgets a tick whose combination was deleted", async () => {
+        const user = userEvent.setup();
+        mockCreate();
+
+        renderWithAuth(<ProductForm />);
+        await screen.findByLabelText(/Nama produk/);
+
+        await fillCommon(user, { name: "Royal Canin", sku: "RC" });
+        await switchToFamily(user);
+        await addAxisValue(user, "1kg");
+        await addAxisValue(user, "3kg");
+
+        await user.click(screen.getByLabelText("Pilih semua varian"));
+        expect(screen.getByText("2 varian dipilih")).toBeInTheDocument();
+
+        await user.click(screen.getByLabelText("Hapus 3kg"));
+
+        // Not "2 dipilih" over a table showing one row — and re-adding 3kg must
+        // not bring its old tick back with it.
+        expect(screen.getByText("1 varian dipilih")).toBeInTheDocument();
+        await addAxisValue(user, "3kg");
+        expect(screen.getByText("1 varian dipilih")).toBeInTheDocument();
+      });
+
+      it("offers no SKU and no barcode — both must stay unique", async () => {
+        const user = userEvent.setup();
+        mockCreate();
+
+        renderWithAuth(<ProductForm />);
+        await screen.findByLabelText(/Nama produk/);
+
+        await fillCommon(user, { name: "Royal Canin", sku: "RC" });
+        await switchToFamily(user);
+        await addAxisValue(user, "1kg");
+        await user.click(screen.getByLabelText("Pilih semua varian"));
+
+        await user.click(screen.getByLabelText("Kolom yang diubah massal"));
+        const columns = (await screen.findAllByRole("option")).map(
+          (option) => option.textContent,
+        );
+        // Stamping one code onto twelve rows is eleven rows the API refuses,
+        // discovered after the value was typed.
+        expect(columns).not.toContain("SKU");
+        expect(columns).not.toContain("Barcode");
+        expect(columns).toContain("Harga jual");
+      });
     });
   });
 

@@ -172,6 +172,163 @@ function VariantImageCell({
   );
 }
 
+/**
+ * The columns a bulk edit is allowed to write — and NOTHING else.
+ *
+ * SKU and barcode are missing on purpose. Both have to be unique per variant,
+ * so "apply to all" would stamp twelve identical codes and the API would refuse
+ * eleven of them — after the user had already picked the rows and typed the
+ * value. A field that cannot be applied in bulk should not be offered in the
+ * bulk control; the row inputs remain the way to set them.
+ */
+type BulkField =
+  | "sellPrice"
+  | "minStock"
+  | "weight"
+  | "weightUnit"
+  | "length"
+  | "width"
+  | "height"
+  | "openingQty"
+  | "openingCost";
+
+interface BulkFieldOption {
+  field: BulkField;
+  label: string;
+  placeholder?: string;
+}
+
+/** The matrix columns, plus the inherited shipping leaves behind the expander. */
+const MATRIX_BULK_FIELDS: BulkFieldOption[] = [
+  { field: "sellPrice", label: "Harga jual", placeholder: "85000" },
+  { field: "minStock", label: "Min stok", placeholder: "0" },
+  { field: "weight", label: "Berat", placeholder: "ikut induk" },
+  { field: "weightUnit", label: "Satuan berat" },
+  { field: "length", label: "Panjang", placeholder: "ikut induk" },
+  { field: "width", label: "Lebar", placeholder: "ikut induk" },
+  { field: "height", label: "Tinggi", placeholder: "ikut induk" },
+];
+
+/** The opening-stock table's own two columns. */
+const OPENING_BULK_FIELDS: BulkFieldOption[] = [
+  { field: "openingQty", label: "Stok awal", placeholder: "0" },
+  { field: "openingCost", label: "Harga beli / unit", placeholder: "44000" },
+];
+
+/**
+ * The bulk-edit strip that appears above a variant table once rows are ticked.
+ *
+ * ONE FIELD AT A TIME rather than a miniature copy of the row. What a shop
+ * actually does is "all twelve are 85.000", and a strip holding seven inputs
+ * invites filling two of them and then wondering which one applied — the same
+ * ambiguity a spreadsheet paste does not have.
+ *
+ * AN EMPTY VALUE IS NOT A NO-OP: it clears the column on the ticked rows, which
+ * on the inherited fields (berat, dimensi) is precisely how a row is handed back
+ * to its parent. So the button SAYS WHICH of the two is about to happen —
+ * "Terapkan" or "Kosongkan" — because a blank box must never be able to wipe
+ * twelve prices while claiming to apply something.
+ *
+ * The value is dropped after each apply. Leaving it in the box is what makes a
+ * second, unnoticed Enter on a different selection write a number that was
+ * meant for the first one.
+ */
+function VariantBulkBar({
+  count,
+  fields,
+  onApply,
+  onClear,
+}: {
+  count: number;
+  fields: BulkFieldOption[];
+  onApply: (field: BulkField, value: string) => void;
+  onClear: () => void;
+}) {
+  const [field, setField] = useState<BulkField>(fields[0].field);
+  const [value, setValue] = useState("");
+
+  const active = fields.find((option) => option.field === field) ?? fields[0];
+  const clearing = value.trim() === "";
+
+  function apply() {
+    onApply(active.field, value.trim());
+    setValue("");
+  }
+
+  return (
+    <div className="mb-3 flex flex-wrap items-end gap-2 rounded-lg border border-primary/40 bg-primary/5 p-3">
+      <p className="mr-1 py-2 text-sm font-semibold">
+        {count} varian dipilih
+      </p>
+
+      <label className="flex flex-col gap-1 text-xs">
+        <span className="text-muted">Kolom</span>
+        <Select
+          value={field}
+          onValueChange={(next) => {
+            setField(next as BulkField);
+            // Cleared with the column, because "gr" left over from Satuan berat
+            // would otherwise be sitting in the box when the field becomes
+            // Harga jual — one Enter away from twelve unusable prices.
+            setValue("");
+          }}
+        >
+          <SelectTrigger aria-label="Kolom yang diubah massal" className="w-44">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {fields.map((option) => (
+              <SelectItem key={option.field} value={option.field}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </label>
+
+      <label className="flex flex-col gap-1 text-xs">
+        <span className="text-muted">Nilai</span>
+        {active.field === "weightUnit" ? (
+          <Select value={value} onValueChange={setValue}>
+            <SelectTrigger aria-label="Nilai massal" className="w-44">
+              <SelectValue placeholder="ikut induk" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="gr">gram</SelectItem>
+              <SelectItem value="kg">kg</SelectItem>
+            </SelectContent>
+          </Select>
+        ) : (
+          <Input
+            aria-label="Nilai massal"
+            inputMode="decimal"
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+            placeholder={active.placeholder ?? "kosongkan untuk menghapus"}
+            onKeyDown={(event) => {
+              // Enter applies rather than submitting the product — a form-wide
+              // save triggered from inside a bulk control would save the rows
+              // the user was still in the middle of editing.
+              if (event.key === "Enter") {
+                event.preventDefault();
+                apply();
+              }
+            }}
+            className="w-44 tabular-nums"
+          />
+        )}
+      </label>
+
+      <Button type="button" onClick={apply}>
+        {clearing ? "Kosongkan" : "Terapkan"}
+      </Button>
+      <Button type="button" variant="ghost" onClick={onClear}>
+        Batal pilih
+      </Button>
+    </div>
+  );
+}
+
 type Mode = "standalone" | "variants" | "bundle";
 
 interface VariantRow {
@@ -491,6 +648,20 @@ function ProductFormFields({
    */
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
+  /**
+   * Which variant rows are ticked for a bulk edit, by combination key.
+   *
+   * Separate from `expandedRows` on purpose: a row can be ticked without being
+   * opened, which is the whole point — setting the weight on twelve rows should
+   * not mean opening twelve drawers first.
+   *
+   * ONE SELECTION FOR THE WHOLE FORM, shared by the matrix and the opening-stock
+   * table below it. Both tables list the same twelve combinations, so a second
+   * independent set would mean ticking "semua yang 3kg" twice and would let the
+   * two tables disagree about what "dipilih" refers to.
+   */
+  const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
+
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   /** Per-row API refusals, keyed by combination — see applyApiError. */
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
@@ -556,6 +727,26 @@ function ProductFormFields({
       };
     });
   }, [axes, sku, name, existingVariants, variantOverrides]);
+
+  /**
+   * The ticked rows that are actually on screen, in table order.
+   *
+   * Intersected with `variantRows` rather than read straight off the set: the
+   * set is pruned when the axes change, but a stale key surviving any other
+   * route must still never be counted — "3 varian dipilih" over a table showing
+   * two ticks is the kind of number that stops a user trusting the bulk bar at
+   * all.
+   */
+  const selectedKeys = useMemo(
+    () =>
+      variantRows
+        .map((row) => row.combo.join("|"))
+        .filter((key) => selectedRows.has(key)),
+    [variantRows, selectedRows],
+  );
+
+  const allSelected =
+    variantRows.length > 0 && selectedKeys.length === variantRows.length;
 
   /**
    * Whether this save can open a stock balance at all.
@@ -671,6 +862,78 @@ function ProductFormFields({
       ...prev,
       [key]: { ...prev[key], [field]: value },
     }));
+  }
+
+  /**
+   * Ticks or unticks one row.
+   */
+  function toggleRowSelected(key: string) {
+    setSelectedRows((previous) => {
+      const next = new Set(previous);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  /**
+   * The header box: all on, or all off.
+   *
+   * Partly-ticked counts as "not all", so the box clears to empty and the next
+   * click selects everything — the behaviour of every list that has ever had a
+   * select-all, and the reason the indicator shows a dash rather than a tick
+   * while it is partial.
+   */
+  function toggleAllSelected() {
+    setSelectedRows(
+      allSelected
+        ? new Set()
+        : new Set(variantRows.map((row) => row.combo.join("|"))),
+    );
+  }
+
+  /**
+   * Writes one value onto every ticked row, in ONE state update.
+   *
+   * One update rather than a loop of setVariantField calls, because each of
+   * those would rebuild `variantOverrides` from a stale copy and only the last
+   * row would survive.
+   *
+   * Only rows the table is CURRENTLY showing are written. A key can outlive its
+   * row — untick nothing, delete an axis value, and the combination is gone
+   * while the tick is still in the set — and reviving that override on a
+   * combination the user can no longer see is how a price appears on a variant
+   * nobody edited.
+   */
+  function applyToSelected(field: BulkField, value: string) {
+    if (selectedKeys.length === 0) return;
+
+    setVariantOverrides((previous) => {
+      const next = { ...previous };
+      for (const key of selectedKeys) {
+        next[key] = { ...next[key], [field]: value };
+      }
+      return next;
+    });
+  }
+
+  /**
+   * Axes changed — drop ticks whose combination no longer exists.
+   *
+   * Pruned HERE rather than tolerated at apply time, so that removing "3kg" and
+   * adding it back does not bring its old tick with it. `variantCombinations`
+   * is the same function the table is built from, so what survives is exactly
+   * what will be on screen.
+   */
+  function handleAxesChange(next: VariantAxis[]) {
+    setAxes(next);
+
+    const alive = new Set(
+      variantCombinations(next).map((combo) => combo.join("|")),
+    );
+    setSelectedRows(
+      (previous) => new Set([...previous].filter((key) => alive.has(key))),
+    );
   }
 
   function validate(): boolean {
@@ -1802,7 +2065,7 @@ function ProductFormFields({
         <>
           <VariantAxisEditor
             axes={axes}
-            onChange={setAxes}
+            onChange={handleAxesChange}
             lockedValues={lockedValues}
           />
           {fieldErrors.axes && (
@@ -1834,9 +2097,39 @@ function ProductFormFields({
               </div>
             ) : (
               <div className="overflow-x-auto">
+                {/* Only once something is ticked. An always-present strip would
+                    be a control that does nothing on the ninety per cent of
+                    visits that never bulk-edit, sitting between the axes and
+                    the table they produce. */}
+                {selectedKeys.length > 0 && (
+                  <VariantBulkBar
+                    count={selectedKeys.length}
+                    fields={MATRIX_BULK_FIELDS}
+                    onApply={applyToSelected}
+                    onClear={() => setSelectedRows(new Set())}
+                  />
+                )}
+
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border text-[10px] tracking-widest text-muted uppercase">
+                      <th className="w-8 px-2 py-2">
+                        <Checkbox
+                          aria-label={
+                            allSelected
+                              ? "Batal pilih semua varian"
+                              : "Pilih semua varian"
+                          }
+                          checked={
+                            allSelected
+                              ? true
+                              : selectedKeys.length > 0
+                                ? "indeterminate"
+                                : false
+                          }
+                          onCheckedChange={toggleAllSelected}
+                        />
+                      </th>
                       <th className="px-2 py-2 text-left font-medium">
                         Varian
                       </th>
@@ -1868,6 +2161,13 @@ function ProductFormFields({
                       return (
                         <Fragment key={key}>
                         <tr className="border-b border-border/60">
+                          <td className="px-2 py-2">
+                            <Checkbox
+                              aria-label={`Pilih ${row.combo.join(" ")}`}
+                              checked={selectedRows.has(key)}
+                              onCheckedChange={() => toggleRowSelected(key)}
+                            />
+                          </td>
                           <td className="px-2 py-2 font-medium">
                             <div className="flex items-center gap-2">
                               {/* The image cell — one click opens the picker for
@@ -1995,7 +2295,10 @@ function ProductFormFields({
                              heavier than the 3 kg" — and a modal hides exactly
                              the comparison they opened it to make. */
                           <tr className="border-b border-border/60 bg-accent/30">
-                            <td colSpan={6} className="px-2 py-3">
+                            {/* Seven now that a tick column leads the row —
+                                a short colSpan leaves the drawer boxed under
+                                part of the table with a stray empty cell. */}
+                            <td colSpan={7} className="px-2 py-3">
                               <p className="mb-2 text-xs text-muted">
                                 Kosongkan untuk mengikuti induk. Angka di
                                 placeholder adalah nilai induk.
@@ -2316,9 +2619,38 @@ function ProductFormFields({
                   </p>
                 ) : (
                   <div className="overflow-x-auto">
+                    {/* The SAME ticks as the matrix above, so "semua yang 3kg"
+                        is chosen once and both its price and its opening stock
+                        can be filled from it. */}
+                    {selectedKeys.length > 0 && (
+                      <VariantBulkBar
+                        count={selectedKeys.length}
+                        fields={OPENING_BULK_FIELDS}
+                        onApply={applyToSelected}
+                        onClear={() => setSelectedRows(new Set())}
+                      />
+                    )}
+
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-border text-[10px] tracking-widest text-muted uppercase">
+                          <th className="w-8 px-2 py-2">
+                            <Checkbox
+                              aria-label={
+                                allSelected
+                                  ? "Batal pilih semua varian"
+                                  : "Pilih semua varian"
+                              }
+                              checked={
+                                allSelected
+                                  ? true
+                                  : selectedKeys.length > 0
+                                    ? "indeterminate"
+                                    : false
+                              }
+                              onCheckedChange={toggleAllSelected}
+                            />
+                          </th>
                           <th className="px-2 py-2 text-left font-medium">
                             Varian
                           </th>
@@ -2336,6 +2668,15 @@ function ProductFormFields({
                             key={row.combo.join("|")}
                             className="border-b border-border/60"
                           >
+                            <td className="px-2 py-2">
+                              <Checkbox
+                                aria-label={`Pilih ${row.combo.join(" ")}`}
+                                checked={selectedRows.has(row.combo.join("|"))}
+                                onCheckedChange={() =>
+                                  toggleRowSelected(row.combo.join("|"))
+                                }
+                              />
+                            </td>
                             <td className="px-2 py-2 font-medium">
                               {row.combo.join(" / ")}
                             </td>
