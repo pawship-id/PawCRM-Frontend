@@ -479,6 +479,43 @@ describe("ProductForm", () => {
       );
     });
 
+    it("asks for what is MISSING before what is merely wrong", async () => {
+      // The same ladder every mode is ranked on: an empty required field first,
+      // a badly-formed one after. A brand that is 200 characters long is a real
+      // refusal, but it is not why the save cannot happen.
+      const user = userEvent.setup();
+      const create = mockCreate();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await user.type(screen.getByLabelText(/Nama produk/), "Shampoo");
+      await user.type(screen.getByLabelText(/^SKU/), "SHAMPOO");
+      await user.type(screen.getByLabelText(/Merk/), "x".repeat(121));
+      // Harga jual left empty.
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      await waitFor(() =>
+        expect(toast).toHaveBeenLastCalledWith(
+          expect.objectContaining({ title: "Harga jual wajib diisi." }),
+        ),
+      );
+      // Both are marked and captioned; only the order of the telling differs.
+      expect(screen.getByLabelText(/Merk/)).toHaveAccessibleDescription(
+        "Maksimal 120 karakter.",
+      );
+
+      await user.type(screen.getByLabelText(/Harga jual/), "45000");
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      await waitFor(() =>
+        expect(toast).toHaveBeenLastCalledWith(
+          expect.objectContaining({ title: "Maksimal 120 karakter." }),
+        ),
+      );
+      expect(create).not.toHaveBeenCalled();
+    });
+
     it("binds a duplicate-SKU conflict to the SKU field", async () => {
       const user = userEvent.setup();
       jest.spyOn(productService, "create").mockRejectedValue(
@@ -2036,6 +2073,39 @@ describe("ProductForm", () => {
 
       const weight = screen.getByLabelText(/^Berat/) as HTMLInputElement;
       expect(weight.value).toBe("");
+    });
+
+    it("refuses one thing at a time here too, missing before malformed", async () => {
+      // A bundle with no components is the same kind of unfinished as a
+      // standalone with no name — ranked by what the sentence asks for, not by
+      // which card it came from.
+      const user = userEvent.setup();
+      const create = mockCreate();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await user.click(screen.getByRole("button", { name: "Bundle" }));
+      await fillCommon(user, { name: "Paket Grooming", sku: "PKT-1" });
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      // Components first: it is checked before the price, and both are missing.
+      await waitFor(() =>
+        expect(toast).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            icon: "error",
+            title: "Bundle butuh minimal satu komponen.",
+          }),
+        ),
+      );
+      // Said in red where it belongs, exactly as the toast said it.
+      expect(
+        screen.getByText("Bundle butuh minimal satu komponen."),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText(/Harga bundle/)).toHaveAccessibleDescription(
+        "Harga bundle wajib diisi.",
+      );
+      expect(create).not.toHaveBeenCalled();
     });
 
     it("still requires a SKU — a bundle is sold, so it has a code", async () => {

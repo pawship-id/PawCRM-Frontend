@@ -407,7 +407,7 @@ interface SpokenError {
 /**
  * Which refusal is said first — LOWER GOES FIRST.
  *
- *   0  the field is EMPTY and the save cannot happen without it;
+ *   0  something REQUIRED IS MISSING and the save cannot happen without it;
  *   1  something is filled in but wrong — a price that is not a number;
  *   2  what is filled in is fine on its own and clashes with something else.
  *
@@ -415,14 +415,24 @@ interface SpokenError {
  * somebody their barcode is a duplicate while a required price is still blank
  * asks them to fix the smaller problem first, and the save fails again anyway.
  *
+ * THE SAME LADDER IN ALL THREE MODES. A bundle with no components and a blank
+ * price is the same kind of unfinished as a standalone with no name, so it is
+ * ranked by what the sentence ASKS FOR rather than by which card it came from.
+ *
  * READ OFF THE COPY, which is safe only because every one of these sentences is
- * written in this file — "wajib diisi" for a blank, "kembar"/"sudah dipakai"
- * for a clash. Reword one of them and it drops to rank 1: still ordered, just
- * less sharply. The ordering test is what catches that.
+ * written in this file. The vocabulary this form uses for "missing" is wider
+ * than one phrase — "wajib", "butuh minimal", "isi minimal", "belum punya",
+ * "belum ada", "pilih …" — and all of it has to count, or a bundle missing its
+ * components would queue behind a brand name that is merely too long. Reword
+ * one into something outside this list and it drops to rank 1: still ordered,
+ * just less sharply. The ordering tests are what catch that.
  */
+const MISSING_PHRASE = /wajib|butuh minimal|isi minimal|belum punya|belum ada|^pilih /i;
+const CLASH_PHRASE = /kembar|sudah dipakai|lebih dari sekali/i;
+
 function rankOf(message: string): number {
-  if (/wajib diisi/i.test(message)) return 0;
-  if (/kembar|sudah dipakai|lebih dari sekali/i.test(message)) return 2;
+  if (MISSING_PHRASE.test(message)) return 0;
+  if (CLASH_PHRASE.test(message)) return 2;
   return 1;
 }
 
