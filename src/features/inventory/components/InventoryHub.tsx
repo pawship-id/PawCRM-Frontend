@@ -1,9 +1,15 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 
-import { Alert, Spinner } from "@/components";
+import {
+  Alert,
+  FilterSelect,
+  Spinner,
+  namedOptions,
+  withAll,
+} from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { usePermissions } from "@/features/permissions";
 import type { Action, Feature } from "@/features/permissions";
@@ -11,6 +17,7 @@ import { formatMoney, formatQty, multiplyDecimals } from "@/utils/decimal";
 
 import { useExpiringAlert } from "../hooks/useExpiringAlert";
 import { useLowStockAlert } from "../hooks/useLowStockAlert";
+import { useWarehouseOptions } from "../hooks/useWarehouseOptions";
 import { ExpiryBadge } from "./ExpiryBadge";
 
 /**
@@ -42,6 +49,23 @@ import { ExpiryBadge } from "./ExpiryBadge";
  * not requested at all. The seeded Staff role holds both, but a narrower custom
  * role need not — and firing the request anyway would paint a 403 across the
  * landing page instead of simply not offering the section.
+ *
+ * ONE WAREHOUSE FILTER SITS ABOVE BOTH LISTS, because the question this page
+ * answers is asked from somewhere: a person standing in one shop is not asking
+ * what the warehouse across town needs. It stands alone rather than behind a
+ * Filter button, so it applies on click and shows its own value (§8) — one
+ * field is not a panel.
+ *
+ * IT NARROWS THE TWO LISTS AND NOTHING ELSE. The cards below are navigation,
+ * and a screen you have not opened yet has no warehouse. Each destination
+ * carries its own filter where the choice means something there.
+ *
+ * THE TWO LISTS DO NOT NARROW ALIKE, and the low-stock one says so. A lot is
+ * physically in one warehouse, so filtering the expiry list only changes which
+ * rows are counted. `minStock` is a per-PRODUCT threshold, so filtering the
+ * restock list compares one location's shelf against the whole product's
+ * minimum — the right question for one shop, and a misreading waiting to happen
+ * if nobody says which comparison is on screen.
  */
 const ACTIONS: Array<{
   href: string;
@@ -115,22 +139,70 @@ export function InventoryHub() {
   const mayReadProducts = can("products", "read");
   const mayReadBatches = can("productBatches", "read");
 
-  const lowStock = useLowStockAlert(mayReadProducts);
-  const expiring = useExpiringAlert(mayReadBatches);
+  /** Empty = every gudang, the repo's unset convention for a filter. */
+  const [warehouseId, setWarehouseId] = useState("");
+
+  // Only fetched where there is a list for it to narrow — see the hook.
+  const warehouses = useWarehouseOptions(mayReadProducts || mayReadBatches);
+  const lowStock = useLowStockAlert(mayReadProducts, warehouseId);
+  const expiring = useExpiringAlert(mayReadBatches, warehouseId);
 
   const actions = ACTIONS.filter((action) =>
     can(action.feature, action.action),
   );
 
+  /**
+   * The chosen warehouse's name, for the captions.
+   *
+   * Undefined while the lookup is still in flight, and also for an id the list
+   * does not contain — the trigger keeps showing the raw id in that case
+   * (FilterSelect does this deliberately), and a caption inventing a name for it
+   * would be the one place on screen claiming the filter is something else.
+   */
+  const warehouseName = warehouses.warehouses.find(
+    (warehouse) => warehouse._id === warehouseId,
+  )?.name;
+
+  /** " di Gudang Pusat", or nothing at all. Appended, never sentence-leading. */
+  const scope = warehouseName ? ` di ${warehouseName}` : "";
+
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-extrabold text-foreground">Inventory</h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted">
-          Stok dihitung dari buku besar pergerakan — bukan angka yang disimpan
-          terpisah. Setiap saldo di layar ini bisa dihitung ulang dari nol.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-extrabold text-foreground">Inventory</h1>
+          <p className="mt-1 max-w-2xl text-sm text-muted">
+            Stok dihitung dari buku besar pergerakan — bukan angka yang disimpan
+            terpisah. Setiap saldo di layar ini bisa dihitung ulang dari nol.
+          </p>
+        </div>
+
+        {/* Hidden outright where there is no list to narrow — the cards below
+            are links, and a filter that changes nothing on screen is worse than
+            no filter. Also hidden until the lookup answers: an empty dropdown
+            that fills in a moment later is a control people click twice. */}
+        {warehouses.warehouses.length > 0 && (
+          <FilterSelect
+            label="Gudang"
+            ariaLabel="Filter gudang"
+            value={warehouseId}
+            options={withAll(
+              namedOptions(warehouses.warehouses, (warehouse) =>
+                warehouse.isActive
+                  ? warehouse.name
+                  : `${warehouse.name} (nonaktif)`,
+              ),
+              "Semua gudang",
+            )}
+            align="end"
+            onChange={setWarehouseId}
+          />
+        )}
       </div>
+
+      {/* Separate from each list's own error: the picker can fail to load while
+          both alerts render perfectly well, unfiltered. */}
+      {warehouses.error && <Alert variant="error">{warehouses.error}</Alert>}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {actions.map((action) => (
@@ -150,12 +222,23 @@ export function InventoryHub() {
       <div className="grid gap-6 lg:grid-cols-2">
         <AlertSection
           title="Perlu restock"
+          caption={warehouseName}
           total={lowStock.total}
           shown={lowStock.items.length}
           loading={lowStock.loading}
           error={lowStock.error}
           allowed={mayReadProducts}
-          empty="Semua stok di atas batas minimum."
+          // The one thing a reader cannot work out from the rows: the number
+          // after the slash is the PRODUCT's minimum, while the number before
+          // it is now one gudang's shelf. Said only while the filter is on —
+          // unfiltered, both sides describe the same thing and the line would
+          // be a standing sentence people stop reading.
+          note={
+            warehouseId
+              ? "Batas minimum berlaku per produk, bukan per gudang — angka di layar ini membandingkan stok satu gudang dengan batas produk."
+              : undefined
+          }
+          empty={`Semua stok${scope} di atas batas minimum.`}
           moreLabel="produk lain juga di bawah batas minimum"
         >
           {lowStock.items.map((product) => (
@@ -183,13 +266,15 @@ export function InventoryHub() {
 
         <AlertSection
           title="Mendekati kedaluwarsa"
-          caption={`dalam ${expiring.withinDays} hari`}
+          caption={`dalam ${expiring.withinDays} hari${
+            warehouseName ? ` · ${warehouseName}` : ""
+          }`}
           total={expiring.total}
           shown={expiring.items.length}
           loading={expiring.loading}
           error={expiring.error}
           allowed={mayReadBatches}
-          empty={`Tidak ada lot yang kedaluwarsa dalam ${expiring.withinDays} hari.`}
+          empty={`Tidak ada lot${scope} yang kedaluwarsa dalam ${expiring.withinDays} hari.`}
           moreLabel="batch lain juga di dalam rentang ini"
           seeAll={{
             href: "/dashboard/inventory/batches",
@@ -239,10 +324,16 @@ export function InventoryHub() {
  * A ZERO IS NEVER SHOWN WHILE THE ANSWER IS IN FLIGHT, for the same reason the
  * batch tiles do not: "0 perlu restock" that changes its mind a second later has
  * already told somebody there was nothing to do.
+ *
+ * `note` SITS ABOVE EVERY STATE, including the empty and error ones. It explains
+ * what the numbers in this section MEAN, and "0 produk perlu restock" under a
+ * filter that changed the comparison needs that sentence exactly as much as a
+ * full list does.
  */
 function AlertSection({
   title,
   caption,
+  note,
   total,
   shown,
   loading,
@@ -255,6 +346,8 @@ function AlertSection({
 }: {
   title: string;
   caption?: string;
+  /** A line under the header explaining how to read the figures. */
+  note?: ReactNode;
   total: number;
   shown: number;
   loading: boolean;
@@ -277,6 +370,12 @@ function AlertSection({
           {allowed ? (loading ? "…" : total) : "—"}
         </Badge>
       </header>
+
+      {note && (
+        <p className="border-b border-border px-5 py-2.5 text-xs text-muted">
+          {note}
+        </p>
+      )}
 
       {!allowed ? (
         <p className="px-5 py-10 text-center text-sm text-muted">

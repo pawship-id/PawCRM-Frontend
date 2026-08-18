@@ -26,15 +26,26 @@ interface UseLowStockAlertResult {
  * `pagination.total` covers every low product whatever the page size, so asking
  * for five costs one small query and still reports the true figure.
  *
- * THE THRESHOLD IS PER PRODUCT, NOT PER WAREHOUSE, and this hook does not filter
- * by warehouse for that reason. `minStock` lives on the catalogue row, so
- * comparing one warehouse's shelf against it would report a product as low
- * whenever it is merely stored somewhere else — the prototype this replaced did
- * exactly that, once per warehouse, and inflated the list.
+ * THE THRESHOLD IS PER PRODUCT, NOT PER WAREHOUSE, which is why `warehouseId`
+ * is an ASKED-FOR narrowing and never the default. Unfiltered, the API sums a
+ * product's stock across every location and compares that against `minStock` —
+ * the only comparison the stored threshold actually describes. Passing a
+ * warehouse compares that ONE location's shelf against the same product-wide
+ * number, which answers a different and narrower question ("what does this shop
+ * need to pull in") and reads a product as low whenever it is merely stored
+ * elsewhere. That is a legitimate question for somebody standing in one shop;
+ * it was a bug when the prototype did it silently, for every warehouse at once,
+ * and listed the same product once per location. The hub therefore states which
+ * warehouse is being asked about, and says what the threshold means while a
+ * filter is on.
  */
 const LIMIT = 5;
 
-export function useLowStockAlert(enabled: boolean): UseLowStockAlertResult {
+export function useLowStockAlert(
+  enabled: boolean,
+  /** Empty means every warehouse — see the note on the threshold above. */
+  warehouseId = "",
+): UseLowStockAlertResult {
   const [items, setItems] = useState<LowStockProduct[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(enabled);
@@ -51,7 +62,9 @@ export function useLowStockAlert(enabled: boolean): UseLowStockAlertResult {
     setError(null);
 
     productService
-      .lowStock({ limit: LIMIT })
+      // `|| undefined` so "no warehouse" drops out of the query string rather
+      // than reaching the API as an empty string it would reject as a 400.
+      .lowStock({ limit: LIMIT, warehouseId: warehouseId || undefined })
       .then((result) => {
         if (!active) return;
         setItems(result.items);
@@ -74,7 +87,7 @@ export function useLowStockAlert(enabled: boolean): UseLowStockAlertResult {
     return () => {
       active = false;
     };
-  }, [enabled]);
+  }, [enabled, warehouseId]);
 
   return { items, total, loading, error };
 }

@@ -30,11 +30,20 @@ interface UseExpiringAlertResult {
  * "is there anything to do today" answer. The full report — every horizon, the
  * exhausted lots, the value at risk — is one click away at
  * /dashboard/inventory/batches, where there is room to read it properly.
+ *
+ * `warehouseId` NARROWS CLEANLY HERE, unlike on the low-stock list: a lot is
+ * physically in one warehouse and expires on one date, so asking about a single
+ * location changes which rows are counted and nothing about what the answer
+ * means. No caveat is owed on this list.
  */
 const LIMIT = 5;
 const WITHIN_DAYS = 30;
 
-export function useExpiringAlert(enabled: boolean): UseExpiringAlertResult {
+export function useExpiringAlert(
+  enabled: boolean,
+  /** Empty means every warehouse. */
+  warehouseId = "",
+): UseExpiringAlertResult {
   const [items, setItems] = useState<ProductBatch[]>([]);
   const [total, setTotal] = useState(0);
   const [withinDays, setWithinDays] = useState(WITHIN_DAYS);
@@ -51,7 +60,13 @@ export function useExpiringAlert(enabled: boolean): UseExpiringAlertResult {
     setError(null);
 
     productBatchService
-      .expiring({ limit: LIMIT, withinDays: WITHIN_DAYS })
+      // `|| undefined` keeps "no warehouse" out of the query string entirely;
+      // an empty `warehouseId` is a 400 at the API's validation layer.
+      .expiring({
+        limit: LIMIT,
+        withinDays: WITHIN_DAYS,
+        warehouseId: warehouseId || undefined,
+      })
       .then((result) => {
         if (!active) return;
         setItems(result.items);
@@ -75,7 +90,7 @@ export function useExpiringAlert(enabled: boolean): UseExpiringAlertResult {
     return () => {
       active = false;
     };
-  }, [enabled]);
+  }, [enabled, warehouseId]);
 
   return { items, total, withinDays, loading, error };
 }
