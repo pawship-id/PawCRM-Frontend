@@ -1,15 +1,16 @@
 import { apiClient } from "./api-client";
-import type { ChartOfAccount } from "@/types/accounting";
+import type { ChartOfAccount, ChartOfAccountNode } from "@/types/accounting";
 import type { PageResult } from "@/types/api";
 
 /**
  * Chart-of-accounts calls against /api/chart-of-accounts.
  *
- * THE FIRST REAL CONSUMER OF THIS ENDPOINT. The accounting screens are still
- * prototypes running on `features/accounting/data/dummy.ts`, so nothing else has
- * ever exercised the route — expect the shapes in `types/accounting.ts` to need
- * correcting the first time something here disagrees with the API rather than
- * assuming the types are right.
+ * THE FIRST REAL CONSUMER OF THIS ENDPOINT, and no longer the only one — the
+ * COA screen, the finance dashboard and the journal-entry detail all read the
+ * tree now, the last two only to resolve account ids into names. The shapes in
+ * `types/accounting.ts` are written against the live API rather than guessed,
+ * but they are still young: correct them the first time something here disagrees
+ * with the server rather than assuming the types are right.
  *
  * What brought it here is the product form's **Akun penjualan** picker: a
  * product may name the income account a sale of it credits. Nothing posts
@@ -42,6 +43,45 @@ export interface ChartOfAccountListQuery {
   isActive?: boolean;
 }
 
+/**
+ * The tree endpoint's filters — the only two it accepts, and neither is a page.
+ *
+ * There is no `search` here on purpose: the API does not offer one on /tree,
+ * because a text filter applied server-side would return matches with their
+ * ancestors missing, which is not a tree. The COA screen searches the tree it
+ * already holds and drags each match's ancestors along with it.
+ */
+export interface ChartOfAccountTreeQuery {
+  accountType?: ChartOfAccount["accountType"];
+  isActive?: boolean;
+}
+
+/**
+ * The writable half of an account.
+ *
+ * `isDefault` is absent, and cannot be added: the backend's validation layer
+ * strips it, because it is the flag the delete and immutability guards hang off
+ * — a client that could set it (or clear it) could escape them.
+ *
+ * `parentAccountId: null` is a VALUE, not an omission — it is how an account is
+ * moved to the root of the tree. Which is why the update payload is a Partial:
+ * omitting the key leaves the parent alone, and sending null detaches it, and
+ * those are different requests.
+ */
+export interface ChartOfAccountPayload {
+  code: string;
+  name: string;
+  accountType: ChartOfAccount["accountType"];
+  parentAccountId: string | null;
+  /**
+   * `null` is a VALUE here too — it is how the line is CLEARED, where omitting
+   * the key on a PATCH leaves it in place.
+   */
+  businessLineId: string | null;
+  /** Defaults to true on the server — for a chart imported ahead of go-live. */
+  isActive?: boolean;
+}
+
 export const chartOfAccountsService = {
   /**
    * GET /chart-of-accounts — paginated, searchable, filterable by class.
@@ -69,7 +109,53 @@ export const chartOfAccountsService = {
       },
     }),
 
+  /**
+   * GET /chart-of-accounts/tree — the whole live chart, nested by
+   * `parentAccountId`. Roots come back as a bare array; each node carries its
+   * own `children`.
+   *
+   * NO PAGINATION, and none to add: a tree cut off at page 1 is not a tree. The
+   * response is bounded by how many accounts a business keeps (tens to low
+   * hundreds), which is why the COA screen can filter and search in the browser
+   * instead of asking again per keystroke.
+   *
+   * Deleted accounts are excluded by the backend and cannot be asked for here —
+   * unlike `list`, the tree has no `includeDeleted`.
+   */
+  tree: (query: ChartOfAccountTreeQuery = {}) =>
+    apiClient.get<ChartOfAccountNode[]>("/chart-of-accounts/tree", {
+      query: {
+        accountType: query.accountType,
+        isActive: query.isActive,
+      },
+    }),
+
   /** GET /chart-of-accounts/:id — a single account. */
   getById: (id: string) =>
     apiClient.get<ChartOfAccount>(`/chart-of-accounts/${id}`),
+
+  /**
+   * POST /chart-of-accounts — a new account, always `isDefault: false`.
+   *
+   * The refusals worth handling at the call site: 409 when the code is taken,
+   * and 400 for each structural rule on the parent — unknown, a different
+   * class, or already at the maximum depth.
+   */
+  create: (payload: ChartOfAccountPayload) =>
+    apiClient.post<ChartOfAccount>("/chart-of-accounts", payload),
+
+  /**
+   * PATCH /chart-of-accounts/:id — send only what changed.
+   *
+   * AN EMPTY BODY IS A 400, not a no-op: the server treats a request that
+   * changes nothing as a client bug. Callers compare against the current values
+   * and skip the request entirely when nothing moved.
+   *
+   * On a SEEDED account (`isDefault`), `code` and `accountType` come back 403 —
+   * every posting resolves its target by code, so renumbering 1201 would
+   * silently redirect every inventory entry in the tenant. `name`, `isActive`
+   * and the parent stay editable.
+   */
+  update: (id: string, payload: Partial<ChartOfAccountPayload>) =>
+    apiClient.patch<ChartOfAccount>(`/chart-of-accounts/${id}`, payload),
 };

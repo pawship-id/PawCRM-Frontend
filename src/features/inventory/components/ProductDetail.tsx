@@ -98,7 +98,7 @@ function formatDimensions(product: Product): string {
   return `${length} × ${width} × ${height} cm`;
 }
 
-/** "4101 — Penjualan", falling back to an em dash rather than a bare id. */
+/** "1201 — Persediaan Barang Dagangan", or an em dash rather than a bare id. */
 function accountLabel(
   accounts: Array<{ _id: string; code: string; name: string }>,
   accountId: string | null | undefined,
@@ -440,25 +440,26 @@ export function ProductDetail({ productId }: { productId: string }) {
 
           <Card title="Akuntansi">
             <dl className="grid grid-cols-[120px_1fr] gap-y-2 text-sm">
-              <dt className="text-muted">Akun penjualan</dt>
+              <dt className="text-muted">Akun persediaan</dt>
               <dd className="font-medium">
                 {accountLabel(
-                  lookups.salesAccounts,
-                  product.resolved?.salesAccountId,
+                  lookups.inventoryAccounts,
+                  product.resolved?.inventoryAccountId,
                 )}
-                <InheritedNote product={product} field="salesAccountId" />
+                <InheritedNote product={product} field="inventoryAccountId" />
               </dd>
-              <dt className="text-muted">Lini bisnis</dt>
+              <dt className="text-muted">Akun HPP</dt>
               <dd className="font-medium">
-                {lookups.businessLines.find(
-                  (line) => line._id === product.resolved?.businessLineId,
-                )?.name ?? "—"}
-                <InheritedNote product={product} field="businessLineId" />
+                {accountLabel(
+                  lookups.cogsAccounts,
+                  product.resolved?.cogsAccountId,
+                )}
+                <InheritedNote product={product} field="cogsAccountId" />
               </dd>
             </dl>
             <p className="mt-3 text-xs text-muted">
-              Belum berpengaruh ke laporan mana pun — akan dipakai saat modul
-              penjualan aktif.
+              Em dash berarti memakai akun bawaan: 1201 Persediaan Barang
+              Dagangan dan 5101 Harga Pokok Penjualan.
             </p>
           </Card>
 

@@ -159,12 +159,23 @@ describe("filterNavItems", () => {
       "Ringkasan",
       "Daftar Akun",
       "Jurnal Umum",
+      // The two reports read the ledger above them, so they follow it rather
+      // than lead — the menu is in the order the work happens.
+      "Laba Rugi",
+      "Arus Kas",
+      // Last: set up once and revisited when the shop adds a service, where the
+      // rows above it are opened daily.
+      "Lini Bisnis",
     ]);
   });
 
   it("shows Keuangan with only the ledger for a journal-only role", () => {
     // The hub rides along ungated; the COA link does not, because reading the
     // ledger says nothing about being allowed to read the chart of accounts.
+    //
+    // The two reports DO come along, and that is the grant working as intended
+    // rather than a leak: a laba rugi is the ledger folded, so anybody who may
+    // page the entries could add them up themselves.
     const onlyJournal: CanFn = (feature, action) =>
       feature === "journalEntries" && action === "read";
 
@@ -175,6 +186,8 @@ describe("filterNavItems", () => {
     expect(finance?.children?.map((c) => c.label)).toEqual([
       "Ringkasan",
       "Jurnal Umum",
+      "Laba Rugi",
+      "Arus Kas",
     ]);
   });
 

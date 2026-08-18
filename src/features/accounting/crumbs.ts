@@ -14,6 +14,14 @@ import type { Crumb } from "@/components";
  */
 export const ACCOUNTING_CRUMBS = {
   hub: { label: "Keuangan", href: "/dashboard/keuangan" },
+  profitLoss: {
+    label: "Laba Rugi",
+    href: "/dashboard/keuangan/laba-rugi",
+  },
+  cashflow: {
+    label: "Arus Kas",
+    href: "/dashboard/keuangan/arus-kas",
+  },
   accounts: {
     label: "Daftar Akun",
     href: "/dashboard/keuangan/chart-of-accounts",
@@ -21,5 +29,9 @@ export const ACCOUNTING_CRUMBS = {
   journal: {
     label: "Jurnal Umum",
     href: "/dashboard/keuangan/journal-entries",
+  },
+  businessLines: {
+    label: "Lini Bisnis",
+    href: "/dashboard/keuangan/business-lines",
   },
 } satisfies Record<string, Crumb>;

@@ -6,8 +6,6 @@ import { branchService } from "@/services/branch.service";
 import { categoryService } from "@/services/category.service";
 import { warehouseService } from "@/services/warehouse.service";
 import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
-import { businessLineService } from "@/services/businessLine.service";
-import type { BusinessLine } from "@/services/businessLine.service";
 import { ApiError } from "@/services/api-error";
 import type { Branch, Category, PageResult } from "@/types/api";
 import type { ChartOfAccount } from "@/types/accounting";
@@ -21,14 +19,15 @@ interface CatalogLookups {
    */
   warehouses: StockWarehouse[];
   /**
-   * Income accounts only, and empty unless `withAccounting` asked for them.
+   * The two posting overrides a product may name, empty unless `withAccounting`
+   * asked for them.
    *
-   * The API refuses a `salesAccountId` that is not an income account, so
-   * filtering here is what stops the picker from offering a choice that cannot
-   * be saved.
+   * SPLIT BY TYPE BECAUSE THE API IS. It refuses an `inventoryAccountId` that is
+   * not an asset and a `cogsAccountId` that is not an expense, so filtering here
+   * is what stops each picker from offering a choice that cannot be saved.
    */
-  salesAccounts: ChartOfAccount[];
-  businessLines: BusinessLine[];
+  inventoryAccounts: ChartOfAccount[];
+  cogsAccounts: ChartOfAccount[];
   /** Empty unless `withBranches` asked for them, or the read was refused. */
   branches: Branch[];
   loading: boolean;
@@ -48,8 +47,9 @@ interface CatalogLookups {
    * permissions answer; anything else is reported as what it was.
    *
    * Distinct from `error`, which blocks the whole form: a product saves
-   * perfectly well without a sales account, so this disables two selects and
-   * explains itself rather than stopping the screen.
+   * perfectly well without either posting account — the ledger falls back to the
+   * seeded 1201 and 5101 — so this disables two selects and explains itself
+   * rather than stopping the screen.
    */
   accountingError: { status: number; message: string } | null;
 }
@@ -63,8 +63,8 @@ interface CatalogLookupsOptions {
    */
   includeInactive?: boolean;
   /**
-   * Also load the income accounts and business lines the product form's
-   * accounting section picks from.
+   * Also load the asset and expense accounts the product form's accounting
+   * section picks from.
    *
    * OPT-IN so existing callers issue exactly the two requests they always did.
    * The list screen and the stock pickers have no use for either, and two extra
@@ -112,8 +112,10 @@ export function useCatalogLookups({
   const [categories, setCategories] = useState<Category[]>([]);
   const [warehouses, setWarehouses] = useState<StockWarehouse[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
-  const [salesAccounts, setSalesAccounts] = useState<ChartOfAccount[]>([]);
-  const [businessLines, setBusinessLines] = useState<BusinessLine[]>([]);
+  const [inventoryAccounts, setInventoryAccounts] = useState<ChartOfAccount[]>(
+    [],
+  );
+  const [cogsAccounts, setCogsAccounts] = useState<ChartOfAccount[]>([]);
   const [accountingError, setAccountingError] = useState<{
     status: number;
     message: string;
@@ -127,15 +129,18 @@ export function useCatalogLookups({
     (async () => {
       try {
         /**
-         * The two accounting lists CATCH THEIR OWN FAILURES, unlike the two
-         * above them.
+         * The accounts list CATCHES ITS OWN FAILURE, unlike the two above it.
          *
-         * `chartOfAccounts:read` and `businessLines:read` are separate
-         * permissions from `products:read`, and a role that manages the
-         * catalogue without seeing the books is an ordinary arrangement rather
-         * than a misconfiguration. Letting either rejection reach the shared
-         * `catch` would take down the whole form — category picker, variant
-         * matrix, opening stock and all — over an optional section.
+         * `chartOfAccounts:read` is a separate permission from `products:read`,
+         * and a role that manages the catalogue without seeing the books is an
+         * ordinary arrangement rather than a misconfiguration. Letting that
+         * rejection reach the shared `catch` would take down the whole form —
+         * category picker, variant matrix, opening stock and all — over an
+         * optional section.
+         *
+         * IT USED TO FETCH THE BUSINESS LINES ALONGSIDE. Tagging a product with
+         * a line left the catalogue entirely: the mapping belongs to Keuangan,
+         * so Inventory no longer asks the question and no longer reads the list.
          *
          * Categories and warehouses stay unguarded deliberately: without them
          * there is no product to save, so their failure IS the form's failure.
@@ -143,19 +148,21 @@ export function useCatalogLookups({
         const [
           categoryResult,
           warehouseResult,
-          accountResult,
-          lineResult,
+          assetResult,
+          expenseResult,
           branchResult,
         ] = await Promise.all([
             categoryService.list(),
             warehouseService.list(includeInactive ? {} : { isActive: true }),
             withAccounting
               ? chartOfAccountsService
-                  .list({ accountType: "income", isActive: true })
+                  .list({ accountType: "asset", isActive: true })
                   .catch((err: unknown) => err as ApiError)
               : Promise.resolve(null),
             withAccounting
-              ? businessLineService.list().catch((err: unknown) => err as ApiError)
+              ? chartOfAccountsService
+                  .list({ accountType: "expense", isActive: true })
+                  .catch((err: unknown) => err as ApiError)
               : Promise.resolve(null),
             // Swallows its own rejection, like the accounting pair: a missing
             // branch list degrades the grouping, it does not break the screen.
@@ -169,18 +176,24 @@ export function useCatalogLookups({
         setBranches(branchResult ? branchResult.items : []);
         // The rejection is carried through as the value, so the reason survives
         // rather than collapsing to "something failed".
-        const accountFailure =
-          accountResult instanceof Error ? accountResult : null;
-        const lineFailure = lineResult instanceof Error ? lineResult : null;
+        const assetFailure = assetResult instanceof Error ? assetResult : null;
+        const expenseFailure =
+          expenseResult instanceof Error ? expenseResult : null;
 
-        setSalesAccounts(
-          accountResult && !accountFailure ? (accountResult as PageResult<ChartOfAccount>).items : [],
+        setInventoryAccounts(
+          assetResult && !assetFailure
+            ? (assetResult as PageResult<ChartOfAccount>).items
+            : [],
         );
-        setBusinessLines(
-          lineResult && !lineFailure ? (lineResult as PageResult<BusinessLine>).items : [],
+        setCogsAccounts(
+          expenseResult && !expenseFailure
+            ? (expenseResult as PageResult<ChartOfAccount>).items
+            : [],
         );
-
-        const failure = accountFailure ?? lineFailure;
+        // Either half failing is the same answer to the form: the accounts
+        // could not be read, so the section says why instead of offering an
+        // empty picker that looks like an empty chart.
+        const failure = assetFailure ?? expenseFailure;
         setAccountingError(
           failure
             ? {
@@ -210,8 +223,8 @@ export function useCatalogLookups({
     categories,
     warehouses,
     branches,
-    salesAccounts,
-    businessLines,
+    inventoryAccounts,
+    cogsAccounts,
     loading,
     error,
     accountingError,

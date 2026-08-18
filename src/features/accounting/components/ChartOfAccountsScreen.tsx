@@ -1,45 +1,99 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Plus, Search } from "lucide-react";
-
-import { Breadcrumb, HighlightText } from "@/components";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
+import { useCallback, useMemo, useState } from "react";
+import Link from "next/link";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  ChevronDown,
+  ChevronRight,
+  EllipsisVertical,
+  Pencil,
+  RotateCcw,
+} from "lucide-react";
+
+import { Alert, Breadcrumb, HighlightText, Spinner } from "@/components";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Can, usePermissions } from "@/features/permissions";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import type { AccountType, ChartOfAccount } from "@/types/accounting";
 import { normalBalanceOf } from "@/types/accounting";
 
-import { ACCOUNTS_BY_ID, DUMMY_ACCOUNTS } from "../data/dummy";
+import {
+  compareAccounts,
+  DEFAULT_ACCOUNT_SORT,
+  type AccountSort,
+} from "../accountSort";
+import { useChartOfAccounts } from "../hooks/useChartOfAccounts";
+import { useBusinessLines } from "../hooks/useBusinessLines";
 import {
   ACCOUNT_TYPES,
   ACCOUNT_TYPE_LABEL,
   ACCOUNT_TYPE_TONE,
 } from "../labels";
 import { ACCOUNTING_CRUMBS } from "../crumbs";
-import { DummyNotice } from "./DummyNotice";
-
-/** Radix Select forbids an empty item value, so "all" is the sentinel. */
-const ALL = "all";
+import { ChartOfAccountsToolbar } from "./ChartOfAccountsToolbar";
 
 /**
- * The tenant's chart of accounts, as a tree.
+ * Everything the toolbar and the tile row set between them.
+ *
+ * ONE OBJECT rather than four `useState`s, so the toolbar takes a value and a
+ * patch setter exactly as ProductsToolbar does — and so a control added later
+ * lands in one place instead of three.
+ */
+export interface ChartOfAccountsQuery {
+  search: string;
+  /** "" is "semua tipe" — the unset convention the filter layer uses. */
+  accountType: AccountType | "";
+  showInactive: boolean;
+  sort: AccountSort;
+}
+
+const DEFAULT_QUERY: ChartOfAccountsQuery = {
+  search: "",
+  accountType: "",
+  showInactive: false,
+  sort: DEFAULT_ACCOUNT_SORT,
+};
+
+/**
+ * The tenant's chart of accounts, as a tree, read from
+ * GET /chart-of-accounts/tree through `useChartOfAccounts`.
  *
  * A TREE AND NOT A FLAT TABLE, because the numbering IS the structure: 1201 is
  * only meaningful under 1200 Persediaan, which is only meaningful under 1000
  * Aset. Rendering the same rows sorted by code loses the one relationship a COA
  * exists to express, and it is the relationship the backend spends a depth check
  * and a cycle check protecting.
+ *
+ * THE TOP LEVEL IS THE ACCOUNT CLASS, and it is a GROUPING RATHER THAN AN
+ * ACCOUNT. The seeded chart (backend seeds/defaultAccounts.js) is deliberately
+ * flat — twelve root accounts, no 1000 Aset above them — so a tenant that has
+ * not built its own hierarchy would otherwise read as twelve unrelated rows in
+ * which 1101 Kas and 5101 HPP sit at the same level. Grouping by `accountType`
+ * is the one division that is true of every chart, seeded or hand-built.
+ *
+ * The class row is deliberately NOT rendered as an account: no code, no status,
+ * no source. Drawing "1000 Aset" there would invent a record that does not
+ * exist, cannot be edited, and would collide the day a tenant creates a real
+ * 1000. Whatever hierarchy the tenant HAS built — `parentAccountId`, which the
+ * API already nests — is rendered underneath it, unchanged.
+ *
+ * EVERY FILTER IS LOCAL. The request is made once and asks for the whole live
+ * chart — see the hook for why narrowing it server-side would break both the
+ * per-class counts and the tree itself.
  *
  * THE NORMAL BALANCE COLUMN IS DERIVED, never stored — assets and expenses grow
  * on the debit side, everything else on the credit side. It is here because it
@@ -52,30 +106,53 @@ const ALL = "all";
  * stays readable as a tree.
  */
 export function ChartOfAccountsScreen() {
-  const [search, setSearch] = useState("");
-  const [type, setType] = useState<AccountType | typeof ALL>(ALL);
-  const [showInactive, setShowInactive] = useState(false);
-  /** Ids whose children are hidden. Empty means "everything expanded". */
+  const { accounts, byId, loading, error, refetch } = useChartOfAccounts();
+  // Names for the ids the accounts carry. Fails softly — `businessLines:read`
+  // is its own grant, and a column of em dashes is a better answer than a screen
+  // that refuses to render the chart over a label.
+  const { lines: businessLines } = useBusinessLines();
+  const lineNames = useMemo(
+    () => new Map(businessLines.map((line) => [line._id, line.name])),
+    [businessLines],
+  );
+
+  const [query, setQuery] = useState<ChartOfAccountsQuery>(DEFAULT_QUERY);
+  /**
+   * What is folded shut — account ids, plus a `groupKey()` per class. One set
+   * rather than two because both answer the same question at render time, and a
+   * class key ("tipe:asset") cannot collide with a 24-character ObjectId.
+   */
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const { can } = usePermissions();
 
-  const term = search.trim().toLowerCase();
+  const patchQuery = useCallback(
+    (patch: Partial<ChartOfAccountsQuery>) =>
+      setQuery((prev) => ({ ...prev, ...patch })),
+    [],
+  );
 
-  const { rows, matchCount } = useMemo(
-    () => buildRows({ term, type, showInactive, collapsed }),
-    [term, type, showInactive, collapsed],
+  const term = query.search.trim().toLowerCase();
+  const { accountType: type, showInactive, sort } = query;
+
+  const { rows, matchCount, shownCount } = useMemo(
+    () => buildRows({ accounts, byId, term, type, showInactive, sort, collapsed }),
+    [accounts, byId, term, type, showInactive, sort, collapsed],
   );
 
   const countsByType = useMemo(() => {
     const counts = new Map<AccountType, number>();
-    for (const account of DUMMY_ACCOUNTS) {
+    for (const account of accounts) {
       counts.set(account.accountType, (counts.get(account.accountType) ?? 0) + 1);
     }
     return counts;
-  }, []);
+  }, [accounts]);
 
-  const inactiveCount = DUMMY_ACCOUNTS.filter(
-    (account) => !account.isActive,
-  ).length;
+  const inactiveCount = accounts.filter((account) => !account.isActive).length;
+
+  // The column exists only when somebody could act in it — a read-only role
+  // gets no empty column, the same per-row reasoning CategoriesTable applies.
+  const showActions = can("chartOfAccounts", "update");
+  const columnCount = showActions ? 8 : 7;
 
   return (
     <div className="flex flex-col gap-6">
@@ -92,266 +169,369 @@ export function ChartOfAccountsScreen() {
         </p>
       </div>
 
-      <DummyNotice endpoint="GET /api/chart-of-accounts/tree" />
+      {error && (
+        // The retry lives HERE rather than on the toolbar: a chart of accounts
+        // is read once and only changes when somebody edits it, so a standing
+        // reload button would do nothing visible almost every time. A failed
+        // request is the one moment it is worth offering, and it is worth
+        // offering next to the sentence that says what went wrong.
+        <Alert variant="error">
+          <span className="flex flex-wrap items-center gap-3">
+            {error}
+            <Button variant="secondary" size="sm" onClick={refetch}>
+              <RotateCcw className="size-4" />
+              Coba lagi
+            </Button>
+          </span>
+        </Alert>
+      )}
 
-      <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {ACCOUNT_TYPES.map((accountType) => (
-          <button
-            key={accountType}
-            type="button"
-            onClick={() => setType(type === accountType ? ALL : accountType)}
-            className={cn(
-              "rounded-xl border bg-surface px-4 py-3 text-left transition hover:border-primary",
-              type === accountType ? "border-primary" : "border-border",
-            )}
-          >
-            <p className="text-[10px] font-medium uppercase tracking-widest text-muted">
-              {ACCOUNT_TYPE_LABEL[accountType]}
-            </p>
-            <p className="mt-1 tabular-nums text-lg font-semibold text-foreground">
-              {countsByType.get(accountType) ?? 0}
-            </p>
-            <p className="text-[11px] text-muted">
-              saldo normal {normalBalanceOf(accountType) === "debit" ? "debit" : "kredit"}
-            </p>
-          </button>
-        ))}
-      </div>
+      <ChartOfAccountsToolbar
+        query={query}
+        countsByType={countsByType}
+        inactiveCount={inactiveCount}
+        onChange={patchQuery}
+      />
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative flex-1 sm:max-w-xs">
-            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              // Names exactly the two fields the API's ?search= matches — an
-              // accountant looks up "1201" as readily as "Persediaan".
-              placeholder="Cari kode atau nama akun"
-              aria-label="Cari akun"
-              className="pl-9"
-            />
-          </div>
-
-          <Select
-            value={type}
-            onValueChange={(value) => setType(value as AccountType | typeof ALL)}
-          >
-            <SelectTrigger aria-label="Filter tipe akun" className="sm:w-44">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>Semua tipe</SelectItem>
-              {ACCOUNT_TYPES.map((accountType) => (
-                <SelectItem key={accountType} value={accountType}>
-                  {ACCOUNT_TYPE_LABEL[accountType]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <div className="flex items-center gap-2">
-            <Switch
-              id="coa-show-inactive"
-              checked={showInactive}
-              onCheckedChange={setShowInactive}
-            />
-            <Label htmlFor="coa-show-inactive" className="text-xs font-normal text-muted">
-              Tampilkan nonaktif ({inactiveCount})
-            </Label>
-          </div>
+      {loading && accounts.length === 0 ? (
+        <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
+          <Spinner /> Memuat daftar akun…
         </div>
+      ) : accounts.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border bg-surface px-6 py-16 text-center">
+          <p className="font-medium text-foreground">
+            Belum ada akun di daftar ini.
+          </p>
+          <p className="mt-1 text-sm text-muted">
+            {error
+              ? "Tekan Coba lagi di atas setelah koneksi ke server pulih."
+              : "Akun bawaan biasanya dibuat otomatis untuk setiap tenant. Hubungi admin kalau daftar ini tetap kosong."}
+          </p>
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-border bg-surface">
+          <Table className={loading ? "opacity-60" : undefined}>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Kode</TableHead>
+                <TableHead>Nama akun</TableHead>
+                <TableHead>Tipe</TableHead>
+                <TableHead>Saldo normal</TableHead>
+                <TableHead>Lini bisnis</TableHead>
+                <TableHead>Sumber</TableHead>
+                <TableHead>Status</TableHead>
+                {showActions && <TableHead className="text-right">Aksi</TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.length === 0 && (
+                <TableRow>
+                  <TableCell
+                    colSpan={columnCount}
+                    className="px-4 py-16 text-center"
+                  >
+                    <p className="font-medium text-foreground">
+                      Tidak ada akun yang cocok
+                    </p>
+                    <p className="mt-1 text-sm text-muted">
+                      Coba kata kunci lain, atau ubah filter tipe akun.
+                    </p>
+                  </TableCell>
+                </TableRow>
+              )}
 
-        {/*
-          Disabled rather than hidden: the create path exists on the API
-          (POST /api/chart-of-accounts) and belongs in this toolbar, so leaving
-          it out would misdescribe the module. The title says why it does not
-          respond yet.
-        */}
-        <Button disabled title="Belum tersambung ke API">
-          <Plus className="size-4" />
-          Tambah akun
-        </Button>
-      </div>
+              {rows.map((row) => {
+                if (row.kind === "group") {
+                  const key = groupKey(row.accountType);
+                  const isCollapsed = collapsed.has(key);
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-[10px] uppercase tracking-widest text-muted">
-              <th className="px-4 py-2.5 text-left font-medium">Kode</th>
-              <th className="px-4 py-2.5 text-left font-medium">Nama akun</th>
-              <th className="px-4 py-2.5 text-left font-medium">Tipe</th>
-              <th className="px-4 py-2.5 text-left font-medium">Saldo normal</th>
-              <th className="px-4 py-2.5 text-left font-medium">Sumber</th>
-              <th className="px-4 py-2.5 text-left font-medium">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-4 py-16 text-center">
-                  <p className="font-medium text-foreground">
-                    Tidak ada akun yang cocok
-                  </p>
-                  <p className="mt-1 text-sm text-muted">
-                    Coba kata kunci lain, atau ubah filter tipe akun.
-                  </p>
-                </td>
-              </tr>
-            )}
-
-            {rows.map((row) => {
-              const { account, depth, hasChildren, matched } = row;
-              const isCollapsed = collapsed.has(account._id);
-
-              return (
-                <tr
-                  key={account._id}
-                  className={cn(
-                    "border-b border-border/60 last:border-0",
-                    // A parent dragged in only to keep a match in place is
-                    // context, not a result — it reads quieter than its child.
-                    !matched && "text-muted",
-                    !account.isActive && "bg-accent/40",
-                  )}
-                >
-                  <td className="px-4 py-2.5 align-middle">
-                    <div
-                      className="flex items-center gap-1.5"
-                      style={{ paddingLeft: `${depth * 18}px` }}
+                  return (
+                    // One cell across the table: a class is not an account, so
+                    // it fills no account column. See the header.
+                    //
+                    // NO FILL, and both of ui/table's own fills switched off to
+                    // get there. `has-aria-expanded:bg-muted/50` (table.tsx) is
+                    // the one that matters: this row holds the chevron button,
+                    // so that rule matched, and a `:has()` selector outranks a
+                    // plain `bg-*` class — which is why every background set
+                    // here before this was painted over and never seen.
+                    //
+                    // Hover goes too. Without a fill, the stock row hover would
+                    // be the only tint the heading ever shows, which is exactly
+                    // backwards: it would light up as though it were clickable
+                    // when only its chevron is.
+                    <TableRow
+                      key={key}
+                      className="hover:bg-transparent has-aria-expanded:bg-transparent"
                     >
-                      {hasChildren ? (
-                        <button
-                          type="button"
-                          onClick={() => toggle(setCollapsed, account._id)}
-                          aria-expanded={!isCollapsed}
-                          aria-label={
-                            isCollapsed
-                              ? `Buka sub-akun ${account.code}`
-                              : `Tutup sub-akun ${account.code}`
-                          }
-                          className="text-muted transition-colors hover:text-foreground"
-                        >
-                          {isCollapsed ? (
-                            <ChevronRight className="size-4" />
-                          ) : (
-                            <ChevronDown className="size-4" />
-                          )}
-                        </button>
-                      ) : (
-                        <span className="size-4" aria-hidden="true" />
-                      )}
-                      <span
-                        className={cn(
-                          "tabular-nums text-xs",
-                          hasChildren && "font-semibold text-foreground",
-                        )}
-                      >
-                        <HighlightText text={account.code} query={term} />
-                      </span>
-                    </div>
-                  </td>
-                  <td
+                      <TableCell colSpan={columnCount} className="px-4 py-2">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => toggle(setCollapsed, key)}
+                            aria-expanded={!isCollapsed}
+                            aria-label={
+                              isCollapsed
+                                ? `Buka kelompok ${ACCOUNT_TYPE_LABEL[row.accountType]}`
+                                : `Tutup kelompok ${ACCOUNT_TYPE_LABEL[row.accountType]}`
+                            }
+                            className="rounded-md text-muted transition-colors hover:text-foreground focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                          >
+                            {isCollapsed ? (
+                              <ChevronRight className="size-4" />
+                            ) : (
+                              <ChevronDown className="size-4" />
+                            )}
+                          </button>
+                          <span className="text-sm font-bold text-foreground">
+                            {ACCOUNT_TYPE_LABEL[row.accountType]}
+                          </span>
+                          <span className="text-xs text-muted tabular-nums">
+                            · {row.count} akun · saldo normal{" "}
+                            {normalBalanceOf(row.accountType) === "debit"
+                              ? "debit"
+                              : "kredit"}
+                          </span>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                }
+
+                const { account, depth, hasChildren, matched } = row;
+                const isCollapsed = collapsed.has(account._id);
+
+                return (
+                  <TableRow
+                    key={account._id}
                     className={cn(
-                      "px-4 py-2.5 text-sm",
-                      hasChildren ? "font-semibold" : "font-medium",
+                      // A parent dragged in only to keep a match in place is
+                      // context, not a result — it reads quieter than its child.
+                      !matched && "text-muted",
+                      // An account with sub-accounts carries a chevron, so
+                      // ui/table's `has-aria-expanded:bg-muted/50` would tint it
+                      // grey for no reason a reader could name — and would
+                      // outrank the deactivated tint next to it, since a
+                      // `:has()` selector beats a plain class. Both cases
+                      // therefore restate what the row's fill should be under
+                      // the same variant. Not reachable with the seeded chart,
+                      // which is flat, but it is one tenant-made parent account
+                      // away.
+                      account.isActive
+                        ? "has-aria-expanded:bg-transparent"
+                        : "bg-surface-hover has-aria-expanded:bg-surface-hover",
                     )}
                   >
-                    <HighlightText text={account.name} query={term} />
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <Badge
-                      variant="outline"
+                    <TableCell className="px-4 py-2.5">
+                      <div
+                        className="flex items-center gap-1.5"
+                        style={{ paddingLeft: `${depth * 18}px` }}
+                      >
+                        {hasChildren ? (
+                          <button
+                            type="button"
+                            onClick={() => toggle(setCollapsed, account._id)}
+                            aria-expanded={!isCollapsed}
+                            aria-label={
+                              isCollapsed
+                                ? `Buka sub-akun ${account.code}`
+                                : `Tutup sub-akun ${account.code}`
+                            }
+                            className="rounded-md text-muted transition-colors hover:text-foreground focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                          >
+                            {isCollapsed ? (
+                              <ChevronRight className="size-4" />
+                            ) : (
+                              <ChevronDown className="size-4" />
+                            )}
+                          </button>
+                        ) : (
+                          <span className="size-4" aria-hidden="true" />
+                        )}
+                        <span
+                          className={cn(
+                            "text-sm tabular-nums",
+                            hasChildren && "font-semibold text-foreground",
+                          )}
+                        >
+                          <HighlightText text={account.code} query={term} />
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell
                       className={cn(
-                        "border-transparent",
-                        ACCOUNT_TYPE_TONE[account.accountType],
+                        "px-4 py-2.5 text-sm",
+                        hasChildren ? "font-semibold" : "font-medium",
                       )}
                     >
-                      {ACCOUNT_TYPE_LABEL[account.accountType]}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-2.5 text-xs uppercase tracking-wide text-muted">
-                    {normalBalanceOf(account.accountType) === "debit"
-                      ? "Debit"
-                      : "Kredit"}
-                  </td>
-                  <td className="px-4 py-2.5 text-xs">
-                    {account.isDefault ? (
+                      <HighlightText text={account.name} query={term} />
+                    </TableCell>
+                    <TableCell className="px-4 py-2.5">
                       <span
-                        className="text-muted"
-                        title="Akun bawaan tenant — kode dan tipenya tidak bisa diubah, dan tidak bisa dihapus."
+                        className={cn(
+                          "rounded-full px-2 py-0.5 text-xs font-medium",
+                          ACCOUNT_TYPE_TONE[account.accountType],
+                        )}
                       >
-                        Bawaan sistem
+                        {ACCOUNT_TYPE_LABEL[account.accountType]}
                       </span>
-                    ) : (
-                      <span className="text-muted">Dibuat manual</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    {account.isActive ? (
-                      <Badge
-                        variant="outline"
-                        className="border-transparent bg-success/12 text-success"
-                      >
-                        aktif
-                      </Badge>
-                    ) : (
-                      <Badge
-                        variant="outline"
-                        className="border-transparent bg-accent text-muted"
-                        title="Masih menjelaskan jurnal lama, tapi tidak ditawarkan untuk posting baru."
-                      >
-                        nonaktif
-                      </Badge>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                    </TableCell>
+                    <TableCell className="px-4 py-2.5 text-xs text-muted">
+                      {normalBalanceOf(account.accountType) === "debit"
+                        ? "Debit"
+                        : "Kredit"}
+                    </TableCell>
+                    {/*
+                      Shown in the list because this is where a missing mapping
+                      becomes visible: a column of em dashes is the usual answer
+                      to "kenapa laporan per lini kosong".
+                    */}
+                    <TableCell className="px-4 py-2.5 text-xs text-muted">
+                      {lineNames.get(account.businessLineId ?? "") ?? "—"}
+                    </TableCell>
+                    <TableCell className="px-4 py-2.5 text-xs text-muted">
+                      {account.isDefault ? (
+                        <span title="Akun bawaan tenant — kode dan tipenya tidak bisa diubah, dan tidak bisa dihapus.">
+                          Bawaan sistem
+                        </span>
+                      ) : (
+                        "Dibuat manual"
+                      )}
+                    </TableCell>
+                    <TableCell className="px-4 py-2.5">
+                      {account.isActive ? (
+                        <span className="rounded-full bg-tint-success px-2 py-0.5 text-xs font-medium text-success">
+                          Aktif
+                        </span>
+                      ) : (
+                        <span
+                          className="rounded-full bg-tint-neutral px-2 py-0.5 text-xs font-medium text-muted"
+                          title="Masih menjelaskan jurnal lama, tapi tidak ditawarkan untuk posting baru."
+                        >
+                          Nonaktif
+                        </span>
+                      )}
+                    </TableCell>
+                    {showActions && (
+                      <TableCell className="px-4 py-2.5">
+                        <div className="flex justify-end">
+                          {/*
+                            The same kebab every other list uses — SuppliersTable
+                            and CategoriesTable — so a row means the same thing
+                            wherever it is read. It holds one item today: Edit.
+                            Deleting an account is refused for every seeded one
+                            and for any account a live journal line still points
+                            at, so what people actually want is to retire it,
+                            which is the Aktif switch inside the form.
 
-      <p className="text-xs text-muted">
-        {term
-          ? `${matchCount} akun cocok dengan "${search.trim()}"`
-          : `${rows.length} akun ditampilkan dari ${DUMMY_ACCOUNTS.length} akun`}
-      </p>
+                            The trigger's icon carries no name of its own, so the
+                            label says which row this menu belongs to — twenty
+                            identical "Aksi" buttons tell a screen-reader user
+                            nothing.
+                          */}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                aria-label={`Aksi untuk ${account.code} ${account.name}`}
+                              >
+                                <EllipsisVertical className="size-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+
+                            <DropdownMenuContent>
+                              <Can feature="chartOfAccounts" action="update">
+                                <DropdownMenuItem asChild>
+                                  <Link
+                                    href={`${ACCOUNTING_CRUMBS.accounts.href}/${account._id}/edit`}
+                                  >
+                                    <Pencil />
+                                    Edit
+                                  </Link>
+                                </DropdownMenuItem>
+                              </Can>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      {accounts.length > 0 && (
+        <p className="text-xs text-muted">
+          {term
+            ? `${matchCount} akun cocok dengan "${query.search.trim()}"`
+            : `${shownCount} akun ditampilkan dari ${accounts.length} akun`}
+        </p>
+      )}
+
     </div>
   );
 }
 
-/** One rendered line of the tree. */
-interface AccountRow {
-  account: ChartOfAccount;
-  /** Nesting level, root = 0 — drives the indent only. */
-  depth: number;
-  hasChildren: boolean;
-  /** False for an ancestor kept only so a matching child stays in place. */
-  matched: boolean;
+/** One rendered line of the tree: an account, or the class heading above it. */
+type Row =
+  | {
+      kind: "group";
+      accountType: AccountType;
+      /** Every account of this class in the current filter, folded or not. */
+      count: number;
+    }
+  | {
+      kind: "account";
+      account: ChartOfAccount;
+      /** Nesting level under the class heading — drives the indent only. */
+      depth: number;
+      hasChildren: boolean;
+      /** False for an ancestor kept only so a matching child stays in place. */
+      matched: boolean;
+    };
+
+/** The collapsed-set key for a class heading. Cannot collide with an ObjectId. */
+function groupKey(accountType: AccountType): string {
+  return `tipe:${accountType}`;
 }
 
 /**
- * Flattens the tree into the rows the table renders, applying the filters.
+ * Flattens the chart into the rows the table renders, applying the filters.
  *
- * COLLAPSE IS IGNORED WHILE SEARCHING. A hit hidden inside a folded branch is a
- * search that answers "nothing found" while the thing is right there — so a
- * search expands whatever it needs to.
+ * TWO LEVELS OF GROUPING, from two different places: the class heading is
+ * derived here from `accountType`, and everything below it is the tenant's own
+ * `parentAccountId` hierarchy exactly as the API nested it. A class with nothing
+ * in it after filtering renders no heading at all — a heading over an empty
+ * group reads as data that failed to load.
+ *
+ * COLLAPSE IS IGNORED WHILE SEARCHING, for a class heading as much as for a
+ * branch. A hit hidden inside a folded group is a search that answers "nothing
+ * found" while the thing is right there — so a search expands whatever it needs
+ * to.
  */
 function buildRows({
+  accounts,
+  byId,
   term,
   type,
   showInactive,
+  sort,
   collapsed,
 }: {
+  accounts: ChartOfAccount[];
+  byId: Map<string, ChartOfAccount>;
   term: string;
-  type: AccountType | typeof ALL;
+  type: AccountType | "";
   showInactive: boolean;
+  sort: AccountSort;
   collapsed: Set<string>;
-}): { rows: AccountRow[]; matchCount: number } {
-  const matches = DUMMY_ACCOUNTS.filter((account) => {
-    if (type !== ALL && account.accountType !== type) return false;
+}): { rows: Row[]; matchCount: number; shownCount: number } {
+  const matches = accounts.filter((account) => {
+    if (type !== "" && account.accountType !== type) return false;
     if (!showInactive && !account.isActive) return false;
     if (!term) return true;
     return (
@@ -369,37 +549,82 @@ function buildRows({
     let parentId = account.parentAccountId;
     while (parentId && !visible.has(parentId)) {
       visible.add(parentId);
-      parentId = ACCOUNTS_BY_ID.get(parentId)?.parentAccountId ?? null;
+      parentId = byId.get(parentId)?.parentAccountId ?? null;
     }
   }
 
   const childrenOf = new Map<string | null, ChartOfAccount[]>();
-  for (const account of DUMMY_ACCOUNTS) {
+  for (const account of accounts) {
     if (!visible.has(account._id)) continue;
-    const siblings = childrenOf.get(account.parentAccountId) ?? [];
+    // An account whose parent was filtered out hangs from the root rather than
+    // vanishing — the same choice the backend's tree builder makes, and for the
+    // same reason: a missing account reads as a deleted one.
+    const parentId =
+      account.parentAccountId && visible.has(account.parentAccountId)
+        ? account.parentAccountId
+        : null;
+    const siblings = childrenOf.get(parentId) ?? [];
     siblings.push(account);
-    childrenOf.set(account.parentAccountId, siblings);
+    childrenOf.set(parentId, siblings);
   }
 
-  const rows: AccountRow[] = [];
-  const walk = (parentId: string | null, depth: number) => {
-    for (const account of childrenOf.get(parentId) ?? []) {
+  // The ordering lands HERE, on each set of siblings, and nowhere else — see
+  // compareAccounts for why sorting the chart flat would take every sub-account
+  // away from the account it belongs to. Applied even for the default by-code
+  // order, so what is on screen does not depend on the order the server happened
+  // to send.
+  const bySort = compareAccounts(sort);
+  for (const siblings of childrenOf.values()) siblings.sort(bySort);
+
+  const rows: Row[] = [];
+  let shownCount = 0;
+
+  // Takes the siblings rather than their parent's id, so the class headings can
+  // hand it one class's roots without the roots of the other four coming along.
+  const walk = (siblings: ChartOfAccount[], depth: number) => {
+    for (const account of siblings) {
       const children = childrenOf.get(account._id) ?? [];
       rows.push({
+        kind: "account",
         account,
         depth,
         hasChildren: children.length > 0,
         matched: matchedIds.has(account._id),
       });
+      shownCount += 1;
       // While searching, a folded branch still opens — see the header.
       if (children.length > 0 && (term !== "" || !collapsed.has(account._id))) {
-        walk(account._id, depth + 1);
+        walk(children, depth + 1);
       }
     }
   };
-  walk(null, 0);
 
-  return { rows, matchCount: matches.length };
+  // ACCOUNT_TYPES is in the order the accounting equation reads — assets,
+  // liabilities, equity, then the two P&L classes — which is also the order the
+  // leading digit of every code puts them in.
+  const roots = childrenOf.get(null) ?? [];
+  for (const accountType of ACCOUNT_TYPES) {
+    const classRoots = roots.filter(
+      (account) => account.accountType === accountType,
+    );
+    if (classRoots.length === 0) continue;
+
+    // Counted over the whole class, not just its roots: the heading has to keep
+    // saying "5 akun" while the branches under it are folded shut.
+    const count = accounts.filter(
+      (account) =>
+        account.accountType === accountType && visible.has(account._id),
+    ).length;
+
+    rows.push({ kind: "group", accountType, count });
+
+    // A class heading is depth 0, so its accounts start one level in.
+    if (term !== "" || !collapsed.has(groupKey(accountType))) {
+      walk(classRoots, 1);
+    }
+  }
+
+  return { rows, matchCount: matches.length, shownCount };
 }
 
 /** Adds or removes one id from the collapsed set, without mutating it. */

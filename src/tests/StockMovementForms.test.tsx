@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { StockAdjustmentForm, StockTransferForm } from "@/features/inventory";
+import { JournalPreview } from "@/features/inventory/components/JournalPreview";
 import { productService } from "@/services/product.service";
 import { warehouseService } from "@/services/warehouse.service";
 import { stockMovementService } from "@/services/stockMovement.service";
@@ -1049,5 +1050,96 @@ describe("StockTransferForm", () => {
     // Better than a form whose two selects are stuck on the same value and whose
     // submit is permanently disabled.
     expect(await screen.findByText(/dua gudang aktif/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * The panel every writing screen renders — the adjustment and transfer forms,
+ * the goods receipt and the purchase return all feed it the lines their own
+ * preview endpoint returned.
+ */
+describe("JournalPreview", () => {
+  /**
+   * ONE ROW PER LINE AS SENT, and the empty side is a DASH.
+   *
+   * Two endpoints feed this panel and they say "nothing on this side"
+   * differently: the movement preview sends `null`, the goods receipt and the
+   * purchase return send `"0"`. A truthiness check printed the first as a dash
+   * and the second as "Rp 0", so which side a line sat on could only be learned
+   * by reading both columns — the same confusion that hid a real bug on the
+   * ledger's own detail page.
+   */
+  it("shows an empty side as a dash whether the API sent 0 or null", () => {
+    render(
+      <JournalPreview
+        lines={[
+          {
+            accountCode: "1205",
+            accountName: "Persediaan Hotel",
+            debit: "160000.0000",
+            credit: "0",
+          },
+          {
+            accountCode: "2101",
+            accountName: "Utang Supplier",
+            debit: null,
+            credit: "160000.0000",
+          },
+        ]}
+      />,
+    );
+
+    const debitRow = screen.getByText("Persediaan Hotel").closest("tr")!;
+    expect(within(debitRow).getByText("Rp 160.000")).toBeInTheDocument();
+    expect(within(debitRow).getByText("—")).toBeInTheDocument();
+
+    const creditRow = screen.getByText("Utang Supplier").closest("tr")!;
+    expect(within(creditRow).getByText("Rp 160.000")).toBeInTheDocument();
+
+    expect(screen.queryByText("Rp 0")).not.toBeInTheDocument();
+  });
+
+  /**
+   * A delivery carrying retail goods and hotel supplies debits two different
+   * asset accounts, because the products name them. The receipt used to blend
+   * both into one 1201 line and the split was unrecoverable afterwards.
+   */
+  it("keeps one row per inventory account on a mixed delivery", () => {
+    render(
+      <JournalPreview
+        lines={[
+          {
+            accountCode: "1205",
+            accountName: "Persediaan Hotel",
+            debit: "160000.0000",
+            credit: "0",
+          },
+          {
+            accountCode: "1201",
+            accountName: "Persediaan Barang Dagangan",
+            debit: "2000000.0000",
+            credit: "0",
+          },
+          {
+            accountCode: "2101",
+            accountName: "Utang Supplier",
+            debit: "0",
+            credit: "2160000.0000",
+          },
+        ]}
+      />,
+    );
+
+    const hotelRow = screen.getByText("Persediaan Hotel").closest("tr")!;
+    const retailRow = screen
+      .getByText("Persediaan Barang Dagangan")
+      .closest("tr")!;
+
+    expect(within(hotelRow).getByText("Rp 160.000")).toBeInTheDocument();
+    expect(within(retailRow).getByText("Rp 2.000.000")).toBeInTheDocument();
+
+    // Σdebit is the same whether it took one line or two, so the panel still
+    // says the entry balances.
+    expect(screen.getByText(/SEIMBANG/i)).toBeInTheDocument();
   });
 });

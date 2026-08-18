@@ -33,11 +33,12 @@ export const ACCOUNT_TYPE_LABEL: Record<AccountType, string> = {
  * owner compares — income against expense.
  */
 export const ACCOUNT_TYPE_TONE: Record<AccountType, string> = {
-  asset: "bg-primary/10 text-primary",
-  liability: "bg-danger/10 text-danger",
-  equity: "bg-secondary/25 text-secondary-foreground",
-  income: "bg-success/12 text-success",
-  expense: "bg-accent text-muted-foreground",
+  asset: "bg-tint-info text-info",
+  liability: "bg-tint-danger text-danger",
+  // The one warm badge: an orange FILL with navy ink, never orange text (§4).
+  equity: "bg-tint-warning text-secondary-foreground",
+  income: "bg-tint-success text-success",
+  expense: "bg-tint-neutral text-muted",
 };
 
 /**
@@ -57,19 +58,25 @@ export const SOURCE_LABEL: Record<JournalSourceType, string> = {
   manual: "Manual",
 };
 
+/**
+ * NAMED TINTS, not opacity arithmetic (§9). These read the same as before, but
+ * `bg-success/12` composites over whatever is behind it — and a badge sitting on
+ * a hovered or selected row went muddy, which is exactly the case a status badge
+ * has to survive. The `bg-tint-*` tokens are opaque.
+ */
 export const SOURCE_TONE: Record<JournalSourceType, string> = {
-  pos: "bg-primary/10 text-primary",
-  invoice: "bg-primary/10 text-primary",
-  receipt: "bg-success/12 text-success",
-  goods_receipt: "bg-secondary/25 text-secondary-foreground",
-  purchase_payment: "bg-danger/10 text-danger",
-  opname: "bg-accent text-muted-foreground",
-  return: "bg-accent text-muted-foreground",
-  commission: "bg-accent text-muted-foreground",
+  pos: "bg-tint-brand text-primary",
+  invoice: "bg-tint-brand text-primary",
+  receipt: "bg-tint-success text-success",
+  goods_receipt: "bg-tint-warning text-secondary-foreground",
+  purchase_payment: "bg-tint-danger text-danger",
+  opname: "bg-tint-neutral text-muted",
+  return: "bg-tint-neutral text-muted",
+  commission: "bg-tint-neutral text-muted",
   // Manual entries are the ones an auditor looks at first — a human chose both
   // sides — so they are the only source that carries an outline instead of a
   // fill, which is what makes them findable while scrolling.
-  manual: "border-border text-foreground",
+  manual: "border border-border text-foreground",
 };
 
 export const CASHFLOW_LABEL: Record<CashflowType, string> = {

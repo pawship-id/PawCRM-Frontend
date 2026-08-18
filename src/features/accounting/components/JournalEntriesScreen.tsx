@@ -1,53 +1,50 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment } from "react";
 import Link from "next/link";
-import { Plus, Search } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 
-import { Breadcrumb } from "@/components";
-import { Badge } from "@/components/ui/badge";
+import { Alert, Breadcrumb, Pagination, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import type { JournalEntry, JournalSourceType } from "@/types/accounting";
+import type { JournalEntry } from "@/types/accounting";
 import { formatMoney, sumDecimals } from "@/utils/decimal";
 
-import { DUMMY_ENTRIES } from "../data/dummy";
 import { ACCOUNTING_CRUMBS } from "../crumbs";
+import { useJournalEntries } from "../hooks/useJournalEntries";
 import { formatDate, formatMonth, SOURCE_LABEL, SOURCE_TONE } from "../labels";
-import { DummyNotice } from "./DummyNotice";
+import { JournalEntriesToolbar } from "./JournalEntriesToolbar";
 
-/** Radix Select forbids an empty item value, so "all" is the sentinel. */
-const ALL = "all";
-
-/** The filter offers the source types, in the order they appear in the model. */
-const SOURCES: JournalSourceType[] = [
-  "pos",
-  "invoice",
-  "receipt",
-  "goods_receipt",
-  "purchase_payment",
-  "opname",
-  "return",
-  "commission",
-  "manual",
-];
+/** Tanggal, No. jurnal, Keterangan, Sumber, Cabang, Total debit, Status. */
+const COLUMN_COUNT = 7;
 
 /**
- * The general ledger — every financial fact in the tenant, newest first.
+ * The general ledger — every financial fact in the tenant, newest transaction
+ * first unless the toolbar says otherwise, read from GET /api/journal-entries
+ * through `useJournalEntries`.
  *
  * ROWS ARE GROUPED BY MONTH, because that is the unit a ledger is read and
  * closed in. A flat list of 500 entries answers "what happened" but never "what
  * happened in July", and the subtotal on each month header is the number
  * somebody is actually scrolling for.
+ *
+ * EVERY SUBTOTAL ON THIS SCREEN IS SCOPED TO THE PAGE, and it says so in three
+ * places — the tile label, the month header's caption, and the note under the
+ * table. That is the one thing the move off fixtures changed here: the old screen
+ * held the whole book in memory, so a month header could add up the month. The
+ * API pages at 20, a busy month spans several pages, and a header that summed
+ * only the rows in front of it while reading "Agustus 2026" would be a wrong
+ * number wearing a right label — the most expensive kind on a finance screen.
+ * The period's real totals come from GET /journal-entries/summary, which is what
+ * the Keuangan dashboard renders.
  *
  * THE TOTAL COLUMN IS THE DEBIT SIDE, and saying so in the header matters: an
  * entry's "amount" is not a stored field — Σdebit equals Σcredit by definition,
@@ -61,42 +58,31 @@ const SOURCES: JournalSourceType[] = [
  * would make the same transaction look like it was recorded twice.
  */
 export function JournalEntriesScreen() {
-  const [search, setSearch] = useState("");
-  const [source, setSource] = useState<JournalSourceType | typeof ALL>(ALL);
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const {
+    entries,
+    pagination,
+    totals,
+    query,
+    branches,
+    loading,
+    error,
+    setQuery,
+    refetch,
+  } = useJournalEntries();
 
-  const term = search.trim().toLowerCase();
-
-  const rows = useMemo(
-    () =>
-      DUMMY_ENTRIES.filter((entry) => {
-        if (source !== ALL && entry.source.type !== source) return false;
-        // Both bounds are inclusive and compare ISO date strings directly —
-        // "2026-08-01" <= "2026-08-07" is true lexicographically as well as
-        // chronologically, which is the one thing YYYY-MM-DD is for.
-        if (dateFrom && entry.date < dateFrom) return false;
-        if (dateTo && entry.date > dateTo) return false;
-        if (!term) return true;
-        return (
-          entry.entryNumber.toLowerCase().includes(term) ||
-          entry.description.toLowerCase().includes(term) ||
-          (entry.source.reference ?? "").toLowerCase().includes(term)
-        );
-      }),
-    [term, source, dateFrom, dateTo],
-  );
-
-  const total = sumDecimals(rows.map(entryTotal));
-  const manualCount = rows.filter(
-    (entry) => entry.source.type === "manual",
-  ).length;
-  const correctionCount = rows.filter(
-    (entry) => entry.reversedByEntryId || entry.reversesEntryId,
-  ).length;
+  /**
+   * Σdebit === Σcredit is the invariant the backend refuses a posting over, so
+   * the two agreeing is not news — but if they ever do not, that is the most
+   * important thing on the screen and it must not be silent.
+   */
+  const unbalanced = totals !== null && totals.debit !== totals.credit;
 
   const filtered =
-    term !== "" || source !== ALL || dateFrom !== "" || dateTo !== "";
+    query.search.trim() !== "" ||
+    query.sourceType !== "" ||
+    query.dateFrom !== "" ||
+    query.dateTo !== "" ||
+    query.branchId !== "";
 
   return (
     <div className="flex flex-col gap-6">
@@ -105,7 +91,7 @@ export function JournalEntriesScreen() {
         <h1 className="mt-1 text-2xl font-extrabold text-foreground">
           Jurnal Umum
         </h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted">
+        <p className="mt-1 max-w-2xl text-[15px] text-muted">
           Buku besar tenant. Semua modul — POS, faktur, pembelian, opname —
           mencatat ke sini, dan laporan laba rugi, neraca serta arus kas dibaca
           dari daftar ini. Entri yang sudah diposting tidak bisa diubah; koreksi
@@ -113,208 +99,188 @@ export function JournalEntriesScreen() {
         </p>
       </div>
 
-      <DummyNotice endpoint="GET /api/journal-entries" />
+      {error && (
+        <Alert variant="error">
+          <span className="flex flex-wrap items-center gap-3">
+            {error}
+            <Button variant="secondary" size="sm" onClick={refetch}>
+              <RotateCcw className="size-4" />
+              Coba lagi
+            </Button>
+          </span>
+        </Alert>
+      )}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <SummaryTile label="Entri" value={`${rows.length}`} />
+      <JournalEntriesToolbar
+        query={query}
+        branches={branches}
+        onChange={setQuery}
+      />
+
+      {/* BOTH FIGURES COVER THE WHOLE FILTER, not the page — the count from the
+          list's own `pagination.total`, the amount from
+          GET /journal-entries/totals. Neither moves as somebody pages, which is
+          what makes them safe to quote. */}
+      <div className="grid gap-3 sm:grid-cols-2">
         <SummaryTile
-          label="Total debit = kredit"
-          value={formatMoney(total)}
-          mono
+          label="Entri"
+          value={`${pagination.total}`}
+          hint={scopeHint(filtered)}
         />
-        <SummaryTile label="Entri manual" value={`${manualCount}`} />
         <SummaryTile
-          label="Terkait pembalikan"
-          value={`${correctionCount}`}
-          tone={correctionCount > 0 ? "text-danger" : undefined}
+          label="Total debit"
+          // "—" while it is in flight or after it failed. Rendering 0 would be
+          // stating a fact about somebody's books that was never checked.
+          value={totals === null ? "—" : formatMoney(totals.debit)}
+          hint={
+            unbalanced
+              ? `Tidak seimbang — total kredit ${formatMoney(totals.credit)}`
+              : scopeHint(filtered)
+          }
+          tone={unbalanced ? "danger" : undefined}
         />
       </div>
 
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="relative flex-1 sm:max-w-xs">
-              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                type="search"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Cari nomor jurnal, keterangan, atau dokumen"
-                aria-label="Cari entri jurnal"
-                className="pl-9"
-              />
-            </div>
+      {loading && entries.length === 0 ? (
+        <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
+          <Spinner /> Memuat jurnal…
+        </div>
+      ) : (
+        <>
+          <div className="overflow-hidden rounded-xl border border-border bg-surface">
+            <Table className={loading ? "opacity-60" : undefined}>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Tanggal</TableHead>
+                  <TableHead>No. jurnal</TableHead>
+                  <TableHead>Keterangan</TableHead>
+                  <TableHead>Sumber</TableHead>
+                  <TableHead>Cabang</TableHead>
+                  <TableHead className="text-right">Total debit</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {entries.length === 0 && (
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell
+                      colSpan={COLUMN_COUNT}
+                      className="px-4 py-16 text-center"
+                    >
+                      <p className="font-medium text-foreground">
+                        {filtered
+                          ? "Tidak ada entri di filter ini."
+                          : "Belum ada entri di buku besar."}
+                      </p>
+                      <p className="mt-1 text-sm text-muted">
+                        {filtered
+                          ? "Coba longgarkan tanggal atau sumbernya, atau hapus kata kuncinya."
+                          : "Entri muncul begitu ada transaksi yang diposting — penjualan, penerimaan barang, atau opname."}
+                      </p>
+                    </TableCell>
+                  </TableRow>
+                )}
 
-            <Select
-              value={source}
-              onValueChange={(value) =>
-                setSource(value as JournalSourceType | typeof ALL)
-              }
-            >
-              <SelectTrigger aria-label="Filter sumber entri" className="sm:w-48">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>Semua sumber</SelectItem>
-                {SOURCES.map((value) => (
-                  <SelectItem key={value} value={value}>
-                    {SOURCE_LABEL[value]}
-                  </SelectItem>
+                {groupByMonth(entries).map(([month, monthEntries], index) => (
+                  // Keyed on the position, not the label: the groups are what
+                  // this page renders, and a label is only unique while the
+                  // ordering keeps each month in one run. See groupByMonth.
+                  <Fragment key={`${index}-${month}`}>
+                    {/* A month heading is not an entry, so it fills no entry
+                        column — the same choice ChartOfAccountsScreen makes for
+                        its class headings, including switching off ui/table's
+                        own hover so the row never reads as clickable. */}
+                    <TableRow className="bg-surface-hover hover:bg-surface-hover">
+                      <TableCell
+                        colSpan={5}
+                        className="px-4 py-1.5 text-xs font-semibold tracking-widest text-muted uppercase"
+                      >
+                        {month}
+                      </TableCell>
+                      <TableCell className="px-4 py-1.5 text-right text-xs font-semibold tabular-nums">
+                        {formatMoney(sumDecimals(monthEntries.map(entryTotal)))}
+                      </TableCell>
+                      <TableCell className="px-4 py-1.5 text-xs tabular-nums text-muted">
+                        {monthEntries.length} entri di halaman ini
+                      </TableCell>
+                    </TableRow>
+
+                    {monthEntries.map((entry) => (
+                      <TableRow key={entry._id}>
+                        <TableCell className="px-4 py-2.5 text-sm tabular-nums whitespace-nowrap">
+                          {formatDate(entry.date)}
+                        </TableCell>
+                        <TableCell className="px-4 py-2.5">
+                          <Link
+                            href={`${ACCOUNTING_CRUMBS.journal.href}/${entry._id}`}
+                            className="rounded-md text-sm tabular-nums underline-offset-4 hover:text-primary-hover hover:underline focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                          >
+                            {entry.entryNumber}
+                          </Link>
+                        </TableCell>
+                        <TableCell className="max-w-md px-4 py-2.5">
+                          <p className="truncate text-sm font-medium">
+                            {entry.description}
+                          </p>
+                          <p className="truncate text-xs tabular-nums text-muted">
+                            {/* The source document's number when the server could
+                                resolve one — `pos`, `invoice`, `receipt` and
+                                `commission` have no collection to read it from
+                                yet, so those fall back to the line count. */}
+                            {entry.source.reference ??
+                              `${entry.lines.length} baris`}
+                          </p>
+                        </TableCell>
+                        <TableCell className="px-4 py-2.5">
+                          <span
+                            className={cn(
+                              "inline-block rounded-full px-2 py-0.5 text-xs font-medium",
+                              SOURCE_TONE[entry.source.type],
+                            )}
+                          >
+                            {SOURCE_LABEL[entry.source.type]}
+                          </span>
+                        </TableCell>
+                        <TableCell className="px-4 py-2.5 text-sm whitespace-nowrap text-muted">
+                          {entry.branchName ?? "—"}
+                        </TableCell>
+                        <TableCell className="px-4 py-2.5 text-right text-sm font-semibold tabular-nums">
+                          {formatMoney(entryTotal(entry))}
+                        </TableCell>
+                        <TableCell className="px-4 py-2.5">
+                          <StatusBadge entry={entry} />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </Fragment>
                 ))}
-              </SelectContent>
-            </Select>
+              </TableBody>
+            </Table>
           </div>
 
-          {/*
-            Disabled rather than hidden: POST /api/journal-entries exists and
-            only ever produces a MANUAL entry — every other source posts
-            service-to-service. The button belongs here; it just has nothing to
-            call yet.
-          */}
-          <Button disabled title="Belum tersambung ke API">
-            <Plus className="size-4" />
-            Jurnal manual
-          </Button>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <Label
-            htmlFor="journal-date-from"
-            className="text-xs font-normal text-muted"
-          >
-            Tanggal transaksi
-          </Label>
-          <Input
-            id="journal-date-from"
-            type="date"
-            value={dateFrom}
-            onChange={(event) => setDateFrom(event.target.value)}
-            aria-label="Tanggal transaksi dari"
-            className="w-40"
+          <Pagination
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            total={pagination.total}
+            unit="entri"
+            unitPlural="entri"
+            onPageChange={(page) => setQuery({ page })}
           />
-          <span className="text-xs text-muted">s/d</span>
-          <Input
-            type="date"
-            value={dateTo}
-            onChange={(event) => setDateTo(event.target.value)}
-            aria-label="Tanggal transaksi sampai"
-            className="w-40"
-          />
-          {(dateFrom || dateTo) && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setDateFrom("");
-                setDateTo("");
-              }}
-            >
-              Reset tanggal
-            </Button>
-          )}
-        </div>
-      </div>
+        </>
+      )}
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-[10px] uppercase tracking-widest text-muted">
-              <th className="px-4 py-2.5 text-left font-medium">Tanggal</th>
-              <th className="px-4 py-2.5 text-left font-medium">No. jurnal</th>
-              <th className="px-4 py-2.5 text-left font-medium">Keterangan</th>
-              <th className="px-4 py-2.5 text-left font-medium">Sumber</th>
-              <th className="px-4 py-2.5 text-left font-medium">Cabang</th>
-              <th className="px-4 py-2.5 text-right font-medium">
-                Total debit
-              </th>
-              <th className="px-4 py-2.5 text-left font-medium">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-4 py-16 text-center">
-                  <p className="font-medium text-foreground">
-                    Tidak ada entri di filter ini
-                  </p>
-                  <p className="mt-1 text-sm text-muted">
-                    {filtered
-                      ? "Coba longgarkan filter tanggal atau sumbernya."
-                      : "Entri muncul begitu ada transaksi yang diposting."}
-                  </p>
-                </td>
-              </tr>
-            )}
-
-            {groupByMonth(rows).map(([month, entries]) => (
-              <Fragment key={month}>
-                <tr className="border-b border-border bg-accent/60">
-                  <td
-                    colSpan={5}
-                    className="px-4 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted"
-                  >
-                    {month}
-                  </td>
-                  <td className="px-4 py-1.5 text-right tabular-nums text-xs font-semibold">
-                    {formatMoney(sumDecimals(entries.map(entryTotal)))}
-                  </td>
-                  <td className="px-4 py-1.5 text-[10px] uppercase tracking-widest text-muted">
-                    {entries.length} entri
-                  </td>
-                </tr>
-
-                {entries.map((entry) => (
-                  <tr
-                    key={entry._id}
-                    className="border-b border-border/60 last:border-0"
-                  >
-                    <td className="whitespace-nowrap px-4 py-2.5 text-xs">
-                      {formatDate(entry.date)}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <Link
-                        href={`/dashboard/keuangan/journal-entries/${entry._id}`}
-                        className="tabular-nums text-xs hover:text-primary-hover"
-                      >
-                        {entry.entryNumber}
-                      </Link>
-                    </td>
-                    <td className="max-w-md px-4 py-2.5">
-                      <p className="truncate text-sm font-medium">
-                        {entry.description}
-                      </p>
-                      <p className="truncate tabular-nums text-[11px] text-muted">
-                        {entry.source.reference ?? `${entry.lines.length} baris`}
-                      </p>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          entry.source.type !== "manual" && "border-transparent",
-                          SOURCE_TONE[entry.source.type],
-                        )}
-                      >
-                        {SOURCE_LABEL[entry.source.type]}
-                      </Badge>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-xs text-muted">
-                      {entry.branchName}
-                    </td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-sm font-semibold">
-                      {formatMoney(entryTotal(entry))}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <StatusBadge entry={entry} />
-                    </td>
-                  </tr>
-                ))}
-              </Fragment>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <p className="text-xs text-muted">
+        Total debit di atas mencakup seluruh filter. Subtotal di setiap baris
+        bulan hanya menjumlahkan entri di halaman ini — untuk laba rugi per
+        periode, buka{" "}
+        <Link
+          href={ACCOUNTING_CRUMBS.hub.href}
+          className="text-primary-hover underline-offset-4 hover:underline"
+        >
+          ringkasan Keuangan
+        </Link>
+        .
+      </p>
     </div>
   );
 }
@@ -327,77 +293,100 @@ export function entryTotal(entry: JournalEntry): string {
 /**
  * Where an entry sits in the correction story: an ordinary posting, one that has
  * been undone, or the entry that undid one.
+ *
+ * Pale tint, saturated ink, no border, and always a word (§9) — never the colour
+ * alone. "dibalik" on a row whose amounts no longer reach any report is the most
+ * important thing on it.
  */
 function StatusBadge({ entry }: { entry: JournalEntry }) {
   if (entry.reversedByEntryId) {
     return (
-      <Badge
-        variant="outline"
-        className="border-transparent bg-danger/10 text-danger"
+      <span
+        className="rounded-full bg-tint-danger px-2 py-0.5 text-xs font-medium text-danger"
         title="Sudah dikoreksi oleh jurnal pembalik. Angkanya tidak lagi berpengaruh ke laporan."
       >
         dibalik
-      </Badge>
+      </span>
     );
   }
 
   if (entry.reversesEntryId) {
     return (
-      <Badge
-        variant="outline"
-        className="border-transparent bg-secondary/25 text-secondary-foreground"
+      <span
+        className="rounded-full bg-tint-warning px-2 py-0.5 text-xs font-medium text-secondary-foreground"
         title="Entri pembalik — dibuat untuk membatalkan entri lain."
       >
         pembalik
-      </Badge>
+      </span>
     );
   }
 
   return (
-    <Badge
-      variant="outline"
-      className="border-transparent bg-success/12 text-success"
-    >
+    <span className="rounded-full bg-tint-success px-2 py-0.5 text-xs font-medium text-success">
       diposting
-    </Badge>
+    </span>
   );
+}
+
+/** What a figure is scoped by, said under it rather than left to be assumed. */
+function scopeHint(filtered: boolean): string {
+  return filtered ? "seluruh filter, bukan halaman ini" : "seluruh buku besar";
 }
 
 function SummaryTile({
   label,
   value,
-  mono = false,
+  hint,
   tone,
 }: {
   label: string;
   value: string;
-  mono?: boolean;
-  tone?: string;
+  hint?: string;
+  /** `danger` for a figure that is itself the problem — see `unbalanced`. */
+  tone?: "danger";
 }) {
   return (
     <div className="rounded-xl border border-border bg-surface px-4 py-3">
-      <p className="text-[10px] font-medium uppercase tracking-widest text-muted">
+      <p className="text-xs font-medium tracking-widest text-muted uppercase">
         {label}
       </p>
-      <p
-        className={cn(
-          "mt-1 text-lg font-semibold tabular-nums text-foreground",
-          mono && "tabular-nums",
-          tone,
-        )}
-      >
+      <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">
         {value}
       </p>
+      {hint && (
+        // §13: danger text is under the 4.5:1 floor, so where it appears it is
+        // ≥14px and semibold, and it always carries a word rather than relying
+        // on the colour.
+        <p
+          className={cn(
+            "mt-0.5 text-xs text-muted",
+            tone === "danger" && "text-sm font-semibold text-danger",
+          )}
+        >
+          {hint}
+        </p>
+      )}
     </div>
   );
 }
 
 /**
- * Splits the already-sorted rows into [month label, entries] pairs.
+ * Splits the page's rows into [month label, entries] pairs.
  *
- * Relies on the list arriving newest-first, exactly as the API returns it, so a
- * month is a contiguous run and no re-sorting is needed here — sorting a second
- * time in the client is how a list starts disagreeing with its own pagination.
+ * TAKES THE ORDER THE API GAVE, whichever of the four the toolbar asked for, and
+ * re-sorts nothing — sorting a second time in the client is how a list starts
+ * disagreeing with its own pagination.
+ *
+ * A month stays a CONTIGUOUS RUN under every one of those orderings, which is
+ * what lets this walk the list once and start a new group whenever the label
+ * changes. The two date orderings give it by construction; the two number
+ * orderings give it because an entry number is drawn against the entry's own
+ * date — "JE-2026-07-0001" is a July transaction whenever it was typed — so
+ * ordering by number never interleaves two months.
+ *
+ * It does not DEPEND on that, though: a run that reappeared would simply get a
+ * second header, which is why the caller keys on the group's position rather
+ * than on the month label.
  */
 function groupByMonth(entries: JournalEntry[]): Array<[string, JournalEntry[]]> {
   const groups: Array<[string, JournalEntry[]]> = [];

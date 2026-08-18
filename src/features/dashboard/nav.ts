@@ -285,6 +285,32 @@ export const NAV_ITEMS: NavItem[] = [
         icon: JournalIcon,
         permission: { feature: "journalEntries", action: "read" },
       },
+      // The two reports sit between the ledger and the setup rows, because that
+      // is the order they are used in: the ledger is what is recorded, these are
+      // what it is read as, and Lini Bisnis is configuration visited twice a
+      // year. Both are gated on `journalEntries` — a report is the ledger folded,
+      // so there is no narrower grant that would make sense.
+      {
+        label: "Laba Rugi",
+        href: "/dashboard/keuangan/laba-rugi",
+        icon: FinanceIcon,
+        permission: { feature: "journalEntries", action: "read" },
+      },
+      {
+        label: "Arus Kas",
+        href: "/dashboard/keuangan/arus-kas",
+        icon: FinanceIcon,
+        permission: { feature: "journalEntries", action: "read" },
+      },
+      {
+        // Last of the four: the chart and the ledger are opened daily, while the
+        // lines of business are set up once and revisited when the shop adds a
+        // service.
+        label: "Lini Bisnis",
+        href: "/dashboard/keuangan/business-lines",
+        icon: FinanceIcon,
+        permission: { feature: "businessLines", action: "read" },
+      },
     ],
   },
   {

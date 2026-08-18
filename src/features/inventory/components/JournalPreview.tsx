@@ -1,4 +1,4 @@
-import { formatMoney, sumDecimals } from "@/utils/decimal";
+import { formatMoney, isPositive, sumDecimals } from "@/utils/decimal";
 import type { JournalLine } from "@/types/inventory";
 
 /**
@@ -57,11 +57,20 @@ export function JournalPreview({
             <tr key={`${line.accountCode}-${index}`} className="border-b border-border/60 last:border-0">
               <td className="px-3 py-2 tabular-nums text-xs">{line.accountCode}</td>
               <td className="px-3 py-2 text-xs">{line.accountName}</td>
+              {/*
+                THE SIDE IS DECIDED ON THE VALUE, not on whether the string is
+                there. Two endpoints feed this panel and they say "nothing on
+                this side" differently: the movement preview sends `null`, while
+                the goods receipt and the purchase return send `"0"` — which is
+                truthy, so the same panel printed a dash for one and "Rp 0" for
+                the other. A zero in the credit column makes a reader check two
+                columns to learn which side a line is on.
+              */}
               <td className="px-3 py-2 text-right tabular-nums text-xs">
-                {line.debit ? formatMoney(line.debit) : "—"}
+                {isPositive(line.debit ?? "0") ? formatMoney(line.debit) : "—"}
               </td>
               <td className="px-3 py-2 text-right tabular-nums text-xs">
-                {line.credit ? formatMoney(line.credit) : "—"}
+                {isPositive(line.credit ?? "0") ? formatMoney(line.credit) : "—"}
               </td>
             </tr>
           ))}
