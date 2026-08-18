@@ -50,11 +50,14 @@ function today(): string {
 }
 
 /**
- * Whether a line must carry lot details.
+ * Whether a line gets its own lot, and therefore carries a batch code.
  *
- * Required when the goods expire — the promise `hasExpiry` makes — or whenever
- * the delivery is consigned, because consignment stock always gets its own lot:
- * its cost was entered by hand rather than derived from a purchase.
+ * True when the goods expire — the promise `hasExpiry` makes — or whenever the
+ * delivery is consigned, because consignment stock always gets its own lot: its
+ * cost was entered by hand rather than derived from a purchase.
+ *
+ * The code itself is no longer the clerk's problem — see `autoBatchCode`. What
+ * IS still theirs is the expiry date, which nothing can derive.
  *
  * MODULE-LEVEL, taking `consignment` as an argument rather than closing over it.
  * Defined inside the component it would be a new function every render, and the
@@ -63,6 +66,42 @@ function today(): string {
  */
 function needsLot(product: Product | undefined, consignment: boolean): boolean {
   return Boolean(product?.hasExpiry) || consignment;
+}
+
+/** The API's own limit, minus the `:tanggal` this appends. */
+const BATCH_CODE_MAX_LENGTH = 60;
+
+/**
+ * The batch code a line falls back to when the field is left blank.
+ *
+ * SUPPLIERS OFTEN DO NOT PRINT ONE. Demanding a code anyway made the clerk
+ * invent it, and an invented code is either "1", the invoice number, or whatever
+ * the last person typed — none of which identifies a lot when it has to be
+ * recalled or returned months later. So the field is optional now and this fills
+ * it, from what the goods themselves already say.
+ *
+ * KEYED ON THE EXPIRY DATE, because that is what actually distinguishes one lot
+ * of a product from the next, and what FEFO already orders by: two clerks
+ * receiving the same delivery land on the same code, and a second van carrying
+ * the same expiry lands on it too — correctly, since `batchCode` is deliberately
+ * NOT unique (see productbatches) and one code arriving twice is two rows.
+ *
+ * Consigned goods that never expire have no such date, so they fall back to the
+ * receipt date — the only thing separating one consignment from the next.
+ *
+ * Exported for its own tests: the form's product picker is a Radix select, which
+ * jsdom cannot drive, so this rule is unreachable through the rendered row.
+ */
+export function autoBatchCode(
+  sku: string | null | undefined,
+  expiryDate: string,
+  receiptDate: string,
+): string {
+  const date = expiryDate || receiptDate;
+  // Truncated rather than refused: a 60-character SKU is the catalogue's
+  // problem, and losing the tail of it beats losing the receipt.
+  const stem = (sku ?? "LOT").slice(0, BATCH_CODE_MAX_LENGTH - date.length - 1);
+  return `${stem}:${date}`;
 }
 
 /**
@@ -210,8 +249,16 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
           productId: line.productId,
           qty: line.qty.trim(),
           costPerUnit: line.costPerUnit.trim(),
-          ...(needsLot(product, consignment) && line.batchCode.trim() !== ""
-            ? { batchCode: line.batchCode.trim() }
+          // Filled in for the clerk when they left it blank. Done HERE rather
+          // than in the field itself so the row keeps showing what the supplier
+          // actually printed — nothing — while the preview and the save both
+          // carry the code that will really be written.
+          ...(needsLot(product, consignment)
+            ? {
+                batchCode:
+                  line.batchCode.trim() ||
+                  autoBatchCode(product?.sku, line.expiryDate, receiptDate),
+              }
             : {}),
           ...(needsLot(product, consignment) && line.expiryDate !== ""
             ? { expiryDate: line.expiryDate }
@@ -271,7 +318,8 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
       const product = productById.get(line.productId);
       if (!isPositive(line.qty)) return false;
       if (!isDecimal(line.costPerUnit)) return false;
-      if (needsLot(product, consignment) && line.batchCode.trim() === "") return false;
+      // No batch-code gate: a blank one is filled by `autoBatchCode`. The
+      // expiry date is not derivable and still blocks the preview.
       if (product?.hasExpiry && line.expiryDate === "") return false;
       return true;
     }) &&
@@ -337,12 +385,9 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
             : `${label}: harga beli wajib diisi.`;
           break;
         }
-        if (needsLot(product, consignment) && line.batchCode.trim() === "") {
-          next.lines = consignment
-            ? `${label}: barang konsinyasi selalu punya lot sendiri — kode batch wajib diisi.`
-            : `${label}: produk ini melacak batch — kode batch wajib diisi.`;
-          break;
-        }
+        // Kode batch is NOT checked: blank means "supplier tidak memberi nomor",
+        // and the payload derives one. The expiry date has no such fallback —
+        // it is the thing the code is derived FROM, and FEFO is wrong without it.
         if (product?.hasExpiry && line.expiryDate === "") {
           next.lines = `${label}: tanggal kedaluwarsa wajib diisi.`;
           break;
@@ -424,7 +469,7 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
         </div>
         <p className="mt-1.5 text-xs text-muted">
           {consignment
-            ? "Barang masuk gudang tapi masih milik supplier — tidak ada utang dan tidak ada jurnal. HPP diisi manual, dan setiap baris wajib punya kode lot sendiri."
+            ? "Barang masuk gudang tapi masih milik supplier — tidak ada utang dan tidak ada jurnal. HPP diisi manual, dan setiap baris punya lot sendiri — kode batch terisi otomatis kalau dikosongkan."
             : "Barang jadi milik toko saat diterima — utang ke supplier langsung tercatat dan jurnal diposting."}
         </p>
       </div>
@@ -551,8 +596,25 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
                   <th className="px-2 py-2 text-right font-medium">
                     {consignment ? "HPP manual" : "Harga beli"}
                   </th>
-                  <th className="px-2 py-2 text-left font-medium">Kode lot</th>
-                  <th className="px-2 py-2 text-left font-medium">Expired</th>
+                  <th className="px-2 py-2 text-left font-medium">
+                    Kode batch
+                  </th>
+                  <th className="px-2 py-2 text-left font-medium">
+                    Expired{" "}
+                    {/* The column, not the cell, carries the mark: a date input
+                        cannot hold a placeholder, so an empty one looks finished
+                        and needs saying somewhere. `danger-ink` rather than
+                        `danger` because a lone asterisk has no word beside it to
+                        carry the meaning — see ui-rules §13. Hidden from screen
+                        readers, which get `aria-required` off the input itself
+                        and would otherwise hear a bare star. */}
+                    <span
+                      aria-hidden
+                      className="text-xs font-bold text-danger-ink"
+                    >
+                      *
+                    </span>
+                  </th>
                   <th className="px-2 py-2 text-right font-medium">Subtotal</th>
                   <th className="px-2 py-2" />
                 </tr>
@@ -560,7 +622,21 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
               <tbody>
                 {lines.map((line, index) => {
                   const product = productById.get(line.productId);
-                  const lotRequired = needsLot(product, consignment);
+                  const lotTracked = needsLot(product, consignment);
+                  const expiryRequired = Boolean(product?.hasExpiry);
+                  // Shown as the batch field's placeholder, so the clerk can see
+                  // the code they are about to accept rather than discovering it
+                  // on the receipt afterwards. Withheld until the expiry date is
+                  // in, because until then it would be derived from the wrong
+                  // date and change under them the moment they type one.
+                  const autoCode =
+                    expiryRequired && line.expiryDate === ""
+                      ? null
+                      : autoBatchCode(
+                          product?.sku,
+                          line.expiryDate,
+                          receiptDate,
+                        );
 
                   return (
                     <tr
@@ -602,17 +678,22 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
                       </td>
 
                       <td className="px-2 py-2">
-                        {lotRequired ? (
+                        {lotTracked ? (
                           <Input
-                            aria-label={`Kode lot ${product?.name ?? ""}`}
+                            aria-label={`Kode batch ${product?.name ?? ""}`}
                             value={line.batchCode}
                             onChange={(event) =>
                               updateLine(index, {
                                 batchCode: event.target.value,
                               })
                             }
-                            placeholder="wajib"
-                            className="max-w-32 tabular-nums text-xs"
+                            placeholder={autoCode ?? "otomatis"}
+                            title={
+                              autoCode
+                                ? `Kosongkan untuk memakai ${autoCode}`
+                                : "Kosongkan untuk kode otomatis dari SKU dan tanggal expired"
+                            }
+                            className="max-w-40 tabular-nums text-xs"
                           />
                         ) : (
                           <span className="text-xs text-muted">—</span>
@@ -620,17 +701,22 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
                       </td>
 
                       <td className="px-2 py-2">
-                        {product?.hasExpiry ? (
+                        {expiryRequired ? (
                           <Input
-                            aria-label={`Expired ${product.name}`}
+                            aria-label={`Expired ${product?.name ?? ""}`}
                             type="date"
+                            required
+                            aria-required
                             value={line.expiryDate}
                             onChange={(event) =>
                               updateLine(index, {
                                 expiryDate: event.target.value,
                               })
                             }
-                            className="max-w-36 text-xs"
+                            className={cn(
+                              "max-w-36 text-xs",
+                              line.expiryDate === "" && "border-danger",
+                            )}
                           />
                         ) : (
                           <span className="text-xs text-muted">—</span>
@@ -666,6 +752,22 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
               </tbody>
             </table>
           </div>
+        )}
+
+        {/* Says the rule ONCE, above the row-level marks, because the two fields
+            changed places: the code used to be mandatory and the date easy to
+            miss, and a clerk who learned the old form would otherwise read the
+            empty batch box as the thing blocking them. */}
+        {lines.some((line) =>
+          needsLot(productById.get(line.productId), consignment),
+        ) && (
+          <p className="mt-3 text-xs text-muted">
+            Produk berkedaluwarsa <b>wajib</b> punya tanggal expired — FEFO
+            menjual lot terdekat lebih dulu, dan tanpa tanggal urutannya tidak
+            ada. <b>Kode batch boleh kosong</b>: kalau supplier tidak mencetak
+            nomor lot, sistem memakai{" "}
+            <span className="tabular-nums">SKU:tanggal-expired</span>.
+          </p>
         )}
 
         {/* A duplicate is reported the moment it exists, not on submit: it blocks

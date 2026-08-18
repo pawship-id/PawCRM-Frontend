@@ -7,6 +7,7 @@ import {
   ReceiptForm,
   ReceiptsScreen,
 } from "@/features/purchasing";
+import { autoBatchCode } from "@/features/purchasing/components/ReceiptForm";
 import { goodsReceiptService } from "@/services/goodsReceipt.service";
 import { purchaseReturnService } from "@/services/purchaseReturn.service";
 import { productBatchService } from "@/services/productBatch.service";
@@ -544,7 +545,7 @@ describe("ReceiptForm", () => {
 
     expect(screen.queryByLabelText(/PPN masukan/)).toBeNull();
     expect(
-      screen.getByText(/setiap baris wajib punya kode lot sendiri/),
+      screen.getByText(/setiap baris punya lot sendiri/),
     ).toBeInTheDocument();
   });
 
@@ -668,6 +669,49 @@ describe("goods receipt payload rules", () => {
       message: "Batch code is required",
       reason: "SHAMPOO, PASIR",
     });
+  });
+});
+
+/* ------------------------------------------------------ the generated lot code */
+
+/**
+ * Kode batch is OPTIONAL on the form and derived when left blank.
+ *
+ * The field used to be mandatory, which made the clerk invent a number whenever
+ * the supplier printed none — and an invented number is "1", or the invoice
+ * number, or whatever the last person typed. None of those identify a lot when
+ * one has to be recalled. `SKU:tanggal-expired` is derived from the goods, so it
+ * is the same code whoever receives them.
+ *
+ * Asserted on the function rather than through the row: adding a line means
+ * driving a Radix select, which jsdom cannot do — see the header.
+ */
+describe("autoBatchCode", () => {
+  it("keys on the expiry date, because that is what distinguishes a lot", () => {
+    expect(autoBatchCode("SHAMPOO", "2027-03-01", "2026-08-06")).toBe(
+      "SHAMPOO:2027-03-01",
+    );
+  });
+
+  /**
+   * Consigned goods that never expire still get their own lot — its cost was
+   * typed in by hand — and the receipt date is the only thing separating one
+   * consignment of them from the next.
+   */
+  it("falls back to the receipt date when the goods do not expire", () => {
+    expect(autoBatchCode("PASIR", "", "2026-08-06")).toBe("PASIR:2026-08-06");
+  });
+
+  /**
+   * `batchCode` maxes out at 60 characters at the API. Truncating the SKU keeps
+   * the date — the half that makes the code mean something — and loses the tail
+   * of a catalogue value that should not have been that long.
+   */
+  it("stays inside the API's 60-character limit", () => {
+    const code = autoBatchCode("X".repeat(80), "2027-03-01", "2026-08-06");
+
+    expect(code.length).toBe(60);
+    expect(code.endsWith(":2027-03-01")).toBe(true);
   });
 });
 
