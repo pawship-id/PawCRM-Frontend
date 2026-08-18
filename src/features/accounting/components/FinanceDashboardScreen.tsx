@@ -29,13 +29,13 @@ import { absDecimal, formatMoney } from "@/utils/decimal";
 import { ACCOUNTING_CRUMBS } from "../crumbs";
 import {
   cashPosition,
-  currentMonthRange,
   financeTransactions,
   formatPercent,
   lineFigures,
   lineLabel,
   marginPct,
-  previousMonthRange,
+  reportPresets,
+  SHARED_LINE_NONE,
   type FinanceQuery,
   type FinanceTransaction,
   type LineFigures,
@@ -45,10 +45,7 @@ import {
   useFinanceDashboard,
 } from "../hooks/useFinanceDashboard";
 import { formatDate } from "../labels";
-import {
-  FinanceDashboardToolbar,
-  SHARED_LINE_NONE,
-} from "./FinanceDashboardToolbar";
+import { FinanceReportToolbar } from "./FinanceReportToolbar";
 
 /**
  * The Keuangan landing screen: where the money went this period, and the last
@@ -93,25 +90,10 @@ export function FinanceDashboardScreen({ now }: { now: string }) {
     businessLineId: "",
   }));
 
-  // The four the shared control offers everywhere else, then the two months this
-  // screen is actually read by. Same order, so somebody who learned the picker
-  // on Penerimaan Barang finds the same chips in the same places here.
-  const presets = useMemo(() => {
-    const todayIso = isoDate(today);
-    const back = (days: number) => {
-      const start = new Date(today);
-      start.setDate(start.getDate() - (days - 1));
-      return isoDate(start);
-    };
-
-    return [
-      { label: "Hari ini", from: todayIso, to: todayIso },
-      { label: "7 hari", from: back(7), to: todayIso },
-      { label: "30 hari", from: back(30), to: todayIso },
-      { label: "Bulan ini", ...toPreset(currentMonthRange(today)) },
-      { label: "Bulan lalu", ...toPreset(previousMonthRange(today)) },
-    ];
-  }, [today]);
+  // Shared with Laba Rugi and Arus Kas — see reportPresets. Three report screens
+  // offering three slightly different sets of chips is how one control becomes
+  // three to learn.
+  const presets = useMemo(() => reportPresets(today), [today]);
 
   // The shared bucket is a client-side token; the API expresses "no business
   // line" by filtering on the lines, which it cannot do through an id. Sending
@@ -165,7 +147,7 @@ export function FinanceDashboardScreen({ now }: { now: string }) {
         </Card>
       ) : (
         <>
-          <FinanceDashboardToolbar
+          <FinanceReportToolbar
             query={query}
             branches={data.branches}
             businessLines={data.businessLines}
@@ -705,20 +687,3 @@ function ModuleLinks() {
   );
 }
 
-/** `{ dateFrom, dateTo }` as `FilterDateRange` names its two ends. */
-function toPreset(period: { dateFrom: string; dateTo: string }) {
-  return { from: period.dateFrom, to: period.dateTo };
-}
-
-/**
- * A `Date` as the calendar date it is *here*.
- *
- * Local parts rather than `toISOString()`: the latter is UTC and shifts the day
- * back for everyone east of Greenwich, which is everyone using this — "Hari ini"
- * would mean yesterday for the first seven hours of a Jakarta morning.
- */
-function isoDate(date: Date): string {
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
-  return `${date.getFullYear()}-${month}-${day}`;
-}

@@ -18,6 +18,21 @@
  * kas and daftar transaksi screens will fold the same ledger.
  */
 export { FinanceDashboardScreen } from "./components/FinanceDashboardScreen";
+/**
+ * The two report screens, rendering FIXTURES rather than the ledger — see
+ * ./data/reportFixtures.ts. They are here so the routes can reach them and the
+ * layout can be reviewed; the swap to a real endpoint is a change of source
+ * inside each screen, not of anything a page imports.
+ */
+export { ProfitLossScreen } from "./components/ProfitLossScreen";
+export { CashflowScreen } from "./components/CashflowScreen";
+export {
+  cashflowReport,
+  profitLossMatrix,
+  type CashflowReport,
+  type ProfitLossMatrix,
+  type ReportQuery,
+} from "./reportSummary";
 export { BusinessLinesScreen } from "./components/BusinessLinesScreen";
 export { useBusinessLines } from "./hooks/useBusinessLines";
 export {
@@ -25,13 +40,16 @@ export {
   currentMonthRange,
   financeTransactions,
   formatPercent,
+  isoDate,
   lineFigures,
   lineLabel,
   marginPct,
   monthRange,
   previousMonthRange,
+  reportPresets,
   CASH_ACCOUNT_CODES,
   SHARED_LINE_LABEL,
+  SHARED_LINE_NONE,
   type FinanceQuery,
   type FinanceTransaction,
   type LineFigures,

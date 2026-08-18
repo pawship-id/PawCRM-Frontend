@@ -1,3 +1,4 @@
+import type { DatePreset } from "@/components";
 import type { ChartOfAccount, JournalEntry } from "@/types/accounting";
 import type { AccountBalance, JournalSummary } from "@/services/journalEntry.service";
 import { toDecimalString, toMinor } from "@/utils/decimal";
@@ -32,6 +33,20 @@ export const CASH_ACCOUNT_CODES = ["1101", "1102"];
 
 /** The bucket a P&L line with no business line falls into. */
 export const SHARED_LINE_LABEL = "Bersama (HQ)";
+
+/**
+ * The filter value that means "only the lines with no business line on them".
+ *
+ * `""` already means "not filtering", so the shared bucket needs a token of its
+ * own — and it cannot be a real id, because there is no document behind it. The
+ * screens translate it before a query leaves for the API; nothing below that
+ * layer ever sees it.
+ *
+ * It lives here rather than on the toolbar that first needed it because the
+ * report screens fold against it too, and a constant a summary module imports
+ * from a component is a dependency pointing the wrong way.
+ */
+export const SHARED_LINE_NONE = "__none__";
 
 /**
  * What the toolbar edits, and what goes to the API verbatim.
@@ -278,4 +293,50 @@ export function previousMonthRange(now: Date): Period {
   const year = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
   const month = now.getMonth() === 0 ? 12 : now.getMonth();
   return monthRange(year, month);
+}
+
+/**
+ * A `Date` as the calendar date it is *here*.
+ *
+ * Local parts rather than `toISOString()`: the latter is UTC and shifts the day
+ * back for everyone east of Greenwich, which is everyone using this — "Hari ini"
+ * would mean yesterday for the first seven hours of a Jakarta morning.
+ */
+export function isoDate(date: Date): string {
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+/**
+ * The period chips every Keuangan report offers.
+ *
+ * THE FOUR THE SHARED CONTROL HAS EVERYWHERE ELSE, then the two months a report
+ * is actually read by — same order, so somebody who learned the picker on
+ * Penerimaan Barang finds the same chips in the same places here. Shared across
+ * the three report screens rather than rebuilt per screen: chips that drifted
+ * apart between two pages read as two different controls.
+ *
+ * TAKES `now` RATHER THAN READING THE CLOCK, for the reason `currentMonthRange`
+ * above spells out — every caller passes one it got from the server.
+ */
+export function reportPresets(now: Date): DatePreset[] {
+  const today = isoDate(now);
+  const back = (days: number) => {
+    const start = new Date(now);
+    start.setDate(start.getDate() - (days - 1));
+    return isoDate(start);
+  };
+  const month = (period: Period) => ({
+    from: period.dateFrom,
+    to: period.dateTo,
+  });
+
+  return [
+    { label: "Hari ini", from: today, to: today },
+    { label: "7 hari", from: back(7), to: today },
+    { label: "30 hari", from: back(30), to: today },
+    { label: "Bulan ini", ...month(currentMonthRange(now)) },
+    { label: "Bulan lalu", ...month(previousMonthRange(now)) },
+  ];
 }
