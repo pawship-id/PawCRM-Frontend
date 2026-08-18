@@ -482,11 +482,12 @@ describe("ProductForm", () => {
     it("binds a duplicate-SKU conflict to the SKU field", async () => {
       const user = userEvent.setup();
       jest.spyOn(productService, "create").mockRejectedValue(
+        // Verbatim from the API, which answers in English.
         new ApiError("Product with SKU 'SHAMPOO' already exists", 409, {
           details: [
             {
               field: "sku",
-              message: "SKU 'SHAMPOO' sudah dipakai produk lain",
+              message: "SKU 'SHAMPOO' is already used by another product",
             },
           ],
         }),
@@ -499,10 +500,83 @@ describe("ProductForm", () => {
       await user.type(screen.getByLabelText(/Harga jual/), "45000");
       await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
 
-      expect(
-        await screen.findByText(/sudah dipakai produk lain/i),
-      ).toBeInTheDocument();
+      // Bound to the field, so the red is where the fix has to be typed.
+      await waitFor(() =>
+        expect(screen.getByLabelText(/^SKU/)).toHaveAccessibleDescription(
+          /sudah dipakai produk lain/i,
+        ),
+      );
+      // And said out loud, top-right, because a banner at the top of a form the
+      // user has scrolled past is a message nobody reads before pressing Simpan
+      // a second time.
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          icon: "error",
+          position: "top-end",
+          title: expect.stringMatching(/sudah dipakai produk lain/i),
+        }),
+      );
       expect(push).not.toHaveBeenCalled();
+    });
+
+    it("says a duplicate barcode in Indonesian, on the barcode field", async () => {
+      const user = userEvent.setup();
+      jest.spyOn(productService, "create").mockRejectedValue(
+        // Verbatim from the API, which answers in English.
+        new ApiError("Barcode '8991' is already used by another product", 409, {
+          details: [
+            {
+              field: "barcode",
+              message: "Barcode '8991' is already used by another product",
+            },
+          ],
+        }),
+      );
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await fillCommon(user);
+      await user.type(screen.getByLabelText(/Harga jual/), "45000");
+      await user.type(screen.getByLabelText(/^Barcode/), "8991");
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      await waitFor(() =>
+        expect(screen.getByLabelText(/^Barcode/)).toHaveAccessibleDescription(
+          "Barcode 8991 sudah dipakai produk lain.",
+        ),
+      );
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          icon: "error",
+          title: "Barcode 8991 sudah dipakai produk lain.",
+        }),
+      );
+    });
+
+    it("leaves a complaint that is NOT a conflict exactly as the server said it", async () => {
+      // The rewrite is matched on the phrase, not on the field: a length or
+      // format refusal arrives on `sku` too, and turning that into "sudah
+      // dipakai" would tell the user the opposite of what happened.
+      const user = userEvent.setup();
+      jest.spyOn(productService, "create").mockRejectedValue(
+        new ApiError("Validation failed", 400, {
+          details: [{ field: "sku", message: "sku must be at most 64 chars" }],
+        }),
+      );
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await fillCommon(user);
+      await user.type(screen.getByLabelText(/Harga jual/), "45000");
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      await waitFor(() =>
+        expect(screen.getByLabelText(/^SKU/)).toHaveAccessibleDescription(
+          "sku must be at most 64 chars",
+        ),
+      );
     });
   });
 
@@ -746,10 +820,365 @@ describe("ProductForm", () => {
       await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
 
       // A twelve-row form is exactly where "SKU already exists" with no row
-      // attached is useless.
+      // attached is useless — and it is said in Indonesian, like everything
+      // else on this screen.
+      await waitFor(() =>
+        expect(screen.getByLabelText("SKU 3kg")).toHaveAccessibleDescription(
+          "SKU RC-3KG sudah dipakai produk lain.",
+        ),
+      );
+      // The row that was fine stays clean.
+      expect(screen.getByLabelText("SKU 1kg")).not.toHaveAccessibleDescription(
+        /sudah dipakai/,
+      );
+      // The toast names the row, since the table may be scrolled away from it.
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          icon: "error",
+          position: "top-end",
+          title: "Varian 3kg: SKU RC-3KG sudah dipakai produk lain.",
+        }),
+      );
+    });
+
+    it("puts a duplicate BARCODE on the barcode cell, not on the SKU one", async () => {
+      const user = userEvent.setup();
+      jest.spyOn(productService, "create").mockRejectedValue(
+        new ApiError("Barcode '8991' is already used by another product", 409, {
+          details: [
+            {
+              field: "variants.1.barcode",
+              message: "Barcode '8991' is already used by another product",
+            },
+          ],
+        }),
+      );
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await fillCommon(user, { name: "Royal Canin", sku: "RC" });
+      await switchToFamily(user);
+      await addAxisValue(user, "1kg");
+      await addAxisValue(user, "3kg");
+      await user.type(screen.getByLabelText("Harga 1kg"), "68000");
+      await user.type(screen.getByLabelText("Harga 3kg"), "185000");
+      await user.type(screen.getByLabelText("Barcode 3kg"), "8991");
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      // MARKED, not captioned — the sentence is in the toast, which names the
+      // row, and the cell carries the red.
+      await waitFor(() =>
+        expect(screen.getByLabelText("Barcode 3kg")).toHaveAttribute(
+          "aria-invalid",
+          "true",
+        ),
+      );
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          icon: "error",
+          position: "top-end",
+          title: "Varian 3kg: Barcode 8991 sudah dipakai produk lain.",
+        }),
+      );
+      // The bug this test exists for: the message used to land on the SKU input,
+      // pointing the user at the one code in the row that was actually fine.
+      expect(screen.getByLabelText("SKU 3kg")).not.toHaveAccessibleDescription(
+        /sudah dipakai/,
+      );
+      expect(screen.getByLabelText("SKU 3kg")).not.toHaveAttribute(
+        "aria-invalid",
+      );
+    });
+
+    it("describes no variants at all until an axis has values", async () => {
+      const user = userEvent.setup();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await switchToFamily(user);
+
+      // The cartesian product of nothing is `[[]]`, and the table used to
+      // render that faithfully: "1 kombinasi", a nameless row, a SKU of "-",
+      // and a refusal reading "Harga jual belum benar pada varian ."
+      expect(await screen.findByText("Belum ada kombinasi")).toBeInTheDocument();
+      expect(screen.getByText("0 kombinasi")).toBeInTheDocument();
+      expect(screen.queryByLabelText(/^SKU /)).not.toBeInTheDocument();
+    });
+
+    /**
+     * THE TOAST AND THE RED TEXT SAY THE SAME THING.
+     *
+     * Every field that was refused is marked and captioned where it sits — that
+     * is how the user sees which ones there are. The toast repeats ONE of them
+     * verbatim: the one to fix first. Fix it, save again, and the toast moves on
+     * to whatever is now at the top. Two surfaces, one sentence at a time, never
+     * a summary that matches nothing on the page.
+     */
+    it("says the same sentence in the toast as under the field, and moves on", async () => {
+      const user = userEvent.setup();
+      const create = mockCreate();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      // Nothing filled in at all: a missing name and a missing SKU.
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      await waitFor(() =>
+        expect(toast).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            icon: "error",
+            title: "Nama produk wajib diisi.",
+          }),
+        ),
+      );
+      // The very same words, under the very input the toast is about.
+      expect(screen.getByLabelText(/Nama produk/)).toHaveAccessibleDescription(
+        "Nama produk wajib diisi.",
+      );
+      // The others are marked and captioned too — the toast just is not about
+      // them yet.
+      expect(screen.getByLabelText(/^SKU/)).toHaveAccessibleDescription(
+        "SKU wajib diisi.",
+      );
+
+      // Name filled in — the toast moves to what is now first.
+      await user.type(screen.getByLabelText(/Nama produk/), "Shampoo");
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      await waitFor(() =>
+        expect(toast).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            icon: "error",
+            title: "SKU wajib diisi.",
+          }),
+        ),
+      );
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    /**
+     * ONE PROBLEM PER SAVE, in the order the work has to be done.
+     *
+     * A blank price and a duplicate barcode are not equally urgent: the price
+     * is why the save cannot happen at all, and being told about the barcode
+     * first asks the user to fix the smaller thing and watch the save fail
+     * again. So the price is named, and the barcode waits its turn.
+     */
+    it("asks for the missing price first, and the duplicate barcode only after", async () => {
+      const user = userEvent.setup();
+      const create = mockCreate();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await fillCommon(user, { name: "Royal Canin", sku: "RC" });
+      await switchToFamily(user);
+      await addAxisValue(user, "1kg");
+      await addAxisValue(user, "3kg");
+      // Both wrong at once: no price on one row, one barcode on two.
+      await user.type(screen.getByLabelText("Harga 1kg"), "68000");
+      await user.type(screen.getByLabelText("Barcode 1kg"), "123");
+      await user.type(screen.getByLabelText("Barcode 3kg"), "123");
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      await waitFor(() =>
+        expect(toast).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            icon: "error",
+            title: "Varian 3kg: Harga jual belum benar.",
+          }),
+        ),
+      );
+
+      // Price fixed — now, and only now, the barcode is what stands in the way.
+      await user.type(screen.getByLabelText("Harga 3kg"), "185000");
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      await waitFor(() =>
+        expect(toast).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            icon: "error",
+            title: "Barcode 123 kembar dengan varian lain.",
+          }),
+        ),
+      );
+      expect(create).not.toHaveBeenCalled();
+
+      // And once that is fixed too, nothing stands in the way.
+      await user.clear(screen.getByLabelText("Barcode 3kg"));
+      await user.type(screen.getByLabelText("Barcode 3kg"), "124");
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    });
+
+    it("says a barcode repeated between two rows in Indonesian, without asking the API", async () => {
+      // The API refuses a request that repeats a code BEFORE it looks at what is
+      // stored, and that refusal ("appears more than once in this request") is a
+      // different English sentence from the conflict one — which is how an
+      // untranslated string used to reach the toast. Caught on the form now, so
+      // the round trip never happens.
+      const user = userEvent.setup();
+      const create = mockCreate();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await fillCommon(user, { name: "Royal Canin", sku: "RC" });
+      await switchToFamily(user);
+      await addAxisValue(user, "1kg");
+      await addAxisValue(user, "3kg");
+      await user.type(screen.getByLabelText("Harga 1kg"), "68000");
+      await user.type(screen.getByLabelText("Harga 3kg"), "185000");
+      await user.type(screen.getByLabelText("Barcode 1kg"), "8991");
+      await user.type(screen.getByLabelText("Barcode 3kg"), "8991");
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      // The mistake itself, naming the code — not a count of the red boxes.
+      await waitFor(() =>
+        expect(toast).toHaveBeenCalledWith(
+          expect.objectContaining({
+            icon: "error",
+            title: "Barcode 8991 kembar dengan varian lain.",
+          }),
+        ),
+      );
+      // Both offenders marked, because either one is the one to change.
+      expect(screen.getByLabelText("Barcode 1kg")).toHaveAttribute(
+        "aria-invalid",
+        "true",
+      );
+      expect(screen.getByLabelText("Barcode 3kg")).toHaveAttribute(
+        "aria-invalid",
+        "true",
+      );
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it("translates the API's repeated-code refusal if one ever reaches it", async () => {
+      const user = userEvent.setup();
+      jest.spyOn(productService, "create").mockRejectedValue(
+        new ApiError("This request repeats a value that must be unique", 400, {
+          details: [
+            {
+              field: "variants.1.barcode",
+              message: "Barcode '8991' appears more than once in this request",
+            },
+          ],
+        }),
+      );
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await fillCommon(user, { name: "Royal Canin", sku: "RC" });
+      await switchToFamily(user);
+      await addAxisValue(user, "1kg");
+      await addAxisValue(user, "3kg");
+      await user.type(screen.getByLabelText("Harga 1kg"), "68000");
+      await user.type(screen.getByLabelText("Harga 3kg"), "185000");
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      await waitFor(() =>
+        expect(toast).toHaveBeenCalledWith(
+          expect.objectContaining({
+            icon: "error",
+            title: "Varian 3kg: Barcode 8991 dipakai lebih dari sekali di form ini.",
+          }),
+        ),
+      );
+    });
+
+    it("never puts an English sentence in the toast", async () => {
+      // A refusal this form cannot translate — a Joi complaint, a new backend
+      // message — keeps its exact words ON THE FIELD, where precision helps, and
+      // the toast falls back to Indonesian rather than reciting English.
+      const user = userEvent.setup();
+      jest.spyOn(productService, "create").mockRejectedValue(
+        new ApiError("Validation failed", 400, {
+          details: [
+            {
+              field: "variants.1.sellPrice",
+              message: "sellPrice must be a positive decimal",
+            },
+          ],
+        }),
+      );
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await fillCommon(user, { name: "Royal Canin", sku: "RC" });
+      await switchToFamily(user);
+      await addAxisValue(user, "1kg");
+      await addAxisValue(user, "3kg");
+      await user.type(screen.getByLabelText("Harga 1kg"), "68000");
+      await user.type(screen.getByLabelText("Harga 3kg"), "185000");
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      await waitFor(() =>
+        expect(toast).toHaveBeenCalledWith(
+          expect.objectContaining({
+            icon: "error",
+            title:
+              "Varian 3kg: Ada isian yang ditolak server — lihat kolom yang ditandai merah.",
+          }),
+        ),
+      );
+      // The server's own words survive next to the row they are about.
       expect(
-        await screen.findByText(/RC-3KG' is already used/),
+        await screen.findByText("sellPrice must be a positive decimal"),
       ).toBeInTheDocument();
+    });
+
+    it("names one problem to fix, not a count, when several come back", async () => {
+      const user = userEvent.setup();
+      jest.spyOn(productService, "create").mockRejectedValue(
+        new ApiError("2 codes in this request are already in use", 409, {
+          details: [
+            {
+              field: "variants.0.sku",
+              message: "SKU 'RC-1KG' is already used by another product",
+            },
+            {
+              field: "variants.1.sku",
+              message: "SKU 'RC-3KG' is already used by another product",
+            },
+          ],
+        }),
+      );
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await fillCommon(user, { name: "Royal Canin", sku: "RC" });
+      await switchToFamily(user);
+      await addAxisValue(user, "1kg");
+      await addAxisValue(user, "3kg");
+      await user.type(screen.getByLabelText("Harga 1kg"), "68000");
+      await user.type(screen.getByLabelText("Harga 3kg"), "185000");
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      // Both rows still say their own refusal on the field. The toast names ONE
+      // thing to go and fix — a family can come back with twelve, and neither a
+      // recital of twelve nor a bare count is worth reading.
+      await waitFor(() =>
+        expect(toast).toHaveBeenCalledWith(
+          expect.objectContaining({
+            icon: "error",
+            title: "Varian 1kg: SKU RC-1KG sudah dipakai produk lain.",
+          }),
+        ),
+      );
+      expect(screen.getByLabelText("SKU 1kg")).toHaveAccessibleDescription(
+        "SKU RC-1KG sudah dipakai produk lain.",
+      );
+      expect(screen.getByLabelText("SKU 3kg")).toHaveAccessibleDescription(
+        "SKU RC-3KG sudah dipakai produk lain.",
+      );
     });
 
     it("refuses to save a variant with no price, before the API has to", async () => {
@@ -765,7 +1194,7 @@ describe("ProductForm", () => {
       await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
 
       expect(
-        await screen.findByText(/Harga jual belum benar pada varian/),
+        await screen.findByText("Harga jual belum benar."),
       ).toBeInTheDocument();
       expect(create).not.toHaveBeenCalled();
     });
@@ -862,8 +1291,17 @@ describe("ProductForm", () => {
       await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
 
       expect(
-        await screen.findAllByText("SKU ini kembar dengan varian lain."),
+        await screen.findAllByText("SKU RC-1KG kembar dengan varian lain."),
       ).toHaveLength(2);
+      // TWO CELLS, ONE PROBLEM. The toast says the mistake once — counting the
+      // marked inputs instead would read as "2 isian belum benar", which tells
+      // the user only that something somewhere is wrong.
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          icon: "error",
+          title: "SKU RC-1KG kembar dengan varian lain.",
+        }),
+      );
       // It used to land in the AXIS error slot, where it also overwrote
       // whatever the axis editor was trying to say.
       expect(

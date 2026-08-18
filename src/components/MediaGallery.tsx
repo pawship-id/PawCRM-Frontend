@@ -60,6 +60,7 @@ interface MediaGalleryProps {
   max?: number;
   /** Shown when the API refused an item — usually the 9-item cap. */
   error?: string;
+
   disabled?: boolean;
 }
 
@@ -319,9 +320,13 @@ export function MediaGallery({
       </p>
 
       {(uploadError || error) && (
+
         <p role="alert" className="text-xs text-danger">
+
           {uploadError ?? error}
+
         </p>
+
       )}
 
       <ImageCropDialog
