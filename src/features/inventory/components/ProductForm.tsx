@@ -470,24 +470,58 @@ function summariseErrors(entries: SpokenError[]): string {
 }
 
 /**
- * What a refusal with no field attached says.
+ * What a failure with no field attached says.
  *
- * A 409 can arrive detail-less — a unique index tripping between the check and
- * the write — and "Duplicate value for 'barcode'" is not a sentence to show a
- * shop owner. Anything else is passed through as the server said it, the way
- * the rest of the app surfaces backend explanations rather than inventing one.
+ * NOTHING ENGLISH REACHES THE SCREEN, and nothing internal either. "Duplicate
+ * value for 'barcode'", "Malformed JSON in request body" and "Request timed out
+ * after 15000ms" are all real answers this endpoint can give, and none of them
+ * is a sentence to put in front of a shop owner.
+ *
+ * Each one answers the two questions a user actually has — WHAT HAPPENED, and
+ * IS MY PRODUCT SAVED — because "gagal" alone leaves them re-typing a form that
+ * may already have been written, or walking away from one that was not.
+ *
+ * The server's own words are not lost; they go to the console, which is where
+ * the person who can act on them looks. See the log below.
  */
 function localiseApiFailure(error: ApiError): string {
+  // The one place the backend's explanation stops being shown. Logged rather
+  // than dropped: without it a bug report says "gagal disimpan" and nothing a
+  // developer can chase.
+  console.error(
+    "[ProductForm] simpan ditolak:",
+    error.status,
+    error.fullMessage,
+  );
+
   if (error.isNetworkError) {
-    return "Tidak bisa menghubungi server. Periksa koneksi, lalu coba lagi.";
+    return /timed out|timeout/i.test(error.message)
+      ? "Server terlalu lama merespons. Produk belum tersimpan — coba simpan lagi."
+      : "Tidak bisa menghubungi server. Periksa koneksi internet, lalu coba simpan lagi.";
   }
-  if (error.status === 409) {
-    return "SKU atau barcode di form ini sudah dipakai produk lain.";
+
+  switch (error.status) {
+    case 400:
+      // A 400 WITHOUT details, so there is no field to point at — the payload
+      // itself was malformed, not one of the boxes on screen.
+      return "Data produk ditolak server. Periksa lagi isian yang terakhir diubah, lalu coba simpan.";
+    case 401:
+      return "Sesi Anda sudah berakhir. Masuk lagi, lalu simpan ulang — isian di layar ini masih ada.";
+    case 403:
+      return "Anda tidak punya izin untuk menyimpan produk. Minta admin menambahkan izinnya.";
+    case 404:
+      return "Produk ini sudah tidak ada — mungkin dihapus dari perangkat lain.";
+    case 409:
+      return "SKU atau barcode di form ini sudah dipakai produk lain.";
   }
-  if (error.status === 403) {
-    return "Anda tidak punya izin untuk menyimpan produk.";
+
+  if (error.status >= 500) {
+    // Naming whose fault it is matters: a user re-checking twelve variant rows
+    // for a mistake that is not theirs is the worst outcome here.
+    return "Server sedang bermasalah — bukan isian Anda. Produk belum tersimpan, coba lagi sebentar lagi.";
   }
-  return error.fullMessage;
+
+  return "Produk gagal disimpan. Coba lagi; kalau tetap gagal, hubungi admin.";
 }
 
 type Mode = "standalone" | "variants" | "bundle";
@@ -1929,10 +1963,12 @@ function ProductFormFields({
       if (error instanceof ApiError) {
         applyApiError(error);
       } else {
-        // Toasted too, for the same reason the API's refusals are: a banner at
-        // the top of a form the user has scrolled to the bottom of is a message
-        // nobody sees before pressing Simpan again.
-        const message = "Terjadi kesalahan. Coba lagi.";
+        // Not an ApiError at all — a bug in this screen rather than a refusal.
+        // Logged for the same reason as above, and worded so the user knows the
+        // product is not saved rather than guessing.
+        console.error("[ProductForm] gagal tak terduga:", error);
+        const message =
+          "Terjadi kesalahan tak terduga dan produk belum tersimpan. Muat ulang halaman, lalu coba lagi.";
         setFormError(message);
         void swalToast(message, "error");
       }

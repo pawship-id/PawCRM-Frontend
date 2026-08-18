@@ -1878,6 +1878,73 @@ describe("ProductForm", () => {
       expect(update.mock.calls[0][1]).toMatchObject({ brand: null });
     });
 
+    /**
+     * The failures with no field to point at — a 500, a timeout, a malformed
+     * body. Each one has to answer two questions in Indonesian: what happened,
+     * and is my product saved. The server's own words ("Internal server error",
+     * "Request timed out after 15000ms") answer neither and are not shown.
+     */
+    describe("a failure with nothing to point at", () => {
+      const cases: Array<[string, ApiError, RegExp]> = [
+        [
+          "a server fault is not blamed on the user",
+          new ApiError("Internal server error", 500),
+          /Server sedang bermasalah — bukan isian Anda/,
+        ],
+        [
+          "a timeout says the product is not saved",
+          new ApiError("Request timed out after 15000ms", 0, {
+            isNetworkError: true,
+          }),
+          /Server terlalu lama merespons/,
+        ],
+        [
+          "a dead connection points at the connection",
+          ApiError.network(),
+          /Periksa koneksi internet/,
+        ],
+        [
+          "a field-less 400 asks the user to re-check what they changed",
+          new ApiError("Malformed JSON in request body", 400),
+          /Data produk ditolak server/,
+        ],
+        [
+          "an expired session says to sign in again",
+          new ApiError("Unauthorized", 401),
+          /Sesi Anda sudah berakhir/,
+        ],
+      ];
+
+      it.each(cases)("%s", async (_name, failure, expected) => {
+        const user = userEvent.setup();
+        jest.spyOn(productService, "create").mockRejectedValue(failure);
+        // The server's words go to the console, not to the screen.
+        jest.spyOn(console, "error").mockImplementation(() => {});
+
+        renderWithAuth(<ProductForm />);
+        await screen.findByLabelText(/Nama produk/);
+
+        await fillCommon(user);
+        await user.type(screen.getByLabelText(/Harga jual/), "45000");
+        await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+        await waitFor(() =>
+          expect(toast).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+              icon: "error",
+              title: expect.stringMatching(expected),
+            }),
+          ),
+        );
+        // Never the server's own sentence, whatever it was.
+        expect(toast).not.toHaveBeenCalledWith(
+          expect.objectContaining({
+            title: expect.stringMatching(/error|timed out|Malformed|Unauthorized/i),
+          }),
+        );
+      });
+    });
+
     it("blames permissions only on a 403", async () => {
       // `chartOfAccounts:read` is a separate permission from `products:read`. A
       // role that manages the catalogue without seeing the books must still get
