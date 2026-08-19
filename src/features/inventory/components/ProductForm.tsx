@@ -257,9 +257,7 @@ function VariantBulkBar({
 
   return (
     <div className="mb-3 flex flex-wrap items-end gap-2 rounded-lg border border-primary/40 bg-primary/5 p-3">
-      <p className="mr-1 py-2 text-sm font-semibold">
-        {count} varian dipilih
-      </p>
+      <p className="mr-1 py-2 text-sm font-semibold">{count} varian dipilih</p>
 
       <label className="flex flex-col gap-1 text-xs">
         <span className="text-muted">Kolom</span>
@@ -427,7 +425,8 @@ interface SpokenError {
  * one into something outside this list and it drops to rank 1: still ordered,
  * just less sharply. The ordering tests are what catch that.
  */
-const MISSING_PHRASE = /wajib|butuh minimal|isi minimal|belum punya|belum ada|^pilih /i;
+const MISSING_PHRASE =
+  /wajib|butuh minimal|isi minimal|belum punya|belum ada|^pilih /i;
 const CLASH_PHRASE = /kembar|sudah dipakai|lebih dari sekali/i;
 
 function rankOf(message: string): number {
@@ -1304,7 +1303,8 @@ function ProductFormFields({
     // text: 30 KB of markup still has to be parsed even if it renders as a
     // paragraph, and refusing it here keeps the refusal on the field.
     if (description.length > 20_000) {
-      next.description = "Deskripsi terlalu panjang (maksimal 20.000 karakter).";
+      next.description =
+        "Deskripsi terlalu panjang (maksimal 20.000 karakter).";
     }
 
     (
@@ -1318,7 +1318,8 @@ function ProductFormFields({
       const raw = shipping[field].trim();
       if (raw === "") return;
       if (!isDecimal(raw)) {
-        next[`shipping.${field}`] = `${label}: gunakan angka, maksimal 4 desimal.`;
+        next[`shipping.${field}`] =
+          `${label}: gunakan angka, maksimal 4 desimal.`;
       } else if (raw.startsWith("-")) {
         next[`shipping.${field}`] = `${label} tidak boleh negatif.`;
       }
@@ -1414,10 +1415,11 @@ function ProductFormFields({
           };
         });
 
-        if (malformed.length === 0 && (
+        if (
+          malformed.length === 0 &&
           variantRows.length > 0 &&
           variantRows.every((row) => row.openingQty.trim() === "")
-        )) {
+        ) {
           // The one refusal here that stays off the rows: it is about the table
           // as a whole, and the fix is "any one of them", so there is no single
           // cell it could honestly mark.
@@ -1601,7 +1603,9 @@ function ProductFormFields({
         // OMITTED when the row typed nothing — absence is what makes the field
         // resolve from the parent, and sending a null would be the same thing
         // said less clearly.
-        ...(rowShippingPayload(row) ? { shipping: rowShippingPayload(row) } : {}),
+        ...(rowShippingPayload(row)
+          ? { shipping: rowShippingPayload(row) }
+          : {}),
         ...(row.image ? { variantImage: row.image } : {}),
         ...(openingStockFor(row.openingQty, row.openingCost)
           ? { openingStock: openingStockFor(row.openingQty, row.openingCost) }
@@ -2298,8 +2302,8 @@ function ProductFormFields({
               ) : (
                 <>
                   Daftar akun gagal dimuat
-                  {accountingError.status > 0 && ` (${accountingError.status})`}:{" "}
-                  {accountingError.message}
+                  {accountingError.status > 0 && ` (${accountingError.status})`}
+                  : {accountingError.message}
                 </>
               )}{" "}
               Produk tetap bisa disimpan tanpa itu.
@@ -2529,270 +2533,274 @@ function ProductFormFields({
 
                       return (
                         <Fragment key={key}>
-                        <tr className="border-b border-border/60">
-                          <td className="px-2 py-2">
-                            <Checkbox
-                              aria-label={`Pilih ${row.combo.join(" ")}`}
-                              checked={selectedRows.has(key)}
-                              onCheckedChange={() => toggleRowSelected(key)}
-                            />
-                          </td>
-                          <td className="px-2 py-2 font-medium">
-                            <div className="flex items-center gap-2">
-                              {/* The image cell — one click opens the picker for
+                          <tr className="border-b border-border/60">
+                            <td className="px-2 py-2">
+                              <Checkbox
+                                aria-label={`Pilih ${row.combo.join(" ")}`}
+                                checked={selectedRows.has(key)}
+                                onCheckedChange={() => toggleRowSelected(key)}
+                              />
+                            </td>
+                            <td className="px-2 py-2 font-medium">
+                              <div className="flex items-center gap-2">
+                                {/* The image cell — one click opens the picker for
                                   this row. A whole column of upload controls
                                   would be five more columns in a table that is
                                   already scrolling sideways. */}
-                              <VariantImageCell
-                                row={row}
-                                onChange={(asset: ProductMedia | null) =>
-                                  setVariantField(row.combo, "image", asset)
-                                }
-                              />
-                              <span>
-                                {row.combo.join(" / ")}
-                                {row.id && (
-                                  <Badge variant="outline" className="ml-2">
-                                    sudah ada
-                                  </Badge>
-                                )}
-                                {otherRowErrors.map((message) => (
-                                  <span
-                                    key={message}
-                                    role="alert"
-                                    className="mt-1 block text-xs font-normal text-danger"
-                                  >
-                                    {message}
-                                  </span>
-                                ))}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-2 py-2">
-                            {/* The requirement lives here now that the parent
+                                <VariantImageCell
+                                  row={row}
+                                  onChange={(asset: ProductMedia | null) =>
+                                    setVariantField(row.combo, "image", asset)
+                                  }
+                                />
+                                <span>
+                                  {row.combo.join(" / ")}
+                                  {row.id && (
+                                    <Badge variant="outline" className="ml-2">
+                                      sudah ada
+                                    </Badge>
+                                  )}
+                                  {otherRowErrors.map((message) => (
+                                    <span
+                                      key={message}
+                                      role="alert"
+                                      className="mt-1 block text-xs font-normal text-danger"
+                                    >
+                                      {message}
+                                    </span>
+                                  ))}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-2 py-2">
+                              {/* The requirement lives here now that the parent
                                 has none, so the refusal does too — a family of
                                 twelve rows told only "a SKU is missing" above
                                 the table is a hunt. Every row refusal is bound
                                 to this cell, including the API's. */}
-                            <Input
-                              aria-label={`SKU ${row.combo.join(" ")}`}
-                              aria-invalid={rowError.sku ? true : undefined}
-                              aria-describedby={
-                                rowError.sku
-                                  ? `variant-sku-error-${key}`
-                                  : undefined
-                              }
-                              value={row.sku}
-                              onChange={(event) =>
-                                setVariantField(
-                                  row.combo,
-                                  "sku",
-                                  event.target.value.toUpperCase(),
-                                )
-                              }
-                              className={cn(
-                                "tabular-nums text-xs",
-                                rowError.sku &&
-                                  "border-danger focus-visible:ring-danger/40",
+                              <Input
+                                aria-label={`SKU ${row.combo.join(" ")}`}
+                                aria-invalid={rowError.sku ? true : undefined}
+                                aria-describedby={
+                                  rowError.sku
+                                    ? `variant-sku-error-${key}`
+                                    : undefined
+                                }
+                                value={row.sku}
+                                onChange={(event) =>
+                                  setVariantField(
+                                    row.combo,
+                                    "sku",
+                                    event.target.value.toUpperCase(),
+                                  )
+                                }
+                                className={cn(
+                                  "tabular-nums text-xs",
+                                  rowError.sku &&
+                                    "border-danger focus-visible:ring-danger/40",
+                                )}
+                              />
+                              {rowError.sku && (
+                                <p
+                                  id={`variant-sku-error-${key}`}
+                                  role="alert"
+                                  className="mt-1 text-xs text-danger"
+                                >
+                                  {rowError.sku}
+                                </p>
                               )}
-                            />
-                            {rowError.sku && (
-                              <p
-                                id={`variant-sku-error-${key}`}
-                                role="alert"
-                                className="mt-1 text-xs text-danger"
-                              >
-                                {rowError.sku}
-                              </p>
-                            )}
-                          </td>
-                          <td className="px-2 py-2">
-                            <Input
-                              aria-label={`Barcode ${row.combo.join(" ")}`}
-                              aria-invalid={rowError.barcode ? true : undefined}
-                              aria-describedby={
-                                rowError.barcode
-                                  ? `variant-barcode-error-${key}`
-                                  : undefined
-                              }
-                              value={row.barcode}
-                              onChange={(event) =>
-                                setVariantField(
-                                  row.combo,
-                                  "barcode",
-                                  event.target.value,
-                                )
-                              }
-                              placeholder="opsional"
-                              className={cn(
-                                "tabular-nums text-xs",
-                                rowError.barcode &&
-                                  "border-danger focus-visible:ring-danger/40",
+                            </td>
+                            <td className="px-2 py-2">
+                              <Input
+                                aria-label={`Barcode ${row.combo.join(" ")}`}
+                                aria-invalid={
+                                  rowError.barcode ? true : undefined
+                                }
+                                aria-describedby={
+                                  rowError.barcode
+                                    ? `variant-barcode-error-${key}`
+                                    : undefined
+                                }
+                                value={row.barcode}
+                                onChange={(event) =>
+                                  setVariantField(
+                                    row.combo,
+                                    "barcode",
+                                    event.target.value,
+                                  )
+                                }
+                                placeholder="opsional"
+                                className={cn(
+                                  "tabular-nums text-xs",
+                                  rowError.barcode &&
+                                    "border-danger focus-visible:ring-danger/40",
+                                )}
+                              />
+                              {rowError.barcode && (
+                                <p
+                                  id={`variant-barcode-error-${key}`}
+                                  role="alert"
+                                  className="mt-1 text-xs text-danger"
+                                >
+                                  {rowError.barcode}
+                                </p>
                               )}
-                            />
-                            {rowError.barcode && (
-                              <p
-                                id={`variant-barcode-error-${key}`}
-                                role="alert"
-                                className="mt-1 text-xs text-danger"
-                              >
-                                {rowError.barcode}
-                              </p>
-                            )}
-                          </td>
-                          <td className="px-2 py-2">
-                            <Input
-                              aria-label={`Harga ${row.combo.join(" ")}`}
-                              aria-invalid={
-                                rowError.sellPrice ? true : undefined
-                              }
-                              inputMode="decimal"
-                              value={row.sellPrice}
-                              onChange={(event) =>
-                                setVariantField(
-                                  row.combo,
-                                  "sellPrice",
-                                  event.target.value,
-                                )
-                              }
-                              aria-describedby={
-                                rowError.sellPrice
-                                  ? `variant-price-error-${key}`
-                                  : undefined
-                              }
-                              className={cn(
-                                "tabular-nums",
-                                rowError.sellPrice &&
-                                  "border-danger focus-visible:ring-danger/40",
+                            </td>
+                            <td className="px-2 py-2">
+                              <Input
+                                aria-label={`Harga ${row.combo.join(" ")}`}
+                                aria-invalid={
+                                  rowError.sellPrice ? true : undefined
+                                }
+                                inputMode="decimal"
+                                value={row.sellPrice}
+                                onChange={(event) =>
+                                  setVariantField(
+                                    row.combo,
+                                    "sellPrice",
+                                    event.target.value,
+                                  )
+                                }
+                                aria-describedby={
+                                  rowError.sellPrice
+                                    ? `variant-price-error-${key}`
+                                    : undefined
+                                }
+                                className={cn(
+                                  "tabular-nums",
+                                  rowError.sellPrice &&
+                                    "border-danger focus-visible:ring-danger/40",
+                                )}
+                              />
+                              {rowError.sellPrice && (
+                                <p
+                                  id={`variant-price-error-${key}`}
+                                  role="alert"
+                                  className="mt-1 text-xs text-danger"
+                                >
+                                  {rowError.sellPrice}
+                                </p>
                               )}
-                            />
-                            {rowError.sellPrice && (
-                              <p
-                                id={`variant-price-error-${key}`}
-                                role="alert"
-                                className="mt-1 text-xs text-danger"
+                            </td>
+                            <td className="px-2 py-2">
+                              <Input
+                                aria-label={`Min stok ${row.combo.join(" ")}`}
+                                inputMode="numeric"
+                                value={row.minStock}
+                                onChange={(event) =>
+                                  setVariantField(
+                                    row.combo,
+                                    "minStock",
+                                    event.target.value,
+                                  )
+                                }
+                                className="max-w-20 tabular-nums"
+                              />
+                            </td>
+                            <td className="px-2 py-2">
+                              <button
+                                type="button"
+                                aria-label={`Detail ${row.combo.join(" ")}`}
+                                aria-expanded={open}
+                                onClick={() =>
+                                  setExpandedRows((previous) => {
+                                    const next = new Set(previous);
+                                    if (next.has(key)) next.delete(key);
+                                    else next.add(key);
+                                    return next;
+                                  })
+                                }
+                                className="rounded px-1 text-muted hover:text-foreground"
                               >
-                                {rowError.sellPrice}
-                              </p>
-                            )}
-                          </td>
-                          <td className="px-2 py-2">
-                            <Input
-                              aria-label={`Min stok ${row.combo.join(" ")}`}
-                              inputMode="numeric"
-                              value={row.minStock}
-                              onChange={(event) =>
-                                setVariantField(
-                                  row.combo,
-                                  "minStock",
-                                  event.target.value,
-                                )
-                              }
-                              className="max-w-20 tabular-nums"
-                            />
-                          </td>
-                          <td className="px-2 py-2">
-                            <button
-                              type="button"
-                              aria-label={`Detail ${row.combo.join(" ")}`}
-                              aria-expanded={open}
-                              onClick={() =>
-                                setExpandedRows((previous) => {
-                                  const next = new Set(previous);
-                                  if (next.has(key)) next.delete(key);
-                                  else next.add(key);
-                                  return next;
-                                })
-                              }
-                              className="rounded px-1 text-muted hover:text-foreground"
-                            >
-                              {open ? "▾" : "▸"}
-                            </button>
-                          </td>
-                        </tr>
+                                {open ? "▾" : "▸"}
+                              </button>
+                            </td>
+                          </tr>
 
-                        {open && (
-                          /* EXPANDED IN PLACE rather than in a dialog, because
+                          {open && (
+                            /* EXPANDED IN PLACE rather than in a dialog, because
                              the user is comparing rows — "the 10 kg should be
                              heavier than the 3 kg" — and a modal hides exactly
                              the comparison they opened it to make. */
-                          <tr className="border-b border-border/60 bg-accent/30">
-                            {/* Seven now that a tick column leads the row —
+                            <tr className="border-b border-border/60 bg-accent/30">
+                              {/* Seven now that a tick column leads the row —
                                 a short colSpan leaves the drawer boxed under
                                 part of the table with a stray empty cell. */}
-                            <td colSpan={7} className="px-2 py-3">
-                              <p className="mb-2 text-xs text-muted">
-                                Kosongkan untuk mengikuti induk. Angka di
-                                placeholder adalah nilai induk.
-                              </p>
-                              <div className="grid gap-3 sm:grid-cols-5">
-                                {(
-                                  [
-                                    ["weight", "Berat"],
-                                    ["length", "Panjang"],
-                                    ["width", "Lebar"],
-                                    ["height", "Tinggi"],
-                                  ] as const
-                                ).map(([field, label]) => (
-                                  <label
-                                    key={field}
-                                    className="flex flex-col gap-1 text-xs"
-                                  >
-                                    <span className="text-muted">{label}</span>
-                                    <Input
-                                      aria-label={`${label} ${row.combo.join(" ")}`}
-                                      inputMode="decimal"
-                                      value={row[field]}
-                                      onChange={(event) =>
-                                        setVariantField(
-                                          row.combo,
-                                          field,
-                                          event.target.value,
-                                        )
-                                      }
-                                      /* The PARENT's value, shown through the
+                              <td colSpan={7} className="px-2 py-3">
+                                <p className="mb-2 text-xs text-muted">
+                                  Kosongkan untuk mengikuti induk. Angka di
+                                  placeholder adalah nilai induk.
+                                </p>
+                                <div className="grid gap-3 sm:grid-cols-5">
+                                  {(
+                                    [
+                                      ["weight", "Berat"],
+                                      ["length", "Panjang"],
+                                      ["width", "Lebar"],
+                                      ["height", "Tinggi"],
+                                    ] as const
+                                  ).map(([field, label]) => (
+                                    <label
+                                      key={field}
+                                      className="flex flex-col gap-1 text-xs"
+                                    >
+                                      <span className="text-muted">
+                                        {label}
+                                      </span>
+                                      <Input
+                                        aria-label={`${label} ${row.combo.join(" ")}`}
+                                        inputMode="decimal"
+                                        value={row[field]}
+                                        onChange={(event) =>
+                                          setVariantField(
+                                            row.combo,
+                                            field,
+                                            event.target.value,
+                                          )
+                                        }
+                                        /* The PARENT's value, shown through the
                                          empty input. Never bound as the value —
                                          that is what would turn an inherited
                                          row into an override on save. */
-                                      placeholder={
-                                        shipping[field] || "ikut induk"
-                                      }
-                                      className="tabular-nums"
-                                    />
-                                  </label>
-                                ))}
-                                <label className="flex flex-col gap-1 text-xs">
-                                  <span className="text-muted">Satuan</span>
-                                  <Select
-                                    value={row.weightUnit}
-                                    onValueChange={(value) =>
-                                      setVariantField(
-                                        row.combo,
-                                        "weightUnit",
-                                        value,
-                                      )
-                                    }
-                                  >
-                                    <SelectTrigger
-                                      aria-label={`Satuan berat ${row.combo.join(" ")}`}
-                                      className="w-full"
-                                    >
-                                      <SelectValue
                                         placeholder={
-                                          shipping.weightUnit || "ikut induk"
+                                          shipping[field] || "ikut induk"
                                         }
+                                        className="tabular-nums"
                                       />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="gr">gram</SelectItem>
-                                      <SelectItem value="kg">kg</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </label>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
+                                    </label>
+                                  ))}
+                                  <label className="flex flex-col gap-1 text-xs">
+                                    <span className="text-muted">Satuan</span>
+                                    <Select
+                                      value={row.weightUnit}
+                                      onValueChange={(value) =>
+                                        setVariantField(
+                                          row.combo,
+                                          "weightUnit",
+                                          value,
+                                        )
+                                      }
+                                    >
+                                      <SelectTrigger
+                                        aria-label={`Satuan berat ${row.combo.join(" ")}`}
+                                        className="w-full"
+                                      >
+                                        <SelectValue
+                                          placeholder={
+                                            shipping.weightUnit || "ikut induk"
+                                          }
+                                        />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="gr">gram</SelectItem>
+                                        <SelectItem value="kg">kg</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </label>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
                         </Fragment>
                       );
                     })}
@@ -2925,7 +2933,7 @@ function ProductFormFields({
               {/* Not an Alert: this is not an error, and it must be read before
                   the fields below rather than after a failed save. */}
               <div className="rounded-lg border border-secondary/40 bg-secondary/15 px-4 py-3 text-sm text-secondary-foreground">
-                Stok awal tercatat sebagai <b>penyesuaian masuk</b> di kartu
+                Stok awal tercatat sebagai <b>saldo awal persediaan</b> di kartu
                 stok, jadi ada jejak dari mana kuantitas pertama datang.{" "}
                 <b>Baris itu tidak bisa dihapus atau diedit</b> — salah angka
                 dikoreksi dengan penyesuaian lagi, dan keduanya tetap terlihat.
@@ -3084,85 +3092,87 @@ function ProductFormFields({
                           const rowError = rowErrors[row.combo.join("|")] ?? {};
 
                           return (
-                          <tr
-                            key={row.combo.join("|")}
-                            className="border-b border-border/60"
-                          >
-                            <td className="px-2 py-2">
-                              <Checkbox
-                                aria-label={`Pilih ${row.combo.join(" ")}`}
-                                checked={selectedRows.has(row.combo.join("|"))}
-                                onCheckedChange={() =>
-                                  toggleRowSelected(row.combo.join("|"))
-                                }
-                              />
-                            </td>
-                            <td className="px-2 py-2 font-medium">
-                              {row.combo.join(" / ")}
-                            </td>
-                            <td className="px-2 py-2">
-                              <Input
-                                aria-label={`Stok awal ${row.combo.join(" ")}`}
-                                aria-invalid={
-                                  rowError.openingQty ? true : undefined
-                                }
-                                inputMode="decimal"
-                                value={row.openingQty}
-                                onChange={(event) =>
-                                  setVariantField(
-                                    row.combo,
-                                    "openingQty",
-                                    event.target.value,
-                                  )
-                                }
-                                placeholder="0"
-                                className={cn(
-                                  "max-w-24 tabular-nums",
-                                  rowError.openingQty &&
-                                    "border-danger focus-visible:ring-danger/40",
+                            <tr
+                              key={row.combo.join("|")}
+                              className="border-b border-border/60"
+                            >
+                              <td className="px-2 py-2">
+                                <Checkbox
+                                  aria-label={`Pilih ${row.combo.join(" ")}`}
+                                  checked={selectedRows.has(
+                                    row.combo.join("|"),
+                                  )}
+                                  onCheckedChange={() =>
+                                    toggleRowSelected(row.combo.join("|"))
+                                  }
+                                />
+                              </td>
+                              <td className="px-2 py-2 font-medium">
+                                {row.combo.join(" / ")}
+                              </td>
+                              <td className="px-2 py-2">
+                                <Input
+                                  aria-label={`Stok awal ${row.combo.join(" ")}`}
+                                  aria-invalid={
+                                    rowError.openingQty ? true : undefined
+                                  }
+                                  inputMode="decimal"
+                                  value={row.openingQty}
+                                  onChange={(event) =>
+                                    setVariantField(
+                                      row.combo,
+                                      "openingQty",
+                                      event.target.value,
+                                    )
+                                  }
+                                  placeholder="0"
+                                  className={cn(
+                                    "max-w-24 tabular-nums",
+                                    rowError.openingQty &&
+                                      "border-danger focus-visible:ring-danger/40",
+                                  )}
+                                />
+                                {rowError.openingQty && (
+                                  <p
+                                    role="alert"
+                                    className="mt-1 text-xs text-danger"
+                                  >
+                                    {rowError.openingQty}
+                                  </p>
                                 )}
-                              />
-                              {rowError.openingQty && (
-                                <p
-                                  role="alert"
-                                  className="mt-1 text-xs text-danger"
-                                >
-                                  {rowError.openingQty}
-                                </p>
-                              )}
-                            </td>
-                            <td className="px-2 py-2">
-                              <Input
-                                aria-label={`Harga beli ${row.combo.join(" ")}`}
-                                aria-invalid={
-                                  rowError.openingCost ? true : undefined
-                                }
-                                inputMode="decimal"
-                                value={row.openingCost}
-                                onChange={(event) =>
-                                  setVariantField(
-                                    row.combo,
-                                    "openingCost",
-                                    event.target.value,
-                                  )
-                                }
-                                placeholder="44000"
-                                className={cn(
-                                  "max-w-32 tabular-nums",
-                                  rowError.openingCost &&
-                                    "border-danger focus-visible:ring-danger/40",
+                              </td>
+                              <td className="px-2 py-2">
+                                <Input
+                                  aria-label={`Harga beli ${row.combo.join(" ")}`}
+                                  aria-invalid={
+                                    rowError.openingCost ? true : undefined
+                                  }
+                                  inputMode="decimal"
+                                  value={row.openingCost}
+                                  onChange={(event) =>
+                                    setVariantField(
+                                      row.combo,
+                                      "openingCost",
+                                      event.target.value,
+                                    )
+                                  }
+                                  placeholder="44000"
+                                  className={cn(
+                                    "max-w-32 tabular-nums",
+                                    rowError.openingCost &&
+                                      "border-danger focus-visible:ring-danger/40",
+                                  )}
+                                />
+                                {rowError.openingCost && (
+                                  <p
+                                    role="alert"
+                                    className="mt-1 text-xs text-danger"
+                                  >
+                                    {rowError.openingCost}
+                                  </p>
                                 )}
-                              />
-                              {rowError.openingCost && (
-                                <p
-                                  role="alert"
-                                  className="mt-1 text-xs text-danger"
-                                >
-                                  {rowError.openingCost}
-                                </p>
-                              )}
-                            </td>
-                          </tr>
+                              </td>
+                            </tr>
                           );
                         })}
                       </tbody>
@@ -3181,7 +3191,6 @@ function ProductFormFields({
                   {fieldErrors.openingVariants}
                 </p>
               )}
-
             </div>
           )}
         </Card>
