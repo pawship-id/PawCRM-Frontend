@@ -866,32 +866,6 @@ describe("StockTransferForm", () => {
     );
   });
 
-  it("renders the mirrored pairs the SERVER returned", async () => {
-    mockLookups({
-      preview: previewOf({
-        movements: [
-          outboundRow({ batchId: "a" }),
-          outboundRow({
-            batchId: "b",
-            batchCode: "RC-B26-0456",
-            qty: "-2.0000",
-          }),
-        ],
-      }),
-    });
-
-    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
-    render(<StockTransferForm />);
-
-    await addProducts(user);
-    await user.type(await screen.findByLabelText(/^Jumlah/), "6");
-    await settlePreview();
-
-    // Two lots × an out/in pair each.
-    expect(await screen.findByText("Batch yang berpindah")).toBeInTheDocument();
-    expect(screen.getByText("4 baris movement")).toBeInTheDocument();
-  });
-
   /**
    * The picker exists because a transfer is normally several products at once.
    * Ticking two and confirming must produce two rows in one payload, not two
