@@ -7,6 +7,39 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Batch & Expired searches by name and takes any two dates
+
+Two gaps on `/dashboard/inventory/batches`, both of them the same shape: the screen could
+only ask the question the endpoint happened to be built for.
+
+**The search box now matches a product name and an SKU, not just a lot code.** The code is
+the thing somebody has in front of them least often — a shelf label carries a name, a
+barcode sticker carries an SKU, and the lot code is printed on a carton in the stockroom.
+"Which lots of Royal Canin 3kg are still here" was the most common question the box could
+not answer. The matching is server-side (a lot carries a `productId` and no name), so the
+client change is the placeholder, the label and the empty state; the API change is in the
+backend changelog.
+
+**The expiry horizon gains "Rentang khusus"**, which opens a `FilterDateRange` under it and
+sends `expiryFrom` / `expiryTo`. The 7 / 30 / 90-day presets all count forward from today,
+which is the wrong shape for half of what a stock take asks — "apa yang kedaluwarsa
+November", "apa yang lewat tanggal kuartal lalu". A custom window switches to the audit
+endpoint exactly as a search does, because `/expiring` takes a `withinDays` and cannot
+express a window that today is not an end of.
+
+The range ships its own presets — *Sudah lewat*, *60 hari ke depan*, *Bulan ini*, *Bulan
+depan*. The control's defaults all END today, which on a screen about expiry would offer
+four chips that each return the same handful of already-expired rows.
+
+Three sentences on the bar cover what the controls cannot say for themselves: why the
+horizon goes quiet during a search, that an unfilled custom range is narrowing nothing, and
+that a filled one excludes the lots with no expiry date at all. The dates disappear from the
+panel during a search rather than sitting there greyed — the select above them already
+explains the whole horizon, and two inert date inputs would be a control that accepts typing
+and changes nothing.
+
+---
+
 ## [Unreleased] — The stock card stops asking you to scroll a dropdown
 
 Kartu Stok picked its product from a `<select>` that the screen filled by paging the **whole

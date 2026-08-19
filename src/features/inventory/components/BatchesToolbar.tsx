@@ -5,11 +5,13 @@ import { ListFilter } from "lucide-react";
 
 import {
   FilterBar,
+  FilterDateRange,
   FilterPanel,
   FilterSearch,
   FilterSelect,
   FilterToggle,
   FilterTrigger,
+  formatRangeShort,
   namedOptions,
   withAll,
   type FilterOption,
@@ -19,9 +21,9 @@ import type { BatchSort, StockWarehouse } from "@/types/inventory";
 import type { BatchesQuery, Horizon } from "../hooks/useBatches";
 
 /**
- * The batch list controls: one row — batch-code search and one Filter button —
- * with the warehouse, the expiry horizon, the ordering and, in audit mode, the
- * "show spent lots" toggle inside a panel.
+ * The batch list controls: one row — search and one Filter button — with the
+ * warehouse, the expiry horizon, the ordering and, in audit mode, the "show
+ * spent lots" toggle inside a panel.
  *
  * Purely presentational — it renders the current query and reports changes up.
  *
@@ -33,8 +35,10 @@ import type { BatchesQuery, Horizon } from "../hooks/useBatches";
  * composed here rather than declared as data:
  *
  *   the horizon   — suspended while a search is active, because the alert
- *                   endpoint cannot filter by batch code and tracing one lot is
- *                   a question about its whole life, not about the next 30 days;
+ *                   endpoint cannot filter by code, name or SKU, and tracing one
+ *                   lot is a question about its whole life, not about the next
+ *                   30 days. Its own custom range goes quiet with it, rather
+ *                   than sitting there editable and ignored;
  *   "lot habis"   — absent outside audit mode, because an exhausted lot cannot
  *                   expire into anything and the alert endpoint has no opinion
  *                   to offer about it.
@@ -51,6 +55,11 @@ const HORIZONS: FilterOption<Horizon>[] = [
   { value: "30", label: "Perhatian — 30 hari" },
   { value: "90", label: "3 bulan" },
   { value: "all", label: "Semua batch" },
+  // The presets above all count forward from today, which is the wrong shape
+  // for half the questions a stock take asks: "apa yang kedaluwarsa November"
+  // and "apa yang lewat tanggal kuartal lalu" both name a window that today is
+  // not an end of. This opens two dates underneath.
+  { value: "custom", label: "Rentang khusus" },
 ];
 
 /**
@@ -73,6 +82,9 @@ interface BatchFilters {
   horizon: Horizon;
   includeSpent: boolean;
   sort: BatchSort;
+  /** ISO `yyyy-mm-dd`, or "" — only read while `horizon` is "custom". */
+  expiryFrom: string;
+  expiryTo: string;
 }
 
 /**
@@ -87,7 +99,101 @@ const CLEARED: BatchFilters = {
   horizon: "30",
   includeSpent: false,
   sort: "expirySoonest",
+  // Reset empties the window as well as leaving the custom horizon. Switching
+  // AWAY from "Rentang khusus" keeps the dates — see BatchesQuery — but Reset
+  // means "back to the report", and a window that survived it would come back
+  // the moment somebody picked the custom horizon again.
+  expiryFrom: "",
+  expiryTo: "",
 };
+
+/**
+ * The four windows worth one click, all of them looking FORWARD.
+ *
+ * `FilterDateRange`'s own presets ("7 hari", "30 hari", "bulan ini") all END
+ * today, because every other screen that uses it reads a ledger — a record of
+ * what already happened. Expiry is the opposite question: a window ending today
+ * can only contain stock that has already gone off, so shipping those presets
+ * here would put four chips on screen that each return the same handful of rows.
+ *
+ * "Sudah lewat" is kept, and deliberately first: stock that expired and is still
+ * on a shelf is the most urgent thing this screen can report. It has no lower
+ * bound — a lot that expired two years ago is still a lot somebody has to pull.
+ */
+function expiryPresets() {
+  const today = new Date();
+  const iso = (date: Date) => {
+    // Local parts, never toISOString(): that is UTC and shifts the day for
+    // everyone east of Greenwich, which is everyone using this.
+    const month = `${date.getMonth() + 1}`.padStart(2, "0");
+    const day = `${date.getDate()}`.padStart(2, "0");
+    return `${date.getFullYear()}-${month}-${day}`;
+  };
+  const ahead = (days: number) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() + days);
+    return iso(d);
+  };
+  // Day 0 of the following month is the last day of this one, whatever its
+  // length and whether or not February is leap.
+  const monthStart = (offset: number) =>
+    iso(new Date(today.getFullYear(), today.getMonth() + offset, 1));
+  const monthEnd = (offset: number) =>
+    iso(new Date(today.getFullYear(), today.getMonth() + offset + 1, 0));
+
+  return [
+    { label: "Sudah lewat", from: "", to: iso(today) },
+    { label: "60 hari ke depan", from: iso(today), to: ahead(60) },
+    // WHOLE calendar months, not "from today": the label says a month, and a
+    // window that quietly began this morning would drop the lots that expired
+    // earlier in it — which on this screen are the urgent ones.
+    { label: "Bulan ini", from: monthStart(0), to: monthEnd(0) },
+    { label: "Bulan depan", from: monthStart(1), to: monthEnd(1) },
+  ];
+}
+
+/**
+ * The sentence under the bar — what the list is actually showing right now,
+ * whenever that is not what the controls appear to say.
+ *
+ * THREE STATES, and each of them is a question somebody would otherwise ask the
+ * screen twice. A search suspends the horizon; a custom range with nothing in it
+ * narrows nothing at all; a custom range that IS filled silently drops the lots
+ * with no expiry date, which on a screen that otherwise lists them is the kind
+ * of omission people discover by counting.
+ */
+function hint(query: BatchesQuery, searching: boolean) {
+  if (searching) {
+    return (
+      <>
+        Pencarian kode batch, nama produk, dan SKU berlaku di{" "}
+        <b>seluruh batch</b> — termasuk yang sudah habis dan yang tidak punya
+        tanggal kedaluwarsa — jadi rentang kedaluwarsa dinonaktifkan selama
+        kotak pencarian terisi.
+      </>
+    );
+  }
+
+  if (query.horizon !== "custom") return null;
+
+  const range = formatRangeShort(query.expiryFrom, query.expiryTo);
+
+  if (!range) {
+    return (
+      <>
+        Rentang khusus belum diisi, jadi daftar ini menampilkan{" "}
+        <b>seluruh batch</b>. Isi tanggalnya lewat Filter.
+      </>
+    );
+  }
+
+  return (
+    <>
+      Menampilkan batch yang kedaluwarsa <b>{range}</b> — batch tanpa tanggal
+      kedaluwarsa tidak ikut, karena tidak bisa jatuh di dalam rentang tanggal.
+    </>
+  );
+}
 
 export function BatchesToolbar({
   query,
@@ -108,6 +214,8 @@ export function BatchesToolbar({
     horizon: query.horizon,
     includeSpent: query.includeSpent,
     sort: query.sort,
+    expiryFrom: query.expiryFrom,
+    expiryTo: query.expiryTo,
   };
 
   /**
@@ -123,6 +231,9 @@ export function BatchesToolbar({
     if (next.includeSpent !== query.includeSpent)
       patch.includeSpent = next.includeSpent;
     if (next.sort !== query.sort) patch.sort = next.sort;
+    if (next.expiryFrom !== query.expiryFrom)
+      patch.expiryFrom = next.expiryFrom;
+    if (next.expiryTo !== query.expiryTo) patch.expiryTo = next.expiryTo;
 
     if (Object.keys(patch).length > 0) onChange(patch);
   }
@@ -138,20 +249,12 @@ export function BatchesToolbar({
         <FilterSearch
           value={query.search}
           onChange={(search) => onChange({ search })}
-          placeholder="Cari kode batch…"
-          ariaLabel="Cari kode batch"
+          placeholder="Cari kode batch, nama produk, atau SKU…"
+          ariaLabel="Cari kode batch, nama produk, atau SKU"
           fill
         />
       }
-      hint={
-        searching && (
-          <>
-            Pencarian kode batch berlaku di <b>seluruh batch</b> — termasuk yang
-            sudah habis dan yang tidak punya tanggal kedaluwarsa — jadi rentang
-            kedaluwarsa dinonaktifkan selama kotak pencarian terisi.
-          </>
-        )
-      }
+      hint={hint(query, searching)}
     >
       <BatchFilterPanel
         applied={applied}
@@ -264,9 +367,33 @@ function BatchFilterPanel({
           unsetValue="all"
           options={HORIZONS}
           disabled={searching}
-          disabledHint="Nonaktif selama kotak pencarian terisi — pencarian kode batch berlaku di seluruh batch."
+          disabledHint="Nonaktif selama kotak pencarian terisi — pencarian berlaku di seluruh batch."
           onChange={(horizon) => patch({ horizon })}
         />
+
+        {/* Only under its own horizon, and only while the horizon still means
+            something. Rendered greyed during a search it would be a pair of
+            date inputs that accept typing and change nothing; the select above
+            already says why the whole horizon is quiet. */}
+        {draft.horizon === "custom" && !searching && (
+          <FilterDateRange
+            layout="field"
+            // Named for the DATES rather than repeating the select above it —
+            // two blocks both reading "Rentang kedaluwarsa" is one label doing
+            // two jobs, and a screen reader announcing it twice.
+            label="Tanggal kedaluwarsa"
+            ariaLabel="Tanggal kedaluwarsa"
+            from={draft.expiryFrom}
+            to={draft.expiryTo}
+            // Expiry looks FORWARD, so the presets that ship with the control —
+            // "7 hari", "bulan ini", all of them ending today — would offer a
+            // window in which nothing but already-expired stock can fall.
+            presets={expiryPresets()}
+            onApply={({ from, to }) =>
+              patch({ expiryFrom: from, expiryTo: to })
+            }
+          />
+        )}
 
         {auditMode && (
           <FilterToggle

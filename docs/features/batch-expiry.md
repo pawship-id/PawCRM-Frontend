@@ -43,13 +43,42 @@ compared. `atRisk` is genuinely the other three added up.
 
 ## Two controls that explain themselves when they go quiet
 
-- **The horizon is suspended while a search is active.** `/expiring` cannot filter by batch
-  code, and "trace lot WSK-B26-0640" is a question about a lot's whole life — including
-  after it sold out. The select is disabled with a sentence saying so, rather than silently
-  returning results from a set the user did not pick.
+- **The horizon is suspended while a search is active.** `/expiring` cannot filter by code,
+  name or SKU, and "trace lot WSK-B26-0640" — or "which lots of Royal Canin 3kg are left" —
+  is a question about a whole life, including after it sold out. The select is disabled with
+  a sentence saying so, rather than silently returning results from a set the user did not
+  pick, and its custom range disappears with it rather than sitting there editable and
+  ignored.
 - **"Tampilkan lot yang sudah habis" is hidden outside audit mode.** An exhausted lot cannot
   expire into anything a human has to act on, so the alert endpoint has no opinion to offer
   about it. A control that does nothing is worse than one that is not there.
+
+## One search box, three fields — and a horizon that takes two dates
+
+`search` goes to `/product-batches` as one string and matches the lot's **`batchCode`**, the
+product's **`name`** and its **`sku`** (resolved server-side — a lot carries a `productId`
+and no name of its own). The code alone was the least common of the three things somebody
+has in front of them: a shelf label carries a name, a barcode sticker carries an SKU, and
+the lot code is printed on a carton in the stockroom.
+
+The expiry horizon gains **Rentang khusus** below its 7 / 30 / 90-day presets, which opens a
+`FilterDateRange` under it and sends `expiryFrom` / `expiryTo`. A custom window switches to
+the audit endpoint exactly as a search does: `/expiring` counts days forward from today and
+has no way to express "November", let alone a window that has already closed.
+
+Three things follow, and each is stated on the bar rather than left to be discovered:
+
+- **The presets look forward.** The control's own defaults ("7 hari", "bulan ini") all END
+  today, which for expiry can only contain stock that has already gone off. This one offers
+  *Sudah lewat*, *60 hari ke depan*, *Bulan ini*, *Bulan depan*.
+- **An unfilled custom range narrows nothing**, and the horizon reading "Rentang khusus"
+  looks like it does — so the bar says so.
+- **A filled one drops the lots with no expiry date**, because a lot with no date cannot
+  fall inside a date range. On a screen that otherwise lists them, that is the kind of
+  omission people find by counting, so the bar says that too.
+
+The dates are sent bare (`2026-11-30`); the API takes the upper bound as the **end** of the
+day it names.
 
 ## What the screen does not compute
 
@@ -100,7 +129,7 @@ All four shipped in `PawCRM-Backend` 0.22.0 — see its changelog and `docs/api.
 | 1 | Rows carried bare ObjectIds | `productName`, `productSku`, `productUnit`, `warehouseName` on the presenter |
 | 2 | No summary, and **no way to compute Nilai berisiko** | `GET /product-batches/summary` with exclusive buckets |
 | 3 | No-expiry lots sorted FIRST, burying the real answers | `findAll` became an aggregation; nulls sort last (FEFO unchanged) |
-| 4 | No batch-code search, no expiry window | `search`, `expiryFrom`, `expiryTo` |
+| 4 | No batch-code search, no expiry window | `search` (code, name, SKU), `expiryFrom`, `expiryTo` |
 
 The frontend has no workaround for any of them left in it.
 
