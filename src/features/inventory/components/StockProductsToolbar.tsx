@@ -138,12 +138,6 @@ export function StockProductsToolbar({
           fill
         />
       }
-      hint={
-        <>
-          Pencarian mencocokkan <b>nama</b> dan <b>SKU</b> di seluruh katalog,
-          bukan hanya halaman yang sedang tampil.
-        </>
-      }
     >
       <StockProductsFilterPanel
         applied={applied}
