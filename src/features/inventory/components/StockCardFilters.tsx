@@ -25,10 +25,11 @@ import type { StockCardFilters as Filters } from "../hooks/useStockCard";
  * Purely presentational — it renders the current filters and reports changes up
  * to the screen, which owns them.
  *
- * THE WAREHOUSE AND PRODUCT PICKERS ARE NOT HERE, deliberately. They live in
- * WarehouseProductPicker on the screen above, because they are required INPUTS
- * rather than filters — nothing loads until both are chosen, which is why every
- * control here takes `disabled` until they are.
+ * THE PRODUCT AND THE WAREHOUSE ARE NOT HERE, deliberately, and neither is a
+ * filter. The product is the ROUTE — a card is opened for one, never narrowed to
+ * one — and the warehouse is a required INPUT, rendered beside the heading.
+ * Nothing loads until a warehouse is settled, which is why every control here
+ * takes `disabled` until one is.
  *
  * NO FILTER COSTS THE BALANCE COLUMN. Narrowing by type or by date hides rows
  * newer than the ones on screen, which broke the balance back when the frontend
