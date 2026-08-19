@@ -760,6 +760,16 @@ export interface ProductListQuery {
    * `excludeVariants` (the opposite one); the API returns 400 for either pair.
    */
   holdsStock?: boolean;
+  /**
+   * Only products with NO movement in this warehouse.
+   *
+   * The opening-stock picker's filter — the same rule
+   * POST /products/opening-stock enforces, so the picker cannot offer a row the
+   * save would refuse. A warehouse id rather than a flag: "never moved" is only
+   * meaningful somewhere, and a product trading in one warehouse may
+   * legitimately be receiving its opening balance in another.
+   */
+  neverMovedInWarehouse?: string;
   includeDeleted?: boolean;
   /**
    * Which ordering to page through. A NAME, not a field plus a direction —
@@ -772,11 +782,7 @@ export interface ProductListQuery {
 
 /** The orderings `GET /api/products` accepts — PRODUCT_SORTS in the model. */
 export type ProductSort =
-  | "newest"
-  | "oldest"
-  | "nameAsc"
-  | "nameDesc"
-  | "skuAsc";
+  "newest" | "oldest" | "nameAsc" | "nameDesc" | "skuAsc";
 
 /** GET /api/products/:id/variants — the parent and every variant of it. */
 export interface ProductVariantsResult {
@@ -1404,11 +1410,7 @@ export interface ProductBatchListQuery {
 }
 
 /** The orderings the batch endpoints accept — BATCH_SORTS in the model. */
-export type BatchSort =
-  | "expirySoonest"
-  | "expiryLatest"
-  | "newest"
-  | "oldest";
+export type BatchSort = "expirySoonest" | "expiryLatest" | "newest" | "oldest";
 
 /** GET /api/product-batches/expiring. */
 export interface ExpiringBatchListQuery {

@@ -18,6 +18,12 @@ export { OpnameScreen } from "./components/OpnameScreen";
 export { OpnameSheet } from "./components/OpnameSheet";
 export { OpnameStatusBadge } from "./components/OpnameStatusBadge";
 export { StockAdjustmentForm } from "./components/StockAdjustmentForm";
+/**
+ * Opening stock for products registered without any — the one screen that posts
+ * `opening_balance`, and therefore the only one whose stock lands on capital
+ * (3101) rather than on inventory loss (5201).
+ */
+export { OpeningStockForm } from "./components/OpeningStockForm";
 export { StockTransferForm } from "./components/StockTransferForm";
 
 /**

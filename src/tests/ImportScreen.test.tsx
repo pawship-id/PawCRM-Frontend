@@ -49,7 +49,8 @@ const csvFile = (lines: string[], name = "produk.csv") => {
 };
 
 const CLEAN_ROW = ",,SHAMPOO-001,Shampoo Anjing,,Perawatan,,45000,,,,,,";
-const ROW_WITH_STOCK = ",,SHAMPOO-001,Shampoo Anjing,,Perawatan,,45000,,,12,30000,,";
+const ROW_WITH_STOCK =
+  ",,SHAMPOO-001,Shampoo Anjing,,Perawatan,,45000,,,12,30000,,";
 
 function preview(overrides: Partial<ImportPreview> = {}): ImportPreview {
   return {
@@ -66,9 +67,7 @@ function preview(overrides: Partial<ImportPreview> = {}): ImportPreview {
       families: 0,
       variants: 0,
     },
-    rows: [
-      { rowNumber: 2, sku: "SHAMPOO-001", status: "ok", problems: [] },
-    ],
+    rows: [{ rowNumber: 2, sku: "SHAMPOO-001", status: "ok", problems: [] }],
     ...overrides,
   };
 }
@@ -258,15 +257,12 @@ describe("ImportScreen", () => {
     // A misspelled `hpp_awl` would otherwise import a whole catalogue with no
     // cost basis, and nothing on screen would have said so.
     it("names a column it did not recognise", async () => {
-      const file = Object.assign(
-        new File([""], "produk.csv"),
-        {
-          text: () =>
-            Promise.resolve(
-              [`${HEADER},hpp_awl`, `${CLEAN_ROW},3000`].join("\n"),
-            ),
-        },
-      ) as File;
+      const file = Object.assign(new File([""], "produk.csv"), {
+        text: () =>
+          Promise.resolve(
+            [`${HEADER},hpp_awl`, `${CLEAN_ROW},3000`].join("\n"),
+          ),
+      }) as File;
 
       renderWithAuth(<ImportScreen />);
       await upload(file);
@@ -290,10 +286,10 @@ describe("ImportScreen", () => {
       renderWithAuth(<ImportScreen />);
       await upload(csvFile([ROW_WITH_STOCK]));
 
+      expect(await screen.findByText(/pilih gudang dulu/i)).toBeInTheDocument();
       expect(
-        await screen.findByText(/pilih gudang dulu/i),
-      ).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /periksa file/i })).toBeDisabled();
+        screen.getByRole("button", { name: /periksa file/i }),
+      ).toBeDisabled();
     });
   });
 
@@ -307,9 +303,7 @@ describe("ImportScreen", () => {
 
       await waitFor(() =>
         expect(productImportService.preview).toHaveBeenCalledWith({
-          rows: [
-            expect.objectContaining({ rowNumber: 2, sku: "SHAMPOO-001" }),
-          ],
+          rows: [expect.objectContaining({ rowNumber: 2, sku: "SHAMPOO-001" })],
         }),
       );
       expect(await screen.findByText("1 / 1")).toBeInTheDocument();
@@ -325,9 +319,7 @@ describe("ImportScreen", () => {
               rowNumber: 2,
               sku: "SHAMPOO-001",
               status: "conflict",
-              problems: [
-                { field: "sku", message: "SKU sudah ada di katalog" },
-              ],
+              problems: [{ field: "sku", message: "SKU sudah ada di katalog" }],
             },
           ],
         }),
@@ -340,9 +332,7 @@ describe("ImportScreen", () => {
       );
 
       expect(await screen.findByText("Sudah ada")).toBeInTheDocument();
-      expect(
-        screen.getByText(/SKU sudah ada di katalog/),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/SKU sudah ada di katalog/)).toBeInTheDocument();
     });
 
     /**
@@ -352,9 +342,7 @@ describe("ImportScreen", () => {
      */
     it("shows a cell the parser rejected without waiting for the server", async () => {
       renderWithAuth(<ImportScreen />);
-      await upload(
-        csvFile([",,A,Produk A,,Kategori,,Rp 45.000,-,,,,,,"]),
-      );
+      await upload(csvFile([",,A,Produk A,,Kategori,,Rp 45.000,-,,,,,,"]));
 
       expect(await screen.findByText(/harga_jual/)).toBeInTheDocument();
       expect(productImportService.preview).not.toHaveBeenCalled();
@@ -515,7 +503,9 @@ describe("ImportScreen", () => {
 
       expect(await screen.findByText(/selesai sebagian/i)).toBeInTheDocument();
       expect(screen.getByText(/DUP-1/)).toBeInTheDocument();
-      expect(screen.getByText(/yang sudah masuk tetap ada/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(/yang sudah masuk tetap ada/i),
+      ).toBeInTheDocument();
     });
 
     /**
@@ -619,10 +609,19 @@ describe("ImportScreen", () => {
         await screen.findByText(/stok awal belum tercatat/i),
       ).toBeInTheDocument();
       expect(screen.getByText("Ledger refused")).toBeInTheDocument();
-      // Re-importing would collide on the SKU, so the way out is an adjustment.
-      expect(
-        screen.getByRole("link", { name: /penyesuaian stok/i }),
-      ).toBeInTheDocument();
+      /*
+        Re-importing would collide on the SKU, so the way out is a second
+        screen — and WHICH screen decides the accounts. It used to point at
+        Penyesuaian Stok, the only route that existed, which credits 5201
+        Kerugian Persediaan: an import of a day-one catalogue would have booked
+        the whole of it as a negative expense. Stok Awal posts the same
+        quantities to 3101 Modal / Saldo Awal, and the products it names have
+        by definition never moved, so they qualify.
+      */
+      expect(screen.getByRole("link", { name: /stok awal/i })).toHaveAttribute(
+        "href",
+        "/dashboard/inventory/opening-stock",
+      );
     });
   });
 });

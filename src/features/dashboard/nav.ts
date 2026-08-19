@@ -172,15 +172,38 @@ export const NAV_ITEMS: NavItem[] = [
       },
       {
         /**
+         * Day one, and it sits directly above the adjustment for that reason:
+         * these two are the pair somebody chooses between, and the wrong choice
+         * is invisible until a P&L is read. Opening stock posts
+         * `opening_balance` and credits 3101 Modal / Saldo Awal; an adjustment
+         * credits 5201 Kerugian Persediaan, which is right for goods that
+         * vanished and absurd for a shop's starting inventory.
+         *
+         * Gated on `products:create` rather than on `stockMovements:create` —
+         * the SAME grant that already posts an opening balance inside a product
+         * create. It is the continuation of registering a catalogue, not a
+         * correction to the ledger, and the seeded Staff role (products:read)
+         * is untouched.
+         */
+        label: "Stok Awal",
+        href: "/dashboard/inventory/opening-stock",
+        icon: AdjustmentIcon,
+        permission: { feature: "products", action: "create" },
+      },
+      {
+        /**
          * Last, and that is the ordering doing its job rather than an
          * afterthought. An adjustment is the correction of last resort: a real
          * discrepancy is found by an opname, and goods that moved are moved by a
          * transfer. Putting it above either would offer the shortcut before the
          * procedure.
          *
-         * It is also, at the other end of a tenant's life, how opening stock is
-         * entered on day one — which is why it is in the menu at all rather than
-         * only on the hub, where it used to be reachable from a single card.
+         * NO LONGER THE DAY-ONE ROUTE. It used to be described here as how
+         * opening stock is entered, which was true only because nothing else
+         * could: a manual adjustment credits 5201 Kerugian Persediaan, so a
+         * tenant's whole starting inventory arrived as a negative expense. Stok
+         * Awal above posts it to capital, and this entry is back to being what
+         * its name says.
          *
          * Gated on `create`, so the seeded Staff role (read-only on the ledger)
          * never sees it: a manual adjustment with no document behind it is the
@@ -389,7 +412,9 @@ export function filterNavItems(items: NavItem[], can: CanFn): NavItem[] {
 
   return items.reduce<NavItem[]>((visible, item) => {
     if (item.children) {
-      const children = item.children.filter((child) => allowed(child.permission));
+      const children = item.children.filter((child) =>
+        allowed(child.permission),
+      );
       if (children.some((child) => child.permission)) {
         visible.push({ ...item, children });
       }

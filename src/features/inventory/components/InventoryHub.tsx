@@ -124,6 +124,14 @@ const ACTIONS: Array<{
     action: "create",
   },
   {
+    href: "/dashboard/inventory/opening-stock",
+    title: "Stok Awal",
+    description:
+      "Isi stok pertama produk yang sudah terdaftar tapi belum pernah punya stok. Tercatat sebagai modal, bukan kerugian.",
+    feature: "products",
+    action: "create",
+  },
+  {
     href: "/dashboard/inventory/adjustments",
     title: "Penyesuaian cepat",
     description:

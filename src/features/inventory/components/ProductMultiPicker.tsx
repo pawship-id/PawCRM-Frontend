@@ -37,6 +37,7 @@ import { useProductCandidates } from "../hooks/useProductCandidates";
  */
 export function ProductMultiPicker({
   categoryId = "",
+  neverMovedInWarehouse = "",
   selected,
   onChange,
   excludeIds,
@@ -44,6 +45,16 @@ export function ProductMultiPicker({
 }: {
   /** Narrows the candidate list. "" is every category. */
   categoryId?: string;
+  /**
+   * Only products with NO movement in this warehouse — the opening-stock
+   * sheet's eligibility rule, applied by the SERVER against the ledger.
+   *
+   * Different in kind from `excludeIds`: that one hides what this document
+   * already carries, a fact the browser knows; this one hides what the document
+   * may not carry at all, which only the ledger can answer. "" is every product,
+   * which is what the opname and transfer pickers want.
+   */
+  neverMovedInWarehouse?: string;
   selected: Product[];
   onChange: (products: Product[]) => void;
   /**
@@ -56,10 +67,12 @@ export function ProductMultiPicker({
   disabled?: boolean;
 }) {
   const [search, setSearch] = useState("");
-  const { products: matched, total, loading, error } = useProductCandidates(
-    search,
-    categoryId,
-  );
+  const {
+    products: matched,
+    total,
+    loading,
+    error,
+  } = useProductCandidates(search, categoryId, neverMovedInWarehouse);
 
   const excluded = new Set(excludeIds ?? []);
   const products = matched.filter((product) => !excluded.has(product._id));
@@ -167,7 +180,9 @@ export function ProductMultiPicker({
                   htmlFor={`pick-${product._id}`}
                   className="flex flex-1 cursor-pointer flex-wrap items-baseline gap-x-2 font-normal"
                 >
-                  <span className="text-sm text-foreground">{product.name}</span>
+                  <span className="text-sm text-foreground">
+                    {product.name}
+                  </span>
                   {/* The SKU is how a counter matches a row to a shelf label —
                       two variants of one product differ by nothing else here. */}
                   {product.sku && (

@@ -22,9 +22,9 @@ export default function StockAdjustmentsPage() {
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">
           Koreksi satu barang di luar opname — rusak, hilang, atau terpakai
-          sendiri. Barang yang sudah ada sebelum pakai Buloo sebaiknya diisi
-          lewat <b>Stok awal</b> saat membuat produknya; kalau produknya
-          terlanjur dibuat tanpa stok, isi di sini.
+          sendiri. Barang yang sudah ada sebelum pakai Buloo bukan koreksi: isi
+          lewat <b>Stok Awal</b>, supaya tercatat sebagai modal dan bukan
+          sebagai kerugian.
         </p>
       </div>
 

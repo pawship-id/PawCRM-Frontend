@@ -62,6 +62,12 @@ describe("filterNavItems", () => {
     // an opname and goods that moved are moved by a transfer, so offering the
     // by-hand correction above either would offer the shortcut before the
     // procedure.
+    //
+    // Stok Awal sits DIRECTLY ABOVE IT, and the adjacency is the point: these
+    // two are the pair somebody chooses between, and the wrong choice is
+    // invisible until a P&L is read. Opening stock credits 3101 Modal / Saldo
+    // Awal; an adjustment credits 5201 Kerugian Persediaan, which turns a
+    // shop's starting inventory into a negative expense.
     expect(inventory?.children?.map((c) => c.label)).toEqual([
       "Ringkasan",
       "Produk & Varian",
@@ -70,6 +76,7 @@ describe("filterNavItems", () => {
       "Batch & Expired",
       "Stok Opname",
       "Transfer Stok",
+      "Stok Awal",
       "Penyesuaian Stok",
     ]);
   });

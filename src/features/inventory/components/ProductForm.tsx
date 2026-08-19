@@ -2924,9 +2924,11 @@ function ProductFormFields({
         >
           {!openingEnabled ? (
             <p className="text-sm text-muted">
-              Produk dibuat tanpa stok. Kuantitasnya bisa diisi kapan saja lewat{" "}
-              <b>Penyesuaian Stok</b> — pilih ini kalau barangnya belum datang,
-              atau kalau kamu sedang mendaftarkan katalog lebih dulu.
+              Produk dibuat tanpa stok. Kalau barangnya sudah ada tapi kamu
+              sedang mendaftarkan katalog lebih dulu, isi nanti lewat{" "}
+              <b>Inventory → Stok Awal</b> — tercatat sebagai modal, sama
+              seperti mengisinya di sini. Kalau barangnya memang belum datang,
+              biarkan saja: stoknya masuk sendiri lewat Penerimaan Barang.
             </p>
           ) : (
             <div className="flex flex-col gap-4">
