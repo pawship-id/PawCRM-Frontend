@@ -449,8 +449,18 @@ describe("StockAdjustmentForm", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("renders the FEFO split the SERVER returned, one row per lot", async () => {
-    mockLookups({
+  /**
+   * The "Yang akan terjadi" panel — the FEFO split and the journal — is hidden
+   * behind SHOW_OUTCOME_PREVIEW, so the form is one full-width column and the
+   * outcome is reported after saving instead of before.
+   *
+   * THE PREVIEW IS STILL FETCHED, and that is the half worth a test. The flag
+   * suppresses the rendering only, so flipping it back to `true` restores the
+   * panel with no other change — whereas a version that also stopped asking
+   * would restore an empty one, and nothing would say why.
+   */
+  it("still asks the server for the preview, but renders no panel", async () => {
+    const { preview } = mockLookups({
       preview: previewOf({
         movements: [
           outboundRow({ batchId: "a", qty: "-4.0000" }),
@@ -470,9 +480,15 @@ describe("StockAdjustmentForm", () => {
     await user.type(await screen.findByLabelText(/^Stok baru/), "14");
     await settlePreview();
 
-    expect(await screen.findByText(/Alokasi FEFO/)).toBeInTheDocument();
-    expect(screen.getByText("2 baris movement")).toBeInTheDocument();
-    expect(screen.getByText("RC-B26-0456")).toBeInTheDocument();
+    expect(preview).toHaveBeenCalled();
+    expect(screen.queryByText(/Alokasi FEFO/)).not.toBeInTheDocument();
+    expect(screen.queryByText("RC-B26-0456")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Yang akan terjadi/)).not.toBeInTheDocument();
+
+    // The button moved out of the hidden panel; it must still be reachable.
+    expect(
+      screen.getByRole("button", { name: /Simpan penyesuaian/ }),
+    ).toBeInTheDocument();
   });
 
   /**

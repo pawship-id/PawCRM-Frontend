@@ -67,6 +67,12 @@ export {
 export { ChartOfAccountsScreen } from "./components/ChartOfAccountsScreen";
 export { JournalEntriesScreen } from "./components/JournalEntriesScreen";
 export { JournalEntryDetail } from "./components/JournalEntryDetail";
+/**
+ * The manual-entry form — the only kind of posting a human writes. Everything
+ * else reaches the ledger service-to-service from the module that owns the
+ * document, so this is the one screen that can create a journal entry at all.
+ */
+export { JournalEntryCreateForm } from "./components/JournalEntryCreateForm";
 export { ACCOUNTING_CRUMBS } from "./crumbs";
 export {
   useChartOfAccounts,

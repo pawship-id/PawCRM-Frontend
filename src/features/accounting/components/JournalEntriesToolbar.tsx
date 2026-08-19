@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { ListFilter, Plus } from "lucide-react";
 
 import {
@@ -21,6 +22,7 @@ import { Can } from "@/features/permissions";
 import type { JournalEntrySort, JournalSourceType } from "@/types/accounting";
 import type { Branch } from "@/types/api";
 
+import { ACCOUNTING_CRUMBS } from "../crumbs";
 import type { JournalEntriesQuery } from "../hooks/useJournalEntries";
 import { SOURCE_LABEL } from "../labels";
 
@@ -181,17 +183,28 @@ export function JournalEntriesToolbar({
       }
       actions={
         /*
-          Disabled rather than hidden. POST /api/journal-entries exists and
-          only ever produces a MANUAL entry — every other source posts
-          service-to-service — so the button belongs on this screen and
-          nowhere else. What is missing is the form: a manual entry is a set
-          of lines that has to balance before it can be sent, which is a
-          screen of its own rather than a dialog bolted onto a list.
+          THE ONE WRITABLE ACTION ON THIS SCREEN, and it belongs here and
+          nowhere else: POST /api/journal-entries only ever produces a MANUAL
+          entry — every other source posts service-to-service — so no other
+          list can offer a "new" button that means anything.
+
+          It was disabled until the form existed, because a manual entry is a
+          set of lines that has to balance before it can be sent, which is a
+          screen of its own rather than a dialog bolted onto a list. That
+          screen is /journal-entries/new now.
+
+          LABELLED "Jurnal baru", NOT "Jurnal manual". `manual` is what the
+          ledger calls the SOURCE, to tell a typed entry from one a sale
+          posted; on a button it reads as a second, lesser kind of journal
+          somebody must choose between. From this screen there is only one
+          kind a person can make, so the button says what it does.
         */
         <Can feature="journalEntries" action="create">
-          <Button disabled title="Form jurnal manual belum tersedia">
-            <Plus className="size-4" />
-            Jurnal manual
+          <Button asChild>
+            <Link href={`${ACCOUNTING_CRUMBS.journal.href}/new`}>
+              <Plus className="size-4" />
+              Jurnal baru
+            </Link>
           </Button>
         </Can>
       }
@@ -295,7 +308,9 @@ function LedgerFilterPanel({
           ariaLabel="Filter sumber entri"
           value={draft.sourceType}
           options={SOURCE_OPTIONS}
-          onChange={(sourceType) => setDraft((prev) => ({ ...prev, sourceType }))}
+          onChange={(sourceType) =>
+            setDraft((prev) => ({ ...prev, sourceType }))
+          }
         />
         <FilterDateRange
           layout="field"
