@@ -83,6 +83,15 @@ import { WarehouseProductPicker } from "./WarehouseProductPicker";
 /** The sentinel the batch picker uses for "make a new one". */
 const NEW_BATCH = "__new__";
 
+/**
+ * Whether the "Yang akan terjadi" panel (FEFO split + jurnal) is rendered.
+ *
+ * Off: the form is one full-width column, and the outcome is reported after
+ * saving instead of before. The preview is still fetched, so flipping this back
+ * to `true` restores the panel without any other change.
+ */
+const SHOW_OUTCOME_PREVIEW: boolean = false;
+
 export function StockAdjustmentForm() {
   const lookups = useStockCardLookups();
 
@@ -409,266 +418,260 @@ export function StockAdjustmentForm() {
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
       {formError && <Alert variant="error">{formError}</Alert>}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
-        {/* ---------------------------------------------------------- input */}
-        <div className="flex flex-col gap-6">
-          {/* The precondition is stated on the card, not only implied by three
-              greyed-out fields further down. Somebody who has not chosen yet is
-              looking HERE — and a disabled input explains that it is disabled,
-              never why. */}
-          <Card
-            title="Barang & lokasi"
-            description="Pilih gudang dan produknya dulu. Jumlah baru bisa diisi setelah keduanya terpilih — penyesuaian selalu dicatat untuk satu produk di satu gudang."
-          >
-            <div className="flex flex-col gap-4">
-              <WarehouseProductPicker
-                warehouses={writableWarehouses}
-                products={lookups.products}
-                warehouseId={warehouseId}
-                productId={productId}
-                onWarehouseChange={(id) => {
-                  setWarehouseId(id);
-                  resetGoodsScope();
-                }}
-                onProductChange={(id) => {
-                  setProductId(id);
-                  resetGoodsScope();
-                }}
+      {/* ---------------------------------------------------------- input */}
+      {/* The precondition is stated on the card, not only implied by three
+          greyed-out fields further down. Somebody who has not chosen yet is
+          looking HERE — and a disabled input explains that it is disabled,
+          never why. */}
+      <Card
+        title="Barang & lokasi"
+        description="Pilih gudang dan produknya dulu. Jumlah baru bisa diisi setelah keduanya terpilih — penyesuaian selalu dicatat untuk satu produk di satu gudang."
+      >
+        <div className="flex flex-col gap-4">
+          <WarehouseProductPicker
+            warehouses={writableWarehouses}
+            products={lookups.products}
+            warehouseId={warehouseId}
+            productId={productId}
+            onWarehouseChange={(id) => {
+              setWarehouseId(id);
+              resetGoodsScope();
+            }}
+            onProductChange={(id) => {
+              setProductId(id);
+              resetGoodsScope();
+            }}
+          />
+
+          <div className="flex flex-wrap items-center gap-2 rounded-lg bg-accent/60 px-3 py-2 text-sm">
+            <span className="text-muted">Stok saat ini</span>
+            <b className="tabular-nums">
+              {formatQty(qtyOnHand)} {product?.unit}
+            </b>
+            <span className="text-muted">·</span>
+            <span className="text-muted">HPP</span>
+            <b className="tabular-nums">
+              {product?.hppAvg
+                ? formatMoney(product?.hppAvg)
+                : "belum terbentuk"}
+            </b>
+            {product?.hasExpiry && (
+              <Badge
+                variant="outline"
+                className="ml-auto border-secondary text-secondary-foreground"
+              >
+                melacak kedaluwarsa
+              </Badge>
+            )}
+          </div>
+        </div>
+      </Card>
+
+      {tracksBatches && (
+        <Card
+          title="Batch"
+          description="Pilih batch yang sudah ada di gudang ini untuk produk ini, atau buat batch baru — pastikan kode batchnya unik."
+        >
+          <div className="flex flex-col gap-4">
+            {/* An empty picker is ambiguous: it looks the same whether this
+                product genuinely has no lots here, or the read was refused.
+                Both are said out loud rather than left to be guessed from a
+                list with one option in it. */}
+            {lots.error && <Alert variant="error">{lots.error}</Alert>}
+
+            {lots.loading ? (
+              <p className="text-sm text-muted">Memuat batch…</p>
+            ) : (
+              <FilterSelect
+                layout="field"
+                label="Kode batch"
+                ariaLabel="Kode batch"
+                value={batchChoice}
+                active={false}
+                placeholder="Pilih batch"
+                options={[
+                  ...lots.batches.map((lot) => ({
+                    value: lot._id,
+                    label: `${lot.batchCode} · sisa ${formatQty(lot.qtyRemaining)}${
+                      lot.expiryDate
+                        ? ` · exp ${lot.expiryDate.slice(0, 10)}`
+                        : ""
+                    }`,
+                  })),
+                  { value: NEW_BATCH, label: "+ Batch baru…" },
+                ]}
+                onChange={setBatchChoice}
               />
+            )}
+            {fieldErrors.batchChoice && (
+              <p role="alert" className="text-xs text-danger">
+                {fieldErrors.batchChoice}
+              </p>
+            )}
 
-              <div className="flex flex-wrap items-center gap-2 rounded-lg bg-accent/60 px-3 py-2 text-sm">
-                <span className="text-muted">Stok saat ini</span>
-                <b className="tabular-nums">
-                  {formatQty(qtyOnHand)} {product?.unit}
-                </b>
-                <span className="text-muted">·</span>
-                <span className="text-muted">HPP</span>
-                <b className="tabular-nums">
-                  {product?.hppAvg
-                    ? formatMoney(product?.hppAvg)
-                    : "belum terbentuk"}
-                </b>
-                {product?.hasExpiry && (
-                  <Badge
-                    variant="outline"
-                    className="ml-auto border-secondary text-secondary-foreground"
-                  >
-                    melacak kedaluwarsa
-                  </Badge>
-                )}
-              </div>
-            </div>
-          </Card>
+            {/* Gone once "+ Batch baru…" is picked: at that point it is
+                telling somebody to do what they have just done. */}
+            {!lots.loading &&
+              !lots.error &&
+              !makingBatch &&
+              lots.batches.length === 0 && (
+                <p className="text-xs text-muted">
+                  Belum ada batch untuk produk ini di gudang tersebut — pilih{" "}
+                  <b>+ Batch baru…</b> untuk membuat yang pertama.
+                </p>
+              )}
+            {/* The general guidance moved to the card's own description —
+                it is true before anything is picked, which is when it is
+                read. What stays here is the one fact that only holds while
+                a NEW batch is being described. */}
+            {makingBatch && (
+              <p className="text-xs text-muted">
+                Batch baru dibuat saat disimpan. Stok sistemnya nol — apa pun
+                yang diisi di bawah adalah penambahan.
+              </p>
+            )}
 
-          {tracksBatches && (
-            <Card
-              title="Batch"
-              description="Pilih batch yang sudah ada di gudang ini untuk produk ini, atau buat batch baru — pastikan kode batchnya unik."
-            >
-              <div className="flex flex-col gap-4">
-                {/* An empty picker is ambiguous: it looks the same whether this
-                    product genuinely has no lots here, or the read was refused.
-                    Both are said out loud rather than left to be guessed from a
-                    list with one option in it. */}
-                {lots.error && <Alert variant="error">{lots.error}</Alert>}
-
-                {lots.loading ? (
-                  <p className="text-sm text-muted">Memuat batch…</p>
-                ) : (
-                  <FilterSelect
-                    layout="field"
-                    label="Kode batch"
-                    ariaLabel="Kode batch"
-                    value={batchChoice}
-                    active={false}
-                    placeholder="Pilih batch"
-                    options={[
-                      ...lots.batches.map((lot) => ({
-                        value: lot._id,
-                        label: `${lot.batchCode} · sisa ${formatQty(lot.qtyRemaining)}${
-                          lot.expiryDate
-                            ? ` · exp ${lot.expiryDate.slice(0, 10)}`
-                            : ""
-                        }`,
-                      })),
-                      { value: NEW_BATCH, label: "+ Batch baru…" },
-                    ]}
-                    onChange={setBatchChoice}
-                  />
-                )}
-                {fieldErrors.batchChoice && (
-                  <p role="alert" className="text-xs text-danger">
-                    {fieldErrors.batchChoice}
-                  </p>
-                )}
-
-                {/* Gone once "+ Batch baru…" is picked: at that point it is
-                    telling somebody to do what they have just done. */}
-                {!lots.loading &&
-                  !lots.error &&
-                  !makingBatch &&
-                  lots.batches.length === 0 && (
-                    <p className="text-xs text-muted">
-                      Belum ada batch untuk produk ini di gudang tersebut —
-                      pilih <b>+ Batch baru…</b> untuk membuat yang pertama.
-                    </p>
-                  )}
-                {/* The general guidance moved to the card's own description —
-                    it is true before anything is picked, which is when it is
-                    read. What stays here is the one fact that only holds while
-                    a NEW batch is being described. */}
-                {makingBatch && (
-                  <p className="text-xs text-muted">
-                    Batch baru dibuat saat disimpan. Stok sistemnya nol — apa
-                    pun yang diisi di bawah adalah penambahan.
-                  </p>
-                )}
-
-                {makingBatch && (
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <TextField
-                      label="Kode batch baru"
-                      name="batchCode"
-                      value={batchCode}
-                      onChange={(e) => setBatchCode(e.target.value)}
-                      error={fieldErrors.batchCode}
-                      placeholder="mis. WSK-B26-0640"
-                      required
-                    />
-                    <TextField
-                      label="Tanggal kedaluwarsa"
-                      name="expiryDate"
-                      type="date"
-                      value={expiryDate}
-                      onChange={(e) => setExpiryDate(e.target.value)}
-                      error={fieldErrors.expiryDate}
-                      required
-                    />
-                  </div>
-                )}
-              </div>
-            </Card>
-          )}
-
-          <Card
-            title={
-              tracksBatches ? "Jumlah di batch ini" : "Jumlah di gudang ini"
-            }
-          >
-            <div className="flex flex-col gap-4">
-              {/* The whole form in three boxes: what we think, what you counted,
-                  and the difference — which is the only one the ledger stores. */}
-              <div className="grid items-start gap-4 sm:grid-cols-3">
-                <div>
-                  <Label className="mb-1.5 block">Stok sistem sekarang</Label>
-                  <div className="flex h-10 items-center rounded-md border border-border bg-accent/60 px-3 text-sm tabular-nums text-muted">
-                    {systemQty === null
-                      ? "—"
-                      : `${formatQty(systemQty)} ${product?.unit}`}
-                  </div>
-                  <p className="mt-1.5 text-xs text-muted">
-                    Tidak bisa diubah.
-                  </p>
-                </div>
-
+            {makingBatch && (
+              <div className="grid gap-4 sm:grid-cols-2">
                 <TextField
-                  label={`Stok baru (${product?.unit})`}
-                  name="newQty"
-                  inputMode="decimal"
-                  value={newQty}
-                  onChange={(e) => setNewQty(e.target.value)}
-                  error={fieldErrors.newQty}
-                  hint="Jumlah yang benar-benar ada. Tidak bisa minus."
-                  placeholder="mis. 12 atau 2,5 → tulis 2.5"
-                  disabled={systemQty === null}
+                  label="Kode batch baru"
+                  name="batchCode"
+                  value={batchCode}
+                  onChange={(e) => setBatchCode(e.target.value)}
+                  error={fieldErrors.batchCode}
+                  placeholder="mis. WSK-B26-0640"
                   required
                 />
+                <TextField
+                  label="Tanggal kedaluwarsa"
+                  name="expiryDate"
+                  type="date"
+                  value={expiryDate}
+                  onChange={(e) => setExpiryDate(e.target.value)}
+                  error={fieldErrors.expiryDate}
+                  required
+                />
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
 
+      <Card
+        title={tracksBatches ? "Jumlah di batch ini" : "Jumlah di gudang ini"}
+      >
+        <div className="flex flex-col gap-4">
+          {/* The whole form in three boxes: what we think, what you counted,
+              and the difference — which is the only one the ledger stores. */}
+          <div className="grid items-start gap-4 sm:grid-cols-3">
+            <div>
+              <Label className="mb-1.5 block">Stok sistem sekarang</Label>
+              <div className="flex h-10 items-center rounded-md border border-border bg-accent/60 px-3 text-sm tabular-nums text-muted">
+                {systemQty === null
+                  ? "—"
+                  : `${formatQty(systemQty)} ${product?.unit}`}
+              </div>
+              <p className="mt-1.5 text-xs text-muted">Tidak bisa diubah.</p>
+            </div>
+
+            <TextField
+              label={`Stok baru (${product?.unit})`}
+              name="newQty"
+              inputMode="decimal"
+              value={newQty}
+              onChange={(e) => setNewQty(e.target.value)}
+              error={fieldErrors.newQty}
+              hint="Jumlah yang benar-benar ada. Tidak bisa minus."
+              placeholder="mis. 12 atau 2,5 → tulis 2.5"
+              disabled={systemQty === null}
+              required
+            />
+
+            <div>
+              <Label className="mb-1.5 block">Selisih</Label>
+              <div
+                className={cn(
+                  "flex h-10 items-center gap-2 rounded-md px-3 text-sm font-bold tabular-nums",
+                  delta === null || unchanged
+                    ? "bg-tint-brand text-primary"
+                    : increasing
+                      ? "bg-tint-success text-success"
+                      : "bg-tint-danger text-danger",
+                )}
+              >
+                {delta === null ? (
+                  "—"
+                ) : unchanged ? (
+                  <>
+                    0 {product?.unit}
+                    <span className="font-normal">tidak ada selisih</span>
+                  </>
+                ) : (
+                  <>
+                    {increasing ? "+" : ""}
+                    {formatQty(delta)} {product?.unit}
+                    <span className="font-normal">
+                      {increasing ? "bertambah" : "berkurang"}
+                    </span>
+                  </>
+                )}
+              </div>
+              <p className="mt-1.5 text-xs text-muted">
+                Dihitung sistem, tidak diisi manual.
+              </p>
+            </div>
+          </div>
+
+          {/* Only when stock arrives: goods leaving carry no new cost. */}
+          {increasing && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <TextField
+                label="Harga beli per unit"
+                name="costPerUnit"
+                inputMode="decimal"
+                value={costPerUnit}
+                onChange={(e) => setCostPerUnit(e.target.value)}
+                error={fieldErrors.costPerUnit}
+                disabled={isConsignment}
+                hint={
+                  isConsignment
+                    ? "Tidak diisi untuk konsinyasi — harga yang berlaku adalah harga saat penagihan."
+                    : product?.hppAvg
+                      ? "Opsional. Dikosongkan berarti memakai HPP rata-rata yang berlaku."
+                      : "Wajib: belum ada HPP untuk barang ini, jadi angka ini yang jadi dasarnya."
+                }
+                placeholder={
+                  product?.hppAvg ? formatMoney(product?.hppAvg) : "mis. 118500"
+                }
+              />
+
+              <div className="flex items-start gap-2 pt-6">
+                <Checkbox
+                  id="isConsignment"
+                  checked={isConsignment}
+                  onCheckedChange={(checked) =>
+                    setIsConsignment(checked === true)
+                  }
+                />
                 <div>
-                  <Label className="mb-1.5 block">Selisih</Label>
-                  <div
-                    className={cn(
-                      "flex h-10 items-center gap-2 rounded-md px-3 text-sm font-bold tabular-nums",
-                      delta === null || unchanged
-                        ? "bg-tint-brand text-primary"
-                        : increasing
-                          ? "bg-tint-success text-success"
-                          : "bg-tint-danger text-danger",
-                    )}
-                  >
-                    {delta === null ? (
-                      "—"
-                    ) : unchanged ? (
-                      <>
-                        0 {product?.unit}
-                        <span className="font-normal">tidak ada selisih</span>
-                      </>
-                    ) : (
-                      <>
-                        {increasing ? "+" : ""}
-                        {formatQty(delta)} {product?.unit}
-                        <span className="font-normal">
-                          {increasing ? "bertambah" : "berkurang"}
-                        </span>
-                      </>
-                    )}
-                  </div>
-                  <p className="mt-1.5 text-xs text-muted">
-                    Dihitung sistem, tidak diisi manual.
+                  <Label htmlFor="isConsignment">
+                    Barang konsinyasi (titipan)
+                  </Label>
+                  <p className="text-xs text-muted">
+                    Milik supplier sampai laku. Harganya ditentukan saat
+                    penagihan, bukan sekarang.
                   </p>
                 </div>
               </div>
-
-              {/* Only when stock arrives: goods leaving carry no new cost. */}
-              {increasing && (
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <TextField
-                    label="Harga beli per unit"
-                    name="costPerUnit"
-                    inputMode="decimal"
-                    value={costPerUnit}
-                    onChange={(e) => setCostPerUnit(e.target.value)}
-                    error={fieldErrors.costPerUnit}
-                    disabled={isConsignment}
-                    hint={
-                      isConsignment
-                        ? "Tidak diisi untuk konsinyasi — harga yang berlaku adalah harga saat penagihan."
-                        : product?.hppAvg
-                          ? "Opsional. Dikosongkan berarti memakai HPP rata-rata yang berlaku."
-                          : "Wajib: belum ada HPP untuk barang ini, jadi angka ini yang jadi dasarnya."
-                    }
-                    placeholder={
-                      product?.hppAvg
-                        ? formatMoney(product?.hppAvg)
-                        : "mis. 118500"
-                    }
-                  />
-
-                  <div className="flex items-start gap-2 pt-6">
-                    <Checkbox
-                      id="isConsignment"
-                      checked={isConsignment}
-                      onCheckedChange={(checked) =>
-                        setIsConsignment(checked === true)
-                      }
-                    />
-                    <div>
-                      <Label htmlFor="isConsignment">
-                        Barang konsinyasi (titipan)
-                      </Label>
-                      <p className="text-xs text-muted">
-                        Milik supplier sampai laku. Harganya ditentukan saat
-                        penagihan, bukan sekarang.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
-          </Card>
+          )}
         </div>
+      </Card>
 
-        {/* -------------------------------------------------------- preview */}
+      {/* Panel "Yang akan terjadi" disembunyikan: form ini sekarang satu
+          kolom penuh. Perkiraannya tetap dihitung — hanya tidak ditampilkan —
+          sehingga cukup satu flag untuk mengembalikannya. */}
+      {SHOW_OUTCOME_PREVIEW && (
         <div className="flex flex-col gap-4">
           <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted">
             Yang akan terjadi
@@ -698,30 +701,32 @@ export function StockAdjustmentForm() {
             </div>
           )}
 
-          <div className="flex gap-2">
-            <Button type="submit" disabled={saving || blocking !== null}>
-              {saving ? "Menyimpan…" : "Simpan penyesuaian"}
-            </Button>
-          </div>
-
-          {blocking && !saving && (
-            <p className="text-xs text-muted">
-              Belum bisa disimpan: <b>{blocking}</b>
-            </p>
-          )}
-
           <p className="text-xs text-muted">
             Perkiraan di atas dihitung ulang oleh server tiap kali angkanya
             berubah. Hasil yang sebenarnya ditentukan saat disimpan — dan itulah
             yang dilaporkan setelah tombol ditekan.
           </p>
-
-          <p className="text-xs text-muted">
-            Kartu stok bersifat <b>append-only</b>. Penyesuaian tidak mengubah
-            baris lama — ia menambah baris baru, sehingga koreksi dan
-            kesalahannya sama-sama tetap terlihat.
-          </p>
         </div>
+      )}
+
+      <div className="flex flex-col gap-2">
+        <div className="flex gap-2">
+          <Button type="submit" disabled={saving || blocking !== null}>
+            {saving ? "Menyimpan…" : "Simpan penyesuaian"}
+          </Button>
+        </div>
+
+        {blocking && !saving && (
+          <p className="text-xs text-muted">
+            Belum bisa disimpan: <b>{blocking}</b>
+          </p>
+        )}
+
+        <p className="text-xs text-muted">
+          Kartu stok bersifat <b>append-only</b>. Penyesuaian tidak mengubah
+          baris lama — ia menambah baris baru, sehingga koreksi dan kesalahannya
+          sama-sama tetap terlihat.
+        </p>
       </div>
     </form>
   );
