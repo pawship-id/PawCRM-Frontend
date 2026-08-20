@@ -82,22 +82,19 @@ export function ImportResultPanel({
 
         {outcome === "unposted" && (
           <p>
-            Produk berhasil dibuat — <strong>
-              {result.summary.createdCount}
-            </strong>{" "}
-            entri. Tapi stok awal <strong>{unposted.length}</strong> di antaranya
-            belum tercatat di buku. Lihat rinciannya di bawah.
+            Produk berhasil dibuat —{" "}
+            <strong>{result.summary.createdCount}</strong> entri. Tapi stok awal{" "}
+            <strong>{unposted.length}</strong> di antaranya belum tercatat di
+            buku. Lihat rinciannya di bawah.
           </p>
         )}
 
         {outcome === "failed" && (
           <p>
-            Import selesai sebagian. <strong>
-              {result.summary.createdCount}
-            </strong>{" "}
-            entri dibuat, <strong>{result.summary.failedCount}</strong> gagal.
-            Yang sudah masuk tetap ada — baca rinciannya di bawah sebelum
-            mengulang.
+            Import selesai sebagian.{" "}
+            <strong>{result.summary.createdCount}</strong> entri dibuat,{" "}
+            <strong>{result.summary.failedCount}</strong> gagal. Yang sudah
+            masuk tetap ada — baca rinciannya di bawah sebelum mengulang.
           </p>
         )}
       </Alert>
@@ -158,9 +155,9 @@ export function ImportResultPanel({
             <p className="mt-4 text-sm text-muted">
               Pesan di atas menyebut akun yang belum ada di Chart of Accounts.
               Lengkapi dulu akunnya — mencatat lewat Penyesuaian Stok akan
-              membukukan barang ini sebagai <strong>pendapatan lain-lain</strong>,
-              padahal barang yang sudah Anda miliki sejak awal itu{" "}
-              <strong>modal</strong>.
+              membukukan barang ini sebagai{" "}
+              <strong>pendapatan lain-lain</strong>, padahal barang yang sudah
+              Anda miliki sejak awal itu <strong>modal</strong>.
             </p>
           )}
 
@@ -171,8 +168,8 @@ export function ImportResultPanel({
               </Link>
             </Button>
             <Button variant="ghost" asChild>
-              <Link href="/dashboard/inventory/adjustments">
-                Buka Penyesuaian Stok
+              <Link href="/dashboard/inventory/opening-stock">
+                Isi Stok Awal
               </Link>
             </Button>
           </div>
@@ -192,7 +189,9 @@ export function ImportResultPanel({
               >
                 {entry.name}
               </Link>
-              <span className="tabular-nums text-xs text-muted">{entry.sku}</span>
+              <span className="tabular-nums text-xs text-muted">
+                {entry.sku}
+              </span>
               {entry.variantCount > 0 && (
                 <span className="text-xs text-muted">
                   {entry.variantCount} varian

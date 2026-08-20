@@ -46,6 +46,17 @@ export function useProductCandidates(
   search: string,
   /** Narrows the list. "" is every category. */
   categoryId = "",
+  /**
+   * Only products with NO movement in this warehouse — the opening-stock
+   * picker's rule, resolved by the server against the ledger.
+   *
+   * A WAREHOUSE ID RATHER THAN A FLAG, because "never moved" is only meaningful
+   * somewhere: a product trading in one warehouse may legitimately be receiving
+   * its opening balance in another, which is how a tenant that opens with two
+   * locations fills both. "" leaves the list unfiltered, which is what every
+   * other caller wants.
+   */
+  neverMovedInWarehouse = "",
 ): ProductCandidates {
   const [products, setProducts] = useState<Product[]>([]);
   const [total, setTotal] = useState(0);
@@ -67,6 +78,7 @@ export function useProductCandidates(
           isActive: true,
           search: search.trim() || undefined,
           categoryId: categoryId || undefined,
+          neverMovedInWarehouse: neverMovedInWarehouse || undefined,
           limit: PAGE_LIMIT,
         })
         .then((result) => {
@@ -93,7 +105,7 @@ export function useProductCandidates(
       active = false;
       clearTimeout(timer);
     };
-  }, [search, categoryId]);
+  }, [search, categoryId, neverMovedInWarehouse]);
 
   return {
     products,

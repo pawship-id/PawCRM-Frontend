@@ -473,11 +473,11 @@ describe("ProductDetail", () => {
       expect(links).toHaveLength(2);
       expect(links[0]).toHaveAttribute(
         "href",
-        `/dashboard/inventory/stock-card?productId=p1&warehouseId=${WAREHOUSE}`,
+        `/dashboard/inventory/stock-card/p1?warehouseId=${WAREHOUSE}`,
       );
       expect(links[1]).toHaveAttribute(
         "href",
-        `/dashboard/inventory/stock-card?productId=p1&warehouseId=${OTHER_WAREHOUSE}`,
+        `/dashboard/inventory/stock-card/p1?warehouseId=${OTHER_WAREHOUSE}`,
       );
     });
 

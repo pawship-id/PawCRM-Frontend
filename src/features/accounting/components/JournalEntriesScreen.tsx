@@ -388,7 +388,9 @@ function SummaryTile({
  * second header, which is why the caller keys on the group's position rather
  * than on the month label.
  */
-function groupByMonth(entries: JournalEntry[]): Array<[string, JournalEntry[]]> {
+function groupByMonth(
+  entries: JournalEntry[],
+): Array<[string, JournalEntry[]]> {
   const groups: Array<[string, JournalEntry[]]> = [];
 
   for (const entry of entries) {

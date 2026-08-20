@@ -8,11 +8,15 @@ import type { PageResult } from "@/types/api";
 import type { BatchSort, ProductBatch } from "@/types/inventory";
 
 /**
- * How far ahead to look. `all` is not a horizon — it switches the screen from
- * the alert list to the whole collection, which is a different endpoint and a
- * different question.
+ * How far ahead to look.
+ *
+ * TWO OF THESE ARE NOT HORIZONS. `all` switches the screen from the alert list
+ * to the whole collection, and `custom` hands the window over to two dates the
+ * user picks — both are a different endpoint and a different question, which is
+ * why they sit in the same control: from where somebody stands they are all
+ * answers to "which lots do I want to see".
  */
-export type Horizon = "7" | "30" | "90" | "all";
+export type Horizon = "7" | "30" | "90" | "all" | "custom";
 
 export interface BatchesQuery {
   /** "" = every warehouse. */
@@ -20,8 +24,20 @@ export interface BatchesQuery {
   horizon: Horizon;
   /** Audit mode only: exhausted lots are history, not an alert. */
   includeSpent: boolean;
-  /** A batch code. Forces the audit endpoint — see below. */
+  /** A batch code, a product name or an SKU. Forces the audit endpoint. */
   search: string;
+  /**
+   * The `custom` horizon's own window, as ISO `yyyy-mm-dd`, or "" when unset.
+   *
+   * KEPT WHILE ANOTHER HORIZON IS SELECTED rather than cleared, so flipping to
+   * "30 hari" to check something and back does not make the user retype two
+   * dates. Only `horizon === "custom"` sends them.
+   *
+   * Either bound alone is a legitimate question — "everything expiring after
+   * March" is one — so neither waits for the other.
+   */
+  expiryFrom: string;
+  expiryTo: string;
   /**
    * Which ordering to page through. ONE CONTROL FOR BOTH ENDPOINTS: the two
    * answer different questions but return the same rows, and a sort that
@@ -38,6 +54,8 @@ export const DEFAULT_BATCHES_QUERY: BatchesQuery = {
   horizon: "30",
   includeSpent: false,
   search: "",
+  expiryFrom: "",
+  expiryTo: "",
   // The API's own default on both endpoints — and the order this screen exists
   // to show: what goes bad first, first.
   sort: "expirySoonest",
@@ -78,10 +96,17 @@ interface UseBatchesResult {
  * cannot expire into anything a human has to act on, so the alert endpoint has
  * no opinion to offer about it.
  *
- * A SEARCH FORCES AUDIT MODE. `/expiring` cannot filter by batch code, and
- * "trace lot WSK-B26-0640" is a question about a lot's whole life — including
- * after it sold out. The screen shows that the horizon is suspended rather than
- * silently returning results from a set the user did not pick.
+ * A SEARCH FORCES AUDIT MODE. `/expiring` cannot filter by anything but a
+ * warehouse and a horizon, and "trace lot WSK-B26-0640" — or "which lots of
+ * Royal Canin 3kg are left" — is a question about a product's whole life,
+ * including after it sold out. The screen shows that the horizon is suspended
+ * rather than silently returning results from a set the user did not pick.
+ *
+ * A CUSTOM RANGE FORCES IT TOO, for the same reason: `/expiring` takes a
+ * `withinDays` counted from today and has no way to express "November", let
+ * alone a window that has already closed. The audit endpoint's `expiryFrom` /
+ * `expiryTo` do — and they exclude undated lots on their own, which is what
+ * makes the swap invisible on a screen about expiry.
  */
 export function useBatches(
   query: BatchesQuery,
@@ -95,7 +120,13 @@ export function useBatches(
   const [error, setError] = useState<string | null>(null);
 
   const { warehouseId, horizon, includeSpent, search, sort } = query;
-  const alertMode = horizon !== "all" && search.trim() === "";
+  const custom = horizon === "custom";
+  // `expiring` answers a horizon counted from today and nothing else — so the
+  // two questions it cannot express, a search and a hand-picked window, are the
+  // two that switch endpoints.
+  const alertMode = horizon !== "all" && !custom && search.trim() === "";
+  const expiryFrom = custom ? query.expiryFrom : "";
+  const expiryTo = custom ? query.expiryTo : "";
 
   const fetchPage = useCallback(() => {
     if (alertMode) {
@@ -113,12 +144,26 @@ export function useBatches(
       limit: PAGE_SIZE,
       warehouseId: warehouseId || undefined,
       search: search.trim() || undefined,
+      // Bare dates: the API takes the upper bound as the END of the day it
+      // names, so a lot expiring during it is not silently dropped.
+      expiryFrom: expiryFrom || undefined,
+      expiryTo: expiryTo || undefined,
       // Tri-state: `undefined` returns exhausted lots too, which is what the
       // toggle asks for. `true` is the narrower question.
       hasRemaining: includeSpent ? undefined : true,
       sort,
     });
-  }, [alertMode, page, warehouseId, horizon, includeSpent, search, sort]);
+  }, [
+    alertMode,
+    page,
+    warehouseId,
+    horizon,
+    includeSpent,
+    search,
+    sort,
+    expiryFrom,
+    expiryTo,
+  ]);
 
   useEffect(() => {
     let active = true;

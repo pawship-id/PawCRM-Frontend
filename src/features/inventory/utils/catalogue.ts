@@ -119,9 +119,16 @@ export function limitedByAt(
  * `[{Ukuran:[1kg,3kg]},{Rasa:[Chicken]}]` becomes `[["1kg","Chicken"],
  * ["3kg","Chicken"]]`. Axes with no values contribute nothing, so a
  * half-filled-in axis produces no rows rather than a row with a hole in it.
+ *
+ * NONE OF THEM FILLED IN IS NO COMBINATIONS, not one empty one. The cartesian
+ * product of nothing is mathematically `[[]]`, and the form rendered that
+ * faithfully: a table saying "1 kombinasi" with a nameless row, a SKU of
+ * "SDS-", and a refusal reading "Harga jual belum benar pada varian ." — for a
+ * variant the user had not described yet.
  */
 export function variantCombinations(axes: VariantAxis[]): string[][] {
   const usable = axes.filter((axis) => axis.values.length > 0);
+  if (usable.length === 0) return [];
 
   return usable.reduce<string[][]>(
     (combos, axis) =>

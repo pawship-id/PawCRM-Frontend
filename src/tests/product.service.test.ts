@@ -36,6 +36,7 @@ const EVERY_FILTER: Required<
   productType: "standalone",
   parentId: "p1",
   isActive: true,
+  neverMovedInWarehouse: "wh1",
   includeDeleted: true,
   sort: "nameAsc",
 };

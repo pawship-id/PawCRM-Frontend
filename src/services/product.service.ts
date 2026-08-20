@@ -29,6 +29,29 @@ import type {
  * Money and quantities are decimal STRINGS in both directions. Nothing here
  * parses them — see types/inventory.ts.
  */
+/**
+ * One opening-stock sheet: a warehouse, and a line per product.
+ *
+ * ONE WAREHOUSE FOR THE WHOLE SHEET rather than one per line — an opening count
+ * is done by walking a building, and a field repeated identically on sixty
+ * lines is sixty chances to get one of them wrong.
+ *
+ * `costPerUnit` is REQUIRED, unlike on an adjustment. Without it the ledger
+ * values the arrival at the product's running average, which for something that
+ * has never moved is zero: quantity on the shelf and nothing in the asset.
+ */
+export interface OpeningStockInput {
+  warehouseId: string;
+  lines: Array<{
+    productId: string;
+    qty: string;
+    costPerUnit: string;
+    batchCode?: string;
+    expiryDate?: string;
+    isConsignment?: boolean;
+  }>;
+}
+
 export const productService = {
   /**
    * GET /products — paginated, filterable catalogue.
@@ -48,6 +71,7 @@ export const productService = {
         isActive: query.isActive,
         excludeVariants: query.excludeVariants,
         holdsStock: query.holdsStock,
+        neverMovedInWarehouse: query.neverMovedInWarehouse,
         includeDeleted: query.includeDeleted,
         sort: query.sort,
       },
@@ -72,11 +96,30 @@ export const productService = {
     apiClient.get<Product>(`/products/barcode/${encodeURIComponent(barcode)}`),
 
   /** GET /products/low-stock — at or below the restock threshold. */
-  lowStock: (query: { page?: number; limit?: number; warehouseId?: string } = {}) =>
+  lowStock: (
+    query: { page?: number; limit?: number; warehouseId?: string } = {},
+  ) =>
     apiClient.get<PageResult<Product & { qtyOnHand: string }>>(
       "/products/low-stock",
       { query: { ...query } },
     ),
+
+  /**
+   * POST /products/opening-stock — the opening balance of products that were
+   * registered without one (201).
+   *
+   * SEPARATE FROM AN ADJUSTMENT, and the account is the whole reason: this
+   * posts `opening_balance`, which credits 3101 Modal / Saldo Awal. A manual
+   * adjustment credits 5201 Kerugian Persediaan, which is right for goods that
+   * vanished and absurd for a shop's day-one inventory.
+   *
+   * REFUSED FOR ANY PRODUCT THAT HAS EVER MOVED, by SKU, in one answer. The
+   * server owns that rule — the ledger is where the answer lives — so a client
+   * cannot pre-empt it and should surface the message rather than paraphrase
+   * it: it names the products to take off the sheet.
+   */
+  addOpeningStock: (input: OpeningStockInput) =>
+    apiClient.post<{ movements: unknown[] }>("/products/opening-stock", input),
 
   /** POST /products — create (201). May carry a family and opening stock. */
   create: (input: CreateProductInput) =>

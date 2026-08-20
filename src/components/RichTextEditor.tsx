@@ -44,6 +44,7 @@ interface RichTextEditorProps {
   onChange: (html: string) => void;
   placeholder?: string;
   error?: string;
+
 }
 
 export function RichTextEditor({
@@ -192,9 +193,13 @@ export function RichTextEditor({
       )}
 
       {(uploadError || error) && (
+
         <p role="alert" className="text-xs text-danger">
+
           {uploadError ?? error}
+
         </p>
+
       )}
     </div>
   );

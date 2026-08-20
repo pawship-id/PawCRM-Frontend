@@ -7,6 +7,109 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Batch & Expired searches by name and takes any two dates
+
+Two gaps on `/dashboard/inventory/batches`, both of them the same shape: the screen could
+only ask the question the endpoint happened to be built for.
+
+**The search box now matches a product name and an SKU, not just a lot code.** The code is
+the thing somebody has in front of them least often — a shelf label carries a name, a
+barcode sticker carries an SKU, and the lot code is printed on a carton in the stockroom.
+"Which lots of Royal Canin 3kg are still here" was the most common question the box could
+not answer. The matching is server-side (a lot carries a `productId` and no name), so the
+client change is the placeholder, the label and the empty state; the API change is in the
+backend changelog.
+
+**The expiry horizon gains "Rentang khusus"**, which opens a `FilterDateRange` under it and
+sends `expiryFrom` / `expiryTo`. The 7 / 30 / 90-day presets all count forward from today,
+which is the wrong shape for half of what a stock take asks — "apa yang kedaluwarsa
+November", "apa yang lewat tanggal kuartal lalu". A custom window switches to the audit
+endpoint exactly as a search does, because `/expiring` takes a `withinDays` and cannot
+express a window that today is not an end of.
+
+The range ships its own presets — *Sudah lewat*, *60 hari ke depan*, *Bulan ini*, *Bulan
+depan*. The control's defaults all END today, which on a screen about expiry would offer
+four chips that each return the same handful of already-expired rows.
+
+Three sentences on the bar cover what the controls cannot say for themselves: why the
+horizon goes quiet during a search, that an unfilled custom range is narrowing nothing, and
+that a filled one excludes the lots with no expiry date at all. The dates disappear from the
+panel during a search rather than sitting there greyed — the select above them already
+explains the whole horizon, and two inert date inputs would be a control that accepts typing
+and changes nothing.
+
+---
+
+## [Unreleased] — The stock card stops asking you to scroll a dropdown
+
+Kartu Stok picked its product from a `<select>` that the screen filled by paging the **whole
+catalogue** on mount — five parallel requests, a hard ceiling of 500 products, and a banner
+apologising to any tenant past it. A catalogue is not a dropdown; it is a list you search. So
+the choosing became a screen of its own and the card became what you open from it.
+
+| Route | Was | Is |
+|---|---|---|
+| `/dashboard/inventory/stock-card` | The card, with two dropdowns | The **index**: every stock-holding product, searched and paged by the server, for one chosen warehouse |
+| `/dashboard/inventory/stock-card/[productId]` | — | The **card**: product fixed by the route, warehouse still switchable |
+
+The index searches **name and SKU** through `GET /api/products`, which already accepted both
+— no backend change was needed for any of this.
+
+**The rows are flat, and that is the difference from the catalogue.** Produk & Varian lists
+one row per family and folds the variants away, because twelve documents for one product
+would make a page of twenty mostly one product. A stock card is written per *variant* — a
+parent holds no stock and has no ledger — so this list wants exactly the rows the catalogue
+hides. `holdsStock=true` is the server's own name for that set, which also keeps parents and
+bundles out without the frontend keeping its own copy of the type list.
+
+**The warehouse sits beside the heading, and it is not a filter.** Every row arrives
+carrying its quantities for every location, so the select re-reads what is already on the
+page rather than re-querying — the same twenty products are listed whichever way it is set.
+It opens on **semua gudang**, like the catalogue and the hub.
+
+**A total is not a shelf, and the screen says so.** A card is always one product at one
+warehouse — a running balance summed across locations would claim stock is somewhere it is
+not — so a row showing a total cannot hand the card a warehouse. Rather than dropping the
+option or letting the number quietly change on the way through, the row carries **"di N
+gudang"** under the figure, and its link names no warehouse: the card then opens on the
+location holding **the most** of that product, which is the closest single answer to the
+number that was clicked. Pick one warehouse and both halves become exact again — the figure
+is that shelf's, and the link carries it.
+
+**Nothing on the index may be filtered or sorted by a quantity.** `stockByWarehouse` is
+assembled per row from rows the server has already paged, so a "sembunyikan stok 0" toggle
+would leave `pagination.total` describing one set while the table showed another — a page of
+twenty rendering as six, and page 2 filtered from a different subset. Sorting by stock is out
+for the same reason: the server cannot order by a number it was never asked to compute. What
+is offered is what the API genuinely filters on — search, sort, kategori, status, terhapus.
+
+**The `Suspense` boundary is gone**, and with it the `useSearchParams` that forced it: both
+routes read their ids on the server and hand them down as props, the convention four other
+pages already follow. That removes a build-time trap — a statically prerendered route calling
+that hook fails `next build` while working perfectly in development. `productId` is now used
+straight from the prop and never copied into state, so a second link cannot land on the
+previous product's ledger.
+
+**Three smaller things fell out of it:**
+
+- A soft-deleted product's ledger is reachable at last. The old picker's header claimed
+  deleted products were included and never sent `includeDeleted`; the index has the toggle
+  that actually does it.
+- The `Stok di gudang ini` tile was missing the `minStock > 0` guard the catalogue table has,
+  so a product with no threshold and no stock rendered in danger red under "di bawah minimum
+  (0)". Fixed while in the file.
+- Without `products:read` the index now says so where the table would be and **fires no
+  request** — the shape `useFinanceDashboard` already paid for once. Both routes still gate
+  on `stockMovements:read`, which is the one permission the nav entry can name.
+
+The old deep link `?productId=&warehouseId=` redirects to the card. It was documented and
+bookmarkable; every link inside the app was updated, and the redirect is for the ones outside
+it.
+
+Screen details in [docs/features/stock-card.md](features/stock-card.md).
+
+---
+
 ## [Unreleased] — Keuangan reads the real ledger
 
 `/dashboard/keuangan` came off the fixtures. It now reads three endpoints —

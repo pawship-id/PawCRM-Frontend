@@ -7,6 +7,7 @@ import {
   ChartOfAccountEditForm,
   ChartOfAccountsScreen,
   JournalEntriesScreen,
+  JournalEntryCreateForm,
   JournalEntryDetail,
 } from "@/features/accounting";
 import { ApiError } from "@/services/api-error";
@@ -102,7 +103,9 @@ function chart(): ChartOfAccountNode[] {
       children: [node("2101", "Utang Supplier", "liability")],
     }),
     node("5000", "Beban", "expense", {
-      children: [node("5401", "Beban Penyusutan", "expense", { isActive: false })],
+      children: [
+        node("5401", "Beban Penyusutan", "expense", { isActive: false }),
+      ],
     }),
   ];
 }
@@ -377,7 +380,9 @@ describe("ChartOfAccountsScreen", () => {
       screen.getByRole("button", { name: "Aksi untuk 1101 Kas" }),
     );
 
-    expect(within(screen.getByRole("menu")).getByRole("menuitem")).toHaveAttribute(
+    expect(
+      within(screen.getByRole("menu")).getByRole("menuitem"),
+    ).toHaveAttribute(
       "href",
       "/dashboard/keuangan/chart-of-accounts/1101/edit",
     );
@@ -481,7 +486,9 @@ describe("ChartOfAccountForm", () => {
     await renderCreateForm();
     jest
       .spyOn(chartOfAccountsService, "create")
-      .mockRejectedValue(new ApiError("Account code '1101' already exists", 409));
+      .mockRejectedValue(
+        new ApiError("Account code '1101' already exists", 409),
+      );
 
     await userEvent.type(screen.getByLabelText(/Kode akun/), "1101");
     await userEvent.type(screen.getByLabelText(/Nama akun/), "Kas Kecil");
@@ -533,7 +540,9 @@ describe("ChartOfAccountForm", () => {
     await renderEditForm("1100");
 
     await userEvent.click(screen.getByLabelText("Induk akun"));
-    const options = screen.getAllByRole("option").map((o) => o.textContent ?? "");
+    const options = screen
+      .getAllByRole("option")
+      .map((o) => o.textContent ?? "");
 
     // The asset root is a legal parent…
     expect(options.some((text) => text.includes("1000"))).toBe(true);
@@ -565,11 +574,7 @@ describe("ChartOfAccountForm", () => {
  * `line.debit !== "0"` test pass here while calling every credit a debit on the
  * real screen.
  */
-function line(
-  accountId: string,
-  debit: string,
-  credit: string,
-): JournalLine {
+function line(accountId: string, debit: string, credit: string): JournalLine {
   return { accountId, businessLineId: null, debit, credit, memo: null };
 }
 
@@ -579,7 +584,9 @@ function line(
  * Balanced by default because that is what the backend refuses a posting over —
  * an unbalanced fixture would be testing a state the API cannot produce.
  */
-function entry(overrides: Partial<JournalEntry> & { _id: string }): JournalEntry {
+function entry(
+  overrides: Partial<JournalEntry> & { _id: string },
+): JournalEntry {
   return {
     entryNumber: `JE-2026-08-${overrides._id}`,
     date: "2026-08-07T00:00:00.000Z",
@@ -629,20 +636,20 @@ function mockLedgerLookups() {
     debit: "300000.0000",
     credit: "300000.0000",
   });
-  jest
-    .spyOn(branchService, "list")
-    .mockResolvedValue({
-      items: [{ _id: "b1", name: "Cabang Kemang" }],
-      pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
-    } as never);
+  jest.spyOn(branchService, "list").mockResolvedValue({
+    items: [{ _id: "b1", name: "Cabang Kemang" }],
+    pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+  } as never);
   jest.spyOn(businessLineService, "list").mockResolvedValue({
     items: [],
     pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
   } as never);
-  jest.spyOn(chartOfAccountsService, "tree").mockResolvedValue([
-    node("1101", "Kas", "asset"),
-    node("4101", "Pendapatan Penjualan", "income"),
-  ]);
+  jest
+    .spyOn(chartOfAccountsService, "tree")
+    .mockResolvedValue([
+      node("1101", "Kas", "asset"),
+      node("4101", "Pendapatan Penjualan", "income"),
+    ]);
 }
 
 describe("JournalEntriesScreen", () => {
@@ -660,6 +667,41 @@ describe("JournalEntriesScreen", () => {
 
     return list;
   }
+
+  /**
+   * The ledger's ONE writable action, and it lives on this screen because
+   * POST /journal-entries only ever produces a manual entry — no other list
+   * could offer a "new" button that meant anything.
+   *
+   * It was a disabled placeholder until the form existed. Asserted as a LINK
+   * rather than by its label alone: a button that reads right and goes nowhere
+   * is the state this replaced.
+   */
+  it("offers the new-entry form, gated on create", async () => {
+    await renderLedger([entry({ _id: "1" })]);
+
+    expect(
+      await screen.findByRole("link", { name: /Jurnal baru/ }),
+    ).toHaveAttribute("href", "/dashboard/keuangan/journal-entries/new");
+  });
+
+  /** Paging the ledger is not the same privilege as adding to it. */
+  it("hides the new-entry action from a read-only role", async () => {
+    mockLedgerLookups();
+    jest
+      .spyOn(journalEntryService, "list")
+      .mockResolvedValue(ledgerPage([entry({ _id: "1" })]));
+
+    renderWithAuth(<JournalEntriesScreen />, {
+      isSuperAdmin: false,
+      permissions: [{ feature: "journalEntries", actions: ["read"] }],
+    });
+    await screen.findByText("Agustus 2026");
+
+    expect(
+      screen.queryByRole("link", { name: /Jurnal baru/ }),
+    ).not.toBeInTheDocument();
+  });
 
   it("groups the page by month", async () => {
     await renderLedger([
@@ -943,9 +985,9 @@ describe("JournalEntryDetail", () => {
     mockBook([entry({ _id: "1" })]);
     renderWithAuth(<JournalEntryDetail entryId="1" />);
 
-    const creditRow = (
-      await screen.findByText("Pendapatan Penjualan")
-    ).closest("tr")!;
+    const creditRow = (await screen.findByText("Pendapatan Penjualan")).closest(
+      "tr",
+    )!;
     const cells = within(creditRow).getAllByRole("cell");
 
     // …, Debit, Kredit — the last two.
@@ -961,9 +1003,9 @@ describe("JournalEntryDetail", () => {
     ]);
     renderWithAuth(<JournalEntryDetail entryId="1" />);
 
-    const banner = (
-      await screen.findByText(/Entri ini sudah dibalik/)
-    ).closest("div")!;
+    const banner = (await screen.findByText(/Entri ini sudah dibalik/)).closest(
+      "div",
+    )!;
 
     // The link's TEXT comes from a second request for the counterpart — the
     // entry itself only carries the id.
@@ -993,5 +1035,296 @@ describe("JournalEntryDetail", () => {
     expect(
       screen.queryByRole("button", { name: /Coba lagi/ }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("JournalEntryCreateForm", () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  /**
+   * A chart with the two accounts the stock-awal correction moves value
+   * between, plus one retired account the picker must not offer.
+   */
+  function ledgerChart(): ChartOfAccountNode[] {
+    return [
+      node("1000", "Aset", "asset", {
+        children: [node("1201", "Persediaan Barang Dagangan", "asset")],
+      }),
+      node("3000", "Ekuitas", "equity", {
+        children: [node("3101", "Modal / Saldo Awal", "equity")],
+      }),
+      node("5000", "Beban", "expense", {
+        children: [
+          node("5201", "Kerugian Persediaan", "expense"),
+          node("5401", "Beban Penyusutan", "expense", { isActive: false }),
+        ],
+      }),
+    ];
+  }
+
+  async function renderForm(roots: ChartOfAccountNode[] = ledgerChart()) {
+    mockTree(roots);
+    renderWithAuth(<JournalEntryCreateForm />);
+    await screen.findByLabelText(/Keterangan/);
+  }
+
+  /** Picks an account on one line through the searchable popover. */
+  async function pickAccount(line: number, label: string) {
+    await userEvent.click(screen.getByLabelText(`Akun baris ${line}`));
+    await userEvent.click(await screen.findByRole("option", { name: label }));
+  }
+
+  /**
+   * THE PICKER IS THE GUARD. The API accepts the request and only then refuses
+   * an inactive account, by code — so an offered-and-rejected account is a whole
+   * entry typed before anyone learns it could not be posted to.
+   */
+  it("does not offer accounts that have been retired", async () => {
+    await renderForm();
+
+    await userEvent.click(screen.getByLabelText("Akun baris 1"));
+
+    expect(
+      await screen.findByRole("option", { name: /5201 · Kerugian Persediaan/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: /5401 · Beban Penyusutan/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  /**
+   * ONE SIDE PER LINE, and the fields enforce it rather than the error message:
+   * the API refuses a line carrying both, so the form never assembles one.
+   */
+  it("clears the credit when a debit is typed on the same line", async () => {
+    await renderForm();
+
+    const credit = screen.getAllByLabelText(/^Kredit$/, {
+      selector: "input",
+    })[0];
+    await userEvent.type(credit, "50000");
+    expect(credit).toHaveValue("50000");
+
+    await userEvent.type(
+      screen.getAllByLabelText(/^Debit$/, { selector: "input" })[0],
+      "70000",
+    );
+    expect(credit).toHaveValue("");
+  });
+
+  /**
+   * Σdebit === Σcredit is the invariant the server refuses on. The button reads
+   * the same result the messages do, so an unbalanced entry cannot be sent at
+   * all — and the panel says which side is short rather than only that it is.
+   */
+  it("refuses to submit while the two sides disagree", async () => {
+    await renderForm();
+    const create = jest.spyOn(journalEntryService, "create");
+
+    await userEvent.type(screen.getByLabelText(/Keterangan/), "Koreksi");
+    await pickAccount(1, /5201 · Kerugian Persediaan/ as unknown as string);
+    await pickAccount(2, /3101 · Modal/ as unknown as string);
+
+    const debits = screen.getAllByLabelText(/^Debit$/, { selector: "input" });
+    const credits = screen.getAllByLabelText(/^Kredit$/, { selector: "input" });
+    await userEvent.type(debits[0], "100000");
+    await userEvent.type(credits[1], "60000");
+
+    expect(
+      screen.getByRole("button", { name: /Simpan jurnal/ }),
+    ).toBeDisabled();
+    expect(screen.getByText(/Sisi kredit kurang/)).toBeInTheDocument();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  /**
+   * ONLY THE SIDE THAT CARRIES A VALUE IS SENT. Both keys default to "0" on the
+   * server, so a credit-only line omits `debit` entirely — sending an explicit
+   * zero would be a value the service then has to reject as "one of debit or
+   * credit must be greater than zero".
+   */
+  it("sends each line with only the side it carries", async () => {
+    await renderForm();
+    const create = jest
+      .spyOn(journalEntryService, "create")
+      .mockResolvedValue({ _id: "je-1", entryNumber: "JE-1" } as never);
+
+    await userEvent.type(
+      screen.getByLabelText(/Keterangan/),
+      "Koreksi stok awal",
+    );
+    await pickAccount(1, /5201 · Kerugian Persediaan/ as unknown as string);
+    await pickAccount(2, /3101 · Modal/ as unknown as string);
+
+    const debits = screen.getAllByLabelText(/^Debit$/, { selector: "input" });
+    const credits = screen.getAllByLabelText(/^Kredit$/, { selector: "input" });
+    await userEvent.type(debits[0], "5000000");
+    await userEvent.type(credits[1], "5000000");
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /Simpan jurnal/ }),
+    );
+
+    await waitFor(() => expect(create).toHaveBeenCalled());
+    const sent = create.mock.calls[0][0];
+    expect(sent.lines).toEqual([
+      expect.objectContaining({ debit: "5000000" }),
+      expect.objectContaining({ credit: "5000000" }),
+    ]);
+    expect(sent.lines[0]).not.toHaveProperty("credit");
+    expect(sent.lines[1]).not.toHaveProperty("debit");
+  });
+
+  /**
+   * The shortcut supplies the ACCOUNTS AND THE DIRECTION — the half that is hard
+   * to get right — and deliberately no amounts: only the tenant knows what its
+   * opening stock was worth, and a number filled in for them is one they would
+   * approve without checking.
+   */
+  it("prefills the stok-awal correction without inventing an amount", async () => {
+    await renderForm();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /Isi contohnya/ }),
+    );
+
+    expect(screen.getByLabelText("Akun baris 1")).toHaveTextContent(
+      /Kerugian Persediaan/,
+    );
+    expect(screen.getByLabelText("Akun baris 2")).toHaveTextContent(/Modal/);
+    for (const input of [
+      ...screen.getAllByLabelText(/^Debit$/, { selector: "input" }),
+      ...screen.getAllByLabelText(/^Kredit$/, { selector: "input" }),
+    ]) {
+      expect(input).toHaveValue("");
+    }
+  });
+
+  /**
+   * The accounts alone do not say WHICH COLUMN each line is waiting for, and
+   * getting that backwards produces an entry that balances and moves the value
+   * the wrong way. The hint sits on the field being typed into, not in a note
+   * above the row.
+   */
+  it("says which column each prefilled line is waiting for", async () => {
+    await renderForm();
+    await userEvent.click(
+      screen.getByRole("button", { name: /Isi contohnya/ }),
+    );
+
+    const debits = screen.getAllByLabelText(/^Debit$/, { selector: "input" });
+    const credits = screen.getAllByLabelText(/^Kredit$/, { selector: "input" });
+
+    // Line 1 (5201) takes the debit; line 2 (3101) takes the credit.
+    expect(debits[0]).toHaveAccessibleDescription(/Isi di sini/);
+    expect(credits[1]).toHaveAccessibleDescription(/Isi di sini/);
+    expect(credits[0]).not.toHaveAccessibleDescription(/Isi di sini/);
+    expect(debits[1]).not.toHaveAccessibleDescription(/Isi di sini/);
+  });
+
+  /** Scaffolding, not a fact about the entry: it goes once the line is filled. */
+  it("drops the column hint once that line carries an amount", async () => {
+    await renderForm();
+    await userEvent.click(
+      screen.getByRole("button", { name: /Isi contohnya/ }),
+    );
+
+    const debit = screen.getAllByLabelText(/^Debit$/, { selector: "input" })[0];
+    expect(debit).toHaveAccessibleDescription(/Isi di sini/);
+
+    await userEvent.type(debit, "5000000");
+    expect(debit).not.toHaveAccessibleDescription(/Isi di sini/);
+  });
+
+  /**
+   * THE MEMO IS LEDGER TEXT, not instructions. It is stored on the posting and
+   * read months later by somebody auditing it — "isi di kolom debit" parked
+   * there would be the accounting note for the line.
+   */
+  it("keeps the prefilled memos free of form instructions", async () => {
+    await renderForm();
+    await userEvent.click(
+      screen.getByRole("button", { name: /Isi contohnya/ }),
+    );
+
+    // Read the values out and assert on them directly. `not.toHaveValue` with
+    // an asymmetric matcher passes even when the text DOES match, so a negative
+    // written that way would guard nothing.
+    const memos = screen
+      .getAllByLabelText(/Catatan baris/)
+      .map((field) => (field as HTMLInputElement).value);
+
+    for (const memo of memos) {
+      expect(memo).not.toMatch(/kolom|isi di/i);
+    }
+    expect(memos[0]).toBe(
+      "Membatalkan kredit yang salah di Kerugian Persediaan",
+    );
+    expect(memos[1]).toBe("Pengakuan stok awal sebagai modal pemilik");
+  });
+
+  /**
+   * The date defaults to today, which is usually the WRONG period for this
+   * correction: posted a month later it leaves one month overstated and the
+   * next understated. Saying so is the difference between an entry that
+   * cancels the mistake and one that moves it.
+   */
+  it("warns about the date and where the amount comes from", async () => {
+    await renderForm();
+
+    expect(
+      screen.queryByText(/Dua hal sebelum menyimpan/),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /Isi contohnya/ }),
+    );
+
+    expect(screen.getByText(/Dua hal sebelum menyimpan/)).toBeInTheDocument();
+    expect(screen.getByText(/Stock adjustment/)).toBeInTheDocument();
+    expect(screen.getByText(/samakan dengan penyesuaian/)).toBeInTheDocument();
+  });
+
+  /** A tenant whose chart lacks either account is not offered the shortcut. */
+  it("hides the shortcut when the chart has no 3101", async () => {
+    await renderForm([
+      node("5000", "Beban", "expense", {
+        children: [node("5201", "Kerugian Persediaan", "expense")],
+      }),
+    ]);
+
+    expect(
+      screen.queryByRole("button", { name: /Isi contohnya/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  /**
+   * The server's refusals name the account code or the two totals, which is the
+   * part that says what to fix. Shown verbatim rather than paraphrased.
+   */
+  it("shows the server's refusal as written", async () => {
+    await renderForm();
+    jest
+      .spyOn(journalEntryService, "create")
+      .mockRejectedValue(
+        new ApiError("Cannot post to inactive account(s): 5401", 400),
+      );
+
+    await userEvent.type(screen.getByLabelText(/Keterangan/), "Koreksi");
+    await pickAccount(1, /5201 · Kerugian Persediaan/ as unknown as string);
+    await pickAccount(2, /3101 · Modal/ as unknown as string);
+
+    const debits = screen.getAllByLabelText(/^Debit$/, { selector: "input" });
+    const credits = screen.getAllByLabelText(/^Kredit$/, { selector: "input" });
+    await userEvent.type(debits[0], "1000");
+    await userEvent.type(credits[1], "1000");
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /Simpan jurnal/ }),
+    );
+
+    expect(
+      await screen.findByText(/Cannot post to inactive account\(s\): 5401/),
+    ).toBeInTheDocument();
   });
 });

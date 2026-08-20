@@ -60,12 +60,12 @@ export function BatchesTable({
                 <td colSpan={7} className="px-4 py-16 text-center">
                   <p className="font-medium text-foreground">
                     {searching
-                      ? "Kode batch itu tidak ditemukan"
+                      ? "Tidak ada batch yang cocok"
                       : "Tidak ada batch di rentang ini"}
                   </p>
                   <p className="mt-1 text-sm text-muted">
                     {searching
-                      ? "Coba potongan kodenya saja — pencarian mencocokkan sebagian."
+                      ? "Coba potongannya saja — pencarian mencocokkan sebagian kode batch, nama produk, atau SKU."
                       : "Longgarkan rentangnya, atau pilih gudang lain."}
                   </p>
                 </td>

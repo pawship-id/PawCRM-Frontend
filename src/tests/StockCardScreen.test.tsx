@@ -29,18 +29,6 @@ jest.mock("@/utils/xlsx", () => ({
 }));
 
 /**
- * The screen seeds its first filters from `?productId=&warehouseId=`, so it
- * needs a router context. `useSearchParams` is typed non-null in the App Router
- * and is null here only because there is none — mocked rather than guarded with
- * `?.` in the component, which would be defensive code for a state the type
- * says cannot happen in the app.
- */
-let searchParams = new URLSearchParams();
-jest.mock("next/navigation", () => ({
-  useSearchParams: () => searchParams,
-}));
-
-/**
  * The stock card, against mocked services.
  *
  * WHAT THESE TESTS ARE FOR. The screen now renders what the API computes rather
@@ -58,6 +46,8 @@ jest.mock("next/navigation", () => ({
  * protocol, and what they set is filter state that goes straight to the query.
  */
 const WAREHOUSE = "wh1";
+/** A second shelf, so "which warehouse did it pick" is a real question. */
+const OTHER_WAREHOUSE = "wh2";
 const PRODUCT = "p1";
 
 function product(overrides: Partial<Product> = {}): Product {
@@ -84,11 +74,14 @@ function product(overrides: Partial<Product> = {}): Product {
   };
 }
 
-function warehouse(): Warehouse {
+function warehouse(
+  id: string = WAREHOUSE,
+  name = "Gudang Pusat",
+): Warehouse {
   return {
-    _id: WAREHOUSE,
+    _id: id,
     tenantId: "t1",
-    name: "Gudang Pusat",
+    name,
     defaultBranchId: null,
     address: null,
     location: { lat: null, lng: null, source: "manual" },
@@ -177,7 +170,13 @@ function batchPage(items: ProductBatch[]): PageResult<ProductBatch> {
   };
 }
 
-/** The five calls the screen makes on mount, all resolving. */
+/**
+ * The four calls the screen makes on mount, all resolving.
+ *
+ * `productService.list` is spied even though nothing here calls it any more —
+ * that is the point. The picker it used to fill paged the whole catalogue on
+ * mount, and the assertion that it stays untouched is what pins the change.
+ */
 function mockHappyPath(
   movements: StockMovement[],
   batches: ProductBatch[],
@@ -186,7 +185,10 @@ function mockHappyPath(
   jest
     .spyOn(warehouseService, "list")
     .mockResolvedValue(
-      { items: [warehouse()], pagination: { page: 1, limit: 100, total: 1, totalPages: 1 } } as never,
+      {
+        items: [warehouse(), warehouse(OTHER_WAREHOUSE, "Gudang Cabang")],
+        pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
+      } as never,
     );
   jest.spyOn(productService, "list").mockResolvedValue({
     items: [product()],
@@ -210,31 +212,21 @@ function mockHappyPath(
 afterEach(() => jest.restoreAllMocks());
 
 describe("StockCardScreen", () => {
-  // Reset between cases: the deep-link tests below set it, and a leaked value
-  // would silently change which pair every later test is reading.
-  beforeEach(() => {
-    searchParams = new URLSearchParams();
-  });
-
   /**
-   * The deep link a product detail hands over. Without it the user lands on a
-   * screen still asking which product and which shelf they meant — while they
-   * are looking at that exact row.
+   * The pair arrives from the route now: the product as a segment, the
+   * warehouse as `?warehouseId=` read by the page and handed down.
    */
-  describe("seeding from the URL", () => {
+  describe("the pair it reads", () => {
     /**
-     * The ids here are deliberately NOT the fixtures' first product and first
-     * warehouse. Those are what the default-selection effect picks, so seeding
-     * with them would pass whether or not the URL is read at all — the test
-     * would prove nothing and look like it proved everything.
+     * The ids here are deliberately NOT the fixtures' warehouse. That is what
+     * the default-selection effect picks, so passing it would pass whether or
+     * not the prop is read at all — the test would prove nothing and look like
+     * it proved everything.
      */
-    it("opens on the pair the link names, not on the first of each", async () => {
-      searchParams = new URLSearchParams(
-        "productId=p9&warehouseId=wh9",
-      );
+    it("opens on the pair the props name, not on the first warehouse", async () => {
       mockHappyPath([movement()], []);
 
-      renderWithAuth(<StockCardScreen />);
+      renderWithAuth(<StockCardScreen productId="p9" warehouseId="wh9" />);
 
       await waitFor(() =>
         expect(stockMovementService.list).toHaveBeenCalledWith(
@@ -243,16 +235,48 @@ describe("StockCardScreen", () => {
       );
     });
 
-    // Without params the screen keeps its old behaviour exactly: the first
-    // warehouse and product fill an empty selection.
-    it("falls back to the first of each when the URL says nothing", async () => {
+    /**
+     * A link may name only the product: the index does exactly that from its
+     * "semua gudang" view, where the row's figure is a total no card can show.
+     *
+     * IT OPENS ON THE LARGEST HOLDING, not on the first warehouse in the list —
+     * the closest single answer to the total that was clicked. The fixture's
+     * second warehouse deliberately holds more, so picking the first would pass
+     * on a screen that had ignored the stock entirely.
+     */
+    it("opens on the largest holding when no warehouse is named", async () => {
       mockHappyPath([movement()], []);
+      jest.spyOn(productService, "getById").mockResolvedValue(
+        product({
+          stockByWarehouse: [
+            { warehouseId: WAREHOUSE, qty: "4.0000" },
+            { warehouseId: OTHER_WAREHOUSE, qty: "40.0000" },
+          ],
+        }),
+      );
 
-      renderWithAuth(<StockCardScreen />);
+      renderWithAuth(<StockCardScreen productId={PRODUCT} />);
 
-      // The default-selection effect fills an EMPTY selection with the first
-      // warehouse and product — unchanged behaviour, pinned so the URL seeding
-      // above cannot quietly replace it.
+      await waitFor(() =>
+        expect(stockMovementService.list).toHaveBeenCalledWith(
+          expect.objectContaining({
+            warehouseId: OTHER_WAREHOUSE,
+            productId: PRODUCT,
+          }),
+        ),
+      );
+    });
+
+    // With nothing to go on — the product unreadable, `products:read` being its
+    // own grant — some shelf's ledger beats a screen that never loads.
+    it("falls back to the first warehouse when the product cannot be read", async () => {
+      mockHappyPath([movement()], []);
+      jest
+        .spyOn(productService, "getById")
+        .mockRejectedValue(new ApiError("Tidak boleh baca produk.", 403));
+
+      renderWithAuth(<StockCardScreen productId={PRODUCT} />);
+
       await waitFor(() =>
         expect(stockMovementService.list).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -261,6 +285,21 @@ describe("StockCardScreen", () => {
           }),
         ),
       );
+    });
+
+    /**
+     * THE WHOLE POINT OF THE SPLIT, as one assertion. This screen used to page
+     * the catalogue on mount to fill a product dropdown — five requests, capped
+     * at 500 products. The product is a route segment now, so the catalogue is
+     * never read here at all.
+     */
+    it("never pages the catalogue", async () => {
+      mockHappyPath([movement()], []);
+
+      renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
+
+      await waitFor(() => expect(stockMovementService.list).toHaveBeenCalled());
+      expect(productService.list).not.toHaveBeenCalled();
     });
   });
 
@@ -278,7 +317,7 @@ describe("StockCardScreen", () => {
       [],
     );
 
-    renderWithAuth(<StockCardScreen />);
+    renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
 
     const rows = await screen.findAllByRole("row");
     // rows[0] is the header. Each figure is the server's, attached to its own
@@ -294,7 +333,7 @@ describe("StockCardScreen", () => {
       [],
     );
 
-    renderWithAuth(<StockCardScreen />);
+    renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
 
     expect(await screen.findByText(/^88/)).toBeInTheDocument();
   });
@@ -311,7 +350,7 @@ describe("StockCardScreen", () => {
       [],
     );
 
-    renderWithAuth(<StockCardScreen />);
+    renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
 
     // Both used to be impossible: the lot code was joined from the batch tab's
     // data, and there was no author column at all.
@@ -333,7 +372,7 @@ describe("StockCardScreen", () => {
       [],
     );
 
-    renderWithAuth(<StockCardScreen />);
+    renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
 
     // The sheet's own number, so a reader can look the count up. The type stays
     // beside it — the number alone does not say what kind of document it is.
@@ -346,7 +385,7 @@ describe("StockCardScreen", () => {
   it("attributes an unauthored movement to the system, not to nobody", async () => {
     mockHappyPath([movement({ createdByName: null })], []);
 
-    renderWithAuth(<StockCardScreen />);
+    renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
 
     // Null is the API's answer for a row a background process posted — a POS
     // sync, an opname's own difference rows.
@@ -356,7 +395,7 @@ describe("StockCardScreen", () => {
   it("reads the ledger for the selected product and warehouse, never the whole tenant", async () => {
     mockHappyPath([movement()], []);
 
-    renderWithAuth(<StockCardScreen />);
+    renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
 
     await waitFor(() =>
       expect(stockMovementService.list).toHaveBeenCalledWith(
@@ -386,7 +425,7 @@ describe("StockCardScreen", () => {
       const user = userEvent.setup();
       mockHappyPath([movement()], []);
 
-      renderWithAuth(<StockCardScreen />);
+      renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
       await screen.findByRole("table");
 
       expect(
@@ -408,7 +447,7 @@ describe("StockCardScreen", () => {
       const user = userEvent.setup();
       mockHappyPath([movement()], []);
 
-      renderWithAuth(<StockCardScreen />);
+      renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
       await screen.findByRole("table");
       const calls = jest.mocked(stockMovementService.list).mock.calls.length;
 
@@ -436,7 +475,7 @@ describe("StockCardScreen", () => {
       const user = userEvent.setup();
       mockHappyPath([movement()], []);
 
-      renderWithAuth(<StockCardScreen />);
+      renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
       await screen.findByRole("table");
 
       // Stated rather than omitted: every page of a walk has to agree.
@@ -467,7 +506,7 @@ describe("StockCardScreen", () => {
     const user = userEvent.setup();
     mockHappyPath([movement()], []);
 
-    renderWithAuth(<StockCardScreen />);
+    renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
     await screen.findByRole("table");
 
     await user.type(screen.getByLabelText("Cari pergerakan"), "B26");
@@ -483,7 +522,7 @@ describe("StockCardScreen", () => {
     const user = userEvent.setup();
     mockHappyPath([movement()], []);
 
-    renderWithAuth(<StockCardScreen />);
+    renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
     await screen.findByRole("table");
 
     await user.type(screen.getByLabelText("Cari pergerakan"), "B26");
@@ -503,7 +542,7 @@ describe("StockCardScreen", () => {
     // truthfully returns nothing.
     mockHappyPath([movement()], []);
 
-    renderWithAuth(<StockCardScreen />);
+    renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
     await screen.findByRole("table");
 
     await user.type(screen.getByLabelText("Cari pergerakan"), "rusak");
@@ -519,7 +558,7 @@ describe("StockCardScreen", () => {
   it("offers no Muat ulang — a read nobody else can write to does not go stale", async () => {
     mockHappyPath([movement()], []);
 
-    renderWithAuth(<StockCardScreen />);
+    renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
     await screen.findByRole("table");
 
     expect(
@@ -530,7 +569,7 @@ describe("StockCardScreen", () => {
   it("takes the period tiles from the summary endpoint, not from the page", async () => {
     mockHappyPath([movement()], []);
 
-    renderWithAuth(<StockCardScreen />);
+    renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
 
     // 30 in and 12 out across 7 movements, while the page holds one row of 10.
     // Summing the page would report the page, which grows as the user pages.
@@ -545,7 +584,7 @@ describe("StockCardScreen", () => {
     });
 
     const user = userEvent.setup();
-    renderWithAuth(<StockCardScreen />);
+    renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
 
     await user.click(await screen.findByRole("button", { name: "Page 3" }));
 
@@ -555,19 +594,6 @@ describe("StockCardScreen", () => {
       expect(stockMovementService.list).toHaveBeenCalledWith(
         expect.objectContaining({ page: 3 }),
       ),
-    );
-  });
-
-  it("asks for stock-holding products in one request", async () => {
-    mockHappyPath([movement()], []);
-
-    renderWithAuth(<StockCardScreen />);
-
-    await waitFor(() => expect(productService.list).toHaveBeenCalled());
-    // One call, not one per product type: `holdsStock` is the server's own list.
-    expect(productService.list).toHaveBeenCalledTimes(1);
-    expect(productService.list).toHaveBeenCalledWith(
-      expect.objectContaining({ holdsStock: true }),
     );
   });
 
@@ -598,7 +624,7 @@ describe("StockCardScreen", () => {
       .mockResolvedValue({ blob, filename: "kartu-stok.csv" });
 
     const user = userEvent.setup();
-    renderWithAuth(<StockCardScreen />);
+    renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
 
     await user.click(
       await screen.findByRole("button", { name: /Export \.xlsx/ }),
@@ -632,7 +658,7 @@ describe("StockCardScreen", () => {
       .mockRejectedValue(new ApiError("Forbidden", 403));
 
     const user = userEvent.setup();
-    renderWithAuth(<StockCardScreen />);
+    renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
 
     await user.click(
       await screen.findByRole("button", { name: /Export \.xlsx/ }),
@@ -647,7 +673,7 @@ describe("StockCardScreen", () => {
     mockHappyPath([], [batch({ _id: "b1", batchCode: "RC-B26-0455" })]);
 
     const user = userEvent.setup();
-    renderWithAuth(<StockCardScreen />);
+    renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
 
     await user.click(
       await screen.findByRole("button", { name: /Batch \/ FEFO/ }),
@@ -661,7 +687,7 @@ describe("StockCardScreen", () => {
   it("hides the lot tab from a role without productBatches:read", async () => {
     mockHappyPath([movement()], []);
 
-    renderWithAuth(<StockCardScreen />, {
+    renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />, {
       isSuperAdmin: false,
       permissions: [
         { feature: "stockMovements", actions: ["read"] },
@@ -684,7 +710,7 @@ describe("StockCardScreen", () => {
       .spyOn(stockMovementService, "list")
       .mockRejectedValue(new ApiError("Forbidden", 403));
 
-    renderWithAuth(<StockCardScreen />);
+    renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
 
     // An empty table would read as "nothing ever moved here", which is a very
     // different statement from "you may not look".
@@ -694,7 +720,7 @@ describe("StockCardScreen", () => {
   it("states that the ledger cannot be edited", async () => {
     mockHappyPath([movement()], []);
 
-    renderWithAuth(<StockCardScreen />);
+    renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
 
     expect(await screen.findByText(/tidak bisa diubah/)).toBeInTheDocument();
   });

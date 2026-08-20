@@ -184,7 +184,7 @@ describe("BatchesScreen", () => {
     render(<BatchesScreen />);
 
     await screen.findByRole("table");
-    await user.type(screen.getByLabelText("Cari kode batch"), "WSK");
+    await user.type(screen.getByLabelText("Cari kode batch, nama produk, atau SKU"), "WSK");
 
     // `/expiring` cannot filter by code, and tracing a lot is a question about
     // its whole life — including after it sold out.
@@ -202,7 +202,7 @@ describe("BatchesScreen", () => {
     render(<BatchesScreen />);
 
     await screen.findByRole("table");
-    await user.type(screen.getByLabelText("Cari kode batch"), "WSK");
+    await user.type(screen.getByLabelText("Cari kode batch, nama produk, atau SKU"), "WSK");
 
     // Said twice over, and deliberately: on the bar, where somebody who never
     // opens the panel can still see why their horizon stopped mattering...
@@ -237,7 +237,7 @@ describe("BatchesScreen", () => {
     ).not.toBeInTheDocument();
     await user.keyboard("{Escape}");
 
-    await user.type(screen.getByLabelText("Cari kode batch"), "WSK");
+    await user.type(screen.getByLabelText("Cari kode batch, nama produk, atau SKU"), "WSK");
     await screen.findByRole("table");
 
     panel = await openFilters(user);
@@ -253,7 +253,7 @@ describe("BatchesScreen", () => {
     render(<BatchesScreen />);
 
     await screen.findByRole("table");
-    await user.type(screen.getByLabelText("Cari kode batch"), "WSK");
+    await user.type(screen.getByLabelText("Cari kode batch, nama produk, atau SKU"), "WSK");
     await waitFor(() => expect(listCall).toHaveBeenCalled());
 
     expect(listCall).toHaveBeenLastCalledWith(
@@ -301,7 +301,7 @@ describe("BatchesScreen", () => {
     // The ordering SURVIVES the switch to the audit endpoint. A sort that reset
     // itself when a search flipped the screen would be a control that undoes
     // its own last click.
-    await user.type(screen.getByLabelText("Cari kode batch"), "WSK");
+    await user.type(screen.getByLabelText("Cari kode batch, nama produk, atau SKU"), "WSK");
 
     await waitFor(() =>
       expect(listCall).toHaveBeenLastCalledWith(
@@ -376,10 +376,121 @@ describe("BatchesScreen", () => {
       await screen.findByText("Tidak ada batch di rentang ini"),
     ).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText("Cari kode batch"), "ZZZ");
+    await user.type(screen.getByLabelText("Cari kode batch, nama produk, atau SKU"), "ZZZ");
 
     expect(
-      await screen.findByText("Kode batch itu tidak ditemukan"),
+      await screen.findByText("Tidak ada batch yang cocok"),
     ).toBeInTheDocument();
+  });
+
+  it("searches lot codes, product names and SKUs through one box", async () => {
+    const { listCall } = mockAll();
+
+    const user = userEvent.setup();
+    render(<BatchesScreen />);
+    await screen.findByRole("table");
+
+    // The term goes to the API as one string — the lot's own code and the
+    // product's name and SKU are matched server-side, because a lot carries a
+    // productId and no name of its own.
+    await user.type(
+      screen.getByLabelText("Cari kode batch, nama produk, atau SKU"),
+      "Whiskas",
+    );
+
+    await waitFor(() =>
+      expect(listCall).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: "Whiskas" }),
+      ),
+    );
+  });
+
+  describe("the custom expiry range", () => {
+    /** Picks "Rentang khusus" in the open panel and returns the panel. */
+    async function pickCustom(user: ReturnType<typeof userEvent.setup>) {
+      const panel = await openFilters(user);
+      await user.click(
+        within(panel).getByRole("button", { name: "Rentang kedaluwarsa" }),
+      );
+      await user.click(screen.getByRole("option", { name: "Rentang khusus" }));
+      return panel;
+    }
+
+    it("sends a hand-picked window to the audit endpoint", async () => {
+      const { listCall, expiringCall } = mockAll();
+
+      const user = userEvent.setup();
+      render(<BatchesScreen />);
+      await screen.findByRole("table");
+      expiringCall.mockClear();
+
+      const panel = await pickCustom(user);
+      await user.type(
+        within(panel).getByLabelText("Tanggal kedaluwarsa dari"),
+        "2026-11-01",
+      );
+      await user.type(
+        within(panel).getByLabelText("Tanggal kedaluwarsa sampai"),
+        "2026-11-30",
+      );
+      await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+      // `/expiring` counts days forward from today and cannot express a window
+      // that names its own two ends — so the range switches endpoints, exactly
+      // as a search does.
+      await waitFor(() =>
+        expect(listCall).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            expiryFrom: "2026-11-01",
+            expiryTo: "2026-11-30",
+          }),
+        ),
+      );
+      expect(expiringCall).not.toHaveBeenCalled();
+    });
+
+    it("says so rather than pretending an empty window narrowed anything", async () => {
+      mockAll();
+
+      const user = userEvent.setup();
+      render(<BatchesScreen />);
+      await screen.findByRole("table");
+
+      const panel = await pickCustom(user);
+      await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+      // The horizon reads "Rentang khusus" while nothing is filled in, which
+      // looks like a filter and is not one.
+      expect(
+        await screen.findByText(/Rentang khusus belum diisi/),
+      ).toBeInTheDocument();
+    });
+
+    it("hides the dates during a search instead of leaving them inert", async () => {
+      mockAll();
+
+      const user = userEvent.setup();
+      render(<BatchesScreen />);
+      await screen.findByRole("table");
+
+      let panel = await pickCustom(user);
+      await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+      await user.type(
+        screen.getByLabelText("Cari kode batch, nama produk, atau SKU"),
+        "WSK",
+      );
+      await screen.findByRole("table");
+
+      // A search suspends the whole horizon, and two date inputs that accept
+      // typing and change nothing are worse than two that are not there.
+      panel = await openFilters(user);
+      expect(
+        within(panel).queryByLabelText("Tanggal kedaluwarsa dari"),
+      ).not.toBeInTheDocument();
+      expect(
+        within(panel).getByText(/Nonaktif selama kotak pencarian terisi/),
+      ).toBeInTheDocument();
+    });
   });
 });

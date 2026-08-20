@@ -22,6 +22,13 @@ export interface FilterFieldProps {
   children: ReactNode;
   /** Explanatory line under the control. */
   hint?: ReactNode;
+  /**
+   * Draws the red `*` after the caption, the same marker `TextField` renders
+   * for a required input — a filter is never required, but a `layout="field"`
+   * control standing in a form is a form field and has to say so in the one
+   * way the rest of the forms already say it.
+   */
+  required?: boolean;
   className?: string;
 }
 
@@ -30,6 +37,7 @@ export function FilterField({
   htmlFor,
   children,
   hint,
+  required,
   className,
 }: FilterFieldProps) {
   const caption = "mb-1.5 block text-xs font-semibold text-foreground";
@@ -39,9 +47,13 @@ export function FilterField({
       {htmlFor ? (
         <label htmlFor={htmlFor} className={caption}>
           {label}
+          {required && <span className="text-danger"> *</span>}
         </label>
       ) : (
-        <span className={caption}>{label}</span>
+        <span className={caption}>
+          {label}
+          {required && <span className="text-danger"> *</span>}
+        </span>
       )}
       {children}
       {hint && <p className="mt-1.5 text-xs text-muted">{hint}</p>}

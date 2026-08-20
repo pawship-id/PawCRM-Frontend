@@ -13,6 +13,7 @@ import { stockOpnameService } from "@/services/stockOpname.service";
 import type { Category, StockWarehouse } from "@/types/inventory";
 
 import { useOpenDraft } from "../hooks/useOpenDraft";
+import { useBranchScope, warehousesForBranch } from "../hooks/useBranchScope";
 
 /**
  * The entry point to a count: a warehouse, optionally one category, and the
@@ -50,6 +51,12 @@ export function OpnameStartCard({
   const router = useRouter();
 
   const [warehouseId, setWarehouseId] = useState("");
+  /**
+   * WHERE, asked before WHICH SHELF — the order every hand-typed stock form now
+   * asks its two scoping questions in. A counter knows which shop they are
+   * walking; the warehouse list follows from it.
+   */
+  const [pickedBranch, setPickedBranch] = useState("");
   // "" is the repo's unset convention, and reachable now that this is a
   // FilterSelect: the `"all"` sentinel this used to carry existed only because
   // Radix Select forbids an empty item value.
@@ -57,14 +64,29 @@ export function OpnameStartCard({
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const active = warehouses.filter((warehouse) => warehouse.isActive);
+  const scope = useBranchScope();
+  /**
+   * ONE BRANCH IS NOT A CHOICE — a tenant with a single shop reaches the field
+   * below without opening a dropdown that has one option in it. Derived rather
+   * than written into state by an effect: an effect would render once with the
+   * empty value and again with the real one, and the warehouse list in between
+   * would be empty for no reason.
+   */
+  const branchId = pickedBranch || scope.soleBranch;
+  const scopedWarehouses = warehousesForBranch(branchId, warehouses);
   const { draft, checking } = useOpenDraft(warehouseId);
 
+  /*
+    ONE WAREHOUSE IS NOT A CHOICE. Once a branch is named, a branch with exactly
+    one warehouse fills it in — but nothing is preselected before that, because
+    the list is empty and preselecting from an empty list is how a form ends up
+    submitting a warehouse nobody saw.
+  */
   useEffect(() => {
-    if (warehouseId || active.length === 0) return;
+    if (warehouseId || scopedWarehouses.length === 0) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setWarehouseId(active[0]._id);
-  }, [active, warehouseId]);
+    setWarehouseId(scopedWarehouses[0]._id);
+  }, [scopedWarehouses, warehouseId]);
 
   async function handleStart() {
     if (!warehouseId) return;
@@ -75,6 +97,10 @@ export function OpnameStartCard({
     try {
       const opname = await stockOpnameService.create({
         warehouseId,
+        // Omitted when the warehouse has no default and nothing was chosen: the
+        // server then falls back to the session's branch, which this screen
+        // cannot see and must not guess at.
+        branchId: branchId || undefined,
         categoryFilter: categoryId || undefined,
         /**
          * EMPTY, and that is not the same as omitting it: an absent `items` asks
@@ -102,7 +128,12 @@ export function OpnameStartCard({
     }
   }
 
-  if (active.length === 0) {
+  /*
+    Asked of the WHOLE list rather than of the branch's slice: "this tenant has
+    no active warehouse" is a setup problem with an instruction attached, while
+    "this branch has none" is an ordinary state a different branch fixes.
+  */
+  if (warehouses.filter((warehouse) => warehouse.isActive).length === 0) {
     return (
       <Alert variant="info">
         Belum ada gudang aktif. Aktifkan atau buat gudang dulu sebelum
@@ -165,13 +196,40 @@ export function OpnameStartCard({
             is applied", and a warehouse that always has a value would wear it
             permanently.
           */}
+          {/* LOCATION FIRST. The warehouse list is whatever this branch may
+              count at — its own, plus the shared central one.
+
+              NEVER DISABLED, not even while a draft is in the way. The draft
+              belongs to the warehouse, and the way out of it is to look
+              somewhere else — locking the branch that chose the warehouse
+              leaves a counter with a Lanjutkan button for a sheet they did not
+              want and no control that changes it. */}
+          <FilterSelect
+            layout="field"
+            label="Cabang"
+            ariaLabel="Cabang"
+            value={branchId}
+            options={namedOptions(scope.branches)}
+            active={false}
+            placeholder={scope.loading ? "Memuat…" : "Pilih cabang"}
+            onChange={(value) => {
+              if (value === branchId) return;
+              setPickedBranch(value);
+              // The warehouse may not belong to the new branch.
+              setWarehouseId("");
+            }}
+            className="w-full sm:w-52"
+          />
+
           <FilterSelect
             layout="field"
             label="Gudang"
             ariaLabel="Gudang"
             value={warehouseId}
-            options={namedOptions(active)}
+            options={namedOptions(scopedWarehouses)}
             active={false}
+            placeholder={branchId === "" ? "Pilih cabang dulu" : "Pilih gudang"}
+            disabled={branchId === ""}
             onChange={setWarehouseId}
             className="w-full sm:w-52"
           />

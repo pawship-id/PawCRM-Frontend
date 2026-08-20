@@ -760,6 +760,16 @@ export interface ProductListQuery {
    * `excludeVariants` (the opposite one); the API returns 400 for either pair.
    */
   holdsStock?: boolean;
+  /**
+   * Only products with NO movement in this warehouse.
+   *
+   * The opening-stock picker's filter — the same rule
+   * POST /products/opening-stock enforces, so the picker cannot offer a row the
+   * save would refuse. A warehouse id rather than a flag: "never moved" is only
+   * meaningful somewhere, and a product trading in one warehouse may
+   * legitimately be receiving its opening balance in another.
+   */
+  neverMovedInWarehouse?: string;
   includeDeleted?: boolean;
   /**
    * Which ordering to page through. A NAME, not a field plus a direction —
@@ -772,11 +782,7 @@ export interface ProductListQuery {
 
 /** The orderings `GET /api/products` accepts — PRODUCT_SORTS in the model. */
 export type ProductSort =
-  | "newest"
-  | "oldest"
-  | "nameAsc"
-  | "nameDesc"
-  | "skuAsc";
+  "newest" | "oldest" | "nameAsc" | "nameDesc" | "skuAsc";
 
 /** GET /api/products/:id/variants — the parent and every variant of it. */
 export interface ProductVariantsResult {
@@ -1281,6 +1287,19 @@ export type CreateOpnameItemInput = Omit<OpnameItemInput, "physicalQty"> & {
  */
 export interface CreateOpnameInput {
   warehouseId: string;
+  /**
+   * Which set of books the variance lands on at submit.
+   *
+   * OPTIONAL: omitting it lets the ledger fall back to the warehouse's own
+   * `defaultBranchId`, then to the session's branch. Asked because branch and
+   * warehouse are not 1:1 — a central warehouse serving three branches has one
+   * default that cannot speak for all of them.
+   *
+   * Declared at CREATE rather than at submit: the sheet is the document, and a
+   * branch decided an afternoon later would let two people disagree about where
+   * the counting belongs.
+   */
+  branchId?: string;
   opnameDate?: string;
   categoryFilter?: string | null;
   notes?: string | null;
@@ -1404,11 +1423,7 @@ export interface ProductBatchListQuery {
 }
 
 /** The orderings the batch endpoints accept — BATCH_SORTS in the model. */
-export type BatchSort =
-  | "expirySoonest"
-  | "expiryLatest"
-  | "newest"
-  | "oldest";
+export type BatchSort = "expirySoonest" | "expiryLatest" | "newest" | "oldest";
 
 /** GET /api/product-batches/expiring. */
 export interface ExpiringBatchListQuery {
@@ -1438,4 +1453,114 @@ export interface ExpiringBatchesResult {
   withinDays: number;
   /** ISO date — the computed cutoff. */
   before: string;
+}
+
+/* ------------------------------------------------------- hand-typed documents */
+
+/**
+ * Which kind of hand-typed stock document, and through it which account the
+ * value lands on.
+ *
+ * `adjustment` credits 5201 Kerugian Persediaan — goods that vanished, broke, or
+ * were used by the shop. `opening_balance` credits 3101 Modal / Saldo Awal —
+ * goods a tenant already owned, bought from nobody in this system.
+ */
+export type StockEntryKind = "adjustment" | "opening_balance";
+
+/** One product on a document, as the API returns it. */
+export interface StockEntryLine {
+  productId: string;
+  /** The SIGNED change: negative took goods off the shelf. */
+  qty: string;
+  /**
+   * What the system believed the balance was when the change was posted, or
+   * null on an opening balance where it held nothing by definition. Kept because
+   * it cannot be recovered — every movement since has moved it.
+   */
+  systemQty: string | null;
+  costPerUnit: string | null;
+  batchCode: string | null;
+  expiryDate: string | null;
+  batchId: string | null;
+  isConsignment: boolean;
+  /** Resolved by the server on a detail read; absent on a list row. */
+  productSku?: string | null;
+  productName?: string | null;
+  productUnit?: string | null;
+}
+
+export interface StockEntry {
+  _id: string;
+  kind: StockEntryKind;
+  /** Server-allocated, unique per tenant: "ADJ-2026-0007". */
+  entryNumber: string;
+  /** The date the correction BELONGS to, distinct from `createdAt`. */
+  entryDate: string;
+  /** The set of books this document is attributed to. Always present. */
+  branchId: { _id: string; name: string } | string;
+  warehouseId: { _id: string; name: string } | string;
+  notes: string | null;
+  /**
+   * How many products the document names.
+   *
+   * Denormalised on the server and safe to be — lines are written once and never
+   * edited. It exists because the list projects `lines` away: a page of twenty
+   * documents each carrying two hundred lines is megabytes for a column that
+   * renders a number.
+   */
+  lineCount: number;
+  /** Projected away on a list row — a page of documents renders a count. */
+  lines?: StockEntryLine[];
+  /** The rows this document wrote. Its length is FEFO made visible. */
+  movementIds: string[];
+  journalEntryId: string | null;
+  createdBy: { _id: string; name: string } | string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StockEntryListQuery {
+  page?: number;
+  limit?: number;
+  /** Required by the API — see stockEntryService.list. */
+  kind: StockEntryKind;
+  /**
+   * Branch and warehouse are BOTH filterable because they are not 1:1 — a
+   * central warehouse can serve three branches, and a branch can hold two
+   * warehouses. Narrowing by one never implies the other.
+   */
+  branchId?: string;
+  warehouseId?: string;
+  search?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+/** The writable half. `entryNumber` and the linkage are server-owned. */
+export interface StockEntryInput {
+  warehouseId: string;
+  /**
+   * The set of books this document lands on.
+   *
+   * OPTIONAL on the wire: omitting it lets the ledger fall back to the
+   * warehouse's own `defaultBranchId`, which is the right answer for a tenant
+   * whose branches each have their own warehouse. The forms send it because they
+   * pre-fill it with exactly that fallback — so the payload matches what would
+   * have been written anyway, and a shared warehouse can be pointed elsewhere.
+   */
+  branchId?: string;
+  entryDate: string;
+  notes?: string;
+  lines: Array<{
+    productId: string;
+    /** Signed: negative takes goods off the shelf. */
+    qty: string;
+    systemQty?: string;
+    costPerUnit?: string;
+    batchId?: string;
+    batchCode?: string;
+    expiryDate?: string;
+    isConsignment?: boolean;
+    notes?: string;
+  }>;
 }

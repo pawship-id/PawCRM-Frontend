@@ -30,9 +30,15 @@ type LowStockRow = Product & { qtyOnHand: string };
  *
  * THE THRESHOLD IS PER PRODUCT, NOT PER WAREHOUSE, so this screen has no
  * warehouse filter. `minStock` lives on the catalogue row and `qtyOnHand` sums
- * every location, so filtering by one warehouse would report a product as low
- * whenever it is merely stored somewhere else — the behaviour `useLowStockAlert`
- * documents having removed.
+ * every location, so filtering by one warehouse compares a single shelf against
+ * the whole product's minimum and reads a product as low whenever it is merely
+ * stored somewhere else.
+ *
+ * The API does accept `warehouseId`, and the inventory hub offers it — a person
+ * standing in one shop is entitled to ask what THAT shop should pull in, and the
+ * hub says on screen which comparison the numbers are then making. This is the
+ * reorder REPORT: a page somebody exports and orders from, where the unqualified
+ * figure is the one the threshold actually describes.
  */
 
 const PAGE_SIZE = 50;

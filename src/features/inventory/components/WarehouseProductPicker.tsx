@@ -11,11 +11,13 @@ import type { Product, StockWarehouse } from "@/types/inventory";
  * a set of forms stops feeling like one module.
  *
  * THE FILTER SHELL ON A FORM, which FilterTrigger is exported to allow. These
- * two pick from the same lists as the filter panel a few centimetres away on
- * the stock card, and a second select convention on one screen is a second thing
- * to recognise for no gain. The product list also gets the popover's own search
- * for free, which matters more here than anywhere: it is a whole catalogue, and
- * the stock card already warns when it had to be truncated.
+ * two pick from the same lists as the filter panels elsewhere in the module, and
+ * a second select convention on one screen is a second thing to recognise for no
+ * gain. The product list also gets the popover's own search for free, which
+ * matters more here than anywhere: it is a whole catalogue, and the list feeding
+ * it (`useStockCardLookups`) stops at 500 products. A form that needs more than
+ * that wants what the stock card did — a searched, server-paged list — rather
+ * than a taller dropdown.
  *
  * `active={false}` on both. The trigger's navy state means "a filter is
  * applied", and these are not filters — nothing is narrowed by choosing a
@@ -33,9 +35,11 @@ import type { Product, StockWarehouse } from "@/types/inventory";
  *                listing them would be an invitation to a 400.
  *
  * `includeInactiveWarehouses` lifts the first filter, and only a READ-ONLY
- * screen may pass it. The stock card does: a deactivated warehouse still owns
- * everything it ever held, and a history nobody can open is an audit hole. The
- * forms leave it off, because for them an inactive warehouse is a rejection
+ * screen may pass it — a deactivated warehouse still owns everything it ever
+ * held, and a history nobody can open is an audit hole. No caller passes it
+ * today: the stock card did, until its product picker became a route and its
+ * warehouse select moved to the page heading. What is left here are the FORMS,
+ * which leave it off because for them an inactive warehouse is a rejection
  * waiting to happen.
  */
 export function WarehouseProductPicker({

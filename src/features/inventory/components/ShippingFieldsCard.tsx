@@ -199,7 +199,10 @@ export function ShippingFieldsCard({
               </SelectContent>
             </Select>
             {errors.weightUnit && (
-              <p role="alert" className="text-xs text-danger">
+              <p
+                role="alert"
+                className="text-xs text-danger"
+              >
                 {errors.weightUnit}
               </p>
             )}

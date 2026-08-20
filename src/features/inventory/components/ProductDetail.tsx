@@ -746,7 +746,7 @@ function StockByWarehouse({
                     */}
                     {canReadLedger && HOLDS_STOCK.includes(product.productType) && (
                       <Link
-                        href={`/dashboard/inventory/stock-card?productId=${product._id}&warehouseId=${String(row.warehouseId)}`}
+                        href={`/dashboard/inventory/stock-card/${product._id}?warehouseId=${String(row.warehouseId)}`}
                         className="text-xs whitespace-nowrap text-primary hover:underline"
                       >
                         Kartu stok →

@@ -18,13 +18,8 @@ import { cn } from "@/lib/utils";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { stockMovementService } from "@/services/stockMovement.service";
-import type {
-  PreviewMovementRow,
-  Product,
-  TransferItemInput,
-} from "@/types/inventory";
+import type { Product, TransferItemInput } from "@/types/inventory";
 import {
-  absDecimal,
   formatMoney,
   formatQty,
   isDecimal,
@@ -34,12 +29,9 @@ import {
   toMinor,
 } from "@/utils/decimal";
 
-import { useMovementPreview } from "../hooks/useMovementPreview";
 import { useWarehouseOptions } from "../hooks/useWarehouseOptions";
 import { newIdempotencyKey } from "../utils/idempotency";
 import { qtyAtWarehouse } from "../utils/ledger";
-import { ExpiryBadge } from "./ExpiryBadge";
-import { JournalPreview } from "./JournalPreview";
 import { TransferAddProductsDialog } from "./TransferAddProductsDialog";
 
 /** One product line of the transfer, as the form holds it. */
@@ -112,20 +104,22 @@ function TransferLineRow({
           aria-label={`Jumlah ${product?.name ?? ""}`}
           inputMode="decimal"
           value={line.qty}
-          onChange={(event) => onChange({ qty: sanitizeQty(event.target.value) })}
+          onChange={(event) =>
+            onChange({ qty: sanitizeQty(event.target.value) })
+          }
           aria-invalid={shortage ? true : undefined}
           className={cn(
-            "ml-auto max-w-24 text-right tabular-nums",
+            "max-w-24 tabular-nums",
             shortage && "border-danger focus-visible:ring-danger/40",
           )}
         />
         {shortage ? (
-          <p role="alert" className="mt-1 text-right text-[11px] text-danger">
+          <p role="alert" className="mt-1 text-[11px] text-danger">
             Melebihi stok — tersedia {formatQty(shortage)}
             {product?.unit && ` ${product.unit}`}
           </p>
         ) : (
-          <p className="mt-1 text-right text-[11px] text-muted">
+          <p className="mt-1 text-[11px] text-muted">
             Tersedia {formatQty(onHand)}
             {product?.unit && ` ${product.unit}`}
           </p>
@@ -189,11 +183,13 @@ function TransferLineRow({
  * the system decides which lots. Letting them retype the code would be an
  * invitation to move batch A and have it arrive labelled batch B.
  *
- * THE LOT PREVIEW IS FETCHED, NOT COMPUTED. `POST /stock-movements/preview` is
- * the posting path with the commit left off, so the pairs listed on the right
- * are the rows that will be written — including which lot each one carries. The
- * browser used to reimplement FEFO to draw this, which was a copy of a rule that
- * could go quietly out of date.
+ * THE LOT BREAKDOWN IS NOT SHOWN. A per-lot panel used to sit beside the form,
+ * fetched from `POST /stock-movements/preview`; it was taken out because it
+ * halved the width of the two cards people actually type into for a list that
+ * repeats what FEFO would do anyway. What the form still refuses to guess is the
+ * allocation itself — the server decides which lots go, and the only thing
+ * checked in the browser is the shortage per product, which is what stops a
+ * transfer the source warehouse cannot cover.
  */
 export function StockTransferForm() {
   /**
@@ -215,7 +211,6 @@ export function StockTransferForm() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
   /**
    * Minted once per INTENT, not per request: it survives a failed attempt — so a
    * retry of a save that may have landed replays instead of moving the stock
@@ -338,51 +333,6 @@ export function StockTransferForm() {
     };
   }, [fromWarehouseId, toWarehouseId, items, notes]);
 
-  const preview = useMovementPreview(
-    payload,
-    // A short line is not asked about: the API refuses the whole payload, so the
-    // request could only ever come back as an error, and the panel would go
-    // blank while the row that caused it already says why.
-    items.length > 0 && !sameWarehouse && shortages.size === 0,
-    refreshKey,
-  );
-
-  /**
-   * The outbound half of each pair, grouped by product — which is what the list
-   * is about: one entry per lot that leaves the source warehouse, under the
-   * product it belongs to. The matching `transfer_in` is rendered beside it, not
-   * as its own row.
-   *
-   * `productName` comes from the server with the row. Matching the id against
-   * the picker's list instead would render a blank heading over real rows for
-   * any product added since the page loaded.
-   */
-  const groups = useMemo(() => {
-    const byProduct = new Map<
-      string,
-      { productId: string; productName: string; rows: PreviewMovementRow[] }
-    >();
-
-    for (const row of preview.preview?.movements ?? []) {
-      if (row.movementType !== "transfer_out") continue;
-
-      const group = byProduct.get(row.productId) ?? {
-        productId: row.productId,
-        productName: row.productName,
-        rows: [],
-      };
-      group.rows.push(row);
-      byProduct.set(row.productId, group);
-    }
-
-    return [...byProduct.values()];
-  }, [preview.preview]);
-
-  const movementRows = groups.reduce(
-    (total, group) => total + group.rows.length * 2,
-    0,
-  );
-
   const fromName =
     lookups.warehouses.find((w) => w._id === fromWarehouseId)?.name ?? "";
   const toName =
@@ -442,7 +392,8 @@ export function StockTransferForm() {
     }
 
     for (const [index, line] of lines.entries()) {
-      const label = productById.get(line.productId)?.name ?? `Baris ${index + 1}`;
+      const label =
+        productById.get(line.productId)?.name ?? `Baris ${index + 1}`;
 
       if (line.qty.trim() === "") {
         next.lines = `${label}: jumlah wajib diisi.`;
@@ -477,9 +428,8 @@ export function StockTransferForm() {
 
     setSaving(true);
     try {
-      // The SAME payload the preview described, plus the retry token. Building a
-      // second one here is how a form ends up saving something other than what
-      // it showed.
+      // The payload built above, plus the retry token. Building a second one
+      // here is how a form ends up saving something other than what it showed.
       const written = await stockMovementService.create({
         ...payload,
         idempotencyKey,
@@ -490,7 +440,6 @@ export function StockTransferForm() {
       setLines([]);
       setNotes("");
       setFieldErrors({});
-      setRefreshKey((key) => key + 1);
       // A new intent needs a new token; reusing this one would make the next
       // transfer look like a replay of this one and move nothing.
       setIdempotencyKey(newIdempotencyKey);
@@ -545,105 +494,163 @@ export function StockTransferForm() {
         />
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,460px)]">
-        <div className="flex flex-col gap-6">
-          <Card title="Perpindahan">
-            <div className="flex flex-col gap-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                {/* The filter shell, like every other warehouse picker in the
-                    module. `active={false}` because these are not filters —
-                    nothing is narrowed by naming a warehouse, the transfer
-                    simply has two ends. */}
+      <div className="flex flex-col gap-6">
+        <Card title="Perpindahan">
+          <div className="flex flex-col gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              {/* The filter shell, like every other warehouse picker in the
+                  module. `active={false}` because these are not filters —
+                  nothing is narrowed by naming a warehouse, the transfer
+                  simply has two ends. */}
+              <FilterSelect
+                layout="field"
+                label="Dari gudang"
+                ariaLabel="Dari gudang"
+                value={fromWarehouseId}
+                options={namedOptions(active)}
+                active={false}
+                placeholder="Pilih gudang"
+                onChange={setFrom}
+              />
+
+              <div className="flex flex-col gap-1.5">
                 <FilterSelect
                   layout="field"
-                  label="Dari gudang"
-                  ariaLabel="Dari gudang"
-                  value={fromWarehouseId}
+                  label="Ke gudang"
+                  ariaLabel="Ke gudang"
+                  value={toWarehouseId}
                   options={namedOptions(active)}
                   active={false}
                   placeholder="Pilih gudang"
-                  onChange={setFrom}
+                  // The one thing a filter never has to say: this choice can
+                  // be wrong. Both ends the same warehouse is a move that
+                  // moves nothing.
+                  invalid={sameWarehouse}
+                  onChange={setTo}
                 />
-
-                <div className="flex flex-col gap-1.5">
-                  <FilterSelect
-                    layout="field"
-                    label="Ke gudang"
-                    ariaLabel="Ke gudang"
-                    value={toWarehouseId}
-                    options={namedOptions(active)}
-                    active={false}
-                    placeholder="Pilih gudang"
-                    // The one thing a filter never has to say: this choice can
-                    // be wrong. Both ends the same warehouse is a move that
-                    // moves nothing.
-                    invalid={sameWarehouse}
-                    onChange={setTo}
-                  />
-                  {/* Said as soon as it is true, not only after a submit
-                      attempt. The red border used to be the whole signal until
-                      somebody pressed Simpan — status by colour alone, which §1
-                      forbids, and invisible to anyone who cannot see it. */}
-                  {(fieldErrors.toWarehouseId || sameWarehouse) && (
-                    <p role="alert" className="text-xs text-danger">
-                      {fieldErrors.toWarehouseId ??
-                        "Gudang asal dan tujuan harus berbeda."}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* The reason for the WHOLE transfer, stamped on every row it
-                  writes. Without it a stock card can only ever say "10 keluar ke
-                  Gudang Bazar" — which is what happened, never why. */}
-              <TextField
-                label="Catatan transfer"
-                name="notes"
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-                placeholder="mis. persiapan bazar Sabtu"
-                maxLength={500}
-                hint="Ikut tersimpan di setiap baris kartu stok yang dibuat transfer ini."
-              />
-
-              <div className="flex flex-wrap items-center gap-2 rounded-lg bg-accent/60 px-3 py-2 text-sm">
-                <span className="font-medium">{fromName}</span>
-                <span className="text-primary">→</span>
-                <span className="font-medium">{toName}</span>
-                {isPositive(movedValue) && (
-                  <>
-                    <span className="text-muted">·</span>
-                    <span className="text-muted">nilai berpindah</span>
-                    <b className="tabular-nums">
-                      {formatMoney(movedValue)}
-                    </b>
-                  </>
+                {/* Said as soon as it is true, not only after a submit
+                    attempt. The red border used to be the whole signal until
+                    somebody pressed Simpan — status by colour alone, which §1
+                    forbids, and invisible to anyone who cannot see it. */}
+                {(fieldErrors.toWarehouseId || sameWarehouse) && (
+                  <p role="alert" className="text-xs text-danger">
+                    {fieldErrors.toWarehouseId ??
+                      "Gudang asal dan tujuan harus berbeda."}
+                  </p>
                 )}
               </div>
             </div>
-          </Card>
 
-          <Card
-            title={
-              <span className="flex flex-wrap items-center gap-2">
-                Produk yang dipindahkan
-                <Badge variant="outline">{lines.length} baris</Badge>
-              </span>
-            }
-          >
-            {/**
-             * THE BUTTON FOLLOWS THE LIST, above it while it is empty and below
-             * it once it is not.
-             *
-             * On an empty card it is the only thing to do, so it goes where the
-             * eye lands first and the explanation reads as a caption under it.
-             * Once rows exist the list grows downwards, so the place a reader
-             * ends is the place the next row comes from — after adding three
-             * products the button is still under the third, rather than back up
-             * past the rows just added.
-             */}
-            {lines.length === 0 ? (
-              <div className="flex flex-col items-center gap-4 py-8 text-center">
+            {/* The reason for the WHOLE transfer, stamped on every row it
+                writes. Without it a stock card can only ever say "10 keluar ke
+                Gudang Bazar" — which is what happened, never why. */}
+            <TextField
+              label="Catatan transfer"
+              name="notes"
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              placeholder="mis. persiapan bazar Sabtu"
+              maxLength={500}
+              hint="Ikut tersimpan di setiap baris kartu stok yang dibuat transfer ini."
+            />
+
+            <div className="flex flex-wrap items-center gap-2 rounded-lg bg-accent/60 px-3 py-2 text-sm">
+              <span className="font-medium">{fromName}</span>
+              <span className="text-primary">→</span>
+              <span className="font-medium">{toName}</span>
+              {isPositive(movedValue) && (
+                <>
+                  <span className="text-muted">·</span>
+                  <span className="text-muted">nilai berpindah</span>
+                  <b className="tabular-nums">{formatMoney(movedValue)}</b>
+                </>
+              )}
+            </div>
+          </div>
+        </Card>
+
+        <Card
+          title={
+            <span className="flex flex-wrap items-center gap-2">
+              Produk yang dipindahkan
+              <Badge variant="outline">{lines.length} baris</Badge>
+            </span>
+          }
+        >
+          {/**
+           * THE BUTTON FOLLOWS THE LIST, above it while it is empty and below
+           * it once it is not.
+           *
+           * On an empty card it is the only thing to do, so it goes where the
+           * eye lands first and the explanation reads as a caption under it.
+           * Once rows exist the list grows downwards, so the place a reader
+           * ends is the place the next row comes from — after adding three
+           * products the button is still under the third, rather than back up
+           * past the rows just added.
+           */}
+          {lines.length === 0 ? (
+            <div className="flex flex-col items-center gap-4 py-8 text-center">
+              <UIButton
+                type="button"
+                variant="secondary"
+                onClick={() => setPicking(true)}
+              >
+                + Tambah produk
+              </UIButton>
+
+              <div>
+                <p className="font-medium text-foreground">Belum ada produk</p>
+                <p className="mx-auto mt-1 max-w-md text-sm text-muted">
+                  Satu transfer boleh membawa beberapa produk sekaligus —
+                  semuanya tersimpan sebagai satu perpindahan.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-[10px] tracking-widest text-muted uppercase">
+                      <th className="px-2 py-2 text-left font-medium">
+                        Produk
+                      </th>
+                      <th className="px-2 py-2 text-left font-medium">
+                        Jumlah
+                      </th>
+                      <th className="px-2 py-2 text-left font-medium">
+                        Catatan baris
+                      </th>
+                      <th className="px-2 py-2" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lines.map((line, index) => (
+                      <TransferLineRow
+                        // Keyed on the product, not the index: a product
+                        // appears at most once, and removing a middle row
+                        // under an index key would leave React reusing the
+                        // wrong row's input.
+                        key={line.productId}
+                        line={line}
+                        product={productById.get(line.productId)}
+                        onHand={onHandOf(line.productId)}
+                        shortage={shortages.get(line.productId)}
+                        onChange={(patch) => updateLine(index, patch)}
+                        onRemove={() =>
+                          setLines((prev) => prev.filter((_, i) => i !== index))
+                        }
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-3 border-t border-border/60 pt-3">
+                {/* Sized to its label, left-aligned, like the same button
+                    under the opname sheet's table. Full width made one
+                    control read as the section's own footer rather than as
+                    the row-adder it is. */}
                 <UIButton
                   type="button"
                   variant="secondary"
@@ -651,180 +658,38 @@ export function StockTransferForm() {
                 >
                   + Tambah produk
                 </UIButton>
-
-                <div>
-                  <p className="font-medium text-foreground">
-                    Belum ada produk
-                  </p>
-                  <p className="mx-auto mt-1 max-w-md text-sm text-muted">
-                    Satu transfer boleh membawa beberapa produk sekaligus —
-                    semuanya tersimpan sebagai satu perpindahan.
-                  </p>
-                </div>
               </div>
-            ) : (
-              <>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border text-[10px] tracking-widest text-muted uppercase">
-                        <th className="px-2 py-2 text-left font-medium">
-                          Produk
-                        </th>
-                        <th className="px-2 py-2 text-right font-medium">
-                          Jumlah
-                        </th>
-                        <th className="px-2 py-2 text-left font-medium">
-                          Catatan baris
-                        </th>
-                        <th className="px-2 py-2" />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {lines.map((line, index) => (
-                        <TransferLineRow
-                          // Keyed on the product, not the index: a product
-                          // appears at most once, and removing a middle row
-                          // under an index key would leave React reusing the
-                          // wrong row's input.
-                          key={line.productId}
-                          line={line}
-                          product={productById.get(line.productId)}
-                          onHand={onHandOf(line.productId)}
-                          shortage={shortages.get(line.productId)}
-                          onChange={(patch) => updateLine(index, patch)}
-                          onRemove={() =>
-                            setLines((prev) =>
-                              prev.filter((_, i) => i !== index),
-                            )
-                          }
-                        />
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="mt-3 border-t border-border/60 pt-3">
-                  {/* Sized to its label, left-aligned, like the same button
-                      under the opname sheet's table. Full width made one
-                      control read as the section's own footer rather than as
-                      the row-adder it is. */}
-                  <UIButton
-                    type="button"
-                    variant="secondary"
-                    onClick={() => setPicking(true)}
-                  >
-                    + Tambah produk
-                  </UIButton>
-                </div>
-              </>
-            )}
-
-            {fieldErrors.lines && (
-              <p role="alert" className="mt-3 text-xs text-danger">
-                {fieldErrors.lines}
-              </p>
-            )}
-          </Card>
-        </div>
-
-        <div className="flex flex-col gap-4">
-          <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted">
-            Yang akan terjadi
-          </p>
-
-          {groups.length > 0 ? (
-            <div className="rounded-lg border border-border bg-surface">
-              <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
-                <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted">
-                  Batch yang berpindah
-                </p>
-                <Badge variant="outline" className="ml-auto">
-                  {movementRows} baris movement
-                </Badge>
-              </div>
-
-              {groups.map((group) => (
-                <div key={group.productId}>
-                  <p className="border-b border-border/60 bg-accent/40 px-4 py-1.5 text-xs font-medium">
-                    {group.productName}
-                  </p>
-
-                  <ul className="divide-y divide-border/60">
-                    {group.rows.map((allocation, index) => {
-                      // The API signs its quantities; both halves of the pair are
-                      // drawn from the magnitude.
-                      const moved = absDecimal(allocation.qty);
-
-                      return (
-                        <li
-                          key={allocation.batchId ?? index}
-                          className="px-4 py-3"
-                        >
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="tabular-nums text-xs">
-                              {allocation.batchCode ?? "tanpa kode batch"}
-                            </span>
-                            {allocation.batchExpiryDate && (
-                              <ExpiryBadge date={allocation.batchExpiryDate} />
-                            )}
-                            <span className="ml-auto tabular-nums text-sm font-semibold">
-                              {formatQty(moved)}
-                            </span>
-                          </div>
-
-                          {/* The pair. Showing both halves is the point: the lot
-                              is not moved, it is closed here and re-opened
-                              there. */}
-                          <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-[11px]">
-                            <div className="rounded-md bg-danger/8 px-2 py-1.5">
-                              <p className="tabular-nums text-danger">
-                                −{formatQty(moved)}
-                              </p>
-                              <p className="truncate text-muted">{fromName}</p>
-                            </div>
-                            <span className="text-muted">→</span>
-                            <div className="rounded-md bg-success/10 px-2 py-1.5">
-                              <p className="tabular-nums text-success">
-                                +{formatQty(moved)}
-                              </p>
-                              <p className="truncate text-muted">{toName}</p>
-                            </div>
-                          </div>
-
-                          {allocation.lineNotes && (
-                            <p className="mt-2 text-[11px] text-muted">
-                              “{allocation.lineNotes}”
-                            </p>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              ))}
-
-              <p className="border-t border-border px-4 py-2.5 text-xs text-muted">
-                Setiap batch dibuat ulang di gudang tujuan dengan <b>kode, tanggal
-                kedaluwarsa, dan harga beli yang sama</b>. Tanpa itu, memindahkan
-                barang berkedaluwarsa akan menghapus tanggalnya — dan gudang
-                tujuan menyimpan stok yang tidak bisa diurutkan FEFO.
-              </p>
-            </div>
-          ) : (
-            <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-xs text-muted">
-              Tambahkan produk dan isi jumlahnya untuk melihat lot mana yang akan
-              dipindahkan.
-            </div>
+            </>
           )}
 
-          <JournalPreview
-            lines={[]}
-            emptyReason="Transfer TIDAK membuat jurnal. Barang masih milik tenant yang sama — hanya lokasinya yang berubah, jadi nilai persediaan sebelum dan sesudah sama persis."
-          />
+          {fieldErrors.lines && (
+            <p role="alert" className="mt-3 text-xs text-danger">
+              {fieldErrors.lines}
+            </p>
+          )}
+        </Card>
+
+        <div className="flex flex-col gap-3">
+          <p className="text-xs text-muted">
+            Semua produk di atas tersimpan sebagai <b>satu transfer</b>: kalau
+            satu baris gagal, tidak ada satu pun yang berpindah. Setiap batch
+            dibuat ulang di gudang tujuan dengan{" "}
+            <b>kode, tanggal kedaluwarsa, dan harga beli yang sama</b>, jadi
+            urutan FEFO di sana tetap utuh.
+          </p>
+
+          <p className="text-xs text-muted">
+            Transfer TIDAK membuat jurnal. Barang masih milik tenant yang sama —
+            hanya lokasinya yang berubah, jadi nilai persediaan sebelum dan
+            sesudah sama persis. Bila kedua gudang berada di{" "}
+            <b>cabang berbeda</b>, nilai persediaan sebenarnya berpindah antar
+            dua pembukuan. Itu dicatat sebagai keputusan yang diketahui dan akan
+            ditinjau ulang saat laporan keuangan per cabang dibangun.
+          </p>
 
           <Button
             type="submit"
+            className="sm:self-end"
             // A shortage disables it rather than failing on click: the API would
             // refuse the whole posting anyway, and the row already says which
             // product and how much it actually has.
@@ -832,20 +697,6 @@ export function StockTransferForm() {
           >
             {saving ? "Menyimpan…" : "Simpan transfer"}
           </Button>
-
-          <p className="text-xs text-muted">
-            Daftar lot di atas datang dari server — pembagian yang sama persis
-            yang akan ditulis saat disimpan. Semua produk di atas tersimpan
-            sebagai <b>satu transfer</b>: kalau satu baris gagal, tidak ada satu
-            pun yang berpindah.
-          </p>
-
-          <p className="text-xs text-muted">
-            Catatan desain: bila kedua gudang berada di <b>cabang berbeda</b>,
-            nilai persediaan sebenarnya berpindah antar dua pembukuan. Itu dicatat
-            sebagai keputusan yang diketahui dan akan ditinjau ulang saat laporan
-            keuangan per cabang dibangun.
-          </p>
         </div>
       </div>
     </form>
