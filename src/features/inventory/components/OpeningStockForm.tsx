@@ -10,6 +10,7 @@ import {
   Card,
   FilterSelect,
   Spinner,
+  TextField,
   namedOptions,
 } from "@/components";
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +29,7 @@ import {
 import { cn } from "@/lib/utils";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
-import { productService } from "@/services/product.service";
+import { stockEntryService } from "@/services/stockEntry.service";
 import type { Product } from "@/types/inventory";
 import {
   formatMoney,
@@ -39,6 +40,7 @@ import {
 } from "@/utils/decimal";
 
 import { useStockCardLookups } from "../hooks/useStockCardLookups";
+import { useBranchScope, warehousesForBranch } from "../hooks/useBranchScope";
 import { OpeningStockAddProductsDialog } from "./OpeningStockAddProductsDialog";
 
 /**
@@ -85,6 +87,13 @@ import { OpeningStockAddProductsDialog } from "./OpeningStockAddProductsDialog";
  * back refused with their SKUs, which is the list of rows to remove.
  */
 
+/** Today in the browser's timezone, as the `date` input wants it. */
+function todayValue(): string {
+  const now = new Date();
+  const offset = now.getTimezoneOffset() * 60_000;
+  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+}
+
 interface DraftLine {
   productId: string;
   qty: string;
@@ -99,6 +108,17 @@ export function OpeningStockForm() {
   const lookups = useStockCardLookups();
 
   const [warehouseId, setWarehouseId] = useState("");
+  /**
+   * WHERE, asked before WHICH SHELF.
+   *
+   * The branch is the first question because it is the one the person filling
+   * this in already knows: they are standing in, or answering for, a shop. The
+   * warehouse list is then whatever that branch may post at — its own, plus the
+   * shared central one — so a mismatched pair cannot be assembled at all.
+   */
+  const [pickedBranch, setPickedBranch] = useState("");
+  const [entryDate, setEntryDate] = useState(todayValue);
+  const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<DraftLine[]>([]);
   /**
    * The products themselves, kept beside the lines: a line holds an id, and the
@@ -116,15 +136,16 @@ export function OpeningStockForm() {
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  const scope = useBranchScope();
   /**
-   * ACTIVE warehouses only, the same rule every writing screen in the module
-   * follows: the API refuses a movement at an inactive location, so offering one
-   * would produce a rejection after the whole sheet had been filled in.
+   * ONE BRANCH IS NOT A CHOICE — a tenant with a single shop reaches the field
+   * below without opening a dropdown that has one option in it. Derived rather
+   * than written into state by an effect: an effect would render once with the
+   * empty value and again with the real one, and the warehouse list in between
+   * would be empty for no reason.
    */
-  const writableWarehouses = useMemo(
-    () => lookups.warehouses.filter((warehouse) => warehouse.isActive),
-    [lookups.warehouses],
-  );
+  const branchId = pickedBranch || scope.soleBranch;
+  const scopedWarehouses = warehousesForBranch(branchId, lookups.warehouses);
 
   /** Σ(qty × cost) — what this sheet will add to the inventory asset. */
   const totalValue = useMemo(() => {
@@ -182,6 +203,12 @@ export function OpeningStockForm() {
     const next: Record<string, string> = {};
 
     if (warehouseId === "") next.warehouseId = "Pilih gudang dulu.";
+    if (branchId === "")
+      next.branchId =
+        "Pilih cabang — gudang ini belum punya cabang default, jadi nilainya tidak punya tujuan.";
+    if (entryDate === "") next.entryDate = "Tanggal wajib diisi.";
+    else if (entryDate > todayValue())
+      next.entryDate = "Tanggal tidak boleh di masa depan.";
     if (lines.length === 0) next.lines = "Tambahkan minimal satu produk.";
 
     lines.forEach((line, index) => {
@@ -239,8 +266,11 @@ export function OpeningStockForm() {
     setFormError(null);
 
     try {
-      await productService.addOpeningStock({
+      const entry = await stockEntryService.createOpeningStock({
         warehouseId,
+        branchId,
+        entryDate,
+        notes: notes.trim() || undefined,
         lines: lines.map((line) => {
           const product = productById.get(line.productId);
           return {
@@ -258,10 +288,10 @@ export function OpeningStockForm() {
         }),
       });
 
-      swalToast(
-        `Stok awal ${lines.length} produk tercatat sebagai modal / saldo awal.`,
-      );
-      router.push("/dashboard/inventory/stock-card");
+      swalToast(`${entry.entryNumber} tersimpan sebagai modal / saldo awal.`);
+      // To the DOCUMENT, not to a list: the number is what the person now has
+      // to quote, and the screen proving what was posted is its own.
+      router.push(`/dashboard/inventory/opening-stock/${entry._id}`);
     } catch (error) {
       // The server's refusals here name the SKUs to take off the sheet, which
       // is the part that says what to do next. Shown verbatim — a paraphrase
@@ -313,46 +343,111 @@ export function OpeningStockForm() {
         </div>
 
         <Card
-          title="Gudang"
-          description="Satu lembar untuk satu gudang. Barang yang sama di gudang lain diisi di lembar terpisah."
+          title="Keterangan dokumen"
+          description="Satu dokumen untuk satu gudang, dengan nomornya sendiri. Barang yang sama di gudang lain diisi di dokumen terpisah."
         >
-          <div className="sm:max-w-md">
-            {/* The filter shell, like every other warehouse picker in the
-                module. `active={false}` because this is not a filter — nothing
-                is narrowed by naming a warehouse, the sheet simply has one. */}
-            <FilterSelect
-              layout="field"
-              label="Gudang"
-              ariaLabel="Gudang"
-              value={warehouseId}
-              options={namedOptions(writableWarehouses)}
-              active={false}
-              placeholder="Pilih gudang"
-              onChange={(value) => {
-                if (value === warehouseId) return;
-                setWarehouseId(value);
-                // The rows were chosen against the OLD warehouse's eligibility,
-                // and "never moved here" is a different answer per location —
-                // keeping them would leave the sheet holding products the picker
-                // would not have offered for this one. Cheap in practice: the
-                // picker cannot be opened until a warehouse is named, so there
-                // is normally nothing to clear.
-                setLines([]);
-                setProductById(new Map());
-                setFieldErrors({});
-              }}
+          <div className="flex flex-col gap-4">
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div>
+                <FilterSelect
+                  layout="field"
+                  label="Cabang"
+                  ariaLabel="Cabang"
+                  value={branchId}
+                  options={namedOptions(scope.branches)}
+                  active={false}
+                  required
+                  placeholder={scope.loading ? "Memuat…" : "Pilih cabang"}
+                  onChange={(value) => {
+                    if (value === branchId) return;
+                    setPickedBranch(value);
+                    // Everything below is scoped to the branch: the warehouse
+                    // may not belong to the new one, and the rows were chosen
+                    // against the old warehouse's stock.
+                    setWarehouseId("");
+                    setLines([]);
+                    setProductById(new Map());
+                    setFieldErrors({});
+                  }}
+                />
+                {fieldErrors.branchId && (
+                  <p role="alert" className="mt-1.5 text-xs text-danger">
+                    {fieldErrors.branchId}
+                  </p>
+                )}
+              </div>
+              <div>
+                {/* The filter shell, like every other warehouse picker in the
+                    module. `active={false}` because this is not a filter —
+                    nothing is narrowed by naming a warehouse, the document
+                    simply has one. */}
+                <FilterSelect
+                  layout="field"
+                  label="Gudang"
+                  ariaLabel="Gudang"
+                  value={warehouseId}
+                  options={namedOptions(scopedWarehouses)}
+                  active={false}
+                  required
+                  placeholder={
+                    branchId === "" ? "Pilih cabang dulu" : "Pilih gudang"
+                  }
+                  // Nothing to offer until a branch is named: the list IS the
+                  // branch's warehouses, so an enabled empty picker would read
+                  // as "this branch has none".
+                  disabled={branchId === ""}
+                  onChange={(value) => {
+                    if (value === warehouseId) return;
+                    setWarehouseId(value);
+                    // The rows were chosen against the OLD warehouse's
+                    // eligibility, and "never moved here" is a different answer
+                    // per location — keeping them would leave the document
+                    // holding products the picker would not have offered for
+                    // this one. Cheap in practice: the picker cannot be opened
+                    // until a warehouse is named.
+                    setLines([]);
+                    setProductById(new Map());
+                    setFieldErrors({});
+                  }}
+                />
+                {fieldErrors.warehouseId && (
+                  <p role="alert" className="mt-1.5 text-xs text-danger">
+                    {fieldErrors.warehouseId}
+                  </p>
+                )}
+                {lines.length > 0 && (
+                  <p className="mt-1.5 text-xs text-muted">
+                    Mengganti gudang akan mengosongkan daftar produk di bawah —
+                    barang yang boleh diisi berbeda per gudang.
+                  </p>
+                )}
+              </div>
+              <TextField
+                label="Tanggal"
+                name="entryDate"
+                type="date"
+                value={entryDate}
+                max={todayValue()}
+                onChange={(event) => {
+                  setEntryDate(event.target.value);
+                  setFieldErrors({});
+                }}
+                error={fieldErrors.entryDate}
+                hint="Tanggal stok itu dihitung, bukan tanggal dokumen dibuat."
+                disabled={saving}
+                required
+              />
+            </div>
+
+            <TextField
+              label="Catatan"
+              name="notes"
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              hint="Opsional — mis. dari mana angkanya, atau siapa yang menghitung."
+              maxLength={500}
+              disabled={saving}
             />
-            {fieldErrors.warehouseId && (
-              <p role="alert" className="mt-1.5 text-xs text-danger">
-                {fieldErrors.warehouseId}
-              </p>
-            )}
-            {lines.length > 0 && (
-              <p className="mt-1.5 text-xs text-muted">
-                Mengganti gudang akan mengosongkan daftar produk di bawah —
-                barang yang boleh diisi berbeda per gudang.
-              </p>
-            )}
           </div>
         </Card>
 
@@ -412,9 +507,17 @@ export function OpeningStockForm() {
                     <TableRow>
                       <TableHead>Produk</TableHead>
                       <TableHead className="text-center">Titipan</TableHead>
-                      <TableHead className="text-right">Jumlah</TableHead>
+                      {/* The two the document cannot be saved without, marked
+                          the way every other required field in the app is —
+                          the column header IS their label, so the `*` goes
+                          here rather than on each of the inputs below it. */}
+                      <TableHead className="text-right">
+                        Jumlah
+                        <span className="text-danger"> *</span>
+                      </TableHead>
                       <TableHead className="text-right">
                         Harga beli / unit
+                        <span className="text-danger"> *</span>
                       </TableHead>
                       <TableHead />
                     </TableRow>

@@ -359,6 +359,37 @@ export function AdjustmentIcon(props: IconProps) {
   );
 }
 
+/**
+ * Opening stock — a box with a downward arrow into it, on a baseline.
+ *
+ * READS AS "THE FIRST GOODS IN", which is the one thing that has to separate it
+ * from the adjustment beside it in the menu. The two sit next to each other
+ * deliberately (see nav.ts) because they are the pair somebody chooses between,
+ * and a wrong choice is invisible until a P&L is read — so they must not look
+ * alike at a glance.
+ *
+ * THE SILHOUETTE IS WHAT DOES THE WORK, not the detail inside it. A first
+ * attempt used the adjustment's own hexagonal crate with a different glyph in
+ * the middle, and at the 20px the sidebar actually renders, two hexagons read as
+ * the same icon however different their insides are. A wide horizontal crate is
+ * a different outline at any size.
+ *
+ * The baseline is the second distinguishing stroke: an adjustment corrects a
+ * balance that already exists, while this one establishes the floor a balance
+ * starts from. Deliberately NOT a plus, which the adjustment already carries and
+ * would make the two read as "add" and "add differently".
+ */
+export function OpeningStockIcon(props: IconProps) {
+  return (
+    <Base {...props}>
+      <rect x="4" y="9" width="16" height="8.5" rx="1.5" />
+      <path d="M12 2.5v4.5" />
+      <path d="M9.5 4.5L12 7l2.5-2.5" />
+      <path d="M4.5 20.5h15" />
+    </Base>
+  );
+}
+
 /* -------------------------------------------------------------- Purchasing */
 
 /** Purchasing — a shopping bag with a downward arrow (goods coming in). */

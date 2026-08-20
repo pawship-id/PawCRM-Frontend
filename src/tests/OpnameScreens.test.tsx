@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { OpnameScreen, OpnameSheet } from "@/features/inventory";
 import { stockOpnameService } from "@/services/stockOpname.service";
 import { categoryService } from "@/services/category.service";
+import { branchService } from "@/services/branch.service";
 import { warehouseService } from "@/services/warehouse.service";
 import { productService } from "@/services/product.service";
 import { ApiError } from "@/services/api-error";
@@ -26,6 +27,8 @@ jest.mock("@/utils/xlsx", () => ({
 jest.mock("@/services/stockOpname.service");
 jest.mock("@/services/category.service");
 jest.mock("@/services/warehouse.service");
+// The start card reads the branch list to fill its picker.
+jest.mock("@/services/branch.service");
 jest.mock("@/services/product.service");
 
 const push = jest.fn();
@@ -55,6 +58,7 @@ jest.mock("next/navigation", () => ({
  * The Radix selects are not driven — jsdom cannot do their pointer protocol.
  */
 const OPNAME_ID = "op1";
+const BRANCH_ID = "br1";
 const WAREHOUSE_ID = "wh1";
 
 /**
@@ -137,13 +141,18 @@ function product(overrides: Partial<Product> = {}): Product {
 beforeEach(() => {
   jest.clearAllMocks();
 
+  asMock(branchService.list).mockResolvedValue({
+    items: [{ _id: BRANCH_ID, name: "Cabang Pusat", isActive: true }],
+    pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+  } as never);
+
   asMock(warehouseService.list).mockResolvedValue({
     items: [
       {
         _id: WAREHOUSE_ID,
         tenantId: "t1",
         name: "Gudang Utama",
-        defaultBranchId: null,
+        defaultBranchId: BRANCH_ID,
         address: null,
         picName: null,
         picPhone: null,
@@ -264,6 +273,9 @@ describe("OpnameScreen", () => {
     await waitFor(() =>
       expect(stockOpnameService.create).toHaveBeenCalledWith({
         warehouseId: WAREHOUSE_ID,
+        // Pre-filled from the warehouse — the branch the server would have
+        // resolved anyway, so the ordinary case is nought clicks.
+        branchId: BRANCH_ID,
         categoryFilter: undefined,
         items: [],
       }),
@@ -273,6 +285,63 @@ describe("OpnameScreen", () => {
     );
     // No product picker here: what to count is decided on the sheet.
     expect(productService.list).not.toHaveBeenCalled();
+  });
+
+  /**
+   * WHICH SET OF BOOKS the count's variance lands on.
+   *
+   * `defaultBranchId` remains the answer for postings NOBODY chooses — a POS
+   * sale has no operator standing at a form. A count does, and a central
+   * warehouse serving three branches has one default that cannot speak for all
+   * of them.
+   */
+  it("sends the branch the sheet was opened for, counting at a shared warehouse", async () => {
+    const user = userEvent.setup();
+    asMock(stockOpnameService.list).mockResolvedValue(page([]));
+    asMock(stockOpnameService.create).mockResolvedValue(sheet());
+    asMock(branchService.list).mockResolvedValue({
+      items: [
+        { _id: BRANCH_ID, name: "Cabang Pusat", isActive: true },
+        { _id: "br2", name: "Cabang Bazar", isActive: true },
+      ],
+      pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
+    } as never);
+    // `defaultBranchId: null` is the central warehouse: it belongs to no branch
+    // and so appears under every one of them — which is the only way a second
+    // branch has anywhere to count here.
+    asMock(warehouseService.list).mockResolvedValue({
+      items: [
+        {
+          _id: WAREHOUSE_ID,
+          tenantId: "t1",
+          name: "Gudang Bersama",
+          defaultBranchId: null,
+          address: null,
+          picName: null,
+          picPhone: null,
+          isActive: true,
+          isDefault: true,
+          deletedAt: null,
+          createdAt: "",
+          updatedAt: "",
+        },
+      ],
+      pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+    } as never);
+
+    renderWithAuth(<OpnameScreen />);
+
+    await user.click(await screen.findByLabelText("Cabang"));
+    await user.click(
+      await screen.findByRole("option", { name: /Cabang Bazar/ }),
+    );
+    await user.click(screen.getByRole("button", { name: "+ Mulai opname" }));
+
+    await waitFor(() =>
+      expect(stockOpnameService.create).toHaveBeenCalledWith(
+        expect.objectContaining({ branchId: "br2" }),
+      ),
+    );
   });
 
   /**
@@ -595,7 +664,9 @@ describe("OpnameSheet", () => {
 
     // A POINT, not the comma `formatQty` would localise it to — a decimal comma
     // typed back into the payload is a value the API rejects.
-    expect(await screen.findByLabelText(/Qty fisik Shampoo/)).toHaveValue("2.5");
+    expect(await screen.findByLabelText(/Qty fisik Shampoo/)).toHaveValue(
+      "2.5",
+    );
   });
 
   /**
@@ -652,10 +723,9 @@ describe("OpnameSheet", () => {
     await user.clear(field);
     await user.type(field, "8");
 
-    await waitFor(
-      () => expect(stockOpnameService.update).toHaveBeenCalled(),
-      { timeout: 3000 },
-    );
+    await waitFor(() => expect(stockOpnameService.update).toHaveBeenCalled(), {
+      timeout: 3000,
+    });
 
     const [, payload] = asMock(stockOpnameService.update).mock.calls.at(-1)!;
     expect(payload.items?.[0]).toMatchObject({
@@ -681,10 +751,9 @@ describe("OpnameSheet", () => {
       await screen.findByLabelText(/Tandai Shampoo Anjing sudah dihitung/),
     );
 
-    await waitFor(
-      () => expect(stockOpnameService.update).toHaveBeenCalled(),
-      { timeout: 3000 },
-    );
+    await waitFor(() => expect(stockOpnameService.update).toHaveBeenCalled(), {
+      timeout: 3000,
+    });
 
     const [, payload] = asMock(stockOpnameService.update).mock.calls.at(-1)!;
     expect(payload.items?.[0]).toMatchObject({
@@ -758,7 +827,9 @@ describe("OpnameSheet", () => {
       });
 
     asMock(stockOpnameService.getById).mockResolvedValue(
-      sheet({ items: [expiring({ physicalQty: "10.0000", diffQty: "0.0000" })] }),
+      sheet({
+        items: [expiring({ physicalQty: "10.0000", diffQty: "0.0000" })],
+      }),
     );
     // The server's answer to that surplus, labelled as the real API returns it.
     asMock(stockOpnameService.update).mockResolvedValue(
@@ -1086,9 +1157,7 @@ describe("OpnameSheet", () => {
       );
 
       renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
-      await user.click(
-        await screen.findByRole("button", { name: "Hapus" }),
-      );
+      await user.click(await screen.findByRole("button", { name: "Hapus" }));
 
       expect(
         await screen.findByText(/Hapus produk dari lembar ini\?/),

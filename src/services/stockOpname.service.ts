@@ -144,8 +144,7 @@ export const stockOpnameService = {
    * endpoints; `journalEntryId` on the response is how to get there, and is
    * legitimately null when the differences were worth nothing.
    */
-  submit: (id: string) =>
-    apiClient.post<Opname>(`/stock-opnames/${id}/submit`),
+  submit: (id: string) => apiClient.post<Opname>(`/stock-opnames/${id}/submit`),
 
   /**
    * DELETE /stock-opnames/:id — soft delete, DRAFTS ONLY.

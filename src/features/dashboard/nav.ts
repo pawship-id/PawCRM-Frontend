@@ -23,6 +23,7 @@ import {
   OpnameIcon,
   TransferIcon,
   AdjustmentIcon,
+  OpeningStockIcon,
   PurchasingIcon,
   SupplierIcon,
   ReceiptIcon,
@@ -177,7 +178,9 @@ export const NAV_ITEMS: NavItem[] = [
          * is invisible until a P&L is read. Opening stock posts
          * `opening_balance` and credits 3101 Modal / Saldo Awal; an adjustment
          * credits 5201 Kerugian Persediaan, which is right for goods that
-         * vanished and absurd for a shop's starting inventory.
+         * vanished and absurd for a shop's starting inventory. Adjacent rather
+         * than merged: two named destinations are easier to aim at than one row
+         * that could be either.
          *
          * Gated on `products:create` rather than on `stockMovements:create` —
          * the SAME grant that already posts an opening balance inside a product
@@ -187,7 +190,7 @@ export const NAV_ITEMS: NavItem[] = [
          */
         label: "Stok Awal",
         href: "/dashboard/inventory/opening-stock",
-        icon: AdjustmentIcon,
+        icon: OpeningStockIcon,
         permission: { feature: "products", action: "create" },
       },
       {
@@ -202,12 +205,14 @@ export const NAV_ITEMS: NavItem[] = [
          * opening stock is entered, which was true only because nothing else
          * could: a manual adjustment credits 5201 Kerugian Persediaan, so a
          * tenant's whole starting inventory arrived as a negative expense. Stok
-         * Awal above posts it to capital, and this entry is back to being what
-         * its name says.
+         * Awal above posts it to capital.
          *
-         * Gated on `create`, so the seeded Staff role (read-only on the ledger)
-         * never sees it: a manual adjustment with no document behind it is the
-         * easiest way to hide a shortage.
+         * GATED ON `create` THOUGH THE PAGE ONLY NEEDS `read`. The route opens
+         * on a list now, which anybody who may page the stock card may read —
+         * but a menu row is an invitation, and inviting a role that cannot write
+         * to a screen whose one action is a write is an invitation to a disabled
+         * button. Reading it by URL still works, which is what the reports and
+         * the stock card's links rely on.
          */
         label: "Penyesuaian Stok",
         href: "/dashboard/inventory/adjustments",

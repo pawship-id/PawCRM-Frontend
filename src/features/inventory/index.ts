@@ -24,6 +24,13 @@ export { StockAdjustmentForm } from "./components/StockAdjustmentForm";
  * (3101) rather than on inventory loss (5201).
  */
 export { OpeningStockForm } from "./components/OpeningStockForm";
+/**
+ * The hand-typed stock documents: their list and their detail. Both take a
+ * `kind` — the two are the same table and the same reader over the same shape,
+ * differing only in which account the value landed on.
+ */
+export { StockEntriesScreen } from "./components/StockEntriesScreen";
+export { StockEntryDetail } from "./components/StockEntryDetail";
 export { StockTransferForm } from "./components/StockTransferForm";
 
 /**

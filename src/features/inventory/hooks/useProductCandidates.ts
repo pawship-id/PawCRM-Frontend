@@ -105,7 +105,7 @@ export function useProductCandidates(
       active = false;
       clearTimeout(timer);
     };
-  }, [search, categoryId]);
+  }, [search, categoryId, neverMovedInWarehouse]);
 
   return {
     products,

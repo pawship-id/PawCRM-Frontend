@@ -72,6 +72,11 @@ export interface FilterSelectProps<T> {
   placeholder?: string;
   /** Marks the choice as wrong — see FilterTrigger. */
   invalid?: boolean;
+  /**
+   * Red `*` on the caption. `layout="field"` only — a bar filter has no such
+   * thing, and the inline trigger has no caption to hang it on.
+   */
+  required?: boolean;
   disabled?: boolean;
   /**
    * Shown by the bar when this control is disabled. A control that greys out
@@ -94,6 +99,7 @@ export function FilterSelect<T>({
   active: activeOverride,
   placeholder,
   invalid,
+  required,
   disabled,
   disabledHint,
   align = "start",
@@ -161,6 +167,7 @@ export function FilterSelect<T>({
     return (
       <FilterField
         label={label}
+        required={required}
         // Only while it is actually greyed out: a permanent caption explaining
         // a state the field is not in reads as a warning about nothing. This is
         // the prop's first use — it was declared with the interface and left
