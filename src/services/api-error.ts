@@ -54,12 +54,32 @@ export class ApiError extends Error {
   }
 
   /**
-   * The message plus the backend's reason, for the single-string slots (an
-   * Alert, a dialog's error line). Falls back to the message when no reason was
-   * sent, so every call site can use this and never has to test for one.
+   * The message plus whatever the backend said about WHY, for the single-string
+   * slots (an Alert, a dialog's error line). Falls back to the message alone
+   * when it sent neither, so every call site can use this and never has to test
+   * for one.
+   *
+   * A VALIDATION FAILURE SAYS NOTHING ON ITS OWN. The backend answers a rejected
+   * schema with the bare string "Validation failed" and puts what to fix in
+   * `details` — so an Alert showing `message` renders a red box that reports a
+   * refusal and withholds the reason, which is worse than useless: it tells
+   * somebody to go looking without saying where. That happened on the stock
+   * adjustment form, where a date rule refused today's date for seven hours a
+   * day and the screen said only "Validation failed".
+   *
+   * The field names are the API's, not the form's, and they are English. That is
+   * a real cost and it is still the better trade: the reader can act on
+   * "entryDate cannot be in the future" and cannot act on "Validation failed".
+   * A form that wants better wording for a specific field has `fieldErrors`.
    */
   get fullMessage(): string {
-    return this.reason ? `${this.message} — ${this.reason}` : this.message;
+    if (this.reason) return `${this.message} — ${this.reason}`;
+
+    const detail = Object.entries(this.fieldErrors)
+      .map(([field, message]) => `${field} ${message}`)
+      .join("; ");
+
+    return detail === "" ? this.message : `${this.message} — ${detail}`;
   }
 
   /**

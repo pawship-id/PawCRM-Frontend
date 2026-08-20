@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import {
   Alert,
@@ -201,6 +202,8 @@ export function StockTransferForm() {
    */
   const lookups = useWarehouseOptions();
 
+  const router = useRouter();
+
   const [fromWarehouseId, setFrom] = useState("");
   const [toWarehouseId, setTo] = useState("");
   const [lines, setLines] = useState<LineDraft[]>([]);
@@ -212,11 +215,17 @@ export function StockTransferForm() {
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   /**
-   * Minted once per INTENT, not per request: it survives a failed attempt — so a
-   * retry of a save that may have landed replays instead of moving the stock
-   * twice — and is replaced only after one succeeds.
+   * Minted once per INTENT, not per request: it survives a failed attempt, so a
+   * retry of a save that may already have landed replays instead of moving the
+   * stock twice.
+   *
+   * NO SETTER, because a success leaves this route (see `handleSubmit`) and the
+   * next transfer starts on a fresh mount with a fresh key. While the form
+   * cleared itself in place, one had to be minted by hand at that moment —
+   * reusing the old key would have made the second transfer look like a replay
+   * of the first and move nothing.
    */
-  const [idempotencyKey, setIdempotencyKey] = useState(newIdempotencyKey);
+  const [idempotencyKey] = useState(newIdempotencyKey);
 
   // ACTIVE only, both ends. The API refuses a movement at an inactive warehouse,
   // so offering one would produce a rejection after the form was filled in.
@@ -437,19 +446,27 @@ export function StockTransferForm() {
 
       const productCount = payload.items.length;
 
-      setLines([]);
-      setNotes("");
-      setFieldErrors({});
-      // A new intent needs a new token; reusing this one would make the next
-      // transfer look like a replay of this one and move nothing.
-      setIdempotencyKey(newIdempotencyKey);
-
       // The row count is the server's. It writes a pair per lot per product, so
       // an odd number here would itself be worth noticing — which is why the
       // message reports rows rather than deriving them from what was typed.
       swalToast(
         `Transfer tersimpan — ${productCount} produk, ${written.length} baris ditulis.`,
       );
+
+      /**
+       * BACK TO THE LIST, where the transfer just written is the top row.
+       *
+       * This form used to clear itself and stay put, which was the only thing it
+       * could do while this route WAS the form: there was nowhere to go, and no
+       * list that would have shown what had just been filed. A toast over an
+       * empty form is a receipt that disappears in four seconds.
+       *
+       * `push`, not `replace`: Back should return to the form somebody may have
+       * meant to fill in again, not to whatever they were looking at before it.
+       * The state is left as it is — the component unmounts on navigation, and a
+       * fresh mount starts fresh, including a new idempotency key.
+       */
+      router.push("/dashboard/inventory/transfers");
     } catch (error) {
       setFormError(
         error instanceof ApiError

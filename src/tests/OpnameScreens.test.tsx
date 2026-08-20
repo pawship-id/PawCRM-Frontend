@@ -777,8 +777,12 @@ describe("OpnameSheet", () => {
   });
 
   /**
-   * Found stock of goods that expire needs a lot, or the submit is refused.
-   * Saying so at the shelf beats a 400 after the counter has walked away.
+   * Found stock of goods that expire needs a DATED lot, or the submit is
+   * refused. Saying so at the shelf beats a 400 after the counter has walked
+   * away.
+   *
+   * The code is asked for but not required — left blank it becomes
+   * `sku:tanggal-expired` — so the warning names the date and nothing else.
    */
   it("asks for a lot when an expiring product is found in surplus", async () => {
     asMock(stockOpnameService.getById).mockResolvedValue(
@@ -801,8 +805,49 @@ describe("OpnameSheet", () => {
       await screen.findByLabelText(/Kode batch Vaksin Rabies/),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/belum punya kode batch dan tanggal kedaluwarsa/),
+      screen.getByText(/belum punya tanggal kedaluwarsa/),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/belum punya kode batch/),
+    ).not.toBeInTheDocument();
+  });
+
+  /**
+   * THE PLACEHOLDER IS THE EXPLANATION. A counter who leaves the code blank can
+   * read what the lot will be called, which beats a sentence saying one will be
+   * generated — and it only appears once the date it derives from is there.
+   */
+  it("previews the code the found lot will take, once it is dated", async () => {
+    const user = userEvent.setup();
+
+    asMock(stockOpnameService.getById).mockResolvedValue(
+      sheet({
+        items: [
+          item({
+            productName: "Vaksin Rabies",
+            productSku: "VAK-RAB",
+            productHasExpiry: true,
+            physicalQty: "13.0000",
+            diffQty: "3.0000",
+            countedAt: "2026-08-03T09:14:00.000Z",
+          }),
+        ],
+      }),
+    );
+
+    renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+
+    const code = await screen.findByLabelText(/Kode batch Vaksin Rabies/);
+    expect(code).toHaveAttribute("placeholder", "Kode batch (opsional)");
+
+    await user.type(
+      screen.getByLabelText(/Tanggal kedaluwarsa Vaksin Rabies/),
+      "2027-03-01",
+    );
+
+    await waitFor(() =>
+      expect(code).toHaveAttribute("placeholder", "VAK-RAB:2027-03-01"),
+    );
   });
 
   /**

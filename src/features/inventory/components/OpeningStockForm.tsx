@@ -27,6 +27,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { autoBatchCode } from "@/lib/batchCode";
+import { blockingReason } from "../utils/blocker";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { stockEntryService } from "@/services/stockEntry.service";
@@ -231,13 +233,19 @@ export function OpeningStockForm() {
           "Wajib diisi: tanpa harga, stoknya masuk bernilai nol.";
       } else if (!isDecimal(line.costPerUnit)) {
         next[`${at}.cost`] = "Gunakan angka, maksimal 4 desimal.";
+      } else if (!isPositive(line.costPerUnit)) {
+        // The server refuses it too: this is one of the three paths that
+        // ESTABLISH a product's average, and a zero taken here becomes it.
+        next[`${at}.cost`] =
+          "Harus lebih dari 0 — nol akan mengunci HPP produk ini di nol.";
       }
 
       // Asked while the counter is still at the shelf, rather than surfaced as
       // a 400 after they have walked away.
       if (product?.hasExpiry) {
-        if (line.batchCode.trim() === "")
-          next[`${at}.batchCode`] = "Produk ini melacak kedaluwarsa.";
+        // Only the DATE is asked for. A blank code is filled from it — see
+        // `autoBatchCode` — and asking for one anyway is how lots end up named
+        // "1".
         if (line.expiryDate === "")
           next[`${at}.expiryDate`] = "Produk ini melacak kedaluwarsa.";
       }
@@ -249,7 +257,10 @@ export function OpeningStockForm() {
   }
 
   /** The first complaint, for the note under a disabled button. */
-  const blocking = Object.values(collectErrors())[0] ?? null;
+  const blocking = blockingReason(
+    collectErrors(),
+    (productId) => productById.get(productId)?.name,
+  );
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -279,7 +290,11 @@ export function OpeningStockForm() {
             costPerUnit: line.costPerUnit.trim(),
             ...(product?.hasExpiry
               ? {
-                  batchCode: line.batchCode.trim(),
+                  // Omitted rather than sent blank when nobody typed one: the
+                  // gateway fills it, and "" would claim a code was meant.
+                  ...(line.batchCode.trim() !== ""
+                    ? { batchCode: line.batchCode.trim() }
+                    : {}),
                   expiryDate: line.expiryDate,
                 }
               : {}),
@@ -298,7 +313,7 @@ export function OpeningStockForm() {
       // would drop exactly that.
       setFormError(
         error instanceof ApiError
-          ? error.message
+          ? error.fullMessage
           : "Terjadi kesalahan. Coba lagi.",
       );
       setSaving(false);
@@ -526,12 +541,10 @@ export function OpeningStockForm() {
                     {lines.map((line, index) => {
                       const at = `line.${line.productId}`;
                       const product = productById.get(line.productId);
-                      // Both halves of a lot are missing until both are typed —
-                      // a code with no date is not a lot.
+                      // The DATE is what is missing: a lot with no code still
+                      // gets one, a lot with no expiry cannot be ordered by FEFO.
                       const lotMissing =
-                        product?.hasExpiry === true &&
-                        (line.batchCode.trim() === "" ||
-                          line.expiryDate === "");
+                        product?.hasExpiry === true && line.expiryDate === "";
 
                       return (
                         // Keyed on the product, not the index: a product appears
@@ -657,11 +670,20 @@ export function OpeningStockForm() {
                                           batchCode: event.target.value,
                                         })
                                       }
-                                      placeholder="Kode batch"
+                                      /* The derived name, but only once the
+                                         date it derives from exists — a preview
+                                         of a code the server will not use is
+                                         worse than no preview. */
+                                      placeholder={
+                                        line.expiryDate
+                                          ? autoBatchCode(
+                                              product.sku,
+                                              line.expiryDate,
+                                              "",
+                                            )
+                                          : "Kode batch (opsional)"
+                                      }
                                       className="w-44"
-                                      aria-invalid={Boolean(
-                                        fieldErrors[`${at}.batchCode`],
-                                      )}
                                       disabled={saving}
                                     />
                                     <Input

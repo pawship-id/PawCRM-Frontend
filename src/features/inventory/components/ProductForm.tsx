@@ -1363,7 +1363,14 @@ function ProductFormFields({
        * nothing — a hole that only surfaces at the first stocktake, by which
        * time the original price is a question nobody can answer.
        *
-       * Zero is allowed, deliberately: donated stock and free samples are real.
+       * ZERO IS REFUSED, and this is one of the three paths that ESTABLISH a
+       * product's weighted average — the others being the opening-stock document
+       * and the importer. A zero taken at any of them is not a number anybody
+       * corrects later: it BECOMES the average, every sale of those goods is
+       * costed at nothing and reads as 100% margin, and nobody notices until a
+       * stocktake. It used to be allowed on the grounds that donated stock is
+       * real, which it is — but a mistyped zero is far commoner, and only one of
+       * the two is silent.
        */
       const COST_REQUIRED =
         "Harga beli wajib — angka ini yang membentuk jurnal persediaan stok awal.";
@@ -1377,6 +1384,9 @@ function ProductFormFields({
        * first stock card. Zero is refused for the same reason: a movement of
        * nothing is not an opening balance, it is the switch turned off.
        */
+      const COST_ABOVE_ZERO =
+        "Harga beli harus lebih dari 0 — nol akan mengunci HPP produk ini di nol.";
+
       const QTY_REQUIRED = "Jumlah stok awal wajib diisi.";
 
       if (mode === "standalone") {
@@ -1391,6 +1401,8 @@ function ProductFormFields({
           next.openingCost = COST_REQUIRED;
         } else if (!isDecimal(openingCost)) {
           next.openingCost = "Gunakan angka, maksimal 4 desimal.";
+        } else if (!isPositive(openingCost)) {
+          next.openingCost = COST_ABOVE_ZERO;
         }
       }
 
@@ -1438,21 +1450,34 @@ function ProductFormFields({
             const key = row.combo.join("|");
             nextRows[key] = { ...nextRows[key], openingCost: COST_REQUIRED };
           });
+
+        // And a zero is refused for the same reason a blank is: it BECOMES this
+        // variant's average, and every sale of it is then costed at nothing.
+        variantRows
+          .filter(
+            (row) =>
+              row.openingCost.trim() !== "" &&
+              isDecimal(row.openingCost) &&
+              !isPositive(row.openingCost),
+          )
+          .forEach((row) => {
+            const key = row.combo.join("|");
+            nextRows[key] = { ...nextRows[key], openingCost: COST_ABOVE_ZERO };
+          });
       }
 
       /**
-       * A lot has to be named for goods that expire.
+       * A lot has to be DATED for goods that expire.
        *
        * The promise `hasExpiry` makes is that every receipt can be picked FEFO
-       * and reported on before it turns — which needs a batch code and a date.
-       * The API refuses the movement without them, so asking here keeps the
-       * refusal on the field instead of on a saved product.
+       * and reported on before it turns — which needs a date. The API refuses
+       * the movement without one, so asking here keeps the refusal on the field
+       * instead of on a saved product.
+       *
+       * The CODE is not asked for: left blank it is filled with
+       * `sku:tanggal-expired` — see `autoBatchCode`.
        */
       if (hasExpiry && opensAnyStock()) {
-        if (openingBatchCode.trim() === "") {
-          next.openingBatchCode =
-            "Produk kedaluwarsa: kode batch wajib diisi untuk stok awal.";
-        }
         if (openingExpiryDate.trim() === "") {
           next.openingExpiryDate =
             "Produk kedaluwarsa: tanggal kedaluwarsa wajib diisi untuk stok awal.";
@@ -1533,7 +1558,11 @@ function ProductFormFields({
       costPerUnit: cost.trim(),
       ...(hasExpiry
         ? {
-            batchCode: openingBatchCode.trim(),
+            // Omitted rather than sent blank when nobody typed one: the gateway
+            // fills it, and "" would claim a code was meant.
+            ...(openingBatchCode.trim() !== ""
+              ? { batchCode: openingBatchCode.trim() }
+              : {}),
             expiryDate: openingExpiryDate.trim(),
           }
         : {}),

@@ -120,6 +120,9 @@ function movement(overrides: Partial<StockMovement> = {}): StockMovement {
     createdByName: null,
     warehouseName: "Gudang Pusat",
     destinationWarehouseName: null,
+    productName: null,
+    productSku: null,
+    productUnit: null,
     // Null for a goods receipt: that collection does not exist in the backend
     // yet, so there is no number to resolve. Only opname rows carry one.
     referenceNo: null,

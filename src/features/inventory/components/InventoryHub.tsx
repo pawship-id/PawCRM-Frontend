@@ -119,7 +119,7 @@ const ACTIONS: Array<{
     href: "/dashboard/inventory/transfers",
     title: "Transfer Stok",
     description:
-      "Pindahkan barang antar gudang. Batch beserta tanggal kedaluwarsanya ikut pindah.",
+      "Riwayat perpindahan barang antar gudang, dan tempat mencatat yang baru. Batch beserta tanggal kedaluwarsanya ikut pindah.",
     feature: "stockMovements",
     action: "create",
   },

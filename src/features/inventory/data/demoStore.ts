@@ -583,6 +583,9 @@ function mv(
     createdByName: null,
     warehouseName: null,
     destinationWarehouseName: null,
+    productName: null,
+    productSku: null,
+    productUnit: null,
     referenceNo: null,
 
     ...extra,

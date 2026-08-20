@@ -7,6 +7,7 @@ import {
   StockTransferForm,
 } from "@/features/inventory";
 import { JournalPreview } from "@/features/inventory/components/JournalPreview";
+import { blockingReason } from "@/features/inventory/utils/blocker";
 import { productService } from "@/services/product.service";
 import { branchService } from "@/services/branch.service";
 import { warehouseService } from "@/services/warehouse.service";
@@ -411,6 +412,8 @@ describe("StockAdjustmentForm", () => {
 
     await user.type(await screen.findByLabelText(/^Stok baru/), "20");
 
+    // Said once, under the disabled button — the table carries no messages of
+    // its own now, only the required markers in its headers.
     expect(screen.getByText(/Tidak ada selisih/)).toBeInTheDocument();
     expect(create).not.toHaveBeenCalled();
   });
@@ -480,6 +483,283 @@ describe("StockAdjustmentForm", () => {
    * A LOT-TRACKED PRODUCT IS ADJUSTED ONE LOT AT A TIME: it has no single
    * balance to correct, and the person counting is holding a particular box.
    */
+  /**
+   * THE PICKER IS A COLUMN, not a row of its own. A lot-tracked product has one
+   * balance PER LOT, and the Stok sistem beside it is read from whichever lot is
+   * named — putting the question on a separate row from its answer is what this
+   * replaced.
+   */
+  it("puts the batch picker in the product's own row", async () => {
+    mockSheet([product({ hasExpiry: true })], [lot()]);
+    const user = await renderSheet();
+    await fillHeader(user);
+
+    const row = (await screen.findByText("Royal Canin Adult 3kg")).closest(
+      "tr",
+    );
+    expect(within(row!).getByLabelText(/^Batch /)).toBeInTheDocument();
+    expect(within(row!).getByLabelText(/^Stok baru/)).toBeInTheDocument();
+  });
+
+  /**
+   * A COLUMN NOBODY ON THIS SHEET CAN FILL is a column of dashes, paid for in
+   * width on every row.
+   */
+  it("leaves the batch column out when nothing on the sheet tracks lots", async () => {
+    mockSheet();
+    const user = await renderSheet();
+    await fillHeader(user);
+
+    await screen.findByLabelText(/^Stok baru/);
+    expect(screen.queryByRole("columnheader", { name: "Batch" })).toBeNull();
+  });
+
+  /**
+   * ONE ROW PER PRODUCT, WHOLE. Everything a line needs is a cell in its own
+   * row — the picker, the new lot's two halves, the quantities, the price —
+   * so a reader follows one line left to right instead of down and back.
+   */
+  it("keeps a new lot's fields on the product's own row", async () => {
+    mockSheet([product({ hasExpiry: true })], [lot()]);
+    const user = await renderSheet();
+    await fillHeader(user);
+
+    await user.click(await screen.findByLabelText(/^Batch /));
+    await user.click(await screen.findByRole("option", { name: /Batch baru/ }));
+
+    const row = (await screen.findByText("Royal Canin Adult 3kg")).closest(
+      "tr",
+    );
+    expect(within(row!).getByLabelText(/Kode batch baru/)).toBeInTheDocument();
+    expect(
+      within(row!).getByLabelText(/Tanggal kedaluwarsa/),
+    ).toBeInTheDocument();
+    expect(within(row!).getByLabelText(/^Stok baru/)).toBeInTheDocument();
+  });
+
+  /**
+   * The two columns arrive together and leave together — a lot is only a lot
+   * when both halves are there — and both are absent until some line names one.
+   */
+  it("leaves both lot columns out until a batch is chosen", async () => {
+    mockSheet([product({ hasExpiry: true })], [lot()]);
+    const user = await renderSheet();
+    await fillHeader(user);
+
+    await screen.findByLabelText(/^Batch /);
+
+    expect(
+      screen.queryByRole("columnheader", { name: "Kode batch" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("columnheader", { name: "Kedaluwarsa" }),
+    ).toBeNull();
+  });
+
+  /**
+   * NAMING A LOT FILLS THE TWO COLUMNS RATHER THAN DASHING THEM.
+   *
+   * The picker says `WSK-A26 - sisa 8`, which identifies the lot but hides what
+   * the row is about: goods are going into a batch that expires on a particular
+   * day, and that day belongs on the row being read. Dashes said the opposite —
+   * that this lot has no code and no date — about a lot that has both.
+   *
+   * Disabled, because they describe the goods. Nothing on an adjustment sheet
+   * may rewrite a lot that already exists.
+   */
+  it("shows a named lot's code and date, read-only", async () => {
+    mockSheet([product({ hasExpiry: true })], [lot()]);
+    const user = await renderSheet();
+    await fillHeader(user);
+
+    await user.click(await screen.findByLabelText(/^Batch /));
+    await user.click(await screen.findByRole("option", { name: /WSK-A26/ }));
+
+    const code = await screen.findByLabelText(/^Kode batch Royal Canin/);
+    expect(code).toHaveValue("WSK-A26");
+    expect(code).toBeDisabled();
+
+    const expiry = screen.getByLabelText(/^Kedaluwarsa Royal Canin/);
+    expect(expiry).toHaveValue("2026-12-31");
+    expect(expiry).toBeDisabled();
+
+    // The date is not required of anybody here — there is nothing to type.
+    expect(
+      screen.queryByRole("columnheader", { name: /Kedaluwarsa \*/ }),
+    ).toBeNull();
+  });
+
+  /** A named lot is read, a new one is typed — and only one of them is sent. */
+  it("sends the named lot's id, not its code or its date", async () => {
+    const create = mockSheet([product({ hasExpiry: true })], [lot()]);
+    const user = await renderSheet();
+    await fillHeader(user);
+
+    await user.click(await screen.findByLabelText(/^Batch /));
+    await user.click(await screen.findByRole("option", { name: /WSK-A26/ }));
+    await user.type(screen.getByLabelText(/^Stok baru/), "12");
+    await user.click(
+      screen.getByRole("button", { name: /Simpan penyesuaian/ }),
+    );
+
+    await waitFor(() => expect(create).toHaveBeenCalled());
+    const [line] = create.mock.calls[0][0].lines;
+    expect(line.batchId).toBe("lot-a");
+    // The keys are present but empty — the payload is assembled with a fixed
+    // shape, and naming a lot and creating one are mutually exclusive.
+    expect(line.batchCode).toBeUndefined();
+    expect(line.expiryDate).toBeUndefined();
+  });
+
+  /**
+   * REQUIRED IS SAID UP FRONT, not complained about afterwards.
+   *
+   * A red border and a sentence under the row told somebody they had got it
+   * wrong; the asterisk tells them before they do — the same marker `TextField`
+   * puts after a label, so the table and the fields above it agree — and the
+   * disabled save button names what is still missing.
+   *
+   * ONLY THE DATE CARRIES ONE. The code is optional: left blank it is filled
+   * with `sku:tanggal-expired`, and an asterisk over a field nobody has to type
+   * is the marker meaning nothing the next time it appears.
+   */
+  it("marks the new lot's date required and its code not", async () => {
+    mockSheet([product({ hasExpiry: true })], [lot()]);
+    const user = await renderSheet();
+    await fillHeader(user);
+
+    await user.click(await screen.findByLabelText(/^Batch /));
+    await user.click(await screen.findByRole("option", { name: /Batch baru/ }));
+
+    expect(
+      await screen.findByRole("columnheader", { name: /Kedaluwarsa \*/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("columnheader", { name: "Kode batch" }),
+    ).toBeInTheDocument();
+  });
+
+  /**
+   * THE PLACEHOLDER IS THE EXPLANATION. Somebody who leaves the code blank can
+   * read what the lot will be called before they save, which is worth more than
+   * a sentence under the table saying a code will be generated.
+   */
+  it("previews the code the lot will take when none is typed", async () => {
+    const create = mockSheet([product({ hasExpiry: true })], [lot()]);
+    const user = await renderSheet();
+    await fillHeader(user);
+
+    await user.click(await screen.findByLabelText(/^Batch /));
+    await user.click(await screen.findByRole("option", { name: /Batch baru/ }));
+    await user.type(screen.getByLabelText(/Tanggal kedaluwarsa/), "2027-03-01");
+    await user.type(screen.getByLabelText(/^Stok baru/), "5");
+
+    expect(screen.getByLabelText(/Kode batch baru/)).toHaveAttribute(
+      "placeholder",
+      "RC-3KG:2027-03-01",
+    );
+
+    // And it saves with the code left blank, because the server fills it too.
+    await user.click(
+      screen.getByRole("button", { name: /Simpan penyesuaian/ }),
+    );
+
+    await waitFor(() => expect(create).toHaveBeenCalled());
+    expect(create.mock.calls[0][0].lines[0].batchCode).toBeUndefined();
+  });
+
+  /**
+   * THE REFUSAL NAMES THE ROW, not just the rule.
+   *
+   * "Pilih batch dulu." is unanswerable on a sheet of twenty lines: it states a
+   * rule the reader already agrees with and leaves them to find which row broke
+   * it. The product — variant name included, as the Produk column spells it —
+   * is what turns the message into somewhere to go.
+   */
+  it("names the product the save is waiting on", async () => {
+    mockSheet(
+      [
+        product({ hasExpiry: true }),
+        product({
+          _id: "p2",
+          sku: "WSK-1KG",
+          name: "Whiskas Tuna 1kg",
+          hasExpiry: true,
+        }),
+      ],
+      [lot()],
+    );
+    const user = await renderSheet();
+    await pickWarehouse(user);
+    await user.type(screen.getByLabelText(/Alasan/), "Rusak kena air");
+    await addProducts(user, 2);
+
+    // The first row is settled, so the complaint belongs to the second.
+    await user.click(await screen.findByLabelText(/^Batch Royal Canin/));
+    await user.click(await screen.findByRole("option", { name: /WSK-A26/ }));
+    await user.type(screen.getByLabelText(/^Stok baru Royal Canin/), "12");
+
+    expect(
+      screen.getByRole("button", { name: /Simpan penyesuaian/ }),
+    ).toBeDisabled();
+    expect(
+      await screen.findByText(/Whiskas Tuna 1kg - Pilih batch dulu/),
+    ).toBeInTheDocument();
+  });
+
+  /** The refusal itself lives on the button, and it names the field. */
+  it("will not save a new lot with no expiry date, and says which field", async () => {
+    const create = mockSheet([product({ hasExpiry: true })], [lot()]);
+    const user = await renderSheet();
+    await fillHeader(user);
+
+    await user.click(await screen.findByLabelText(/^Batch /));
+    await user.click(await screen.findByRole("option", { name: /Batch baru/ }));
+    await user.type(await screen.findByLabelText(/Kode batch baru/), "WSK-B26");
+    await user.type(screen.getByLabelText(/^Stok baru/), "5");
+
+    expect(
+      screen.getByRole("button", { name: /Simpan penyesuaian/ }),
+    ).toBeDisabled();
+    expect(
+      await screen.findByText(/Tanggal kedaluwarsa wajib diisi/),
+    ).toBeInTheDocument();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  /** Nothing red inside the table: the marker carries it, not the cells. */
+  it("leaves the cells unmarked while a required one is empty", async () => {
+    mockSheet([product({ hasExpiry: true })], [lot()]);
+    const user = await renderSheet();
+    await fillHeader(user);
+
+    await user.click(await screen.findByLabelText(/^Batch /));
+    await user.click(await screen.findByRole("option", { name: /Batch baru/ }));
+
+    const table = await screen.findByRole("table");
+    expect(within(table).queryByRole("alert")).toBeNull();
+    expect(screen.getByLabelText(/Tanggal kedaluwarsa/)).not.toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+  });
+
+  /** Only a lot being CREATED needs the two extra columns: a code and a date. */
+  it("asks for the new lot's code and date in the row, not for an existing one", async () => {
+    mockSheet([product({ hasExpiry: true })], [lot()]);
+    const user = await renderSheet();
+    await fillHeader(user);
+
+    await user.click(await screen.findByLabelText(/^Batch /));
+    await user.click(await screen.findByRole("option", { name: /WSK-A26/ }));
+    expect(screen.queryByLabelText(/Kode batch baru/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText(/^Batch /));
+    await user.click(await screen.findByRole("option", { name: /Batch baru/ }));
+    expect(await screen.findByLabelText(/Kode batch baru/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Tanggal kedaluwarsa/)).toBeInTheDocument();
+  });
+
   it("asks a lot-tracked product which batch, and counts against that lot", async () => {
     mockSheet([product({ hasExpiry: true })], [lot()]);
     const user = await renderSheet();
@@ -776,6 +1056,27 @@ describe("StockTransferForm", () => {
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({ items: [{ productId: PRODUCT, qty: "20" }] }),
       ),
+    );
+  });
+
+  /**
+   * The half of "it worked" a toast cannot do — and the reason this form no
+   * longer clears itself in place. A transfer mints no document number and posts
+   * no journal, so a cleared form and a four-second toast used to be the entire
+   * receipt.
+   */
+  it("goes back to the list once the transfer lands", async () => {
+    mockLookups();
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<StockTransferForm />);
+
+    await addProducts(user);
+    await user.type(await screen.findByLabelText(/^Jumlah/), "5");
+    await user.click(screen.getByRole("button", { name: /Simpan transfer/ }));
+
+    await waitFor(() =>
+      expect(push).toHaveBeenCalledWith("/dashboard/inventory/transfers"),
     );
   });
 
@@ -1091,6 +1392,27 @@ describe("OpeningStockForm", () => {
     expect(post).not.toHaveBeenCalled();
   });
 
+  /**
+   * ZERO IS REFUSED HERE TOO. The opening-stock document is one of the three
+   * paths that ESTABLISH a product's weighted average, and a zero taken at any
+   * of them BECOMES that average — every later sale of those goods is costed at
+   * nothing and reads as 100% margin.
+   */
+  it("will not submit a purchase price of zero", async () => {
+    const post = mockSheet();
+    const user = await renderSheet();
+
+    await pickWarehouse(user);
+    await addProducts(user);
+    await user.type(await screen.findByLabelText(/^Jumlah/), "24");
+    await user.type(screen.getByLabelText(/Harga beli per unit/), "0");
+
+    expect(
+      screen.getByRole("button", { name: /Simpan stok awal/ }),
+    ).toBeDisabled();
+    expect(post).not.toHaveBeenCalled();
+  });
+
   /** Asked while the counter is at the shelf, not surfaced as a 400 later. */
   it("asks an expiring product for its batch on the row itself", async () => {
     mockSheet([product({ hasExpiry: true })]);
@@ -1218,5 +1540,46 @@ describe("OpeningStockForm", () => {
     await waitFor(() => jest.advanceTimersByTime(400));
 
     expect(within(dialog).queryByRole("checkbox")).not.toBeInTheDocument();
+  });
+});
+
+/* --------------------------------------------------- naming the blocked row */
+
+/**
+ * Asserted on the function rather than through the sheet, because the case that
+ * matters is unreachable from it: a header rule files under a key with no dot in
+ * it, so the guard against prefixing one is invisible through the UI — every
+ * input the form can produce comes out right whether the guard is there or not.
+ * Given a `nameOf` that answers anything, it stops being invisible.
+ */
+describe("blockingReason", () => {
+  const nameOf = (productId: string) =>
+    ({ p1: "Royal Canin Adult 3kg" })[productId];
+
+  it("names the row a per-line rule is about", () => {
+    expect(
+      blockingReason({ "line.p1.batch": "Pilih batch dulu." }, nameOf),
+    ).toBe("Royal Canin Adult 3kg - Pilih batch dulu.");
+  });
+
+  /**
+   * There is one Gudang on the form, so prefixing it would repeat the label the
+   * reader is already looking at.
+   */
+  it("leaves a header rule unprefixed", () => {
+    expect(
+      blockingReason({ warehouseId: "Pilih gudang dulu." }, () => "APAPUN"),
+    ).toBe("Pilih gudang dulu.");
+  });
+
+  /** A row whose product the sheet cannot resolve still says what is wrong. */
+  it("falls back to the bare message when the product is unknown", () => {
+    expect(
+      blockingReason({ "line.p9.batch": "Pilih batch dulu." }, nameOf),
+    ).toBe("Pilih batch dulu.");
+  });
+
+  it("has nothing to say when nothing is wrong", () => {
+    expect(blockingReason({}, nameOf)).toBeNull();
   });
 });

@@ -6,13 +6,23 @@ import { ApiError } from "@/services/api-error";
 import { stockEntryService } from "@/services/stockEntry.service";
 import { branchService } from "@/services/branch.service";
 import { warehouseService } from "@/services/warehouse.service";
-import type { StockEntry, StockEntryKind } from "@/types/inventory";
+import type {
+  StockEntry,
+  StockEntryKind,
+  StockEntrySort,
+} from "@/types/inventory";
 import type { Branch, Warehouse } from "@/types/api";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 
 /** The knobs the list offers. `kind` is fixed by the screen, never by the user. */
 export interface StockEntriesQuery {
   search: string;
+  /**
+   * Every list has an ordering, so this is never unset — Reset returns it to
+   * `newest` rather than clearing it, and it is not counted in the panel's
+   * badge. See docs/ui-rules.md §8.
+   */
+  sort: StockEntrySort;
   /**
    * Both scopes are offered because they are NOT 1:1 — a central warehouse can
    * serve three branches, and a branch can hold two warehouses. Narrowing by one
@@ -25,6 +35,7 @@ export interface StockEntriesQuery {
 
 const DEFAULT_QUERY: StockEntriesQuery = {
   search: "",
+  sort: "newest",
   branchId: "",
   warehouseId: "",
   page: 1,
@@ -137,6 +148,7 @@ export function useStockEntries(kind: StockEntryKind): UseStockEntriesResult {
         search: debounced.search.trim() || undefined,
         branchId: debounced.branchId || undefined,
         warehouseId: debounced.warehouseId || undefined,
+        sort: debounced.sort,
       })
       .then((result) => {
         if (!active) return;
@@ -163,6 +175,7 @@ export function useStockEntries(kind: StockEntryKind): UseStockEntriesResult {
     debounced.search,
     debounced.branchId,
     debounced.warehouseId,
+    debounced.sort,
     nonce,
   ]);
 

@@ -7,7 +7,7 @@ import {
   ReceiptForm,
   ReceiptsScreen,
 } from "@/features/purchasing";
-import { autoBatchCode } from "@/features/purchasing/components/ReceiptForm";
+import { autoBatchCode } from "@/lib/batchCode";
 import { goodsReceiptService } from "@/services/goodsReceipt.service";
 import { purchaseReturnService } from "@/services/purchaseReturn.service";
 import { productBatchService } from "@/services/productBatch.service";
@@ -252,7 +252,9 @@ function page<T>(items: T[]) {
 beforeEach(() => {
   jest.clearAllMocks();
 
-  asMock(goodsReceiptService.list).mockResolvedValue(page([listRow()]) as never);
+  asMock(goodsReceiptService.list).mockResolvedValue(
+    page([listRow()]) as never,
+  );
   asMock(goodsReceiptService.summary).mockResolvedValue({
     items: [],
     totalPurchased: "150000.0000",
@@ -330,9 +332,7 @@ describe("ReceiptsScreen", () => {
     const panel = await openFilters(user);
 
     await user.click(within(panel).getByLabelText("Urutkan"));
-    await user.click(
-      await screen.findByRole("option", { name: "Nomor A–Z" }),
-    );
+    await user.click(await screen.findByRole("option", { name: "Nomor A–Z" }));
     await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
 
     await waitFor(() =>
@@ -363,9 +363,9 @@ describe("ReceiptsScreen", () => {
         expect.objectContaining({ sort: "oldest" }),
       ),
     );
-    expect(
-      screen.getByRole("button", { name: "Filter" }),
-    ).toHaveTextContent("Filter");
+    expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
+      "Filter",
+    );
     expect(
       screen.getByRole("button", { name: "Filter" }),
     ).not.toHaveTextContent("(1)");
@@ -450,14 +450,16 @@ describe("ReceiptDetail", () => {
   it("says the debt exists even before the supplier's invoice is filed", async () => {
     renderWithAuth(<ReceiptDetail receiptId={RECEIPT_ID} />);
 
-    expect(
-      await screen.findByText(/Utang sudah tercatat/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Utang sudah tercatat/)).toBeInTheDocument();
   });
 
   it("says a consignment owes nothing at all", async () => {
     asMock(goodsReceiptService.getById).mockResolvedValue(
-      detail({ purchaseType: "konsinyasi", taxAmount: "0.0000", journalEntryId: null }),
+      detail({
+        purchaseType: "konsinyasi",
+        taxAmount: "0.0000",
+        journalEntryId: null,
+      }),
     );
 
     renderWithAuth(<ReceiptDetail receiptId={RECEIPT_ID} />);
@@ -469,7 +471,9 @@ describe("ReceiptDetail", () => {
     renderWithAuth(<ReceiptDetail receiptId={RECEIPT_ID} />);
 
     await screen.findByText("GR-260806-001");
-    expect(screen.queryByRole("button", { name: /Ubah|Edit|Hapus/ })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /Ubah|Edit|Hapus/ }),
+    ).toBeNull();
     expect(
       screen.getByText(/tidak bisa diedit atau dihapus/),
     ).toBeInTheDocument();

@@ -118,6 +118,16 @@ export interface StockMovement {
   warehouseName: string | null;
   destinationWarehouseName: string | null;
   /**
+   * The product's own labels.
+   *
+   * The stock card never needed them — it is one product by definition and its
+   * name is in the heading. A view spanning SEVERAL products is the opposite
+   * shape: one document, a dozen products, and the name IS the row.
+   */
+  productName: string | null;
+  productSku: string | null;
+  productUnit: string | null;
+  /**
    * The NUMBER of the document behind this row — "OPN-2026-0007" where
    * `reference.type` only says `stock_opname`.
    *
@@ -1389,6 +1399,91 @@ export interface StockMovementListQuery {
   sort?: MovementSort;
 }
 
+/**
+ * GET /api/stock-movements/transfers — one row per TRANSFER, not per movement.
+ *
+ * WHY A SEPARATE SHAPE AND NOT `StockMovement[]`. A transfer is the one manual
+ * posting with no document behind it: there is no `stocktransfers` collection,
+ * so its rows are held together only by the correlation id the server mints
+ * into `reference.id`. The server groups on that id and pages the GROUPS —
+ * grouping a page of the ledger in the browser would page ROWS, so one transfer
+ * could straddle a boundary and be listed twice with half its lots each time.
+ *
+ * `transferId` is that correlation id. It is not any collection's primary key;
+ * what a client does with it is ask for the transfer's own rows:
+ * `list({ referenceType: "transfer_manual", referenceId: transferId })`.
+ */
+export interface StockTransferSummary {
+  transferId: string;
+  /** ISO date string — when the posting was written. */
+  transferredAt: string;
+  fromWarehouseId: string | null;
+  toWarehouseId: string | null;
+  /**
+   * TWO COUNTS THAT MEAN DIFFERENT THINGS. `productCount` is what somebody
+   * typed; `lotCount` is how many lots FEFO drew from to satisfy it. More lots
+   * than products is the row saying "one of these came off three shelves" — and
+   * the ledger holds twice `lotCount` rows, because every lot moved writes a
+   * pair.
+   */
+  productCount: number;
+  lotCount: number;
+  /**
+   * Decimal string — Σ |qty| × the average each line was drawn at.
+   *
+   * NOT A QUANTITY, deliberately: summed across products a quantity adds sacks
+   * of feed to bottles of shampoo. Rupiah is the one unit every line shares.
+   * Note that this value does not move between accounts — a transfer posts no
+   * journal, because the goods are still the tenant's.
+   */
+  value: string;
+  /** The reason for the whole posting, stamped on every row it wrote. */
+  notes: string | null;
+  createdBy: string | null;
+
+  /* -------------------------------------------------- labels for the bare ids */
+  /* Null where the id is not: a warehouse renamed out of existence or a user
+     since deleted still owns the transfer it wrote. */
+
+  fromWarehouseName: string | null;
+  toWarehouseName: string | null;
+  createdByName: string | null;
+}
+
+export interface StockTransferPage {
+  items: StockTransferSummary[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+/**
+ * GET /api/stock-movements/transfers.
+ *
+ * THE LEDGER'S ROW-LEVEL FILTERS ARE ABSENT and that is not an oversight:
+ * `productId`, `batchId` and `movementType` narrow to rows INSIDE a posting, so
+ * a list of transfers filtered to one product would report each transfer's lot
+ * count and value as though the other products it carried did not exist.
+ *
+ * `warehouseId` matches EITHER end. A transfer belongs to both warehouses it
+ * touches, so a filter that only looked at the source would answer "what left
+ * Gudang Bazar" when the user asked what Gudang Bazar had to do with.
+ */
+export interface StockTransferListQuery {
+  page?: number;
+  limit?: number;
+  warehouseId?: string;
+  /** ISO date string. */
+  from?: string;
+  /** ISO date string. The backend refuses a `to` that precedes `from`. */
+  to?: string;
+  /** Free text over the posting's note — the only text a transfer has. */
+  search?: string;
+}
+
 /** The orderings `GET /api/stock-movements` accepts — MOVEMENT_SORTS in the model. */
 export type MovementSort = "newest" | "oldest";
 
@@ -1478,7 +1573,18 @@ export interface StockEntryLine {
    * it cannot be recovered — every movement since has moved it.
    */
   systemQty: string | null;
+  /** The price somebody typed on this document, or null if they named none. */
   costPerUnit: string | null;
+  /**
+   * What the NAMED lot came in at.
+   *
+   * Kept separate from `costPerUnit` rather than folded into it: they are
+   * different facts, and a silent fallback would leave a screen unable to say
+   * which of the two it is showing. Null when the line created its own lot —
+   * there, `costPerUnit` is the answer.
+   */
+  batchCostPerUnit: string | null;
+  /** Filled from the lot when the line named one rather than creating it. */
   batchCode: string | null;
   expiryDate: string | null;
   batchId: string | null;
@@ -1519,6 +1625,12 @@ export interface StockEntry {
   updatedAt: string;
 }
 
+/**
+ * The orderings the API names. A closed list, so a client cannot ask for one
+ * with no index behind it.
+ */
+export type StockEntrySort = "newest" | "oldest" | "numberDesc" | "numberAsc";
+
 export interface StockEntryListQuery {
   page?: number;
   limit?: number;
@@ -1534,6 +1646,8 @@ export interface StockEntryListQuery {
   search?: string;
   dateFrom?: string;
   dateTo?: string;
+  /** Defaults to `newest` on the server. Every list has an ordering. */
+  sort?: StockEntrySort;
 }
 
 /** The writable half. `entryNumber` and the linkage are server-owned. */

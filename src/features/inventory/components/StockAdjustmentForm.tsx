@@ -16,7 +16,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button as UIButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -27,6 +26,8 @@ import {
 } from "@/components/ui/table";
 import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
+import { autoBatchCode } from "@/lib/batchCode";
+import { blockingReason } from "../utils/blocker";
 import { ApiError } from "@/services/api-error";
 import { stockEntryService } from "@/services/stockEntry.service";
 import type { Product } from "@/types/inventory";
@@ -86,6 +87,19 @@ function todayValue(): string {
   return new Date(now.getTime() - offset).toISOString().slice(0, 10);
 }
 
+/**
+ * The required marker a column header carries — the same red asterisk
+ * `TextField` puts after a label, so the table and the fields above it say
+ * "wajib" the same way.
+ *
+ * SAID UP FRONT rather than complained about afterwards. A red border and a
+ * sentence under the row told somebody they had got it wrong; an asterisk tells
+ * them before they do, and the disabled save button says what is still missing.
+ */
+function Required() {
+  return <span className="text-danger"> *</span>;
+}
+
 interface DraftLine {
   productId: string;
   /** "" = not chosen, a lot id, or NEW_BATCH. Only for lot-tracked products. */
@@ -119,7 +133,22 @@ export function StockAdjustmentForm() {
   );
   const [picking, setPicking] = useState(false);
 
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  /**
+   * Which fields the user has actually engaged with.
+   *
+   * WHY NOT `fieldErrors` STATE, which is what this replaced. That was written
+   * only inside `handleSubmit` — and the save button is disabled the moment
+   * anything is wrong, so the submit never ran and not one per-field message
+   * could ever appear. The rules were enforced, the refusals were computed, and
+   * the only thing on screen was a red border: colour alone, which
+   * docs/ui-rules.md §1 forbids as the only signal.
+   *
+   * So the errors are DERIVED live from `collectErrors`, and this set decides
+   * which of them may speak. A row nobody has touched stays quiet — a sheet that
+   * shouts "isi jumlahnya" at every row the moment it is added is a sheet nobody
+   * reads — and the moment somebody types into one, it says what it still needs.
+   */
+  const [touched, setTouched] = useState<Set<string>>(new Set());
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -205,19 +234,22 @@ export function StockAdjustmentForm() {
         isConsignment: false,
       })),
     ]);
-    setFieldErrors({});
   }
 
   function patchLine(index: number, patch: Partial<DraftLine>) {
     setLines((prev) =>
-      prev.map((line, i) => (i === index ? { ...line, ...patch } : line)),
+      prev.map((current, i) =>
+        i === index ? { ...current, ...patch } : current,
+      ),
     );
-    setFieldErrors({});
+  }
+
+  function markTouched(key: string) {
+    setTouched((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
   }
 
   function removeLine(index: number) {
     setLines((prev) => prev.filter((_, i) => i !== index));
-    setFieldErrors({});
   }
 
   /**
@@ -262,8 +294,9 @@ export function StockAdjustmentForm() {
       const increasing = delta !== null && (toMinor(delta) ?? 0n) > 0n;
 
       if (line.batchChoice === NEW_BATCH) {
-        if (line.batchCode.trim() === "")
-          next[`${at}.batchCode`] = "Kode batch wajib diisi.";
+        // The code is optional: left blank, the lot is named after its expiry.
+        // The date is not, because that name is the only thing distinguishing
+        // this lot from the next one of the same product.
         if (line.expiryDate === "")
           next[`${at}.expiryDate`] = "Tanggal kedaluwarsa wajib diisi.";
       }
@@ -287,20 +320,29 @@ export function StockAdjustmentForm() {
     return next;
   }
 
-  const blocking = Object.values(collectErrors())[0] ?? null;
+  const errors = collectErrors();
+  const blocking = blockingReason(
+    errors,
+    (productId) => productById.get(productId)?.name,
+  );
+
+  /** A field's complaint, once its owner has engaged with it. */
+  function shown(key: string, scope = key): string | undefined {
+    return touched.has(scope) ? errors[key] : undefined;
+  }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
 
-    const errors = collectErrors();
-    if (Object.keys(errors).length > 0) {
-      setFieldErrors(errors);
+    // The button is disabled while anything is wrong, so this guards a submit
+    // that arrived another way — a keyboard Enter on a form whose state moved
+    // between render and event.
+    if (Object.keys(collectErrors()).length > 0) {
       setFormError(null);
       return;
     }
 
     setSaving(true);
-    setFieldErrors({});
     setFormError(null);
 
     try {
@@ -323,7 +365,12 @@ export function StockAdjustmentForm() {
             // refuses the pair, so the form never assembles it.
             batchId:
               line.batchChoice && !makingBatch ? line.batchChoice : undefined,
-            batchCode: makingBatch ? line.batchCode.trim() : undefined,
+            // Omitted rather than sent blank when nobody typed one: the
+            // gateway fills it, and "" would claim a code was meant.
+            batchCode:
+              makingBatch && line.batchCode.trim() !== ""
+                ? line.batchCode.trim()
+                : undefined,
             expiryDate: makingBatch ? line.expiryDate : undefined,
             // Only arriving stock carries a cost, and consignment never does.
             costPerUnit:
@@ -344,7 +391,7 @@ export function StockAdjustmentForm() {
       // part that says what to fix. Shown verbatim.
       setFormError(
         error instanceof ApiError
-          ? error.message
+          ? error.fullMessage
           : "Terjadi kesalahan. Coba lagi.",
       );
       setSaving(false);
@@ -374,7 +421,34 @@ export function StockAdjustmentForm() {
    * skip, so it is not rendered until a row asks for it.
    */
   const anyIncreasing = lines.some(isIncreasing);
-  const columnCount = anyIncreasing ? 6 : 5;
+  /**
+   * Two columns that come and go with the sheet's contents.
+   *
+   * A COLUMN NOBODY ON THIS SHEET CAN FILL IS A COLUMN OF DASHES, and a reader
+   * pays for it in width on every row. Batch appears once any line tracks lots;
+   * the purchase price once any line grows. Both are per-SHEET rather than
+   * per-row, because a column cannot exist on one row and not another.
+   */
+  const anyLotTracked = lines.some(
+    (line) => productById.get(line.productId)?.hasExpiry === true,
+  );
+  /**
+   * A lot needs two more columns: its code and its date. They arrive together
+   * and leave together — a lot is only a lot when both halves are there.
+   *
+   * SHOWN FOR A NAMED LOT TOO, not only a new one. The picker to their left
+   * says `WSK-B26-0640 - sisa 12`, which identifies the lot but hides what the
+   * row is actually about: goods are being added to a batch that expires on a
+   * particular day, and that day belongs on the row being read. Left as
+   * dashes, the two columns said the opposite — that this lot has no code and
+   * no date — about a lot that has both.
+   *
+   * They are absent entirely until some line names a lot, because a column
+   * nobody on this sheet can fill is a column of dashes.
+   */
+  const anyBatchNamed = lines.some((line) => line.batchChoice !== "");
+  /** Whether anything on the sheet is TYPING those two, rather than reading them. */
+  const anyMakingBatch = lines.some((line) => line.batchChoice === NEW_BATCH);
 
   return (
     <>
@@ -407,6 +481,7 @@ export function StockAdjustmentForm() {
                   placeholder={scope.loading ? "Memuat…" : "Pilih cabang"}
                   onChange={(value) => {
                     if (value === branchId) return;
+                    markTouched("branchId");
                     setPickedBranch(value);
                     // Everything below is scoped to the branch: the warehouse
                     // may not belong to the new one, and the rows were chosen
@@ -414,12 +489,11 @@ export function StockAdjustmentForm() {
                     setWarehouseId("");
                     setLines([]);
                     setProductById(new Map());
-                    setFieldErrors({});
                   }}
                 />
-                {fieldErrors.branchId && (
+                {shown("branchId") && (
                   <p role="alert" className="mt-1.5 text-xs text-danger">
-                    {fieldErrors.branchId}
+                    {errors.branchId}
                   </p>
                 )}
               </div>
@@ -441,18 +515,18 @@ export function StockAdjustmentForm() {
                   disabled={branchId === ""}
                   onChange={(value) => {
                     if (value === warehouseId) return;
+                    markTouched("warehouseId");
                     setWarehouseId(value);
                     // Every row's system quantity - and every lot on offer -
                     // belongs to the old warehouse. Keeping them would leave the
                     // sheet describing somewhere the goods are not.
                     setLines([]);
                     setProductById(new Map());
-                    setFieldErrors({});
                   }}
                 />
-                {fieldErrors.warehouseId && (
+                {shown("warehouseId") && (
                   <p role="alert" className="mt-1.5 text-xs text-danger">
-                    {fieldErrors.warehouseId}
+                    {errors.warehouseId}
                   </p>
                 )}
                 {lines.length > 0 && (
@@ -469,9 +543,8 @@ export function StockAdjustmentForm() {
                 max={todayValue()}
                 onChange={(event) => {
                   setEntryDate(event.target.value);
-                  setFieldErrors({});
                 }}
-                error={fieldErrors.entryDate}
+                error={shown("entryDate")}
                 hint="Tanggal kejadiannya, bukan tanggal dokumen dibuat."
                 disabled={saving}
                 required
@@ -484,9 +557,8 @@ export function StockAdjustmentForm() {
               value={notes}
               onChange={(event) => {
                 setNotes(event.target.value);
-                setFieldErrors({});
               }}
-              error={fieldErrors.notes}
+              error={shown("notes")}
               hint="Wajib. Enam bulan lagi ini satu-satunya penjelasan yang tersisa."
               placeholder="mis. Barang rusak kena air saat hujan"
               maxLength={500}
@@ -536,8 +608,38 @@ export function StockAdjustmentForm() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Produk</TableHead>
+                      {/* THE LOT IS PART OF WHAT IS BEING COUNTED, so it sits
+                          beside the product rather than under it: a lot-tracked
+                          product has one balance PER LOT, and the Stok sistem to
+                          its right is read from whichever is named here. A row
+                          of its own separated the question from its answer. */}
+                      {anyLotTracked && (
+                        <TableHead>
+                          Batch
+                          <Required />
+                        </TableHead>
+                      )}
+                      {/* Next to the picker that summons them, so a lot reads
+                          left to right as one thought: which lot, called what,
+                          expiring when. */}
+                      {anyBatchNamed && (
+                        <>
+                          <TableHead>Kode batch</TableHead>
+                          <TableHead>
+                            Kedaluwarsa
+                            {/* Only when something is being TYPED. An asterisk
+                                over two read-only cells marks as required a
+                                field nobody can fill, which is how the marker
+                                stops meaning anything. */}
+                            {anyMakingBatch && <Required />}
+                          </TableHead>
+                        </>
+                      )}
                       <TableHead className="text-right">Stok sistem</TableHead>
-                      <TableHead className="text-right">Stok baru</TableHead>
+                      <TableHead className="text-right">
+                        Stok baru
+                        <Required />
+                      </TableHead>
                       <TableHead className="text-right">Selisih</TableHead>
                       {anyIncreasing && (
                         <TableHead className="text-right">
@@ -549,13 +651,22 @@ export function StockAdjustmentForm() {
                   </TableHeader>
                   <TableBody>
                     {lines.map((line, index) => {
-                      const at = `line.${line.productId}`;
                       const product = productById.get(line.productId);
                       const system = systemQtyOf(line);
                       const delta = deltaOf(line);
                       const deltaMinor = delta === null ? null : toMinor(delta);
                       const increasing = deltaMinor !== null && deltaMinor > 0n;
                       const makingBatch = line.batchChoice === NEW_BATCH;
+                      // The lot the picker names, when it names one that
+                      // already exists. Its code and date are shown read-only
+                      // beside it — they describe the goods, and nothing on
+                      // this form may rewrite them.
+                      const namedLot =
+                        line.batchChoice !== "" && !makingBatch
+                          ? ((lots.byProduct.get(line.productId) ?? []).find(
+                              (lot) => lot._id === line.batchChoice,
+                            ) ?? null)
+                          : null;
 
                       return (
                         <Fragment key={line.productId}>
@@ -569,6 +680,117 @@ export function StockAdjustmentForm() {
                                 {product?.unit && ` - ${product.unit}`}
                               </p>
                             </TableCell>
+
+                            {anyLotTracked && (
+                              <TableCell className="min-w-56">
+                                {product?.hasExpiry ? (
+                                  <FilterSelect
+                                    layout="field"
+                                    label=""
+                                    ariaLabel={`Batch ${product.name}`}
+                                    value={line.batchChoice}
+                                    active={line.batchChoice !== ""}
+                                    placeholder="Pilih batch"
+                                    options={[
+                                      ...(
+                                        lots.byProduct.get(line.productId) ?? []
+                                      ).map((lot) => ({
+                                        value: lot._id,
+                                        label: `${lot.batchCode} - sisa ${formatQty(lot.qtyRemaining)}`,
+                                      })),
+                                      {
+                                        value: NEW_BATCH,
+                                        label: "+ Batch baru...",
+                                      },
+                                    ]}
+                                    onChange={(value) =>
+                                      patchLine(index, {
+                                        batchChoice: value,
+                                        newQty: "",
+                                      })
+                                    }
+                                  />
+                                ) : (
+                                  // Said rather than left blank: an empty cell
+                                  // under "Batch" reads as one nobody filled in.
+                                  <span className="text-muted">—</span>
+                                )}
+                              </TableCell>
+                            )}
+
+                            {anyBatchNamed && (
+                              <>
+                                <TableCell>
+                                  {makingBatch ? (
+                                    <Input
+                                      aria-label={`Kode batch baru ${product?.name ?? ""}`}
+                                      value={line.batchCode}
+                                      onChange={(event) =>
+                                        patchLine(index, {
+                                          batchCode: event.target.value,
+                                        })
+                                      }
+                                      /* The derived name, but only once the
+                                         date it derives from exists — a preview
+                                         of a code the server will not use is
+                                         worse than no preview. */
+                                      placeholder={
+                                        line.expiryDate
+                                          ? autoBatchCode(
+                                              product?.sku,
+                                              line.expiryDate,
+                                              "",
+                                            )
+                                          : "Kode batch (opsional)"
+                                      }
+                                      className="w-44"
+                                      disabled={saving}
+                                    />
+                                  ) : namedLot ? (
+                                    /* DISABLED, NOT READ-ONLY TEXT: it stays in
+                                       the same box in the same column as the
+                                       row above that is typing one, so the eye
+                                       reads a column of codes rather than a
+                                       column of two different things. The grey
+                                       is what says it cannot be changed. */
+                                    <Input
+                                      aria-label={`Kode batch ${product?.name ?? ""}`}
+                                      value={namedLot.batchCode}
+                                      disabled
+                                      className="w-44"
+                                    />
+                                  ) : (
+                                    <span className="text-muted">—</span>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  {makingBatch ? (
+                                    <Input
+                                      aria-label={`Tanggal kedaluwarsa ${product?.name ?? ""}`}
+                                      type="date"
+                                      value={line.expiryDate}
+                                      onChange={(event) =>
+                                        patchLine(index, {
+                                          expiryDate: event.target.value,
+                                        })
+                                      }
+                                      className="w-40"
+                                      disabled={saving}
+                                    />
+                                  ) : namedLot?.expiryDate ? (
+                                    <Input
+                                      aria-label={`Kedaluwarsa ${product?.name ?? ""}`}
+                                      type="date"
+                                      value={namedLot.expiryDate.slice(0, 10)}
+                                      disabled
+                                      className="w-40"
+                                    />
+                                  ) : (
+                                    <span className="text-muted">—</span>
+                                  )}
+                                </TableCell>
+                              </>
+                            )}
 
                             <TableCell className="text-right tabular-nums text-muted">
                               {system === null ? "-" : formatQty(system)}
@@ -586,9 +808,6 @@ export function StockAdjustmentForm() {
                                 }
                                 placeholder="0"
                                 className="ml-auto w-28 text-right tabular-nums"
-                                aria-invalid={Boolean(
-                                  fieldErrors[`${at}.newQty`],
-                                )}
                                 disabled={saving || system === null}
                               />
                             </TableCell>
@@ -634,9 +853,6 @@ export function StockAdjustmentForm() {
                                         : undefined
                                     }
                                     className="ml-auto w-44 text-right tabular-nums"
-                                    aria-invalid={Boolean(
-                                      fieldErrors[`${at}.cost`],
-                                    )}
                                     disabled={saving}
                                   />
                                 )}
@@ -657,107 +873,6 @@ export function StockAdjustmentForm() {
                               </UIButton>
                             </TableCell>
                           </TableRow>
-
-                          {(fieldErrors[`${at}.newQty`] ||
-                            fieldErrors[`${at}.batch`] ||
-                            fieldErrors[`${at}.cost`]) && (
-                            <TableRow>
-                              <TableCell colSpan={columnCount} className="pt-0">
-                                <p role="alert" className="text-xs text-danger">
-                                  {fieldErrors[`${at}.batch`] ??
-                                    fieldErrors[`${at}.newQty`] ??
-                                    fieldErrors[`${at}.cost`]}
-                                </p>
-                              </TableCell>
-                            </TableRow>
-                          )}
-
-                          {/* The lot this row is about, on exactly the rows
-                              that have one, so the sheet stays a column of
-                              quantities for the rows that do not. The cost is
-                              no longer here — it is a column now, beside the
-                              Selisih that asks for it. */}
-                          {product?.hasExpiry && (
-                            <TableRow className="bg-accent/40">
-                              <TableCell colSpan={columnCount}>
-                                <div className="flex flex-wrap items-end gap-4">
-                                  {product?.hasExpiry && (
-                                    <div className="min-w-56">
-                                      <FilterSelect
-                                        layout="field"
-                                        label="Batch"
-                                        ariaLabel={`Batch ${product.name}`}
-                                        value={line.batchChoice}
-                                        active={line.batchChoice !== ""}
-                                        placeholder="Pilih batch"
-                                        options={[
-                                          ...(
-                                            lots.byProduct.get(
-                                              line.productId,
-                                            ) ?? []
-                                          ).map((lot) => ({
-                                            value: lot._id,
-                                            label: `${lot.batchCode} - sisa ${formatQty(lot.qtyRemaining)}`,
-                                          })),
-                                          {
-                                            value: NEW_BATCH,
-                                            label: "+ Batch baru...",
-                                          },
-                                        ]}
-                                        onChange={(value) =>
-                                          patchLine(index, {
-                                            batchChoice: value,
-                                            newQty: "",
-                                          })
-                                        }
-                                      />
-                                    </div>
-                                  )}
-
-                                  {makingBatch && (
-                                    <>
-                                      <div className="min-w-44">
-                                        <Label className="mb-1.5 block">
-                                          Kode batch baru
-                                        </Label>
-                                        <Input
-                                          aria-label={`Kode batch baru ${product?.name ?? ""}`}
-                                          value={line.batchCode}
-                                          onChange={(event) =>
-                                            patchLine(index, {
-                                              batchCode: event.target.value,
-                                            })
-                                          }
-                                          placeholder="mis. WSK-B26-0640"
-                                          aria-invalid={Boolean(
-                                            fieldErrors[`${at}.batchCode`],
-                                          )}
-                                        />
-                                      </div>
-                                      <div className="min-w-44">
-                                        <Label className="mb-1.5 block">
-                                          Kedaluwarsa
-                                        </Label>
-                                        <Input
-                                          aria-label={`Tanggal kedaluwarsa ${product?.name ?? ""}`}
-                                          type="date"
-                                          value={line.expiryDate}
-                                          onChange={(event) =>
-                                            patchLine(index, {
-                                              expiryDate: event.target.value,
-                                            })
-                                          }
-                                          aria-invalid={Boolean(
-                                            fieldErrors[`${at}.expiryDate`],
-                                          )}
-                                        />
-                                      </div>
-                                    </>
-                                  )}
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          )}
                         </Fragment>
                       );
                     })}
@@ -776,12 +891,6 @@ export function StockAdjustmentForm() {
                 </UIButton>
               </div>
             </div>
-          )}
-
-          {fieldErrors.lines && (
-            <p role="alert" className="mt-3 text-xs text-danger">
-              {fieldErrors.lines}
-            </p>
           )}
         </Card>
 

@@ -166,6 +166,13 @@ export const NAV_ITEMS: NavItem[] = [
         permission: { feature: "stockOpnames", action: "read" },
       },
       {
+        /**
+         * GATED ON `create` THOUGH THE PAGE ONLY NEEDS `read` — the same call
+         * Penyesuaian Stok makes below, and for the same reason. This route
+         * opens on a list now, which anybody who may page the stock card may
+         * read, but a menu row is an invitation and the screen's one action is a
+         * write. Reading it by URL still works.
+         */
         label: "Transfer Stok",
         href: "/dashboard/inventory/transfers",
         icon: TransferIcon,

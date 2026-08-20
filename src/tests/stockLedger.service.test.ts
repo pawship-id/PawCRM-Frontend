@@ -82,9 +82,39 @@ describe("stockMovementService", () => {
       "export",
       "getById",
       "list",
+      "listTransfers",
       "preview",
       "summary",
     ]);
+  });
+
+  /**
+   * The grouped read — one row per TRANSFER, not per movement.
+   *
+   * A SEPARATE ENDPOINT AND NOT `list({ referenceType: "transfer_manual" })`,
+   * which returns the ledger ROWS. A transfer has no document to page, so its
+   * rows are held together only by a correlation id; grouping a page of rows in
+   * the browser would page rows, and one transfer straddling a boundary would
+   * appear on two pages with half its lots each time.
+   */
+  it("listTransfers gets the grouped route, without the row-level filters", async () => {
+    const get = jest.spyOn(apiClient, "get").mockResolvedValue({} as never);
+
+    await stockMovementService.listTransfers({
+      warehouseId: "wh1",
+      search: "bazar",
+    });
+
+    expect(get).toHaveBeenCalledWith("/stock-movements/transfers", {
+      query: {
+        page: undefined,
+        limit: undefined,
+        warehouseId: "wh1",
+        from: undefined,
+        to: undefined,
+        search: "bazar",
+      },
+    });
   });
 
   it("preview posts the same payload as create, and cannot carry a retry token", async () => {

@@ -31,6 +31,22 @@ export { OpeningStockForm } from "./components/OpeningStockForm";
  */
 export { StockEntriesScreen } from "./components/StockEntriesScreen";
 export { StockEntryDetail } from "./components/StockEntryDetail";
+/**
+ * Transfers: the list this route opens on, and the form behind its button.
+ *
+ * The list is NOT `StockEntriesScreen` with a third `kind`. Those two read one
+ * collection of hand-typed DOCUMENTS; a transfer has none — it is a group of
+ * ledger rows sharing a correlation id, with counts and a value that no stock
+ * entry carries.
+ */
+export { StockTransfersScreen } from "./components/StockTransfersScreen";
+/**
+ * One transfer, read by its correlation id — what moved, from which lot, and at
+ * what value. The list carries no value column: a transfer's worth is a dozen
+ * products at their own averages, and one figure in a cell can neither be
+ * checked nor traced to a product without opening the row anyway.
+ */
+export { StockTransferDetail } from "./components/StockTransferDetail";
 export { StockTransferForm } from "./components/StockTransferForm";
 
 /**
