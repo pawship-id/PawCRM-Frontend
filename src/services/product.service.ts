@@ -72,6 +72,7 @@ export const productService = {
         excludeVariants: query.excludeVariants,
         holdsStock: query.holdsStock,
         neverMovedInWarehouse: query.neverMovedInWarehouse,
+        inStockAtWarehouse: query.inStockAtWarehouse,
         includeDeleted: query.includeDeleted,
         sort: query.sort,
       },

@@ -38,6 +38,7 @@ import { useProductCandidates } from "../hooks/useProductCandidates";
 export function ProductMultiPicker({
   categoryId = "",
   neverMovedInWarehouse = "",
+  inStockAtWarehouse = "",
   selected,
   onChange,
   excludeIds,
@@ -55,6 +56,17 @@ export function ProductMultiPicker({
    * which is what the opname and transfer pickers want.
    */
   neverMovedInWarehouse?: string;
+  /**
+   * Only products this warehouse HOLDS — the transfer picker's rule, applied by
+   * the SERVER against the balances.
+   *
+   * The near-mirror of the filter above: that one hides what has already moved
+   * here, this one hides what is not here to move. A transfer draws goods off
+   * ONE shelf, so offering a product with nothing on it is the same
+   * conversation held twice, the second time as an error on save. "" is every
+   * product, which is what the opname and opening-stock pickers want.
+   */
+  inStockAtWarehouse?: string;
   selected: Product[];
   onChange: (products: Product[]) => void;
   /**
@@ -72,7 +84,12 @@ export function ProductMultiPicker({
     total,
     loading,
     error,
-  } = useProductCandidates(search, categoryId, neverMovedInWarehouse);
+  } = useProductCandidates(
+    search,
+    categoryId,
+    neverMovedInWarehouse,
+    inStockAtWarehouse,
+  );
 
   const excluded = new Set(excludeIds ?? []);
   const products = matched.filter((product) => !excluded.has(product._id));
@@ -156,8 +173,15 @@ export function ProductMultiPicker({
             {matched.length > 0
               ? "Semua produk yang cocok sudah ditambahkan."
               : search.trim()
-                ? `Tidak ada produk yang cocok dengan "${search.trim()}".`
-                : "Belum ada produk yang menyimpan stok di katalog ini."}
+                ? // The filter is named in the answer, because "tidak ada yang
+                  // cocok" for a product somebody can see on the shelf reads as
+                  // a broken search rather than as an empty warehouse.
+                  inStockAtWarehouse
+                  ? `Tidak ada produk bernama "${search.trim()}" yang berstok di gudang ini.`
+                  : `Tidak ada produk yang cocok dengan "${search.trim()}".`
+                : inStockAtWarehouse
+                  ? "Gudang ini belum menyimpan stok apa pun."
+                  : "Belum ada produk yang menyimpan stok di katalog ini."}
           </p>
         )}
 

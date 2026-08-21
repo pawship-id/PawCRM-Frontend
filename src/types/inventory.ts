@@ -298,6 +298,19 @@ export interface TransferItemInput {
   productId: string;
   /** Decimal STRING, and must be POSITIVE — direction comes from the two ids. */
   qty: string;
+  /**
+   * WHICH LOT LEAVES THE SHELF — an existing batch at the SOURCE warehouse.
+   *
+   * REQUIRED by the API for a product with `hasExpiry`, omitted for every other
+   * one. A person loading a van is holding a particular carton, and FEFO would
+   * answer a question they have already answered — writing off a lot still on
+   * the shelf and re-creating its expiry at the destination. Absent, the server
+   * runs FEFO exactly as it always has.
+   *
+   * A lot is NAMED, never described: its code, expiry and cost travel with the
+   * goods, so there is no `batchCode` here to disagree with them.
+   */
+  batchId?: string;
   /** This line's own reason, distinct from the transfer's. ≤500 characters. */
   notes?: string;
 }
@@ -792,6 +805,15 @@ export interface ProductListQuery {
    * legitimately be receiving its opening balance in another.
    */
   neverMovedInWarehouse?: string;
+  /**
+   * Only products this warehouse HOLDS — quantity above zero.
+   *
+   * The transfer picker's filter, and the near-mirror of the one above: that
+   * asks the ledger what has ever moved here, this asks the balances what is on
+   * the shelf now. A transfer draws goods off ONE shelf, so a product with
+   * nothing on it can only produce a line the save refuses.
+   */
+  inStockAtWarehouse?: string;
   includeDeleted?: boolean;
   /**
    * Which ordering to page through. A NAME, not a field plus a direction —

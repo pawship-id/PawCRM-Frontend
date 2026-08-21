@@ -37,6 +37,7 @@ const EVERY_FILTER: Required<
   parentId: "p1",
   isActive: true,
   neverMovedInWarehouse: "wh1",
+  inStockAtWarehouse: "wh2",
   includeDeleted: true,
   sort: "nameAsc",
 };

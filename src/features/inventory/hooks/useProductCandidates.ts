@@ -57,6 +57,16 @@ export function useProductCandidates(
    * other caller wants.
    */
   neverMovedInWarehouse = "",
+  /**
+   * Only products this warehouse HOLDS — the transfer picker's rule, resolved
+   * by the server against the balances.
+   *
+   * The near-mirror of the filter above, and asked the same way and for the
+   * same reason: a transfer draws goods off ONE shelf, so a product with
+   * nothing on it can only ever produce a line the save refuses. "" leaves the
+   * list unfiltered, which is what every other caller wants.
+   */
+  inStockAtWarehouse = "",
 ): ProductCandidates {
   const [products, setProducts] = useState<Product[]>([]);
   const [total, setTotal] = useState(0);
@@ -79,6 +89,7 @@ export function useProductCandidates(
           search: search.trim() || undefined,
           categoryId: categoryId || undefined,
           neverMovedInWarehouse: neverMovedInWarehouse || undefined,
+          inStockAtWarehouse: inStockAtWarehouse || undefined,
           limit: PAGE_LIMIT,
         })
         .then((result) => {
@@ -105,7 +116,7 @@ export function useProductCandidates(
       active = false;
       clearTimeout(timer);
     };
-  }, [search, categoryId, neverMovedInWarehouse]);
+  }, [search, categoryId, neverMovedInWarehouse, inStockAtWarehouse]);
 
   return {
     products,

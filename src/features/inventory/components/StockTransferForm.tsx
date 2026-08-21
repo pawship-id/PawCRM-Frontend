@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Trash2 } from "lucide-react";
 
 import {
   Alert,
@@ -19,7 +20,11 @@ import { cn } from "@/lib/utils";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { stockMovementService } from "@/services/stockMovement.service";
-import type { Product, TransferItemInput } from "@/types/inventory";
+import type {
+  Product,
+  ProductBatch,
+  TransferItemInput,
+} from "@/types/inventory";
 import {
   formatMoney,
   formatQty,
@@ -30,6 +35,7 @@ import {
   toMinor,
 } from "@/utils/decimal";
 
+import { useWarehouseBatches } from "../hooks/useWarehouseBatches";
 import { useWarehouseOptions } from "../hooks/useWarehouseOptions";
 import { newIdempotencyKey } from "../utils/idempotency";
 import { qtyAtWarehouse } from "../utils/ledger";
@@ -39,8 +45,35 @@ import { TransferAddProductsDialog } from "./TransferAddProductsDialog";
 interface LineDraft {
   productId: string;
   qty: string;
+  /**
+   * WHICH LOT LEAVES THE SHELF. "" = not chosen yet.
+   *
+   * Only asked for — and only required — where the product tracks lots
+   * (`hasExpiry`). Everything else moves as a quantity and lets FEFO decide, as
+   * the whole form used to.
+   */
+  batchId: string;
   /** This line's own reason. Optional — most lines need none. */
   notes: string;
+}
+
+/** The lot label a row shows: what is on the box, and how much of it is left. */
+function lotLabel(lot: ProductBatch): string {
+  const expiry = lot.expiryDate
+    ? new Date(lot.expiryDate).toLocaleDateString("id-ID", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      })
+    : null;
+
+  return [
+    lot.batchCode,
+    expiry && `exp ${expiry}`,
+    `sisa ${formatQty(lot.qtyRemaining)}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 /**
@@ -66,10 +99,35 @@ interface LineRowProps {
   line: LineDraft;
   /** From the picker's own result — name, SKU, unit and what the source holds. */
   product: Product | undefined;
-  /** Decimal string: what the SOURCE warehouse holds of this product. */
+  /**
+   * Whether the BATCH COLUMN exists at all, which is a property of the whole
+   * table rather than of this row: a column appears the moment ANY line tracks
+   * lots, and every other row then owes it a cell.
+   */
+  showBatch: boolean;
+  /** The lots of this product still holding something at the SOURCE warehouse. */
+  lots: ProductBatch[];
+  /**
+   * Whether the lot list is still on its way.
+   *
+   * An empty list means two OPPOSITE things — "this shelf holds no lots, move
+   * the stock as it is" and "nothing has come back yet" — and a row that acted
+   * on the first while the second was true would open the quantity field, take
+   * a number, and then close it again when the lots arrived.
+   */
+  lotsLoading: boolean;
+  /** Decimal string: what this line may draw on — the lot, or the warehouse. */
   onHand: string | null;
   /** Set when the typed quantity exceeds `onHand` — shown in place of the hint. */
   shortage: string | undefined;
+  /**
+   * Whether to SAY the batch is missing on this row.
+   *
+   * Decided by the parent, because it is a fact about when — after a save was
+   * attempted, not while the row is being filled in. A table that reddens every
+   * lot-tracked line the moment it is added is a table nobody reads.
+   */
+  batchMissing: boolean;
   onChange: (patch: Partial<LineDraft>) => void;
   onRemove: () => void;
 }
@@ -85,11 +143,28 @@ interface LineRowProps {
 function TransferLineRow({
   line,
   product,
+  showBatch,
+  lots,
+  lotsLoading,
   onHand,
   shortage,
+  batchMissing,
   onChange,
   onRemove,
 }: LineRowProps) {
+  /**
+   * Whether this row must NAME a lot — which is a fact about the shelf, not
+   * about the catalogue flag.
+   *
+   * `hasExpiry` can be switched on long after stock arrived, and those units
+   * carry no lot: nothing retro-fits one. A row that demanded a batch there
+   * would offer an empty dropdown and refuse to move goods that are physically
+   * on the shelf, so with no lots to choose from it behaves like any unbatched
+   * product — which is exactly what the API does with it.
+   */
+  const lotTracked = product?.hasExpiry === true;
+  const mustName = lotTracked && (lotsLoading || lots.length > 0);
+
   return (
     <tr className="border-b border-border/60">
       <td className="px-2 py-2">
@@ -100,11 +175,59 @@ function TransferLineRow({
         </p>
       </td>
 
+      {showBatch && (
+        <td className="px-2 py-2">
+          {lotTracked && lotsLoading ? (
+            <span className="text-xs text-muted">Memuat batch…</span>
+          ) : mustName ? (
+            <div className="min-w-52">
+              <FilterSelect
+                layout="field"
+                label=""
+                ariaLabel={`Batch ${product?.name ?? ""}`}
+                value={line.batchId}
+                active={line.batchId !== ""}
+                placeholder="Pilih batch"
+                invalid={batchMissing}
+                options={lots.map((lot) => ({
+                  value: lot._id,
+                  label: lotLabel(lot),
+                }))}
+                // The quantity is cleared with the choice: it was typed
+                // against a DIFFERENT lot's remaining, and a number that
+                // silently changes meaning is worse than an empty field.
+                onChange={(value) => onChange({ batchId: value, qty: "" })}
+              />
+              {batchMissing && (
+                <p role="alert" className="mt-1 text-[11px] text-danger">
+                  Pilih batch dulu.
+                </p>
+              )}
+            </div>
+          ) : lotTracked ? (
+            // NO LOT TO NAME, and the row says why rather than showing an
+            // empty dropdown that looks broken. Stock that was on the shelf
+            // before `hasExpiry` was switched on carries no batch, and the
+            // API moves it as it is — unbatched here, unbatched there.
+            <span className="text-xs text-muted">
+              Belum ada batch — dipindahkan tanpa batch
+            </span>
+          ) : (
+            // Said rather than left blank: an empty cell under "Batch" reads
+            // as one nobody filled in.
+            <span className="text-muted">—</span>
+          )}
+        </td>
+      )}
+
       <td className="px-2 py-2">
         <Input
           aria-label={`Jumlah ${product?.name ?? ""}`}
           inputMode="decimal"
           value={line.qty}
+          // Nothing to type against until the lot is named: the ceiling this
+          // row is checked against is that lot's remaining.
+          disabled={mustName && line.batchId === ""}
           onChange={(event) =>
             onChange({ qty: sanitizeQty(event.target.value) })
           }
@@ -119,9 +242,16 @@ function TransferLineRow({
             Melebihi stok — tersedia {formatQty(shortage)}
             {product?.unit && ` ${product.unit}`}
           </p>
+        ) : onHand === null && mustName ? (
+          // The availability of a lot-tracked line is the CHOSEN LOT's
+          // remaining, so there is no number to print until one is chosen —
+          // and "Tersedia 0" would read as an empty shelf rather than an
+          // unanswered question.
+          <p className="mt-1 text-[11px] text-muted">Pilih batch dulu</p>
         ) : (
           <p className="mt-1 text-[11px] text-muted">
-            Tersedia {formatQty(onHand)}
+            {line.batchId ? "Sisa batch " : "Tersedia "}
+            {formatQty(onHand)}
             {product?.unit && ` ${product.unit}`}
           </p>
         )}
@@ -139,13 +269,22 @@ function TransferLineRow({
       </td>
 
       <td className="px-2 py-2 text-right">
+        {/* The SAME control as the adjustment sheet's, down to the icon: both
+            take a row off a document that has not been filed yet. Not red —
+            danger colour is for what cannot be undone, and this deletes
+            nothing but a line somebody can add straight back.
+
+            The label NAMES THE PRODUCT for anyone reading by screen reader: a
+            column of identical "Hapus" buttons says which row it belongs to
+            only by where it sits, which is a fact only a sighted reader has. */}
         <UIButton
           type="button"
           variant="ghost"
           size="sm"
-          className="text-danger"
+          aria-label={`Hapus ${product?.name ?? "produk"}`}
           onClick={onRemove}
         >
+          <Trash2 className="size-4" />
           Hapus
         </UIButton>
       </td>
@@ -180,9 +319,19 @@ function TransferLineRow({
  * partway through leaves half the goods moved with no document to unwind. One
  * request is one transaction and one correlation id: all of it lands, or none.
  *
- * The user never types a batch code here, deliberately: they move a QUANTITY and
- * the system decides which lots. Letting them retype the code would be an
- * invitation to move batch A and have it arrive labelled batch B.
+ * A LOT IS NAMED, NEVER TYPED. Nobody writes a batch code here: the codes on the
+ * dropdown are the lots the source warehouse actually holds, and each one's
+ * code, expiry and cost travel to the destination untouched. Letting somebody
+ * retype the code would be an invitation to move batch A and have it arrive
+ * labelled batch B.
+ *
+ * WHICH LOT IS ASKED ONLY WHERE IT IS A REAL QUESTION — products with
+ * `hasExpiry`. Those move as a box somebody is holding: the cartons are already
+ * in the van, and FEFO's answer would write off a DIFFERENT carton still on the
+ * shelf, re-create that one's expiry at the destination, and leave both
+ * warehouses holding lots that do not match what is physically there. The API
+ * refuses such a line without a lot, so the form asks before it is refused.
+ * Everything else still moves as a quantity and lets FEFO decide.
  *
  * THE LOT BREAKDOWN IS NOT SHOWN. A per-lot panel used to sit beside the form,
  * fetched from `POST /stock-movements/preview`; it was taken out because it
@@ -210,6 +359,23 @@ export function StockTransferForm() {
   const [notes, setNotes] = useState("");
 
   const [picking, setPicking] = useState(false);
+
+  /**
+   * Every lot still holding something at the SOURCE warehouse, grouped by
+   * product — one request for the whole table, re-read when the source changes.
+   *
+   * A lot belongs to a LOCATION: the same product's lots at the destination are
+   * different boxes, and offering them here would name a lot the source cannot
+   * give up.
+   */
+  const lots = useWarehouseBatches(fromWarehouseId);
+
+  /**
+   * Whether a save has been ATTEMPTED, which is when a missing batch may be
+   * said out loud. Before that the row simply asks; after it, the rows that
+   * still have not answered are marked.
+   */
+  const [attempted, setAttempted] = useState(false);
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -260,12 +426,81 @@ export function StockTransferForm() {
     fromWarehouseId && fromWarehouseId === toWarehouseId,
   );
 
-  /** What the SOURCE warehouse holds of a product, as the picker reported it. */
-  function onHandOf(productId: string): string | null {
-    const product = productById.get(productId);
-    return product
-      ? qtyAtWarehouse(product.stockByWarehouse, fromWarehouseId)
-      : null;
+  /**
+   * Moving the SOURCE forgets every lot already chosen, and the quantities with
+   * them.
+   *
+   * A lot id names a box at one warehouse. Left in place while the source
+   * changed, the form would hold ids the new warehouse never had — a payload
+   * the API refuses with "batch is not held at warehouse", after the user has
+   * filled the whole table in. The quantities go too: each was typed against
+   * that lot's remaining.
+   */
+  function changeFrom(warehouseId: string) {
+    setFrom(warehouseId);
+    setLines((prev) =>
+      prev.map((line) =>
+        productById.get(line.productId)?.hasExpiry
+          ? { ...line, batchId: "", qty: "" }
+          : line,
+      ),
+    );
+  }
+
+  /** The lots of one product at the source, newest question first: is there any. */
+  function lotsOf(productId: string): ProductBatch[] {
+    return lots.byProduct.get(productId) ?? [];
+  }
+
+  /**
+   * Whether a line MUST name a lot — a question about the shelf, not the flag.
+   *
+   * `hasExpiry` can be switched on long after stock arrived, and those units
+   * carry no lot; nothing retro-fits one. Demanding a batch there would strand
+   * goods that physically exist behind an empty dropdown, so the form asks only
+   * where there is something to answer with — which is the same rule the API
+   * applies, and the two must not disagree.
+   *
+   * TRUE WHILE THE LOTS ARE STILL LOADING, deliberately: "none came back yet"
+   * must not read as "this shelf has none", or the row would open its quantity
+   * field and close it again a moment later.
+   */
+  function mustNameLot(productId: string): boolean {
+    if (!productById.get(productId)?.hasExpiry) return false;
+    return lots.loading || lotsOf(productId).length > 0;
+  }
+
+  /** The lot a line named, when it named one that is still on the shelf. */
+  function namedLotOf(line: LineDraft): ProductBatch | null {
+    if (line.batchId === "") return null;
+    return (
+      lotsOf(line.productId).find((lot) => lot._id === line.batchId) ?? null
+    );
+  }
+
+  /**
+   * What a LINE may draw on — which is not always what the warehouse holds.
+   *
+   * A lot-tracked line draws on the LOT it named, so its ceiling is that lot's
+   * remaining; the warehouse total would let somebody move 12 out of a carton
+   * holding 5 as long as another carton made up the difference, which is a
+   * transfer of goods that are not in the van. Null while no lot is named:
+   * the question has not been answered yet, and zero is a different answer.
+   *
+   * Everything else draws on the warehouse, exactly as before.
+   */
+  function onHandOf(line: LineDraft): string | null {
+    const product = productById.get(line.productId);
+    if (!product) return null;
+
+    // A lot to name means the LOT is the ceiling. No lots on this shelf — stock
+    // that predates `hasExpiry` — means the warehouse is, exactly as it is for
+    // a product that never tracked lots at all.
+    if (product.hasExpiry && mustNameLot(line.productId)) {
+      return namedLotOf(line)?.qtyRemaining ?? null;
+    }
+
+    return qtyAtWarehouse(product.stockByWarehouse, fromWarehouseId);
   }
 
   /**
@@ -291,7 +526,7 @@ export function StockTransferForm() {
     for (const line of lines) {
       if (!isPositive(line.qty)) continue;
 
-      const available = onHandOf(line.productId);
+      const available = onHandOf(line);
       if (available === null) continue;
 
       if ((toMinor(line.qty) ?? 0n) > (toMinor(available) ?? 0n)) {
@@ -300,9 +535,37 @@ export function StockTransferForm() {
     }
 
     return found;
-    // `onHandOf` reads both, and is redefined every render by design.
+    // `onHandOf` reads all of these, and is redefined every render by design.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lines, productById, fromWarehouseId]);
+  }, [lines, productById, fromWarehouseId, lots.byProduct]);
+
+  /**
+   * The lot-tracked lines that have not named a lot yet, by product id.
+   *
+   * The API refuses these — a product with `hasExpiry` moves as a named lot,
+   * never as a quantity — so the save button is disabled while the set is not
+   * empty, and the rows in it are marked once a save has been attempted.
+   */
+  const missingBatch = useMemo(() => {
+    const found = new Set<string>();
+
+    for (const line of lines) {
+      if (mustNameLot(line.productId) && line.batchId === "") {
+        found.add(line.productId);
+      }
+    }
+
+    return found;
+    // `mustNameLot` reads all of these, and is redefined every render by design.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lines, productById, lots.byProduct, lots.loading]);
+
+  /** Whether ANY line tracks lots — which is what summons the batch column. */
+  const anyLotTracked = useMemo(
+    () =>
+      lines.some((line) => productById.get(line.productId)?.hasExpiry === true),
+    [lines, productById],
+  );
 
   /**
    * The lines that are complete enough to ask the server about, in the payload's
@@ -319,6 +582,10 @@ export function StockTransferForm() {
           return {
             productId: line.productId,
             qty: line.qty.trim(),
+            // Sent only when the row named one. An empty string would be an id
+            // the API cannot resolve, and a product that tracks no lots must
+            // keep reaching FEFO exactly as it always did.
+            ...(line.batchId ? { batchId: line.batchId } : {}),
             ...(trimmed ? { notes: trimmed } : {}),
           };
         }),
@@ -385,6 +652,7 @@ export function StockTransferForm() {
       ...products.map((product) => ({
         productId: product._id,
         qty: "",
+        batchId: "",
         notes: "",
       })),
     ]);
@@ -404,7 +672,14 @@ export function StockTransferForm() {
       const label =
         productById.get(line.productId)?.name ?? `Baris ${index + 1}`;
 
-      if (line.qty.trim() === "") {
+      if (missingBatch.has(line.productId)) {
+        // Barang ber-expiry berpindah sebagai LOT, bukan sebagai jumlah: yang
+        // dimuat ke mobil sudah dipilih orangnya, dan FEFO akan mengurangi
+        // batch lain yang masih di rak.
+        next.lines = lots.loading
+          ? `${label}: daftar batch masih dimuat, tunggu sebentar.`
+          : `${label}: pilih batch yang dipindahkan dulu.`;
+      } else if (line.qty.trim() === "") {
         next.lines = `${label}: jumlah wajib diisi.`;
       } else if (!isDecimal(line.qty)) {
         next.lines = `${label}: gunakan angka, maksimal 4 desimal.`;
@@ -418,9 +693,13 @@ export function StockTransferForm() {
         // memindahkannya, jadi ini salah ketik yang dikoreksi, bukan fakta yang
         // dicatat. Kalau raknya memang berisi lebih banyak, jalurnya penyesuaian
         // stok — bukan transfer yang membuat gudang asal minus.
-        next.lines =
-          `${label}: hanya tersedia ${formatQty(shortages.get(line.productId))} ` +
-          `di ${fromName}. Kurangi jumlahnya, atau catat penyesuaian stok dulu.`;
+        const lot = namedLotOf(line);
+        next.lines = lot
+          ? `${label}: batch ${lot.batchCode} hanya berisi ` +
+            `${formatQty(shortages.get(line.productId))} di ${fromName}. ` +
+            `Kurangi jumlahnya, atau pindahkan sisanya lewat transfer batch lain.`
+          : `${label}: hanya tersedia ${formatQty(shortages.get(line.productId))} ` +
+            `di ${fromName}. Kurangi jumlahnya, atau catat penyesuaian stok dulu.`;
       }
 
       if (next.lines) break;
@@ -433,6 +712,7 @@ export function StockTransferForm() {
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setFormError(null);
+    setAttempted(true);
     if (!validate()) return;
 
     setSaving(true);
@@ -506,6 +786,7 @@ export function StockTransferForm() {
       {picking && (
         <TransferAddProductsDialog
           existingProductIds={lines.map((line) => line.productId)}
+          fromWarehouseId={fromWarehouseId}
           onAdd={addLines}
           onClose={() => setPicking(false)}
         />
@@ -527,7 +808,7 @@ export function StockTransferForm() {
                 options={namedOptions(active)}
                 active={false}
                 placeholder="Pilih gudang"
-                onChange={setFrom}
+                onChange={changeFrom}
               />
 
               <div className="flex flex-col gap-1.5">
@@ -632,6 +913,16 @@ export function StockTransferForm() {
                       <th className="px-2 py-2 text-left font-medium">
                         Produk
                       </th>
+                      {/* The lot sits BESIDE the product rather than under it:
+                          a lot-tracked product has one balance per lot, and the
+                          quantity to its right is checked against whichever is
+                          named here. The column appears only when something in
+                          the table actually tracks lots. */}
+                      {anyLotTracked && (
+                        <th className="px-2 py-2 text-left font-medium">
+                          Batch <span className="text-danger">*</span>
+                        </th>
+                      )}
                       <th className="px-2 py-2 text-left font-medium">
                         Jumlah
                       </th>
@@ -651,8 +942,14 @@ export function StockTransferForm() {
                         key={line.productId}
                         line={line}
                         product={productById.get(line.productId)}
-                        onHand={onHandOf(line.productId)}
+                        showBatch={anyLotTracked}
+                        lots={lotsOf(line.productId)}
+                        lotsLoading={lots.loading}
+                        onHand={onHandOf(line)}
                         shortage={shortages.get(line.productId)}
+                        batchMissing={
+                          attempted && missingBatch.has(line.productId)
+                        }
                         onChange={(patch) => updateLine(index, patch)}
                         onRemove={() =>
                           setLines((prev) => prev.filter((_, i) => i !== index))
@@ -679,6 +976,12 @@ export function StockTransferForm() {
             </>
           )}
 
+          {lots.error && (
+            <Alert variant="error" className="mt-3">
+              {lots.error}
+            </Alert>
+          )}
+
           {fieldErrors.lines && (
             <p role="alert" className="mt-3 text-xs text-danger">
               {fieldErrors.lines}
@@ -696,6 +999,17 @@ export function StockTransferForm() {
           </p>
 
           <p className="text-xs text-muted">
+            Produk yang <b>punya tanggal kedaluwarsa</b> harus disebutkan
+            batch-nya — yang berkurang di gudang asal persis batch yang Anda
+            pilih. Satu baris mengambil dari <b>satu batch</b>; kalau barangnya
+            diambil dari dua batch, buat satu transfer lagi untuk sisanya.
+            Produk tanpa kedaluwarsa tetap dilayani otomatis dengan urutan FEFO.
+            Kalau stok lamanya memang <b>belum punya batch</b> — misalnya
+            kedaluwarsa baru dinyalakan belakangan — barangnya tetap bisa
+            dipindahkan apa adanya, tanpa batch.
+          </p>
+
+          <p className="text-xs text-muted">
             Transfer TIDAK membuat jurnal. Barang masih milik tenant yang sama —
             hanya lokasinya yang berubah, jadi nilai persediaan sebelum dan
             sesudah sama persis. Bila kedua gudang berada di{" "}
@@ -710,7 +1024,14 @@ export function StockTransferForm() {
             // A shortage disables it rather than failing on click: the API would
             // refuse the whole posting anyway, and the row already says which
             // product and how much it actually has.
-            disabled={saving || sameWarehouse || shortages.size > 0}
+            disabled={
+              saving ||
+              sameWarehouse ||
+              shortages.size > 0 ||
+              // The API refuses a lot-tracked product moved without a lot, and
+              // the row already says which one is waiting for an answer.
+              missingBatch.size > 0
+            }
           >
             {saving ? "Menyimpan…" : "Simpan transfer"}
           </Button>

@@ -222,6 +222,7 @@ function mockLookups({
   ],
   detail = product(),
   catalogue,
+  batches = [],
   preview = previewOf(),
 }: {
   warehouses?: Warehouse[];
@@ -231,6 +232,12 @@ function mockLookups({
    * the transfer picker's search results, which is the same endpoint.
    */
   catalogue?: Product[];
+  /**
+   * The lots at the SOURCE warehouse, which the transfer form reads so a
+   * lot-tracked product can name the one that leaves the shelf. Empty by
+   * default: a product without `hasExpiry` never asks.
+   */
+  batches?: ProductBatch[];
   preview?: StockMovementPreview;
 } = {}) {
   jest
@@ -240,6 +247,9 @@ function mockLookups({
     .spyOn(productService, "list")
     .mockResolvedValue(page(catalogue ?? [detail]) as never);
   jest.spyOn(productService, "getById").mockResolvedValue(detail);
+  jest
+    .spyOn(productBatchService, "list")
+    .mockResolvedValue(page(batches) as never);
 
   // The forms no longer COMPUTE a preview — they ask for one. Everything the
   // panel shows comes from here.
@@ -872,6 +882,160 @@ describe("StockTransferForm", () => {
           notes: "persiapan bazar",
           items: [{ productId: PRODUCT, qty: "6", notes: "lot dekat ED" }],
         }),
+      ),
+    );
+  });
+
+  /**
+   * GOODS THAT EXPIRE MOVE AS A NAMED LOT, never as a bare quantity.
+   *
+   * The cartons are already in the van, so FEFO would answer a question the
+   * person filing the transfer has already answered — writing off a DIFFERENT
+   * carton still on the shelf and re-creating that one's expiry at the
+   * destination. The API refuses such a line, so the form asks first: the batch
+   * column appears, and the save stays shut until a lot is named.
+   */
+  it("refuses to save a lot-tracked product until its batch is named", async () => {
+    mockLookups({
+      detail: product({ hasExpiry: true }),
+      batches: [lot()],
+    });
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<StockTransferForm />);
+
+    await addProducts(user);
+
+    // Asked before it is refused — and the quantity has nothing to be checked
+    // against yet, so it cannot be typed into either.
+    expect(await screen.findByLabelText(/^Batch/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Jumlah/)).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /Simpan transfer/ }),
+    ).toBeDisabled();
+  });
+
+  /**
+   * THE RULE IS ABOUT THE SHELF, NOT THE FLAG.
+   *
+   * `hasExpiry` can be switched on long after stock arrived, and those units
+   * carry no lot — nothing retro-fits one. A form that demanded a batch there
+   * would offer an empty dropdown and refuse to move goods that are physically
+   * on the shelf, while a sale of the same units still goes through. With no
+   * lot to name, the line moves unbatched and the payload carries no `batchId`.
+   */
+  it("moves a lot-tracked product with no lots on the shelf unbatched", async () => {
+    const { create } = mockLookups({
+      detail: product({ hasExpiry: true }),
+      batches: [],
+    });
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<StockTransferForm />);
+
+    await addProducts(user);
+
+    const qty = await screen.findByLabelText(/^Jumlah/);
+    // Open the moment the lots come back empty — not before, or a row would
+    // take a number and then close again when the list arrived.
+    await waitFor(() => expect(qty).not.toBeDisabled());
+    expect(
+      await screen.findByText(/dipindahkan tanpa batch/),
+    ).toBeInTheDocument();
+
+    await user.type(qty, "6");
+    await user.click(screen.getByRole("button", { name: /Simpan transfer/ }));
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          items: [{ productId: PRODUCT, qty: "6" }],
+        }),
+      ),
+    );
+  });
+
+  /**
+   * THE LOT TRAVELS IN THE PAYLOAD, as an id. Its code, expiry and cost are the
+   * server's to carry across — nothing here retypes them, which is what would
+   * let batch A leave the shelf and batch B arrive.
+   */
+  it("sends the named batch with the line", async () => {
+    const { create } = mockLookups({
+      detail: product({ hasExpiry: true }),
+      batches: [lot()],
+    });
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<StockTransferForm />);
+
+    await addProducts(user);
+    await user.click(await screen.findByLabelText(/^Batch/));
+    await user.click(await screen.findByRole("option", { name: /WSK-A26/ }));
+    await user.type(screen.getByLabelText(/^Jumlah/), "6");
+    await user.click(screen.getByRole("button", { name: /Simpan transfer/ }));
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          items: [{ productId: PRODUCT, qty: "6", batchId: "lot-a" }],
+        }),
+      ),
+    );
+  });
+
+  /**
+   * THE CEILING IS THE LOT, not the warehouse.
+   *
+   * The shelf holds 20 of this product and the named carton holds 8. Checking
+   * against the warehouse would wave through a transfer of 12 out of a box that
+   * cannot fill it — the source lot would go negative, FEFO would keep offering
+   * it, and the destination would hold units that never left anywhere.
+   */
+  it("checks the quantity against the named lot, not the warehouse", async () => {
+    mockLookups({
+      detail: product({ hasExpiry: true }),
+      batches: [lot()],
+    });
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<StockTransferForm />);
+
+    await addProducts(user);
+    await user.click(await screen.findByLabelText(/^Batch/));
+    await user.click(await screen.findByRole("option", { name: /WSK-A26/ }));
+    await user.type(screen.getByLabelText(/^Jumlah/), "12");
+
+    expect(await screen.findByText(/Melebihi stok/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Simpan transfer/ }),
+    ).toBeDisabled();
+  });
+
+  /**
+   * THE PICKER OFFERS WHAT THE SOURCE SHELF ACTUALLY HOLDS.
+   *
+   * A transfer takes goods off ONE warehouse, so a product with nothing on it
+   * can only ever produce a row ending in "Melebihi stok — tersedia 0". The
+   * filter is the SERVER'S — the browser holds no balance for products it has
+   * not fetched — and it travels with the source warehouse, which is what makes
+   * it a different list at every location.
+   */
+  it("offers only products the source warehouse holds", async () => {
+    mockLookups();
+    const list = jest.spyOn(productService, "list");
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<StockTransferForm />);
+
+    await user.click(
+      await screen.findByRole("button", { name: /Tambah produk/ }),
+    );
+    await waitFor(() => jest.advanceTimersByTime(400));
+
+    await waitFor(() =>
+      expect(list).toHaveBeenCalledWith(
+        expect.objectContaining({ inStockAtWarehouse: WAREHOUSE }),
       ),
     );
   });
