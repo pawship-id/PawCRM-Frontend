@@ -6,7 +6,10 @@ import {
   StockAdjustmentForm,
   StockTransferForm,
 } from "@/features/inventory";
-import { renderWithAuth as render } from "./helpers/renderWithAuth";
+import {
+  FULL_REACH_USER,
+  renderWithAuth as render,
+} from "./helpers/renderWithAuth";
 import { JournalPreview } from "@/features/inventory/components/JournalPreview";
 import { blockingReason } from "@/features/inventory/utils/blocker";
 import { productService } from "@/services/product.service";
@@ -16,7 +19,7 @@ import { stockMovementService } from "@/services/stockMovement.service";
 import { stockEntryService } from "@/services/stockEntry.service";
 import { productBatchService } from "@/services/productBatch.service";
 import { ApiError } from "@/services/api-error";
-import type { PageResult, Warehouse } from "@/types/api";
+import type { PageResult, User, Warehouse } from "@/types/api";
 import type {
   PreviewMovementRow,
   Product,
@@ -1010,6 +1013,78 @@ describe("StockTransferForm", () => {
     expect(
       screen.getByRole("button", { name: /Simpan transfer/ }),
     ).toBeDisabled();
+  });
+
+  /**
+   * THE TWO ENDS COME FROM DIFFERENT LISTS.
+   *
+   * Access to a warehouse is permission to SPEND what is on it, so it governs
+   * where goods may be taken FROM. Sending them needs no standing at the far
+   * end — the central warehouse, a bazaar, a shop that ran out are exactly the
+   * destinations a branch has to be able to reach — and the API agrees, so a
+   * narrower destination list would forbid what the server allows.
+   */
+  it("offers only reachable sources, but every active destination", async () => {
+    mockLookups({
+      warehouses: [
+        warehouse(WAREHOUSE, "Gudang Pusat"),
+        // Another branch's shelf: out of this account's reach entirely.
+        warehouse(OTHER_WAREHOUSE, "Gudang Bazar", true, "br9"),
+      ],
+    });
+
+    const confined = {
+      ...FULL_REACH_USER,
+      allBranches: false,
+      branchAccess: [BRANCH],
+      warehouseAccess: [
+        { branchId: BRANCH, allWarehouses: false, warehouseIds: [WAREHOUSE] },
+      ],
+    } as User;
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<StockTransferForm />, { user: confined });
+
+    await user.click(await screen.findByLabelText("Dari gudang"));
+    expect(
+      screen.getByRole("option", { name: "Gudang Pusat" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "Gudang Bazar" }),
+    ).not.toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByLabelText("Ke gudang"));
+    expect(
+      screen.getByRole("option", { name: "Gudang Bazar" }),
+    ).toBeInTheDocument();
+  });
+
+  /**
+   * SAID, NOT REFUSED. The transfer saves — but the stock lands where this
+   * account cannot look, and the return trip is not theirs to file either, so
+   * the one consequence they cannot check afterwards is said before they act.
+   */
+  it("warns when the destination is outside the user's access", async () => {
+    mockLookups({
+      warehouses: [
+        warehouse(WAREHOUSE, "Gudang Pusat"),
+        warehouse(OTHER_WAREHOUSE, "Gudang Bazar", true, "br9"),
+      ],
+    });
+
+    const confined = {
+      ...FULL_REACH_USER,
+      allBranches: false,
+      branchAccess: [BRANCH],
+      warehouseAccess: [
+        { branchId: BRANCH, allWarehouses: false, warehouseIds: [WAREHOUSE] },
+      ],
+    } as User;
+
+    render(<StockTransferForm />, { user: confined });
+
+    expect(await screen.findByText(/di luar akses Anda/)).toBeInTheDocument();
   });
 
   /**

@@ -199,7 +199,7 @@ function TransferLineRow({
                 onChange={(value) => onChange({ batchId: value, qty: "" })}
               />
               {batchMissing && (
-                <p role="alert" className="mt-1 text-[11px] text-danger">
+                <p role="alert" className="mt-1 text-xs text-danger">
                   Pilih batch dulu.
                 </p>
               )}
@@ -238,7 +238,7 @@ function TransferLineRow({
           )}
         />
         {shortage ? (
-          <p role="alert" className="mt-1 text-[11px] text-danger">
+          <p role="alert" className="mt-1 text-xs text-danger">
             Melebihi stok — tersedia {formatQty(shortage)}
             {product?.unit && ` ${product.unit}`}
           </p>
@@ -247,9 +247,9 @@ function TransferLineRow({
           // remaining, so there is no number to print until one is chosen —
           // and "Tersedia 0" would read as an empty shelf rather than an
           // unanswered question.
-          <p className="mt-1 text-[11px] text-muted">Pilih batch dulu</p>
+          <p className="mt-1 text-xs text-muted">Pilih batch dulu</p>
         ) : (
-          <p className="mt-1 text-[11px] text-muted">
+          <p className="mt-1 text-xs text-muted">
             {line.batchId ? "Sisa batch " : "Tersedia "}
             {formatQty(onHand)}
             {product?.unit && ` ${product.unit}`}
@@ -393,22 +393,49 @@ export function StockTransferForm() {
    */
   const [idempotencyKey] = useState(newIdempotencyKey);
 
-  // ACTIVE only, both ends. The API refuses a movement at an inactive warehouse,
-  // so offering one would produce a rejection after the form was filled in.
-  const active = useMemo(
+  /**
+   * THE TWO ENDS ARE DRAWN FROM DIFFERENT LISTS, and that asymmetry is the
+   * whole rule.
+   *
+   * FROM — the shelves this user reaches. Access to a warehouse is permission
+   * to SPEND what is on it, and a transfer draws goods off its source. A
+   * location somebody cannot post at would only ever produce a 403 after the
+   * table had been filled in.
+   *
+   * TO — every live warehouse of the tenant, unnarrowed. Sending goods needs no
+   * standing at the far end: the central warehouse, a bazaar, a shop that ran
+   * out are exactly the destinations a branch has to be able to reach, and the
+   * API stopped checking that end for the same reason. Anything narrower would
+   * mean the one movement that crosses a boundary could only be filed by
+   * somebody standing on both sides of it.
+   *
+   * ACTIVE ONLY, both lists: the API refuses a movement at an inactive
+   * warehouse, so offering one would produce a rejection after the fact.
+   */
+  const sources = useMemo(
     () => lookups.warehouses.filter((warehouse) => warehouse.isActive),
     [lookups.warehouses],
   );
 
+  const destinations = useMemo(
+    () => lookups.allWarehouses.filter((warehouse) => warehouse.isActive),
+    [lookups.allWarehouses],
+  );
+
   useEffect(() => {
-    if (fromWarehouseId || active.length === 0) return;
+    if (fromWarehouseId || sources.length === 0) return;
     /* eslint-disable react-hooks/set-state-in-effect */
-    setFrom(active[0]._id);
-    // The second warehouse, when there is one: defaulting both ends to the same
-    // location would open the form in a state it refuses to submit.
-    setTo(active[1]?._id ?? active[0]._id);
+    const from = sources[0]._id;
+    setFrom(from);
+    // The first destination that is NOT the source: defaulting both ends to the
+    // same location would open the form in a state it refuses to submit. Read
+    // off the destination list, which is the wider of the two — a user with one
+    // shelf of their own still has somewhere to send things.
+    setTo(
+      destinations.find((warehouse) => warehouse._id !== from)?._id ?? from,
+    );
     /* eslint-enable react-hooks/set-state-in-effect */
-  }, [active, fromWarehouseId]);
+  }, [sources, destinations, fromWarehouseId]);
 
   /**
    * The products on the form, by id — for the name, SKU and unit beside each
@@ -611,8 +638,23 @@ export function StockTransferForm() {
 
   const fromName =
     lookups.warehouses.find((w) => w._id === fromWarehouseId)?.name ?? "";
+  // Looked up in the WIDE list: the destination may be a warehouse this user
+  // has no access to, and the strip above the table still has to name it.
   const toName =
-    lookups.warehouses.find((w) => w._id === toWarehouseId)?.name ?? "";
+    lookups.allWarehouses.find((w) => w._id === toWarehouseId)?.name ?? "";
+
+  /**
+   * Whether the goods are being sent somewhere this user cannot see.
+   *
+   * Allowed — sending needs no standing at the far end — but SAID, because it
+   * is the one consequence of this transfer they cannot check afterwards: the
+   * stock lands on a shelf that will not appear in their own lists, and the
+   * return trip is not theirs to file either.
+   */
+  const sendingOutOfReach = Boolean(
+    toWarehouseId &&
+    !lookups.warehouses.some((warehouse) => warehouse._id === toWarehouseId),
+  );
 
   /**
    * What the whole transfer is worth, summed across its lines.
@@ -770,11 +812,30 @@ export function StockTransferForm() {
     return <Alert variant="error">{lookups.error}</Alert>;
   }
 
-  if (active.length < 2) {
+  /**
+   * TWO DIFFERENT SHORTFALLS, said differently, because the fix is different.
+   *
+   * No SOURCE is about this account: the tenant may have a dozen warehouses and
+   * this user reaches none of them, so "tambahkan gudang" would be advice for
+   * somebody else. No second DESTINATION is about the tenant: there is nowhere
+   * to send anything, and a warehouse has to be created.
+   */
+  if (sources.length === 0) {
+    return (
+      <Alert variant="info">
+        Anda belum punya akses ke gudang aktif mana pun, jadi belum ada stok
+        yang bisa dipindahkan. Minta admin menambahkan akses gudang di Master
+        Data → Pengguna.
+      </Alert>
+    );
+  }
+
+  if (destinations.length < 2) {
     return (
       <Alert variant="info">
         Transfer butuh <b>dua gudang aktif</b>. Tenant ini baru punya{" "}
-        {active.length}. Tambahkan gudang lain di Master Data → Warehouse dulu.
+        {destinations.length}. Tambahkan gudang lain di Master Data → Warehouse
+        dulu.
       </Alert>
     );
   }
@@ -799,13 +860,18 @@ export function StockTransferForm() {
               {/* The filter shell, like every other warehouse picker in the
                   module. `active={false}` because these are not filters —
                   nothing is narrowed by naming a warehouse, the transfer
-                  simply has two ends. */}
+                  simply has two ends.
+
+                  THE TWO LISTS ARE NOT THE SAME LIST, and that is the rule
+                  rather than an accident: goods may only be taken off a shelf
+                  this user is answerable for, and sent to any live shelf of
+                  the tenant. */}
               <FilterSelect
                 layout="field"
                 label="Dari gudang"
                 ariaLabel="Dari gudang"
                 value={fromWarehouseId}
-                options={namedOptions(active)}
+                options={namedOptions(sources)}
                 active={false}
                 placeholder="Pilih gudang"
                 onChange={changeFrom}
@@ -817,7 +883,7 @@ export function StockTransferForm() {
                   label="Ke gudang"
                   ariaLabel="Ke gudang"
                   value={toWarehouseId}
-                  options={namedOptions(active)}
+                  options={namedOptions(destinations)}
                   active={false}
                   placeholder="Pilih gudang"
                   // The one thing a filter never has to say: this choice can
@@ -834,6 +900,17 @@ export function StockTransferForm() {
                   <p role="alert" className="text-xs text-danger">
                     {fieldErrors.toWarehouseId ??
                       "Gudang asal dan tujuan harus berbeda."}
+                  </p>
+                )}
+                {/* Not an error — this transfer is allowed and will save. It
+                    is the one thing about it the filer cannot check
+                    afterwards, so it is said before they do it rather than
+                    discovered when the stock is not in any list of theirs. */}
+                {sendingOutOfReach && !sameWarehouse && (
+                  <p className="text-xs text-muted">
+                    Gudang ini di luar akses Anda. Stoknya tetap berpindah, tapi
+                    setelah itu tidak muncul di daftar Anda — dan transfer
+                    baliknya harus dibuat orang yang punya aksesnya.
                   </p>
                 )}
               </div>
