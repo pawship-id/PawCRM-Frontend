@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 
 import { renderWithAuth } from "./helpers/renderWithAuth";
 import { StockEntriesScreen } from "@/features/inventory";
-import { excerptAround } from "@/features/inventory/components/StockEntriesScreen";
+import { excerptAround } from "@/features/inventory/utils/excerpt";
 import { stockEntryService } from "@/services/stockEntry.service";
 import { branchService } from "@/services/branch.service";
 import { warehouseService } from "@/services/warehouse.service";

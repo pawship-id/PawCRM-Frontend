@@ -267,7 +267,7 @@ export function StockAdjustmentForm() {
     else if (entryDate > todayValue())
       next.entryDate = "Tanggal tidak boleh di masa depan.";
     if (notes.trim() === "")
-      next.notes = "Alasan wajib diisi - ini yang dibaca saat diaudit.";
+      next.notes = "Catatan wajib diisi - ini yang dibaca saat diaudit.";
     if (lines.length === 0) next.lines = "Tambahkan minimal satu produk.";
 
     lines.forEach((line) => {
@@ -552,7 +552,7 @@ export function StockAdjustmentForm() {
             </div>
 
             <TextField
-              label="Alasan"
+              label="Catatan"
               name="notes"
               value={notes}
               onChange={(event) => {

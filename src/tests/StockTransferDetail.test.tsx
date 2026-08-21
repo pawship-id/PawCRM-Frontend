@@ -76,7 +76,7 @@ function bothDirections() {
         warehouseName: "Gudang Bazar",
       }),
     ],
-    pagination: { page: 1, limit: 200, total: 2, totalPages: 1 },
+    pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
   };
 }
 
@@ -96,6 +96,58 @@ it("asks for the rows of this transfer, by its correlation id", async () => {
       }),
     ),
   );
+});
+
+/**
+ * THE CAP IS THE API'S, AND IT IS 100. This screen once asked for 200 rows in
+ * one call, which every transfer's detail was rejected for — a validation error
+ * on a request that never had to be that big.
+ */
+it("never asks for a page larger than the API allows", async () => {
+  renderWithAuth(<StockTransferDetail transferId={TRANSFER_ID} />);
+
+  await waitFor(() => expect(stockMovementService.list).toHaveBeenCalled());
+  for (const [query] of asMock(stockMovementService.list).mock.calls) {
+    expect(query.limit).toBeLessThanOrEqual(100);
+  }
+});
+
+/**
+ * A transfer is one posting and this screen shows all of it. Stopping at the
+ * first page would show half a transfer as though it were the whole one — the
+ * quantities would look right and the total would be wrong.
+ */
+it("follows the pages when one posting outgrows a page", async () => {
+  asMock(stockMovementService.list)
+    .mockResolvedValueOnce({
+      items: [movement()],
+      pagination: { page: 1, limit: 100, total: 2, totalPages: 2 },
+    })
+    .mockResolvedValueOnce({
+      items: [movement({ _id: "mv3", productName: "Whiskas Tuna 1kg" })],
+      pagination: { page: 2, limit: 100, total: 2, totalPages: 2 },
+    });
+
+  renderWithAuth(<StockTransferDetail transferId={TRANSFER_ID} />);
+
+  expect(await screen.findByText("Whiskas Tuna 1kg")).toBeInTheDocument();
+  expect(screen.getByText("Royal Canin Adult 3kg")).toBeInTheDocument();
+  expect(asMock(stockMovementService.list).mock.calls[1][0]).toEqual(
+    expect.objectContaining({ page: 2 }),
+  );
+});
+
+/**
+ * WHO AND WHEN AS ONE FACT, like the stock-entry detail. The header's date says
+ * which day; only this line says which moment, which is what tells two transfers
+ * made on one busy day apart.
+ */
+it("dates the author line down to the minute", async () => {
+  renderWithAuth(<StockTransferDetail transferId={TRANSFER_ID} />);
+
+  const author = (await screen.findByText("Rina")).closest("dd");
+  expect(author).not.toBeNull();
+  expect(within(author!).getByText(/\d{1,2}[.:]\d{2}/)).toBeInTheDocument();
 });
 
 it("lists one side of the pair, not both", async () => {

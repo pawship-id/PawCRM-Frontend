@@ -106,8 +106,11 @@ export function StockEntryDetail({
 
         {entry.notes && (
           <div className="mt-4 border-t border-border/60 pt-4">
+            {/* "Catatan" ON BOTH KINDS — the same `notes` field, and what both
+                forms actually ask their author for: a free note for whoever
+                audits it later, not a reason off a list. */}
             <dt className="text-xs font-medium uppercase tracking-wider text-muted">
-              Alasan
+              Catatan
             </dt>
             <dd className="mt-1 text-[15px] text-foreground">{entry.notes}</dd>
           </div>

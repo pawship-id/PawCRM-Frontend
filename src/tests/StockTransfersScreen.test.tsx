@@ -131,38 +131,160 @@ it("opens the transfer's own detail from the row's action", async () => {
   );
 });
 
-it("narrows on the server when a warehouse is picked", async () => {
+/**
+ * THE MATCH, MARKED. The note is the only thing the server searches here, so a
+ * row on screen is a row this cell explains — and a result with nothing on it
+ * showing why it is a result is one a reader has to take on trust.
+ */
+it("marks the part of the note the search matched", async () => {
   const user = userEvent.setup();
   renderWithAuth(<StockTransfersScreen />);
+  await screen.findByText(/persiapan bazar Sabtu/);
 
+  await user.type(screen.getByLabelText("Cari transfer"), "bazar");
+
+  const marked = await screen.findByText("bazar");
+  expect(marked.tagName).toBe("MARK");
+});
+
+/**
+ * THE CUT FOLLOWS THE MATCH. CSS truncation cuts from the end regardless of
+ * where the term is, so a word in the middle of a long note would come back as
+ * sixty characters that do not contain it.
+ */
+it("cuts a long note around the match rather than from the end", async () => {
+  const long =
+    "stok untuk bazar akhir bulan, diambil dari rak depan setelah opname " +
+    "selesai dan sisanya ditinggal untuk penjualan harian di gudang pusat";
+  jest
+    .spyOn(stockMovementService, "listTransfers")
+    .mockResolvedValue(page([{ ...TRANSFER, notes: long }]));
+
+  const user = userEvent.setup();
+  renderWithAuth(<StockTransfersScreen />);
+  await screen.findByText(/stok untuk bazar/);
+
+  await user.type(screen.getByLabelText("Cari transfer"), "penjualan");
+
+  const marked = await screen.findByText("penjualan");
+  expect(marked.tagName).toBe("MARK");
+});
+
+/** Opens the panel the two filters live behind. */
+async function openPanel() {
+  const user = userEvent.setup();
+  renderWithAuth(<StockTransfersScreen />);
   await waitFor(() => expect(warehouseService.list).toHaveBeenCalled());
-  await user.click(screen.getByRole("button", { name: /Filter gudang/ }));
-  await user.click(screen.getByRole("option", { name: "Gudang Bazar" }));
+  await user.click(screen.getByRole("button", { name: "Filter" }));
+  return user;
+}
 
-  // A single select standing on the bar applies on click — no Terapkan.
+/**
+ * BEHIND A BUTTON, AND WAITING FOR TERAPKAN. Two combined fields are what a
+ * panel is for (§8) — the warehouse used to stand on the bar and apply on click,
+ * which was right while it was the only one of them.
+ */
+it("narrows on the server when a warehouse is applied", async () => {
+  const user = await openPanel();
+
+  await user.click(screen.getByLabelText("Filter gudang — asal maupun tujuan"));
+  await user.click(await screen.findByRole("option", { name: "Gudang Bazar" }));
+
+  // Nothing is asked until Terapkan: that is what keeps a panel from re-querying
+  // while somebody composes.
+  expect(stockMovementService.listTransfers).not.toHaveBeenLastCalledWith(
+    expect.objectContaining({ warehouseId: "w2" }),
+  );
+
+  await user.click(screen.getByRole("button", { name: "Terapkan" }));
+
   await waitFor(() =>
     expect(stockMovementService.listTransfers).toHaveBeenLastCalledWith(
       expect.objectContaining({ warehouseId: "w2" }),
     ),
   );
+  // The badge is what pays back what the button conceals.
+  expect(
+    await screen.findByRole("button", { name: "Filter (1)" }),
+  ).toBeInTheDocument();
+});
+
+/**
+ * SORTING IS A FIELD IN THE PANEL, not a control of its own — and it leads the
+ * stack, because it is the one field always set and the only one that changes
+ * what the top of the list is rather than what is in it.
+ */
+it("asks the server for the ordering the panel picked", async () => {
+  const user = await openPanel();
+
+  await user.click(screen.getByLabelText("Urutkan"));
+  await user.click(await screen.findByRole("option", { name: "Terlama" }));
+  await user.click(screen.getByRole("button", { name: "Terapkan" }));
+
+  await waitFor(() =>
+    expect(stockMovementService.listTransfers).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sort: "oldest" }),
+    ),
+  );
+});
+
+/**
+ * NOT COUNTED IN THE BADGE. Every list has an ordering, so counting it would put
+ * a standing number over an unnarrowed list and teach people to ignore the badge
+ * — the one thing that makes a collapsed filter safe.
+ */
+it("leaves the ordering out of the filter count", async () => {
+  const user = await openPanel();
+
+  await user.click(screen.getByLabelText("Urutkan"));
+  await user.click(await screen.findByRole("option", { name: "Terlama" }));
+  await user.click(screen.getByRole("button", { name: "Terapkan" }));
+
+  expect(
+    await screen.findByRole("button", { name: "Filter" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: /Filter \(/ }),
+  ).not.toBeInTheDocument();
 });
 
 it("keeps 'Semua gudang' on offer after a warehouse has been picked", async () => {
-  const user = userEvent.setup();
-  renderWithAuth(<StockTransfersScreen />);
+  const user = await openPanel();
 
-  await waitFor(() => expect(warehouseService.list).toHaveBeenCalled());
-  await user.click(screen.getByRole("button", { name: /Filter gudang/ }));
-  await user.click(screen.getByRole("option", { name: "Gudang Bazar" }));
+  await user.click(screen.getByLabelText("Filter gudang — asal maupun tujuan"));
+  await user.click(await screen.findByRole("option", { name: "Gudang Bazar" }));
 
-  // The way back is in the list itself, so the choice is reversible without a
-  // Reset the bar does not have.
-  await user.click(screen.getByRole("button", { name: /Filter gudang/ }));
+  // The way back is in the list itself, so the choice is reversible without
+  // reaching for Reset.
+  await user.click(screen.getByLabelText("Filter gudang — asal maupun tujuan"));
   expect(
     within(screen.getByRole("listbox")).getByRole("option", {
       name: "Semua gudang",
     }),
   ).toBeInTheDocument();
+});
+
+/** Reset clears and re-queries in the same click — it never waits for Terapkan. */
+it("re-queries unnarrowed on Reset", async () => {
+  const user = await openPanel();
+
+  await user.click(screen.getByLabelText("Filter gudang — asal maupun tujuan"));
+  await user.click(await screen.findByRole("option", { name: "Gudang Bazar" }));
+  await user.click(screen.getByRole("button", { name: "Terapkan" }));
+  await waitFor(() =>
+    expect(stockMovementService.listTransfers).toHaveBeenLastCalledWith(
+      expect.objectContaining({ warehouseId: "w2" }),
+    ),
+  );
+
+  await user.click(screen.getByRole("button", { name: "Filter (1)" }));
+  await user.click(screen.getByRole("button", { name: "Reset" }));
+
+  await waitFor(() =>
+    expect(stockMovementService.listTransfers).toHaveBeenLastCalledWith(
+      expect.objectContaining({ warehouseId: undefined, sort: "newest" }),
+    ),
+  );
 });
 
 it("offers the empty list its next step", async () => {

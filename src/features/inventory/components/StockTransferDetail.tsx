@@ -85,12 +85,26 @@ export function StockTransferDetail({ transferId }: { transferId: string }) {
     <div className="flex flex-col gap-6">
       <Card>
         <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="Tanggal">
+          {/* NAMED FOR WHAT IT DATES, like the stock-entry detail beside it:
+              the field two along carries a second timestamp, and two fields both
+              called "Tanggal" is how a reader stops trusting either. */}
+          <Field label="Tanggal transfer">
             <span className="tabular-nums">{formatDate(first.createdAt)}</span>
           </Field>
           <Field label="Dari">{first.warehouseName ?? "—"}</Field>
           <Field label="Ke">{first.destinationWarehouseName ?? "—"}</Field>
-          <Field label="Oleh">{first.createdByName ?? "—"}</Field>
+          {/* WHO AND WHEN AS ONE FACT, the same way the stock-entry detail
+              says it. The header's date and this one are the SAME instant here
+              — a transfer has no document date of its own, because the ledger
+              is append-only and insert order IS the event — so what this line
+              adds is the clock time, which is what tells two transfers made on
+              one busy day apart. */}
+          <Field label="Dibuat oleh">
+            {first.createdByName ?? "—"}
+            <span className="mt-0.5 block text-xs font-normal tabular-nums text-muted">
+              {formatDateTime(first.createdAt)}
+            </span>
+          </Field>
         </dl>
 
         {first.notes && (
@@ -226,6 +240,23 @@ function Field({
       <dd className="mt-1 font-medium text-foreground">{children}</dd>
     </div>
   );
+}
+
+/**
+ * "19 Agu 2026 09.00" — shorter than the date beside it, and carrying a time
+ * that one does not.
+ *
+ * Two dates in one card have to be told apart at a glance, and the format is the
+ * cheapest way to do it: the one a reader came for is the long one.
+ */
+function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString("id-ID", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 /** "19 Agustus 2026" — a detail screen has room for the full month. */

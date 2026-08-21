@@ -1,17 +1,22 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Plus, RotateCcw } from "lucide-react";
+import { ListFilter, Plus, RotateCcw } from "lucide-react";
 
 import {
   Alert,
   FilterBar,
+  HighlightText,
+  FilterPanel,
   FilterSearch,
   FilterSelect,
+  FilterTrigger,
   Pagination,
   Spinner,
   namedOptions,
   withAll,
+  type FilterOption,
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,8 +28,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Can } from "@/features/permissions";
+import type { StockTransferSort } from "@/types/inventory";
+import type { Warehouse } from "@/types/api";
 
 import { useStockTransfers } from "../hooks/useStockTransfers";
+import { excerptAround } from "../utils/excerpt";
 
 /**
  * The list of stock transfers — the screen this route opens on.
@@ -53,6 +61,28 @@ import { useStockTransfers } from "../hooks/useStockTransfers";
  * nilai barang yang saya kirim ke sana", which is what somebody loading a van
  * actually wants to know.
  */
+
+/**
+ * The orderings the API names, and only those. A transfer is an event, so the
+ * axis is time; ranking by how much moved is a report, not this list.
+ */
+const SORTS: FilterOption<StockTransferSort>[] = [
+  { value: "newest", label: "Terbaru" },
+  { value: "oldest", label: "Terlama" },
+];
+
+/** Everything the panel edits, as one draft. */
+interface PanelFilters {
+  sort: StockTransferSort;
+  warehouseId: string;
+}
+
+/**
+ * What Reset returns to — the query's own defaults, not "empty". The ordering
+ * goes back to `newest` rather than being cleared: a list with no ordering is
+ * not a thing, and Reset means "back to how this screen opens".
+ */
+const CLEARED: PanelFilters = { sort: "newest", warehouseId: "" };
 
 /** Tanggal, Dari, Ke, Produk, Catatan, Aksi. */
 const COLUMN_COUNT = 6;
@@ -110,12 +140,11 @@ export function StockTransfersScreen() {
           </Can>
         }
       >
-        {/* ON THE BAR, NOT BEHIND A BUTTON, unlike the two stock-entry lists
-            beside it — §8 draws the line at two fields, and one filter behind a
-            `Filter (1)` button is a button that hides one thing.
-
-            A single select standing on a bar applies ON CLICK, so there is no
-            Terapkan and no draft to abandon.
+        {/* BEHIND ONE BUTTON, like every other list in Inventory. This filter
+            used to stand on the bar and apply on click, which §8 allows while
+            there is only one of it — the ordering makes two, and two combined
+            fields are what a panel is for. The count on the trigger is what
+            makes hiding them safe.
 
             ONE FIELD FOR BOTH ENDS, because the server matches either: somebody
             asking what passed through Gudang Bazar rarely knows, or cares, which
@@ -125,12 +154,19 @@ export function StockTransfersScreen() {
             month still owns the transfers written there. The FORM takes the
             opposite view and offers active warehouses only — it has to, because
             the API refuses a movement at a closed one. */}
-        <FilterSelect
-          label="Gudang"
-          ariaLabel="Filter gudang — asal maupun tujuan"
-          value={query.warehouseId}
-          options={withAll(namedOptions(warehouses), "Semua gudang")}
-          onChange={(warehouseId) => setQuery({ warehouseId })}
+        <TransfersFilterPanel
+          applied={{ sort: query.sort, warehouseId: query.warehouseId }}
+          warehouses={warehouses}
+          onApply={(next) => {
+            // Only what actually moved: the list query is keyed on these, so
+            // posting both back would re-fetch after a Terapkan that changed
+            // nothing.
+            const patch: Partial<typeof query> = {};
+            if (next.sort !== query.sort) patch.sort = next.sort;
+            if (next.warehouseId !== query.warehouseId)
+              patch.warehouseId = next.warehouseId;
+            if (Object.keys(patch).length > 0) setQuery(patch);
+          }}
         />
       </FilterBar>
 
@@ -186,22 +222,26 @@ export function StockTransfersScreen() {
                     {transfer.fromWarehouseName ?? "—"}
                   </TableCell>
                   <TableCell className="whitespace-nowrap">
-                    <span className="flex items-center gap-1.5">
-                      {/* The arrow is decorative — the two columns already say
-                          which way the goods went, and a reader who cannot see
-                          it loses nothing. */}
-                      <ArrowRight
-                        aria-hidden
-                        className="size-3.5 shrink-0 text-primary"
-                      />
-                      {transfer.toWarehouseName ?? "—"}
-                    </span>
+                    {transfer.toWarehouseName ?? "—"}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {transfer.productCount}
                   </TableCell>
-                  <TableCell className="max-w-xs truncate text-muted">
-                    {transfer.notes ?? "—"}
+                  {/* THE MATCH, MARKED — and the cut follows it.
+                      `notes` is the ONLY thing the server searches here, so a
+                      row on screen is a row this cell explains. CSS truncation
+                      cuts from the end regardless of where the term is, which
+                      would answer a search for a word in the middle of a long
+                      note with sixty characters that do not contain it. */}
+                  <TableCell className="max-w-xs text-muted">
+                    {transfer.notes ? (
+                      <HighlightText
+                        text={excerptAround(transfer.notes, query.search)}
+                        query={query.search}
+                      />
+                    ) : (
+                      "—"
+                    )}
                   </TableCell>
                   <TableCell className="text-right">
                     {/* THE ONLY WAY IN, like the stock-entry list beside it. The
@@ -244,6 +284,99 @@ export function StockTransfersScreen() {
         />
       )}
     </div>
+  );
+}
+
+/**
+ * Urutkan and Gudang, behind one button.
+ *
+ * The fields wait for Terapkan — that is what a panel is (§8) — while Reset
+ * clears and re-queries in the same click, because a Reset that needed a second
+ * confirmation is a button that appears not to work.
+ */
+function TransfersFilterPanel({
+  applied,
+  warehouses,
+  onApply,
+}: {
+  applied: PanelFilters;
+  warehouses: Warehouse[];
+  onApply: (next: PanelFilters) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(applied);
+
+  /**
+   * How many filters are narrowing the list.
+   *
+   * THE SEARCH IS NOT COUNTED — it is on the bar with its own text visible, and
+   * a badge exists to pay back what the panel CONCEALS.
+   *
+   * NEITHER IS THE ORDERING, per docs/ui-rules.md §8. Every list has one, so
+   * counting it would put a standing number over an unnarrowed list and teach
+   * people to ignore the badge — the one thing that makes a collapsed filter
+   * safe. It changes what the top of the list is, not what is in it.
+   */
+  const count = applied.warehouseId !== "" ? 1 : 0;
+  const label = count === 0 ? "Filter" : `Filter (${count})`;
+
+  function onOpenChange(next: boolean) {
+    // Seeded on every open, so clicking away abandons the draft.
+    if (next) setDraft(applied);
+    setOpen(next);
+  }
+
+  return (
+    <>
+      {/* THE ACCESSIBLE NAME CARRIES THE COUNT TOO. The badge is what pays back
+          what the button conceals, and a trigger whose visible text says
+          "Filter (1)" while its name says "Filter" pays it back to sighted
+          readers only — the collapsed filter is exactly as easy to forget
+          either way. */}
+      <FilterTrigger
+        label={label}
+        active={count > 0}
+        icon={<ListFilter className="size-4" />}
+        aria-label={label}
+        onClick={() => onOpenChange(true)}
+      />
+
+      <FilterPanel
+        open={open}
+        onOpenChange={onOpenChange}
+        onReset={() => {
+          onApply(CLEARED);
+          setOpen(false);
+        }}
+        onApply={() => {
+          onApply(draft);
+          setOpen(false);
+        }}
+      >
+        {/* LEADS THE STACK: it is the one field always set, and the only one
+            that changes what the top of the list is rather than what is in it. */}
+        <FilterSelect
+          layout="field"
+          label="Urutkan"
+          ariaLabel="Urutkan"
+          value={draft.sort}
+          options={SORTS}
+          unsetValue="newest"
+          onChange={(sort) => setDraft((prev) => ({ ...prev, sort }))}
+        />
+
+        <FilterSelect
+          layout="field"
+          label="Gudang"
+          ariaLabel="Filter gudang — asal maupun tujuan"
+          value={draft.warehouseId}
+          options={withAll(namedOptions(warehouses), "Semua gudang")}
+          onChange={(warehouseId) =>
+            setDraft((prev) => ({ ...prev, warehouseId }))
+          }
+        />
+      </FilterPanel>
+    </>
   );
 }
 

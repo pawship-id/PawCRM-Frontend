@@ -32,6 +32,7 @@ import type { StockEntryKind, StockEntrySort } from "@/types/inventory";
 import type { Branch, Warehouse } from "@/types/api";
 
 import { useStockEntries } from "../hooks/useStockEntries";
+import { excerptAround } from "../utils/excerpt";
 
 /**
  * The list of hand-typed stock documents — one kind per screen.
@@ -96,62 +97,13 @@ const COPY: Record<
   },
 };
 
-/** Tanggal, Nomor, Cabang, Gudang, Produk, Alasan, Aksi. */
+/* WHAT THE `notes` COLUMN IS CALLED, on both kinds. Either document carries a
+   free note its author writes for whoever audits it later, and calling that
+   "Alasan" promised a reason from a fixed list neither form ever had. */
+const NOTES_LABEL = "Catatan";
+
+/** Tanggal, Nomor, Cabang, Gudang, Produk, Catatan, Aksi. */
 const COLUMN_COUNT = 7;
-
-/**
- * How much of a reason a cell shows before it is cut.
- *
- * Short enough that a long sentence cannot push the columns beside it off a
- * laptop, long enough that most reasons — "barang rusak kena air" — arrive
- * whole.
- */
-const EXCERPT_LENGTH = 60;
-
-/**
- * A reason, cut to fit — AROUND THE MATCH when there is one.
- *
- * WHY NOT `truncate`. CSS cuts from the end, always. The server searches the
- * reason as well as the number, so a term matching the eightieth character
- * returns a row whose reason cell shows the first sixty and no mark in them:
- * the reader is looking at a result with nothing on it to explain why it is a
- * result, which is worse than not showing the column at all.
- *
- * So the window follows the match. Ellipses are added on whichever side was
- * actually cut, so a leading "…" means "there is more before this" rather than
- * being decoration.
- *
- * A PURE FUNCTION over the text, deliberately: this has to agree with
- * `HighlightText`, which marks occurrences in whatever string it is handed. Cut
- * first, mark second, and the mark is always inside what is shown.
- */
-export function excerptAround(
-  text: string,
-  term: string,
-  max = EXCERPT_LENGTH,
-): string {
-  if (text.length <= max) return text;
-
-  const needle = term.trim().toLowerCase();
-  const at = needle ? text.toLowerCase().indexOf(needle) : -1;
-
-  // No term, or a term that matched the NUMBER instead: the opening words are
-  // the most useful cut, and the reader is not looking for anything in here.
-  if (at === -1) return `${text.slice(0, max).trimEnd()}…`;
-
-  // Centred on the match, then clamped — a match near either end must not leave
-  // the window half empty.
-  const half = Math.max(0, Math.floor((max - needle.length) / 2));
-  const start = Math.min(
-    Math.max(0, at - half),
-    Math.max(0, text.length - max),
-  );
-  const end = Math.min(text.length, start + max);
-
-  return `${start > 0 ? "…" : ""}${text.slice(start, end).trim()}${
-    end < text.length ? "…" : ""
-  }`;
-}
 
 /** Where a row's Detail lands — each kind reads its own route. */
 function detailHref(kind: StockEntryKind, id: string): string {
@@ -262,7 +214,7 @@ export function StockEntriesScreen({ kind }: { kind: StockEntryKind }) {
             onChange={(search) => setQuery({ search })}
             // Names the two fields the server actually matches, so the box does
             // not promise a search over lines it never runs.
-            placeholder="Cari nomor atau alasan…"
+            placeholder={`Cari nomor atau ${NOTES_LABEL.toLowerCase()}…`}
             ariaLabel="Cari dokumen"
             fill
           />
@@ -321,7 +273,7 @@ export function StockEntriesScreen({ kind }: { kind: StockEntryKind }) {
               <TableHead>Cabang</TableHead>
               <TableHead>Gudang</TableHead>
               <TableHead className="text-right">Produk</TableHead>
-              <TableHead>Alasan</TableHead>
+              <TableHead>{NOTES_LABEL}</TableHead>
               <TableHead className="text-right">Aksi</TableHead>
             </TableRow>
           </TableHeader>

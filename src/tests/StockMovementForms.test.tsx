@@ -356,7 +356,7 @@ describe("StockAdjustmentForm", () => {
   /** Warehouse, reason, one product — everything but the quantity. */
   async function fillHeader(user: ReturnType<typeof userEvent.setup>) {
     await pickWarehouse(user);
-    await user.type(screen.getByLabelText(/Alasan/), "Rusak kena air");
+    await user.type(screen.getByLabelText(/Catatan/), "Rusak kena air");
     await addProducts(user);
   }
 
@@ -691,7 +691,7 @@ describe("StockAdjustmentForm", () => {
     );
     const user = await renderSheet();
     await pickWarehouse(user);
-    await user.type(screen.getByLabelText(/Alasan/), "Rusak kena air");
+    await user.type(screen.getByLabelText(/Catatan/), "Rusak kena air");
     await addProducts(user, 2);
 
     // The first row is settled, so the complaint belongs to the second.

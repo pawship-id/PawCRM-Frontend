@@ -106,6 +106,7 @@ export const stockMovementService = {
         from: query.from,
         to: query.to,
         search: query.search,
+        sort: query.sort,
       },
     }),
 

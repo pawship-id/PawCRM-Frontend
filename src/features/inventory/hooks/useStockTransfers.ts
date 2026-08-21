@@ -5,7 +5,10 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "@/services/api-error";
 import { stockMovementService } from "@/services/stockMovement.service";
 import { warehouseService } from "@/services/warehouse.service";
-import type { StockTransferSummary } from "@/types/inventory";
+import type {
+  StockTransferSort,
+  StockTransferSummary,
+} from "@/types/inventory";
 import type { Warehouse } from "@/types/api";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 
@@ -20,12 +23,18 @@ export interface StockTransfersQuery {
    * theirs was.
    */
   warehouseId: string;
+  /**
+   * Always set, never cleared: a list with no ordering is not a thing. Reset
+   * returns it to `newest` rather than emptying it.
+   */
+  sort: StockTransferSort;
   page: number;
 }
 
 const DEFAULT_QUERY: StockTransfersQuery = {
   search: "",
   warehouseId: "",
+  sort: "newest",
   page: 1,
 };
 
@@ -128,6 +137,7 @@ export function useStockTransfers(): UseStockTransfersResult {
         limit: LIMIT,
         search: debounced.search.trim() || undefined,
         warehouseId: debounced.warehouseId || undefined,
+        sort: debounced.sort,
       })
       .then((result) => {
         if (!active) return;
@@ -148,7 +158,13 @@ export function useStockTransfers(): UseStockTransfersResult {
     return () => {
       active = false;
     };
-  }, [debounced.page, debounced.search, debounced.warehouseId, nonce]);
+  }, [
+    debounced.page,
+    debounced.search,
+    debounced.warehouseId,
+    debounced.sort,
+    nonce,
+  ]);
 
   return {
     transfers,

@@ -24,11 +24,52 @@ interface UseTransferResult {
  * StockMovementService: "Not called `_id`, because nothing in any collection has
  * this as its primary key."
  *
- * A LIMIT, NOT A PAGE. A transfer is one posting and this screen shows all of
- * it; a second page would be a transfer that was half-read. The cap is high
- * enough that only a transfer larger than any real one could reach it.
+ * READ WHOLE, NOT PAGED. A transfer is one posting and this screen shows all of
+ * it; a second page would be a transfer that was half-read.
+ *
+ * THE API CAPS A PAGE AT 100 ROWS (`common.validation.js`), so "all of it" is
+ * assembled here rather than asked for in one request. This used to ask for 200
+ * in a single call, which the backend rejected as a validation error — so the
+ * detail failed for EVERY transfer, including the one-line ones the cap was
+ * never about.
  */
-const LIMIT = 200;
+const PAGE_LIMIT = 100;
+
+/**
+ * A backstop, not an expected bound: 2 000 rows is a transfer of hundreds of
+ * products across hundreds of lots. It exists so a wrong `totalPages` cannot
+ * turn one screen into an unbounded fetch loop.
+ */
+const MAX_PAGES = 20;
+
+/**
+ * Every row of one posting, following the pages the cap creates.
+ *
+ * Page one first — it carries the count that says whether there are more — then
+ * the rest at once, since they do not depend on each other. Ordering is stable
+ * across the pages because the API's sort breaks ties on `_id`.
+ */
+async function fetchRows(transferId: string): Promise<StockMovement[]> {
+  const query = {
+    referenceType: "transfer_manual" as const,
+    referenceId: transferId,
+    limit: PAGE_LIMIT,
+  };
+
+  const first = await stockMovementService.list(query);
+  const pages = Math.min(first.pagination.totalPages, MAX_PAGES);
+  if (pages <= 1) {
+    return first.items;
+  }
+
+  const rest = await Promise.all(
+    Array.from({ length: pages - 1 }, (_, index) =>
+      stockMovementService.list({ ...query, page: index + 2 }),
+    ),
+  );
+
+  return [...first.items, ...rest.flatMap((page) => page.items)];
+}
 
 export function useTransfer(transferId: string): UseTransferResult {
   const [all, setAll] = useState<StockMovement[]>([]);
@@ -41,14 +82,9 @@ export function useTransfer(transferId: string): UseTransferResult {
     setLoading(true);
     setError(null);
 
-    stockMovementService
-      .list({
-        referenceType: "transfer_manual",
-        referenceId: transferId,
-        limit: LIMIT,
-      })
-      .then((result) => {
-        if (active) setAll(result.items);
+    fetchRows(transferId)
+      .then((items) => {
+        if (active) setAll(items);
       })
       .catch((err) => {
         if (!active) return;

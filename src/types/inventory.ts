@@ -1482,7 +1482,19 @@ export interface StockTransferListQuery {
   to?: string;
   /** Free text over the posting's note — the only text a transfer has. */
   search?: string;
+  /** Defaults to `newest` on the server. Every list has an ordering. */
+  sort?: StockTransferSort;
 }
+
+/**
+ * The orderings this endpoint names, and they are NOT the ledger's.
+ *
+ * It sorts GROUPS by the date the server computes over the rows of one posting,
+ * where `GET /stock-movements` sorts rows by their own `createdAt`. Chronological
+ * only: a transfer is an event, and ranking one by product count or value is a
+ * report rather than a list of what happened.
+ */
+export type StockTransferSort = "newest" | "oldest";
 
 /** The orderings `GET /api/stock-movements` accepts — MOVEMENT_SORTS in the model. */
 export type MovementSort = "newest" | "oldest";
