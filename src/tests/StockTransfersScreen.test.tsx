@@ -84,19 +84,20 @@ it("reads the grouped endpoint, not the ledger", async () => {
   expect(stockMovementService.list).not.toHaveBeenCalled();
 });
 
-it("shows both ends and both counts", async () => {
+it("shows both ends and what the transfer carried", async () => {
   renderWithAuth(<StockTransfersScreen />);
 
   const row = (await screen.findByText("Gudang Bazar")).closest("tr");
   expect(row).not.toBeNull();
 
   expect(within(row!).getByText("Gudang Pusat")).toBeInTheDocument();
-  // The two counts differ on purpose — that difference IS what says FEFO drew
-  // one of the products off more than one shelf.
+  // What somebody typed. How many lots FEFO drew from to satisfy it is a fact
+  // about the allocation, and it is on the detail beside the lots it counts.
   expect(within(row!).getByText("2")).toBeInTheDocument();
-  expect(within(row!).getByText("3")).toBeInTheDocument();
   expect(within(row!).getByText(/persiapan bazar Sabtu/)).toBeInTheDocument();
-  expect(within(row!).getByText("Rina")).toBeInTheDocument();
+  // Who wrote it is on the detail too — a list of what moved is not a list of
+  // who was on shift.
+  expect(within(row!).queryByText("Rina")).not.toBeInTheDocument();
 });
 
 /**
@@ -112,15 +113,18 @@ it("carries no value column, and points at the detail instead", async () => {
   const row = (await screen.findByText("Gudang Bazar")).closest("tr");
   expect(within(row!).queryByText(/450\.000/)).not.toBeInTheDocument();
   expect(
-    screen.getByText(/Buka tanggalnya untuk melihat barang apa saja/),
+    screen.getByText(/Buka Detail untuk melihat barang apa saja/),
   ).toBeInTheDocument();
 });
 
-/** A transfer has no number to link from — it has no document — so the date carries it. */
-it("links the date to the transfer's own detail", async () => {
+/**
+ * A transfer has no number to link from — it has no document — so the way in is
+ * a named action rather than a linked date somebody has to try to discover.
+ */
+it("opens the transfer's own detail from the row's action", async () => {
   renderWithAuth(<StockTransfersScreen />);
 
-  const link = await screen.findByRole("link", { name: /Agu|Agt|20/ });
+  const link = await screen.findByRole("link", { name: /^Detail transfer/ });
   expect(link).toHaveAttribute(
     "href",
     `/dashboard/inventory/transfers/${TRANSFER.transferId}`,

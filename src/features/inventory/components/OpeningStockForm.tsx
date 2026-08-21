@@ -26,7 +26,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { cn } from "@/lib/utils";
 import { autoBatchCode } from "@/lib/batchCode";
 import { blockingReason } from "../utils/blocker";
 import { swalToast } from "@/lib/swal";
@@ -475,7 +474,10 @@ export function OpeningStockForm() {
               )}
             </span>
           }
-          description="Harga beli per unit wajib diisi — angka itulah yang jadi dasar HPP dan nilai persediaan."
+          /* The lot columns lost the sentence that used to sit in their own
+             row, so it says it once here instead of on every expiry-tracked
+             line: the date is what is required, the code fills itself in. */
+          description="Harga beli per unit wajib diisi — angka itulah yang jadi dasar HPP dan nilai persediaan. Produk yang melacak kedaluwarsa wajib punya tanggal kadaluarsa; kode batch boleh kosong dan dibuat otomatis."
         >
           {/**
            * THE BUTTON FOLLOWS THE LIST, above it while it is empty and below
@@ -534,6 +536,25 @@ export function OpeningStockForm() {
                         Harga beli / unit
                         <span className="text-danger"> *</span>
                       </TableHead>
+                      {/* THE LOT, AS TWO COLUMNS rather than a row of its own.
+                          A batch belongs to the line that creates it, and a
+                          spanning row underneath read as a second product. The
+                          receipt form's table is laid out the same way, and the
+                          columns are empty — an em dash — on the rows whose
+                          product does not track expiry. */}
+                      <TableHead>Kode batch</TableHead>
+                      <TableHead>
+                        Kadaluarsa
+                        {/* The column carries the mark, not the cell: a date
+                            input holds no placeholder, so an empty one looks
+                            finished and needs saying somewhere. Hidden from
+                            screen readers, which hear `aria-invalid` and the
+                            message below the row instead of a bare star. */}
+                        <span aria-hidden className="text-danger">
+                          {" "}
+                          *
+                        </span>
+                      </TableHead>
                       <TableHead />
                     </TableRow>
                   </TableHeader>
@@ -541,11 +562,6 @@ export function OpeningStockForm() {
                     {lines.map((line, index) => {
                       const at = `line.${line.productId}`;
                       const product = productById.get(line.productId);
-                      // The DATE is what is missing: a lot with no code still
-                      // gets one, a lot with no expiry cannot be ordered by FEFO.
-                      const lotMissing =
-                        product?.hasExpiry === true && line.expiryDate === "";
-
                       return (
                         // Keyed on the product, not the index: a product appears
                         // at most once, and removing a middle row under an index
@@ -609,6 +625,60 @@ export function OpeningStockForm() {
                               />
                             </TableCell>
 
+                            <TableCell>
+                              {product?.hasExpiry ? (
+                                <Input
+                                  aria-label={`Kode batch ${product.name}`}
+                                  value={line.batchCode}
+                                  onChange={(event) =>
+                                    patchLine(index, {
+                                      batchCode: event.target.value,
+                                    })
+                                  }
+                                  /* The derived name, but only once the date it
+                                     derives from exists — a preview of a code
+                                     the server will not use is worse than no
+                                     preview. */
+                                  placeholder={
+                                    line.expiryDate
+                                      ? autoBatchCode(
+                                          product.sku,
+                                          line.expiryDate,
+                                          "",
+                                        )
+                                      : "opsional"
+                                  }
+                                  title="Kosongkan untuk kode otomatis dari SKU dan tanggal kadaluarsa"
+                                  className="w-40 text-xs tabular-nums"
+                                  disabled={saving}
+                                />
+                              ) : (
+                                <span className="text-xs text-muted">—</span>
+                              )}
+                            </TableCell>
+
+                            <TableCell>
+                              {product?.hasExpiry ? (
+                                <Input
+                                  aria-label={`Tanggal kedaluwarsa ${product.name}`}
+                                  type="date"
+                                  value={line.expiryDate}
+                                  onChange={(event) =>
+                                    patchLine(index, {
+                                      expiryDate: event.target.value,
+                                    })
+                                  }
+                                  className="w-40 text-xs"
+                                  aria-invalid={Boolean(
+                                    fieldErrors[`${at}.expiryDate`],
+                                  )}
+                                  disabled={saving}
+                                />
+                              ) : (
+                                <span className="text-xs text-muted">—</span>
+                              )}
+                            </TableCell>
+
                             <TableCell className="text-right">
                               <UIButton
                                 type="button"
@@ -630,79 +700,15 @@ export function OpeningStockForm() {
                               whole table wider than the screen. §1 forbids the
                               red border being the only signal. */}
                           {(fieldErrors[`${at}.qty`] ||
-                            fieldErrors[`${at}.cost`]) && (
+                            fieldErrors[`${at}.cost`] ||
+                            fieldErrors[`${at}.expiryDate`]) && (
                             <TableRow>
-                              <TableCell colSpan={5} className="pt-0">
+                              <TableCell colSpan={7} className="pt-0">
                                 <p role="alert" className="text-xs text-danger">
                                   {fieldErrors[`${at}.qty`] ??
-                                    fieldErrors[`${at}.cost`]}
+                                    fieldErrors[`${at}.cost`] ??
+                                    fieldErrors[`${at}.expiryDate`]}
                                 </p>
-                              </TableCell>
-                            </TableRow>
-                          )}
-
-                          {/* Lot fields on exactly the rows that need them, in
-                              a spanning row so the sheet stays a column of
-                              quantities for the products that do not — the same
-                              arrangement the opname sheet uses. */}
-                          {product?.hasExpiry && (
-                            <TableRow
-                              className={cn(
-                                lotMissing ? "bg-tint-danger" : "bg-accent/40",
-                              )}
-                            >
-                              <TableCell colSpan={5}>
-                                <div className="flex flex-wrap items-end gap-3">
-                                  <p className="min-w-64 flex-1 text-xs text-muted">
-                                    <b>{product.name}</b> melacak kedaluwarsa —
-                                    stok yang masuk harus punya batch.
-                                  </p>
-
-                                  {/* THE TWO FIELDS ARE ONE GROUP and wrap as
-                                      one: a lot is only a lot when both halves
-                                      are read together. */}
-                                  <div className="flex shrink-0 items-end gap-3">
-                                    <Input
-                                      aria-label={`Kode batch ${product.name}`}
-                                      value={line.batchCode}
-                                      onChange={(event) =>
-                                        patchLine(index, {
-                                          batchCode: event.target.value,
-                                        })
-                                      }
-                                      /* The derived name, but only once the
-                                         date it derives from exists — a preview
-                                         of a code the server will not use is
-                                         worse than no preview. */
-                                      placeholder={
-                                        line.expiryDate
-                                          ? autoBatchCode(
-                                              product.sku,
-                                              line.expiryDate,
-                                              "",
-                                            )
-                                          : "Kode batch (opsional)"
-                                      }
-                                      className="w-44"
-                                      disabled={saving}
-                                    />
-                                    <Input
-                                      aria-label={`Tanggal kedaluwarsa ${product.name}`}
-                                      type="date"
-                                      value={line.expiryDate}
-                                      onChange={(event) =>
-                                        patchLine(index, {
-                                          expiryDate: event.target.value,
-                                        })
-                                      }
-                                      className="w-44"
-                                      aria-invalid={Boolean(
-                                        fieldErrors[`${at}.expiryDate`],
-                                      )}
-                                      disabled={saving}
-                                    />
-                                  </div>
-                                </div>
                               </TableCell>
                             </TableRow>
                           )}

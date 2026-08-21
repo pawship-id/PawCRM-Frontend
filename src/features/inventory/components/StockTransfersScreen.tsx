@@ -13,7 +13,6 @@ import {
   namedOptions,
   withAll,
 } from "@/components";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -43,10 +42,10 @@ import { useStockTransfers } from "../hooks/useStockTransfers";
  * paging its rows would put one transfer on two pages, each showing half its
  * lots. See `useStockTransfers`.
  *
- * TWO COUNTS, AND THEY DIFFER ON PURPOSE. "Produk" is what somebody typed;
- * "Lot" is how many lots FEFO drew from to satisfy it. A reader who expects one
- * to equal the other learns FEFO exists by seeing them differ — the same reason
- * the adjustment list carries a movement count.
+ * ONE COUNT ON THE ROW, NOT TWO. "Produk" is what somebody typed. How many lots
+ * FEFO drew from to satisfy it is a fact about the allocation rather than about
+ * the transfer, and it was answering a question nobody asks from a list — it now
+ * lives on the detail, beside the lots it counts.
  *
  * "Nilai" IS NOT A JOURNAL FIGURE, and the footnote under the table says so. A
  * transfer moves goods the tenant already owns, so total inventory value does
@@ -55,8 +54,8 @@ import { useStockTransfers } from "../hooks/useStockTransfers";
  * actually wants to know.
  */
 
-/** Tanggal, Dari, Ke, Produk, Lot, Catatan, Oleh. */
-const COLUMN_COUNT = 7;
+/** Tanggal, Dari, Ke, Produk, Catatan, Aksi. */
+const COLUMN_COUNT = 6;
 
 export function StockTransfersScreen() {
   const {
@@ -143,9 +142,8 @@ export function StockTransfersScreen() {
               <TableHead>Dari</TableHead>
               <TableHead>Ke</TableHead>
               <TableHead className="text-right">Produk</TableHead>
-              <TableHead className="text-right">Lot</TableHead>
               <TableHead>Catatan</TableHead>
-              <TableHead>Oleh</TableHead>
+              <TableHead className="text-right">Aksi</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -182,15 +180,7 @@ export function StockTransfersScreen() {
               transfers.map((transfer) => (
                 <TableRow key={transfer.transferId}>
                   <TableCell className="tabular-nums whitespace-nowrap">
-                    {/* The way in. A transfer has no number to link from — it
-                        has no document — so the date carries the link, which is
-                        also the first thing a reader looks for on this row. */}
-                    <Link
-                      href={`/dashboard/inventory/transfers/${transfer.transferId}`}
-                      className="font-medium text-primary hover:underline"
-                    >
-                      {formatDate(transfer.transferredAt)}
-                    </Link>
+                    {formatDate(transfer.transferredAt)}
                   </TableCell>
                   <TableCell className="whitespace-nowrap">
                     {transfer.fromWarehouseName ?? "—"}
@@ -210,16 +200,22 @@ export function StockTransfersScreen() {
                   <TableCell className="text-right tabular-nums">
                     {transfer.productCount}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {/* FEFO made visible: more lots than products means one of
-                        them came off several shelves. */}
-                    <Badge variant="outline">{transfer.lotCount}</Badge>
-                  </TableCell>
                   <TableCell className="max-w-xs truncate text-muted">
                     {transfer.notes ?? "—"}
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-muted">
-                    {transfer.createdByName ?? "—"}
+                  <TableCell className="text-right">
+                    {/* THE ONLY WAY IN, like the stock-entry list beside it. The
+                        date used to carry the link because a transfer has no
+                        number to link from; a named action says where it goes
+                        without the reader having to try the date to find out. */}
+                    <Button variant="ghost" size="sm" asChild>
+                      <Link
+                        href={`/dashboard/inventory/transfers/${transfer.transferId}`}
+                        aria-label={`Detail transfer ${formatDate(transfer.transferredAt)}`}
+                      >
+                        Detail
+                      </Link>
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
@@ -233,8 +229,8 @@ export function StockTransfersScreen() {
           value moved to the detail, a line at a time — and the sentence that
           keeps it from being read as a journal figure went with it. */}
       <p className="text-xs text-muted">
-        Buka tanggalnya untuk melihat barang apa saja yang pindah, dari batch
-        mana, dan berapa nilainya.
+        Buka Detail untuk melihat barang apa saja yang pindah, dari batch mana,
+        berapa nilainya, dan siapa yang mencatatnya.
       </p>
 
       {pagination.totalPages > 1 && (
