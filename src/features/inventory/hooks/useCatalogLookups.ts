@@ -7,6 +7,11 @@ import { categoryService } from "@/services/category.service";
 import { warehouseService } from "@/services/warehouse.service";
 import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
 import { ApiError } from "@/services/api-error";
+import { useAuth } from "@/features/auth";
+import {
+  accessibleBranches,
+  accessibleWarehouses,
+} from "@/utils/accessScope";
 import type { Branch, Category, PageResult } from "@/types/api";
 import type { ChartOfAccount } from "@/types/accounting";
 import type { StockWarehouse } from "@/types/inventory";
@@ -98,6 +103,12 @@ interface CatalogLookupsOptions {
  * no cache and no refetch. Both are small, rarely-changing lists, and one
  * `loading`/`error` gates the section that needs them.
  *
+ * THE WAREHOUSES AND BRANCHES ARE NARROWED TO THE SIGNED-IN USER'S OWN. The
+ * server refuses a post outside that reach with a 403 and hides its documents
+ * from every read, so offering one here could only produce a rejection after a
+ * form was filled in. A courtesy over the server's answer, never the isolation
+ * itself — `utils/accessScope.ts` says why.
+ *
  * A FAILURE HERE IS SHOWN, NOT SWALLOWED. These are separate permissions
  * (`categories:read`, `warehouses:read`) from `products:read`, so a role granted
  * only the latter gets a form whose category picker cannot be filled — and
@@ -109,6 +120,7 @@ export function useCatalogLookups({
   withAccounting = false,
   withBranches = false,
 }: CatalogLookupsOptions = {}): CatalogLookups {
+  const { user } = useAuth();
   const [categories, setCategories] = useState<Category[]>([]);
   const [warehouses, setWarehouses] = useState<StockWarehouse[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -172,8 +184,10 @@ export function useCatalogLookups({
           ]);
         if (!active) return;
         setCategories(categoryResult.items);
-        setWarehouses(warehouseResult.items);
-        setBranches(branchResult ? branchResult.items : []);
+        setWarehouses(accessibleWarehouses(user, warehouseResult.items));
+        setBranches(
+          branchResult ? accessibleBranches(user, branchResult.items) : [],
+        );
         // The rejection is carried through as the value, so the reason survives
         // rather than collapsing to "something failed".
         const assetFailure = assetResult instanceof Error ? assetResult : null;
@@ -217,7 +231,7 @@ export function useCatalogLookups({
     return () => {
       active = false;
     };
-  }, [includeInactive, withAccounting, withBranches]);
+  }, [includeInactive, withAccounting, withBranches, user]);
 
   return {
     categories,

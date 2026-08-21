@@ -9,6 +9,7 @@ import { warehouseService } from "@/services/warehouse.service";
 import { productService } from "@/services/product.service";
 import { ApiError } from "@/services/api-error";
 import type { Opname, OpnameItem, Product } from "@/types/inventory";
+import type { User } from "@/types/api";
 
 import { exportToXlsx } from "@/utils/xlsx";
 
@@ -334,7 +335,10 @@ describe("OpnameScreen", () => {
   });
 
   it("tells an empty tenant what to do", async () => {
-    asMock(stockOpnameService.list).mockResolvedValue(page([]));
+    asMock(stockOpnameService.list).mockResolvedValue({
+      items: [],
+      pagination: { page: 1, limit: 20, total: 0, totalPages: 0 },
+    } as never);
 
     renderWithAuth(<OpnameScreen />);
 
@@ -1643,5 +1647,115 @@ describe("OpnameSheet", () => {
       expect(rows).toHaveLength(1);
       expect(counted.value(rows[0])).toBe("belum");
     });
+  });
+});
+
+/**
+ * Stock isolation on the count screen.
+ *
+ * A COURTESY OVER THE SERVER'S ANSWER — the API narrows every list and refuses
+ * an out-of-scope filter or a count at an unreachable shelf on its own. What is
+ * worth asserting here is that neither picker offers a choice whose only
+ * possible outcome is that refusal.
+ */
+describe("stock isolation", () => {
+  const OTHER_BRANCH_ID = "b-other";
+  const OTHER_WAREHOUSE_ID = "w-other";
+  const SHARED_WAREHOUSE_ID = "w-shared";
+
+  /** Scoped to Cabang Pusat, and there only to Gudang Utama. */
+  const CONFINED = {
+    _id: "u2",
+    allBranches: false,
+    branchAccess: [BRANCH_ID],
+    warehouseAccess: [
+      { branchId: BRANCH_ID, allWarehouses: false, warehouseIds: [WAREHOUSE_ID] },
+    ],
+  } as unknown as User;
+
+  function warehouse(_id: string, name: string, defaultBranchId: string | null) {
+    return {
+      _id,
+      tenantId: "t1",
+      name,
+      defaultBranchId,
+      address: null,
+      picName: null,
+      picPhone: null,
+      isActive: true,
+      isDefault: false,
+      deletedAt: null,
+      createdAt: "",
+      updatedAt: "",
+    };
+  }
+
+  beforeEach(() => {
+    asMock(stockOpnameService.list).mockResolvedValue({
+      items: [],
+      pagination: { page: 1, limit: 20, total: 0, totalPages: 0 },
+    } as never);
+    asMock(branchService.list).mockResolvedValue({
+      items: [
+        { _id: BRANCH_ID, name: "Cabang Pusat", isActive: true },
+        { _id: OTHER_BRANCH_ID, name: "Cabang Lain", isActive: true },
+      ],
+      pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
+    } as never);
+
+    asMock(warehouseService.list).mockResolvedValue({
+      items: [
+        warehouse(WAREHOUSE_ID, "Gudang Utama", BRANCH_ID),
+        warehouse(OTHER_WAREHOUSE_ID, "Gudang Lain", OTHER_BRANCH_ID),
+        warehouse(SHARED_WAREHOUSE_ID, "Gudang Pusat", null),
+      ],
+      pagination: { page: 1, limit: 100, total: 3, totalPages: 1 },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+  });
+
+  it("offers the start card only the shelves the user may count", async () => {
+    // Gudang Pusat has no branch of its own, so it serves every one of them and
+    // comes with any branch access at all.
+    const ui = userEvent.setup();
+    renderWithAuth(<OpnameScreen />, { user: CONFINED });
+
+    await ui.click(await screen.findByLabelText("Gudang"));
+
+    expect(
+      screen.getByRole("option", { name: "Gudang Utama" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "Gudang Pusat" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "Gudang Lain" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("leaves an all-branches user the branch the other one cannot see", async () => {
+    // Nothing is offered under Gudang before a branch is named — the form
+    // helper is empty until then, so a warehouse cannot be chosen and then
+    // silently invalidated by a branch picked after it. Hence the two clicks.
+    const owner = { ...CONFINED, allBranches: true, branchAccess: [] };
+    const ui = userEvent.setup();
+    renderWithAuth(<OpnameScreen />, { user: owner });
+
+    await ui.click(await screen.findByLabelText("Cabang"));
+    await ui.click(screen.getByRole("option", { name: "Cabang Lain" }));
+    await ui.click(screen.getByLabelText("Gudang"));
+
+    expect(
+      screen.getByRole("option", { name: "Gudang Lain" }),
+    ).toBeInTheDocument();
+  });
+
+  it("offers a confined user no branch but their own", async () => {
+    renderWithAuth(<OpnameScreen />, { user: CONFINED });
+
+    // One branch is not a choice: with only Cabang Pusat in reach the picker
+    // fills it in, which is why the shelves above are reachable in one click.
+    expect(await screen.findByLabelText("Gudang")).toBeInTheDocument();
+    expect(screen.queryByText("Cabang Lain")).not.toBeInTheDocument();
   });
 });

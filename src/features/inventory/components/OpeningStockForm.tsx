@@ -41,9 +41,6 @@ import {
 } from "@/utils/decimal";
 
 import { useStockCardLookups } from "../hooks/useStockCardLookups";
-import { useAuth } from "@/features/auth";
-import { accessibleWarehouses } from "@/utils/accessScope";
-
 import { useBranchScope, warehousesForBranch } from "../hooks/useBranchScope";
 import { OpeningStockAddProductsDialog } from "./OpeningStockAddProductsDialog";
 
@@ -140,7 +137,6 @@ export function OpeningStockForm() {
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const { user: authUser } = useAuth();
   const scope = useBranchScope();
   /**
    * ONE BRANCH IS NOT A CHOICE — a tenant with a single shop reaches the field
@@ -150,14 +146,10 @@ export function OpeningStockForm() {
    * would be empty for no reason.
    */
   const branchId = pickedBranch || scope.soleBranch;
-  // TWO NARROWINGS, and they answer different questions: the first is what
-  // THIS USER may post at, the second what THAT BRANCH may post at. Applied in
-  // this order so a warehouse outside the user's reach never reaches the
-  // branch filter, where a shared one would otherwise pass on every branch.
-  const scopedWarehouses = warehousesForBranch(
-    branchId,
-    accessibleWarehouses(authUser, lookups.warehouses),
-  );
+  // `lookups.warehouses` is ALREADY narrowed to what this user may reach
+  // (useStockCardLookups); this second filter answers the other question —
+  // what THAT BRANCH may post at.
+  const scopedWarehouses = warehousesForBranch(branchId, lookups.warehouses);
 
   /** Σ(qty × cost) — what this sheet will add to the inventory asset. */
   const totalValue = useMemo(() => {
