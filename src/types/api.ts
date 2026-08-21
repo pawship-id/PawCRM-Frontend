@@ -63,6 +63,26 @@ export interface HealthPayload {
  * profile UI does not yet touch (commissionRate, availability) are omitted
  * rather than typed loosely; add them when a screen needs them.
  */
+/**
+ * One branch's worth of warehouse scope on a user.
+ *
+ * A branch is a set of books and a warehouse is a shelf, so the two axes are
+ * nested rather than flat: `allWarehouses` means every shelf of THIS branch and
+ * keeps meaning that as new ones open, which an enumerated list cannot.
+ *
+ * SHARED WAREHOUSES ARE NEVER LISTED HERE. A warehouse with
+ * `defaultBranchId: null` is the central one serving every branch, so it comes
+ * with any branch access at all; the backend refuses one sent in `warehouseIds`
+ * rather than storing a duplicate of a grant the user already has.
+ */
+export interface WarehouseScopeEntry {
+  branchId: string;
+  /** Every warehouse of this branch, including ones opened later. */
+  allWarehouses: boolean;
+  /** Empty whenever `allWarehouses` is true — one representation of "all". */
+  warehouseIds: string[];
+}
+
 export interface User {
   _id: string;
   tenantId: string;
@@ -72,6 +92,13 @@ export interface User {
   roleId: string | null;
   allBranches: boolean;
   branchAccess: string[];
+  /**
+   * Exactly one entry per id in `branchAccess`, and `[]` whenever `allBranches`
+   * is true. Read defensively: users stored before this field existed come back
+   * with `[]` alongside a non-empty `branchAccess`, which the backend reads as
+   * "never configured" and treats as every warehouse of those branches.
+   */
+  warehouseAccess: WarehouseScopeEntry[];
   status: "active" | "suspended";
   emailVerifiedAt: string | null;
   lastLoginAt: string | null;
@@ -175,6 +202,11 @@ export interface UserListQuery {
  * Body of POST /api/users. The backend requires a branch scope: either
  * `allBranches: true` OR a non-empty `branchAccess`. `tenantId` is derived from
  * the session, never sent from here.
+ *
+ * `warehouseAccess` is optional and derived from the branch scope: omitting it
+ * grants every warehouse of every granted branch, which is what a branch grant
+ * meant before the field existed. Rows for branches not granted are dropped by
+ * the backend rather than refused, so a form may send what it has on screen.
  */
 export interface CreateUserInput {
   email: string;
@@ -184,6 +216,7 @@ export interface CreateUserInput {
   roleId?: string | null;
   allBranches?: boolean;
   branchAccess?: string[];
+  warehouseAccess?: WarehouseScopeEntry[];
   status?: User["status"];
 }
 
@@ -199,6 +232,7 @@ export interface UpdateUserInput {
   roleId?: string | null;
   allBranches?: boolean;
   branchAccess?: string[];
+  warehouseAccess?: WarehouseScopeEntry[];
 }
 
 /**

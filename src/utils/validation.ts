@@ -7,6 +7,8 @@
  * through ApiError.fieldErrors. Keep these constants in step with the backend.
  */
 
+import type { WarehouseScopeEntry } from "@/types/api";
+
 export const EMAIL_MAX_LENGTH = 254;
 export const PASSWORD_MIN_LENGTH = 8;
 export const PASSWORD_MAX_LENGTH = 128;
@@ -336,4 +338,33 @@ export function validateConfirmPassword(
   if (!confirm) return "Please confirm your password";
   if (password !== confirm) return "Passwords do not match";
   return undefined;
+}
+
+/**
+ * The client-side half of the warehouse-scope rule: a branch narrowed to
+ * "specific warehouses" must name at least one.
+ *
+ * Returns a map keyed by branch id, so the picker can put the message under the
+ * branch it belongs to rather than at the bottom of the form — with several
+ * branches on screen, one shared message cannot say which is wrong.
+ *
+ * Only granted branches are judged. Rows for branches that were unticked are
+ * dropped by the backend rather than refused, so blocking a save on one would
+ * refuse a payload the server accepts.
+ */
+export function validateWarehouseScope(
+  branchAccess: string[],
+  warehouseAccess: WarehouseScopeEntry[],
+): Record<string, string> {
+  const errors: Record<string, string> = {};
+
+  warehouseAccess
+    .filter((entry) => branchAccess.includes(entry.branchId))
+    .forEach((entry) => {
+      if (!entry.allWarehouses && entry.warehouseIds.length === 0) {
+        errors[entry.branchId] = "Pilih minimal satu gudang";
+      }
+    });
+
+  return errors;
 }

@@ -11,10 +11,13 @@ import {
   validateEmail,
   validateFullName,
   validatePhone,
+  validateWarehouseScope,
   validatePassword,
   validateConfirmPassword,
   PASSWORD_MIN_LENGTH,
 } from "@/utils/validation";
+
+import type { WarehouseScopeEntry } from "@/types/api";
 
 import { useLookups } from "../hooks/useLookups";
 import { RoleSelect } from "./RoleSelect";
@@ -31,8 +34,13 @@ import { BranchScopeField } from "./BranchScopeField";
  */
 export function UserCreateForm() {
   const router = useRouter();
-  const { roles, branches, loading: lookupsLoading, error: lookupsError } =
-    useLookups();
+  const {
+    roles,
+    branches,
+    warehouses,
+    loading: lookupsLoading,
+    error: lookupsError,
+  } = useLookups();
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -42,8 +50,15 @@ export function UserCreateForm() {
   const [roleId, setRoleId] = useState("");
   const [allBranches, setAllBranches] = useState(false);
   const [branchAccess, setBranchAccess] = useState<string[]>([]);
+  const [warehouseAccess, setWarehouseAccess] = useState<WarehouseScopeEntry[]>(
+    [],
+  );
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  // Keyed by branch id, so the message lands under the branch it belongs to.
+  const [warehouseErrors, setWarehouseErrors] = useState<
+    Record<string, string>
+  >({});
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -64,8 +79,19 @@ export function UserCreateForm() {
     if (confirmError) nextErrors.confirm = confirmError;
     if (!allBranches && branchAccess.length === 0)
       nextErrors.branchAccess = "Select all branches or at least one branch";
+
+    // Only meaningful under specific branches: "all branches" carries no rows.
+    const nextWarehouseErrors = allBranches
+      ? {}
+      : validateWarehouseScope(branchAccess, warehouseAccess);
+
     setFieldErrors(nextErrors);
-    if (Object.keys(nextErrors).length > 0) return;
+    setWarehouseErrors(nextWarehouseErrors);
+    if (
+      Object.keys(nextErrors).length > 0 ||
+      Object.keys(nextWarehouseErrors).length > 0
+    )
+      return;
 
     setSaving(true);
     try {
@@ -77,6 +103,14 @@ export function UserCreateForm() {
         roleId: roleId || null,
         allBranches,
         branchAccess: allBranches ? [] : branchAccess,
+        // Every branch already implies every warehouse, so the rows go with it.
+        // The backend drops rows for branches not granted, but sending only the
+        // granted ones keeps the payload saying what the form shows.
+        warehouseAccess: allBranches
+          ? []
+          : warehouseAccess.filter((entry) =>
+              branchAccess.includes(entry.branchId),
+            ),
       });
       // Redirect first, then fire the toast so it rides along on the list screen.
       router.push("/dashboard/master/users");
@@ -173,13 +207,17 @@ export function UserCreateForm() {
         <div className="sm:col-span-2">
           <BranchScopeField
             branches={branches}
+            warehouses={warehouses}
             allBranches={allBranches}
             branchAccess={branchAccess}
+            warehouseAccess={warehouseAccess}
             onChange={(next) => {
               setAllBranches(next.allBranches);
               setBranchAccess(next.branchAccess);
+              setWarehouseAccess(next.warehouseAccess);
             }}
             error={fieldErrors.branchAccess}
+            warehouseError={warehouseErrors}
           />
         </div>
       </div>
