@@ -12,6 +12,7 @@ import { productService } from "@/services/product.service";
 import { productBatchService } from "@/services/productBatch.service";
 import { branchService } from "@/services/branch.service";
 import { categoryService } from "@/services/category.service";
+import type { User } from "@/types/api";
 import { warehouseService } from "@/services/warehouse.service";
 import { ApiError } from "@/services/api-error";
 import type { StockOnHandRow } from "@/types/report";
@@ -408,5 +409,102 @@ describe("ConsignmentScreen", () => {
     renderWithAuth(<ConsignmentScreen />);
 
     expect(await screen.findByText("Forbidden")).toBeInTheDocument();
+  });
+});
+
+/**
+ * Stock isolation on the valuation report.
+ *
+ * A COURTESY OVER THE SERVER'S ANSWER — the endpoint narrows the rows and
+ * refuses an out-of-scope filter with a 403 whatever these dropdowns offer.
+ */
+describe("stock isolation on StockOnHandScreen", () => {
+  beforeEach(() => {
+    asMock(branchService.list).mockResolvedValue({
+      ...emptyPage,
+      items: [
+        { _id: "b1", name: "Cabang Timur" },
+        { _id: "b2", name: "Cabang Barat" },
+      ],
+    } as Awaited<ReturnType<typeof branchService.list>>);
+    asMock(warehouseService.list).mockResolvedValue({
+      ...emptyPage,
+      items: [
+        {
+          _id: "wh1",
+          name: "Gudang Utama",
+          isActive: true,
+          defaultBranchId: "b1",
+        },
+        {
+          _id: "wh2",
+          name: "Gudang Barat",
+          isActive: true,
+          defaultBranchId: "b2",
+        },
+        {
+          _id: "wh0",
+          name: "Gudang Pusat",
+          isActive: true,
+          defaultBranchId: null,
+        },
+      ],
+    } as Awaited<ReturnType<typeof warehouseService.list>>);
+  });
+
+  const confined = {
+    _id: "u2",
+    allBranches: false,
+    branchAccess: ["b1"],
+    warehouseAccess: [
+      { branchId: "b1", allWarehouses: true, warehouseIds: [] },
+    ],
+  } as unknown as User;
+
+  it("offers only the branches the user holds", async () => {
+    const ui = userEvent.setup();
+    renderWithAuth(<StockOnHandScreen />, { user: confined });
+    await screen.findByText("Shampoo Anjing");
+
+    await ui.click(screen.getByLabelText("Cabang"));
+
+    expect(
+      screen.getByRole("option", { name: "Cabang Timur" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "Cabang Barat" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers the shared warehouse alongside the user's own", async () => {
+    // Gudang Pusat belongs to no branch, so it serves every one of them.
+    const ui = userEvent.setup();
+    renderWithAuth(<StockOnHandScreen />, { user: confined });
+    await screen.findByText("Shampoo Anjing");
+
+    await ui.click(screen.getByLabelText("Gudang"));
+
+    expect(
+      screen.getByRole("option", { name: "Gudang Utama" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "Gudang Pusat" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "Gudang Barat" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("leaves an all-branches user every option", async () => {
+    const owner = { ...confined, allBranches: true, branchAccess: [] };
+    const ui = userEvent.setup();
+    renderWithAuth(<StockOnHandScreen />, { user: owner });
+    await screen.findByText("Shampoo Anjing");
+
+    await ui.click(screen.getByLabelText("Gudang"));
+
+    expect(
+      screen.getByRole("option", { name: "Gudang Barat" }),
+    ).toBeInTheDocument();
   });
 });

@@ -11,6 +11,8 @@ import type {
 } from "@/types/inventory";
 import type { Warehouse } from "@/types/api";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
+import { useAuth } from "@/features/auth";
+import { accessibleWarehouses } from "@/utils/accessScope";
 
 /** The knobs the transfer list offers. */
 export interface StockTransfersQuery {
@@ -72,10 +74,16 @@ export interface UseStockTransfersResult {
  * 1".
  *
  * THE WAREHOUSE LOOKUP FAILS SOFTLY. A user may hold `stockMovements:read`
+ * NARROWED TO THE SIGNED-IN USER'S OWN, like every other stock picker: the
+ * server refuses an out-of-scope filter with a 403 and hides the rows anyway,
+ * so offering one here could only produce that refusal. A courtesy over the
+ * server's answer — `utils/accessScope.ts` says why.
+ *
  * without `warehouses:read`, and a list that refused to render because a
  * dropdown could not be populated would withhold the rows over the filter.
  */
 export function useStockTransfers(): UseStockTransfersResult {
+  const { user } = useAuth();
   const [transfers, setTransfers] = useState<StockTransferSummary[]>([]);
   const [pagination, setPagination] = useState({
     page: 1,
@@ -113,7 +121,7 @@ export function useStockTransfers(): UseStockTransfersResult {
     warehouseService
       .list({ limit: 100 })
       .then((result) => {
-        if (active) setWarehouses(result.items);
+        if (active) setWarehouses(accessibleWarehouses(user, result.items));
       })
       .catch(() => {
         // Soft: see the header. The list still renders without its filter.
@@ -123,7 +131,7 @@ export function useStockTransfers(): UseStockTransfersResult {
     return () => {
       active = false;
     };
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     let active = true;

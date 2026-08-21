@@ -5,6 +5,11 @@ import { useEffect, useState } from "react";
 import { branchService } from "@/services/branch.service";
 import { categoryService } from "@/services/category.service";
 import { warehouseService } from "@/services/warehouse.service";
+import { useAuth } from "@/features/auth";
+import {
+  accessibleBranches,
+  accessibleWarehouses,
+} from "@/utils/accessScope";
 import type { Branch, Category } from "@/types/api";
 import type { StockWarehouse } from "@/types/inventory";
 
@@ -30,8 +35,16 @@ interface UseReportLookupsResult {
  * Inactive warehouses are INCLUDED, matching `useWarehouseOptions`: a closed
  * location still holds whatever was left in it, and stock nobody visits is
  * exactly what a valuation report exists to surface.
+ *
+ * BRANCHES AND WAREHOUSES ARE NARROWED TO THE SIGNED-IN USER'S OWN. The report
+ * endpoint refuses a filter outside that reach with a 403 and narrows the rows
+ * regardless, so offering one here could only produce that refusal. A courtesy
+ * over the server's answer, never the isolation itself — `utils/accessScope.ts`
+ * says why. Categories are not scoped: a catalogue is the tenant's, not a
+ * location's.
  */
 export function useReportLookups(): UseReportLookupsResult {
+  const { user } = useAuth();
   const [branches, setBranches] = useState<Branch[]>([]);
   const [warehouses, setWarehouses] = useState<StockWarehouse[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -48,9 +61,11 @@ export function useReportLookups(): UseReportLookupsResult {
       .then(([branch, warehouse, category]) => {
         if (!active) return;
 
-        if (branch.status === "fulfilled") setBranches(branch.value.items);
+        if (branch.status === "fulfilled") {
+          setBranches(accessibleBranches(user, branch.value.items));
+        }
         if (warehouse.status === "fulfilled") {
-          setWarehouses(warehouse.value.items);
+          setWarehouses(accessibleWarehouses(user, warehouse.value.items));
         }
         if (category.status === "fulfilled") setCategories(category.value.items);
       })
@@ -61,7 +76,7 @@ export function useReportLookups(): UseReportLookupsResult {
     return () => {
       active = false;
     };
-  }, []);
+  }, [user]);
 
   return { branches, warehouses, categories, loading };
 }

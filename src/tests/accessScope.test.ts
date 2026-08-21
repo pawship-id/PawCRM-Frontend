@@ -107,6 +107,14 @@ describe("accessScope", () => {
   });
 
   describe("guards", () => {
+    it("reads an absent defaultBranchId as shared, like the backend does", () => {
+      // The API always sends the field; a partial object is where the two
+      // copies of this rule would otherwise start disagreeing.
+      const legacy = user({ branchAccess: [BRANCH_A] });
+
+      expect(canAccessWarehouse(legacy, { _id: "w-x" } as never)).toBe(true);
+    });
+
     it("reaches nothing while the account is still loading", () => {
       // `user` is null between mount and the /me answer; an empty picker for
       // that moment is right, and failing open would not be.

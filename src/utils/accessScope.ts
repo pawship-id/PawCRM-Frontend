@@ -41,7 +41,11 @@ export function canAccessWarehouse(
   const branchAccess = user.branchAccess ?? [];
   if (branchAccess.length === 0) return false;
 
-  const owner = warehouse.defaultBranchId;
+  // `?? null` matches the backend's own normalisation. The API always sends the
+  // field, so `undefined` only reaches here from a partial object — and the two
+  // copies of this rule disagreeing about which spelling means "shared" is
+  // exactly the drift this mirror is most likely to develop.
+  const owner = warehouse.defaultBranchId ?? null;
   if (owner === null) return true;
   if (!branchAccess.includes(owner)) return false;
 

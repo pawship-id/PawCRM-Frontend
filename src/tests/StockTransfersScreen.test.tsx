@@ -5,7 +5,7 @@ import { renderWithAuth } from "./helpers/renderWithAuth";
 import { StockTransfersScreen } from "@/features/inventory";
 import { stockMovementService } from "@/services/stockMovement.service";
 import { warehouseService } from "@/services/warehouse.service";
-import type { Warehouse } from "@/types/api";
+import type { User, Warehouse } from "@/types/api";
 import type {
   StockTransferPage,
   StockTransferSummary,
@@ -310,4 +310,69 @@ it("hides the create button from a role that may only read", async () => {
     expect(stockMovementService.listTransfers).toHaveBeenCalled(),
   );
   expect(screen.queryByRole("link", { name: /Transfer baru/ })).toBeNull();
+});
+
+/**
+ * Stock isolation on the transfer filter.
+ *
+ * A COURTESY OVER THE SERVER'S ANSWER — the API narrows the list and refuses an
+ * out-of-scope filter with a 403 whatever this picker offers.
+ */
+describe("stock isolation", () => {
+  it("offers only the warehouses the user may reach", async () => {
+    // Confined to b1, so Gudang Bazar is in reach. Gudang Pusat has no branch
+    // of its own, which makes it shared — it comes with any branch at all.
+    const confined = {
+      _id: "u2",
+      allBranches: false,
+      branchAccess: ["b1"],
+      warehouseAccess: [
+        { branchId: "b1", allWarehouses: true, warehouseIds: [] },
+      ],
+    } as unknown as User;
+
+    const user = userEvent.setup();
+    renderWithAuth(<StockTransfersScreen />, { user: confined });
+    await waitFor(() => expect(warehouseService.list).toHaveBeenCalled());
+
+    await user.click(screen.getByRole("button", { name: "Filter" }));
+    await user.click(
+      screen.getByLabelText("Filter gudang — asal maupun tujuan"),
+    );
+
+    expect(
+      screen.getByRole("option", { name: "Gudang Bazar" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "Gudang Pusat" }),
+    ).toBeInTheDocument();
+  });
+
+  it("hides a warehouse in a branch the user does not hold", async () => {
+    const elsewhere = {
+      _id: "u3",
+      allBranches: false,
+      branchAccess: ["b9"],
+      warehouseAccess: [
+        { branchId: "b9", allWarehouses: true, warehouseIds: [] },
+      ],
+    } as unknown as User;
+
+    const user = userEvent.setup();
+    renderWithAuth(<StockTransfersScreen />, { user: elsewhere });
+    await waitFor(() => expect(warehouseService.list).toHaveBeenCalled());
+
+    await user.click(screen.getByRole("button", { name: "Filter" }));
+    await user.click(
+      screen.getByLabelText("Filter gudang — asal maupun tujuan"),
+    );
+
+    expect(
+      screen.queryByRole("option", { name: "Gudang Bazar" }),
+    ).not.toBeInTheDocument();
+    // Still the shared one: it serves every branch, including b9.
+    expect(
+      screen.getByRole("option", { name: "Gudang Pusat" }),
+    ).toBeInTheDocument();
+  });
 });
