@@ -1189,6 +1189,16 @@ export interface Opname {
   _id: string;
   opnameNumber: string;
   warehouseId: string;
+  /**
+   * Which set of books the variance was declared against — the sheet's own
+   * choice, not its warehouse's default.
+   *
+   * NULL ON THE SHEETS THAT PREDATE THE FIELD, and on nothing else: every sheet
+   * opened since carries one. Those older rows read as unset rather than
+   * borrowing their warehouse's default, which is the honest answer — nobody
+   * ever said which shop they belonged to.
+   */
+  branchId: string | null;
   /** When the shelves were walked — not when the row was written. */
   opnameDate: string;
   status: OpnameStatus;
@@ -1210,6 +1220,13 @@ export interface Opname {
   items?: OpnameItem[];
   /* ----------------------- labels and counts the server resolves ----------- */
   warehouseName?: string | null;
+  /**
+   * Resolved on the list AND on the detail. Null when the sheet declared no
+   * branch, and null when the branch it declared has since been deleted — the
+   * reader is told the same thing either way, and `branchId` remains the thing
+   * to link to.
+   */
+  branchName?: string | null;
   createdByName?: string | null;
   submittedByName?: string | null;
   /** LIST only: how many lines, and how many have actually been counted. */
@@ -1233,6 +1250,12 @@ export interface OpnameListQuery {
   limit?: number;
   /** Substring over the opname number and the sheet note. */
   search?: string;
+  /**
+   * BOTH SCOPES ARE OFFERED because branch and warehouse are not 1:1 — a central
+   * warehouse can serve three branches, and a branch can hold two warehouses.
+   * Narrowing by one never implies the other.
+   */
+  branchId?: string;
   warehouseId?: string;
   status?: OpnameStatus;
   categoryFilter?: string;

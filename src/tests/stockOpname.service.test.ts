@@ -25,6 +25,7 @@ const EVERY_FILTER: Required<OpnameListQuery> = {
   page: 2,
   limit: 20,
   search: "OPN-2026",
+  branchId: "b1",
   warehouseId: "w1",
   status: "draft",
   categoryFilter: "c1",

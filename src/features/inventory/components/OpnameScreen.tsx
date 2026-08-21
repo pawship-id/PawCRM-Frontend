@@ -3,7 +3,21 @@
 import { useState } from "react";
 import Link from "next/link";
 
-import { Alert, ConfirmDialog, Pagination, Spinner } from "@/components";
+import {
+  Alert,
+  ConfirmDialog,
+  HighlightText,
+  Pagination,
+  Spinner,
+} from "@/components";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { usePermissions } from "@/features/permissions";
 import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
@@ -56,6 +70,10 @@ import { OpnameToolbar } from "./OpnameToolbar";
 const OPNAME_EXPORT_COLUMNS: XlsxColumn<Opname>[] = [
   { header: "Nomor", value: (row) => row.opnameNumber },
   { header: "Tanggal", value: (row) => row.opnameDate, type: "date" },
+  // Cabang before Gudang, the way the table reads it — and the sheet's OWN
+  // branch, not its warehouse's default, which is the whole reason the column
+  // exists on a tenant whose central warehouse serves three shops.
+  { header: "Cabang", value: (row) => row.branchName ?? "" },
   { header: "Gudang", value: (row) => row.warehouseName ?? "" },
   { header: "Status", value: (row) => row.status },
   { header: "Item dihitung", value: (row) => row.countedCount, type: "number" },
@@ -66,9 +84,27 @@ const OPNAME_EXPORT_COLUMNS: XlsxColumn<Opname>[] = [
   { header: "Catatan", value: (row) => row.notes ?? "" },
 ];
 
+/** Nomor, Tanggal, Cabang, Gudang, Terhitung, Selisih nilai, Status, Aksi. */
+const COLUMN_COUNT = 8;
+
 export function OpnameScreen() {
   const { can } = usePermissions();
-  const lookups = useCatalogLookups();
+  /**
+   * `withBranches` for the new Cabang filter — it fails softly, so a role
+   * holding `stockOpnames:read` without `branches:read` gets a panel whose
+   * branch field offers only "Semua cabang" rather than a screen that refuses
+   * to render.
+   *
+   * `includeInactive` because THIS IS A READ. The toolbar's own header has
+   * always said the filter reaches counts taken at a warehouse closed since —
+   * it could not, because the lookup asked for active ones only. The create
+   * card beside it filters `isActive` itself (`warehousesForBranch`), so widening
+   * the lookup does not offer a location the API would refuse a count at.
+   */
+  const lookups = useCatalogLookups({
+    includeInactive: true,
+    withBranches: true,
+  });
 
   const [filters, setFilters] = useState<OpnameFilters>(EMPTY_OPNAME_FILTERS);
   const [page, setPage] = useState(1);
@@ -87,6 +123,21 @@ export function OpnameScreen() {
   const refresh = () => setRefreshKey((key) => key + 1);
 
   /**
+   * Whether the empty table is empty BECAUSE of the panel.
+   *
+   * The sort is excluded — it reorders rows, it never removes one, so counting
+   * it would make every empty list read as filtered. Same field the trigger's
+   * `Filter (n)` badge leaves out, for the same reason.
+   */
+  const filtered =
+    filters.search.trim() !== "" ||
+    filters.branchId !== "" ||
+    filters.warehouseId !== "" ||
+    filters.status !== "" ||
+    filters.dateFrom !== "" ||
+    filters.dateTo !== "";
+
+  /**
    * Exports the sheets ON THIS PAGE.
    *
    * Page-scoped, and the button says so. The opname endpoint streams no CSV, and
@@ -95,8 +146,8 @@ export function OpnameScreen() {
    * something else is already wrong.
    *
    * Names rather than ids throughout: the list response already resolves
-   * `warehouseName` and `submittedByName`, so the file reads the way the screen
-   * does instead of handing somebody a column of ObjectIds.
+   * `branchName`, `warehouseName` and `submittedByName`, so the file reads the
+   * way the screen does instead of handing somebody a column of ObjectIds.
    */
   const exportPage = async () => {
     setExporting(true);
@@ -155,6 +206,7 @@ export function OpnameScreen() {
 
       <OpnameToolbar
         filters={filters}
+        branches={lookups.branches}
         warehouses={lookups.warehouses}
         onChange={handleFilters}
         onExport={exportPage}
@@ -165,43 +217,53 @@ export function OpnameScreen() {
       {error && <Alert variant="error">{error}</Alert>}
 
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-[10px] uppercase tracking-widest text-muted">
-              <th className="px-4 py-2.5 text-left font-medium">Nomor</th>
-              <th className="px-4 py-2.5 text-left font-medium">Tanggal</th>
-              <th className="px-4 py-2.5 text-left font-medium">Gudang</th>
-              <th className="px-4 py-2.5 text-right font-medium">Terhitung</th>
-              <th className="px-4 py-2.5 text-right font-medium">
-                Selisih nilai
-              </th>
-              <th className="px-4 py-2.5 text-left font-medium">Status</th>
-              <th className="px-4 py-2.5 text-right font-medium">Aksi</th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Nomor</TableHead>
+              <TableHead>Tanggal</TableHead>
+              {/* CABANG BEFORE GUDANG — which set of books, then which shelf.
+                  The two are not 1:1, so a reader scanning a central
+                  warehouse's counts needs both to tell them apart. */}
+              <TableHead>Cabang</TableHead>
+              <TableHead>Gudang</TableHead>
+              <TableHead className="text-right">Terhitung</TableHead>
+              <TableHead className="text-right">Selisih nilai</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Aksi</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {loading && (
-              <tr>
-                <td colSpan={7} className="px-4 py-16">
-                  <div className="flex items-center justify-center gap-2 text-sm text-muted">
+              <TableRow>
+                <TableCell colSpan={COLUMN_COUNT} className="py-16">
+                  <span className="flex items-center justify-center gap-2 text-sm text-muted">
                     <Spinner /> Memuat daftar opname…
-                  </div>
-                </td>
-              </tr>
+                  </span>
+                </TableCell>
+              </TableRow>
             )}
 
             {!loading && opnames.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-4 py-16 text-center">
+              <TableRow>
+                <TableCell colSpan={COLUMN_COUNT} className="py-16 text-center">
+                  {/* TWO DIFFERENT FACTS, and telling them apart matters more
+                      now than it did: with five filters in the panel, "no
+                      counts here" is far more often "none matching THIS", and
+                      the first message would send somebody off to start a
+                      sheet that already exists one branch over. */}
                   <p className="font-medium text-foreground">
-                    Belum ada opname
+                    {filtered
+                      ? "Tidak ada opname yang cocok dengan filter ini"
+                      : "Belum ada opname"}
                   </p>
                   <p className="mx-auto mt-1 max-w-md text-sm text-muted">
-                    Mulai penghitungan pertama untuk mencocokkan stok fisik
-                    dengan catatan sistem.
+                    {filtered
+                      ? "Coba ubah kata kunci, cabang, gudang, status, atau rentang tanggalnya."
+                      : "Mulai penghitungan pertama untuk mencocokkan stok fisik dengan catatan sistem."}
                   </p>
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             )}
 
             {!loading &&
@@ -210,24 +272,40 @@ export function OpnameScreen() {
                 const isDraft = opname.status === "draft";
 
                 return (
-                  <tr
-                    key={opname._id}
-                    className="border-b border-border/60 last:border-0"
-                  >
-                    <td className="px-4 py-2.5 tabular-nums text-xs">
-                      {opname.opnameNumber}
-                    </td>
-                    <td className="px-4 py-2.5 text-xs">
+                  <TableRow key={opname._id}>
+                    {/* THE MATCH, MARKED. The server searches the number and
+                        the sheet note; the number is the one of the two on
+                        screen, so it is where a reader confirms the row in front
+                        of them is the one their term found.
+
+                        NO DEBOUNCE ON THIS SCREEN'S SEARCH, unlike the
+                        stock-document list — so the marks and the rows are
+                        always describing the same term, with no third of a
+                        second where they disagree. */}
+                    <TableCell className="tabular-nums">
+                      <HighlightText
+                        text={opname.opnameNumber}
+                        query={filters.search}
+                      />
+                    </TableCell>
+                    <TableCell className="tabular-nums whitespace-nowrap">
                       {new Date(opname.opnameDate).toLocaleDateString("id-ID", {
                         day: "2-digit",
                         month: "short",
                         year: "numeric",
                       })}
-                    </td>
-                    <td className="px-4 py-2.5 text-xs text-muted">
+                    </TableCell>
+                    {/* An em dash covers both "this sheet predates the field"
+                        and "the branch it named has since been deleted" — the
+                        row is worth reading either way, and neither is a reason
+                        to invent the warehouse's default in its place. */}
+                    <TableCell className="text-muted">
+                      {opname.branchName ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-muted">
                       {opname.warehouseName ?? "—"}
-                    </td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-xs">
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
                       {opname.itemCount === undefined ? (
                         "—"
                       ) : (
@@ -241,10 +319,10 @@ export function OpnameScreen() {
                           {opname.countedCount ?? 0} / {opname.itemCount}
                         </span>
                       )}
-                    </td>
-                    <td
+                    </TableCell>
+                    <TableCell
                       className={cn(
-                        "px-4 py-2.5 text-right tabular-nums text-sm font-semibold",
+                        "text-right tabular-nums font-semibold",
                         totalMinor < 0n && "text-danger",
                         totalMinor > 0n && "text-success",
                       )}
@@ -252,11 +330,11 @@ export function OpnameScreen() {
                       {totalMinor === 0n
                         ? "—"
                         : formatMoney(opname.totalDiffValue)}
-                    </td>
-                    <td className="px-4 py-2.5">
+                    </TableCell>
+                    <TableCell>
                       <OpnameStatusBadge status={opname.status} />
-                    </td>
-                    <td className="px-4 py-2.5 text-right">
+                    </TableCell>
+                    <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-3">
                         <Link
                           href={`/dashboard/inventory/opname/${opname._id}`}
@@ -280,12 +358,12 @@ export function OpnameScreen() {
                           </button>
                         )}
                       </div>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 );
               })}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
 
       <Pagination

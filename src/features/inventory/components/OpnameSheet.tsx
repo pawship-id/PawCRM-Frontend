@@ -247,6 +247,13 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
       {/* ------------------------------------------------------------ header */}
       <div className="flex flex-wrap gap-6 rounded-xl border border-border bg-surface p-4">
         <Field label="Nomor" value={opname.opnameNumber} mono />
+        {/* CABANG BEFORE GUDANG — which set of books, then which shelf, the
+            order every stock screen in this module asks its two scoping
+            questions in. Em dash on a sheet that declared no branch, which is
+            what the ones opened before the field carry; it is NOT filled in from
+            the warehouse's default, because a shared warehouse's default is one
+            answer for every shop it serves. */}
+        <Field label="Cabang" value={opname.branchName ?? "—"} />
         <Field label="Gudang" value={opname.warehouseName ?? "—"} />
         <Field
           label="Terhitung"

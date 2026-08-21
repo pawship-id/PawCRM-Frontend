@@ -31,6 +31,7 @@ import { Can } from "@/features/permissions";
 import type { StockEntryKind, StockEntrySort } from "@/types/inventory";
 import type { Branch, Warehouse } from "@/types/api";
 
+import { ownerBranchOf, warehousesUnder } from "../hooks/useBranchScope";
 import { useStockEntries } from "../hooks/useStockEntries";
 import { excerptAround } from "../utils/excerpt";
 
@@ -144,33 +145,6 @@ const CLEARED: PanelFilters = {
   branchId: "",
   warehouseId: "",
 };
-
-/**
- * The warehouses a chosen branch may have posted at: its own, plus the shared
- * central one (`defaultBranchId: null`, which belongs to no branch and serves
- * all of them). A warehouse pinned to another branch is dropped — that pair
- * describes no document, so offering it would only produce an empty table.
- *
- * UNDER "Semua cabang" THE WHOLE LIST STANDS. This is the mirror image of
- * `warehousesForBranch`, which the create forms use and which returns NOTHING
- * before a branch is named: there, an unscoped warehouse could be chosen and
- * then silently invalidated by the branch picked after it. A filter has no such
- * risk and the opposite default — "no branch chosen" means every branch, so it
- * must mean every warehouse too.
- *
- * INACTIVE WAREHOUSES STAY. This is a READ: a location closed last month still
- * owns the documents written there, and a filter that could not reach them would
- * hide that history from the audit that went looking for it.
- */
-function warehousesUnder(branchId: string, warehouses: Warehouse[]) {
-  if (branchId === "") return warehouses;
-
-  return warehouses.filter(
-    (warehouse) =>
-      warehouse.defaultBranchId === branchId ||
-      warehouse.defaultBranchId === null,
-  );
-}
 
 export function StockEntriesScreen({ kind }: { kind: StockEntryKind }) {
   const {
@@ -428,10 +402,8 @@ function StockEntriesFilterPanel({
   /**
    * THE OTHER DIRECTION, and it is not symmetrical.
    *
-   * A warehouse pinned to one branch ANSWERS the branch question — "documents at
-   * Gudang Timur" and "documents at Gudang Timur under any branch" are the same
-   * set — so the field above fills itself in rather than sitting on "Semua
-   * cabang" while the reader wonders whether it is still open.
+   * A warehouse pinned to one branch ANSWERS the branch question — see
+   * `ownerBranchOf`, which the opname filter reads the same way.
    *
    * THE SHARED WAREHOUSE CHANGES NOTHING. It serves every branch, so there is no
    * single answer to fill in; guessing one would narrow the list to a third of
@@ -442,9 +414,7 @@ function StockEntriesFilterPanel({
    * names no owner, so it has no branch to volunteer.
    */
   function pickWarehouse(warehouseId: string) {
-    const owner =
-      warehouses.find((warehouse) => warehouse._id === warehouseId)
-        ?.defaultBranchId ?? null;
+    const owner = ownerBranchOf(warehouseId, warehouses);
 
     setDraft((prev) => ({
       ...prev,

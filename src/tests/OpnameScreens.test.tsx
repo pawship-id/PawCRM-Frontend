@@ -96,6 +96,7 @@ function sheet(overrides: Partial<Opname> = {}): Opname {
     _id: OPNAME_ID,
     opnameNumber: "OPN-2026-0001",
     warehouseId: WAREHOUSE_ID,
+    branchId: null,
     opnameDate: "2026-08-03T00:00:00.000Z",
     status: "draft",
     categoryFilter: null,
@@ -236,12 +237,127 @@ describe("OpnameScreen", () => {
     expect(warehouseService.list).toHaveBeenCalled();
   });
 
+  /**
+   * THE SHEET'S OWN BRANCH, not its warehouse's default — and the two differ
+   * exactly where the column earns its place: a central warehouse serving three
+   * shops has one default, so deriving the label from the warehouse would print
+   * the same name on every count taken there.
+   */
+  it("names the branch the sheet declared, from the API", async () => {
+    asMock(stockOpnameService.list).mockResolvedValue(
+      page([
+        sheet({
+          items: undefined,
+          itemCount: 1,
+          countedCount: 0,
+          branchId: "br9",
+          branchName: "Cabang Selatan",
+          warehouseName: "Gudang Utama",
+        }),
+      ]),
+    );
+
+    renderWithAuth(<OpnameScreen />);
+
+    const row = (await screen.findByText("OPN-2026-0001")).closest("tr")!;
+    expect(within(row).getByText("Cabang Selatan")).toBeInTheDocument();
+    // The lookup fills the pickers; it never labels a row.
+    expect(within(row).queryByText("Cabang Pusat")).not.toBeInTheDocument();
+  });
+
+  /**
+   * A sheet opened before `branchId` existed carries none, and reads as unset
+   * rather than borrowing the warehouse's — inventing one would put a shop's
+   * name on a count that never claimed it.
+   */
+  it("reads a sheet with no branch as unset, not as its warehouse's", async () => {
+    asMock(stockOpnameService.list).mockResolvedValue(
+      page([
+        sheet({
+          items: undefined,
+          itemCount: 1,
+          countedCount: 0,
+          branchId: null,
+          branchName: null,
+        }),
+      ]),
+    );
+
+    renderWithAuth(<OpnameScreen />);
+
+    const row = (await screen.findByText("OPN-2026-0001")).closest("tr")!;
+    // The Cabang cell by position: a zero variance renders an em dash too, so a
+    // bare getByText would match either column and pass for the wrong reason.
+    const cabang = row.querySelectorAll("td")[2];
+    expect(cabang).toHaveTextContent("—");
+    // And the warehouse beside it is untouched — the row is still worth reading.
+    expect(row.querySelectorAll("td")[3]).toHaveTextContent("Gudang Utama");
+  });
+
+  /**
+   * The mark is what tells a reader WHY this row is a result. Yellow `<mark>`,
+   * the same `HighlightText` every other searched list in this repo uses — a
+   * second highlighting convention would be one more thing to recognise.
+   */
+  it("marks the searched term inside the opname number", async () => {
+    const user = userEvent.setup();
+    asMock(stockOpnameService.list).mockResolvedValue(
+      page([sheet({ items: undefined, itemCount: 1, countedCount: 0 })]),
+    );
+
+    renderWithAuth(<OpnameScreen />);
+    await screen.findByText("OPN-2026-0001");
+
+    await user.type(screen.getByLabelText("Cari opname"), "2026");
+
+    // Sought as its own node: highlighting SPLITS the cell, so the number is no
+    // longer one text node — which is exactly what is being asserted.
+    const mark = await screen.findByText("2026");
+    expect(mark.tagName).toBe("MARK");
+
+    // The rest of the number is NOT marked — a highlight over the whole cell
+    // says nothing about which characters matched.
+    const cell = mark.closest("td")!;
+    expect(cell).toHaveTextContent("OPN-2026-0001");
+    expect(cell.querySelectorAll("mark")).toHaveLength(1);
+  });
+
+  it("leaves the number unmarked while nothing is searched", async () => {
+    asMock(stockOpnameService.list).mockResolvedValue(
+      page([sheet({ items: undefined, itemCount: 1, countedCount: 0 })]),
+    );
+
+    renderWithAuth(<OpnameScreen />);
+
+    const row = (await screen.findByText("OPN-2026-0001")).closest("tr")!;
+    expect(row.querySelector("mark")).toBeNull();
+  });
+
   it("tells an empty tenant what to do", async () => {
     asMock(stockOpnameService.list).mockResolvedValue(page([]));
 
     renderWithAuth(<OpnameScreen />);
 
     expect(await screen.findByText(/Belum ada opname/)).toBeInTheDocument();
+  });
+
+  /**
+   * A DIFFERENT FACT FROM "this tenant has never counted", and with five filters
+   * in the panel it is the far likelier one. The first message would send
+   * somebody off to start a sheet that already exists one branch over.
+   */
+  it("says an empty page is the filter's doing when it is", async () => {
+    const user = userEvent.setup();
+    asMock(stockOpnameService.list).mockResolvedValue(page([]));
+
+    renderWithAuth(<OpnameScreen />);
+    await screen.findByText(/Belum ada opname/);
+
+    await user.type(screen.getByLabelText("Cari opname"), "OPN-9999");
+
+    expect(
+      await screen.findByText(/Tidak ada opname yang cocok/),
+    ).toBeInTheDocument();
   });
 
   it("surfaces a load failure", async () => {
@@ -454,7 +570,7 @@ describe("OpnameScreen", () => {
       asMock(stockOpnameService.list).mockResolvedValue(page([sheet()]));
     });
 
-    it("puts all three filters behind one button", async () => {
+    it("puts every filter behind one button", async () => {
       const user = userEvent.setup();
       renderWithAuth(<OpnameScreen />);
       await screen.findByText("OPN-2026-0001");
@@ -468,6 +584,9 @@ describe("OpnameScreen", () => {
       const panel = await openFilters(user);
       expect(
         within(panel).getByRole("button", { name: "Filter status opname" }),
+      ).toBeInTheDocument();
+      expect(
+        within(panel).getByRole("button", { name: "Filter cabang" }),
       ).toBeInTheDocument();
       expect(
         within(panel).getByRole("button", { name: "Filter gudang" }),
@@ -503,6 +622,62 @@ describe("OpnameScreen", () => {
       await waitFor(() =>
         expect(stockOpnameService.list).toHaveBeenCalledWith(
           listRequest({ status: "draft" }),
+        ),
+      );
+    });
+
+    /**
+     * BOTH SCOPES REACH THE SERVER, and the branch is one of them. A page holds
+     * twenty rows and a busy quarter spans several, so narrowing in the browser
+     * would answer "counts at Cabang Selatan" with "the ones that happened to be
+     * on page 1".
+     */
+    it("narrows by branch, and sends it to the server", async () => {
+      const user = userEvent.setup();
+      renderWithAuth(<OpnameScreen />);
+      await screen.findByText("OPN-2026-0001");
+
+      const panel = await openFilters(user);
+      await user.click(
+        within(panel).getByRole("button", { name: "Filter cabang" }),
+      );
+      await user.click(screen.getByRole("option", { name: "Cabang Pusat" }));
+      await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+      await waitFor(() =>
+        expect(stockOpnameService.list).toHaveBeenCalledWith(
+          listRequest({ branchId: BRANCH_ID }),
+        ),
+      );
+
+      // Counted, unlike the ordering: it changes what is IN the list, and a
+      // filter hidden behind a button is one people forget is on.
+      expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
+        "Filter (1)",
+      );
+    });
+
+    /**
+     * THE INTERLOCK, in the direction that is not symmetrical — the same one
+     * Penyesuaian Stok's panel has. A warehouse pinned to one branch ANSWERS the
+     * branch question, so the field above fills itself in rather than sitting on
+     * "Semua cabang" while the reader wonders whether it is still open.
+     */
+    it("fills the branch in from a warehouse that names one", async () => {
+      const user = userEvent.setup();
+      renderWithAuth(<OpnameScreen />);
+      await screen.findByText("OPN-2026-0001");
+
+      const panel = await openFilters(user);
+      await user.click(
+        within(panel).getByRole("button", { name: "Filter gudang" }),
+      );
+      await user.click(screen.getByRole("option", { name: "Gudang Utama" }));
+      await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+      await waitFor(() =>
+        expect(stockOpnameService.list).toHaveBeenCalledWith(
+          listRequest({ warehouseId: WAREHOUSE_ID, branchId: BRANCH_ID }),
         ),
       );
     });
@@ -638,6 +813,38 @@ describe("OpnameSheet", () => {
     expect(await screen.findByText("Shampoo Anjing")).toBeInTheDocument();
     // SKU and unit come from the API — the sheet does not fetch the catalogue.
     expect(screen.getByText(/SHAMPOO · botol/)).toBeInTheDocument();
+  });
+
+  /**
+   * WHICH SET OF BOOKS THIS AFTERNOON'S COUNTING WAS BOOKED TO — the question
+   * this screen is the one place to ask. Read from the sheet's own `branchName`,
+   * never derived from the warehouse: a warehouse three shops share has one
+   * default, and printing it here would answer the question wrongly for two of
+   * them.
+   */
+  it("names the branch the sheet declared, beside the warehouse", async () => {
+    asMock(stockOpnameService.getById).mockResolvedValue(
+      sheet({ branchId: "br9", branchName: "Cabang Selatan" }),
+    );
+
+    renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+
+    expect(await screen.findByText("Cabang")).toBeInTheDocument();
+    expect(screen.getByText("Cabang Selatan")).toBeInTheDocument();
+    expect(screen.getByText("Gudang Utama")).toBeInTheDocument();
+  });
+
+  it("reads a sheet with no branch as unset on the header", async () => {
+    asMock(stockOpnameService.getById).mockResolvedValue(
+      sheet({ branchId: null, branchName: null }),
+    );
+
+    renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+
+    // The label is present, its value is an em dash — the field is not hidden,
+    // because "nobody said" is itself the fact worth reporting.
+    const label = await screen.findByText("Cabang");
+    expect(label.parentElement).toHaveTextContent("—");
   });
 
   /**
