@@ -36,6 +36,14 @@ import { ProductsToolbar } from "./ProductsToolbar";
  * the Jakarta branches cover this order between them" — and answering it by
  * reading two numbers off two loads of the page and adding them by hand is
  * exactly the arithmetic this column exists to do.
+ *
+ * "EVERY ONE" IS EVERY ONE THIS ACCOUNT REACHES, and the SERVER decides which.
+ * `GET /api/products` used to send `stockByWarehouse` for every location
+ * whoever was asking, so the empty scope added up the tenant's stock for a
+ * storekeeper whose picker offered them one shop. The API narrows the field to
+ * the caller's own shelves now (PawCRM-Backend, `#stockScope`), so this screen
+ * adds up what it is given and re-deciding it here would be a second copy of the
+ * rule over the same number.
  */
 export function ProductsScreen() {
   const { products, pagination, query, loading, error, setQuery, refetch } =

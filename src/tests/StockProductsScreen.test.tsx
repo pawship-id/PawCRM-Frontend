@@ -1,14 +1,14 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { renderWithAuth } from "./helpers/renderWithAuth";
+import { FULL_REACH_USER, renderWithAuth } from "./helpers/renderWithAuth";
 import { StockProductsScreen } from "@/features/inventory";
 import { StockProductsTable } from "@/features/inventory/components/StockProductsTable";
 import { productService } from "@/services/product.service";
 import { categoryService } from "@/services/category.service";
 import { warehouseService } from "@/services/warehouse.service";
 import { ApiError } from "@/services/api-error";
-import type { PageResult, Warehouse } from "@/types/api";
+import type { PageResult, User, Warehouse } from "@/types/api";
 import type { Product } from "@/types/inventory";
 
 /**
@@ -26,7 +26,11 @@ import type { Product } from "@/types/inventory";
  *  3. the quantity and the link belong to the SELECTED warehouse — and under
  *     "semua gudang" the row says how many locations its total came from,
  *     because no card can show a cross-warehouse figure;
- *  4. no `products:read` asks for nothing.
+ *  4. the caption names WHOSE gudang the figures cover — the API narrows
+ *     `stockByWarehouse` to the caller's own shelves, and a caption saying
+ *     "semua gudang" to somebody who reaches two of forty describes a different
+ *     number than the one on screen;
+ *  5. no `products:read` asks for nothing.
  *
  * The Radix selects are deliberately not driven — jsdom cannot do their pointer
  * protocol. The screen's default scope (every warehouse) is asserted through the
@@ -60,12 +64,19 @@ function makeProduct(overrides: Partial<Product> = {}): Product {
   };
 }
 
-function warehouse(id: string, name: string): Warehouse {
+function warehouse(
+  id: string,
+  name: string,
+  // Null is the SHARED warehouse, which every account with any branch reaches —
+  // the default here because most of these tests are not about the scope. A
+  // scope test names a branch, which is what makes a warehouse refusable.
+  defaultBranchId: string | null = null,
+): Warehouse {
   return {
     _id: id,
     tenantId: "t1",
     name,
-    defaultBranchId: null,
+    defaultBranchId,
     address: null,
     location: { lat: null, lng: null, source: "manual" },
     picName: null,
@@ -81,7 +92,12 @@ function warehouse(id: string, name: string): Warehouse {
 function page<T>(items: T[], total = items.length): PageResult<T> {
   return {
     items,
-    pagination: { page: 1, limit: 20, total, totalPages: Math.ceil(total / 20) },
+    pagination: {
+      page: 1,
+      limit: 20,
+      total,
+      totalPages: Math.ceil(total / 20),
+    },
   };
 }
 
@@ -93,7 +109,10 @@ function mockHappyPath(products: Product[], total = products.length) {
   jest
     .spyOn(warehouseService, "list")
     .mockResolvedValue(
-      page([warehouse(WAREHOUSE, "Gudang Pusat"), warehouse(OTHER_WAREHOUSE, "Gudang Cabang")]) as never,
+      page([
+        warehouse(WAREHOUSE, "Gudang Pusat"),
+        warehouse(OTHER_WAREHOUSE, "Gudang Cabang"),
+      ]) as never,
     );
   jest.spyOn(productService, "list").mockResolvedValue(page(products, total));
 }
@@ -220,6 +239,121 @@ describe("StockProductsScreen", () => {
         "href",
         "/dashboard/inventory/stock-card/p1",
       );
+    });
+  });
+
+  /**
+   * "SEMUA GUDANG" IS EVERY GUDANG THIS ACCOUNT REACHES — AND THE SERVER DECIDES
+   * WHICH.
+   *
+   * `GET /api/products` used to send `stockByWarehouse` for every location
+   * whoever was asking, so a storekeeper offered one shop in the picker read the
+   * whole tenant's stock the moment they left the select on its default. The API
+   * narrows the field now (PawCRM-Backend, `#stockScope`), which is the half a
+   * screen could not have provided: a client filter hides a number that has
+   * already been sent.
+   *
+   * What is left here is the SENTENCE — that the caption describes the set the
+   * figures actually cover, and that an account granted no warehouse can tell
+   * why its table reads zero.
+   */
+  describe("semua gudang, and whose gudang that is", () => {
+    const BRANCH = "b1";
+    const OTHER_BRANCH = "b2";
+
+    /** Reaches BRANCH, and therefore WAREHOUSE, and nothing else. */
+    const scopedUser: User = {
+      ...FULL_REACH_USER,
+      allBranches: false,
+      branchAccess: [BRANCH],
+      warehouseAccess: [
+        { branchId: BRANCH, allWarehouses: true, warehouseIds: [] },
+      ],
+    };
+
+    /** Both warehouses owned by a branch, so the scope can refuse one. */
+    function mockBranchedWarehouses(products: Product[]) {
+      mockHappyPath(products);
+      jest
+        .spyOn(warehouseService, "list")
+        .mockResolvedValue(
+          page([
+            warehouse(WAREHOUSE, "Gudang Pusat", BRANCH),
+            warehouse(OTHER_WAREHOUSE, "Gudang Cabang", OTHER_BRANCH),
+          ]) as never,
+        );
+    }
+
+    function spread() {
+      return makeProduct({
+        stockByWarehouse: [
+          { warehouseId: WAREHOUSE, qty: "12.0000" },
+          { warehouseId: OTHER_WAREHOUSE, qty: "8.0000" },
+        ],
+      });
+    }
+
+    it("says the figures are for the gudang this account can reach", async () => {
+      mockBranchedWarehouses([spread()]);
+
+      renderWithAuth(<StockProductsScreen />, { user: scopedUser });
+
+      expect(
+        await screen.findByText(/untuk semua gudang yang bisa Anda akses/i),
+      ).toBeInTheDocument();
+    });
+
+    it("says plain 'semua gudang' for an account that reaches every branch", async () => {
+      mockBranchedWarehouses([spread()]);
+
+      renderWithAuth(<StockProductsScreen />);
+
+      const caption = await screen.findByText(/untuk semua gudang/i);
+      expect(caption).not.toHaveTextContent(/bisa Anda akses/i);
+    });
+
+    /**
+     * THE ROWS ARE NOT NARROWED A SECOND TIME. The server has already answered
+     * "which shelves are yours"; re-deciding it here would be a second copy of
+     * the rule over the same number, and the direction it would disagree in —
+     * hiding a shelf the account does reach — is the one nobody reports.
+     */
+    it("renders every row the API sent, without re-deciding whose they are", async () => {
+      mockBranchedWarehouses([spread()]);
+
+      renderWithAuth(<StockProductsScreen />, { user: scopedUser });
+
+      const row = (await screen.findByText("Royal Canin Adult 3kg")).closest(
+        "tr",
+      )!;
+      await waitFor(() =>
+        expect(within(row).getByText("20")).toBeInTheDocument(),
+      );
+      expect(within(row).getByText("di 2 gudang")).toBeInTheDocument();
+    });
+
+    /**
+     * A ROLE GRANTED NO WAREHOUSE reads zero — the API sends it no stock rows —
+     * and a table of zeroes with no explanation is a bug report rather than a
+     * task for an admin.
+     */
+    it("explains an all-zero table to a role granted no warehouse", async () => {
+      mockBranchedWarehouses([makeProduct({ stockByWarehouse: [] })]);
+
+      renderWithAuth(<StockProductsScreen />, {
+        user: {
+          ...FULL_REACH_USER,
+          allBranches: false,
+          branchAccess: [OTHER_BRANCH],
+          warehouseAccess: [
+            { branchId: OTHER_BRANCH, allWarehouses: false, warehouseIds: [] },
+          ],
+        },
+      });
+
+      expect(
+        await screen.findByText(/belum diberi akses ke gudang mana pun/i),
+      ).toBeInTheDocument();
     });
   });
 
