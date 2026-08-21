@@ -507,6 +507,7 @@ describe("ProductForm", () => {
       mockCreate({
         openingStock: {
           posted: false,
+          entries: [],
           movements: [],
           error: "Warehouse 'Gudang' is not active",
         },

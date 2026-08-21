@@ -1981,10 +1981,24 @@ function ProductFormFields({
          * they entered a quantity.
          */
         if (created.openingStock && !created.openingStock.posted) {
+          /*
+            Stok Awal, not Penyesuaian Stok. Both screens can raise a balance,
+            and only one of them books it correctly: an adjustment credits 5201
+            Kerugian Persediaan, so recovering a day-one balance there reads on
+            the P&L as a profit earned by a shop that has sold nothing.
+          */
           swalToast(
             `${created.name} dibuat, tapi stok awal belum tercatat: ${
               created.openingStock.error ?? "gagal"
-            }. Catat lewat Penyesuaian Stok.`,
+            }. Catat lewat Stok Awal.`,
+          );
+        } else if (created.openingStock?.entries.length) {
+          // Named, because the document is a thing the user can now go and open
+          // — and because a number they were told is one they can search for.
+          swalToast(
+            `${created.name} dibuat. Stok awal tercatat sebagai ${created.openingStock.entries
+              .map((entry) => entry.entryNumber)
+              .join(", ")}.`,
           );
         } else {
           swalToast(`${created.name} dibuat.`);

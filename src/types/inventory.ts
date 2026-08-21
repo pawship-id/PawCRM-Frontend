@@ -1120,8 +1120,32 @@ export interface CreatedProduct extends Product {
  */
 export interface OpeningStockReport {
   posted: boolean;
+  /**
+   * The opening stock documents the create filed — one per warehouse the
+   * payload named, because a document's header names a single one.
+   *
+   * These are what the Stok Awal screen lists. Before they existed, stock
+   * entered on the create form moved the quantity and posted the journal and
+   * left no paperwork, so a tenant that entered its day-one balances the obvious
+   * way found that screen empty.
+   *
+   * Empty whenever `posted` is false: the documents and their movements are one
+   * transaction, so a refusal leaves neither.
+   */
+  entries: OpeningStockEntryRef[];
   movements: StockMovement[];
   error: string | null;
+}
+
+/**
+ * Just enough of a filed opening stock document to name it and link to it —
+ * `GET /api/stock-entries/opening-stock/:id` has the rest.
+ */
+export interface OpeningStockEntryRef {
+  _id: string;
+  /** "OPB-2026-0001". */
+  entryNumber: string;
+  warehouseId: string;
 }
 
 /* ------------------------------------------------------------ stock opname */
