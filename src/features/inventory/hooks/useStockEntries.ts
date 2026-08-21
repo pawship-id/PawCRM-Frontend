@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { ApiError } from "@/services/api-error";
+import { useAuth } from "@/features/auth";
+import { accessibleBranches, accessibleWarehouses } from "@/utils/accessScope";
 import { stockEntryService } from "@/services/stockEntry.service";
 import { branchService } from "@/services/branch.service";
 import { warehouseService } from "@/services/warehouse.service";
@@ -73,8 +75,15 @@ export interface UseStockEntriesResult {
  * `warehouses:read` or `branches:read`, and a document list that refused to
  * render because a dropdown could not be populated would withhold the rows over
  * the filter.
+ *
+ * THE FILTER LISTS ARE ALSO NARROWED TO THE USER'S OWN SCOPE. The server
+ * already refuses an out-of-scope filter with a 403 and narrows the page
+ * regardless — this is so the panel does not offer a branch whose only possible
+ * outcome is that refusal. It is a courtesy over the server's answer, never the
+ * isolation itself: `utils/accessScope.ts` says why.
  */
 export function useStockEntries(kind: StockEntryKind): UseStockEntriesResult {
+  const { user } = useAuth();
   const [entries, setEntries] = useState<StockEntry[]>([]);
   const [pagination, setPagination] = useState({
     page: 1,
@@ -113,7 +122,7 @@ export function useStockEntries(kind: StockEntryKind): UseStockEntriesResult {
     warehouseService
       .list({ limit: 100 })
       .then((result) => {
-        if (active) setWarehouses(result.items);
+        if (active) setWarehouses(accessibleWarehouses(user, result.items));
       })
       .catch(() => {
         // Soft: see the header. The list still renders without its filter.
@@ -123,7 +132,7 @@ export function useStockEntries(kind: StockEntryKind): UseStockEntriesResult {
     branchService
       .list({ limit: 100 })
       .then((result) => {
-        if (active) setBranches(result.items);
+        if (active) setBranches(accessibleBranches(user, result.items));
       })
       .catch(() => {
         if (active) setBranches([]);
@@ -132,7 +141,7 @@ export function useStockEntries(kind: StockEntryKind): UseStockEntriesResult {
     return () => {
       active = false;
     };
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     let active = true;

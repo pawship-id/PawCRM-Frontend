@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import {
@@ -6,6 +6,7 @@ import {
   StockAdjustmentForm,
   StockTransferForm,
 } from "@/features/inventory";
+import { renderWithAuth as render } from "./helpers/renderWithAuth";
 import { JournalPreview } from "@/features/inventory/components/JournalPreview";
 import { blockingReason } from "@/features/inventory/utils/blocker";
 import { productService } from "@/services/product.service";

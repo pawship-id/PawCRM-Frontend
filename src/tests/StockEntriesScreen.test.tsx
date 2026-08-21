@@ -7,7 +7,7 @@ import { excerptAround } from "@/features/inventory/utils/excerpt";
 import { stockEntryService } from "@/services/stockEntry.service";
 import { branchService } from "@/services/branch.service";
 import { warehouseService } from "@/services/warehouse.service";
-import type { Branch, PageResult, Warehouse } from "@/types/api";
+import type { Branch, PageResult, User, Warehouse } from "@/types/api";
 import type { StockEntry } from "@/types/inventory";
 
 /**
@@ -421,4 +421,94 @@ it("sends the pair the two fields settled on", async () => {
       expect.objectContaining({ branchId: "b2", warehouseId: "w2" }),
     ),
   );
+});
+
+/**
+ * Stock isolation, as the filter panel shows it.
+ *
+ * A COURTESY OVER THE SERVER'S ANSWER, not the isolation itself — the endpoint
+ * narrows the page and refuses an out-of-scope filter with a 403 whatever this
+ * panel offers. What is worth asserting here is that the panel does not offer a
+ * choice whose only possible outcome is that refusal.
+ */
+describe("stock isolation in the filter panel", () => {
+  /** Scoped to Cabang Timur, and there only to its own shelf. */
+  const scoped = {
+    _id: "u2",
+    allBranches: false,
+    branchAccess: ["b1"],
+    warehouseAccess: [
+      { branchId: "b1", allWarehouses: false, warehouseIds: ["w1"] },
+    ],
+  } as User;
+
+  async function openPanelAs(user: User) {
+    const ui = userEvent.setup();
+    renderWithAuth(<StockEntriesScreen kind="adjustment" />, { user });
+    await waitFor(() => expect(branchService.list).toHaveBeenCalled());
+    await ui.click(screen.getByRole("button", { name: /^Filter/ }));
+    return ui;
+  }
+
+  it("offers only the branches the user holds", async () => {
+    const ui = await openPanelAs(scoped);
+    await ui.click(screen.getByRole("button", { name: "Filter cabang" }));
+
+    expect(
+      screen.getByRole("option", { name: "Cabang Timur" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "Cabang Barat" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers the granted shelf and the shared warehouse, and nothing else", async () => {
+    // Gudang Pusat has no branch of its own, so it serves every one of them —
+    // it comes with any branch access at all and is never picked per branch.
+    const ui = await openPanelAs(scoped);
+    await ui.click(screen.getByRole("button", { name: "Filter gudang" }));
+
+    expect(
+      screen.getByRole("option", { name: "Gudang Timur" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "Gudang Pusat" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "Gudang Barat" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("hides a shelf of a granted branch the user was not given", async () => {
+    const narrowed = {
+      ...scoped,
+      branchAccess: ["b1", "b2"],
+      warehouseAccess: [
+        { branchId: "b1", allWarehouses: true, warehouseIds: [] },
+        // Cabang Barat is granted, but only a shelf that is not Gudang Barat.
+        { branchId: "b2", allWarehouses: false, warehouseIds: ["w9"] },
+      ],
+    } as User;
+
+    const ui = await openPanelAs(narrowed);
+    await ui.click(screen.getByRole("button", { name: "Filter gudang" }));
+
+    // The branch IS granted, so it appears above; the shelf inside it is not.
+    expect(
+      screen.getByRole("option", { name: "Gudang Timur" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "Gudang Barat" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("leaves an all-branches user everything", async () => {
+    const owner = { ...scoped, allBranches: true, branchAccess: [] };
+    const ui = await openPanelAs(owner);
+    await ui.click(screen.getByRole("button", { name: "Filter gudang" }));
+
+    expect(
+      screen.getByRole("option", { name: "Gudang Barat" }),
+    ).toBeInTheDocument();
+  });
 });

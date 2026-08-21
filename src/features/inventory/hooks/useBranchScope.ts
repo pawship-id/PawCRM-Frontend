@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { branchService } from "@/services/branch.service";
+import { useAuth } from "@/features/auth";
+import { accessibleBranches } from "@/utils/accessScope";
 import type { Branch } from "@/types/api";
 
 /**
@@ -143,8 +145,14 @@ interface UseBranchScopeResult {
  * may hold `stockMovements:create` without `branches:read`, and a form that
  * refused to render because a dropdown could not be filled would withhold the
  * whole document over one field.
+ *
+ * IT IS ALSO NARROWED TO THE BRANCHES THIS USER HOLDS. The server refuses a
+ * post to any other with a 403, so offering one here could only produce a
+ * rejection after the document was filled in — and `soleBranch` below then
+ * means what it says: one branch to this user, whatever the tenant has.
  */
 export function useBranchScope(): UseBranchScopeResult {
+  const { user } = useAuth();
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -154,7 +162,7 @@ export function useBranchScope(): UseBranchScopeResult {
     branchService
       .list({ limit: 100 })
       .then((result) => {
-        if (active) setBranches(result.items);
+        if (active) setBranches(accessibleBranches(user, result.items));
       })
       .catch(() => {
         if (active) setBranches([]);
@@ -166,7 +174,7 @@ export function useBranchScope(): UseBranchScopeResult {
     return () => {
       active = false;
     };
-  }, []);
+  }, [user]);
 
   const soleBranch = useMemo(
     () => (branches.length === 1 ? branches[0]._id : ""),

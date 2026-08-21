@@ -39,6 +39,9 @@ import {
 } from "@/utils/decimal";
 
 import { useStockCardLookups } from "../hooks/useStockCardLookups";
+import { useAuth } from "@/features/auth";
+import { accessibleWarehouses } from "@/utils/accessScope";
+
 import { useBranchScope, warehousesForBranch } from "../hooks/useBranchScope";
 import { useWarehouseBatches } from "../hooks/useWarehouseBatches";
 import { qtyAtWarehouse } from "../utils/ledger";
@@ -154,6 +157,7 @@ export function StockAdjustmentForm() {
 
   const lots = useWarehouseBatches(warehouseId);
 
+  const { user: authUser } = useAuth();
   const scope = useBranchScope();
   /**
    * ONE BRANCH IS NOT A CHOICE — a tenant with a single shop reaches the field
@@ -163,7 +167,14 @@ export function StockAdjustmentForm() {
    * would be empty for no reason.
    */
   const branchId = pickedBranch || scope.soleBranch;
-  const scopedWarehouses = warehousesForBranch(branchId, lookups.warehouses);
+  // TWO NARROWINGS, and they answer different questions: the first is what
+  // THIS USER may post at, the second what THAT BRANCH may post at. Applied in
+  // this order so a warehouse outside the user's reach never reaches the
+  // branch filter, where a shared one would otherwise pass on every branch.
+  const scopedWarehouses = warehousesForBranch(
+    branchId,
+    accessibleWarehouses(authUser, lookups.warehouses),
+  );
 
   /**
    * What the system believes, per row - the left half of the subtraction.
