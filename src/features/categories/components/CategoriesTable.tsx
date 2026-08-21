@@ -1,7 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { EllipsisVertical, Pencil, RotateCcw, Trash2 } from "lucide-react";
+import Link from "next/link";
+import {
+  EllipsisVertical,
+  ImageOff,
+  Pencil,
+  RotateCcw,
+  Trash2,
+} from "lucide-react";
 
 import { ConfirmDialog, HighlightText } from "@/components";
 import { Badge } from "@/components/ui/badge";
@@ -34,9 +41,27 @@ type PendingAction = { kind: "delete" | "restore"; category: Category } | null;
  * The category table and its row actions.
  *
  * Read data arrives as props; the lifecycle actions are owned here because each
- * is local to a row — confirm, call, then ask the parent to refetch. Rename is
- * raised to the parent instead, since it opens the same dialog the create button
- * does and only one of those may be open at a time.
+ * is local to a row — confirm, call, then ask the parent to refetch.
+ *
+ * EDIT IS A LINK, not a callback the parent turns into a dialog. It used to be
+ * the latter, because the create button and every row's rename shared one modal
+ * slot and only one could be open; both are routes now (see CategoryForm), so
+ * the row owns its own destination and the parent no longer holds form state at
+ * all. A real `<a href>` is also what middle-click and "buka di tab baru" need.
+ *
+ * THE TREE IS SHOWN AS A TRAIL, NOT AS AN INDENTED TREE. A tree widget fights
+ * pagination — the children of a row on page 2 may be on page 3, and a level
+ * that only sometimes shows its contents is worse than a flat list that always
+ * says where each row belongs. The parent's name above the row's own is the
+ * whole of it, and the Tingkat filter narrows to one level when that is the
+ * question.
+ *
+ * THE PICTURE IS A CELL, NOT A COLUMN OF ITS OWN. It sits inside the name cell
+ * as a 40px tile, because a column would be a header with no word for it and an
+ * empty rectangle on every category nobody gave a picture to — and most will
+ * not have one. Inside the name cell an absent image is a placeholder next to
+ * the thing it belongs to, which reads as "this one has no photo" rather than
+ * as a broken column. The description sits under the name for the same reason.
  *
  * THE DELETE GUARD IS THE POINT OF THE CONFIRM COPY. The backend refuses to
  * delete a category while any live product is still filed under it, and answers
@@ -50,14 +75,12 @@ export function CategoriesTable({
   loading,
   search,
   onChanged,
-  onEdit,
 }: {
   categories: Category[];
   loading: boolean;
   /** Active search term, highlighted in the name cell. */
   search?: string;
   onChanged: () => void;
-  onEdit: (category: Category) => void;
 }) {
   const [pending, setPending] = useState<PendingAction>(null);
   const [busy, setBusy] = useState(false);
@@ -105,7 +128,7 @@ export function CategoriesTable({
 
   if (!loading && categories.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-border bg-card px-6 py-16 text-center text-sm text-muted-foreground">
+      <div className="rounded-xl border border-dashed border-border bg-surface px-6 py-16 text-center text-sm text-muted">
         Belum ada kategori yang cocok dengan filter ini.
       </div>
     );
@@ -113,11 +136,11 @@ export function CategoriesTable({
 
   return (
     <>
-      <div className="overflow-x-auto rounded-xl border border-border bg-card">
+      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
         <Table className={loading ? "opacity-60" : undefined}>
           <TableHeader>
             <TableRow>
-              <TableHead>Nama</TableHead>
+              <TableHead>Kategori</TableHead>
               <TableHead>Status</TableHead>
               {showActions && (
                 <TableHead className="text-right">Aksi</TableHead>
@@ -130,8 +153,58 @@ export function CategoriesTable({
               return (
                 <TableRow key={category._id}>
                   <TableCell>
-                    <div className="font-medium text-foreground">
-                      <HighlightText text={category.name} query={search} />
+                    <div className="flex items-start gap-3">
+                      <div className="size-10 shrink-0 overflow-hidden rounded-md border border-border bg-surface-hover">
+                        {category.image ? (
+                          // A plain img, like MediaGallery's: next/image needs a
+                          // remote host configured per storage driver, and the
+                          // driver is a per-deployment choice.
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={category.image.thumbUrl ?? category.image.url}
+                            alt=""
+                            className="size-full object-cover"
+                          />
+                        ) : (
+                          <span
+                            className="flex size-full items-center justify-center"
+                            aria-hidden
+                          >
+                            <ImageOff className="size-4 text-muted" />
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="min-w-0">
+                        {/*
+                          THE PARENT SITS ABOVE THE NAME, as a trail rather than
+                          a column. A column would be empty on every top-level
+                          row — most of them — and a name with no context is the
+                          ambiguity sub-categories were added to remove: two
+                          rows both called "Kering" are unreadable without it.
+
+                          Not a link: the row's own Edit already goes to this
+                          category, and a second destination in the same cell is
+                          two targets a click has to choose between.
+                        */}
+                        {category.parent && (
+                          <div className="truncate text-xs text-muted">
+                            {category.parent.name} ›
+                          </div>
+                        )}
+                        <div className="font-medium text-foreground">
+                          <HighlightText text={category.name} query={search} />
+                        </div>
+                        {category.description && (
+                          // Clamped to two lines: 500 characters is a paragraph,
+                          // and a row that grows to fit one turns the table into
+                          // a page nobody can scan. Plain text — the API stores
+                          // it as text, never HTML.
+                          <p className="mt-0.5 line-clamp-2 text-xs text-muted">
+                            {category.description}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </TableCell>
                   <TableCell>
@@ -195,11 +268,17 @@ export function CategoriesTable({
                             ) : (
                               <>
                                 <Can feature="categories" action="update">
-                                  <DropdownMenuItem
-                                    onSelect={() => onEdit(category)}
-                                  >
-                                    <Pencil />
-                                    Edit
+                                  {/* asChild so the menu item IS the link:
+                                      Radix would otherwise render a div around
+                                      an anchor, and the keyboard activation the
+                                      menu provides would not follow the href. */}
+                                  <DropdownMenuItem asChild>
+                                    <Link
+                                      href={`/dashboard/inventory/categories/${category._id}`}
+                                    >
+                                      <Pencil />
+                                      Edit
+                                    </Link>
                                   </DropdownMenuItem>
                                 </Can>
                                 <Can feature="categories" action="delete">

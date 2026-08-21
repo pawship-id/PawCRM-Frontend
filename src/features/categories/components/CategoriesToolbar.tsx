@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { ListFilter, Plus } from "lucide-react";
 
 import {
@@ -35,6 +36,11 @@ import type { CategoriesQuery } from "../hooks/useCategories";
  * panel too, the two branches are the same tree and the media query was only
  * choosing between it and itself.
  *
+ * FOUR FIELDS NOW — sort, status, tingkat, terhapus — which is still a panel
+ * by §8's count, and was already one. The tingkat filter arrived with
+ * sub-categories: a flat list shows every level at once, and "which of these
+ * are still ungrouped" is the one question that shape cannot answer.
+ *
  * TWO AXES, NOT ONE, and keeping them apart is the point of the status field:
  *
  *   Status  — retired or in use. A retired category keeps every product filed
@@ -46,9 +52,10 @@ import type { CategoriesQuery } from "../hooks/useCategories";
  * a line wants the first — deleting is refused outright while a live product is
  * still filed under the category.
  *
- * The create button opens a dialog rather than navigating, so `onCreate` is a
- * callback instead of a Link — see CategoryFormDialog for why. FilterBar's
- * `actions` takes a node precisely so both shapes fit without it caring which.
+ * THE CREATE BUTTON IS A LINK, not a callback that opened a dialog. A category
+ * outgrew the modal when it gained a description and a picture — see
+ * CategoryForm. A real `<a href>` is also what a middle-click and a "buka di tab
+ * baru" need, which a button wired to `router.push` never gives them.
  */
 const STATUSES: FilterOption<CategoriesQuery["status"]>[] = [
   { value: "", label: "Semua status" },
@@ -69,9 +76,26 @@ const SORTS: FilterOption<CategorySort>[] = [
   { value: "nameDesc", label: "Nama Z–A" },
 ];
 
+/**
+ * Which level of the tree to show.
+ *
+ * THREE OPTIONS, NOT A PARENT PICKER. "Which sub-categories does Makanan have"
+ * is a real question and it is answered by searching or by reading the trail on
+ * each row; a select listing every top-level category would be a second,
+ * longer picker inside a panel, duplicating what the list already shows. What a
+ * level filter answers is the question the list CANNOT: "which of these are
+ * still ungrouped".
+ */
+const LEVELS: FilterOption<CategoriesQuery["level"]>[] = [
+  { value: "", label: "Semua tingkat" },
+  { value: "top", label: "Kategori induk saja" },
+  { value: "sub", label: "Sub-kategori saja" },
+];
+
 /** Everything the panel edits, as one draft. */
 interface CategoryFilters {
   status: CategoriesQuery["status"];
+  level: CategoriesQuery["level"];
   includeDeleted: boolean;
   sort: CategorySort;
 }
@@ -84,6 +108,7 @@ interface CategoryFilters {
  */
 const CLEARED: CategoryFilters = {
   status: "",
+  level: "",
   includeDeleted: false,
   sort: "newest",
 };
@@ -91,14 +116,13 @@ const CLEARED: CategoryFilters = {
 export function CategoriesToolbar({
   query,
   onChange,
-  onCreate,
 }: {
   query: CategoriesQuery;
   onChange: (patch: Partial<CategoriesQuery>) => void;
-  onCreate: () => void;
 }) {
   const applied: CategoryFilters = {
     status: query.status,
+    level: query.level,
     includeDeleted: query.includeDeleted,
     sort: query.sort,
   };
@@ -113,6 +137,7 @@ export function CategoriesToolbar({
   function apply(next: CategoryFilters) {
     const patch: Partial<CategoriesQuery> = {};
     if (next.status !== query.status) patch.status = next.status;
+    if (next.level !== query.level) patch.level = next.level;
     if (next.includeDeleted !== query.includeDeleted)
       patch.includeDeleted = next.includeDeleted;
     if (next.sort !== query.sort) patch.sort = next.sort;
@@ -140,9 +165,14 @@ export function CategoriesToolbar({
       }
       actions={
         <Can feature="categories" action="create">
-          <Button onClick={onCreate} className="w-full">
-            <Plus className="size-4" />
-            Kategori baru
+          {/* `asChild` so the Link IS the button — nesting an <a> inside a
+              <button> is invalid markup and gives a screen reader two controls
+              where there is one. */}
+          <Button asChild className="w-full">
+            <Link href="/dashboard/inventory/categories/new">
+              <Plus className="size-4" />
+              Kategori baru
+            </Link>
           </Button>
         </Can>
       }
@@ -177,9 +207,11 @@ function CategoryFilterPanel({
    * people to ignore the number, which is the one thing here that must stay
    * worth reading now that the triggers are hidden.
    */
-  const count = [applied.status !== "", applied.includeDeleted].filter(
-    Boolean,
-  ).length;
+  const count = [
+    applied.status !== "",
+    applied.level !== "",
+    applied.includeDeleted,
+  ].filter(Boolean).length;
 
   function patch(change: Partial<CategoryFilters>) {
     setDraft((prev) => ({ ...prev, ...change }));
@@ -233,6 +265,14 @@ function CategoryFilterPanel({
           value={draft.status}
           options={STATUSES}
           onChange={(status) => patch({ status })}
+        />
+        <FilterSelect
+          layout="field"
+          label="Tingkat"
+          ariaLabel="Filter tingkat"
+          value={draft.level}
+          options={LEVELS}
+          onChange={(level) => patch({ level })}
         />
         <FilterToggle
           label="Tampilkan kategori terhapus"

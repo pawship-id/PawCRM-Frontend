@@ -7,6 +7,7 @@ import { CategoriesTable } from "@/features/categories/components/CategoriesTabl
 import { categoryService } from "@/services/category.service";
 import { ApiError } from "@/services/api-error";
 import type { Category, PageResult } from "@/types/api";
+import type { MediaAsset } from "@/types/inventory";
 
 jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn() }) }));
 
@@ -24,10 +25,26 @@ function makeCategory(overrides: Partial<Category> = {}): Category {
     kind: "product",
     isActive: true,
     name: "Makanan Kucing",
+    parentId: null,
+    parent: null,
+    description: null,
+    image: null,
     deletedAt: null,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
+  };
+}
+
+/** An asset shaped as the API stores one, for the rows that carry a picture. */
+function makeImage(): MediaAsset {
+  return {
+    mediaType: "image",
+    url: "http://localhost:5000/media/t1/category/2026/08/a.webp",
+    storageKey: "t1/category/2026/08/a.webp",
+    driver: "local",
+    mimeType: "image/webp",
+    thumbUrl: "http://localhost:5000/media/t1/category/2026/08/a_thumb.webp",
   };
 }
 
@@ -102,167 +119,69 @@ describe("CategoriesScreen", () => {
     expect(await screen.findByText(/server error/i)).toBeInTheDocument();
   });
 
-  it("creates a category from the dialog, then refetches", async () => {
-    const list = mockList([]);
-    const create = jest
-      .spyOn(categoryService, "create")
-      .mockResolvedValue(makeCategory({ name: "Aksesoris" }));
-
-    renderWithAuth(<CategoriesScreen />);
-    await screen.findByText(/belum ada kategori/i);
-
-    await userEvent.click(
-      screen.getByRole("button", { name: /kategori baru/i }),
-    );
-    await userEvent.type(
-      screen.getByRole("textbox", { name: /nama kategori/i }),
-      "Aksesoris",
-    );
-    await userEvent.click(
-      screen.getByRole("button", { name: /buat kategori/i }),
-    );
-
-    await waitFor(() =>
-      expect(create).toHaveBeenCalledWith({ name: "Aksesoris" }),
-    );
-    // The list is re-read so the new row appears without a manual reload.
-    await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
-  });
-
-  it("trims the name before sending it", async () => {
+  it("sends the create button to its own route, as a real link", async () => {
     mockList([]);
-    const create = jest
-      .spyOn(categoryService, "create")
-      .mockResolvedValue(makeCategory());
 
     renderWithAuth(<CategoriesScreen />);
     await screen.findByText(/belum ada kategori/i);
 
-    await userEvent.click(
-      screen.getByRole("button", { name: /kategori baru/i }),
+    // An <a href>, not a button wired to router.push: middle-click and "buka di
+    // tab baru" are what a link buys, and the form outgrew the dialog it used
+    // to open — see CategoryForm.
+    expect(screen.getByRole("link", { name: /kategori baru/i })).toHaveAttribute(
+      "href",
+      "/dashboard/inventory/categories/new",
     );
-    await userEvent.type(screen.getByRole("textbox", { name: /nama kategori/i }), "  Snack  ");
-    await userEvent.click(
-      screen.getByRole("button", { name: /buat kategori/i }),
-    );
-
-    // Otherwise " Snack " and "Snack" become two categories the unique index
-    // considers different and every human reads as one.
-    await waitFor(() => expect(create).toHaveBeenCalledWith({ name: "Snack" }));
   });
 
-  it("refuses an empty name without calling the API", async () => {
-    mockList([]);
-    const create = jest.spyOn(categoryService, "create");
-
-    renderWithAuth(<CategoriesScreen />);
-    await screen.findByText(/belum ada kategori/i);
-
-    await userEvent.click(
-      screen.getByRole("button", { name: /kategori baru/i }),
-    );
-    await userEvent.click(
-      screen.getByRole("button", { name: /buat kategori/i }),
-    );
-
-    expect(
-      await screen.findByText(/nama kategori wajib diisi/i),
-    ).toBeInTheDocument();
-    expect(create).not.toHaveBeenCalled();
-  });
-
-  it("puts a duplicate-name 409 on the field, and mentions deleted categories", async () => {
-    mockList([]);
-    jest
-      .spyOn(categoryService, "create")
-      .mockRejectedValue(new ApiError("Category already exists", 409));
-
-    renderWithAuth(<CategoriesScreen />);
-    await screen.findByText(/belum ada kategori/i);
-
-    await userEvent.click(
-      screen.getByRole("button", { name: /kategori baru/i }),
-    );
-    await userEvent.type(
-      screen.getByRole("textbox", { name: /nama kategori/i }),
-      "Makanan Kucing",
-    );
-    await userEvent.click(
-      screen.getByRole("button", { name: /buat kategori/i }),
-    );
-
-    // The unique index is partial on deletedAt: null, so a deleted category
-    // still holds its name — the surprising case, said out loud.
-    expect(
-      await screen.findByText(/sudah dipakai kategori lain/i),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/sudah dihapus/i)).toBeInTheDocument();
-  });
-
-  it("renames through the same dialog, pre-filled", async () => {
-    mockList([makeCategory()]);
-    const update = jest
-      .spyOn(categoryService, "update")
-      .mockResolvedValue(makeCategory({ name: "Makanan Anjing" }));
+  it("narrows to one level through the panel", async () => {
+    const list = mockList([makeCategory()]);
 
     renderWithAuth(<CategoriesScreen />);
     await screen.findByText("Makanan Kucing");
 
-    const menu = await openRowMenu();
+    const panel = await openFilters();
     await userEvent.click(
-      within(menu).getByRole("menuitem", { name: /^edit$/i }),
+      within(panel).getByRole("button", { name: "Filter tingkat" }),
+    );
+    await userEvent.click(
+      screen.getByRole("option", { name: "Kategori induk saja" }),
+    );
+    await userEvent.click(
+      within(panel).getByRole("button", { name: "Terapkan" }),
     );
 
-    const field = screen.getByRole("textbox", { name: /nama kategori/i });
-    expect(field).toHaveValue("Makanan Kucing");
-
-    await userEvent.clear(field);
-    await userEvent.type(field, "Makanan Anjing");
-    await userEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
-
+    // Narrowed on the SERVER, through the one parameter that carries all four
+    // states — a client-side filter would leave the row count describing a
+    // different set from the one on screen.
     await waitFor(() =>
-      expect(update).toHaveBeenCalledWith("c1", { name: "Makanan Anjing" }),
+      expect(list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ parentId: "none" }),
+      ),
     );
   });
 
-  it("does not send a rename that changes nothing", async () => {
-    mockList([makeCategory()]);
-    const update = jest.spyOn(categoryService, "update");
+  it("asks for sub-categories with the other level word", async () => {
+    const list = mockList([makeCategory()]);
 
     renderWithAuth(<CategoriesScreen />);
     await screen.findByText("Makanan Kucing");
 
-    const menu = await openRowMenu();
+    const panel = await openFilters();
     await userEvent.click(
-      within(menu).getByRole("menuitem", { name: /^edit$/i }),
+      within(panel).getByRole("button", { name: "Filter tingkat" }),
     );
-    await userEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
-
-    // The API rejects an empty patch body, and "save" on an untouched form is
-    // a close that should not look like a failure.
-    expect(update).not.toHaveBeenCalled();
-  });
-
-  it("retires a category without touching its name", async () => {
-    mockList([makeCategory()]);
-    const update = jest
-      .spyOn(categoryService, "update")
-      .mockResolvedValue(makeCategory({ isActive: false }));
-
-    renderWithAuth(<CategoriesScreen />);
-    await screen.findByText("Makanan Kucing");
-
-    const menu = await openRowMenu();
     await userEvent.click(
-      within(menu).getByRole("menuitem", { name: /^edit$/i }),
+      screen.getByRole("option", { name: "Sub-kategori saja" }),
     );
-    await userEvent.click(screen.getByRole("switch", { name: /aktif/i }));
-    await userEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+    await userEvent.click(
+      within(panel).getByRole("button", { name: "Terapkan" }),
+    );
 
-    // The name is deliberately absent: sending it would run the 409 check
-    // against the category's own name for an edit that never touched it.
     await waitFor(() =>
-      expect(update).toHaveBeenCalledWith("c1", { isActive: false }),
+      expect(list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ parentId: "sub" }),
+      ),
     );
   });
 
@@ -391,6 +310,102 @@ describe("CategoriesScreen", () => {
 describe("CategoriesTable", () => {
   afterEach(() => jest.restoreAllMocks());
 
+  it("shows the description under the name", async () => {
+    renderWithAuth(
+      <CategoriesTable
+        categories={[makeCategory({ description: "Basah dan kering" })]}
+        loading={false}
+        onChanged={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Basah dan kering")).toBeInTheDocument();
+  });
+
+  it("renders the thumbnail, not the full-size image", async () => {
+    const { container } = renderWithAuth(
+      <CategoriesTable
+        categories={[makeCategory({ image: makeImage() })]}
+        loading={false}
+        onChanged={jest.fn()}
+      />,
+    );
+
+    // A list of forty categories must not download forty full-size images —
+    // the whole reason the 320px derivative exists.
+    expect(container.querySelector("img")).toHaveAttribute(
+      "src",
+      "http://localhost:5000/media/t1/category/2026/08/a_thumb.webp",
+    );
+  });
+
+  it("draws a placeholder rather than a broken image when there is none", async () => {
+    const { container } = renderWithAuth(
+      <CategoriesTable
+        categories={[makeCategory({ image: null })]}
+        loading={false}
+        onChanged={jest.fn()}
+      />,
+    );
+
+    // Most categories will never have a picture; an <img> with no src is a
+    // broken-image icon in every browser.
+    expect(container.querySelector("img")).toBeNull();
+    expect(screen.getByText("Makanan Kucing")).toBeInTheDocument();
+  });
+
+  it("shows a sub-category's parent above its own name", async () => {
+    renderWithAuth(
+      <CategoriesTable
+        categories={[
+          makeCategory({
+            name: "Kering",
+            parentId: "p1",
+            parent: { _id: "p1", name: "Makanan Kucing" },
+          }),
+        ]}
+        loading={false}
+        onChanged={jest.fn()}
+      />,
+    );
+
+    // Two rows both called "Kering" are unreadable without it — which is the
+    // ambiguity sub-categories were added to remove, not to create.
+    expect(screen.getByText(/Makanan Kucing/)).toBeInTheDocument();
+    expect(screen.getByText("Kering")).toBeInTheDocument();
+  });
+
+  it("shows no trail on a top-level category", async () => {
+    renderWithAuth(
+      <CategoriesTable
+        categories={[makeCategory({ name: "Makanan Kucing", parent: null })]}
+        loading={false}
+        onChanged={jest.fn()}
+      />,
+    );
+
+    expect(screen.queryByText("›", { exact: false })).not.toBeInTheDocument();
+  });
+
+  it("points Edit at that category's own route", async () => {
+    renderWithAuth(
+      <CategoriesTable
+        categories={[makeCategory()]}
+        loading={false}
+        onChanged={jest.fn()}
+      />,
+    );
+
+    const menu = await openRowMenu();
+
+    // A real link inside the menu item, so middle-click and "buka di tab baru"
+    // work — the row used to raise this to the screen, which turned it into a
+    // dialog.
+    expect(
+      within(menu).getByRole("menuitem", { name: /^edit$/i }),
+    ).toHaveAttribute("href", "/dashboard/inventory/categories/c1");
+  });
+
   it("confirms and deletes a category, then refetches", async () => {
     const remove = jest
       .spyOn(categoryService, "remove")
@@ -402,7 +417,6 @@ describe("CategoriesTable", () => {
         categories={[makeCategory()]}
         loading={false}
         onChanged={onChanged}
-        onEdit={jest.fn()}
       />,
     );
 
@@ -435,7 +449,6 @@ describe("CategoriesTable", () => {
         categories={[makeCategory()]}
         loading={false}
         onChanged={jest.fn()}
-        onEdit={jest.fn()}
       />,
     );
 
@@ -463,7 +476,6 @@ describe("CategoriesTable", () => {
         categories={[makeCategory({ deletedAt: "2026-02-01T00:00:00.000Z" })]}
         loading={false}
         onChanged={jest.fn()}
-        onEdit={jest.fn()}
       />,
     );
 
@@ -494,7 +506,6 @@ describe("CategoriesTable", () => {
         categories={[makeCategory()]}
         loading={false}
         onChanged={jest.fn()}
-        onEdit={jest.fn()}
       />,
       {
         isSuperAdmin: false,

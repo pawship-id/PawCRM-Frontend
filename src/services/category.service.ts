@@ -36,6 +36,9 @@ export const categoryService = {
         page: query.page,
         limit: query.limit ?? 100,
         kind: query.kind,
+        // An id for one parent's children, `TOP_LEVEL_ONLY` for the roots, or
+        // absent for both levels — see CategoryListQuery.
+        parentId: query.parentId,
         search: query.search,
         isActive: query.isActive,
         includeDeleted: query.includeDeleted,

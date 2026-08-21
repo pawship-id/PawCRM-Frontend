@@ -12,7 +12,7 @@
  * movement and HPP rows verbatim, so redeclaring them here would be a second
  * definition of the same payload that drifts the first time the gateway changes.
  */
-import type { PreviewHpp, PreviewMovementRow } from "./inventory";
+import type { MediaAsset, PreviewHpp, PreviewMovementRow } from "./inventory";
 
 export interface ApiSuccess<T> {
   success: true;
@@ -546,15 +546,52 @@ export interface ChartAccount {
 /**
  * A product category — the label a product is filed under.
  *
- * Nothing but a name, which is the point: grouping is all a category does. It
- * carries no price, no stock and no rules, so the only thing that can be wrong
- * with one is what it is called.
+ * Grouping is all a category does: it carries no price, no stock and no rules.
+ * The three fields that describe it are therefore all about the LABEL — what it
+ * is called, what belongs under it, and what it looks like on a tile.
  */
 export interface Category {
   _id: string;
   tenantId: string;
   kind: CategoryKind;
   name: string;
+  /**
+   * The category this one sits under, or `null` for a top-level category.
+   *
+   * THE TREE IS EXACTLY TWO DEEP. A category with a `parentId` cannot itself
+   * be a parent — the API refuses it — so `parent.parent` is a shape that does
+   * not exist and nothing needs to recurse.
+   */
+  parentId: string | null;
+  /**
+   * The parent, resolved by the API so a list does not need one request per row.
+   *
+   * A SIBLING OF `parentId` RATHER THAN A POPULATED VERSION OF IT: the id stays
+   * an id, so code that only asks "is this a sub-category" reads one scalar,
+   * and code that prints the trail reads `parent.name`. `null` whenever
+   * `parentId` is.
+   */
+  parent: { _id: string; name: string } | null;
+  /**
+   * A sentence or two saying what belongs under this label — a hint for
+   * whoever is filing a product, not marketing copy.
+   *
+   * PLAIN TEXT, unlike a product's description, which is sanitised HTML. Render
+   * it as text; never as `dangerouslySetInnerHTML`.
+   */
+  description: string | null;
+  /**
+   * The one picture that represents the label — a category tile, a POS group
+   * button, a storefront strip.
+   *
+   * ONE IMAGE, NOT A GALLERY: a category is a label, not the thing being
+   * photographed nine ways. Always an image; the API refuses a video here,
+   * because there is no second item to fall back to.
+   *
+   * `thumbUrl` and `mediumUrl` are null on assets stored before those
+   * derivatives existed, so read it as `thumbUrl ?? url`.
+   */
+  image: MediaAsset | null;
   /**
    * Whether the label is still offered for new products.
    *
@@ -571,11 +608,27 @@ export interface Category {
   updatedAt: string;
 }
 
+/**
+ * The two words `?parentId=` accepts alongside an actual category id.
+ *
+ * Words rather than empty values, because an empty query parameter is `""` on
+ * one client and dropped on another, and dropped already means something else
+ * here (both levels).
+ */
+export const TOP_LEVEL_ONLY = "none";
+export const SUB_LEVEL_ONLY = "sub";
+
 /** Query parameters accepted by GET /api/categories. All optional. */
 export interface CategoryListQuery {
   page?: number;
   limit?: number;
   kind?: CategoryKind;
+  /**
+   * One parent's children (an id), only top-level categories
+   * (`TOP_LEVEL_ONLY`), only sub-categories (`SUB_LEVEL_ONLY`), or — omitted —
+   * both levels, which is what the category screen opens on.
+   */
+  parentId?: string;
   /** Free-text over the name. */
   search?: string;
   /** Retired state. Omit for both — the API applies no default, unlike `includeDeleted`. */
@@ -596,16 +649,39 @@ export type CategorySort = "newest" | "oldest" | "nameAsc" | "nameDesc";
 export interface CreateCategoryInput {
   name: string;
   kind?: CategoryKind;
+  /**
+   * Files this category under another. The parent must itself be top-level —
+   * the API refuses a three-level tree with a 400 naming the field.
+   */
+  parentId?: string | null;
+  /** `""` is accepted and stored as null. */
+  description?: string | null;
+  /**
+   * The asset `POST /api/media/upload` returned, HANDED BACK WHOLE — `token`
+   * included. The API refuses an asset without it: everything else in the
+   * object passed through this browser and is therefore client-controlled by
+   * the time it arrives.
+   */
+  image?: MediaAsset | null;
   /** Defaults to true server-side; a category is made because it is wanted. */
   isActive?: boolean;
 }
 
 /**
- * Body of PATCH /api/categories/:id. `name` is the only editable field, and the
- * backend rejects an empty body — so in practice it is required here too.
+ * Body of PATCH /api/categories/:id. Every field is independent, and the
+ * backend rejects an empty body — so at least one must be present.
+ *
+ * Send only what MOVED. A patch that resends an unchanged `image` is a round
+ * trip away from losing it, because the API deletes the bytes an update drops.
  */
 export interface UpdateCategoryInput {
   name?: string;
+  /** A new id moves it; `null` promotes it back to the top level. */
+  parentId?: string | null;
+  /** `""` and `null` both clear it. */
+  description?: string | null;
+  /** A new asset replaces the picture; `null` removes it. */
+  image?: MediaAsset | null;
   isActive?: boolean;
 }
 

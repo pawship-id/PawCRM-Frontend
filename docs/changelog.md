@@ -7,6 +7,129 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Kategori bisa punya sub-kategori
+
+A category can now sit under another one. `Induk kategori` is a select in the form, the
+parent is drawn above the row's own name in the list, and a `Tingkat` filter narrows to one
+level.
+
+**ONE CONTROL FOR A BINARY PLUS A CHOICE.** "Is this a parent or a sub-category?" and
+"which parent?" are the same question asked twice — a radio pair followed by a select would
+make the user answer the first, watch a second control appear, and answer it again. The
+first option, *Tidak ada — kategori induk*, IS the top-level answer.
+
+**The picker offers top-level categories only**, fetched with `parentId: "none"` rather than
+filtered client-side, so its options are exactly the set the API would accept. The category
+itself is excluded — nothing is its own parent. Retired parents ARE offered: `isActive`
+retires a label for new products, and filing a sub-category under a paused line is how a
+shop reorganises one.
+
+**The whole field locks for two different reasons and the copy says which.** A category that
+already holds sub-categories cannot become one (the tree is two deep, and the API answers
+`409`), and the first category a tenant ever creates has nothing to sit under. The child
+count comes from a `list({ parentId: id, limit: 1 })` on the edit page rather than a field on
+every category — a per-row count on the list endpoint to answer a question only this form
+asks is the more expensive side of that trade.
+
+**The list shows a trail, not an indented tree.** A tree widget fights pagination: the
+children of a row on page 2 may be on page 3, and a level that only sometimes shows its
+contents is worse than a flat list that always says where each row belongs. The parent's
+name sits above the row's own, and it is not a link — the row's Edit already goes to this
+category, and a second destination in one cell is two targets a click has to choose between.
+
+**`Tingkat` narrows on the SERVER**, through the one `?parentId=` parameter that carries all
+four states. Filtering the fetched page instead would have left `pagination.total` counting
+rows no longer on screen, and a "6 dari 20" that cannot be reconciled is worse than no count.
+
+The duplicate-name message changed with the rule behind it: names are unique **per level**
+now, so it says the name is taken *di tingkat yang sama* and that the same name is fine
+under a different parent. A refused MOVE is a different 409 and renders as a banner, since
+retyping the name will not fix it.
+
+`ProductMedia`'s sibling change: `Category` gains `parentId` and a resolved
+`parent: { _id, name } | null`, and `CategoryListQuery.parentId` takes `TOP_LEVEL_ONLY`
+(`"none"`) or `SUB_LEVEL_ONLY` (`"sub"`) alongside a real id.
+
+---
+
+## [Unreleased] — Kategori gets a description, a picture, and a form of its own
+
+`/dashboard/inventory/categories` had one editable field and a name column, which was fine
+while a category was only a grouping key and stopped being fine the moment anything wanted
+to *show* one. Two fields, both optional, both nullable — the fast path is still "type a
+name, press Buat kategori".
+
+**The form left the modal for two routes**, `/categories/new` and `/categories/:id`. The
+dialog's own header carried the argument that now points the other way: a modal was right
+while the whole form was one text input, because sending somebody to a page and back to type
+one word made "add three categories in a row" three trips through the router. A picker that
+uploads, an image cropper on top of it, and a 500-character description are not that form —
+stacked in a modal they leave no room to see what is being typed, and the cropper would be a
+dialog opening over a dialog, which Radix will do and nobody should read.
+
+**What that costs, stated because it is real:** the list is no longer on screen while the
+name is typed, and the list was the thing that told you whether the name already existed. The
+409 still catches a clash and is still shown against the name field rather than as a banner —
+it just arrives after a save instead of being visible before one.
+
+`[id]` **IS the edit page, not `[id]/edit`.** A category has no detail view to occupy `[id]`:
+it carries no price, no stock and no history, so a read-only page would show nothing the list
+row does not. Products split the two because they genuinely have both; an `/edit` segment
+here would leave `/categories/<id>` as a URL that 404s. Branches make the same call.
+
+Both entry points are now **real links** — the toolbar's create button and every row's Edit —
+so middle-click and "buka di tab baru" work, which a button wired to `router.push` never gave
+them. `CategoriesScreen` holds no form state at all any more: "only one form open at a time"
+used to be a single dialog slot it had to maintain, and is now structural.
+
+**Deleting stays in the row menu** rather than gaining a danger-zone card on the edit page.
+Its confirmation names how many products are in the way, which is the number that tells you
+what to do next, and a second delete button would be a second copy of that reasoning to keep
+in step.
+
+**Deskripsi** is one or two sentences about what belongs under the label, and its audience is
+whoever is filing a product, not a customer. It renders as **plain text everywhere**: the API
+stores it as text, unlike a product description, which is sanitised HTML — so nothing here
+reaches for `dangerouslySetInnerHTML`, and nothing should. It sits under the name in the
+table, clamped to two lines: 500 characters is a paragraph, and a row that grows to fit one
+turns the list into a page nobody can scan.
+
+**Gambar** is one picture, and `CategoryImageField` is a new component rather than
+`<MediaGallery max={1} />`. The gallery's whole subject is the array — reorder buttons, drag
+handles, a "Utama" badge on index 0, a video path with a poster frame — and a category has
+one slot and no order, so every one of those either disappears or becomes a control that
+does nothing. `max={1}` would also still accept an MP4 the API then refuses. Two small
+components beat one with a mode.
+
+The crop is **locked square**, because every place a category is drawn is square — a
+catalogue tile, a POS group button, a storefront strip. Letting the shape vary means the
+tile crops on its own, without showing anyone what it removed.
+
+**The upload happens when the file is picked, before the category is saved**, which is what
+the owner-agnostic media endpoint costs: a user who then cancels leaves bytes nothing points
+at, and the backend's sweeper collects them after a day. The alternative — hold the file,
+upload on submit — would let the save fail on the slow half of the work after the form had
+already been called valid.
+
+**The patch sends only what moved, and the picture is the reason that matters now.** The API
+deletes the bytes an update drops, so resending an unchanged asset is one dropped connection
+away from losing it. `image: null` is how it is removed; removing it in the dialog only
+clears the field, because deleting the bytes there would strand a live category's picture if
+the user then cancelled.
+
+In the table the thumbnail sits **inside the name cell**, not in a column of its own — a
+column would be a header with no word for it and an empty rectangle on every category nobody
+gave a picture to, and most will not have one. It draws the 320px derivative
+(`thumbUrl ?? url`), so a page of forty categories does not fetch forty full-size images, and
+a placeholder icon where there is no picture rather than an `<img>` with no `src`.
+
+`ProductMedia` is now an alias of `MediaAsset` in `types/inventory.ts`. The type was never
+product-specific — the backend moved its subdocument to a shared `models/media.schema.js` in
+the same change — and renaming the ~40 existing call sites is a sweep, which adding a field
+to categories is not. Prefer `MediaAsset` in new code.
+
+---
+
 ## [Unreleased] — Batch & Expired searches by name and takes any two dates
 
 Two gaps on `/dashboard/inventory/batches`, both of them the same shape: the screen could

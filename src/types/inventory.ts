@@ -625,8 +625,9 @@ export interface ProductShipping {
 export type MediaType = "image" | "video";
 
 /**
- * One uploaded asset, as `POST /api/media/upload` returns it and as the product
- * stores it.
+ * One uploaded asset, as `POST /api/media/upload` returns it and as whatever
+ * stores it keeps it — a product's gallery, a variant's one image, a category's
+ * picture.
  *
  * `token` is present only on the upload RESPONSE and must be sent back with the
  * product payload — it is an HMAC the server signed over the tenant, the key,
@@ -636,7 +637,7 @@ export type MediaType = "image" | "video";
  * `driver` is stored PER ASSET rather than read from config at display time: a
  * tenant that migrates storage keeps serving the files already written.
  */
-export interface ProductMedia {
+export interface MediaAsset {
   _id?: string;
   mediaType: MediaType;
   url: string;
@@ -668,6 +669,17 @@ export interface ProductMedia {
   /** Upload response only — proof of provenance, never stored. */
   token?: string;
 }
+
+/**
+ * The product-shaped alias, kept because ~40 call sites spell it this way and
+ * the type is not product-specific any more — `categories.image` stores the
+ * identical object, which is why the backend's subdocument moved to a shared
+ * `models/media.schema.js`.
+ *
+ * Prefer `MediaAsset` in new code. Renaming the existing uses is a sweep, and a
+ * sweep is not what adding a field to categories is.
+ */
+export type ProductMedia = MediaAsset;
 
 /** The effective values, parent substituted where this product set none. */
 export interface ResolvedProductFields {
