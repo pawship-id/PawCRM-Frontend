@@ -47,6 +47,7 @@ export const productBatchService = {
         limit: query.limit,
         productId: query.productId,
         warehouseId: query.warehouseId,
+        branchId: query.branchId,
         hasRemaining: query.hasRemaining,
         search: query.search,
         expiryFrom: query.expiryFrom,
@@ -68,9 +69,12 @@ export const productBatchService = {
    * summing the page on screen would report a figure that grows as the user
    * pages.
    */
-  summary: (query: { warehouseId?: string } = {}) =>
+  summary: (query: { warehouseId?: string; branchId?: string } = {}) =>
     apiClient.get<BatchExpirySummary>("/product-batches/summary", {
-      query: { warehouseId: query.warehouseId },
+      // The same pair the list takes, and it has to be: tiles that counted a
+      // wider set than the rows under them would be a total nobody can
+      // reconcile against what is on screen.
+      query: { warehouseId: query.warehouseId, branchId: query.branchId },
     }),
 
   /**
@@ -87,6 +91,7 @@ export const productBatchService = {
         page: query.page,
         limit: query.limit,
         warehouseId: query.warehouseId,
+        branchId: query.branchId,
         withinDays: query.withinDays,
         sort: query.sort,
       },
@@ -128,5 +133,6 @@ export const productBatchService = {
     ),
 
   /** GET /product-batches/:id — one lot. */
-  getById: (id: string) => apiClient.get<ProductBatch>(`/product-batches/${id}`),
+  getById: (id: string) =>
+    apiClient.get<ProductBatch>(`/product-batches/${id}`),
 };

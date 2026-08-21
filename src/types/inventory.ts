@@ -1546,6 +1546,15 @@ export interface ProductBatchListQuery {
   limit?: number;
   productId?: string;
   warehouseId?: string;
+  /**
+   * WHICH SHOP, rather than which shelf.
+   *
+   * A lot has no branch of its own — it belongs to a warehouse, and the API
+   * resolves the branch to the warehouses under it (its own, plus the shared
+   * central ones). Sent alongside `warehouseId` the two INTERSECT, so an
+   * inconsistent pair returns nothing rather than one of them quietly winning.
+   */
+  branchId?: string;
   hasRemaining?: boolean;
   /** Case-insensitive substring over `batchCode`. */
   search?: string;
@@ -1572,6 +1581,8 @@ export interface ExpiringBatchListQuery {
   page?: number;
   limit?: number;
   warehouseId?: string;
+  /** Same meaning as on the audit list — see `ProductBatchListQuery`. */
+  branchId?: string;
   /** 0–365, default 30. Zero means "expired or expiring today". */
   withinDays?: number;
   /** Same closed list as the audit endpoint's — both screens share one control. */

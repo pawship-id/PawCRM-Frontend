@@ -22,8 +22,14 @@ import type { PermissionGrant, User } from "@/types/api";
  * component that must handle a signed-out shell.
  */
 
-/** Every field a scope check or a "who is signed in" header reads. */
-const FULL_REACH_USER = {
+/**
+ * Every field a scope check or a "who is signed in" header reads.
+ *
+ * Exported so a suite testing a RESTRICTED scope can spread it and override the
+ * two fields it cares about, rather than rebuilding fourteen and drifting from
+ * the `User` type as it grows.
+ */
+export const FULL_REACH_USER = {
   _id: "auth-user",
   tenantId: "t1",
   email: "owner@paw.com",

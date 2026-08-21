@@ -1,16 +1,19 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { BatchesScreen } from "@/features/inventory";
 import { productBatchService } from "@/services/productBatch.service";
 import { warehouseService } from "@/services/warehouse.service";
+import { branchService } from "@/services/branch.service";
 import { ApiError } from "@/services/api-error";
-import type { PageResult, Warehouse } from "@/types/api";
+import type { Branch, PageResult, Warehouse } from "@/types/api";
 import type {
   BatchExpirySummary,
   ExpiringBatchesResult,
   ProductBatch,
 } from "@/types/inventory";
+
+import { FULL_REACH_USER, renderWithAuth } from "./helpers/renderWithAuth";
 
 /**
  * Batch & Expired, against mocked services.
@@ -31,6 +34,22 @@ import type {
  * what they set is a value that goes straight into the query.
  */
 const WAREHOUSE = "wh1";
+const BRANCH = "br1";
+
+function branch(id = BRANCH, name = "Cabang Timur"): Branch {
+  return {
+    _id: id,
+    tenantId: "t1",
+    name,
+    address: null,
+    phone: null,
+    location: { lat: null, lng: null, source: "manual" },
+    isActive: true,
+    deletedAt: null,
+    createdAt: "",
+    updatedAt: "",
+  };
+}
 
 function warehouse(id = WAREHOUSE, name = "Gudang Pusat"): Warehouse {
   return {
@@ -103,14 +122,26 @@ function expiringPage(items: ProductBatch[]): ExpiringBatchesResult {
   };
 }
 
-function mockAll(lots: ProductBatch[] = [lot()]) {
+function mockAll(lots: ProductBatch[] = [lot()], warehouses = [warehouse()]) {
   jest
     .spyOn(warehouseService, "list")
     .mockResolvedValue(page([]) as never)
     .mockResolvedValue({
-      items: [warehouse()],
-      pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+      items: warehouses,
+      pagination: {
+        page: 1,
+        limit: 100,
+        total: warehouses.length,
+        totalPages: 1,
+      },
     } as never);
+  // A lot names no branch: the screen walks warehouse → `defaultBranchId` →
+  // branch, so both lookups have to be here for the Cabang column to say
+  // anything.
+  jest.spyOn(branchService, "list").mockResolvedValue({
+    items: [branch()],
+    pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+  } as never);
   const summaryCall = jest
     .spyOn(productBatchService, "summary")
     .mockResolvedValue(summary());
@@ -143,7 +174,7 @@ describe("BatchesScreen", () => {
   it("takes the tiles from the summary endpoint, not from the page", async () => {
     const { summaryCall } = mockAll([lot()]);
 
-    render(<BatchesScreen />);
+    renderWithAuth(<BatchesScreen />);
 
     // One row on screen, six lots at risk. Counting the page would have said 1.
     expect(await screen.findByText("Sudah lewat tanggal")).toBeInTheDocument();
@@ -154,7 +185,7 @@ describe("BatchesScreen", () => {
   it("labels the tiles with the boundaries the API reported", async () => {
     mockAll();
 
-    render(<BatchesScreen />);
+    renderWithAuth(<BatchesScreen />);
 
     // Not hardcoded: the caption reads back the numbers the buckets were cut at.
     expect(
@@ -165,7 +196,7 @@ describe("BatchesScreen", () => {
   it("asks the expiring endpoint while a horizon is selected", async () => {
     const { expiringCall, listCall } = mockAll();
 
-    render(<BatchesScreen />);
+    renderWithAuth(<BatchesScreen />);
 
     await waitFor(() =>
       expect(expiringCall).toHaveBeenCalledWith(
@@ -181,10 +212,13 @@ describe("BatchesScreen", () => {
     const { listCall } = mockAll();
 
     const user = userEvent.setup();
-    render(<BatchesScreen />);
+    renderWithAuth(<BatchesScreen />);
 
     await screen.findByRole("table");
-    await user.type(screen.getByLabelText("Cari kode batch, nama produk, atau SKU"), "WSK");
+    await user.type(
+      screen.getByLabelText("Cari kode batch, nama produk, atau SKU"),
+      "WSK",
+    );
 
     // `/expiring` cannot filter by code, and tracing a lot is a question about
     // its whole life — including after it sold out.
@@ -199,10 +233,13 @@ describe("BatchesScreen", () => {
     mockAll();
 
     const user = userEvent.setup();
-    render(<BatchesScreen />);
+    renderWithAuth(<BatchesScreen />);
 
     await screen.findByRole("table");
-    await user.type(screen.getByLabelText("Cari kode batch, nama produk, atau SKU"), "WSK");
+    await user.type(
+      screen.getByLabelText("Cari kode batch, nama produk, atau SKU"),
+      "WSK",
+    );
 
     // Said twice over, and deliberately: on the bar, where somebody who never
     // opens the panel can still see why their horizon stopped mattering...
@@ -225,7 +262,7 @@ describe("BatchesScreen", () => {
     mockAll();
 
     const user = userEvent.setup();
-    render(<BatchesScreen />);
+    renderWithAuth(<BatchesScreen />);
 
     await screen.findByRole("table");
 
@@ -237,7 +274,10 @@ describe("BatchesScreen", () => {
     ).not.toBeInTheDocument();
     await user.keyboard("{Escape}");
 
-    await user.type(screen.getByLabelText("Cari kode batch, nama produk, atau SKU"), "WSK");
+    await user.type(
+      screen.getByLabelText("Cari kode batch, nama produk, atau SKU"),
+      "WSK",
+    );
     await screen.findByRole("table");
 
     panel = await openFilters(user);
@@ -250,10 +290,13 @@ describe("BatchesScreen", () => {
     const { listCall } = mockAll();
 
     const user = userEvent.setup();
-    render(<BatchesScreen />);
+    renderWithAuth(<BatchesScreen />);
 
     await screen.findByRole("table");
-    await user.type(screen.getByLabelText("Cari kode batch, nama produk, atau SKU"), "WSK");
+    await user.type(
+      screen.getByLabelText("Cari kode batch, nama produk, atau SKU"),
+      "WSK",
+    );
     await waitFor(() => expect(listCall).toHaveBeenCalled());
 
     expect(listCall).toHaveBeenLastCalledWith(
@@ -278,7 +321,7 @@ describe("BatchesScreen", () => {
     const { listCall, expiringCall } = mockAll();
 
     const user = userEvent.setup();
-    render(<BatchesScreen />);
+    renderWithAuth(<BatchesScreen />);
     await screen.findByRole("table");
 
     // Stated rather than omitted: every page of a walk has to agree, and this
@@ -301,7 +344,10 @@ describe("BatchesScreen", () => {
     // The ordering SURVIVES the switch to the audit endpoint. A sort that reset
     // itself when a search flipped the screen would be a control that undoes
     // its own last click.
-    await user.type(screen.getByLabelText("Cari kode batch, nama produk, atau SKU"), "WSK");
+    await user.type(
+      screen.getByLabelText("Cari kode batch, nama produk, atau SKU"),
+      "WSK",
+    );
 
     await waitFor(() =>
       expect(listCall).toHaveBeenLastCalledWith(
@@ -321,7 +367,7 @@ describe("BatchesScreen", () => {
   it("renders the product and warehouse the API named", async () => {
     mockAll([lot()]);
 
-    render(<BatchesScreen />);
+    renderWithAuth(<BatchesScreen />);
 
     const table = await screen.findByRole("table");
     // Resolved server-side. A client joining these itself would need the whole
@@ -329,6 +375,76 @@ describe("BatchesScreen", () => {
     expect(within(table).getByText("Whiskas Adult 1.2kg")).toBeInTheDocument();
     expect(within(table).getByText("WSK-12")).toBeInTheDocument();
     expect(within(table).getByText("Gudang Pusat")).toBeInTheDocument();
+  });
+
+  it("names the branch its warehouse belongs to", async () => {
+    // NOT ON THE ROW, unlike the two above. A lot has no branch of its own — it
+    // belongs to a warehouse, and the warehouse carries the link — so this is a
+    // two-step walk the screen makes across lookups it already holds.
+    mockAll([lot()], [{ ...warehouse(), defaultBranchId: BRANCH }]);
+
+    renderWithAuth(<BatchesScreen />);
+
+    const table = await screen.findByRole("table");
+    await waitFor(() =>
+      expect(within(table).getByText("Cabang Timur")).toBeInTheDocument(),
+    );
+  });
+
+  it("says a central warehouse belongs to no branch rather than leaving it blank", async () => {
+    // `defaultBranchId: null` is a configuration, not missing data: it serves
+    // every branch and belongs to none.
+    mockAll([lot()]);
+
+    renderWithAuth(<BatchesScreen />);
+
+    const table = await screen.findByRole("table");
+    await waitFor(() =>
+      expect(within(table).getByText("Tanpa cabang")).toBeInTheDocument(),
+    );
+  });
+
+  it("does not name a branch the signed-in user has no access to", async () => {
+    /**
+     * A COURTESY, NOT THE ISOLATION — the server narrows this list on its own
+     * (`warehouseScope.js`), so a lot outside the scope never reaches the table.
+     * What is asserted here is that the two lookups feeding the Cabang column
+     * are narrowed the same way, so the screen cannot label a row with a branch
+     * the picker beside it would refuse to offer.
+     */
+    mockAll([lot()], [{ ...warehouse(), defaultBranchId: BRANCH }]);
+
+    renderWithAuth(<BatchesScreen />, {
+      user: {
+        ...FULL_REACH_USER,
+        allBranches: false,
+        // Holds some other shop, not the one this lot's warehouse sits in.
+        branchAccess: ["br-other"],
+      },
+    });
+
+    const table = await screen.findByRole("table");
+    await waitFor(() =>
+      expect(within(table).queryByText("Cabang Timur")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("does not claim 'tanpa cabang' when the branch list could not be read", async () => {
+    // A role may hold the batch report without `branches:read`. The lot still
+    // sits in a branch — this screen just cannot name it, and saying it has none
+    // would be a different fact.
+    mockAll([lot()], [{ ...warehouse(), defaultBranchId: BRANCH }]);
+    jest
+      .spyOn(branchService, "list")
+      .mockRejectedValue(new ApiError("Forbidden", 403));
+
+    renderWithAuth(<BatchesScreen />);
+
+    const table = await screen.findByRole("table");
+    await waitFor(() =>
+      expect(within(table).queryByText("Tanpa cabang")).not.toBeInTheDocument(),
+    );
+    expect(within(table).queryByText("Cabang Timur")).not.toBeInTheDocument();
   });
 
   it("keeps the server's order rather than re-sorting the page", async () => {
@@ -341,7 +457,7 @@ describe("BatchesScreen", () => {
       }),
     ]);
 
-    render(<BatchesScreen />);
+    renderWithAuth(<BatchesScreen />);
 
     const table = await screen.findByRole("table");
     const codes = within(table)
@@ -359,7 +475,7 @@ describe("BatchesScreen", () => {
       .spyOn(productBatchService, "summary")
       .mockRejectedValue(new ApiError("Forbidden", 403));
 
-    render(<BatchesScreen />);
+    renderWithAuth(<BatchesScreen />);
 
     expect(await screen.findByText("Forbidden")).toBeInTheDocument();
     // The report still renders — the tiles are context, not the point.
@@ -370,13 +486,16 @@ describe("BatchesScreen", () => {
     mockAll([]);
 
     const user = userEvent.setup();
-    render(<BatchesScreen />);
+    renderWithAuth(<BatchesScreen />);
 
     expect(
       await screen.findByText("Tidak ada batch di rentang ini"),
     ).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText("Cari kode batch, nama produk, atau SKU"), "ZZZ");
+    await user.type(
+      screen.getByLabelText("Cari kode batch, nama produk, atau SKU"),
+      "ZZZ",
+    );
 
     expect(
       await screen.findByText("Tidak ada batch yang cocok"),
@@ -387,7 +506,7 @@ describe("BatchesScreen", () => {
     const { listCall } = mockAll();
 
     const user = userEvent.setup();
-    render(<BatchesScreen />);
+    renderWithAuth(<BatchesScreen />);
     await screen.findByRole("table");
 
     // The term goes to the API as one string — the lot's own code and the
@@ -420,7 +539,7 @@ describe("BatchesScreen", () => {
       const { listCall, expiringCall } = mockAll();
 
       const user = userEvent.setup();
-      render(<BatchesScreen />);
+      renderWithAuth(<BatchesScreen />);
       await screen.findByRole("table");
       expiringCall.mockClear();
 
@@ -453,7 +572,7 @@ describe("BatchesScreen", () => {
       mockAll();
 
       const user = userEvent.setup();
-      render(<BatchesScreen />);
+      renderWithAuth(<BatchesScreen />);
       await screen.findByRole("table");
 
       const panel = await pickCustom(user);
@@ -470,7 +589,7 @@ describe("BatchesScreen", () => {
       mockAll();
 
       const user = userEvent.setup();
-      render(<BatchesScreen />);
+      renderWithAuth(<BatchesScreen />);
       await screen.findByRole("table");
 
       let panel = await pickCustom(user);

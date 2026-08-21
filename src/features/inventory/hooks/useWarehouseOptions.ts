@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 
 import { warehouseService } from "@/services/warehouse.service";
 import { ApiError } from "@/services/api-error";
+import { useAuth } from "@/features/auth";
+import { accessibleWarehouses } from "@/utils/accessScope";
 import type { StockWarehouse } from "@/types/inventory";
 
 interface UseWarehouseOptionsResult {
@@ -25,6 +27,15 @@ interface UseWarehouseOptionsResult {
  * more — if anything, forgotten stock is exactly what an expiry report exists to
  * surface.
  *
+ * NARROWED TO THE SHELVES THIS USER REACHES, like every other lookup in this
+ * module. A COURTESY, NOT THE ISOLATION — the server narrows every stock list
+ * and refuses every out-of-scope filter on its own (see
+ * `utils/warehouseScope.js`). This exists so a picker does not offer a warehouse
+ * whose only possible outcome is a 403, and so a reader is not left wondering
+ * why the table under a chosen location is empty. `isActive` and access are
+ * different questions: a closed shelf a user OWNS still holds their lots, and a
+ * live one in a shop they do not work in was never theirs to see.
+ *
  * `enabled` EXISTS FOR SCREENS WHERE THE FILTER ITSELF IS OPTIONAL — the
  * inventory hub hides its warehouse picker when the role may read neither list
  * it narrows, and a lookup fired for a control nobody is shown is a request that
@@ -32,6 +43,7 @@ interface UseWarehouseOptionsResult {
  * Every other caller needs the list unconditionally and passes nothing.
  */
 export function useWarehouseOptions(enabled = true): UseWarehouseOptionsResult {
+  const { user } = useAuth();
   const [warehouses, setWarehouses] = useState<StockWarehouse[]>([]);
   // Starts idle when disabled, so a caller does not render a spinner for a
   // request that is never made.
@@ -47,7 +59,7 @@ export function useWarehouseOptions(enabled = true): UseWarehouseOptionsResult {
       .list({ limit: 100 })
       .then((result) => {
         if (!active) return;
-        setWarehouses(result.items);
+        setWarehouses(accessibleWarehouses(user, result.items));
       })
       .catch((err) => {
         if (!active) return;
@@ -62,7 +74,7 @@ export function useWarehouseOptions(enabled = true): UseWarehouseOptionsResult {
     return () => {
       active = false;
     };
-  }, [enabled]);
+  }, [enabled, user]);
 
   return { warehouses, loading, error };
 }

@@ -33,6 +33,7 @@ const EVERY_LIST_FILTER: Required<ProductBatchListQuery> = {
   limit: 20,
   productId: "p1",
   warehouseId: "w1",
+  branchId: "b1",
   hasRemaining: true,
   search: "WSK-B26",
   expiryFrom: "2026-01-01",
@@ -44,6 +45,7 @@ const EVERY_EXPIRING_FILTER: Required<ExpiringBatchListQuery> = {
   page: 2,
   limit: 20,
   warehouseId: "w1",
+  branchId: "b1",
   withinDays: 7,
   sort: "expiryLatest",
 };
@@ -80,6 +82,18 @@ describe("productBatchService", () => {
     for (const [key, value] of Object.entries(EVERY_EXPIRING_FILTER)) {
       expect(sentQuery(get)[key]).toBe(value);
     }
+  });
+
+  it("summary takes the same place filter as the list", async () => {
+    const get = jest.spyOn(apiClient, "get").mockResolvedValue({} as never);
+
+    // The tiles have no query type of their own to be `Required<…>`-checked, so
+    // this is the one place a forgotten key would show — and a summary counting
+    // a wider set than the rows under it is a total nobody can reconcile.
+    await productBatchService.summary({ branchId: "b1", warehouseId: "w1" });
+
+    expect(get.mock.calls[0][0]).toBe("/product-batches/summary");
+    expect(sentQuery(get)).toMatchObject({ branchId: "b1", warehouseId: "w1" });
   });
 
   it("keeps hasRemaining=false rather than treating it as unset", async () => {
