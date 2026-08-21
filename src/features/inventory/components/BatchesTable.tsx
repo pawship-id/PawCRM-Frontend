@@ -1,6 +1,6 @@
 "use client";
 
-import { Pagination } from "@/components";
+import { HighlightText, Pagination } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { formatMoney, formatQty, multiplyDecimals, toMinor } from "@/utils/decimal";
@@ -26,17 +26,25 @@ export function BatchesTable({
   page,
   totalPages,
   total,
-  searching,
+  search,
   onPageChange,
 }: {
   batches: ProductBatch[];
   page: number;
   totalPages: number;
   total: number;
-  /** Changes the empty copy: nothing found reads differently from nothing due. */
-  searching: boolean;
+  /**
+   * The live search term. Highlighted in the three cells the backend actually
+   * matches on — batch code, product name, SKU — so a row that surfaced for a
+   * reason invisible at a glance says which characters put it there.
+   *
+   * Also changes the empty copy: nothing found reads differently from nothing due.
+   */
+  search: string;
   onPageChange: (page: number) => void;
 }) {
+  const searching = search.trim() !== "";
+
   return (
     <div className="flex flex-col gap-4">
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
@@ -48,9 +56,7 @@ export function BatchesTable({
               <th className="px-4 py-2.5 text-left font-medium">Gudang</th>
               <th className="px-4 py-2.5 text-left font-medium">Kedaluwarsa</th>
               <th className="px-4 py-2.5 text-right font-medium">Sisa / awal</th>
-              <th className="px-4 py-2.5 text-right font-medium">
-                Harga beli lot
-              </th>
+              <th className="px-4 py-2.5 text-right font-medium">HPP</th>
               <th className="px-4 py-2.5 text-right font-medium">Nilai sisa</th>
             </tr>
           </thead>
@@ -85,7 +91,9 @@ export function BatchesTable({
                   )}
                 >
                   <td className="px-4 py-2.5">
-                    <span className="tabular-nums text-xs">{batch.batchCode}</span>
+                    <span className="tabular-nums text-xs">
+                      <HighlightText text={batch.batchCode} query={search} />
+                    </span>
                     {batch.isConsignment && (
                       <Badge
                         variant="outline"
@@ -99,10 +107,13 @@ export function BatchesTable({
                     {/* Null when the product was deleted after the lot was
                         written — the API still names it wherever it can. */}
                     <p className="text-sm font-medium">
-                      {batch.productName ?? "—"}
+                      <HighlightText
+                        text={batch.productName ?? "—"}
+                        query={search}
+                      />
                     </p>
                     <p className="tabular-nums text-xs text-muted">
-                      {batch.productSku}
+                      <HighlightText text={batch.productSku ?? ""} query={search} />
                     </p>
                   </td>
                   <td className="px-4 py-2.5 text-xs text-muted">

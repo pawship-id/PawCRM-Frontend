@@ -121,7 +121,7 @@ export function BatchesScreen() {
           page={list.pagination.page}
           totalPages={list.pagination.totalPages}
           total={list.pagination.total}
-          searching={query.search.trim() !== ""}
+          search={query.search}
           onPageChange={setPage}
         />
       )}
