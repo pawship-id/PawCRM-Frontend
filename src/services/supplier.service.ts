@@ -39,6 +39,7 @@ export const supplierService = {
         page: query.page,
         limit: query.limit,
         type: query.type,
+        categoryId: query.categoryId,
         search: query.search,
         isActive: query.isActive,
         includeDeleted: query.includeDeleted,

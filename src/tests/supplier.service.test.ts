@@ -32,6 +32,7 @@ const EVERY_FILTER: Required<SupplierListQuery> = {
   page: 2,
   limit: 20,
   type: "konsinyasi",
+  categoryId: "6a7f1f77bcf86cd799439044",
   search: "sumber",
   isActive: true,
   includeDeleted: false,
@@ -104,7 +105,13 @@ describe("supplierService", () => {
 
   it("creates with POST", async () => {
     const post = jest.spyOn(apiClient, "post").mockResolvedValue({} as never);
-    const input = { name: "PT Sumber", type: "beli_putus" as const };
+    const input = {
+      name: "PT Sumber",
+      type: "beli_putus" as const,
+      // Both required at the API now — a create omitting either is a 400.
+      code: "SUP-001",
+      paymentTermDays: 30,
+    };
 
     await supplierService.create(input);
 

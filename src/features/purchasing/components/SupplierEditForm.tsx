@@ -10,30 +10,14 @@ import { ApiError } from "@/services/api-error";
 import { supplierService } from "@/services/supplier.service";
 import { swalToast } from "@/lib/swal";
 import { isSupplierActive } from "@/types/api";
-import type { Supplier, UpdateSupplierInput } from "@/types/api";
 
 import { useSupplier } from "../hooks/useSupplier";
 import {
   SupplierFormFields,
-  orNull,
   validateSupplierForm,
   type SupplierFormValues,
 } from "./SupplierFormFields";
-
-/** The stored supplier, as the form's string-shaped state. */
-function toFormValues(supplier: Supplier): SupplierFormValues {
-  return {
-    name: supplier.name,
-    type: supplier.type,
-    pic: supplier.pic ?? "",
-    phone: supplier.phone ?? "",
-    email: supplier.email ?? "",
-    address: supplier.address ?? "",
-    npwp: supplier.npwp ?? "",
-    notes: supplier.notes ?? "",
-    paymentTermDays: String(supplier.paymentTermDays),
-  };
-}
+import { toFormValues, toSupplierPatch } from "./supplierPayload";
 
 /**
  * Edit a supplier via PATCH /suppliers/:id.
@@ -82,34 +66,25 @@ export function SupplierEditForm({ supplierId }: { supplierId: string }) {
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) return;
 
-    const npwp = orNull(values.npwp.replace(/\s+/g, ""));
-    const term = Number(values.paymentTermDays.trim());
-
-    // Build the patch from what actually differs. `undefined` entries are
-    // dropped by JSON.stringify, so an untouched field is never sent.
-    const changes: UpdateSupplierInput = {
-      name: values.name.trim() === supplier.name ? undefined : values.name.trim(),
-      type: values.type === supplier.type ? undefined : values.type,
-      pic: orNull(values.pic) === supplier.pic ? undefined : orNull(values.pic),
-      phone:
-        orNull(values.phone) === supplier.phone
-          ? undefined
-          : orNull(values.phone),
-      email:
-        orNull(values.email) === supplier.email
-          ? undefined
-          : orNull(values.email),
-      address:
-        orNull(values.address) === supplier.address
-          ? undefined
-          : orNull(values.address),
-      npwp: npwp === supplier.npwp ? undefined : npwp,
-      notes:
-        orNull(values.notes) === supplier.notes
-          ? undefined
-          : orNull(values.notes),
-      paymentTermDays: term === supplier.paymentTermDays ? undefined : term,
-      isActive: isActive === isSupplierActive(supplier) ? undefined : isActive,
+    /**
+     * The diff lives in supplierPayload.ts, beside the create mapping, because
+     * the two share the part that is easy to get wrong and silent when you do:
+     * which fields are trimmed, which are nulled, and which are objects that
+     * must be compared part by part. See there for why the composite fields are
+     * all-or-nothing.
+     */
+    const changes = {
+      ...toSupplierPatch(values, supplier),
+      /**
+       * `isActive` IS NOT PART OF THE MAPPER, and that is deliberate: it is not
+       * one of the form's fields. It lives in its own card at the bottom of this
+       * screen because deactivating a vendor is a decision about the
+       * RELATIONSHIP rather than an edit to its details, and the create form has
+       * no such control at all — a vendor being created is one the tenant
+       * intends to buy from.
+       */
+      isActive:
+        isActive === isSupplierActive(supplier) ? undefined : isActive,
     };
 
     const touched = Object.values(changes).some(

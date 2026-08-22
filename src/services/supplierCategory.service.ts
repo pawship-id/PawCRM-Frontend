@@ -64,10 +64,15 @@ export const supplierCategoryService = {
   /**
    * DELETE /supplier-categories/:id — soft delete.
    *
-   * UNGUARDED TODAY, unlike a product category's: nothing references a supplier
-   * category yet, so there is no "still in use" refusal to handle. When
-   * suppliers gain a category reference the backend will start answering 409
-   * here, and the confirm copy is where that has to be reflected.
+   * GUARDED, since suppliers gained `categoryId`: a label still worn by a live
+   * vendor comes back as a **409 whose `reason` names how many** are in the way.
+   * Read it with `ApiError.fullMessage` — `message` alone says only "Cannot
+   * delete supplier category" and withholds the count, which is the one
+   * actionable part.
+   *
+   * It can also still 404 (already deleted), and the confirm copy in
+   * SupplierCategoriesTable warns about the in-use case before the click rather
+   * than only reporting it after.
    */
   remove: (id: string) =>
     apiClient.delete<SupplierCategory>(`/supplier-categories/${id}`),

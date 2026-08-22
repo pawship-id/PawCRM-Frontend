@@ -896,6 +896,104 @@ export interface UpdateCustomerInput {
 export type SupplierType = "beli_putus" | "konsinyasi" | "both";
 
 /**
+ * The vendor's LEGAL FORM — "tipe pemasok" on the form, and a different axis
+ * from `SupplierType` above, which is easy to conflate because both are read
+ * aloud as "tipe supplier":
+ *
+ *   SupplierType       — the COOPERATION model. What arriving goods do to the
+ *                        ledger (beli_putus / konsinyasi / both).
+ *   SupplierEntityType — WHO the vendor is. A registered company or a private
+ *                        individual.
+ *
+ * They vary independently, so neither predicts the other. `null` on a supplier
+ * means "not recorded", which is what every vendor registered before the field
+ * existed genuinely is — the backend does NOT default it to "perusahaan", and
+ * neither should a screen.
+ */
+export type SupplierEntityType = "perusahaan" | "perorangan";
+
+/**
+ * A supplier category as it comes back ATTACHED to a supplier — the id stays
+ * where it was and this arrives beside it.
+ *
+ * NOT `SupplierCategory` with fields omitted: the attachment is a label, so the
+ * API sends only what a label needs. A screen wanting `isActive` fetches the
+ * category itself.
+ */
+export interface SupplierCategoryRef {
+  _id: string;
+  name: string;
+}
+
+/**
+ * A vendor's postal address — "Alamat Pembayaran", where an invoice and a
+ * payment advice go.
+ *
+ * AN OBJECT, not the single free-text line it replaced, because of what the
+ * parts are FOR: a shipping integration needs the postcode alone and a tax
+ * report groups by province, and neither can be recovered from
+ * "Jl. Rungkut Industri 21, Surabaya" without guessing.
+ *
+ * EVERY PART IS NULLABLE, including `street` — a vendor known only by its city
+ * is a real record. `country` has no default; "Indonesia" would be an assertion
+ * nobody made.
+ */
+export interface SupplierAddress {
+  street: string | null;
+  city: string | null;
+  postalCode: string | null;
+  province: string | null;
+  country: string | null;
+}
+
+/**
+ * The contact person AT the supplier — "Penanggung jawab".
+ *
+ * An object rather than four flat keys: `name` and `phone` are read as a pair on
+ * every screen that chases a short delivery, and grouping them makes "is a PIC
+ * recorded at all" one question instead of four.
+ *
+ * A PLAIN NAME, NEVER A PawCRM USER — this person works for the vendor.
+ * `phone` is stored in E.164 like every other number on a supplier.
+ */
+export interface SupplierPic {
+  name: string | null;
+  email: string | null;
+  address: string | null;
+  phone: string | null;
+}
+
+/**
+ * One of the vendor's bank accounts — where a payment to them is actually sent.
+ *
+ * `_id` IS PRESENT AND STABLE, unlike the two objects above: these are
+ * addressable ROWS. A form edits and removes individual lines, and identifying
+ * one by its position in the array breaks the moment somebody reorders it.
+ *
+ * NOT NORMALIZED THE WAY A PHONE NUMBER IS. The bank's own formatting IS the
+ * form — "123 4567 890" is how it is printed on a statement — and rewriting it
+ * is how a transfer goes to the wrong place. Render it exactly as stored.
+ */
+export interface SupplierBankAccount {
+  _id: string;
+  accountNumber: string;
+  accountHolder: string;
+  bankName: string;
+}
+
+/**
+ * A bank-account row as SENT to the API — no `_id`, because the server owns it.
+ *
+ * The whole list is replaced on every save (see `UpdateSupplierInput`), so a row
+ * the client just added and one it is keeping look identical on the wire.
+ */
+export interface SupplierBankAccountInput {
+  accountNumber: string;
+  accountHolder: string;
+  bankName: string;
+}
+
+/**
  * A vendor the tenant buys from, as returned by /api/suppliers.
  *
  * FIELD NAMES FOLLOW THE BACKEND, not the older prototype types in
@@ -913,16 +1011,116 @@ export type SupplierType = "beli_putus" | "konsinyasi" | "both";
  * not carry it, and a missing flag means active — the backend applies the same
  * rule when it filters and when it refuses a receipt. Read it through
  * `isSupplierActive()` rather than testing it directly.
+ *
+ * EVERY FIELD ADDED AFTER LAUNCH IS OPTIONAL FOR THE SAME REASON, and it is not
+ * defensive typing — it is what the API actually returns. Mongoose applies a
+ * path default when a DOCUMENT IS WRITTEN, not when one is read, and these reads
+ * are `.lean()`: a supplier stored before `code` and `whatsapp` existed comes
+ * back with no such keys at all. Typing them as required would promise a `null`
+ * the server never sends, and the first `supplier.code.trim()` on an old vendor
+ * would throw.
+ *
+ * So `?? null` / `?? false` at the point of use, exactly as `isSupplierActive`
+ * does. The one field that is genuinely computed per read — `category` — follows
+ * the same rule so a caller holding a supplier from an older cached response is
+ * not forced to fabricate it.
  */
 export interface Supplier {
   _id: string;
   tenantId: string;
   name: string;
-  /** The contact person AT the vendor — a plain name, never a PawCRM user. */
-  pic: string | null;
+  /**
+   * The tenant's OWN code for the vendor — "ID Supplier" on the form.
+   *
+   * CLIENT-SUPPLIED, not generated: it is usually the account number the vendor
+   * already appears under in whatever the tenant is migrating off. Unique per
+   * tenant when present, uppercased by the server, and `null` for the many
+   * suppliers nobody ever coded.
+   */
+  code?: string | null;
+  /**
+   * Which supplier category this vendor is filed under, or `null` when
+   * ungrouped. Points at a `categories` document with `kind: "supplier"` — the
+   * API refuses a product category's id with a 400.
+   */
+  categoryId?: string | null;
+  /**
+   * The resolved label for `categoryId`, attached by the API so a list does not
+   * make one request per row.
+   *
+   * `null` FOR AN UNGROUPED SUPPLIER, and also for the rare grouped one whose
+   * category was deleted out from under it — read `categoryId` to tell those
+   * two apart.
+   */
+  category?: SupplierCategoryRef | null;
+  /** The vendor's legal form. `null` means not recorded — see the type. */
+  entityType?: SupplierEntityType | null;
+  /**
+   * Whether purchases from this vendor go on account (credit) rather than being
+   * paid at the counter — "akun hutang" on the form.
+   *
+   * RECORDED, NOT DERIVED. It cannot be read off `type` (a consignment vendor
+   * still has a payable, born at the point of sale) nor off `paymentTermDays`
+   * (0 is both a cash vendor and an on-account vendor with COD terms).
+   */
+  /**
+   * WHERE THIS VENDOR'S DEBT LANDS IN THE LEDGER — the two posting overrides.
+   *
+   * `payableAccountId` is the LIABILITY account their debt is credited to; null
+   * means the seeded 2101. `advanceAccountId` is the ASSET account a prepayment
+   * to them sits in.
+   *
+   * THESE ARE POSTED AGAINST, not decorative: a goods receipt credits the first,
+   * a purchase return debits it, and an invoice payment debits it. All three
+   * read the same field, because a debt created in one account and settled in
+   * another never nets to zero.
+   */
+  payableAccountId?: string | null;
+  advanceAccountId?: string | null;
+  /**
+   * WHICH BRANCHES may choose this vendor — "Dipakai di cabang".
+   *
+   * `allBranches: true` is not sugar for "every id listed": it keeps meaning
+   * every branch as new ones open. When it is true `branchIds` is `[]`, and the
+   * API enforces that pairing, so there is exactly one representation of "all".
+   *
+   * DEFAULTS TO TRUE, unlike the equivalent on a user, because the risk points
+   * the other way: a user accidentally granted every branch is an escalation,
+   * while a supplier scoped to none has silently vanished from every purchasing
+   * screen. Absent means true, for the suppliers stored before the field.
+   */
+  allBranches?: boolean;
+  branchIds?: string[];
+  /** Where a payment to this vendor is sent. Empty when none is recorded. */
+  bankAccounts?: SupplierBankAccount[];
+  /**
+   * The contact person AT the vendor. Always present as an OBJECT — the API
+   * defaults it to four nulls rather than to null, so `supplier.pic.name` never
+   * throws on a vendor nobody has filled in.
+   */
+  pic: SupplierPic;
+  /**
+   * The business line — "No telp bisnis". STORED IN E.164 ("+6281234567890")
+   * from the day the normalizer shipped; suppliers registered before it still
+   * hold whatever was typed ("031-8877-221"), so render it, never parse it.
+   * Applies equally to `whatsapp`, `fax` and `picPhone`.
+   */
   phone: string | null;
+  /**
+   * The WhatsApp line — a separate number from `phone` rather than a flag on
+   * it, because the landline on the invoice is routinely not the sales rep's
+   * handset.
+   */
+  whatsapp?: string | null;
+  fax?: string | null;
+  /** Always stored WITH a scheme, so it is safe to use as an href directly. */
+  website?: string | null;
   email: string | null;
-  address: string | null;
+  /**
+   * The billing address. Always present as an object, for the reason `pic` is —
+   * `supplier.address.city` must not throw on a vendor with no address.
+   */
+  address: SupplierAddress;
   /** Indonesian taxpayer number, needed on a faktur pajak. */
   npwp: string | null;
   notes: string | null;
@@ -964,7 +1162,13 @@ export interface SupplierListQuery {
   page?: number;
   limit?: number;
   type?: SupplierType;
-  /** Free-text over name / pic / phone / npwp. */
+  /**
+   * Narrow to one supplier category. An id, not a name — a label is renamed
+   * from its own screen and a filter keyed on the old spelling would quietly
+   * return nothing. Omit for every category.
+   */
+  categoryId?: string;
+  /** Free-text over name / code / pic / phone / npwp. */
   search?: string;
   /** Narrow by activity. Omit for both — the management list wants both. */
   isActive?: boolean;
@@ -987,29 +1191,107 @@ export interface SupplierListQuery {
 export interface CreateSupplierInput {
   name: string;
   type: SupplierType;
-  pic?: string | null;
+  /**
+   * REQUIRED, both of them, and this is the one breaking change in the shape.
+   *
+   * `code` is unique per tenant and the server uppercases it (may 409).
+   * `paymentTermDays` is demanded rather than defaulted for the reason `type`
+   * is: 0 is a real, deliberate term (cash on delivery) AND what an unanswered
+   * field would silently become, so the client has to say which it means.
+   */
+  code: string;
+  paymentTermDays: number;
+  /** Must name a `kind: "supplier"` category, or the API answers 400. */
+  categoryId?: string | null;
+  entityType?: SupplierEntityType | null;
+  /**
+   * Posting overrides. Each must be a LIVE account of this tenant and of the
+   * right type — liability for the payable, asset for the advance — or the API
+   * answers 400 naming the field.
+   */
+  payableAccountId?: string | null;
+  advanceAccountId?: string | null;
+  /**
+   * Send both halves together. `allBranches: true` with a non-empty `branchIds`
+   * is accepted but the ids are DROPPED; `allBranches: false` with an empty list
+   * is a 400, because a supplier available in no branch has silently vanished
+   * from every purchasing screen.
+   */
+  allBranches?: boolean;
+  branchIds?: string[];
+  /** The WHOLE list — sending it replaces what is stored. */
+  bankAccounts?: SupplierBankAccountInput[];
+  /**
+   * Every part optional; `null` for the whole object clears it. A partial PIC is
+   * a real record — somebody who knows only a name has recorded something
+   * useful.
+   */
+  pic?: Partial<SupplierPic> | null;
+  /**
+   * Phone-shaped fields are NORMALIZED SERVER-SIDE to E.164, so any of
+   * "0812-3456-7890", "+62 812 3456 7890" or "62812 3456 7890" may be sent and
+   * all three come back as "+6281234567890". Send what the user typed; do not
+   * pre-format. A value the server cannot read is a 400 naming the field.
+   */
   phone?: string | null;
+  whatsapp?: string | null;
+  fax?: string | null;
+  /** The scheme is optional — the server prepends `https://` when it is absent. */
+  website?: string | null;
   email?: string | null;
-  address?: string | null;
+  /**
+   * Every part optional; `null` for the whole object clears it. A partial patch
+   * MERGES, exactly as `pic` does.
+   */
+  address?: Partial<SupplierAddress> | null;
   npwp?: string | null;
   notes?: string | null;
-  paymentTermDays?: number;
   isActive?: boolean;
 }
 
 /**
  * Body of PATCH /api/suppliers/:id — every field optional, but the backend
  * rejects an empty body (send only what changed). A nullable field set to
- * `null`/"" clears it; `type`, `paymentTermDays` and `isActive` refuse null,
- * since each always has a meaningful value.
+ * `null`/"" clears it; `type`, `paymentTermDays`, `isActive` and `allBranches`
+ * refuse null, since each always has a meaningful value. `entityType`,
+ * `categoryId` and the two account overrides DO take null — each is genuinely
+ * unknown or deliberately unset. `code` takes neither: see below.
  */
 export interface UpdateSupplierInput {
   name?: string;
   type?: SupplierType;
-  pic?: string | null;
+  /**
+   * NOT NULLABLE, unlike every other optional string here. It is required on
+   * create, and a field that cannot be omitted on the way in must not be
+   * clearable on the way back — otherwise "required" would only hold for
+   * suppliers nobody has edited since. OMITTING it is still fine, which is what
+   * keeps a supplier stored before `code` existed editable at all.
+   */
+  code?: string;
+  categoryId?: string | null;
+  entityType?: SupplierEntityType | null;
+  payableAccountId?: string | null;
+  advanceAccountId?: string | null;
+  allBranches?: boolean;
+  branchIds?: string[];
+  bankAccounts?: SupplierBankAccountInput[];
+  /**
+   * A PARTIAL PATCH MERGES INTO THE STORED OBJECT — the server flattens it to
+   * dot paths, so `{ pic: { name: "x" } }` changes the name and leaves the
+   * email, address and phone alone. `null` for the whole object clears every
+   * part.
+   */
+  pic?: Partial<SupplierPic> | null;
   phone?: string | null;
+  whatsapp?: string | null;
+  fax?: string | null;
+  website?: string | null;
   email?: string | null;
-  address?: string | null;
+  /**
+   * Every part optional; `null` for the whole object clears it. A partial patch
+   * MERGES, exactly as `pic` does.
+   */
+  address?: Partial<SupplierAddress> | null;
   npwp?: string | null;
   notes?: string | null;
   paymentTermDays?: number;

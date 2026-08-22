@@ -102,11 +102,15 @@ export function SupplierCategoriesTable({
       onChanged();
       swalToast(kind === "delete" ? "Kategori dihapus." : "Kategori dipulihkan.");
     } catch (error) {
-      // Shown verbatim: a 409 here is a name clash on restore, and its message
-      // is the one thing that says what to do next.
+      // `fullMessage`, not `message`. A 409 here is one of two refusals and
+      // both put what to do next in `reason` rather than in `message`: a name
+      // clash on restore, and — since suppliers gained a category — a delete
+      // blocked by the vendors still filed under the label, whose reason
+      // carries the COUNT. `message` alone would say "Cannot delete supplier
+      // category" and withhold the only actionable part.
       setActionError(
         error instanceof ApiError
-          ? error.message
+          ? error.fullMessage
           : "Terjadi kesalahan. Coba lagi.",
       );
     } finally {
@@ -264,6 +268,13 @@ export function SupplierCategoriesTable({
               Hapus <strong>{pending.category.name}</strong>? Namanya jadi bebas
               dipakai lagi, dan kategorinya masih bisa dipulihkan. Kalau cuma
               mau berhenti menawarkannya, nonaktifkan saja lewat Edit.
+              {/*
+                Said up front rather than left to the 409: somebody who has to
+                re-file a dozen vendors first would rather know before clicking
+                Hapus than after.
+              */}{" "}
+              Kalau masih ada supplier yang memakai kategori ini, hapusnya
+              ditolak — pindahkan dulu supplier-nya.
             </>
           ) : (
             <>
