@@ -552,7 +552,16 @@ export interface Product {
   brand?: string | null;
   /** Sanitised HTML — for a marketplace or storefront listing. */
   description?: string | null;
-  isPreorder?: boolean;
+  /**
+   * NOT NULLABLE and not optional, unlike the fields around it — see
+   * `isConsignment` and `hasExpiry` above, which it now matches.
+   *
+   * It sits in this block because it is a marketplace field, but it does not
+   * share the block's rule: nothing about it is inherited, so there is no null
+   * to store and no `resolved` to read. The API answers a real boolean on every
+   * product, including the ones written before the field existed.
+   */
+  isPreorder: boolean;
   shipping?: ProductShipping;
   /**
    * Where this product's stock and its cost of sale land in the ledger.

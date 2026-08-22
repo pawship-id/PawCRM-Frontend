@@ -30,6 +30,7 @@ function makeProduct(overrides: Partial<Product> = {}): Product {
   return {
     _id: "p1",
     isConsignment: false,
+    isPreorder: false,
     sku: "SHAMPOO",
     name: "Shampoo Anjing",
     productType: "standalone",
@@ -1699,6 +1700,30 @@ describe("ProductForm", () => {
      * input rendered where the API answers 400 is a save that fails on a field
      * the user never chose.
      */
+    it("states all three flags on create, even the ones left unticked", async () => {
+      // The flags are the exception to "omit what is blank" that governs every
+      // other field on this form. Those store null to mean "ask the parent"; a
+      // flag has no such state, so the payload says yes or no rather than
+      // saying nothing and relying on the API to guess the same way.
+      const user = userEvent.setup();
+      const create = mockCreate();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await fillCommon(user);
+      await user.type(screen.getByLabelText(/Harga jual/), "45000");
+      await user.click(screen.getByLabelText("Produk pre-order"));
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      await waitFor(() => expect(create).toHaveBeenCalled());
+      expect(create.mock.calls[0][0]).toMatchObject({
+        isPreorder: true,
+        hasExpiry: false,
+        isConsignment: false,
+      });
+    });
+
     it("sends the titipan flag on create, true or false", async () => {
       const user = userEvent.setup();
       const create = mockCreate();

@@ -173,6 +173,13 @@ different actions — edit here, or edit the parent and move every sibling at on
 **`isPreorder` is not inherited.** Inheriting a boolean needs a tri-state that renders as an
 indeterminate checkbox nobody reads correctly, so it is a plain per-product flag.
 
+**The three checkboxes are the exception to "omit what is blank".** Every other field on this
+form is left out of the create payload when empty, because absence is how a variant inherits.
+A flag has no inherited state, so `hasExpiry`, `isPreorder` and `isConsignment` are all sent
+whichever way they are ticked, and the API writes `false` for one it never receives. On an
+edit the ordinary rule returns: only a flag that actually moved goes into the patch, since
+absence there means *unchanged*.
+
 **`isConsignment` is a boolean too and it IS inherited — by COPYING.** No tri-state is needed
 because nothing is stored as null: the API writes the parent's value onto every variant, the way
 it writes `hasExpiry`. So the checkbox is offered on a standalone and on a parent, and the form

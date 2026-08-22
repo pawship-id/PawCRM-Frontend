@@ -120,6 +120,7 @@ function product(overrides: Partial<Product> = {}): Product {
   return {
     _id: "p1",
     isConsignment: false,
+    isPreorder: false,
     sku: "SHAMPOO",
     name: "Shampoo Anjing",
     productType: "standalone",

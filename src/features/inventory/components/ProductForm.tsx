@@ -1597,7 +1597,13 @@ function ProductFormFields({
   function marketplaceCreateFields() {
     return {
       ...(brand.trim() ? { brand: brand.trim() } : {}),
-      ...(isPreorder ? { isPreorder: true } : {}),
+      // STATED, not omitted when false — unlike every other field here, and
+      // unlike its own old behaviour. The others store null to mean "ask the
+      // parent", so leaving one out is how a variant inherits. A flag has no
+      // such state: the API writes `false` for an absent one, so omitting it
+      // said the same thing less clearly and made the payload depend on the
+      // answer rather than on the question.
+      isPreorder,
       ...(inventoryAccountId ? { inventoryAccountId } : {}),
       ...(cogsAccountId ? { cogsAccountId } : {}),
       ...(isShippingEmpty(shipping)

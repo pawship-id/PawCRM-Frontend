@@ -54,6 +54,7 @@ function product(overrides: Partial<Product> = {}): Product {
   return {
     _id: PRODUCT,
     isConsignment: false,
+    isPreorder: false,
     sku: "RC-3KG",
     name: "Royal Canin Adult 3kg",
     productType: "standalone",
