@@ -119,6 +119,7 @@ function sheet(overrides: Partial<Opname> = {}): Opname {
 function product(overrides: Partial<Product> = {}): Product {
   return {
     _id: "p1",
+    isConsignment: false,
     sku: "SHAMPOO",
     name: "Shampoo Anjing",
     productType: "standalone",

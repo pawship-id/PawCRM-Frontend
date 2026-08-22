@@ -43,6 +43,7 @@ const OTHER_WAREHOUSE = "wh2";
 function makeProduct(overrides: Partial<Product> = {}): Product {
   return {
     _id: "p1",
+    isConsignment: false,
     sku: "RC-3KG",
     name: "Royal Canin Adult 3kg",
     productType: "standalone",

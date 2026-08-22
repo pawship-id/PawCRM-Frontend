@@ -776,6 +776,21 @@ function ProductFormFields({
   const [sellPrice, setSellPrice] = useState(existing?.sellPrice ?? "");
   const [minStock, setMinStock] = useState(String(existing?.minStock ?? 0));
   const [hasExpiry, setHasExpiry] = useState(existing?.hasExpiry ?? false);
+  const [isConsignment, setIsConsignment] = useState(
+    existing?.isConsignment ?? false,
+  );
+
+  /**
+   * A lone variant, opened for editing.
+   *
+   * `mode` cannot answer this: a variant falls through to `"standalone"` up
+   * there, because everything the form asks a standalone (price, barcode, stock)
+   * it also asks a variant. The difference only matters for the fields a variant
+   * INHERITS — the API answers 400 for those — so it is asked separately here
+   * rather than by widening `Mode` into a fourth case that behaves identically
+   * everywhere else.
+   */
+  const editingVariant = existing?.productType === "variant";
 
   /**
    * ─── The marketplace fields ───────────────────────────────────────────
@@ -1649,6 +1664,11 @@ function ProductFormFields({
         ...(trimmedSku ? { sku: trimmedSku } : {}),
         productType: "parent",
         hasExpiry,
+        // Sent unconditionally rather than only when true, exactly as
+        // `hasExpiry` is: the API copies whichever value this is onto every row
+        // in `variants` below, so leaving it out on a family that is not titipan
+        // would rely on two defaults agreeing instead of one statement.
+        isConsignment,
         // Trimmed here rather than in the editor: a half-typed axis is a normal
         // state to be in while filling the form, and only a submit has to care.
         variantAxes: axes
@@ -1665,6 +1685,7 @@ function ProductFormFields({
       sellPrice: sellPrice.trim(),
       minStock: Number(minStock) || 0,
       hasExpiry,
+      isConsignment,
       ...(barcode.trim() ? { barcode: barcode.trim() } : {}),
       ...(openingStockFor(openingQty, openingCost)
         ? { openingStock: openingStockFor(openingQty, openingCost) }
@@ -1714,6 +1735,25 @@ function ProductFormFields({
 
     if (mode !== "bundle" && hasExpiry !== product.hasExpiry) {
       patch.hasExpiry = hasExpiry;
+    }
+
+    /**
+     * Guarded by `editingVariant` as well as by the mode, unlike `hasExpiry`
+     * directly above.
+     *
+     * A variant inherits this from its parent and the API refuses it with a 400,
+     * and a variant opens this form in `"standalone"` mode — so the mode check
+     * alone would let a save fail on a field the user never meant to send. The
+     * input is not rendered for a variant either, which makes the state here
+     * unchangeable and this branch dead in practice; it stays because "the UI
+     * cannot produce it" is the weaker of the two guarantees.
+     */
+    if (
+      mode !== "bundle" &&
+      !editingVariant &&
+      isConsignment !== (product.isConsignment ?? false)
+    ) {
+      patch.isConsignment = isConsignment;
     }
 
     if (mode === "variants") {
@@ -2246,6 +2286,42 @@ function ProductFormFields({
                   {/* On an EXISTING family the change cascades, which is a bigger
                       action than the checkbox looks. Saying so here is cheaper
                       than a user discovering it from a stock card six weeks on. */}
+                  {mode === "variants" &&
+                    (existing
+                      ? " Mengubahnya ikut mengubah SEMUA varian produk ini — setelan ini milik induk, bukan milik ukurannya."
+                      : " Varian mewarisi setelan ini dari induknya.")}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Hidden on a bundle and on a variant, which is where the API
+              refuses the field: a bundle owns no stock to be titipan, and a
+              variant is told by its parent. A disabled checkbox was the other
+              option and is worse — it renders a decision the user cannot make
+              on this screen, next to two they can. */}
+          {mode !== "bundle" && !editingVariant && (
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id="isConsignment"
+                checked={isConsignment}
+                onCheckedChange={(checked) => setIsConsignment(checked === true)}
+              />
+              <div>
+                <Label htmlFor="isConsignment">
+                  Produk konsinyasi (titipan)
+                </Label>
+                <p className="text-xs text-muted">
+                  Barang ada di toko tapi <b>belum jadi milik toko</b> — pemasok
+                  dibayar dari yang laku, sisanya dikembalikan. Dipakai untuk
+                  menandai dan memfilter di katalog serta laporan.
+                  {/* Says what the flag does NOT do, deliberately. Consignment
+                      already exists as a supplier type and as a property of a
+                      received batch; somebody who has met those will assume this
+                      checkbox reroutes the journal, and it does not. */}
+                  {" "}
+                  Penentuan jurnal dan pembayaran tetap mengikuti penerimaan
+                  barang serta tipe pemasoknya.
                   {mode === "variants" &&
                     (existing
                       ? " Mengubahnya ikut mengubah SEMUA varian produk ini — setelan ini milik induk, bukan milik ukurannya."

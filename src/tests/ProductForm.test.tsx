@@ -29,6 +29,7 @@ const COGS_ACCOUNT = "acc2";
 function makeProduct(overrides: Partial<Product> = {}): Product {
   return {
     _id: "p1",
+    isConsignment: false,
     sku: "SHAMPOO",
     name: "Shampoo Anjing",
     productType: "standalone",
@@ -1687,6 +1688,132 @@ describe("ProductForm", () => {
         isPreorder: true,
         shipping: { weight: "500", weightUnit: "gr", length: "20" },
       });
+    });
+
+    /**
+     * Titipan — the tenant holds the goods and does not own them.
+     *
+     * Three assertions rather than one, because the field's rule is not "send a
+     * boolean": it is owned by a standalone or a parent, COPIED down to every
+     * variant by the API, and refused on the two types that cannot hold it. An
+     * input rendered where the API answers 400 is a save that fails on a field
+     * the user never chose.
+     */
+    it("sends the titipan flag on create, true or false", async () => {
+      const user = userEvent.setup();
+      const create = mockCreate();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await fillCommon(user);
+      await user.type(screen.getByLabelText(/Harga jual/), "45000");
+      await user.click(screen.getByLabelText("Produk konsinyasi (titipan)"));
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      await waitFor(() => expect(create).toHaveBeenCalled());
+      expect(create.mock.calls[0][0]).toMatchObject({ isConsignment: true });
+    });
+
+    it("states the flag even when it is false, unlike the optional fields", async () => {
+      // Sent rather than omitted: `hasExpiry` beside it is sent unconditionally
+      // too, and a family relies on this value to stamp its variant rows. An
+      // omitted `false` would leave that to two defaults agreeing.
+      const user = userEvent.setup();
+      const create = mockCreate();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await fillCommon(user);
+      await user.type(screen.getByLabelText(/Harga jual/), "45000");
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      await waitFor(() => expect(create).toHaveBeenCalled());
+      expect(create.mock.calls[0][0]).toMatchObject({ isConsignment: false });
+    });
+
+    it("does not offer the flag on a bundle, which owns no stock", async () => {
+      const user = userEvent.setup();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      expect(
+        screen.getByLabelText("Produk konsinyasi (titipan)"),
+      ).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Bundle" }));
+
+      expect(
+        screen.queryByLabelText("Produk konsinyasi (titipan)"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("does not offer the flag on a variant, which is told by its parent", async () => {
+      // A variant opens this form in standalone mode — everything else it is
+      // asked is the same — so hiding this one is a decision the form has to
+      // make from `productType`, not from the mode.
+      jest.spyOn(productService, "getById").mockResolvedValue(
+        makeProduct({
+          productType: "variant",
+          parentId: "parent1",
+          isConsignment: true,
+        }),
+      );
+
+      renderWithAuth(<ProductForm productId="p1" />);
+      await screen.findByDisplayValue("Shampoo Anjing");
+
+      expect(
+        screen.queryByLabelText("Produk konsinyasi (titipan)"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("patches the flag when it is toggled on an existing product", async () => {
+      const user = userEvent.setup();
+      jest
+        .spyOn(productService, "getById")
+        .mockResolvedValue(makeProduct({ isConsignment: false }));
+      const update = jest
+        .spyOn(productService, "update")
+        .mockResolvedValue(makeProduct());
+
+      renderWithAuth(<ProductForm productId="p1" />);
+      await screen.findByDisplayValue("Shampoo Anjing");
+
+      await user.click(screen.getByLabelText("Produk konsinyasi (titipan)"));
+      await user.click(
+        screen.getByRole("button", { name: /Simpan perubahan/ }),
+      );
+
+      await waitFor(() => expect(update).toHaveBeenCalled());
+      expect(update.mock.calls[0][1]).toMatchObject({ isConsignment: true });
+    });
+
+    it("leaves the flag out of a patch that did not touch it", async () => {
+      // The API refuses an empty patch, and a field echoed back unchanged is one
+      // that can collide with itself — the same rule every other field here
+      // follows.
+      const user = userEvent.setup();
+      jest
+        .spyOn(productService, "getById")
+        .mockResolvedValue(makeProduct({ isConsignment: true }));
+      const update = jest
+        .spyOn(productService, "update")
+        .mockResolvedValue(makeProduct());
+
+      renderWithAuth(<ProductForm productId="p1" />);
+      await screen.findByDisplayValue("Shampoo Anjing");
+
+      await user.clear(screen.getByLabelText(/Nama produk/));
+      await user.type(screen.getByLabelText(/Nama produk/), "Shampoo Kucing");
+      await user.click(
+        screen.getByRole("button", { name: /Simpan perubahan/ }),
+      );
+
+      await waitFor(() => expect(update).toHaveBeenCalled());
+      expect(update.mock.calls[0][1]).not.toHaveProperty("isConsignment");
     });
 
     /**

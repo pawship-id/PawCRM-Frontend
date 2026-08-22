@@ -39,6 +39,7 @@ type LowStockRow = Product & { qtyOnHand: string };
 function lowStockRow(overrides: Partial<LowStockRow> = {}): LowStockRow {
   return {
     _id: "p1",
+    isConsignment: false,
     sku: "FD-RC-3KG",
     name: "Royal Canin Adult 3kg",
     productType: "standalone",

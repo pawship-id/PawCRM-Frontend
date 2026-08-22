@@ -17,6 +17,7 @@ const OTHER_WAREHOUSE = "wh2";
 function makeProduct(overrides: Partial<Product> = {}): Product {
   return {
     _id: "p1",
+    isConsignment: false,
     sku: "SHAMPOO",
     name: "Shampoo Anjing",
     productType: "standalone",

@@ -169,6 +169,7 @@ function seed(): DemoState {
     barcode: null,
     minStock: 0,
     hasExpiry: false,
+    isConsignment: false,
     categoryId: "cat_makanan_kucing",
     unit: "pcs",
     sellPrice: null,
@@ -1227,6 +1228,8 @@ export interface SaveProductInput {
   sellPrice?: string;
   minStock?: number;
   hasExpiry?: boolean;
+  /** On a parent it applies to the whole family — the rows below never set it. */
+  isConsignment?: boolean;
   /** On a parent. */
   variantAxes?: VariantAxis[];
   /** On a parent — one row per combination, carrying its own SKU and price. */
@@ -1297,6 +1300,11 @@ export function saveProduct(input: SaveProductInput): Product {
         : (existing?.minStock ?? 0),
     hasExpiry:
       input.productType === "bundle" ? false : (input.hasExpiry ?? false),
+    // Same shape as hasExpiry directly above, mirroring the API: a bundle owns
+    // no stock to be titipan, and the value set here is what each variant row
+    // below copies.
+    isConsignment:
+      input.productType === "bundle" ? false : (input.isConsignment ?? false),
     // See the fixture builder: quantities live in `state.stock`, not here.
     stockByWarehouse: [],
     categoryId: input.categoryId,
@@ -1352,6 +1360,7 @@ export function saveProduct(input: SaveProductInput): Product {
         bundleConfig: null,
         barcode: variant.barcode?.trim() || null,
         minStock: variant.minStock ?? 0,
+        isConsignment: base.isConsignment,
         // Inherited from the parent, never set on the variant: a variant filed
         // under a different category than its parent is a reporting bug, and
         // whether goods expire is a property of the goods rather than the size.

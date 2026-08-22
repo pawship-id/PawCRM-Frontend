@@ -517,6 +517,18 @@ export interface Product {
   barcode: string | null;
   minStock: number;
   hasExpiry: boolean;
+  /**
+   * Goods held on consignment — titipan. On the shelf, not owned: the vendor is
+   * paid out of what sells and the rest goes back.
+   *
+   * NOT NULLABLE and not optional, unlike the marketplace fields below. Every
+   * product predates the field, so the API normalises it to a real boolean on
+   * read rather than leaving each screen to spell `?? false`.
+   *
+   * A variant always AGREES with its parent — the API copies it down, the way
+   * it copies `hasExpiry` — so this is never read through `resolved`.
+   */
+  isConsignment: boolean;
   categoryId: string;
   unit: string;
   /** Decimal string. Null on a `parent`, and on a `bundle` priced `auto`. */
@@ -890,6 +902,13 @@ export interface CreateFamilyVariantInput {
    */
   shipping?: Partial<ProductShipping>;
   isPreorder?: boolean;
+  /**
+   * `isConsignment` is absent for a THIRD reason, and it is not inheritance by
+   * resolution: the API COPIES the parent's value onto every row. Sending one
+   * here is a 400 rather than a silent strip, because a value that would be
+   * overwritten by the next parent edit is a field that only looks like it
+   * works. Set it on the parent.
+   */
   /** One image per row — the same rule a standalone variant follows. */
   variantImage?: ProductMedia;
 }
@@ -947,6 +966,8 @@ export interface CreateStandaloneInput extends CreateProductBase {
   barcode?: string;
   minStock?: number;
   hasExpiry?: boolean;
+  /** Titipan. Omitted means owned stock, which is what an unflagged item is. */
+  isConsignment?: boolean;
   openingStock?: OpeningStockInput;
 }
 
@@ -985,6 +1006,12 @@ export interface CreateParentInput extends Omit<CreateProductBase, "sku"> {
   sku?: string;
   variantAxes: VariantAxis[];
   hasExpiry?: boolean;
+  /**
+   * Titipan, for the WHOLE family. Set here and nowhere else: the API copies it
+   * onto every variant it creates, and onto every existing one on a later
+   * PATCH. A row that set its own is a 400 — see CreateFamilyVariantInput.
+   */
+  isConsignment?: boolean;
   /** The family, written with the parent in ONE transaction. */
   variants?: CreateFamilyVariantInput[];
 }
@@ -1024,7 +1051,10 @@ export interface CreateVariantInput {
   minStock?: number;
   isActive?: boolean;
   openingStock?: OpeningStockInput;
-  /** `categoryId`, `unit` and `hasExpiry` are inherited — sending them is a 400. */
+  /**
+   * `categoryId`, `unit`, `hasExpiry` and `isConsignment` are all inherited from
+   * the parent — sending any of them is a 400.
+   */
 }
 
 export interface CreateBundleInput extends CreateProductBase {
@@ -1084,6 +1114,12 @@ export interface UpdateProductInput {
   barcode?: string | null;
   minStock?: number;
   hasExpiry?: boolean;
+  /**
+   * Accepted on a `standalone` and a `parent`; a 400 on a `variant` and a
+   * `bundle`. On a parent it CASCADES to every live variant in one transaction,
+   * so switching a family to titipan is one request rather than one per row.
+   */
+  isConsignment?: boolean;
   sellPrice?: string;
   variantAxes?: VariantAxis[];
   variantAttributes?: Record<string, string>;

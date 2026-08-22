@@ -249,6 +249,15 @@ export function ProductsTable({
                                 pre-order
                               </span>
                             )}
+                            {/* Sits with pre-order rather than in the badge
+                                column beside the type badge: both are one-word
+                                notes ABOUT this SKU, and the badge column is
+                                what the row is. */}
+                            {product.isConsignment && (
+                              <span className="ml-2 font-sans text-secondary-foreground">
+                                titipan
+                              </span>
+                            )}
                           </p>
                         </div>
                       </div>
