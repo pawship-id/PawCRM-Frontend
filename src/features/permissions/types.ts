@@ -35,6 +35,17 @@ export const PERMISSION_CATALOG = {
   // a workflow (the shelves have moved on; the honest answer is to count again).
   stockOpnames: ["create", "read", "update", "delete", "submit"],
   suppliers: ["create", "read", "update", "delete", "restore"],
+  /**
+   * The labels a tenant groups its VENDORS by — Purchasing → Kategori Supplier.
+   *
+   * ITS OWN FEATURE, not part of `categories` and not part of `suppliers`.
+   * `categories` gates the PRODUCT taxonomy, and the two only look alike because
+   * they share a collection on the backend; folding them together would hand
+   * every catalogue editor write access to purchasing's vendor groups. And a
+   * supplier record carries a tax number and negotiated credit terms, so a clerk
+   * who may add a group name has no business editing those.
+   */
+  supplierCategories: ["create", "read", "update", "delete", "restore"],
   // A goods receipt raises stock and creates a payable, so there is no `update`
   // and no `delete`: correcting one means returning the goods, which is its own
   // document with its own reversal of the weighted average.

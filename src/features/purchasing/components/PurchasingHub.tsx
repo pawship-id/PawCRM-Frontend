@@ -32,6 +32,14 @@ const SECTIONS: Array<{
     action: "read",
   },
   {
+    href: "/dashboard/purchasing/supplier-categories",
+    title: "Kategori Supplier",
+    description:
+      "Pengelompokan supplier — distributor, agen, peternak lokal. Isinya cuma nama.",
+    feature: "supplierCategories",
+    action: "read",
+  },
+  {
     href: "/dashboard/purchasing/receipts",
     title: "Penerimaan Barang",
     description:
@@ -98,11 +106,13 @@ export function PurchasingHub() {
   const { overdue, dueSoon, outstandingCount, horizonDays } =
     usePayablesPanels(mayReadInvoices);
 
-  const { activeSuppliers, receipts, returns } = useHubCounts({
-    suppliers: can("suppliers", "read"),
-    receipts: can("goodsReceipts", "read"),
-    returns: can("purchaseReturns", "read"),
-  });
+  const { activeSuppliers, activeSupplierCategories, receipts, returns } =
+    useHubCounts({
+      suppliers: can("suppliers", "read"),
+      supplierCategories: can("supplierCategories", "read"),
+      receipts: can("goodsReceipts", "read"),
+      returns: can("purchaseReturns", "read"),
+    });
 
   const sections = SECTIONS.filter((section) =>
     can(section.feature, section.action),
@@ -111,6 +121,10 @@ export function PurchasingHub() {
   const counts: Record<string, string> = {
     "/dashboard/purchasing/suppliers":
       activeSuppliers === null ? "—" : `${activeSuppliers} aktif`,
+    "/dashboard/purchasing/supplier-categories":
+      activeSupplierCategories === null
+        ? "—"
+        : `${activeSupplierCategories} aktif`,
     "/dashboard/purchasing/receipts":
       receipts === null ? "—" : `${receipts} penerimaan`,
     "/dashboard/purchasing/payables":
@@ -132,7 +146,11 @@ export function PurchasingHub() {
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Five cards now, so the wide row is `lg:grid-cols-3` rather than a
+          five-across line of narrow tiles nobody can read the descriptions in.
+          Two rows of two-and-three at `lg`, which is what the sm breakpoint
+          already does at its own width. */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {sections.map((section) => (
           <Link
             key={section.href}

@@ -553,13 +553,18 @@ export interface UpdateWarehouseInput {
 }
 
 /**
- * What a category is FOR. One value today, and the field exists anyway because
- * finance categories used to share this collection and the backend kept the
- * discriminator when they moved to the chart of accounts — see
- * category.model.js. Nothing in the UI offers a choice; every category the
- * frontend creates is a product category.
+ * What a category is FOR — the discriminator on the backend's shared
+ * `categories` collection (see category.model.js).
+ *
+ * TWO KINDS, TWO RESOURCES, AND NO SCREEN EVER CHOOSES BETWEEN THEM. Product
+ * categories come from `/api/categories` and supplier categories from
+ * `/api/supplier-categories`; each endpoint filters on its own kind server-side
+ * and refuses the other one on a write. So the field is something a response
+ * CARRIES, never something a form sets — which is why `CreateCategoryInput`
+ * takes `kind?: "product"` for backwards compatibility and
+ * `CreateSupplierCategoryInput` does not take it at all.
  */
-export type CategoryKind = "product";
+export type CategoryKind = "product" | "supplier";
 
 /**
  * One account of a tenant's chart of accounts.
@@ -587,7 +592,13 @@ export interface ChartAccount {
 export interface Category {
   _id: string;
   tenantId: string;
-  kind: CategoryKind;
+  /**
+   * Always `"product"` on this shape: every read that produces a `Category`
+   * goes through `/api/categories`, which filters on the kind server-side.
+   * Narrowed rather than left as `CategoryKind` so a screen holding one of
+   * these cannot be handed a supplier category by a type that says it might.
+   */
+  kind: "product";
   name: string;
   /**
    * The category this one sits under, or `null` for a top-level category.
@@ -656,7 +667,13 @@ export const SUB_LEVEL_ONLY = "sub";
 export interface CategoryListQuery {
   page?: number;
   limit?: number;
-  kind?: CategoryKind;
+  /**
+   * Product only, and the API refuses anything else on this resource. Kept
+   * because the field predates the second kind and clients were already sending
+   * it; there is nothing to vary here — supplier categories have their own
+   * query type below.
+   */
+  kind?: "product";
   /**
    * One parent's children (an id), only top-level categories
    * (`TOP_LEVEL_ONLY`), only sub-categories (`SUB_LEVEL_ONLY`), or — omitted —
@@ -682,7 +699,8 @@ export type CategorySort = "newest" | "oldest" | "nameAsc" | "nameDesc";
 /** Body of POST /api/categories. `kind` defaults to "product" server-side. */
 export interface CreateCategoryInput {
   name: string;
-  kind?: CategoryKind;
+  /** Product only — the API 400s on any other kind. See CategoryKind. */
+  kind?: "product";
   /**
    * Files this category under another. The parent must itself be top-level —
    * the API refuses a three-level tree with a 400 naming the field.
@@ -716,6 +734,80 @@ export interface UpdateCategoryInput {
   description?: string | null;
   /** A new asset replaces the picture; `null` removes it. */
   image?: MediaAsset | null;
+  isActive?: boolean;
+}
+
+/**
+ * A supplier category — the label a VENDOR is grouped by, from
+ * `/api/supplier-categories`.
+ *
+ * A NAME AND A SWITCH. It shares the backend's `categories` collection with
+ * product categories (told apart by `kind`), and it is deliberately NOT the
+ * `Category` shape with fields omitted: this kind has no parent, no
+ * description and no picture, and the API neither returns nor accepts them.
+ * A separate interface is what stops a screen from reaching for
+ * `category.image` and getting `undefined` at runtime from a type that
+ * promised `MediaAsset | null`.
+ */
+export interface SupplierCategory {
+  _id: string;
+  tenantId: string;
+  /** Always `"supplier"` here — the resource filters on it server-side. */
+  kind: "supplier";
+  name: string;
+  /**
+   * Whether the label is still offered when grouping a vendor.
+   *
+   * ORTHOGONAL TO `deletedAt`, the same split product categories make: a
+   * retired label keeps everything already grouped under it and can be
+   * reinstated, where a deleted one is gone from ordinary reads.
+   */
+  isActive: boolean;
+  /** Soft-delete marker; non-null means deleted (restorable), null means live. */
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Query parameters accepted by GET /api/supplier-categories. All optional.
+ *
+ * NO `parentId` AND NO `kind`. There is no tree to filter on, and the kind is
+ * what the resource IS — a parameter with one legal value is a control
+ * pretending to be a choice.
+ */
+export interface SupplierCategoryListQuery {
+  page?: number;
+  limit?: number;
+  /** Free-text over the name. */
+  search?: string;
+  /** Retired state. Omit for both — the API applies no default, unlike `includeDeleted`. */
+  isActive?: boolean;
+  /** Include soft-deleted categories (default false on the backend). */
+  includeDeleted?: boolean;
+  /** Which ordering to page through. Omitted means `newest`, the API's default. */
+  sort?: CategorySort;
+}
+
+/**
+ * Body of POST /api/supplier-categories.
+ *
+ * `name` is the whole form. `kind` is NOT accepted by the API here — unlike the
+ * product resource, which still takes it for backwards compatibility — so it is
+ * absent from this type rather than optional.
+ */
+export interface CreateSupplierCategoryInput {
+  name: string;
+  /** Defaults to true server-side; a category is made because it is wanted. */
+  isActive?: boolean;
+}
+
+/**
+ * Body of PATCH /api/supplier-categories/:id. Both fields are independent, and
+ * the backend rejects an empty body — so at least one must be present.
+ */
+export interface UpdateSupplierCategoryInput {
+  name?: string;
   isActive?: boolean;
 }
 

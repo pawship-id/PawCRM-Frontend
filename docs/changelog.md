@@ -7,6 +7,55 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Kategori Supplier
+
+Purchasing gains a screen for the labels a tenant groups its **vendors** by, at
+`/dashboard/purchasing/supplier-categories`: a list with the module's usual filter panel,
+a create route, an edit route, and the same retire / delete / restore lifecycle every
+other label set has.
+
+**THE FORM IS ONE INPUT, AND THAT IS THE WHOLE DESIGN.** The backend stores these beside
+product categories in one collection, so the underlying schema would accept a parent, a
+description and a picture. None are offered and none are sent — the API refuses them on
+this resource — so the form shows a vendor group for what it is: a name, plus an Aktif
+switch that appears only when editing.
+
+**IN PURCHASING, NOT BESIDE THE PRODUCT KATEGORI SCREEN.** The two share storage; they do
+not share a user. A product category is filled in while entering an item, a supplier
+category while setting up a vendor. Grouping by where the rows live rather than by who
+uses them would have put a purchasing setup screen inside Inventory, where nobody doing
+purchasing would look for it. The nav item sits directly under Supplier — the same place
+Kategori sits under Produk — and the hub gains a fifth card, which moved the card grid
+from `lg:grid-cols-4` to `lg:grid-cols-3` rather than shrinking five tiles onto one line.
+
+**A SEPARATE SERVICE, HOOK, TABLE AND FORM RATHER THAN A `kind` PROP ON THE PRODUCT ONES.**
+The two screens' only common shape is "a paginated list of names"; everything a shared
+component would be parameterised over — the fields, the filters, the delete copy — is
+exactly the part that differs. A `kind` argument threaded through
+`categoryService`/`useCategories`/`CategoryForm` would be a parameter every product screen
+has to get right, and getting it wrong fails silently: a vendor group in a product picker
+looks like data entry, not like a bug.
+
+Three smaller consequences:
+
+- **`supplierCategories` is its own entry in `PERMISSION_CATALOG`**, mirroring the backend
+  catalog. A role holding `categories:*` gets no write buttons here — the screen tests pin
+  that.
+- **The filter panel has three fields, not four.** No `Tingkat`: this kind has no tree, and
+  the API has no `parentId` to narrow on.
+- **The delete confirm does not promise a guard.** A product category's dialog says the
+  delete is refused while products are filed under it; nothing references a supplier
+  category yet, so this one says what deleting actually does — the name is freed, the row
+  is restorable — rather than describing a refusal that cannot happen. A server `409` is
+  still shown verbatim if that changes.
+
+**`CategoryKind` is now `"product" | "supplier"`**, but no form ever chooses between them:
+each resource filters on its own kind server-side. `Category.kind` is narrowed to
+`"product"` and `SupplierCategory.kind` to `"supplier"`, so a screen holding one cannot be
+handed the other by a type that says it might.
+
+---
+
 ## [Unreleased] — Kategori bisa punya sub-kategori
 
 A category can now sit under another one. `Induk kategori` is a select in the form, the

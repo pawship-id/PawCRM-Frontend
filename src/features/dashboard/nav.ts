@@ -264,6 +264,24 @@ export const NAV_ITEMS: NavItem[] = [
         permission: { feature: "suppliers", action: "read" },
       },
       {
+        /**
+         * Directly under Supplier, because it is that list's setup screen — the
+         * same neighbouring the Inventory group gives Kategori under Produk.
+         *
+         * `CategoryIcon`, shared with the product Kategori item, and that is the
+         * intended reading: the two are the same kind of thing (a label set a
+         * tenant maintains), told apart by which group they sit in rather than
+         * by a second icon nobody would learn.
+         *
+         * Gated on its own feature, not on `suppliers`: a role that may read the
+         * vendor list does not automatically get its taxonomy.
+         */
+        label: "Kategori Supplier",
+        href: "/dashboard/purchasing/supplier-categories",
+        icon: CategoryIcon,
+        permission: { feature: "supplierCategories", action: "read" },
+      },
+      {
         label: "Penerimaan Barang",
         href: "/dashboard/purchasing/receipts",
         icon: ReceiptIcon,

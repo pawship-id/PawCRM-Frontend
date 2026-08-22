@@ -3,8 +3,8 @@ import type { Crumb } from "@/components";
 /**
  * The ancestors every purchasing trail is built from.
  *
- * Eleven pages sit under this module and each one's trail begins with the same
- * one or two entries. Typing them out per page is how a breadcrumb quietly
+ * Fourteen pages sit under this module and each one's trail begins with the
+ * same one or two entries. Typing them out per page is how a breadcrumb quietly
  * rots: a label drifts from the sidebar's wording, or an href keeps pointing at
  * a route that has moved, and neither shows up as a broken page — just a trail
  * that lies about where you are.
@@ -20,6 +20,10 @@ import type { Crumb } from "@/components";
 export const PURCHASING_CRUMBS = {
   hub: { label: "Purchasing", href: "/dashboard/purchasing" },
   suppliers: { label: "Supplier", href: "/dashboard/purchasing/suppliers" },
+  supplierCategories: {
+    label: "Kategori Supplier",
+    href: "/dashboard/purchasing/supplier-categories",
+  },
   receipts: {
     label: "Penerimaan Barang",
     href: "/dashboard/purchasing/receipts",
