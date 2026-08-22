@@ -74,6 +74,37 @@ function needsLot(product: Product | undefined, consignment: boolean): boolean {
 }
 
 /**
+ * What a line COSTS, which on a consignment is nothing.
+ *
+ * FORCED TO "0" RATHER THAN TYPED. Consigned goods are still the supplier's, so
+ * this form no longer asks what they cost: the column is locked at zero and the
+ * field below it is disabled.
+ *
+ * WHAT THAT MEANS DOWNSTREAM, recorded here because it is not visible from the
+ * screen. `costPerUnit` is not merely a label on a receipt — it is the figure
+ * `stockMovementService` feeds to `#weightedAverage`, and a `receipt` movement
+ * is NOT journal-exempt, so a consignment intake moves `products.hppAvg` exactly
+ * like a purchase does. Bringing goods in at zero therefore averages the
+ * product's cost basis DOWN, tenant-wide, and every later sale of that product —
+ * consigned or owned — books COGS against the diluted figure. A receipt cannot
+ * be edited or deleted once saved.
+ *
+ * That trade was made deliberately and is the shop's to make; it is written down
+ * so the next reader does not "fix" the zero, and so that the day the numbers
+ * look wrong there is something to read.
+ *
+ * A TYPED VALUE IS NOT DESTROYED, only overridden — `line.costPerUnit` keeps
+ * whatever was entered under `beli_putus`, so toggling back restores it.
+ *
+ * MODULE-LEVEL, taking `consignment` as an argument, for the same reason
+ * `needsLot` is: a function defined in the body would be new every render and
+ * the payload memo would rebuild on every keystroke.
+ */
+function costOf(line: LineDraft, consignment: boolean): string {
+  return consignment ? "0" : line.costPerUnit;
+}
+
+/**
  * The mark a required COLUMN carries, since a column header is the only place a
  * table can say "wajib" once for every row.
  *
@@ -267,7 +298,7 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
         return {
           productId: line.productId,
           qty: line.qty.trim(),
-          costPerUnit: line.costPerUnit.trim(),
+          costPerUnit: costOf(line, consignment).trim(),
           // Filled in for the clerk when they left it blank. Done HERE rather
           // than in the field itself so the row keeps showing what the supplier
           // actually printed — nothing — while the preview and the save both
@@ -336,7 +367,7 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
     lines.every((line) => {
       const product = productById.get(line.productId);
       if (!isPositive(line.qty)) return false;
-      if (!isDecimal(line.costPerUnit)) return false;
+      if (!isDecimal(costOf(line, consignment))) return false;
       // No batch-code gate: a blank one is filled by `autoBatchCode`. The
       // expiry date is not derivable and still blocks the preview.
       if (product?.hasExpiry && line.expiryDate === "") return false;
@@ -362,11 +393,12 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
 
   /** Line subtotals are plain multiplication — no server rule is involved. */
   const localSubtotal = sumDecimals(
-    lines.map((line) =>
-      isDecimal(line.qty) && isDecimal(line.costPerUnit)
-        ? multiplyDecimals(line.qty, line.costPerUnit)
-        : "0",
-    ),
+    lines.map((line) => {
+      const cost = costOf(line, consignment);
+      return isDecimal(line.qty) && isDecimal(cost)
+        ? multiplyDecimals(line.qty, cost)
+        : "0";
+    }),
   );
 
   function updateLine(index: number, patch: Partial<LineDraft>) {
@@ -432,10 +464,12 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
           next.lines = `${label}: qty harus lebih dari nol.`;
           break;
         }
-        if (!isDecimal(line.costPerUnit)) {
-          next.lines = consignment
-            ? `${label}: HPP manual wajib diisi untuk barang konsinyasi.`
-            : `${label}: harga beli wajib diisi.`;
+        // Never reachable on a consignment, where the cost is the constant
+        // "0" — kept unconditional anyway, because a rule that is only true
+        // while a neighbouring branch holds is a rule that breaks quietly when
+        // that branch changes.
+        if (!isDecimal(costOf(line, consignment))) {
+          next.lines = `${label}: harga beli wajib diisi.`;
           break;
         }
         // Kode batch is NOT checked: blank means "supplier tidak memberi nomor",
@@ -533,7 +567,7 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
           </div>
           <p className="mt-1.5 text-xs text-muted">
             {consignment
-              ? "Barang masuk gudang tapi masih milik supplier — tidak ada utang dan tidak ada jurnal. HPP diisi manual, dan setiap baris punya lot sendiri — kode batch terisi otomatis kalau dikosongkan."
+              ? "Barang masuk gudang tapi masih milik supplier — tidak ada utang dan tidak ada jurnal, dan harga belinya nol karena belum ada yang dibeli. Setiap baris punya lot sendiri — kode batch terisi otomatis kalau dikosongkan."
               : "Barang jadi milik toko saat diterima — utang ke supplier langsung tercatat dan jurnal diposting."}
           </p>
         </div>
@@ -735,18 +769,16 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
                           control it names. Subtotal keeps `text-right`, because
                           that column really is a number. */}
                       <th className="px-2 py-2 text-left font-medium">Qty</th>
-                      {/* MARKED WAJIB, both ways round. On beli putus the
-                          figure is on the supplier's invoice; on konsinyasi
-                          nobody bought anything, so the agreed value can only
-                          come from the person typing. Neither can be derived
-                          from the running average — a receipt that fell back to
-                          it could never move HPP, which is the one thing this
-                          form exists to do. The seed makes a re-order at the
-                          same price one click; it does not make the field
-                          optional. */}
+                      {/* ONE NAME, BOTH WAYS ROUND — "HPP manual" was the
+                          consignment version, and it named an accounting
+                          concept at somebody reading a surat jalan. WAJIB only
+                          on beli putus: the figure is on the supplier's invoice
+                          and cannot be derived from the running average, since a
+                          receipt that fell back to it could never move HPP. A
+                          consignment asks nothing — see `costOf`. */}
                       <th className="px-2 py-2 text-left font-medium">
-                        {consignment ? "HPP manual" : "Harga beli"}
-                        <Required />
+                        Harga beli
+                        {!consignment && <Required />}
                       </th>
                       <th className="px-2 py-2 text-left font-medium">
                         Kode batch
@@ -810,9 +842,15 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
                             <Input
                               aria-label={`Harga ${product?.name ?? ""}`}
                               inputMode="decimal"
-                              required
-                              aria-required
-                              value={line.costPerUnit}
+                              // Locked at nothing on a consignment: the goods
+                              // are still the supplier's, so there is no price
+                              // to type. `disabled` rather than readOnly so it
+                              // is skipped by the keyboard too — there is
+                              // nothing to do in it.
+                              required={!consignment}
+                              aria-required={!consignment}
+                              disabled={consignment}
+                              value={costOf(line, consignment)}
                               onChange={(event) =>
                                 updateLine(index, {
                                   costPerUnit: event.target.value,
@@ -878,9 +916,13 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
                           </td>
 
                           <td className="px-2 py-2 text-right tabular-nums text-xs">
-                            {isDecimal(line.qty) && isDecimal(line.costPerUnit)
+                            {isDecimal(line.qty) &&
+                            isDecimal(costOf(line, consignment))
                               ? formatMoney(
-                                  multiplyDecimals(line.qty, line.costPerUnit),
+                                  multiplyDecimals(
+                                    line.qty,
+                                    costOf(line, consignment),
+                                  ),
                                 )
                               : "—"}
                           </td>

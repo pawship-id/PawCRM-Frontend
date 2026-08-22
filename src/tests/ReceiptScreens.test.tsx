@@ -579,8 +579,48 @@ describe("ReceiptForm", () => {
 
     expect(screen.queryByLabelText(/PPN masukan/)).toBeNull();
     expect(
-      screen.getByText(/setiap baris punya lot sendiri/),
+      screen.getByText(/[Ss]etiap baris punya lot sendiri/),
     ).toBeInTheDocument();
+  });
+
+  /**
+   * CONSIGNED GOODS ARE NOT BOUGHT, so this form does not ask what they cost:
+   * the column loses its `*`, the field is locked, and "0" is what is sent.
+   *
+   * THE PRICE IS NOT MERELY HIDDEN. `costPerUnit` is what
+   * `stockMovementService` feeds to the weighted average, and a `receipt`
+   * movement is not journal-exempt — so zero here averages the product's cost
+   * basis DOWN tenant-wide, and later sales book COGS against the diluted
+   * figure. That is the shop's decision; this test is what pins the behaviour
+   * so it cannot change by accident.
+   */
+  it("locks the price at zero on a consignment", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<ReceiptForm supplierId="s1" />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "+ Tambah produk" }),
+    );
+    await user.click(await screen.findByLabelText(/Shampoo Anjing/));
+    await user.click(screen.getByRole("button", { name: /Tambahkan/ }));
+
+    // Outright, the row is seeded from the product's average and editable.
+    const price = await screen.findByLabelText(/Harga Shampoo Anjing/);
+    expect(price).toHaveValue("12000");
+    expect(price).not.toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: /Konsinyasi/ }));
+
+    expect(screen.getByLabelText(/Harga Shampoo Anjing/)).toHaveValue("0");
+    expect(screen.getByLabelText(/Harga Shampoo Anjing/)).toBeDisabled();
+    // One name for the column now — "HPP manual" named an accounting concept at
+    // somebody reading a delivery note.
+    expect(screen.queryByText("HPP manual")).toBeNull();
+
+    // Toggling back RESTORES what was typed: the zero overrides the draft, it
+    // does not overwrite it.
+    await user.click(screen.getByRole("button", { name: /Beli putus/ }));
+    expect(screen.getByLabelText(/Harga Shampoo Anjing/)).toHaveValue("12000");
   });
 
   it("cannot be submitted with nothing on it", async () => {
