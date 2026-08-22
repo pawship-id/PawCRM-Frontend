@@ -73,7 +73,7 @@ export function BatchesTable({
               <th className="px-4 py-2.5 text-left font-medium">Gudang</th>
               <th className="px-4 py-2.5 text-left font-medium">Kedaluwarsa</th>
               <th className="px-4 py-2.5 text-right font-medium">
-                Sisa / awal
+                Sisa Stock
               </th>
               <th className="px-4 py-2.5 text-right font-medium">HPP</th>
               <th className="px-4 py-2.5 text-right font-medium">Nilai sisa</th>
@@ -160,10 +160,6 @@ export function BatchesTable({
                     )}
                   >
                     {formatQty(batch.qtyRemaining)}
-                    <span className="text-xs text-muted">
-                      {" "}
-                      / {formatQty(batch.initialQty)}
-                    </span>
                     {batch.productUnit && (
                       <span className="text-xs text-muted">
                         {" "}

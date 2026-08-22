@@ -72,7 +72,7 @@ export function BatchLotTable({
             <th className="px-4 py-2.5 text-left font-medium">Urutan FEFO</th>
             <th className="px-4 py-2.5 text-left font-medium">Kode batch</th>
             <th className="px-4 py-2.5 text-left font-medium">Kedaluwarsa</th>
-            <th className="px-4 py-2.5 text-right font-medium">Sisa / awal</th>
+            <th className="px-4 py-2.5 text-right font-medium">Sisa Stock</th>
             <th className="px-4 py-2.5 text-right font-medium">Harga beli batch</th>
             <th className="px-4 py-2.5 text-right font-medium">Nilai sisa</th>
           </tr>
@@ -151,7 +151,6 @@ function BatchRow({
         )}
       >
         {formatQty(batch.qtyRemaining)}
-        <span className="text-xs text-muted"> / {formatQty(batch.initialQty)}</span>
       </td>
       <td className="px-4 py-2.5 text-right tabular-nums text-xs text-muted">
         {formatMoney(batch.costPerUnit)}
