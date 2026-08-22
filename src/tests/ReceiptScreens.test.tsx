@@ -11,6 +11,7 @@ import { autoBatchCode } from "@/lib/batchCode";
 import { goodsReceiptService } from "@/services/goodsReceipt.service";
 import { purchaseReturnService } from "@/services/purchaseReturn.service";
 import { productBatchService } from "@/services/productBatch.service";
+import { branchService } from "@/services/branch.service";
 import { supplierService } from "@/services/supplier.service";
 import { warehouseService } from "@/services/warehouse.service";
 import { productService } from "@/services/product.service";
@@ -27,6 +28,7 @@ import { renderWithAuth } from "./helpers/renderWithAuth";
 jest.mock("@/services/goodsReceipt.service");
 jest.mock("@/services/purchaseReturn.service");
 jest.mock("@/services/productBatch.service");
+jest.mock("@/services/branch.service");
 jest.mock("@/services/supplier.service");
 jest.mock("@/services/warehouse.service");
 jest.mock("@/services/product.service");
@@ -235,17 +237,36 @@ const PRODUCT = {
   categoryId: "c1",
   unit: "botol",
   sellPrice: "25000",
-  hppAvg: "12000",
+  // Four decimals, as `/products` really returns it — the form is expected to
+  // shorten this before it reaches an input.
+  hppAvg: "12000.0000",
   isActive: true,
   deletedAt: null,
   stockByWarehouse: [],
 };
 
+const BRANCH_ID = "br1";
+
+/**
+ * `defaultBranchId` is what scopes the warehouse picker to the branch above it —
+ * see `warehousesForBranch`. A fixture without it would be a warehouse belonging
+ * to no branch and to every branch at once, which is the shared central one, not
+ * this.
+ */
 const WAREHOUSE = {
   _id: "wh1",
   name: "Gudang Utama",
   code: "GU",
   isActive: true,
+  defaultBranchId: BRANCH_ID,
+};
+
+const OTHER_WAREHOUSE = {
+  _id: "wh2",
+  name: "Gudang Cabang Selatan",
+  code: "GS",
+  isActive: true,
+  defaultBranchId: "br2",
 };
 
 function page<T>(items: T[]) {
@@ -272,6 +293,9 @@ beforeEach(() => {
 
   asMock(purchaseReturnService.list).mockResolvedValue(page([]) as never);
   asMock(supplierService.list).mockResolvedValue(page([SUPPLIER]) as never);
+  asMock(branchService.list).mockResolvedValue(
+    page([{ _id: BRANCH_ID, name: "Cabang Pusat", isActive: true }]) as never,
+  );
   asMock(warehouseService.list).mockResolvedValue(page([WAREHOUSE]) as never);
   asMock(productService.list).mockResolvedValue(page([PRODUCT]) as never);
 });
@@ -587,6 +611,127 @@ describe("ReceiptForm", () => {
       await screen.findByText(/Angka sementara, dihitung di browser/),
     ).toBeInTheDocument();
     expect(goodsReceiptService.preview).not.toHaveBeenCalled();
+  });
+
+  /**
+   * CABANG SCOPES GUDANG, and the scoping is the point rather than the ordering:
+   * `POST /goods-receipts` takes no `branchId` at all — the service reads it off
+   * the warehouse — so this picker exists to keep a warehouse belonging to
+   * ANOTHER branch off the list, which is a refusal the user would otherwise
+   * meet only after typing the whole delivery.
+   */
+  it("cannot choose a warehouse before a branch is named", async () => {
+    asMock(branchService.list).mockResolvedValue(
+      page([
+        { _id: BRANCH_ID, name: "Cabang Pusat", isActive: true },
+        { _id: "br2", name: "Cabang Selatan", isActive: true },
+      ]) as never,
+    );
+
+    renderWithAuth(<ReceiptForm supplierId="s1" />);
+
+    // TWO branches, so nothing is filled in for the user — and the field below
+    // has no question to answer yet.
+    expect(await screen.findByLabelText("Cabang")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByLabelText("Masuk ke gudang")).toBeDisabled(),
+    );
+    expect(screen.getByText("Pilih cabang dulu…")).toBeInTheDocument();
+  });
+
+  /**
+   * ONE BRANCH IS NOT A CHOICE. A single-shop tenant must not have to open a
+   * dropdown with one option in it to reach the warehouse below.
+   */
+  it("fills in a sole branch, and with it the branch's only warehouse", async () => {
+    renderWithAuth(<ReceiptForm supplierId="s1" />);
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("Masuk ke gudang")).not.toBeDisabled(),
+    );
+    // Read off the TRIGGERS: Radix mirrors the chosen option into a hidden
+    // native <select> for form submission, so a bare getByText finds two.
+    expect(
+      within(screen.getByLabelText("Cabang")).getByText("Cabang Pusat"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByLabelText("Masuk ke gudang")).getByText(
+        "Gudang Utama",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  /**
+   * REGRESSION GUARD ON THE DEFAULT. `effectiveWarehouseId` used to take the
+   * FIRST warehouse of the whole list; under a branch that owns one and also
+   * reaches the shared central one, that is a silent pick between two real
+   * answers — and the receipt is not editable once saved.
+   */
+  it("does not guess the warehouse when the branch offers more than one", async () => {
+    asMock(warehouseService.list).mockResolvedValue(
+      page([
+        WAREHOUSE,
+        // The shared central warehouse: belongs to no branch, offered under all.
+        { ...OTHER_WAREHOUSE, _id: "wh0", name: "Gudang Pusat", defaultBranchId: null },
+      ]) as never,
+    );
+
+    renderWithAuth(<ReceiptForm supplierId="s1" />);
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("Masuk ke gudang")).not.toBeDisabled(),
+    );
+    expect(screen.getByText("Pilih gudang…")).toBeInTheDocument();
+    // Nothing is asked of the server until a warehouse is actually chosen.
+    expect(goodsReceiptService.preview).not.toHaveBeenCalled();
+  });
+
+  /**
+   * A warehouse pinned to ANOTHER branch is not on the list — that pair is what
+   * the server refuses, so offering it could only produce a rejection.
+   */
+  it("leaves another branch's warehouse off the list", async () => {
+    asMock(warehouseService.list).mockResolvedValue(
+      page([WAREHOUSE, OTHER_WAREHOUSE]) as never,
+    );
+
+    renderWithAuth(<ReceiptForm supplierId="s1" />);
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("Masuk ke gudang")).not.toBeDisabled(),
+    );
+    // The branch's own warehouse is filled in, and the other branch's is not
+    // reachable at all.
+    expect(
+      within(screen.getByLabelText("Masuk ke gudang")).getByText(
+        "Gudang Utama",
+      ),
+    ).toBeInTheDocument();
+    // Nowhere on the page — not on the trigger, and not in the hidden native
+    // select either, which is what would actually be submitted.
+    expect(screen.queryAllByText("Gudang Cabang Selatan")).toHaveLength(0);
+  });
+
+  /**
+   * REGRESSION. The seed is `product.hppAvg`, which the API stores at four
+   * decimals — right for a ledger, noise in a box somebody is about to type
+   * over. `4000.0000` in an input reads as a number the form did something to.
+   */
+  it("seeds the price without the API's trailing zeros", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<ReceiptForm supplierId="s1" />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "+ Tambah produk" }),
+    );
+    await user.click(await screen.findByLabelText(/Shampoo Anjing/));
+    await user.click(screen.getByRole("button", { name: /Tambahkan/ }));
+
+    // The fixture's hppAvg is "12000" already; the shortening is what is under
+    // test, so the mock says it the way the API does.
+    expect(await screen.findByLabelText(/Harga Shampoo Anjing/)).toHaveValue(
+      "12000",
+    );
   });
 
   /**

@@ -27,12 +27,15 @@ import {
   isPositive,
   multiplyDecimals,
   sumDecimals,
+  trimQty,
 } from "@/utils/decimal";
 import type { CreateGoodsReceiptInput, PurchaseType } from "@/types/api";
 import type { Product } from "@/types/inventory";
-import { HppStrip } from "@/features/inventory/components/HppStrip";
-import { JournalPreview } from "@/features/inventory/components/JournalPreview";
 import { useStockCardLookups } from "@/features/inventory/hooks/useStockCardLookups";
+import {
+  useBranchScope,
+  warehousesForBranch,
+} from "@/features/inventory/hooks/useBranchScope";
 
 import { ReceiptAddProductsDialog } from "./ReceiptAddProductsDialog";
 import { useReceiptPreview } from "../hooks/useReceiptPreview";
@@ -108,18 +111,23 @@ function duplicateMessage(name: string | undefined): string {
  * Record goods arriving from a supplier.
  *
  * THIS FORM IS WHERE HPP IS BORN. Every other screen reads the weighted average;
- * this is the one that moves it. That is why the calculation is shown per product
- * as arithmetic rather than as a result — the shop owner holding the supplier's
- * invoice can check the new average against the price on the paper in their hand,
- * which is the only moment anybody ever can.
+ * this is the one that moves it. The place it is checked is the `Harga beli`
+ * column itself, seeded with the current average so a price CHANGE shows up as a
+ * change against the invoice in the clerk's hand.
  *
  * THE NUMBERS ARE FETCHED, NOT COMPUTED. This form used to run its own sequential
  * weighted-average simulation across the lines, reimplemented from the service.
  * That is gone. `POST /goods-receipts/preview` is the posting path with the
- * commit left off, so the lots, the average and the journal shown here are the
- * ones that will actually be written. A reimplementation does not fail loudly
+ * commit left off, so the totals, the lots and the receipt number shown here are
+ * the ones that will actually be written. A reimplementation does not fail loudly
  * when the server changes its mind — it renders a confident wrong number that the
  * user approves, and here that number is permanent.
+ *
+ * WHAT THE PREVIEW RETURNS IS NOT ALL SHOWN. The per-product weighted-average
+ * arithmetic and the journal it would post are still fetched — the totals below
+ * come from the same response — but no longer rendered on this screen; the saved
+ * receipt's detail page carries the journal. The preview is therefore still the
+ * authority on every number here, whether or not its workings are on display.
  *
  * BELI PUTUS vs KONSINYASI changes what the form even means. Outright, the goods
  * become the tenant's, the ledger is posted and `2101 Utang Supplier` is
@@ -152,6 +160,7 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
   const lookups = useStockCardLookups();
 
   const [supplier, setSupplier] = useState(supplierId ?? "");
+  const [pickedBranch, setPickedBranch] = useState("");
   const [warehouseId, setWarehouseId] = useState("");
   const [purchaseType, setPurchaseType] = useState<PurchaseType>("beli_putus");
   const [receiptDate, setReceiptDate] = useState(today);
@@ -180,13 +189,36 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
   const consignment = purchaseType === "konsinyasi";
 
   /**
-   * ACTIVE warehouses only, unlike the stock card. This form WRITES, and the API
-   * refuses a delivery at an inactive location — offering one would produce a
-   * rejection after the user had filled the whole form.
+   * LOCATION FIRST, THEN THE SHELF — the order every hand-typed stock form in
+   * this app asks its two scoping questions in, and the same hook behind it.
+   *
+   * THE BRANCH IS NOT IN THE PAYLOAD, and that is the one way this differs from
+   * the adjustment form. `POST /goods-receipts` takes no `branchId`: the service
+   * resolves it from the warehouse (`warehouse.defaultBranchId`, then the
+   * session's branch). So this picker SCOPES THE FIELD BELOW rather than
+   * deciding the books — which is exactly what it is for, since offering a
+   * warehouse pinned to another branch could only produce a refusal after the
+   * whole delivery had been typed.
    */
-  const writableWarehouses = useMemo(
-    () => lookups.warehouses.filter((warehouse) => warehouse.isActive),
-    [lookups.warehouses],
+  const scope = useBranchScope();
+  /**
+   * ONE BRANCH IS NOT A CHOICE — a tenant with a single shop reaches the
+   * warehouse without opening a dropdown that has one option in it. Derived
+   * rather than pushed into state by an effect, which would render once with the
+   * empty value and leave the warehouse list needlessly empty in between.
+   */
+  const branchId = pickedBranch || scope.soleBranch;
+
+  /**
+   * ACTIVE warehouses only — this form WRITES, and the API refuses a delivery at
+   * an inactive location — and only the ones THIS BRANCH may post at: its own,
+   * plus the shared central warehouse, which belongs to no branch and serves all
+   * of them. Empty until a branch is named, so a warehouse cannot be chosen and
+   * then silently invalidated by a branch picked after it.
+   */
+  const scopedWarehouses = useMemo(
+    () => warehousesForBranch(branchId, lookups.warehouses),
+    [branchId, lookups.warehouses],
   );
 
   /**
@@ -198,11 +230,19 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
    * for the warehouses, which are a short list nobody searches.
    */
 
-  // The first warehouse becomes the default once the list arrives. Kept out of an
-  // effect: a value derived from props/state does not need to round-trip through
-  // one, and `warehouseId` staying "" until then is a legitimate intermediate.
+  /**
+   * Filled in only when the branch has exactly ONE warehouse to offer — the same
+   * rule `soleBranch` applies one field up: one option is not a choice, and two
+   * are. This used to take the first of the whole list, which under a branch
+   * that owns a warehouse AND reaches the shared one would silently pick between
+   * two real answers.
+   *
+   * Kept out of an effect: a value derived from state does not need to round-trip
+   * through one, and `warehouseId` staying "" until a branch is named is a
+   * legitimate intermediate.
+   */
   const effectiveWarehouseId =
-    warehouseId || (writableWarehouses[0]?._id ?? "");
+    warehouseId || (scopedWarehouses.length === 1 ? scopedWarehouses[0]._id : "");
 
   /**
    * The payload, built once and used for BOTH the preview and the save.
@@ -310,6 +350,16 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
     error: previewError,
   } = useReceiptPreview(payload, previewEnabled);
 
+  /**
+   * The lots this delivery would open, as the SERVER decided them — `isNewBatch`
+   * comes back from `/goods-receipts/preview`, not from anything computed here.
+   * Empty until the preview has run, which is what the card's empty state says.
+   */
+  const newBatchMovements = useMemo(
+    () => (preview?.movements ?? []).filter((movement) => movement.isNewBatch),
+    [preview],
+  );
+
   /** Line subtotals are plain multiplication — no server rule is involved. */
   const localSubtotal = sumDecimals(
     lines.map((line) =>
@@ -343,7 +393,15 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
         qty: "1",
         // Seeded with the current average so a re-order at the same price is one
         // keystroke, and a price CHANGE is visible as a change.
-        costPerUnit: product.hppAvg ?? "",
+        //
+        // TRIMMED, because the seed lands in an INPUT. The API stores money at
+        // four decimals, which is right for a ledger and noise in a box somebody
+        // is about to type over: `4000.0000` reads as a number the form did
+        // something to, and it is the fixed zeros — not the value — that say so.
+        // `trimQty` is the shared "stored decimal → editable string" shortener
+        // (its name is about where it was first needed, not what it does); it
+        // leaves a real fraction alone, so `12500.5000` still seeds `12500.5`.
+        costPerUnit: trimQty(product.hppAvg),
         batchCode: "",
         expiryDate: "",
       })),
@@ -354,7 +412,11 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
     const next: Record<string, string> = {};
 
     if (!supplier) next.supplier = "Pilih supplier.";
-    if (!effectiveWarehouseId) next.warehouse = "Pilih gudang tujuan.";
+    // Named before the warehouse, because the warehouse cannot be answered until
+    // it is — a bare "Pilih gudang tujuan." over a disabled picker says nothing
+    // about what to do next.
+    if (!branchId) next.branch = "Pilih cabang dulu.";
+    else if (!effectiveWarehouseId) next.warehouse = "Pilih gudang tujuan.";
     if (lines.length === 0) next.lines = "Tambahkan minimal satu barang.";
 
     if (duplicateProductId !== null) {
@@ -477,11 +539,27 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
         </div>
 
         <Card title="Dokumen">
-          <div className="grid gap-4 sm:grid-cols-3">
+          {/* TWO COLUMNS, THREE ROWS, and the rows are the order the questions
+              are actually answered in: WHO delivered and WHEN, then WHERE it
+              landed — cabang before gudang, since the second is a list the first
+              decides — and only then the tax on the invoice. A three-column grid
+              put the branch and the warehouse on different lines at some widths,
+              which is the one pairing that has to stay together. */}
+          <div className="grid gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="supplier">Supplier</Label>
               <Select value={supplier} onValueChange={setSupplier}>
-                <SelectTrigger id="supplier" aria-label="Supplier">
+                {/* `w-full` at the CALL SITE. `ui/select`'s trigger is `w-fit`
+                    by default, which sizes it to the longest supplier's name and
+                    leaves the three pickers in this card three different widths
+                    beside a full-width date field. The vendored file stays
+                    re-syncable from the shadcn CLI — ui-rules §14 — so the
+                    override lives here. */}
+                <SelectTrigger
+                  id="supplier"
+                  aria-label="Supplier"
+                  className="w-full"
+                >
                   <SelectValue
                     placeholder={
                       suppliersLoading ? "Memuat supplier…" : "Pilih supplier…"
@@ -503,14 +581,80 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
               )}
             </div>
 
+            <TextField
+              label="Tanggal terima"
+              name="receiptDate"
+              type="date"
+              value={receiptDate}
+              onChange={(event) => setReceiptDate(event.target.value)}
+              hint="Tanggal barang tiba, bukan tanggal input."
+            />
+
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="warehouse">Masuk ke gudang</Label>
-              <Select value={effectiveWarehouseId} onValueChange={setWarehouseId}>
-                <SelectTrigger id="warehouse" aria-label="Masuk ke gudang">
-                  <SelectValue placeholder="Pilih gudang…" />
+              <Label htmlFor="branch">Cabang</Label>
+              {/* ONLY THE BRANCHES THIS USER HOLDS. `useBranchScope` narrows the
+                  list with `accessibleBranches`, because the server answers 403
+                  for any other — offering one could only produce a refusal after
+                  the delivery was typed. */}
+              <Select
+                value={branchId}
+                onValueChange={(value) => {
+                  if (value === branchId) return;
+                  setPickedBranch(value);
+                  // The warehouse below belongs to the OLD branch and may not
+                  // exist under the new one. The lines stay: a product is not
+                  // scoped to a location, and its cost seed is the tenant-wide
+                  // average.
+                  setWarehouseId("");
+                }}
+              >
+                <SelectTrigger id="branch" aria-label="Cabang" className="w-full">
+                  <SelectValue
+                    placeholder={
+                      scope.loading ? "Memuat cabang…" : "Pilih cabang…"
+                    }
+                  />
                 </SelectTrigger>
                 <SelectContent>
-                  {writableWarehouses.map((warehouse) => (
+                  {scope.branches.map((branch) => (
+                    <SelectItem key={branch._id} value={branch._id}>
+                      {branch.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {fieldErrors.branch && (
+                <p role="alert" className="text-xs text-danger">
+                  {fieldErrors.branch}
+                </p>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="warehouse">Masuk ke gudang</Label>
+              <Select
+                value={effectiveWarehouseId}
+                onValueChange={setWarehouseId}
+                // Nothing to offer until a branch is named: the list IS that
+                // branch's warehouses, so an enabled empty picker would read as
+                // "cabang ini tidak punya gudang".
+                disabled={branchId === ""}
+              >
+                <SelectTrigger
+                  id="warehouse"
+                  aria-label="Masuk ke gudang"
+                  className="w-full"
+                >
+                  <SelectValue
+                    placeholder={
+                      branchId === ""
+                        ? "Pilih cabang dulu…"
+                        : "Pilih gudang…"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {scopedWarehouses.map((warehouse) => (
                     <SelectItem key={warehouse._id} value={warehouse._id}>
                       {warehouse.name}
                     </SelectItem>
@@ -523,15 +667,6 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
                 </p>
               )}
             </div>
-
-            <TextField
-              label="Tanggal terima"
-              name="receiptDate"
-              type="date"
-              value={receiptDate}
-              onChange={(event) => setReceiptDate(event.target.value)}
-              hint="Tanggal barang tiba, bukan tanggal input."
-            />
 
             {/* PPN belongs to a purchase. There is none on a consignment, and the
                 API refuses the field there outright. */}
@@ -829,65 +964,48 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
           </div>
         )}
 
-        {preview && (
-          <>
-            <div className="flex flex-col gap-3">
-              <p className="text-[10px] font-medium tracking-widest text-primary-hover uppercase">
-                Perhitungan HPP rata-rata tertimbang
-              </p>
-              {preview.hppAvg.map((row) => (
-                <div key={row.productId}>
-                  <p className="mb-1 text-xs font-medium">
-                    {productById.get(row.productId)?.name ?? row.productId}
-                  </p>
-                  <HppStrip preview={row} />
-                </div>
-              ))}
-              <p className="text-xs text-muted">
-                Angka inilah yang dipakai setiap penjualan berikutnya untuk
-                menghitung HPP dan margin. Cocokkan dengan faktur supplier di
-                tangan — setelah disimpan, tidak bisa diubah.
-              </p>
-            </div>
-
-            {preview.movements.some((movement) => movement.isNewBatch) && (
-              <Card title="Lot yang akan dibuat">
-                <ul className="flex flex-col gap-1 text-sm">
-                  {preview.movements
-                    .filter((movement) => movement.isNewBatch)
-                    .map((movement, index) => (
-                      <li key={index} className="flex flex-wrap gap-2">
-                        <span className="font-medium">
-                          {productById.get(movement.productId)?.name ??
-                            movement.productId}
-                        </span>
-                        <span className="tabular-nums text-xs text-muted">
-                          {movement.batchCode ?? "—"}
-                          {movement.batchExpiryDate &&
-                            ` · exp ${movement.batchExpiryDate.slice(0, 10)}`}
-                        </span>
-                        <span className="ml-auto tabular-nums text-xs">
-                          {formatQty(movement.qty)}
-                        </span>
-                      </li>
-                    ))}
-                </ul>
-              </Card>
-            )}
-          </>
-        )}
-
+        {/* THE TWO PANELS THAT USED TO SIT HERE ARE GONE — the weighted-average
+            arithmetic (`HppStrip`, one strip per product) and the automatic
+            journal (`JournalPreview`). Both are still computed by
+            `/goods-receipts/preview`, which is what the totals below are read
+            from, so nothing about WHAT is posted changed: only what this screen
+            shows while it is being typed. The receipt's own detail page still
+            carries the journal after it is saved. */}
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,320px)]">
-          {/* The preview labels its own accounts now — see ReceiptJournalLine.
-              This used to go through a shim that guessed them and got it wrong. */}
-          <JournalPreview
-            lines={preview?.journal ?? []}
-            emptyReason={
-              consignment
-                ? "Konsinyasi tidak menjurnal — barang belum menjadi milik toko, jadi belum ada utang yang tercatat."
-                : "Lengkapi barang yang diterima untuk melihat jurnal yang akan dibuat."
-            }
-          />
+          {/* A LOT IS A BATCH in the shop's language, so the card says batch —
+              `isNewBatch` and `batchCode` are the API's words for the same
+              thing, and the screen should use the counter's. */}
+          <Card title="Batch produk yang akan dibuat">
+            {newBatchMovements.length > 0 ? (
+              <ul className="flex flex-col gap-1 text-sm">
+                {newBatchMovements.map((movement, index) => (
+                  <li key={index} className="flex flex-wrap gap-2">
+                    <span className="font-medium">
+                      {productById.get(movement.productId)?.name ??
+                        movement.productId}
+                    </span>
+                    <span className="tabular-nums text-xs text-muted">
+                      {movement.batchCode ?? "—"}
+                      {movement.batchExpiryDate &&
+                        ` · exp ${movement.batchExpiryDate.slice(0, 10)}`}
+                    </span>
+                    <span className="ml-auto tabular-nums text-xs">
+                      {formatQty(movement.qty)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              // Says WHY it is empty, like JournalPreview's `emptyReason` did:
+              // an empty panel beside a filled-in form otherwise reads as
+              // something still loading.
+              <p className="py-2 text-sm text-muted">
+                {preview
+                  ? "Tidak ada batch baru. Batch hanya dibuat untuk produk yang melacak kedaluwarsa, dan untuk setiap baris konsinyasi."
+                  : "Lengkapi barang yang diterima untuk melihat batch yang akan dibuat."}
+              </p>
+            )}
+          </Card>
 
           <Card title="Ringkasan">
             <div className="flex flex-col gap-2 text-sm">
