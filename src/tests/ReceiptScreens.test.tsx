@@ -601,11 +601,32 @@ describe("ReceiptForm", () => {
    * empty with no explanation of which row was at fault.
    */
   it("does not offer a product already on the form", async () => {
+    const user = userEvent.setup();
     renderWithAuth(<ReceiptForm supplierId="s1" />);
 
-    // With one product in the catalogue and none used yet, the picker is live.
-    const picker = await screen.findByLabelText("Tambah barang");
-    expect(picker).not.toBeDisabled();
+    await user.click(
+      await screen.findByRole("button", { name: "+ Tambah produk" }),
+    );
+
+    // The dialog is the SAME picker the opname sheet, the transfer form, the
+    // opening stock document and the adjustment use — a search box and
+    // checkboxes, which jsdom can actually drive, unlike the Radix Select this
+    // replaced.
+    await user.click(await screen.findByLabelText(/Shampoo Anjing/));
+    await user.click(screen.getByRole("button", { name: /Tambahkan/ }));
+
+    expect(await screen.findByLabelText(/Qty Shampoo Anjing/)).toBeVisible();
+
+    // Reopened, the one product on the form is GONE from the list rather than
+    // offered ticked — the API refuses it twice, so a tick that could only
+    // produce a refusal is worse than an absence.
+    await user.click(
+      screen.getByRole("button", { name: "+ Tambah produk" }),
+    );
+
+    expect(
+      await screen.findByText("Semua produk yang cocok sudah ditambahkan."),
+    ).toBeInTheDocument();
   });
 });
 
@@ -624,7 +645,7 @@ describe("duplicate product guard", () => {
     );
 
     renderWithAuth(<ReceiptForm supplierId="s1" />);
-    await screen.findByLabelText("Tambah barang");
+    await screen.findByRole("button", { name: "+ Tambah produk" });
 
     // The guard is upstream of the request: with no duplicate constructible from
     // the picker, the refusal never has a chance to reach the screen.
