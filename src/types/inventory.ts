@@ -817,6 +817,21 @@ export interface ProductListQuery {
    */
   holdsStock?: boolean;
   /**
+   * Only consignment goods (`true`) or only owned ones (`false`).
+   *
+   * The receipt picker's filter, so a *Beli putus* delivery cannot be built out
+   * of somebody else's stock and a *Konsinyasi* one cannot be built out of the
+   * shop's own.
+   *
+   * `false` INCLUDES PRODUCTS THAT NEVER STORED THE FLAG, which today is all of
+   * them — the server matches `$ne: true` rather than an equality. Omit for
+   * both kinds, which is what every other screen wants.
+   *
+   * Not mutually exclusive with anything: it selects by a field where
+   * `holdsStock` and friends select by type, and the receipt picker sends both.
+   */
+  isConsignment?: boolean;
+  /**
    * Only products with NO movement in this warehouse.
    *
    * The opening-stock picker's filter — the same rule

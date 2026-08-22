@@ -71,6 +71,7 @@ export const productService = {
         isActive: query.isActive,
         excludeVariants: query.excludeVariants,
         holdsStock: query.holdsStock,
+        isConsignment: query.isConsignment,
         neverMovedInWarehouse: query.neverMovedInWarehouse,
         inStockAtWarehouse: query.inStockAtWarehouse,
         includeDeleted: query.includeDeleted,

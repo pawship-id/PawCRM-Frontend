@@ -183,7 +183,22 @@ function duplicateMessage(name: string | undefined): string {
  * the handler refuses re-entry; the preview panel is the other half of the
  * mitigation.
  */
-export function ReceiptForm({ supplierId }: { supplierId?: string }) {
+export function ReceiptForm({
+  supplierId,
+  initialPurchaseType = "beli_putus",
+}: {
+  supplierId?: string;
+  /**
+   * Which tab to open on, read off `?type=` by the page.
+   *
+   * A PROP RATHER THAN `useSearchParams()` HERE, so the tab is decided during
+   * the server render and the first paint is already the right one. Reading it
+   * in the client would paint *Beli putus* and then swap, and the swap is
+   * visible on the picker: a refresh mid-receipt would flash the wrong
+   * catalogue.
+   */
+  initialPurchaseType?: PurchaseType;
+}) {
   const router = useRouter();
 
   const { suppliers, loading: suppliersLoading } =
@@ -193,7 +208,9 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
   const [supplier, setSupplier] = useState(supplierId ?? "");
   const [pickedBranch, setPickedBranch] = useState("");
   const [warehouseId, setWarehouseId] = useState("");
-  const [purchaseType, setPurchaseType] = useState<PurchaseType>("beli_putus");
+  const [purchaseType, setPurchaseType] = useState<PurchaseType>(
+    initialPurchaseType,
+  );
   const [receiptDate, setReceiptDate] = useState(today);
   const [taxAmount, setTaxAmount] = useState("");
   const [notes, setNotes] = useState("");
@@ -218,6 +235,34 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
   const [saving, setSaving] = useState(false);
 
   const consignment = purchaseType === "konsinyasi";
+
+  /**
+   * Switches the tab AND puts it in the address bar, so a refresh comes back to
+   * the same one.
+   *
+   * `replace`, not `push`: the tab is a mode this form is in, not a place the
+   * user navigated to. With `push`, Back would walk through every tab click
+   * before leaving the screen — and each of those entries restores a form the
+   * browser has already discarded the state of.
+   *
+   * `scroll: false` because the tabs sit at the top of a long form and Next
+   * would otherwise jump there from wherever the user was reading.
+   *
+   * The supplier is CARRIED, not rebuilt: this screen is reached from a
+   * supplier's detail page as `?supplier=…`, and dropping it on the first tab
+   * click would empty that field on the next refresh.
+   */
+  function pickPurchaseType(next: PurchaseType) {
+    setPurchaseType(next);
+
+    const query = new URLSearchParams();
+    if (supplierId) query.set("supplier", supplierId);
+    query.set("type", next);
+
+    router.replace(`/dashboard/purchasing/receipts/new?${query}`, {
+      scroll: false,
+    });
+  }
 
   /**
    * LOCATION FIRST, THEN THE SHELF — the order every hand-typed stock form in
@@ -342,6 +387,37 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
    * stays because "unreachable" and "unreachable today" are different claims, and
    * the failure mode is a raw id in a red box.
    */
+  /**
+   * Rows whose product does not belong on the tab the form is now on.
+   *
+   * ONLY REACHABLE BY SWITCHING TABS after picking — the picker cannot produce
+   * one. Rather than police the switch, the form reports it: the rows were added
+   * deliberately, and a tab click that silently deleted somebody's typed
+   * quantities is a worse outcome than the receipt this warns about.
+   *
+   * NOT A SUBMIT BLOCKER either, and that is a judgement rather than an
+   * oversight. The API takes `purchaseType` and the product's flag independently
+   * and has no rule connecting them, so refusing here would invent one in the
+   * browser — and there are real receipts on the wrong side of it, like the
+   * first delivery of goods a vendor has just agreed to convert to titipan. It
+   * is named, and the clerk decides.
+   *
+   * A product missing from `productById` is skipped rather than flagged: that is
+   * a row whose product was removed from the catalogue mid-edit, which
+   * `duplicateProductId` below already explains and which this cannot diagnose.
+   */
+  const mismatchedLines = useMemo(
+    () =>
+      lines
+        .map((line) => productById.get(line.productId))
+        .filter(
+          (product): product is Product =>
+            product !== undefined &&
+            product.isConsignment !== consignment,
+        ),
+    [lines, productById, consignment],
+  );
+
   const duplicateProductId = useMemo(() => {
     const seen = new Set<string>();
     for (const line of lines) {
@@ -533,6 +609,7 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
       {picking && (
         <ReceiptAddProductsDialog
           existingProductIds={lines.map((line) => line.productId)}
+          consignment={consignment}
           onAdd={addLines}
           onClose={() => setPicking(false)}
         />
@@ -553,7 +630,7 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
               <button
                 key={value}
                 type="button"
-                onClick={() => setPurchaseType(value)}
+                onClick={() => pickPurchaseType(value)}
                 className={cn(
                   "rounded-md px-3.5 py-2 text-sm font-medium transition",
                   purchaseType === value
@@ -737,6 +814,21 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
            * once rows exist the list grows downwards, so the place a reader ends
            * is the place the next row comes from.
            */}
+          {mismatchedLines.length > 0 && (
+            <Alert variant="warning" className="mb-4">
+              {consignment
+                ? "Baris ini bukan produk konsinyasi: "
+                : "Baris ini ditandai konsinyasi (titipan): "}
+              <b>
+                {mismatchedLines.map((product) => product.name).join(", ")}
+              </b>
+              .{" "}
+              {consignment
+                ? "Kalau memang bukan titipan, hapus barisnya atau pindah ke tab Beli putus."
+                : "Kalau memang titipan, hapus barisnya atau pindah ke tab Konsinyasi."}
+            </Alert>
+          )}
+
           {lines.length === 0 ? (
             <div className="flex flex-col items-center gap-4 py-8 text-center">
               <UIButton

@@ -241,8 +241,18 @@ const PRODUCT = {
   // shorten this before it reaches an input.
   hppAvg: "12000.0000",
   isActive: true,
+  isConsignment: false,
   deletedAt: null,
   stockByWarehouse: [],
+};
+
+/** The shop does not own this one — it only appears on the Konsinyasi tab. */
+const CONSIGNED_PRODUCT = {
+  ...PRODUCT,
+  _id: "p2",
+  sku: "TITIP-1",
+  name: "Pakan Titipan",
+  isConsignment: true,
 };
 
 const BRANCH_ID = "br1";
@@ -621,6 +631,160 @@ describe("ReceiptForm", () => {
     // does not overwrite it.
     await user.click(screen.getByRole("button", { name: /Beli putus/ }));
     expect(screen.getByLabelText(/Harga Shampoo Anjing/)).toHaveValue("12000");
+  });
+
+  /**
+   * The tab decides three things — the prices, the journal, and which products
+   * the picker offers — so losing it on a refresh is not a cosmetic reset.
+   */
+  describe("the tab, and the URL that remembers it", () => {
+    it("opens on the tab the query string names", async () => {
+      renderWithAuth(
+        <ReceiptForm supplierId="s1" initialPurchaseType="konsinyasi" />,
+      );
+
+      // Read off the hint under the tabs rather than the button's styling: the
+      // selected tab is marked with colour alone, which is not a thing a test
+      // (or a screen reader) should be asserting against.
+      expect(
+        await screen.findByText(/masih milik supplier/),
+      ).toBeInTheDocument();
+    });
+
+    it("defaults to beli putus when the query string says nothing", async () => {
+      renderWithAuth(<ReceiptForm supplierId="s1" />);
+
+      expect(
+        await screen.findByText(/jadi milik toko saat diterima/),
+      ).toBeInTheDocument();
+    });
+
+    it("writes the tab to the URL, carrying the supplier with it", async () => {
+      const user = userEvent.setup();
+      renderWithAuth(<ReceiptForm supplierId="s1" />);
+
+      await user.click(
+        await screen.findByRole("button", { name: /^Konsinyasi/ }),
+      );
+
+      // `replace`, not `push`: the tab is a mode, and Back should leave the
+      // screen rather than walk through every tab click.
+      expect(replace).toHaveBeenCalledWith(
+        "/dashboard/purchasing/receipts/new?supplier=s1&type=konsinyasi",
+      );
+      expect(push).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole("button", { name: /^Beli putus/ }));
+
+      expect(replace).toHaveBeenLastCalledWith(
+        "/dashboard/purchasing/receipts/new?supplier=s1&type=beli_putus",
+      );
+    });
+
+    it("omits the supplier from the URL when none was given", async () => {
+      const user = userEvent.setup();
+      renderWithAuth(<ReceiptForm />);
+
+      await user.click(
+        await screen.findByRole("button", { name: /^Konsinyasi/ }),
+      );
+
+      expect(replace).toHaveBeenCalledWith(
+        "/dashboard/purchasing/receipts/new?type=konsinyasi",
+      );
+    });
+  });
+
+  /**
+   * The picker offers ONE kind of goods, chosen by the tab.
+   *
+   * Asserted against the SERVICE CALL rather than the rendered list, because
+   * that is where the rule actually lives: the list comes back capped at 50, so
+   * a browser-side filter would look identical here and silently drop matches
+   * beyond the cap on a real catalogue.
+   */
+  describe("the product picker follows the tab", () => {
+    it("asks for owned goods only on beli putus", async () => {
+      const user = userEvent.setup();
+      renderWithAuth(<ReceiptForm supplierId="s1" />);
+
+      await user.click(
+        await screen.findByRole("button", { name: "+ Tambah produk" }),
+      );
+
+      await waitFor(() =>
+        expect(productService.list).toHaveBeenCalledWith(
+          expect.objectContaining({ isConsignment: false }),
+        ),
+      );
+    });
+
+    it("asks for titipan only on konsinyasi", async () => {
+      const user = userEvent.setup();
+      renderWithAuth(
+        <ReceiptForm supplierId="s1" initialPurchaseType="konsinyasi" />,
+      );
+
+      await user.click(
+        await screen.findByRole("button", { name: "+ Tambah produk" }),
+      );
+
+      await waitFor(() =>
+        expect(productService.list).toHaveBeenCalledWith(
+          expect.objectContaining({ isConsignment: true }),
+        ),
+      );
+    });
+
+    it("names the tab inside the modal, where the tabs are not visible", async () => {
+      const user = userEvent.setup();
+      renderWithAuth(
+        <ReceiptForm supplierId="s1" initialPurchaseType="konsinyasi" />,
+      );
+
+      await user.click(
+        await screen.findByRole("button", { name: "+ Tambah produk" }),
+      );
+
+      // Without this the only cue for why half the catalogue is missing is
+      // behind the overlay.
+      expect(
+        await screen.findByText(/hanya produk yang ditandai konsinyasi/),
+      ).toBeInTheDocument();
+    });
+  });
+
+  /**
+   * Switching tabs AFTER picking is the one way a row can end up on the wrong
+   * side. The form reports it rather than policing it — see `mismatchedLines`.
+   */
+  it("flags rows that no longer match the tab, without deleting them", async () => {
+    const user = userEvent.setup();
+    asMock(productService.list).mockResolvedValue(
+      page([CONSIGNED_PRODUCT]) as never,
+    );
+
+    renderWithAuth(
+      <ReceiptForm supplierId="s1" initialPurchaseType="konsinyasi" />,
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: "+ Tambah produk" }),
+    );
+    await user.click(await screen.findByLabelText(/Pakan Titipan/));
+    await user.click(screen.getByRole("button", { name: /Tambahkan/ }));
+
+    await screen.findByLabelText(/Qty Pakan Titipan/);
+    expect(screen.queryByText(/ditandai konsinyasi \(titipan\)/)).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: /^Beli putus/ }));
+
+    expect(
+      await screen.findByText(/Baris ini ditandai konsinyasi/),
+    ).toBeInTheDocument();
+    // The row SURVIVES: a tab click that silently deleted typed quantities is
+    // worse than the receipt the warning is about.
+    expect(screen.getByLabelText(/Qty Pakan Titipan/)).toBeInTheDocument();
   });
 
   it("cannot be submitted with nothing on it", async () => {

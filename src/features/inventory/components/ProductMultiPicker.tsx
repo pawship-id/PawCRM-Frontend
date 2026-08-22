@@ -39,6 +39,7 @@ export function ProductMultiPicker({
   categoryId = "",
   neverMovedInWarehouse = "",
   inStockAtWarehouse = "",
+  isConsignment,
   selected,
   onChange,
   excludeIds,
@@ -67,6 +68,19 @@ export function ProductMultiPicker({
    * product, which is what the opname and opening-stock pickers want.
    */
   inStockAtWarehouse?: string;
+  /**
+   * Only consignment goods (`true`) or only owned ones (`false`) — the receipt
+   * picker's rule, applied by the SERVER against `products.isConsignment`.
+   *
+   * Unlike the two filters above this asks nothing of the ledger; ownership is
+   * a property of the product. It is here for the same reason they are, though:
+   * a *Beli putus* delivery built out of somebody else's stock is a
+   * conversation held twice, the second time as a correction after posting.
+   *
+   * Undefined is both kinds — what the opname, transfer and opening-stock
+   * pickers want. `false` is a real filter and NOT the same as undefined.
+   */
+  isConsignment?: boolean;
   selected: Product[];
   onChange: (products: Product[]) => void;
   /**
@@ -89,6 +103,7 @@ export function ProductMultiPicker({
     categoryId,
     neverMovedInWarehouse,
     inStockAtWarehouse,
+    isConsignment,
   );
 
   const excluded = new Set(excludeIds ?? []);
@@ -178,10 +193,22 @@ export function ProductMultiPicker({
                   // a broken search rather than as an empty warehouse.
                   inStockAtWarehouse
                   ? `Tidak ada produk bernama "${search.trim()}" yang berstok di gudang ini.`
-                  : `Tidak ada produk yang cocok dengan "${search.trim()}".`
+                  : isConsignment === true
+                    ? `Tidak ada produk konsinyasi bernama "${search.trim()}".`
+                    : isConsignment === false
+                      ? `Tidak ada produk beli putus bernama "${search.trim()}".`
+                      : `Tidak ada produk yang cocok dengan "${search.trim()}".`
                 : inStockAtWarehouse
                   ? "Gudang ini belum menyimpan stok apa pun."
-                  : "Belum ada produk yang menyimpan stok di katalog ini."}
+                  : isConsignment === true
+                    ? // Named rather than left as "belum ada produk", which for
+                      // a tenant staring at a full catalogue reads as a broken
+                      // picker. It also says where the fix is: the flag lives on
+                      // the product, not on this screen.
+                      "Belum ada produk yang ditandai konsinyasi. Centang “Produk konsinyasi (titipan)” di produknya dulu."
+                    : isConsignment === false
+                      ? "Semua produk di katalog ini ditandai konsinyasi."
+                      : "Belum ada produk yang menyimpan stok di katalog ini."}
           </p>
         )}
 

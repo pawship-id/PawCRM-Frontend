@@ -36,6 +36,7 @@ const EVERY_FILTER: Required<
   productType: "standalone",
   parentId: "p1",
   isActive: true,
+  isConsignment: true,
   neverMovedInWarehouse: "wh1",
   inStockAtWarehouse: "wh2",
   includeDeleted: true,
@@ -59,6 +60,23 @@ describe("productService", () => {
     for (const [key, value] of Object.entries(EVERY_FILTER)) {
       expect(options.query[key]).toBe(value);
     }
+  });
+
+  it("sends isConsignment: false, which is a filter and not an absence", async () => {
+    // The one filter on this list whose FALSE is meaningful. Every sibling is
+    // forwarded through `x || undefined` somewhere up the stack, and doing that
+    // to this one turns the receipt form's *Beli putus* picker back into the
+    // whole catalogue — silently, since an unfiltered list looks like a working
+    // one.
+    const get = jest.spyOn(apiClient, "get").mockResolvedValue({} as never);
+
+    await productService.list({ isConsignment: false });
+
+    const [, options] = get.mock.calls[0] as [
+      string,
+      { query: Record<string, unknown> },
+    ];
+    expect(options.query.isConsignment).toBe(false);
   });
 
   it("sends the ordering the caller asked for", async () => {
