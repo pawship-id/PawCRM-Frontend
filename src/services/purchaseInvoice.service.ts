@@ -52,6 +52,7 @@ export const purchaseInvoiceService = {
         search: query.search,
         supplierId: query.supplierId,
         branchId: query.branchId,
+        warehouseId: query.warehouseId,
         goodsReceiptId: query.goodsReceiptId,
         status: query.status,
         outstanding: query.outstanding,

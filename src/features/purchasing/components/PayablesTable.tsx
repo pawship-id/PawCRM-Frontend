@@ -78,6 +78,14 @@ export function PayablesTable({
           <TableRow>
             <TableHead>Faktur</TableHead>
             <TableHead>Supplier</TableHead>
+            {/* BRANCH BEFORE WAREHOUSE — widest scope first, the same order and
+                the same two questions ReceiptsTable asks. They are not one
+                answer: a branch may receive at its own warehouse AND at the
+                shared central one, so a column of warehouses cannot be read as
+                a column of branches, and a tenant paying bills per clinic needs
+                both to tell two of them apart. */}
+            <TableHead>Cabang</TableHead>
+            <TableHead>Gudang</TableHead>
             <TableHead>Jatuh tempo</TableHead>
             <TableHead className="text-right">Total</TableHead>
             <TableHead className="text-right">Dibayar</TableHead>
@@ -110,6 +118,19 @@ export function PayablesTable({
 
                 <TableCell className="text-sm font-medium">
                   {invoice.supplierName ?? "—"}
+                </TableCell>
+
+                {/* "—" for a branch hard-deleted since. The bill still stands;
+                    only its label is gone. */}
+                <TableCell className="text-xs text-muted">
+                  {invoice.branchName ?? "—"}
+                </TableCell>
+
+                {/* The warehouse comes from the DELIVERY this bill is for, not
+                    from the invoice — so "—" also covers a delivery that can no
+                    longer be read, which the branch column cannot. */}
+                <TableCell className="text-xs text-muted">
+                  {invoice.warehouseName ?? "—"}
                 </TableCell>
 
                 <TableCell className="text-xs">

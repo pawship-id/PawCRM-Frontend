@@ -37,6 +37,7 @@ const EVERY_FILTER: Required<PurchaseInvoiceListQuery> = {
   search: "INV/2026",
   supplierId: "s1",
   branchId: "b1",
+  warehouseId: "wh1",
   goodsReceiptId: "gr1",
   status: "partial",
   outstanding: true,

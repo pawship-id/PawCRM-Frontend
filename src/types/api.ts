@@ -1807,8 +1807,31 @@ export interface PurchaseInvoiceListRow {
   supplierId: string;
   /** Null when the vendor was soft-deleted since; the bill still stands. */
   supplierName: string | null;
+  /**
+   * WHOSE BOOKS this bill posts to — the receiving warehouse's default branch,
+   * or the session's when that warehouse serves every branch. Frozen when the
+   * invoice was filed, so moving a warehouse between branches later cannot
+   * restate a closed period.
+   */
   branchId: string;
+  /** The branch's name, resolved server-side. Null if it was hard-deleted. */
+  branchName: string | null;
   goodsReceiptId: string;
+  /**
+   * WHERE THE GOODS LANDED — copied from the delivery when the bill was filed,
+   * so the list can be FILTERED by it: an index cannot span two collections.
+   * The copy cannot drift, because a posted goods receipt is immutable.
+   *
+   * NOT A SYNONYM FOR `branchId`. A branch may receive at its own warehouse AND
+   * at the shared central one, so neither filter can be derived from the other.
+   *
+   * NULL ON A BILL FILED BEFORE THE FIELD EXISTED and not yet backfilled — such
+   * a bill matches no warehouse filter at all. See
+   * `src/seeds/backfillInvoiceWarehouses.js` in the backend.
+   */
+  warehouseId: string | null;
+  /** The warehouse's name. Null if it was hard-deleted, or the id is null. */
+  warehouseName: string | null;
   /** When the supplier ISSUED the bill — what `dueDate` is counted from. */
   invoiceDate: string;
   /** `invoiceDate + supplier.paymentTermDays`, frozen when the bill was filed. */
@@ -1863,7 +1886,6 @@ export interface PurchaseInvoicePayment {
  */
 export interface PurchaseInvoiceDetail
   extends Omit<PurchaseInvoiceListRow, "paymentCount"> {
-  branchName: string | null;
   goodsReceiptNumber: string | null;
   /** Who filed the bill. Null when that user has been deleted since. */
   createdByName: string | null;
@@ -1891,6 +1913,12 @@ export interface PurchaseInvoiceListQuery {
   search?: string;
   supplierId?: string;
   branchId?: string;
+  /**
+   * WHERE THE GOODS LANDED. Combines with `branchId` rather than being implied
+   * by it — the shared central warehouse serves every branch, so neither can be
+   * derived from the other.
+   */
+  warehouseId?: string;
   goodsReceiptId?: string;
   status?: InvoiceStatus;
   outstanding?: boolean;
