@@ -1,9 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { Alert, Button, Card, Spinner, TextField } from "@/components";
+import {
+  Alert,
+  Button,
+  Card,
+  FilterSelect,
+  Spinner,
+  TextField,
+} from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button as UIButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,15 +43,31 @@ import {
   useBranchScope,
   warehousesForBranch,
 } from "@/features/inventory/hooks/useBranchScope";
+import { useWarehouseBatches } from "@/features/inventory/hooks/useWarehouseBatches";
 
 import { ReceiptAddProductsDialog } from "./ReceiptAddProductsDialog";
 import { useReceiptPreview } from "../hooks/useReceiptPreview";
 import { useSupplierOptions } from "../hooks/useSupplierOptions";
 
+/**
+ * The sentinel the batch picker uses for "buat lot baru" — the same one the
+ * adjustment sheet uses, and it has to be a value the `<select>` can hold rather
+ * than a second piece of state, so that "belum dipilih", "lot ini" and "lot baru"
+ * are three answers to ONE question.
+ */
+const NEW_BATCH = "__new__";
+
 interface LineDraft {
   productId: string;
   qty: string;
   costPerUnit: string;
+  /**
+   * WHICH LOT the goods join: "" = belum dipilih, a `productbatches` id, or
+   * NEW_BATCH. Only asked for products that carry an expiry date — see
+   * `picksLot`.
+   */
+  batchChoice: string;
+  /** Typed only while `batchChoice` is NEW_BATCH; an existing lot has its own. */
   batchCode: string;
   expiryDate: string;
 }
@@ -71,6 +94,22 @@ function today(): string {
  */
 function needsLot(product: Product | undefined, consignment: boolean): boolean {
   return Boolean(product?.hasExpiry) || consignment;
+}
+
+/**
+ * Whether the row must SAY WHICH LOT, rather than only describing one.
+ *
+ * ONLY GOODS THAT EXPIRE, which is narrower than `needsLot` on purpose. A lot
+ * that carries a date is a thing on the shelf a second van can add to: the same
+ * medicine, the same expiry, arriving twice. A consignment lot exists to carry a
+ * hand-entered cost for one intake, so every consigned line still opens its own
+ * — there is nothing to join.
+ *
+ * MODULE-LEVEL for the same reason `needsLot` is: a function rebuilt every render
+ * would rebuild the payload memo with it.
+ */
+function picksLot(product: Product | undefined): boolean {
+  return Boolean(product?.hasExpiry);
 }
 
 /**
@@ -102,6 +141,28 @@ function needsLot(product: Product | undefined, consignment: boolean): boolean {
  */
 function costOf(line: LineDraft, consignment: boolean): string {
   return consignment ? "0" : line.costPerUnit;
+}
+
+/**
+ * This form's own address, for one tab.
+ *
+ * ONE DEFINITION, shared by the tab buttons and by the stamp on first paint —
+ * two would drift, and the drift shows up as a refresh landing on a different
+ * tab from the one the user left.
+ *
+ * The supplier is CARRIED rather than rebuilt: this screen is reached from a
+ * vendor's detail page as `?supplier=…`, and dropping it would empty that field
+ * on the next refresh.
+ */
+function receiptUrl(
+  supplierId: string | undefined,
+  type: PurchaseType,
+): string {
+  const query = new URLSearchParams();
+  if (supplierId) query.set("supplier", supplierId);
+  query.set("type", type);
+
+  return `/dashboard/purchasing/receipts/new?${query}`;
 }
 
 /**
@@ -254,15 +315,56 @@ export function ReceiptForm({
    */
   function pickPurchaseType(next: PurchaseType) {
     setPurchaseType(next);
+    // The lots on offer are the ones whose ownership matches the tab — see
+    // `lotsFor`. A choice made on the other tab names a lot this one would not
+    // have offered.
+    clearBatchChoices();
 
-    const query = new URLSearchParams();
-    if (supplierId) query.set("supplier", supplierId);
-    query.set("type", next);
+    router.replace(receiptUrl(supplierId, next), { scroll: false });
+  }
 
-    router.replace(`/dashboard/purchasing/receipts/new?${query}`, {
+  /**
+   * SAYS WHICH TAB IS OPEN FROM THE FIRST PAINT, rather than only after one is
+   * clicked.
+   *
+   * `?type=` is how this screen remembers its tab across a refresh — but it was
+   * written only by `pickPurchaseType`, so a form opened and never toggled had a
+   * bare URL that MEANT *Beli putus* without saying so. Three things fall out of
+   * that, and each is a real receipt going wrong:
+   *
+   *   A LINK SHARED FROM THIS SCREEN reproduced the tab only by coincidence —
+   *   it happened to be the default. The day the default moves, every such link
+   *   opens the other kind of delivery.
+   *
+   *   A MISSPELT PARAM STAYED ON SCREEN. `?type=bananas` renders *Beli putus*
+   *   and the address bar keeps claiming otherwise; stamping the RESOLVED value
+   *   makes the URL agree with the form.
+   *
+   *   THE BACK BUTTON. Toggling to *Konsinyasi* and back used to leave one
+   *   history entry with no `type` and one with it, so Back walked between two
+   *   URLs that render identically.
+   *
+   * `replace`, never `push`: opening a page must not cost a history entry the
+   * user has to press Back through to leave.
+   *
+   * ONCE, AND THE REF IS WHAT SAYS SO rather than an empty dependency list that
+   * lies about what the effect reads. `useRouter()` is documented as stable, but
+   * an effect whose only guard is that promise re-runs on every render the day it
+   * is not — and this one navigates, so the failure would be a form that drags
+   * the address bar back to the tab it opened on while somebody is using it.
+   *
+   * It is also what makes React's development double-invoke write one URL rather
+   * than two.
+   */
+  const stampedUrl = useRef(false);
+  useEffect(() => {
+    if (stampedUrl.current) return;
+    stampedUrl.current = true;
+
+    router.replace(receiptUrl(supplierId, initialPurchaseType), {
       scroll: false,
     });
-  }
+  }, [router, supplierId, initialPurchaseType]);
 
   /**
    * LOCATION FIRST, THEN THE SHELF — the order every hand-typed stock form in
@@ -321,6 +423,58 @@ export function ReceiptForm({
     warehouseId || (scopedWarehouses.length === 1 ? scopedWarehouses[0]._id : "");
 
   /**
+   * The lots already on the shelf AT THIS WAREHOUSE, so a second delivery of a
+   * batch that is already there joins it instead of minting a duplicate row.
+   *
+   * ONE REQUEST FOR THE WHOLE DELIVERY, keyed on the warehouse — a lot belongs to
+   * a location, and the same product's lots elsewhere are different boxes. Empty
+   * until a warehouse is named, which is why the picker below only offers
+   * "+ Batch baru" then: there is nothing to add to yet.
+   */
+  const lots = useWarehouseBatches(effectiveWarehouseId);
+
+  /**
+   * WHY PRODUCTS CANNOT BE PICKED YET, or null once they can.
+   *
+   * THE HEADER IS ANSWERED BEFORE THE LINES, and on this form that is not merely
+   * tidiness. A row for goods that expire has to say WHICH LOT it lands in, and
+   * the lots on offer are the ones held at the destination warehouse — which is
+   * decided by the branch, which is asked after the supplier. Opening the picker
+   * with any of the three unanswered produces rows whose batch column can only
+   * offer "+ Batch baru", so a delivery of goods already on the shelf would mint
+   * a duplicate lot with nothing on screen suggesting otherwise.
+   *
+   * ONE REASON, NAMING THE FIRST UNANSWERED QUESTION rather than listing all
+   * three. They are answered top to bottom and each one narrows the next — a
+   * warehouse cannot be chosen before its branch — so the first is the only one
+   * the reader can act on.
+   */
+  const pickerBlocker = !supplier
+    ? "Pilih supplier dulu — satu penerimaan adalah satu kiriman dari satu supplier."
+    : !branchId
+      ? "Pilih cabang dulu — gudang tujuan diambil dari cabang itu."
+      : !effectiveWarehouseId
+        ? "Pilih gudang tujuan dulu — batch yang sudah ada di gudang itulah yang ditawarkan per baris."
+        : null;
+
+  /**
+   * The lots THIS row may join.
+   *
+   * FILTERED BY OWNERSHIP, which the adjustment sheet has no need to do. A
+   * consignment lot holds goods that are still the supplier's and carries its own
+   * hand-entered cost; an owned lot holds goods that were bought. Pouring one
+   * kind into the other would leave a single lot whose stock is half titipan and
+   * half milik toko, with one `isConsignment` flag to describe both — and a
+   * consignment settlement reading that flag would bill the shop for its own
+   * goods, or fail to bill for the supplier's.
+   */
+  function lotsFor(productId: string) {
+    return (lots.byProduct.get(productId) ?? []).filter(
+      (lot) => lot.isConsignment === consignment,
+    );
+  }
+
+  /**
    * The payload, built once and used for BOTH the preview and the save.
    *
    * Identical on purpose: a preview of a DIFFERENT request is worse than no
@@ -340,6 +494,26 @@ export function ReceiptForm({
       ...(notes.trim() === "" ? {} : { notes: notes.trim() }),
       items: lines.map((line) => {
         const product = productById.get(line.productId);
+        /**
+         * NAMING A LOT AND DESCRIBING ONE ARE DIFFERENT REQUESTS, and the API
+         * refuses the pair rather than preferring one — so the code and the date
+         * are omitted entirely for a row that names an existing lot. That lot
+         * already has both, and sending a second answer could only contradict it.
+         */
+        const joiningLot =
+          picksLot(product) &&
+          line.batchChoice !== "" &&
+          line.batchChoice !== NEW_BATCH;
+
+        if (joiningLot) {
+          return {
+            productId: line.productId,
+            qty: line.qty.trim(),
+            costPerUnit: costOf(line, consignment).trim(),
+            batchId: line.batchChoice,
+          };
+        }
+
         return {
           productId: line.productId,
           qty: line.qty.trim(),
@@ -444,9 +618,19 @@ export function ReceiptForm({
       const product = productById.get(line.productId);
       if (!isPositive(line.qty)) return false;
       if (!isDecimal(costOf(line, consignment))) return false;
+      // WHICH LOT comes first: until it is answered the server cannot be told
+      // whether this line joins one or opens one, and the two are different
+      // requests.
+      if (picksLot(product) && line.batchChoice === "") return false;
       // No batch-code gate: a blank one is filled by `autoBatchCode`. The
-      // expiry date is not derivable and still blocks the preview.
-      if (product?.hasExpiry && line.expiryDate === "") return false;
+      // expiry date is not derivable and still blocks the preview — but only for
+      // a lot being CREATED. One being joined already has a date of its own.
+      if (
+        product?.hasExpiry &&
+        line.batchChoice === NEW_BATCH &&
+        line.expiryDate === ""
+      )
+        return false;
       return true;
     }) &&
     (consignment || taxAmount.trim() === "" || isDecimal(taxAmount.trim()));
@@ -458,13 +642,45 @@ export function ReceiptForm({
   } = useReceiptPreview(payload, previewEnabled);
 
   /**
-   * The lots this delivery would open, as the SERVER decided them — `isNewBatch`
-   * comes back from `/goods-receipts/preview`, not from anything computed here.
+   * The lots this delivery TOUCHES — the ones it would open, and the ones
+   * already on the shelf it would add to.
+   *
+   * AS THE SERVER DECIDED THEM: `isNewBatch`, `batchId` and `batchCode` all come
+   * back from `/goods-receipts/preview` rather than from anything computed here.
    * Empty until the preview has run, which is what the card's empty state says.
+   *
+   * BOTH, because the card below is the answer to "where do these goods land",
+   * and a delivery that joins an existing lot creates nothing. Listing only the
+   * new ones left that receipt reading "tidak ada batch baru", which is true and
+   * says nothing about what is about to happen. `isNewBatch` separates the two
+   * for the label; `batchId` is what a joined row carries instead.
    */
-  const newBatchMovements = useMemo(
-    () => (preview?.movements ?? []).filter((movement) => movement.isNewBatch),
+  const lotMovements = useMemo(
+    () =>
+      (preview?.movements ?? []).filter(
+        (movement) => movement.isNewBatch || movement.batchId !== null,
+      ),
     [preview],
+  );
+
+  /**
+   * Whether the lot COLUMN is worth its width — true as soon as one row is about
+   * goods that expire. A delivery of nothing but non-perishables never sees it.
+   */
+  const anyLotPicked = useMemo(
+    () => lines.some((line) => picksLot(productById.get(line.productId))),
+    [lines, productById],
+  );
+
+  /**
+   * Whether anything on the sheet is OPENING a lot, which is the only case where
+   * an expiry date has to be typed. An asterisk over a column of disabled boxes
+   * marks as required a field nobody can fill, which is how the mark stops
+   * meaning anything.
+   */
+  const anyNewLot = useMemo(
+    () => lines.some((line) => line.batchChoice === NEW_BATCH),
+    [lines],
   );
 
   /** Line subtotals are plain multiplication — no server rule is involved. */
@@ -476,6 +692,31 @@ export function ReceiptForm({
         : "0";
     }),
   );
+
+  /**
+   * Forgets which lot every row named, WITHOUT touching anything else on it.
+   *
+   * Called when the warehouse or the purchase type changes, because a lot id is
+   * only meaningful against one of each: the lots on offer belong to a location,
+   * and they are filtered by whether the goods are the shop's — see `lotsFor`.
+   * Left alone, a stale id would post the delivery into a lot at the warehouse
+   * the clerk has just navigated away from, or be refused by the server naming a
+   * code nobody can see on screen any more.
+   *
+   * THE ROWS THEMSELVES SURVIVE, unlike the adjustment sheet, which empties on
+   * the same event. There, every row's system quantity was read from the old
+   * warehouse and means nothing at the new one. Here a row is a product, a
+   * quantity and a price off the invoice in the clerk's hand — none of which the
+   * warehouse decides — so throwing away a forty-line delivery because somebody
+   * corrected the destination would be the worse trade.
+   */
+  function clearBatchChoices() {
+    setLines((prev) =>
+      prev.map((line) =>
+        line.batchChoice === "" ? line : { ...line, batchChoice: "" },
+      ),
+    );
+  }
 
   function updateLine(index: number, patch: Partial<LineDraft>) {
     setLines((prev) =>
@@ -510,6 +751,10 @@ export function ReceiptForm({
         // (its name is about where it was first needed, not what it does); it
         // leaves a real fraction alone, so `12500.5000` still seeds `12500.5`.
         costPerUnit: trimQty(product.hppAvg),
+        // Left unanswered rather than defaulted to "+ Batch baru": the whole
+        // point of the picker is that a delivery of goods already on the shelf
+        // should join them, and a default would quietly opt every row out of it.
+        batchChoice: "",
         batchCode: "",
         expiryDate: "",
       })),
@@ -548,10 +793,20 @@ export function ReceiptForm({
           next.lines = `${label}: harga beli wajib diisi.`;
           break;
         }
+        if (picksLot(product) && line.batchChoice === "") {
+          next.lines = `${label}: pilih batch dulu — lot yang sudah ada, atau batch baru.`;
+          break;
+        }
         // Kode batch is NOT checked: blank means "supplier tidak memberi nomor",
         // and the payload derives one. The expiry date has no such fallback —
         // it is the thing the code is derived FROM, and FEFO is wrong without it.
-        if (product?.hasExpiry && line.expiryDate === "") {
+        // Asked only of a lot being CREATED: one being joined carries the date it
+        // was created with, and the form shows it rather than asking again.
+        if (
+          product?.hasExpiry &&
+          line.batchChoice === NEW_BATCH &&
+          line.expiryDate === ""
+        ) {
           next.lines = `${label}: tanggal kedaluwarsa wajib diisi.`;
           break;
         }
@@ -715,8 +970,9 @@ export function ReceiptForm({
                   // The warehouse below belongs to the OLD branch and may not
                   // exist under the new one. The lines stay: a product is not
                   // scoped to a location, and its cost seed is the tenant-wide
-                  // average.
+                  // average. Their LOTS do not — see `clearBatchChoices`.
                   setWarehouseId("");
+                  clearBatchChoices();
                 }}
               >
                 <SelectTrigger id="branch" aria-label="Cabang" className="w-full">
@@ -745,7 +1001,12 @@ export function ReceiptForm({
               <Label htmlFor="warehouse">Masuk ke gudang</Label>
               <Select
                 value={effectiveWarehouseId}
-                onValueChange={setWarehouseId}
+                onValueChange={(value) => {
+                  if (value === effectiveWarehouseId) return;
+                  setWarehouseId(value);
+                  // Every lot named on a row is held at the OLD warehouse.
+                  clearBatchChoices();
+                }}
                 // Nothing to offer until a branch is named: the list IS that
                 // branch's warehouses, so an enabled empty picker would read as
                 // "cabang ini tidak punya gudang".
@@ -835,20 +1096,35 @@ export function ReceiptForm({
                 type="button"
                 variant="secondary"
                 onClick={() => setPicking(true)}
+                disabled={saving || pickerBlocker !== null}
               >
                 + Tambah produk
               </UIButton>
 
               <div>
                 <p className="font-medium text-foreground">Belum ada barang</p>
+                {/* The greyed button says NOTHING on its own, and a control that
+                    cannot be pressed with no explanation reads as a bug. This
+                    paragraph is where the empty state already talks, so the
+                    reason goes here rather than into a second banner. */}
                 <p className="mx-auto mt-1 max-w-md text-sm text-muted">
-                  Cari dan centang beberapa produk sekaligus — semuanya tercatat
-                  sebagai satu penerimaan dari supplier ini.
+                  {pickerBlocker ??
+                    "Cari dan centang beberapa produk sekaligus — semuanya tercatat sebagai satu penerimaan dari supplier ini."}
                 </p>
               </div>
             </div>
           ) : (
             <>
+              {/* The lots failed to load, so every picker below offers only
+                  "+ Batch baru" — which would silently mint a duplicate of a lot
+                  that IS on the shelf. Said out loud rather than left to look
+                  like "gudang ini belum punya batch". */}
+              {anyLotPicked && lots.error && (
+                <Alert variant="error" className="mb-4">
+                  {lots.error}
+                </Alert>
+              )}
+
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -872,15 +1148,28 @@ export function ReceiptForm({
                         Harga beli
                         {!consignment && <Required />}
                       </th>
+                      {/* WHICH LOT, asked before what it is called — a delivery
+                          of goods that expire either joins a batch already on the
+                          shelf or opens one, and the two columns to its right are
+                          read-only or typed depending on the answer. */}
+                      {anyLotPicked && (
+                        <th className="px-2 py-2 text-left font-medium">
+                          Batch
+                          <Required />
+                        </th>
+                      )}
                       <th className="px-2 py-2 text-left font-medium">
                         Kode batch
                       </th>
                       <th className="px-2 py-2 text-left font-medium">
                         {/* The column, not the cell, carries the mark: a date
                             input cannot hold a placeholder, so an empty one
-                            looks finished and needs saying somewhere. */}
+                            looks finished and needs saying somewhere. Only while
+                            something is being TYPED, though — a lot being joined
+                            brings its own date, and the box showing it is
+                            disabled. */}
                         Expired
-                        <Required />
+                        {anyNewLot && <Required />}
                       </th>
                       <th className="px-2 py-2 text-right font-medium">Subtotal</th>
                       <th className="px-2 py-2" />
@@ -891,6 +1180,37 @@ export function ReceiptForm({
                       const product = productById.get(line.productId);
                       const lotTracked = needsLot(product, consignment);
                       const expiryRequired = Boolean(product?.hasExpiry);
+                      const choosesLot = picksLot(product);
+                      /**
+                       * The lot this row JOINS, when it names one that already
+                       * exists. Its code and date are shown beside it read-only:
+                       * they describe goods on the shelf, and nothing typed on a
+                       * receipt may rewrite them.
+                       */
+                      const namedLot =
+                        choosesLot &&
+                        line.batchChoice !== "" &&
+                        line.batchChoice !== NEW_BATCH
+                          ? (lotsFor(line.productId).find(
+                              (lot) => lot._id === line.batchChoice,
+                            ) ?? null)
+                          : null;
+                      /**
+                       * Whether the row DESCRIBES a lot — types a code, and a
+                       * date if the goods carry one — rather than naming one or
+                       * saying nothing yet.
+                       *
+                       * Goods that expire describe one only once "+ Batch baru"
+                       * has been chosen: before that the answer is still open,
+                       * and offering the boxes would invite somebody to type a
+                       * code the very next click discards. Consigned goods that
+                       * never expire have no picker at all — every consignment
+                       * intake opens its own lot — so their code box is simply
+                       * always there.
+                       */
+                      const describingLot = choosesLot
+                        ? line.batchChoice === NEW_BATCH
+                        : lotTracked;
                       // Shown as the batch field's placeholder, so the clerk can see
                       // the code they are about to accept rather than discovering it
                       // on the receipt afterwards. Withheld until the expiry date is
@@ -952,8 +1272,64 @@ export function ReceiptForm({
                             />
                           </td>
 
+                          {anyLotPicked && (
+                            <td className="px-2 py-2">
+                              {choosesLot ? (
+                                <FilterSelect
+                                  layout="field"
+                                  label=""
+                                  ariaLabel={`Batch ${product?.name ?? ""}`}
+                                  value={line.batchChoice}
+                                  active={line.batchChoice !== ""}
+                                  placeholder="Pilih batch"
+                                  /* No warehouse, no lots — the list would
+                                     offer "+ Batch baru" as if it were the only
+                                     answer, and minting a duplicate of a lot
+                                     that IS on the shelf is exactly what this
+                                     picker exists to prevent. Reachable only by
+                                     changing the branch under rows that were
+                                     added before. */
+                                  disabled={
+                                    saving || effectiveWarehouseId === ""
+                                  }
+                                  disabledHint="Pilih gudang tujuan dulu."
+                                  className="max-w-56"
+                                  options={[
+                                    ...lotsFor(line.productId).map((lot) => ({
+                                      value: lot._id,
+                                      label: `${lot.batchCode} · sisa ${formatQty(lot.qtyRemaining)}`,
+                                    })),
+                                    {
+                                      value: NEW_BATCH,
+                                      label: "+ Batch baru…",
+                                    },
+                                  ]}
+                                  onChange={(value) =>
+                                    updateLine(index, { batchChoice: value })
+                                  }
+                                />
+                              ) : (
+                                // Said rather than left blank: an empty cell
+                                // under "Batch" reads as one nobody filled in.
+                                <span className="text-xs text-muted">—</span>
+                              )}
+                            </td>
+                          )}
+
                           <td className="px-2 py-2">
-                            {lotTracked ? (
+                            {namedLot ? (
+                              /* DISABLED, NOT PLAIN TEXT: it stays in the same
+                                 box in the same column as the row above that is
+                                 typing one, so the eye reads a column of codes
+                                 rather than a column of two different things.
+                                 The grey is what says it cannot be changed. */
+                              <Input
+                                aria-label={`Kode batch ${product?.name ?? ""}`}
+                                value={namedLot.batchCode}
+                                disabled
+                                className="max-w-40 tabular-nums text-xs"
+                              />
+                            ) : describingLot ? (
                               <Input
                                 aria-label={`Kode batch ${product?.name ?? ""}`}
                                 value={line.batchCode}
@@ -982,7 +1358,19 @@ export function ReceiptForm({
                           </td>
 
                           <td className="px-2 py-2">
-                            {expiryRequired ? (
+                            {namedLot ? (
+                              namedLot.expiryDate ? (
+                                <Input
+                                  aria-label={`Expired ${product?.name ?? ""}`}
+                                  type="date"
+                                  value={namedLot.expiryDate.slice(0, 10)}
+                                  disabled
+                                  className="max-w-36 text-xs"
+                                />
+                              ) : (
+                                <span className="text-xs text-muted">—</span>
+                              )
+                            ) : describingLot && expiryRequired ? (
                               <Input
                                 aria-label={`Expired ${product?.name ?? ""}`}
                                 type="date"
@@ -1049,10 +1437,17 @@ export function ReceiptForm({
                   type="button"
                   variant="secondary"
                   onClick={() => setPicking(true)}
-                  disabled={saving}
+                  disabled={saving || pickerBlocker !== null}
                 >
                   + Tambah produk
                 </UIButton>
+                {/* Reachable with rows already on the form: changing the branch
+                    clears the warehouse under them. The rows survive that — see
+                    `clearBatchChoices` — but nothing more may be added until a
+                    destination is named again. */}
+                {pickerBlocker && (
+                  <p className="mt-2 text-xs text-muted">{pickerBlocker}</p>
+                )}
               </div>
             </>
           )}
@@ -1065,10 +1460,18 @@ export function ReceiptForm({
             needsLot(productById.get(line.productId), consignment),
           ) && (
             <p className="mt-3 text-xs text-muted">
-              Produk berkedaluwarsa <b>wajib</b> punya tanggal expired — FEFO
-              menjual lot terdekat lebih dulu, dan tanpa tanggal urutannya tidak
-              ada. <b>Kode batch boleh kosong</b>: kalau supplier tidak mencetak
-              nomor lot, sistem memakai{" "}
+              {anyLotPicked && (
+                <>
+                  Kalau barang ini <b>batch-nya sudah ada</b> di gudang tujuan,
+                  pilih batch itu — stoknya bertambah di lot yang sama, bukan
+                  bikin lot kembar. Kalau memang kiriman baru, pilih{" "}
+                  <b>+ Batch baru</b>.{" "}
+                </>
+              )}
+              Batch baru untuk produk berkedaluwarsa <b>wajib</b> punya tanggal
+              expired — FEFO menjual lot terdekat lebih dulu, dan tanpa tanggal
+              urutannya tidak ada. <b>Kode batch boleh kosong</b>: kalau
+              supplier tidak mencetak nomor lot, sistem memakai{" "}
               <span className="tabular-nums">SKU:tanggal-expired</span>.
             </p>
           )}
@@ -1108,12 +1511,18 @@ export function ReceiptForm({
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,320px)]">
           {/* A LOT IS A BATCH in the shop's language, so the card says batch —
               `isNewBatch` and `batchCode` are the API's words for the same
-              thing, and the screen should use the counter's. */}
-          <Card title="Batch produk yang akan dibuat">
-            {newBatchMovements.length > 0 ? (
+              thing, and the screen should use the counter's.
+
+              IT NAMES BOTH OUTCOMES, because a delivery may now join a lot
+              instead of opening one, and "dibuat" alone would leave the joined
+              rows with nowhere to be listed — the panel would say "tidak ada
+              batch baru" over a receipt that is about to move stock into three
+              of them. */}
+          <Card title="Batch yang akan dibuat / ditambah">
+            {lotMovements.length > 0 ? (
               <ul className="flex flex-col gap-1 text-sm">
-                {newBatchMovements.map((movement, index) => (
-                  <li key={index} className="flex flex-wrap gap-2">
+                {lotMovements.map((movement, index) => (
+                  <li key={index} className="flex flex-wrap items-center gap-2">
                     <span className="font-medium">
                       {productById.get(movement.productId)?.name ??
                         movement.productId}
@@ -1123,6 +1532,13 @@ export function ReceiptForm({
                       {movement.batchExpiryDate &&
                         ` · exp ${movement.batchExpiryDate.slice(0, 10)}`}
                     </span>
+                    {/* WHICH OF THE TWO, said per row rather than by splitting
+                        the card in half: the rows are read as one list of "where
+                        the goods land", and two short lists under two headings
+                        make the reader do the merging. */}
+                    <Badge variant="outline" className="text-[10px]">
+                      {movement.isNewBatch ? "baru" : "gabung"}
+                    </Badge>
                     <span className="ml-auto tabular-nums text-xs">
                       {formatQty(movement.qty)}
                     </span>
@@ -1135,7 +1551,7 @@ export function ReceiptForm({
               // something still loading.
               <p className="py-2 text-sm text-muted">
                 {preview
-                  ? "Tidak ada batch baru. Batch hanya dibuat untuk produk yang melacak kedaluwarsa, dan untuk setiap baris konsinyasi."
+                  ? "Tidak ada batch. Batch hanya dipakai untuk produk yang melacak kedaluwarsa, dan untuk setiap baris konsinyasi."
                   : "Lengkapi barang yang diterima untuk melihat batch yang akan dibuat."}
               </p>
             )}

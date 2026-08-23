@@ -308,6 +308,11 @@ beforeEach(() => {
   );
   asMock(warehouseService.list).mockResolvedValue(page([WAREHOUSE]) as never);
   asMock(productService.list).mockResolvedValue(page([PRODUCT]) as never);
+  // The lots already on the shelf at the destination warehouse — read by the
+  // form so a delivery of goods that expire can JOIN a batch that is there
+  // rather than mint a duplicate. Empty is the neutral answer; the cases about
+  // the picker override it.
+  asMock(productBatchService.list).mockResolvedValue(page([]) as never);
 });
 
 /* ------------------------------------------------------------ list screen */
@@ -659,6 +664,58 @@ describe("ReceiptForm", () => {
       ).toBeInTheDocument();
     });
 
+    /**
+     * THE URL SAYS WHICH TAB IS OPEN FROM THE FIRST PAINT.
+     *
+     * It used to say so only after a tab was clicked, so a form opened and never
+     * toggled had a bare URL that MEANT *Beli putus* without stating it — and a
+     * link shared from that screen reproduced the tab by coincidence rather than
+     * by saying which one it was.
+     */
+    it("stamps the tab into the address bar on open", async () => {
+      renderWithAuth(<ReceiptForm supplierId="s1" />);
+
+      await waitFor(() =>
+        expect(replace).toHaveBeenCalledWith(
+          "/dashboard/purchasing/receipts/new?supplier=s1&type=beli_putus",
+        ),
+      );
+      // `replace`, not `push`: opening a page must not cost a history entry the
+      // user has to press Back through to leave.
+      expect(push).not.toHaveBeenCalled();
+    });
+
+    /** The RESOLVED tab, not the raw parameter — so konsinyasi stays itself. */
+    it("stamps konsinyasi when that is the tab it opened on", async () => {
+      renderWithAuth(
+        <ReceiptForm supplierId="s1" initialPurchaseType="konsinyasi" />,
+      );
+
+      await waitFor(() =>
+        expect(replace).toHaveBeenCalledWith(
+          "/dashboard/purchasing/receipts/new?supplier=s1&type=konsinyasi",
+        ),
+      );
+    });
+
+    /**
+     * ONCE. The stamp navigates, so an effect that re-fired on every render
+     * would drag the address bar back to the tab the form opened on while
+     * somebody was working on the other one.
+     */
+    it("does not re-stamp over a tab the user has since chosen", async () => {
+      const user = userEvent.setup();
+      renderWithAuth(<ReceiptForm supplierId="s1" />);
+
+      await user.click(
+        await screen.findByRole("button", { name: /^Konsinyasi/ }),
+      );
+
+      expect(replace).toHaveBeenLastCalledWith(
+        "/dashboard/purchasing/receipts/new?supplier=s1&type=konsinyasi",
+      );
+    });
+
     it("writes the tab to the URL, carrying the supplier with it", async () => {
       const user = userEvent.setup();
       renderWithAuth(<ReceiptForm supplierId="s1" />);
@@ -1005,6 +1062,261 @@ describe("duplicate product guard", () => {
 
 /* ---------------------------------------- the payload, at the service edge */
 
+/* ----------------------------------------- the header comes before the lines */
+
+/**
+ * SUPPLIER, CABANG, GUDANG — ANSWERED BEFORE A SINGLE PRODUCT IS PICKED.
+ *
+ * Not an ordering preference. A row for goods that expire has to say WHICH LOT
+ * it lands in, and the lots on offer are the ones held at the destination
+ * warehouse. Picked before a warehouse is named, that column can only offer
+ * "+ Batch baru" — so a second delivery of a batch already on the shelf mints a
+ * duplicate lot, with nothing on screen suggesting anything was missed.
+ */
+describe("what has to be answered before products can be added", () => {
+  /** The greyed button explains itself: one with no reason reads as a bug. */
+  it("will not open the picker before a supplier is named", async () => {
+    renderWithAuth(<ReceiptForm />);
+
+    expect(
+      await screen.findByRole("button", { name: "+ Tambah produk" }),
+    ).toBeDisabled();
+    expect(screen.getByText(/Pilih supplier dulu/)).toBeInTheDocument();
+  });
+
+  it("names the branch as the next unanswered question", async () => {
+    asMock(branchService.list).mockResolvedValue(
+      page([
+        { _id: BRANCH_ID, name: "Cabang Pusat", isActive: true },
+        { _id: "br2", name: "Cabang Selatan", isActive: true },
+      ]) as never,
+    );
+
+    renderWithAuth(<ReceiptForm supplierId="s1" />);
+
+    expect(
+      await screen.findByRole("button", { name: "+ Tambah produk" }),
+    ).toBeDisabled();
+    // The warehouse picker's own placeholder says the same words, so match on
+    // the half only this message carries.
+    expect(
+      screen.getByText(/Pilih cabang dulu — gudang tujuan/),
+    ).toBeInTheDocument();
+  });
+
+  /**
+   * The one that matters most, and the reason the gate exists: the warehouse is
+   * what the batch picker reads its options from.
+   */
+  it("names the warehouse, and says why it decides the batches", async () => {
+    asMock(warehouseService.list).mockResolvedValue(
+      page([
+        WAREHOUSE,
+        // The shared central warehouse: belongs to no branch, offered under all,
+        // so this branch has two and neither may be guessed.
+        { ...OTHER_WAREHOUSE, _id: "wh0", defaultBranchId: null },
+      ]) as never,
+    );
+
+    renderWithAuth(<ReceiptForm supplierId="s1" />);
+
+    expect(
+      await screen.findByRole("button", { name: "+ Tambah produk" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByText(/Pilih gudang tujuan dulu.*batch/i),
+    ).toBeInTheDocument();
+    // No warehouse, no question to ask about its lots.
+    expect(productBatchService.list).not.toHaveBeenCalled();
+  });
+
+  /** All three answered — a single-branch tenant reaches this on first paint. */
+  it("opens the picker once the destination is settled", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<ReceiptForm supplierId="s1" />);
+
+    const add = await screen.findByRole("button", { name: "+ Tambah produk" });
+    await waitFor(() => expect(add).not.toBeDisabled());
+
+    await user.click(add);
+    expect(await screen.findByLabelText(/Shampoo Anjing/)).toBeInTheDocument();
+  });
+});
+
+/* ------------------------------------------------- the lot a delivery lands in */
+
+/**
+ * A DELIVERY EITHER JOINS A LOT OR OPENS ONE, and until this picker existed it
+ * could only ever open one — so the second van carrying the batch the first one
+ * brought minted a duplicate row: one physical batch, two expiry dates to keep in
+ * step, two answers to "how much of RC-B26 is left".
+ *
+ * Drivable in jsdom, unlike the Radix selects in the header: the picker is
+ * `FilterSelect`, the same control the adjustment sheet uses, and it is the
+ * reference this behaviour was built from.
+ */
+describe("choosing which batch the goods land in", () => {
+  const EXPIRING_PRODUCT = {
+    ...PRODUCT,
+    _id: "p3",
+    sku: "VAKSIN",
+    name: "Vaksin Rabies",
+    hasExpiry: true,
+  };
+
+  const LOT = {
+    _id: "b1",
+    tenantId: "t1",
+    warehouseId: WAREHOUSE._id,
+    productId: EXPIRING_PRODUCT._id,
+    receiptId: null,
+    batchCode: "VAK-A26",
+    expiryDate: "2027-03-01T00:00:00.000Z",
+    initialQty: "20.0000",
+    qtyRemaining: "8.0000",
+    costPerUnit: "50000.0000",
+    isConsignment: false,
+    createdBy: null,
+    createdAt: "2026-08-01T00:00:00.000Z",
+    updatedAt: "2026-08-01T00:00:00.000Z",
+    productName: EXPIRING_PRODUCT.name,
+    productSku: EXPIRING_PRODUCT.sku,
+    productUnit: "botol",
+    warehouseName: WAREHOUSE.name,
+  };
+
+  /** Renders the form with one expiring product already on it. */
+  async function withExpiringLine(lots = [LOT]) {
+    asMock(productService.list).mockResolvedValue(
+      page([EXPIRING_PRODUCT]) as never,
+    );
+    asMock(productBatchService.list).mockResolvedValue(page(lots) as never);
+
+    const user = userEvent.setup();
+    renderWithAuth(<ReceiptForm supplierId="s1" />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "+ Tambah produk" }),
+    );
+    await user.click(await screen.findByLabelText(/Vaksin Rabies/));
+    await user.click(screen.getByRole("button", { name: /Tambahkan/ }));
+
+    return user;
+  }
+
+  it("reads the lots of the destination warehouse, and only the ones with stock", async () => {
+    await withExpiringLine();
+
+    await waitFor(() =>
+      expect(asMock(productBatchService.list)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          warehouseId: WAREHOUSE._id,
+          hasRemaining: true,
+        }),
+      ),
+    );
+  });
+
+  /**
+   * The code and the date DESCRIBE a lot, which mints it. Sending them beside a
+   * lot that already exists is two answers to one question, and the API refuses
+   * the pair rather than preferring one — so the payload must carry neither.
+   */
+  it("sends batchId, and no code or date, when an existing lot is chosen", async () => {
+    const user = await withExpiringLine();
+
+    await user.click(await screen.findByLabelText(/^Batch Vaksin Rabies/));
+    await user.click(await screen.findByRole("option", { name: /VAK-A26/ }));
+
+    await user.click(
+      screen.getByRole("button", { name: /Simpan & terima barang/ }),
+    );
+
+    await waitFor(() => expect(goodsReceiptService.create).toHaveBeenCalled());
+    const [item] = asMock(goodsReceiptService.create).mock.calls[0][0].items;
+    expect(item.batchId).toBe("b1");
+    expect(item.batchCode).toBeUndefined();
+    expect(item.expiryDate).toBeUndefined();
+  });
+
+  /**
+   * Read-only, and in the same boxes the row above would type into — the grey is
+   * what says the lot on the shelf is not this form's to rewrite.
+   */
+  it("shows the chosen lot's own code and date, locked", async () => {
+    const user = await withExpiringLine();
+
+    await user.click(await screen.findByLabelText(/^Batch Vaksin Rabies/));
+    await user.click(await screen.findByRole("option", { name: /VAK-A26/ }));
+
+    const code = screen.getByLabelText(/^Kode batch Vaksin Rabies/);
+    expect(code).toHaveValue("VAK-A26");
+    expect(code).toBeDisabled();
+
+    const expiry = screen.getByLabelText(/^Expired Vaksin Rabies/);
+    expect(expiry).toHaveValue("2027-03-01");
+    expect(expiry).toBeDisabled();
+  });
+
+  /** The other branch: a genuinely new lot is still described, as it always was. */
+  it("asks for a code and a date when the lot is new", async () => {
+    const user = await withExpiringLine();
+
+    await user.click(await screen.findByLabelText(/^Batch Vaksin Rabies/));
+    await user.click(await screen.findByRole("option", { name: /Batch baru/ }));
+
+    const expiry = await screen.findByLabelText(/^Expired Vaksin Rabies/);
+    expect(expiry).not.toBeDisabled();
+    await user.type(expiry, "2028-01-01");
+
+    await user.click(
+      screen.getByRole("button", { name: /Simpan & terima barang/ }),
+    );
+
+    await waitFor(() => expect(goodsReceiptService.create).toHaveBeenCalled());
+    const [item] = asMock(goodsReceiptService.create).mock.calls[0][0].items;
+    expect(item.batchId).toBeUndefined();
+    // Left blank, so the form fills it from the SKU and the date — the rule the
+    // server keeps too.
+    expect(item.batchCode).toBe("VAKSIN:2028-01-01");
+    expect(item.expiryDate).toBe("2028-01-01");
+  });
+
+  /**
+   * WHICH LOT IS THE FIRST QUESTION, so an unanswered one blocks the save — and
+   * the refusal names the product, because "pilih batch dulu" on a forty-line
+   * delivery states a rule the reader already agrees with.
+   */
+  it("refuses to save while a row has not said which lot", async () => {
+    const user = await withExpiringLine();
+
+    await user.click(
+      screen.getByRole("button", { name: /Simpan & terima barang/ }),
+    );
+
+    expect(goodsReceiptService.create).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText(/Vaksin Rabies: pilih batch dulu/),
+    ).toBeInTheDocument();
+  });
+
+  /**
+   * A CONSIGNMENT LOT HOLDS THE SUPPLIER'S GOODS and carries its own hand-entered
+   * cost. Pouring an outright purchase into one would leave a single lot half
+   * titipan and half milik toko, with one flag to describe both.
+   */
+  it("hides a consignment lot from an outright delivery", async () => {
+    const user = await withExpiringLine([{ ...LOT, isConsignment: true }]);
+
+    await user.click(await screen.findByLabelText(/^Batch Vaksin Rabies/));
+
+    expect(screen.queryByRole("option", { name: /VAK-A26/ })).toBeNull();
+    expect(
+      await screen.findByRole("option", { name: /Batch baru/ }),
+    ).toBeInTheDocument();
+  });
+});
+
 /**
  * The form's Radix selects cannot be driven in jsdom, so the payload rules are
  * asserted where they are decidable: over the service contract itself. These are
@@ -1122,6 +1434,13 @@ describe("double submit", () => {
     expect(button).toBeDisabled();
 
     resolveCreate(detail());
-    await waitFor(() => expect(replace).not.toHaveBeenCalled());
+    // Not "never navigated" — opening the form stamps its own tab into the
+    // address bar, which is a `replace` to THIS page. What must not happen is
+    // leaving for a receipt that was never created.
+    await waitFor(() =>
+      expect(replace).not.toHaveBeenCalledWith(
+        expect.stringContaining(`/receipts/${RECEIPT_ID}`),
+      ),
+    );
   });
 });

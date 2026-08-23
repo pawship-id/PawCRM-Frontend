@@ -1605,6 +1605,19 @@ export interface CreateGoodsReceiptItemInput {
   batchCode?: string;
   /** Required when the product `hasExpiry`. */
   expiryDate?: string;
+  /**
+   * The lot ALREADY ON THE SHELF that these goods join — the second van
+   * carrying the batch the first one brought.
+   *
+   * MUTUALLY EXCLUSIVE with `batchCode` and `expiryDate`, and the API refuses
+   * the pair rather than preferring one: those two DESCRIBE a lot, which mints
+   * it, where this NAMES one, which adds to it. Sent together, one physical
+   * batch would end up as two rows with two expiry dates to keep in step.
+   *
+   * The lot must hold this product at this receipt's warehouse; the server
+   * checks and names the offending code if not.
+   */
+  batchId?: string;
 }
 
 /**
