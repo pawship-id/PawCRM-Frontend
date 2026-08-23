@@ -17,16 +17,30 @@ import {
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
-import type { GoodsReceiptSort, PurchaseType, Supplier } from "@/types/api";
+import type {
+  Branch,
+  GoodsReceiptSort,
+  PurchaseType,
+  Supplier,
+} from "@/types/api";
 import type { StockWarehouse } from "@/types/inventory";
+/**
+ * THE SAME TWO RULES THE STOCK-ENTRIES FILTER USES, from the same place. Two
+ * screens that scope by cabang and gudang in two different ways is a thing users
+ * have to relearn, and the rules are subtle enough to drift if retyped.
+ */
+import {
+  ownerBranchOf,
+  warehousesUnder,
+} from "@/features/inventory/hooks/useBranchScope";
 
 import { useReceiptFilterOptions } from "../hooks/useReceiptFilterOptions";
 import type { GoodsReceiptsQuery } from "../hooks/useGoodsReceipts";
 
 /**
  * The goods-receipt list controls: one row — search, one Filter button, one
- * create button — with the ordering, supplier, warehouse, purchase type and the
- * date range inside the panel.
+ * create button — with the ordering, supplier, branch, warehouse, purchase type
+ * and the date range inside the panel.
  *
  * Purely presentational — it renders the current query and reports changes up to
  * useGoodsReceipts.
@@ -88,6 +102,7 @@ const SORTS: FilterOption<GoodsReceiptSort>[] = [
 /** Everything the panel edits, as one draft. */
 interface ReceiptFilters {
   supplierId: string;
+  branchId: string;
   warehouseId: string;
   purchaseType: GoodsReceiptsQuery["purchaseType"];
   dateFrom: string;
@@ -103,6 +118,7 @@ interface ReceiptFilters {
  */
 const CLEARED: ReceiptFilters = {
   supplierId: "",
+  branchId: "",
   warehouseId: "",
   purchaseType: "",
   dateFrom: "",
@@ -117,10 +133,11 @@ export function ReceiptsToolbar({
   query: GoodsReceiptsQuery;
   onChange: (patch: Partial<GoodsReceiptsQuery>) => void;
 }) {
-  const { suppliers, warehouses } = useReceiptFilterOptions();
+  const { suppliers, warehouses, branches } = useReceiptFilterOptions();
 
   const applied: ReceiptFilters = {
     supplierId: query.supplierId,
+    branchId: query.branchId,
     warehouseId: query.warehouseId,
     purchaseType: query.purchaseType,
     dateFrom: query.dateFrom,
@@ -137,6 +154,7 @@ export function ReceiptsToolbar({
   function apply(next: ReceiptFilters) {
     const patch: Partial<GoodsReceiptsQuery> = {};
     if (next.supplierId !== query.supplierId) patch.supplierId = next.supplierId;
+    if (next.branchId !== query.branchId) patch.branchId = next.branchId;
     if (next.warehouseId !== query.warehouseId)
       patch.warehouseId = next.warehouseId;
     if (next.purchaseType !== query.purchaseType)
@@ -186,6 +204,7 @@ export function ReceiptsToolbar({
         applied={applied}
         suppliers={suppliers}
         warehouses={warehouses}
+        branches={branches}
         onApply={apply}
       />
     </FilterBar>
@@ -193,21 +212,28 @@ export function ReceiptsToolbar({
 }
 
 /**
- * The four filters and the ordering, behind one button.
+ * The five filters and the ordering, behind one button.
  *
  * The fields wait for Terapkan — that is what a panel is (§8). Reset returns the
  * whole set to its defaults and applies at once, because clearing a filter is
  * not a change anyone composes.
+ *
+ * CABANG AND GUDANG ARE A PAIR, and they behave exactly as the stock-entries
+ * panel's do — same helpers, same two rules — because two screens that scope by
+ * the same two fields in two different ways is a thing users have to relearn.
+ * See `pickBranch` and `pickWarehouse`.
  */
 function ReceiptFilterPanel({
   applied,
   suppliers,
   warehouses,
+  branches,
   onApply,
 }: {
   applied: ReceiptFilters;
   suppliers: Supplier[];
   warehouses: StockWarehouse[];
+  branches: Branch[];
   onApply: (next: ReceiptFilters) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -223,6 +249,11 @@ function ReceiptFilterPanel({
    */
   const count = [
     applied.supplierId !== "",
+    // COUNTED SEPARATELY, unlike the date range's two bounds. Cabang and Gudang
+    // are two questions that happen to be related, not one question with two
+    // ends: "Cabang Selatan" and "Cabang Selatan, Gudang Timur" narrow the list
+    // to different sets.
+    applied.branchId !== "",
     applied.warehouseId !== "",
     applied.purchaseType !== "",
     applied.dateFrom !== "" || applied.dateTo !== "",
@@ -237,6 +268,51 @@ function ReceiptFilterPanel({
     // leaving it half-edited for the next visit.
     if (next) setDraft(applied);
     setOpen(next);
+  }
+
+  /** What the chosen branch may have received at — its own, plus the shared. */
+  const scoped = warehousesUnder(draft.branchId, warehouses);
+
+  /**
+   * A branch narrows the field below it, so a warehouse already chosen has to be
+   * re-checked against the new list: one the picker no longer offers would sit
+   * on the trigger as a raw id and send a pair no delivery matches. Kept when it
+   * survives, because the central warehouse serves every branch and losing it on
+   * each branch change would be a choice undone for nothing.
+   */
+  function pickBranch(branchId: string) {
+    setDraft((prev) => ({
+      ...prev,
+      branchId,
+      warehouseId: warehousesUnder(branchId, warehouses).some(
+        (warehouse) => warehouse._id === prev.warehouseId,
+      )
+        ? prev.warehouseId
+        : "",
+    }));
+  }
+
+  /**
+   * THE OTHER DIRECTION, and it is not symmetrical.
+   *
+   * A warehouse pinned to one branch ANSWERS the branch question, so the field
+   * above fills itself in: "deliveries at Gudang Timur" and "deliveries at
+   * Gudang Timur under any branch" are the same set, and leaving Cabang on
+   * "Semua cabang" would leave a reader wondering whether it was still open.
+   *
+   * THE SHARED WAREHOUSE CHANGES NOTHING. It serves every branch, so there is no
+   * single answer to volunteer; guessing one would narrow the list to a fraction
+   * of what was asked for. "Semua gudang" lands here too and is left alone for
+   * the same reason — it names no owner.
+   */
+  function pickWarehouse(warehouseId: string) {
+    const owner = ownerBranchOf(warehouseId, warehouses);
+
+    setDraft((prev) => ({
+      ...prev,
+      warehouseId,
+      branchId: owner ?? prev.branchId,
+    }));
   }
 
   return (
@@ -281,13 +357,27 @@ function ReceiptFilterPanel({
           options={withAll(namedOptions(suppliers), "Semua supplier")}
           onChange={(supplierId) => patch({ supplierId })}
         />
+        {/* BRANCH BEFORE WAREHOUSE — widest scope first, the same order the
+            table's columns read in and the same order every hand-typed stock
+            form asks these two questions. */}
+        <FilterSelect
+          layout="field"
+          label="Cabang"
+          ariaLabel="Filter cabang"
+          value={draft.branchId}
+          options={withAll(namedOptions(branches), "Semua cabang")}
+          onChange={pickBranch}
+        />
         <FilterSelect
           layout="field"
           label="Gudang"
           ariaLabel="Filter gudang"
           value={draft.warehouseId}
-          options={withAll(namedOptions(warehouses), "Semua gudang")}
-          onChange={(warehouseId) => patch({ warehouseId })}
+          // SCOPED, not the whole list: a warehouse pinned to another branch
+          // combined with this one is a pair no delivery can match, so offering
+          // it could only produce an empty list nobody could explain.
+          options={withAll(namedOptions(scoped), "Semua gudang")}
+          onChange={pickWarehouse}
         />
         <FilterSelect
           layout="field"

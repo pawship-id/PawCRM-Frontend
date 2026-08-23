@@ -21,6 +21,15 @@ export interface GoodsReceiptsQuery {
   supplierId: string;
   /** "" = any warehouse. */
   warehouseId: string;
+  /**
+   * "" = any branch.
+   *
+   * NOT A SYNONYM FOR `warehouseId`, which is why both exist: a branch may
+   * receive at its own warehouse AND at the shared central one, so "what did
+   * this shop buy" spans warehouses rather than naming one. They narrow along
+   * different axes and combine.
+   */
+  branchId: string;
   /** "" = both purchase types. */
   purchaseType: PurchaseType | "";
   /** `yyyy-mm-dd`, as the date inputs hold them. "" = unbounded. */
@@ -41,6 +50,7 @@ const DEFAULT_QUERY: GoodsReceiptsQuery = {
   search: "",
   supplierId: "",
   warehouseId: "",
+  branchId: "",
   purchaseType: "",
   dateFrom: "",
   dateTo: "",
@@ -131,6 +141,7 @@ export function useGoodsReceipts(
       search: settled.search.trim() || undefined,
       supplierId: settled.supplierId || undefined,
       warehouseId: settled.warehouseId || undefined,
+      branchId: settled.branchId || undefined,
       purchaseType: settled.purchaseType === "" ? undefined : settled.purchaseType,
       dateFrom: settled.dateFrom || undefined,
       dateTo: settled.dateTo || undefined,

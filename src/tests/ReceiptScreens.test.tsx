@@ -433,6 +433,127 @@ describe("ReceiptsScreen", () => {
   });
 
   /**
+   * CABANG AND GUDANG ARE A PAIR, and they behave here exactly as they do on the
+   * stock-entries filter — same helpers, same two rules. Two screens that scope
+   * by the same two fields in two different ways is a thing users relearn.
+   */
+  describe("the branch filter", () => {
+    it("sends the branch it was left on", async () => {
+      const user = userEvent.setup();
+      renderWithAuth(<ReceiptsScreen />);
+
+      await screen.findByText("GR-260806-001");
+      const panel = await openFilters(user);
+
+      await user.click(within(panel).getByLabelText("Filter cabang"));
+      await user.click(
+        await screen.findByRole("option", { name: "Cabang Pusat" }),
+      );
+      await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+      await waitFor(() =>
+        expect(goodsReceiptService.list).toHaveBeenLastCalledWith(
+          expect.objectContaining({ branchId: BRANCH_ID }),
+        ),
+      );
+    });
+
+    /**
+     * A warehouse pinned to one branch ANSWERS the branch question, so the field
+     * above fills itself in — "deliveries at Gudang Utama" and "deliveries at
+     * Gudang Utama under any branch" are the same set, and leaving Cabang on
+     * "Semua cabang" would leave a reader wondering whether it was still open.
+     */
+    it("fills in the branch when a warehouse that names one is chosen", async () => {
+      const user = userEvent.setup();
+      renderWithAuth(<ReceiptsScreen />);
+
+      await screen.findByText("GR-260806-001");
+      const panel = await openFilters(user);
+
+      await user.click(within(panel).getByLabelText("Filter gudang"));
+      await user.click(
+        await screen.findByRole("option", { name: "Gudang Utama" }),
+      );
+      await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+      await waitFor(() =>
+        expect(goodsReceiptService.list).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            warehouseId: WAREHOUSE._id,
+            branchId: BRANCH_ID,
+          }),
+        ),
+      );
+    });
+
+    /**
+     * A warehouse pinned to ANOTHER branch is not offered: that pair matches no
+     * delivery, so offering it could only produce an empty list nobody could
+     * explain. The shared central warehouse stays — it serves every branch.
+     */
+    it("offers only the warehouses the chosen branch may have received at", async () => {
+      asMock(warehouseService.list).mockResolvedValue(
+        page([
+          WAREHOUSE,
+          OTHER_WAREHOUSE,
+          {
+            ...OTHER_WAREHOUSE,
+            _id: "wh0",
+            name: "Gudang Pusat",
+            defaultBranchId: null,
+          },
+        ]) as never,
+      );
+
+      const user = userEvent.setup();
+      renderWithAuth(<ReceiptsScreen />);
+
+      await screen.findByText("GR-260806-001");
+      const panel = await openFilters(user);
+
+      await user.click(within(panel).getByLabelText("Filter cabang"));
+      await user.click(
+        await screen.findByRole("option", { name: "Cabang Pusat" }),
+      );
+
+      await user.click(within(panel).getByLabelText("Filter gudang"));
+
+      expect(
+        await screen.findByRole("option", { name: "Gudang Utama" }),
+      ).toBeInTheDocument();
+      // The shared one belongs to no branch and serves all of them.
+      expect(
+        screen.getByRole("option", { name: "Gudang Pusat" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("option", { name: "Gudang Cabang Selatan" }),
+      ).toBeNull();
+    });
+
+    /** Two questions, two counts — not one range with two ends. */
+    it("counts the branch and the warehouse separately", async () => {
+      const user = userEvent.setup();
+      renderWithAuth(<ReceiptsScreen />);
+
+      await screen.findByText("GR-260806-001");
+      const panel = await openFilters(user);
+
+      await user.click(within(panel).getByLabelText("Filter gudang"));
+      await user.click(
+        await screen.findByRole("option", { name: "Gudang Utama" }),
+      );
+      await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+      // The warehouse names its branch, so ONE click sets both — and the badge
+      // says two, because two filters are narrowing the list.
+      expect(
+        await screen.findByRole("button", { name: "Filter" }),
+      ).toHaveTextContent("Filter (2)");
+    });
+  });
+
+  /**
    * The ordering is not counted in the trigger's badge — every list has one, so
    * it is never "on", and a badge reading `Filter (1)` over an unnarrowed list
    * would train people to ignore the number.
