@@ -75,6 +75,12 @@ export function ReceiptsTable({
             <TableHead>Nomor</TableHead>
             <TableHead>Tanggal</TableHead>
             <TableHead>Supplier</TableHead>
+            {/* BRANCH BEFORE WAREHOUSE — widest scope first, the way the
+                receipt form asks the same two questions. They are not the same
+                answer either: a branch may receive at its own warehouse AND at
+                the shared central one, so a column of warehouses cannot be read
+                as a column of branches. */}
+            <TableHead>Cabang</TableHead>
             <TableHead>Gudang</TableHead>
             <TableHead>Jenis</TableHead>
             <TableHead className="text-right">Item</TableHead>
@@ -101,6 +107,12 @@ export function ReceiptsTable({
 
               <TableCell className="text-sm font-medium">
                 {receipt.supplierName ?? "—"}
+              </TableCell>
+
+              {/* "—" for a delivery written before the branch was recorded;
+                  those stay blank until the backfill has run. */}
+              <TableCell className="text-xs text-muted">
+                {receipt.branchName ?? "—"}
               </TableCell>
 
               <TableCell className="text-xs text-muted">

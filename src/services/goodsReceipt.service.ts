@@ -48,6 +48,7 @@ export const goodsReceiptService = {
         search: query.search,
         supplierId: query.supplierId,
         warehouseId: query.warehouseId,
+        branchId: query.branchId,
         purchaseType: query.purchaseType,
         invoiced: query.invoiced,
         dateFrom: query.dateFrom,

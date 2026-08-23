@@ -38,6 +38,7 @@ const EVERY_FILTER: Required<GoodsReceiptListQuery> = {
   search: "GR-2608",
   supplierId: "s1",
   warehouseId: "wh1",
+  branchId: "br1",
   purchaseType: "konsinyasi",
   invoiced: false,
   dateFrom: "2026-08-01",

@@ -1444,6 +1444,31 @@ export interface GoodsReceiptListRow {
   supplierName: string | null;
   warehouseId: string;
   warehouseName: string | null;
+  /**
+   * WHICH BOOKS this delivery was posted against — the warehouse's default
+   * branch, or the session's when the warehouse serves every branch.
+   *
+   * NOT A SYNONYM FOR `warehouseId`. A branch may receive at its own warehouse
+   * AND at the shared central one, so "what did this shop buy" spans warehouses
+   * rather than naming one. Frozen when the delivery posted, so a warehouse
+   * moved between branches since does not restate a closed period — the journal
+   * entry and the purchase invoice hold the same value for the same reason.
+   *
+   * Server-resolved, never sent: a client that could name it could post a
+   * delivery into another branch's books.
+   */
+  branchId: string;
+  /**
+   * The branch's name, resolved by the server over the page's DISTINCT branch
+   * ids — most tenants receive into one or two, so a page of twenty deliveries
+   * is a one-id lookup rather than twenty.
+   *
+   * NULL IS A REAL ANSWER: a delivery written before `branchId` existed carries
+   * neither until the backfill has run, and a branch closed since is still named
+   * (a delivery posted there did happen). A label may be null; the id it labels
+   * may not.
+   */
+  branchName: string | null;
   receiptDate: string;
   purchaseType: PurchaseType;
   total: string;
@@ -1485,6 +1510,13 @@ export interface GoodsReceiptListQuery {
   search?: string;
   supplierId?: string;
   warehouseId?: string;
+  /**
+   * WHICH BOOKS, and not a synonym for `warehouseId`: a branch may receive at
+   * its own warehouse AND at the shared central one, so "what did this shop buy
+   * in March" spans warehouses rather than naming one. The two narrow along
+   * different axes and combine.
+   */
+  branchId?: string;
   purchaseType?: PurchaseType;
   /**
    * Has the supplier's bill been filed against this delivery yet?
@@ -1573,6 +1605,10 @@ export interface GoodsReceiptDetail {
   supplierName: string | null;
   warehouseId: string;
   warehouseName: string | null;
+  /** WHICH BOOKS — see `GoodsReceiptListRow.branchId`. Server-resolved. */
+  branchId: string;
+  /** The branch's name — see `GoodsReceiptListRow.branchName`. May be null. */
+  branchName: string | null;
   /** Who keyed it in. Null when that user has been deleted since. */
   createdByName: string | null;
   receiptDate: string;
@@ -1638,6 +1674,33 @@ export interface CreateGoodsReceiptInput {
   /** FORBIDDEN on `konsinyasi` — nothing was bought, so there is no input VAT. */
   taxAmount?: string;
   notes?: string;
+  /**
+   * THE SUPPLIER'S BILL, when it came with the goods.
+   *
+   * OPTIONAL, and the two real cases are why: the faktur is in the clerk's hand
+   * while they unload — the ordinary one, and the one this turns into a single
+   * save — or the van brings only a surat jalan and the bill follows days later.
+   * Absent, the delivery posts exactly as it always did and the bill is filed
+   * afterwards through POST /purchase-invoices.
+   *
+   * ABSENT IS NOT "NO DEBT". A `beli_putus` receipt credits `2101 Utang
+   * Supplier` when it posts, invoice or no invoice; what this adds is the
+   * vendor's paperwork on top of the payable — their number, and a due date.
+   *
+   * FORBIDDEN on `konsinyasi`, refused rather than ignored — nothing has been
+   * bought, so there is no debt for a bill to document.
+   *
+   * THE AMOUNTS ARE NOT HERE. `subtotal` and `taxAmount` must equal the
+   * receipt's to the minor unit, so the server takes them from the delivery
+   * itself; what is left is what a person can only read off the vendor's paper.
+   */
+  invoice?: {
+    /** The VENDOR'S own number, from their document. Unique per vendor. */
+    invoiceNumber: string;
+    /** Defaults to `receiptDate`. What the payment terms are counted from. */
+    invoiceDate?: string;
+    notes?: string;
+  };
   items: CreateGoodsReceiptItemInput[];
 }
 

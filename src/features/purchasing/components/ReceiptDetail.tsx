@@ -108,6 +108,16 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
       <div className="flex flex-wrap gap-6 rounded-xl border border-border bg-surface p-4">
         <Field label="Nomor" value={receipt.receiptNumber} mono />
         <Field label="Supplier" value={receipt.supplierName ?? "—"} />
+        {/* BRANCH BEFORE WAREHOUSE — widest scope first, the way the receipt
+            form asks the same two questions, and the same order the list table
+            reads in. They are not the same answer either: a branch may receive
+            at its own warehouse AND at the shared central one, which is exactly
+            why showing only the warehouse left the second question unanswerable
+            from this screen.
+
+            "—" for a delivery written before the branch was recorded; those stay
+            blank until the backfill has run. */}
+        <Field label="Cabang" value={receipt.branchName ?? "—"} />
         <Field label="Gudang" value={receipt.warehouseName ?? "—"} />
         <Field label="Tanggal terima" value={formatDate(receipt.receiptDate)} />
         <Field label="Dicatat oleh" value={receipt.createdByName ?? "—"} />
