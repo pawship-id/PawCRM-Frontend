@@ -36,6 +36,8 @@ import { cn } from "@/lib/utils";
 import { formatMoney, toMinor } from "@/utils/decimal";
 import { Can, usePermissions } from "@/features/permissions";
 import { isSupplierActive } from "@/types/api";
+
+import { formatSupplierAddress } from "../supplierAddress";
 import type { Supplier, SupplierOutstandingRow } from "@/types/api";
 import type { SupplierPurchaseRow } from "@/types/api";
 
@@ -215,15 +217,16 @@ export function SuppliersTable({
                       {supplier.npwp ? (
                         <HighlightText text={supplier.npwp} query={search} />
                       ) : (
-                        (supplier.address ?? "—")
+                        // The address is parts now; the row wants one line.
+                        (formatSupplierAddress(supplier.address) ?? "—")
                       )}
                     </p>
                   </TableCell>
 
                   <TableCell className="text-xs">
                     <p className="text-foreground">
-                      {supplier.pic ? (
-                        <HighlightText text={supplier.pic} query={search} />
+                      {supplier.pic?.name ? (
+                        <HighlightText text={supplier.pic.name} query={search} />
                       ) : (
                         "—"
                       )}

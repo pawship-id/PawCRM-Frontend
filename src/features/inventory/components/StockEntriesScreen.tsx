@@ -7,6 +7,7 @@ import { ListFilter, Plus, RotateCcw } from "lucide-react";
 import {
   Alert,
   FilterBar,
+  HighlightText,
   FilterPanel,
   FilterSearch,
   FilterSelect,
@@ -15,8 +16,8 @@ import {
   Spinner,
   namedOptions,
   withAll,
+  type FilterOption,
 } from "@/components";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -27,10 +28,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Can } from "@/features/permissions";
-import type { StockEntryKind } from "@/types/inventory";
+import type { StockEntryKind, StockEntrySort } from "@/types/inventory";
 import type { Branch, Warehouse } from "@/types/api";
 
+import { ownerBranchOf, warehousesUnder } from "../hooks/useBranchScope";
 import { useStockEntries } from "../hooks/useStockEntries";
+import { excerptAround } from "../utils/excerpt";
 
 /**
  * The list of hand-typed stock documents — one kind per screen.
@@ -49,10 +52,22 @@ import { useStockEntries } from "../hooks/useStockEntries";
  * label assembled from the kind would eventually read "Dokumen opening_balance
  * baru".
  *
- * THE MOVEMENT COUNT IS A COLUMN, and it is the one number here that does not
- * appear on any other screen: three rows under a one-line document is the
- * document saying "this came out of three lots". A reader who expects one row
- * per line learns FEFO exists by seeing it.
+ * WHAT THE ROW CARRIES. Seven columns: when, which document, where, how many
+ * products, why, and the way in. The author is on the DETAIL — it is not what a
+ * reader scans a list for.
+ *
+ * THE REASON IS CUT AROUND THE MATCH, not from the end. The server searches it
+ * as well as the number, so a term matching deep in a long sentence would
+ * otherwise return a row with nothing visible to explain why it is a result.
+ * See `excerptAround`.
+ *
+ * THE MOVEMENT COUNT MOVED THERE TOO. It is the number that makes FEFO visible —
+ * three rows under a one-line document is the document saying "this came out of
+ * three lots" — but it only means anything next to the lines it is being
+ * compared against, and those are on the detail.
+ *
+ * ONE WAY IN PER ROW. The number is plain text and Detail is the affordance:
+ * two links to the same destination in one row is one of them for nothing.
  */
 
 const COPY: Record<
@@ -83,44 +98,53 @@ const COPY: Record<
   },
 };
 
-/** Tanggal, Nomor, Cabang, Gudang, Baris, Pergerakan, Alasan, Oleh. */
-const COLUMN_COUNT = 8;
+/* WHAT THE `notes` COLUMN IS CALLED, on both kinds. Either document carries a
+   free note its author writes for whoever audits it later, and calling that
+   "Alasan" promised a reason from a fixed list neither form ever had. */
+const NOTES_LABEL = "Catatan";
+
+/** Tanggal, Nomor, Cabang, Gudang, Produk, Catatan, Aksi. */
+const COLUMN_COUNT = 7;
+
+/** Where a row's Detail lands — each kind reads its own route. */
+function detailHref(kind: StockEntryKind, id: string): string {
+  const base =
+    kind === "adjustment"
+      ? "/dashboard/inventory/adjustments"
+      : "/dashboard/inventory/opening-stock";
+
+  return `${base}/${id}`;
+}
+
+/**
+ * The orderings the API names, and only those. A closed list on the server is
+ * what stops a picker offering a column with no index behind it.
+ */
+const SORTS: FilterOption<StockEntrySort>[] = [
+  { value: "newest", label: "Terbaru" },
+  { value: "oldest", label: "Terlama" },
+  { value: "numberDesc", label: "Nomor Z–A" },
+  { value: "numberAsc", label: "Nomor A–Z" },
+];
 
 /** Everything the panel edits, as one draft. */
 interface PanelFilters {
+  sort: StockEntrySort;
   branchId: string;
   warehouseId: string;
 }
 
-/** What Reset returns to — the query's own defaults, not "empty". */
-const CLEARED: PanelFilters = { branchId: "", warehouseId: "" };
-
 /**
- * The warehouses a chosen branch may have posted at: its own, plus the shared
- * central one (`defaultBranchId: null`, which belongs to no branch and serves
- * all of them). A warehouse pinned to another branch is dropped — that pair
- * describes no document, so offering it would only produce an empty table.
+ * What Reset returns to — the query's own defaults, not "empty".
  *
- * UNDER "Semua cabang" THE WHOLE LIST STANDS. This is the mirror image of
- * `warehousesForBranch`, which the create forms use and which returns NOTHING
- * before a branch is named: there, an unscoped warehouse could be chosen and
- * then silently invalidated by the branch picked after it. A filter has no such
- * risk and the opposite default — "no branch chosen" means every branch, so it
- * must mean every warehouse too.
- *
- * INACTIVE WAREHOUSES STAY. This is a READ: a location closed last month still
- * owns the documents written there, and a filter that could not reach them would
- * hide that history from the audit that went looking for it.
+ * The ordering returns to `newest` rather than being cleared: a list with no
+ * ordering is not a thing, and Reset means "back to how this screen opens".
  */
-function warehousesUnder(branchId: string, warehouses: Warehouse[]) {
-  if (branchId === "") return warehouses;
-
-  return warehouses.filter(
-    (warehouse) =>
-      warehouse.defaultBranchId === branchId ||
-      warehouse.defaultBranchId === null,
-  );
-}
+const CLEARED: PanelFilters = {
+  sort: "newest",
+  branchId: "",
+  warehouseId: "",
+};
 
 export function StockEntriesScreen({ kind }: { kind: StockEntryKind }) {
   const {
@@ -164,7 +188,7 @@ export function StockEntriesScreen({ kind }: { kind: StockEntryKind }) {
             onChange={(search) => setQuery({ search })}
             // Names the two fields the server actually matches, so the box does
             // not promise a search over lines it never runs.
-            placeholder="Cari nomor atau alasan…"
+            placeholder={`Cari nomor atau ${NOTES_LABEL.toLowerCase()}…`}
             ariaLabel="Cari dokumen"
             fill
           />
@@ -192,7 +216,11 @@ export function StockEntriesScreen({ kind }: { kind: StockEntryKind }) {
             warehouse can serve three branches, and a branch can hold two
             warehouses. Neither narrows to the other. */}
         <StockEntriesFilterPanel
-          applied={{ branchId: query.branchId, warehouseId: query.warehouseId }}
+          applied={{
+            sort: query.sort,
+            branchId: query.branchId,
+            warehouseId: query.warehouseId,
+          }}
           branches={branches}
           warehouses={warehouses}
           onApply={(next) => {
@@ -200,6 +228,7 @@ export function StockEntriesScreen({ kind }: { kind: StockEntryKind }) {
             // posting both back would re-fetch after a Terapkan that changed
             // nothing.
             const patch: Partial<typeof query> = {};
+            if (next.sort !== query.sort) patch.sort = next.sort;
             if (next.branchId !== query.branchId)
               patch.branchId = next.branchId;
             if (next.warehouseId !== query.warehouseId)
@@ -217,10 +246,9 @@ export function StockEntriesScreen({ kind }: { kind: StockEntryKind }) {
               <TableHead>Nomor</TableHead>
               <TableHead>Cabang</TableHead>
               <TableHead>Gudang</TableHead>
-              <TableHead className="text-right">Baris</TableHead>
-              <TableHead className="text-right">Pergerakan</TableHead>
-              <TableHead>Alasan</TableHead>
-              <TableHead>Oleh</TableHead>
+              <TableHead className="text-right">Produk</TableHead>
+              <TableHead>{NOTES_LABEL}</TableHead>
+              <TableHead className="text-right">Aksi</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -261,28 +289,28 @@ export function StockEntriesScreen({ kind }: { kind: StockEntryKind }) {
                   typeof entry.warehouseId === "string"
                     ? null
                     : entry.warehouseId;
-                const author =
-                  typeof entry.createdBy === "string" ||
-                  entry.createdBy === null
-                    ? null
-                    : entry.createdBy;
-
                 return (
                   <TableRow key={entry._id}>
                     <TableCell className="tabular-nums whitespace-nowrap">
                       {formatDate(entry.entryDate)}
                     </TableCell>
-                    <TableCell>
-                      <Link
-                        href={`${
-                          kind === "adjustment"
-                            ? "/dashboard/inventory/adjustments"
-                            : "/dashboard/inventory/opening-stock"
-                        }/${entry._id}`}
-                        className="font-medium tabular-nums text-primary hover:underline"
-                      >
-                        {entry.entryNumber}
-                      </Link>
+                    {/* THE MATCH, MARKED. The server searches the number and
+                        the reason; the number is the only one of the two still
+                        on screen, so it is where a reader confirms the row in
+                        front of them is the one their term found.
+
+                        THE LIVE TERM, not the debounced one — the same term
+                        every other highlighted list in this repo passes. For
+                        the length of one debounce the marks describe what is
+                        being typed while the rows still answer the term before
+                        it; they agree again the moment the fetch lands, and one
+                        convention across five screens is worth more than that
+                        third of a second. */}
+                    <TableCell className="font-medium tabular-nums">
+                      <HighlightText
+                        text={entry.entryNumber}
+                        query={query.search}
+                      />
                     </TableCell>
                     <TableCell className="text-muted">
                       {branch?.name ?? "—"}
@@ -291,18 +319,20 @@ export function StockEntriesScreen({ kind }: { kind: StockEntryKind }) {
                     <TableCell className="text-right tabular-nums">
                       {entry.lineCount}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {/* FEFO made visible: more rows than lines means the
-                          withdrawal was drawn from several lots. */}
-                      <Badge variant="outline">
-                        {entry.movementIds?.length ?? 0}
-                      </Badge>
+                    <TableCell className="max-w-xs text-muted">
+                      {entry.notes ? (
+                        <HighlightText
+                          text={excerptAround(entry.notes, query.search)}
+                          query={query.search}
+                        />
+                      ) : (
+                        "—"
+                      )}
                     </TableCell>
-                    <TableCell className="max-w-xs truncate text-muted">
-                      {entry.notes ?? "—"}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-muted">
-                      {author?.name ?? "—"}
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="sm" asChild>
+                        <Link href={detailHref(kind, entry._id)}>Detail</Link>
+                      </Button>
                     </TableCell>
                   </TableRow>
                 );
@@ -347,9 +377,15 @@ function StockEntriesFilterPanel({
   const [draft, setDraft] = useState(applied);
 
   /**
-   * How many filters are narrowing the list. The search is not counted — it is
-   * on the bar with its own text visible, and a badge exists to pay back what
-   * the panel CONCEALS.
+   * How many filters are narrowing the list.
+   *
+   * THE SEARCH IS NOT COUNTED — it is on the bar with its own text visible, and
+   * a badge exists to pay back what the panel CONCEALS.
+   *
+   * NEITHER IS THE ORDERING, per docs/ui-rules.md §8. Every list has one, so
+   * counting it would put a standing number over an unnarrowed list and teach
+   * people to ignore the badge — the one thing that makes a collapsed filter
+   * safe. It changes what the top of the list is, not what is in it.
    */
   const count = [applied.branchId !== "", applied.warehouseId !== ""].filter(
     Boolean,
@@ -366,10 +402,8 @@ function StockEntriesFilterPanel({
   /**
    * THE OTHER DIRECTION, and it is not symmetrical.
    *
-   * A warehouse pinned to one branch ANSWERS the branch question — "documents at
-   * Gudang Timur" and "documents at Gudang Timur under any branch" are the same
-   * set — so the field above fills itself in rather than sitting on "Semua
-   * cabang" while the reader wonders whether it is still open.
+   * A warehouse pinned to one branch ANSWERS the branch question — see
+   * `ownerBranchOf`, which the opname filter reads the same way.
    *
    * THE SHARED WAREHOUSE CHANGES NOTHING. It serves every branch, so there is no
    * single answer to fill in; guessing one would narrow the list to a third of
@@ -380,11 +414,10 @@ function StockEntriesFilterPanel({
    * names no owner, so it has no branch to volunteer.
    */
   function pickWarehouse(warehouseId: string) {
-    const owner =
-      warehouses.find((warehouse) => warehouse._id === warehouseId)
-        ?.defaultBranchId ?? null;
+    const owner = ownerBranchOf(warehouseId, warehouses);
 
     setDraft((prev) => ({
+      ...prev,
       warehouseId,
       branchId: owner ?? prev.branchId,
     }));
@@ -399,6 +432,7 @@ function StockEntriesFilterPanel({
    */
   function pickBranch(branchId: string) {
     setDraft((prev) => ({
+      ...prev,
       branchId,
       warehouseId: warehousesUnder(branchId, warehouses).some(
         (warehouse) => warehouse._id === prev.warehouseId,
@@ -430,6 +464,18 @@ function StockEntriesFilterPanel({
           setOpen(false);
         }}
       >
+        {/* LEADS THE STACK: it is the one field always set, and the only one
+            that changes what the top of the list is rather than what is in it. */}
+        <FilterSelect
+          layout="field"
+          label="Urutkan"
+          ariaLabel="Urutkan"
+          value={draft.sort}
+          options={SORTS}
+          unsetValue="newest"
+          onChange={(sort) => setDraft((prev) => ({ ...prev, sort }))}
+        />
+
         <FilterSelect
           layout="field"
           label="Cabang"

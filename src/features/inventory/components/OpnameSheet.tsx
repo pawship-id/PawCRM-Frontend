@@ -4,13 +4,21 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { Alert, Button, ConfirmDialog, Spinner } from "@/components";
+import {
+  Alert,
+  Button,
+  ConfirmDialog,
+  InternalBatchCodeDisplay,
+  Spinner,
+  SupplierBatchCodeInput,
+} from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { usePermissions } from "@/features/permissions";
 import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
+import { batchCodeHint } from "@/lib/batchCode";
 import { ApiError } from "@/services/api-error";
 import { stockOpnameService } from "@/services/stockOpname.service";
 import type { OpnameItem } from "@/types/inventory";
@@ -66,13 +74,24 @@ const SHEET_EXPORT_COLUMNS: XlsxColumn<OpnameItem>[] = [
   { header: "Qty sistem", value: (item) => item.systemQty, type: "number" },
   { header: "Qty fisik", value: (item) => item.physicalQty, type: "number" },
   { header: "Selisih qty", value: (item) => item.diffQty, type: "number" },
-  { header: "HPP saat opname", value: (item) => item.hppAtOpname, type: "number" },
+  {
+    header: "HPP saat opname",
+    value: (item) => item.hppAtOpname,
+    type: "number",
+  },
   { header: "Selisih nilai", value: (item) => item.diffValue, type: "number" },
   // The column that tells "not counted yet" from "counted, and it matched" —
   // both post nothing, and only one of them means the sheet is unfinished.
   { header: "Dihitung", value: (item) => (item.countedAt ? "ya" : "belum") },
-  { header: "Kode batch", value: (item) => item.batchCode ?? "" },
-  { header: "Kedaluwarsa", value: (item) => item.expiryDate ?? "", type: "date" },
+  // OURS once the sheet has been submitted and the lot exists; blank on a
+  // draft, where there is no lot yet to have a code.
+  { header: "Kode batch internal", value: (item) => item.postedBatchCode ?? "" },
+  { header: "Kode batch supplier", value: (item) => item.supplierBatchCode ?? "" },
+  {
+    header: "Kedaluwarsa",
+    value: (item) => item.expiryDate ?? "",
+    type: "date",
+  },
   { header: "Catatan", value: (item) => item.notes ?? "" },
 ];
 
@@ -124,19 +143,23 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
   const done = opname.status === "submitted";
   /** Drafts, and only for a role that may change one. */
   const canEdit = !done && can("stockOpnames", "update");
-  const differing = items.filter((item) => (toMinor(item.diffQty) ?? 0n) !== 0n);
+  const differing = items.filter(
+    (item) => (toMinor(item.diffQty) ?? 0n) !== 0n,
+  );
   const totalMinor = toMinor(opname.totalDiffValue) ?? 0n;
 
   /**
    * Lines that will be REFUSED at submit: found stock of a product that expires,
-   * with no lot to put it in. Surfaced here rather than left to the 400, so the
-   * counter fixes them while still standing at the shelf.
+   * with no DATE to order the lot by. Surfaced here rather than left to the 400,
+   * so the counter fixes them while still standing at the shelf.
+   *
+   * A missing CODE is not a refusal — the gateway fills it from the date.
    */
   const missingLot = items.filter(
     (item) =>
       item.productHasExpiry &&
       (toMinor(item.diffQty) ?? 0n) > 0n &&
-      (!item.batchCode || !item.expiryDate),
+      !item.expiryDate,
   );
 
   async function handleLoadEverything() {
@@ -234,6 +257,13 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
       {/* ------------------------------------------------------------ header */}
       <div className="flex flex-wrap gap-6 rounded-xl border border-border bg-surface p-4">
         <Field label="Nomor" value={opname.opnameNumber} mono />
+        {/* CABANG BEFORE GUDANG — which set of books, then which shelf, the
+            order every stock screen in this module asks its two scoping
+            questions in. Em dash on a sheet that declared no branch, which is
+            what the ones opened before the field carry; it is NOT filled in from
+            the warehouse's default, because a shared warehouse's default is one
+            answer for every shop it serves. */}
+        <Field label="Cabang" value={opname.branchName ?? "—"} />
         <Field label="Gudang" value={opname.warehouseName ?? "—"} />
         <Field
           label="Terhitung"
@@ -311,8 +341,9 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
           </p>
           <p className="mx-auto mt-1 max-w-lg text-sm text-muted">
             Muat seluruh isi gudang untuk stock take menyeluruh, atau pilih
-            produk tertentu kalau yang dihitung hanya sebagian rak. Keduanya bisa
-            digabung — produk masih bisa ditambahkan setelah penghitungan mulai.
+            produk tertentu kalau yang dihitung hanya sebagian rak. Keduanya
+            bisa digabung — produk masih bisa ditambahkan setelah penghitungan
+            mulai.
           </p>
 
           {can("stockOpnames", "update") && (
@@ -349,8 +380,8 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
       {!done && missingLot.length > 0 && (
         <Alert variant="error">
           {missingLot.length} produk kedaluwarsa ditemukan lebih banyak dari
-          catatan, tapi belum punya kode batch dan tanggal kedaluwarsa. Barang
-          yang &ldquo;masuk&rdquo; harus punya lot, kalau tidak stoknya tidak
+          catatan, tapi belum punya tanggal kedaluwarsa. Barang yang
+          &ldquo;masuk&rdquo; harus punya tanggal, kalau tidak stoknya tidak
           bisa diurutkan FEFO. Isi dulu sebelum menyelesaikan opname.
         </Alert>
       )}
@@ -425,8 +456,8 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
               {adding ? "Memuat…" : "Muat sisa produk gudang"}
             </Button>
             <span className="text-xs text-muted">
-              Baris baru dibuka dengan angka sistem dan berstatus belum
-              dihitung — hitungan yang sudah diisi tidak berubah.
+              Baris baru dibuka dengan angka sistem dan berstatus belum dihitung
+              — hitungan yang sudah diisi tidak berubah.
             </span>
           </div>
         )}
@@ -514,9 +545,10 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
             </Button>
           ) : (
             <Alert variant="info">
-              Anda bisa mengisi hitungan, tapi penyelesaian opname dilakukan oleh
-              rekan dengan izin <b>submit</b>. Itu disengaja: yang menghitung dan
-              yang menyetujui selisihnya sebaiknya bukan orang yang sama.
+              Anda bisa mengisi hitungan, tapi penyelesaian opname dilakukan
+              oleh rekan dengan izin <b>submit</b>. Itu disengaja: yang
+              menghitung dan yang menyetujui selisihnya sebaiknya bukan orang
+              yang sama.
             </Alert>
           )}
 
@@ -567,7 +599,8 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
           {/* Inline fragments, not <p>: DialogDescription is itself a <p>. */}
           <>
             <b>{pendingRemove.productName ?? "Produk ini"}</b> sudah dihitung —
-            jumlah fisik <b className="tabular-nums">
+            jumlah fisik{" "}
+            <b className="tabular-nums">
               {formatQty(pendingRemove.physicalQty)}
             </b>{" "}
             akan ikut terbuang bersama barisnya.
@@ -629,16 +662,25 @@ function SheetRow({
 }: {
   item: OpnameItem;
   readOnly: boolean;
-  onEdit: (productId: string, patch: { physicalQty?: string; batchCode?: string; expiryDate?: string }) => void;
+  onEdit: (
+    productId: string,
+    patch: {
+      physicalQty?: string;
+      supplierBatchCode?: string;
+      expiryDate?: string;
+    },
+  ) => void;
   onCounted: (productId: string, counted: boolean) => void;
   /** Absent when the sheet is final or the role may not edit it. */
   onRemove?: (item: OpnameItem) => void;
 }) {
   const diffMinor = toMinor(item.diffQty) ?? 0n;
   const counted = item.countedAt !== null;
-  // Found stock of goods that expire has to name a lot, or the API refuses it.
+  // Found stock of goods that expire has to DATE its lot, or the API refuses
+  // it. Neither code is asked for: ours is derived from that same date when the
+  // sheet is submitted, and the supplier's is optional.
   const needsLot = Boolean(item.productHasExpiry) && diffMinor > 0n;
-  const lotMissing = needsLot && (!item.batchCode || !item.expiryDate);
+  const lotMissing = needsLot && !item.expiryDate;
 
   return (
     <>
@@ -750,21 +792,39 @@ function SheetRow({
             <div className="flex flex-wrap items-end gap-3">
               <p className="min-w-64 flex-1 text-xs text-muted">
                 <b>{item.productName}</b> punya masa kedaluwarsa dan ditemukan
-                lebih banyak dari catatan — barang yang masuk harus punya lot.
+                lebih banyak dari catatan — isi tanggal kedaluwarsanya. Kode
+                batchnya dibuat sistem dari tanggal itu; kode batch supplier
+                boleh dikosongkan.
               </p>
 
-              {/* THE TWO FIELDS ARE ONE GROUP, and wrap as one. Left as
-                  siblings of the sentence above, the code and its date were
+              {/* THE THREE FIELDS ARE ONE GROUP, and wrap as one. Left as
+                  siblings of the sentence above, the codes and the date were
                   pushed onto separate lines by a long product name — and a lot
-                  is only a lot when both halves are read together. */}
+                  is only a lot when they are read together. */}
               <div className="flex shrink-0 items-end gap-3">
-                <Input
-                  aria-label={`Kode batch ${item.productName ?? ""}`}
-                  value={item.batchCode ?? ""}
-                  onChange={(event) =>
-                    onEdit(item.productId, { batchCode: event.target.value })
+                {/* OURS. A draft has opened no lot yet, so there is no code to
+                    show until the sheet is submitted — only the hint the code
+                    will be derived from. */}
+                <InternalBatchCodeDisplay
+                  code={item.postedBatchCode ?? null}
+                  hint={
+                    item.expiryDate
+                      ? batchCodeHint(
+                          item.productSku,
+                          item.expiryDate.slice(0, 10),
+                          "",
+                        )
+                      : undefined
                   }
-                  placeholder="Kode batch"
+                  productName={item.productName}
+                  className="max-w-44"
+                />
+                <SupplierBatchCodeInput
+                  value={item.supplierBatchCode ?? ""}
+                  onChange={(value) =>
+                    onEdit(item.productId, { supplierBatchCode: value })
+                  }
+                  productName={item.productName}
                   className="w-44"
                 />
                 <Input

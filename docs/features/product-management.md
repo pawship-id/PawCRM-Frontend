@@ -173,6 +173,37 @@ different actions — edit here, or edit the parent and move every sibling at on
 **`isPreorder` is not inherited.** Inheriting a boolean needs a tri-state that renders as an
 indeterminate checkbox nobody reads correctly, so it is a plain per-product flag.
 
+**The three checkboxes are the exception to "omit what is blank".** Every other field on this
+form is left out of the create payload when empty, because absence is how a variant inherits.
+A flag has no inherited state, so `hasExpiry`, `isPreorder` and `isConsignment` are all sent
+whichever way they are ticked, and the API writes `false` for one it never receives. On an
+edit the ordinary rule returns: only a flag that actually moved goes into the patch, since
+absence there means *unchanged*.
+
+**`isConsignment` is a boolean too and it IS inherited — by COPYING.** No tri-state is needed
+because nothing is stored as null: the API writes the parent's value onto every variant, the way
+it writes `hasExpiry`. So the checkbox is offered on a standalone and on a parent, and the form
+does not render it at all for a variant or a bundle, which is where the API answers `400`. A
+variant opens this form in *standalone* mode — everything else it is asked is identical — so the
+form decides that from `productType`, not from the mode.
+
+### Konsinyasi (titipan)
+
+Goods on the shelf that the shop does not own: the supplier is paid out of what sells and the rest
+goes back. The checkbox sits with pre-order and expiry, the catalogue row shows a *titipan* note
+beside the SKU, and the detail screen answers it as *Ya — titipan* / *Tidak — milik toko*.
+
+**It is a label, not a posting rule, and the hint under the input says so.** Consignment already
+exists in the app twice — as a supplier type and as a property of a received batch — and those two
+decide the journal and the payout. This flag answers the question the catalogue asks before any
+delivery exists: is this **item** titipan. Someone who has met the other two will assume the
+checkbox reroutes the ledger, which is exactly why the hint states that receiving and the supplier
+type still decide.
+
+**On a family it belongs to the parent.** Ticking it on a parent writes it to every variant, and
+so does changing it later — the hint says so on an existing family, because a checkbox that
+silently rewrites twelve rows is a bigger action than it looks.
+
 ### Media
 
 Up to 9 images/videos on the parent or standalone; exactly one image per variant. The array's

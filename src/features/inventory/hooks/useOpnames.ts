@@ -14,6 +14,12 @@ import type {
 /** The filters the opname toolbar drives. Empty string = unset. */
 export interface OpnameFilters {
   search: string;
+  /**
+   * Both scopes are offered because they are NOT 1:1 — a central warehouse can
+   * serve three branches, and a branch can hold two warehouses. Narrowing by one
+   * never implies the other, so neither can stand in for the other.
+   */
+  branchId: string;
   warehouseId: string;
   status: OpnameStatus | "";
   /** `yyyy-mm-dd` from a date input, or "". */
@@ -25,6 +31,7 @@ export interface OpnameFilters {
 
 export const EMPTY_OPNAME_FILTERS: OpnameFilters = {
   search: "",
+  branchId: "",
   warehouseId: "",
   status: "",
   dateFrom: "",
@@ -57,9 +64,9 @@ interface UseOpnamesResult {
  * The sanctioned fetch-effect shape in this codebase (see useStockCard): show
  * loading, synchronize, guard the late setStates with `active`.
  *
- * NOTHING IS COMPUTED HERE. `itemCount`, `countedCount` and `warehouseName`
- * arrive resolved from the API, so the list renders in full without fetching a
- * single sheet — which is the whole reason the server computes them rather than
+ * NOTHING IS COMPUTED HERE. `itemCount`, `countedCount`, `warehouseName` and
+ * `branchName` arrive resolved from the API, so the list renders in full without
+ * fetching a single sheet — which is the whole reason the server computes them rather than
  * shipping a thousand-line array per row for the browser to call `.length` on.
  */
 export function useOpnames(
@@ -74,7 +81,8 @@ export function useOpnames(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const { search, warehouseId, status, dateFrom, dateTo, sort } = filters;
+  const { search, branchId, warehouseId, status, dateFrom, dateTo, sort } =
+    filters;
 
   useEffect(() => {
     let active = true;
@@ -87,6 +95,7 @@ export function useOpnames(
         page,
         limit: PAGE_SIZE,
         search: search || undefined,
+        branchId: branchId || undefined,
         warehouseId: warehouseId || undefined,
         status: status || undefined,
         // The inputs give a date; the API bounds `opnameDate`, a timestamp.
@@ -118,7 +127,17 @@ export function useOpnames(
     return () => {
       active = false;
     };
-  }, [search, warehouseId, status, dateFrom, dateTo, sort, page, refreshKey]);
+  }, [
+    search,
+    branchId,
+    warehouseId,
+    status,
+    dateFrom,
+    dateTo,
+    sort,
+    page,
+    refreshKey,
+  ]);
 
   return { opnames, pagination, loading, error };
 }

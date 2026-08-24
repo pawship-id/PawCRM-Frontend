@@ -123,6 +123,14 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
       <div className="flex flex-wrap gap-6 rounded-xl border border-border bg-surface p-4">
         <Field label="Faktur" value={invoice.invoiceNumber} mono />
         <Field label="Supplier" value={invoice.supplierName ?? "—"} />
+        {/* WHOSE BOOKS the bill posts to, then WHERE the goods landed — widest
+            scope first, the same order the receipt screen asks them in. The
+            warehouse is read back through the delivery rather than stored on the
+            invoice, so it is "—" when that delivery can no longer be read; the
+            branch is the invoice's own field and is "—" only if it was
+            hard-deleted. */}
+        <Field label="Cabang" value={invoice.branchName ?? "—"} />
+        <Field label="Gudang" value={invoice.warehouseName ?? "—"} />
         <Field
           label="Penerimaan"
           value={invoice.goodsReceiptNumber ?? "—"}

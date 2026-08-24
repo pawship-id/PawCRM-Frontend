@@ -24,6 +24,13 @@ import { ProductMultiPicker } from "./ProductMultiPicker";
  * in memory. The picker searches on the SERVER and keeps ticks across searches,
  * so "vaksin" then "shampoo" is one trip, not two.
  *
+ * ONLY WHAT THE SOURCE ACTUALLY HOLDS. The list is filtered to products with
+ * stock at `fromWarehouseId`, by the server against the balances — a transfer
+ * takes goods off one shelf, and offering something that shelf does not have
+ * would produce a row whose only possible ending is "Melebihi stok — tersedia
+ * 0". Products whose stock predates their batches still appear: they have a
+ * balance, they simply have no lot.
+ *
  * NOTHING IS MOVED BY ADDING IT. This only puts empty rows on the form; the
  * quantities — and the per-line notes — are typed on the form afterwards, and
  * nothing reaches the ledger until it is saved. That is why the dialog cannot
@@ -36,10 +43,21 @@ import { ProductMultiPicker } from "./ProductMultiPicker";
 export function TransferAddProductsDialog({
   /** What the form already carries — hidden from the list, never offered twice. */
   existingProductIds,
+  fromWarehouseId,
   onAdd,
   onClose,
 }: {
   existingProductIds: string[];
+  /**
+   * The shelf the goods come off — and therefore what may be offered at all.
+   *
+   * A transfer moves what is HERE: a product the source warehouse holds none of
+   * can only ever produce a line the save refuses, so it is filtered out by the
+   * server rather than added, typed into, and rejected. Re-asked whenever the
+   * source changes, because "what is on the shelf" is a different answer at
+   * every location.
+   */
+  fromWarehouseId: string;
   onAdd: (products: Product[]) => void;
   onClose: () => void;
 }) {
@@ -52,9 +70,10 @@ export function TransferAddProductsDialog({
           <DialogTitle>Tambah produk ke transfer ini</DialogTitle>
           <DialogDescription>
             Cari lalu centang produk yang ikut dipindahkan — boleh beberapa
-            sekaligus. Jumlah dan catatannya diisi di form setelah ini. Produk
-            yang sudah ada di form tidak ditampilkan, karena satu transfer hanya
-            boleh membawa tiap produk sekali.
+            sekaligus. Jumlah dan catatannya diisi di form setelah ini. Yang
+            ditampilkan hanya produk yang <b>ada stoknya di gudang asal</b>;
+            produk yang sudah ada di form juga disembunyikan, karena satu
+            transfer hanya boleh membawa tiap produk sekali.
           </DialogDescription>
         </DialogHeader>
 
@@ -62,6 +81,7 @@ export function TransferAddProductsDialog({
           selected={selected}
           onChange={setSelected}
           excludeIds={existingProductIds}
+          inStockAtWarehouse={fromWarehouseId}
         />
 
         <DialogFooter>

@@ -1,3 +1,4 @@
+import { batchCodeHint } from "@/lib/batchCode";
 import {
   divideRound,
   toDecimalString,
@@ -169,6 +170,8 @@ function seed(): DemoState {
     barcode: null,
     minStock: 0,
     hasExpiry: false,
+    isConsignment: false,
+    isPreorder: false,
     categoryId: "cat_makanan_kucing",
     unit: "pcs",
     sellPrice: null,
@@ -282,7 +285,8 @@ function seed(): DemoState {
       warehouseId: "wh_utama",
       productId: "prd_rc3kg",
       receiptId: "gr_1",
-      batchCode: "RC-B26-0455",
+      batchCode: "RCA3KG-260924",
+      supplierBatchCode: "RC-B26-0455",
       expiryDate: dayOffset(24),
       initialQty: "10.0000",
       qtyRemaining: "3.0000",
@@ -299,7 +303,8 @@ function seed(): DemoState {
       warehouseId: "wh_utama",
       productId: "prd_rc3kg",
       receiptId: "gr_2",
-      batchCode: "RC-B26-0512",
+      batchCode: "RCA3KG-261120",
+      supplierBatchCode: "RC-B26-0512",
       expiryDate: dayOffset(180),
       initialQty: "20.0000",
       qtyRemaining: "17.0000",
@@ -316,7 +321,8 @@ function seed(): DemoState {
       warehouseId: "wh_utama",
       productId: "prd_wsk",
       receiptId: "gr_1",
-      batchCode: "WSK-B26-0512",
+      batchCode: "WSKM-261120",
+      supplierBatchCode: "WSK-B26-0512",
       expiryDate: dayOffset(5),
       initialQty: "60.0000",
       qtyRemaining: "8.0000",
@@ -333,7 +339,8 @@ function seed(): DemoState {
       warehouseId: "wh_utama",
       productId: "prd_wsk",
       receiptId: "gr_3",
-      batchCode: "WSK-B26-0640",
+      batchCode: "WSKM-270310",
+      supplierBatchCode: "WSK-B26-0640",
       expiryDate: dayOffset(150),
       initialQty: "36.0000",
       qtyRemaining: "36.0000",
@@ -579,10 +586,14 @@ function mv(
      */
     balanceAfter: null,
     batchCode: null,
+    supplierBatchCode: null,
     batchExpiryDate: null,
     createdByName: null,
     warehouseName: null,
     destinationWarehouseName: null,
+    productName: null,
+    productSku: null,
+    productUnit: null,
     referenceNo: null,
 
     ...extra,
@@ -883,7 +894,19 @@ export function postAdjustment(input: CreateAdjustmentInput): StockMovement[] {
         warehouseId: input.warehouseId,
         productId: input.productId,
         receiptId: null,
-        batchCode: input.batchCode ?? "AUTO",
+        /*
+          THE SHAPE, NOT THE UNIQUENESS. The real gateway probes for a free code
+          and suffixes past the ones taken (see the server's
+          StockMovementService#generateBatchCode); the demo store has one shop's
+          worth of rows and no such contention, so the stem alone is honest
+          enough for a screen that is only showing what a form would produce.
+        */
+        batchCode: batchCodeHint(
+          product.sku,
+          input.expiryDate ?? "",
+          dayOffset(0),
+        ),
+        supplierBatchCode: input.supplierBatchCode ?? null,
         expiryDate: input.expiryDate ?? null,
         initialQty: toDecimalString(qty),
         qtyRemaining: toDecimalString(qty),
@@ -1224,6 +1247,10 @@ export interface SaveProductInput {
   sellPrice?: string;
   minStock?: number;
   hasExpiry?: boolean;
+  /** On a parent it applies to the whole family — the rows below never set it. */
+  isConsignment?: boolean;
+  /** Per product, never inherited. Absent is `false`, as at the API. */
+  isPreorder?: boolean;
   /** On a parent. */
   variantAxes?: VariantAxis[];
   /** On a parent — one row per combination, carrying its own SKU and price. */
@@ -1294,6 +1321,14 @@ export function saveProduct(input: SaveProductInput): Product {
         : (existing?.minStock ?? 0),
     hasExpiry:
       input.productType === "bundle" ? false : (input.hasExpiry ?? false),
+    // Same shape as hasExpiry directly above, mirroring the API: a bundle owns
+    // no stock to be titipan, and the value set here is what each variant row
+    // below copies.
+    isConsignment:
+      input.productType === "bundle" ? false : (input.isConsignment ?? false),
+    // Every type may set this one, and an unanswered flag is `false` — the same
+    // rule the API applies.
+    isPreorder: input.isPreorder ?? false,
     // See the fixture builder: quantities live in `state.stock`, not here.
     stockByWarehouse: [],
     categoryId: input.categoryId,
@@ -1349,6 +1384,10 @@ export function saveProduct(input: SaveProductInput): Product {
         bundleConfig: null,
         barcode: variant.barcode?.trim() || null,
         minStock: variant.minStock ?? 0,
+        isConsignment: base.isConsignment,
+        // Not inherited, unlike isConsignment directly above: a row that says
+        // nothing says no.
+        isPreorder: false,
         // Inherited from the parent, never set on the variant: a variant filed
         // under a different category than its parent is a reporting bug, and
         // whether goods expire is a property of the goods rather than the size.
@@ -1405,7 +1444,7 @@ export function saveProduct(input: SaveProductInput): Product {
       warehouseId: input.openingWarehouseId ?? state.warehouses[0]._id,
       qty: item.qty,
       costPerUnit: item.cost,
-      batchCode: item.product.hasExpiry ? "OPENING" : undefined,
+      supplierBatchCode: undefined,
       expiryDate: item.product.hasExpiry ? dayOffset(180) : undefined,
     });
   }
@@ -1681,7 +1720,7 @@ export function submitReceipt(input: SubmitReceiptInput): GoodsReceipt {
       warehouseId: input.warehouseId,
       qty: line.qty,
       costPerUnit: line.costPerUnit,
-      batchCode: line.batchCode,
+      supplierBatchCode: line.supplierBatchCode,
       expiryDate: line.expiryDate,
       isConsignment: consignment,
     });

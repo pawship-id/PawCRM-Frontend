@@ -1,9 +1,10 @@
 /**
  * Public surface of the categories feature (Inventory → Kategori).
  *
- * Pages import from here, never from deep component paths. One entry point
- * rather than three: a category has a single editable field, so create and
- * rename happen in a dialog on the list screen instead of on routes of their
- * own — see CategoryFormDialog.
+ * Pages import from here, never from deep component paths. Two entry points for
+ * three routes: the list, and one form that both `/new` and `/:id` render — the
+ * fields are identical, so `categoryId` is the only thing that tells the two
+ * verbs apart. See CategoryForm for why this stopped being a dialog.
  */
 export { CategoriesScreen } from "./components/CategoriesScreen";
+export { CategoryForm } from "./components/CategoryForm";

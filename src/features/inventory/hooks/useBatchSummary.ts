@@ -23,12 +23,17 @@ interface UseBatchSummaryResult {
  * as the user pages, which is worse than showing nothing because it looks like a
  * total.
  *
- * KEYED ON THE WAREHOUSE ONLY. The horizon does not change these numbers — the
- * buckets are fixed at 7 and 30 days and are what the tiles are labelled with —
- * so re-fetching when the user switches horizon would be a wasted request per
- * click.
+ * KEYED ON THE PLACE ONLY — the branch and the warehouse. The horizon does not
+ * change these numbers — the buckets are fixed at 7 and 30 days and are what the
+ * tiles are labelled with — so re-fetching when the user switches horizon would
+ * be a wasted request per click.
+ *
+ * IT DOES TAKE THE BRANCH, though, because that DOES change them: tiles counting
+ * a wider set than the rows beneath them is a total nobody can reconcile against
+ * what they can see.
  */
 export function useBatchSummary(
+  branchId: string,
   warehouseId: string,
   refreshKey: number,
 ): UseBatchSummaryResult {
@@ -43,7 +48,10 @@ export function useBatchSummary(
     setError(null);
 
     productBatchService
-      .summary({ warehouseId: warehouseId || undefined })
+      .summary({
+        branchId: branchId || undefined,
+        warehouseId: warehouseId || undefined,
+      })
       .then((result) => {
         if (!active) return;
         setSummary(result);
@@ -64,7 +72,7 @@ export function useBatchSummary(
     return () => {
       active = false;
     };
-  }, [warehouseId, refreshKey]);
+  }, [branchId, warehouseId, refreshKey]);
 
   return { summary, loading, error };
 }

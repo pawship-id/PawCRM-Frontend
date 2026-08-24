@@ -31,7 +31,7 @@ describe("FEFO allocation", () => {
     const allocations = demo.previewFefo(RC, UTAMA, "2");
 
     expect(allocations).toHaveLength(1);
-    expect(allocations[0].batch?.batchCode).toBe("RC-B26-0455");
+    expect(allocations[0].batch?.batchCode).toBe("RCA3KG-260924");
   });
 
   it("splits across lots when one cannot cover the request", () => {
@@ -39,9 +39,9 @@ describe("FEFO allocation", () => {
 
     // One request in, TWO rows out — which is what makes the picking auditable.
     expect(allocations).toHaveLength(2);
-    expect(allocations[0].batch?.batchCode).toBe("RC-B26-0455");
+    expect(allocations[0].batch?.batchCode).toBe("RCA3KG-260924");
     expect(allocations[0].qty).toBe("3.0000");
-    expect(allocations[1].batch?.batchCode).toBe("RC-B26-0512");
+    expect(allocations[1].batch?.batchCode).toBe("RCA3KG-261120");
     expect(allocations[1].qty).toBe("3.0000");
   });
 
@@ -75,7 +75,7 @@ describe("adjustment — direction comes from the sign", () => {
       productId: WSK,
       warehouseId: BARAT,
       qty: "24",
-      batchCode: "WSK-OPENING",
+      supplierBatchCode: "WSK-OPENING",
       expiryDate: "2027-01-31",
       costPerUnit: "30000",
     });
@@ -106,7 +106,7 @@ describe("adjustment — direction comes from the sign", () => {
       productId: WSK,
       warehouseId: UTAMA,
       qty: "2",
-      batchCode: "WSK-FOUND",
+      supplierBatchCode: "WSK-FOUND",
       expiryDate: "2027-01-31",
     });
 

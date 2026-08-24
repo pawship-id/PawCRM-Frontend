@@ -1,11 +1,22 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
-import { Alert, Button, Card, Spinner, TextField } from "@/components";
+import {
+  Alert,
+  Button,
+  Card,
+  FilterSelect,
+  InternalBatchCodeDisplay,
+  Spinner,
+  SupplierBatchCodeInput,
+  TextField,
+} from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button as UIButton } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -17,6 +28,7 @@ import {
 } from "@/components/ui/select";
 import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
+import { batchCodeHint, lotOptionLabel } from "@/lib/batchCode";
 import { ApiError } from "@/services/api-error";
 import { goodsReceiptService } from "@/services/goodsReceipt.service";
 import {
@@ -26,21 +38,50 @@ import {
   isPositive,
   multiplyDecimals,
   sumDecimals,
+  trimQty,
 } from "@/utils/decimal";
 import type { CreateGoodsReceiptInput, PurchaseType } from "@/types/api";
 import type { Product } from "@/types/inventory";
-import { HppStrip } from "@/features/inventory/components/HppStrip";
-import { JournalPreview } from "@/features/inventory/components/JournalPreview";
 import { useStockCardLookups } from "@/features/inventory/hooks/useStockCardLookups";
+import {
+  useBranchScope,
+  warehousesForBranch,
+} from "@/features/inventory/hooks/useBranchScope";
+import { useWarehouseBatches } from "@/features/inventory/hooks/useWarehouseBatches";
 
+import { ReceiptAddProductsDialog } from "./ReceiptAddProductsDialog";
 import { useReceiptPreview } from "../hooks/useReceiptPreview";
 import { useSupplierOptions } from "../hooks/useSupplierOptions";
+
+/**
+ * The sentinel the batch picker uses for "buat lot baru" — the same one the
+ * adjustment sheet uses, and it has to be a value the `<select>` can hold rather
+ * than a second piece of state, so that "belum dipilih", "lot ini" and "lot baru"
+ * are three answers to ONE question.
+ */
+const NEW_BATCH = "__new__";
 
 interface LineDraft {
   productId: string;
   qty: string;
   costPerUnit: string;
-  batchCode: string;
+  /**
+   * WHICH LOT the goods join: "" = belum dipilih, a `productbatches` id, or
+   * NEW_BATCH. Only asked for products that carry an expiry date — see
+   * `picksLot`.
+   */
+  batchChoice: string;
+  /**
+   * THEIR code — the batch number printed on the carton, typed only while
+   * `batchChoice` is NEW_BATCH. A lot being JOINED already recorded one when it
+   * was opened, and retagging it here would rewrite the first delivery's recall
+   * trail.
+   *
+   * OUR code is not a field: it is generated and unique across the tenant, and
+   * the API refuses a client-supplied one. What the row SHOWS is the code the
+   * preview says the lot will be saved with — see `InternalBatchCodeDisplay`.
+   */
+  supplierBatchCode: string;
   expiryDate: string;
 }
 
@@ -56,8 +97,9 @@ function today(): string {
  * delivery is consigned, because consignment stock always gets its own lot: its
  * cost was entered by hand rather than derived from a purchase.
  *
- * The code itself is no longer the clerk's problem — see `autoBatchCode`. What
- * IS still theirs is the expiry date, which nothing can derive.
+ * The code itself is not the clerk's to give — the server generates it. What IS
+ * still theirs is the expiry date, which nothing can derive, and the supplier's
+ * own batch number when the carton carries one.
  *
  * MODULE-LEVEL, taking `consignment` as an argument rather than closing over it.
  * Defined inside the component it would be a new function every render, and the
@@ -68,40 +110,91 @@ function needsLot(product: Product | undefined, consignment: boolean): boolean {
   return Boolean(product?.hasExpiry) || consignment;
 }
 
-/** The API's own limit, minus the `:tanggal` this appends. */
-const BATCH_CODE_MAX_LENGTH = 60;
+/**
+ * Whether the row must SAY WHICH LOT, rather than only describing one.
+ *
+ * ONLY GOODS THAT EXPIRE, which is narrower than `needsLot` on purpose. A lot
+ * that carries a date is a thing on the shelf a second van can add to: the same
+ * medicine, the same expiry, arriving twice. A consignment lot exists to carry a
+ * hand-entered cost for one intake, so every consigned line still opens its own
+ * — there is nothing to join.
+ *
+ * MODULE-LEVEL for the same reason `needsLot` is: a function rebuilt every render
+ * would rebuild the payload memo with it.
+ */
+function picksLot(product: Product | undefined): boolean {
+  return Boolean(product?.hasExpiry);
+}
 
 /**
- * The batch code a line falls back to when the field is left blank.
+ * What a line COSTS, which on a consignment is nothing.
  *
- * SUPPLIERS OFTEN DO NOT PRINT ONE. Demanding a code anyway made the clerk
- * invent it, and an invented code is either "1", the invoice number, or whatever
- * the last person typed — none of which identifies a lot when it has to be
- * recalled or returned months later. So the field is optional now and this fills
- * it, from what the goods themselves already say.
+ * FORCED TO "0" RATHER THAN TYPED. Consigned goods are still the supplier's, so
+ * this form no longer asks what they cost: the column is locked at zero and the
+ * field below it is disabled.
  *
- * KEYED ON THE EXPIRY DATE, because that is what actually distinguishes one lot
- * of a product from the next, and what FEFO already orders by: two clerks
- * receiving the same delivery land on the same code, and a second van carrying
- * the same expiry lands on it too — correctly, since `batchCode` is deliberately
- * NOT unique (see productbatches) and one code arriving twice is two rows.
+ * WHAT THAT MEANS DOWNSTREAM, recorded here because it is not visible from the
+ * screen. `costPerUnit` is not merely a label on a receipt — it is the figure
+ * `stockMovementService` feeds to `#weightedAverage`, and a `receipt` movement
+ * is NOT journal-exempt, so a consignment intake moves `products.hppAvg` exactly
+ * like a purchase does. Bringing goods in at zero therefore averages the
+ * product's cost basis DOWN, tenant-wide, and every later sale of that product —
+ * consigned or owned — books COGS against the diluted figure. A receipt cannot
+ * be edited or deleted once saved.
  *
- * Consigned goods that never expire have no such date, so they fall back to the
- * receipt date — the only thing separating one consignment from the next.
+ * That trade was made deliberately and is the shop's to make; it is written down
+ * so the next reader does not "fix" the zero, and so that the day the numbers
+ * look wrong there is something to read.
  *
- * Exported for its own tests: the form's product picker is a Radix select, which
- * jsdom cannot drive, so this rule is unreachable through the rendered row.
+ * A TYPED VALUE IS NOT DESTROYED, only overridden — `line.costPerUnit` keeps
+ * whatever was entered under `beli_putus`, so toggling back restores it.
+ *
+ * MODULE-LEVEL, taking `consignment` as an argument, for the same reason
+ * `needsLot` is: a function defined in the body would be new every render and
+ * the payload memo would rebuild on every keystroke.
  */
-export function autoBatchCode(
-  sku: string | null | undefined,
-  expiryDate: string,
-  receiptDate: string,
+function costOf(line: LineDraft, consignment: boolean): string {
+  return consignment ? "0" : line.costPerUnit;
+}
+
+/**
+ * This form's own address, for one tab.
+ *
+ * ONE DEFINITION, shared by the tab buttons and by the stamp on first paint —
+ * two would drift, and the drift shows up as a refresh landing on a different
+ * tab from the one the user left.
+ *
+ * The supplier is CARRIED rather than rebuilt: this screen is reached from a
+ * vendor's detail page as `?supplier=…`, and dropping it would empty that field
+ * on the next refresh.
+ */
+function receiptUrl(
+  supplierId: string | undefined,
+  type: PurchaseType,
 ): string {
-  const date = expiryDate || receiptDate;
-  // Truncated rather than refused: a 60-character SKU is the catalogue's
-  // problem, and losing the tail of it beats losing the receipt.
-  const stem = (sku ?? "LOT").slice(0, BATCH_CODE_MAX_LENGTH - date.length - 1);
-  return `${stem}:${date}`;
+  const query = new URLSearchParams();
+  if (supplierId) query.set("supplier", supplierId);
+  query.set("type", type);
+
+  return `/dashboard/purchasing/receipts/new?${query}`;
+}
+
+/**
+ * The mark a required COLUMN carries, since a column header is the only place a
+ * table can say "wajib" once for every row.
+ *
+ * `danger-ink` (6.37:1) rather than `danger`: a lone asterisk has no word beside
+ * it to carry the meaning, so it has to clear the contrast floor on its own —
+ * see ui-rules §13. Hidden from screen readers, which get `aria-required` off
+ * each input and would otherwise hear a bare star per row.
+ */
+function Required() {
+  return (
+    <span aria-hidden className="text-xs font-bold text-danger-ink">
+      {" "}
+      *
+    </span>
+  );
 }
 
 /**
@@ -124,18 +217,23 @@ function duplicateMessage(name: string | undefined): string {
  * Record goods arriving from a supplier.
  *
  * THIS FORM IS WHERE HPP IS BORN. Every other screen reads the weighted average;
- * this is the one that moves it. That is why the calculation is shown per product
- * as arithmetic rather than as a result — the shop owner holding the supplier's
- * invoice can check the new average against the price on the paper in their hand,
- * which is the only moment anybody ever can.
+ * this is the one that moves it. The place it is checked is the `Harga beli`
+ * column itself, seeded with the current average so a price CHANGE shows up as a
+ * change against the invoice in the clerk's hand.
  *
  * THE NUMBERS ARE FETCHED, NOT COMPUTED. This form used to run its own sequential
  * weighted-average simulation across the lines, reimplemented from the service.
  * That is gone. `POST /goods-receipts/preview` is the posting path with the
- * commit left off, so the lots, the average and the journal shown here are the
- * ones that will actually be written. A reimplementation does not fail loudly
+ * commit left off, so the totals, the lots and the receipt number shown here are
+ * the ones that will actually be written. A reimplementation does not fail loudly
  * when the server changes its mind — it renders a confident wrong number that the
  * user approves, and here that number is permanent.
+ *
+ * WHAT THE PREVIEW RETURNS IS NOT ALL SHOWN. The per-product weighted-average
+ * arithmetic and the journal it would post are still fetched — the totals below
+ * come from the same response — but no longer rendered on this screen; the saved
+ * receipt's detail page carries the journal. The preview is therefore still the
+ * authority on every number here, whether or not its workings are on display.
  *
  * BELI PUTUS vs KONSINYASI changes what the form even means. Outright, the goods
  * become the tenant's, the ledger is posted and `2101 Utang Supplier` is
@@ -160,7 +258,22 @@ function duplicateMessage(name: string | undefined): string {
  * the handler refuses re-entry; the preview panel is the other half of the
  * mitigation.
  */
-export function ReceiptForm({ supplierId }: { supplierId?: string }) {
+export function ReceiptForm({
+  supplierId,
+  initialPurchaseType = "beli_putus",
+}: {
+  supplierId?: string;
+  /**
+   * Which tab to open on, read off `?type=` by the page.
+   *
+   * A PROP RATHER THAN `useSearchParams()` HERE, so the tab is decided during
+   * the server render and the first paint is already the right one. Reading it
+   * in the client would paint *Beli putus* and then swap, and the swap is
+   * visible on the picker: a refresh mid-receipt would flash the wrong
+   * catalogue.
+   */
+  initialPurchaseType?: PurchaseType;
+}) {
   const router = useRouter();
 
   const { suppliers, loading: suppliersLoading } =
@@ -168,12 +281,40 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
   const lookups = useStockCardLookups();
 
   const [supplier, setSupplier] = useState(supplierId ?? "");
+  const [pickedBranch, setPickedBranch] = useState("");
   const [warehouseId, setWarehouseId] = useState("");
-  const [purchaseType, setPurchaseType] = useState<PurchaseType>("beli_putus");
+  const [purchaseType, setPurchaseType] = useState<PurchaseType>(
+    initialPurchaseType,
+  );
   const [receiptDate, setReceiptDate] = useState(today);
   const [taxAmount, setTaxAmount] = useState("");
   const [notes, setNotes] = useState("");
+  /**
+   * WHETHER THIS SAVE ALSO FILES THE VENDOR'S BILL — asked outright.
+   *
+   * OFF BY DEFAULT, because on it demands two more required fields the moment
+   * the form opens, and a delivery whose faktur has not arrived is an ordinary
+   * delivery rather than an unfinished one. Ticking it is a deliberate act, and
+   * the two boxes appear only then.
+   */
+  const [fileInvoice, setFileInvoice] = useState(false);
+  const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [invoiceDate, setInvoiceDate] = useState(today);
   const [lines, setLines] = useState<LineDraft[]>([]);
+  /**
+   * The products the rows are ABOUT, kept here rather than looked up in a
+   * catalogue held in memory.
+   *
+   * The picker searches on the server and hands back whole products, so this
+   * grows one pick at a time and never needs the other five thousand. Nothing is
+   * ever removed from it: a row deleted and its product picked again would
+   * otherwise re-fetch what is already known, and a stale entry costs a few
+   * bytes and nothing else.
+   */
+  const [productById, setProductById] = useState<Map<string, Product>>(
+    new Map(),
+  );
+  const [picking, setPicking] = useState(false);
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -182,48 +323,223 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
   const consignment = purchaseType === "konsinyasi";
 
   /**
-   * ACTIVE warehouses only, unlike the stock card. This form WRITES, and the API
-   * refuses a delivery at an inactive location — offering one would produce a
-   * rejection after the user had filled the whole form.
+   * Switches the tab AND puts it in the address bar, so a refresh comes back to
+   * the same one.
+   *
+   * `replace`, not `push`: the tab is a mode this form is in, not a place the
+   * user navigated to. With `push`, Back would walk through every tab click
+   * before leaving the screen — and each of those entries restores a form the
+   * browser has already discarded the state of.
+   *
+   * `scroll: false` because the tabs sit at the top of a long form and Next
+   * would otherwise jump there from wherever the user was reading.
+   *
+   * The supplier is CARRIED, not rebuilt: this screen is reached from a
+   * supplier's detail page as `?supplier=…`, and dropping it on the first tab
+   * click would empty that field on the next refresh.
    */
-  const writableWarehouses = useMemo(
-    () => lookups.warehouses.filter((warehouse) => warehouse.isActive),
-    [lookups.warehouses],
-  );
+  function pickPurchaseType(next: PurchaseType) {
+    setPurchaseType(next);
+    // The lots on offer are the ones whose ownership matches the tab — see
+    // `lotsFor`. A choice made on the other tab names a lot this one would not
+    // have offered.
+    clearBatchChoices();
 
-  /** Same reasoning for the catalogue: a deleted product cannot be received. */
-  const receivableProducts = useMemo(
-    () =>
-      lookups.products.filter(
-        (product) => product.isActive && !product.deletedAt,
-      ),
-    [lookups.products],
-  );
+    router.replace(receiptUrl(supplierId, next), { scroll: false });
+  }
 
-  const productById = useMemo(
-    () => new Map(receivableProducts.map((product) => [product._id, product])),
-    [receivableProducts],
+  /**
+   * SAYS WHICH TAB IS OPEN FROM THE FIRST PAINT, rather than only after one is
+   * clicked.
+   *
+   * `?type=` is how this screen remembers its tab across a refresh — but it was
+   * written only by `pickPurchaseType`, so a form opened and never toggled had a
+   * bare URL that MEANT *Beli putus* without saying so. Three things fall out of
+   * that, and each is a real receipt going wrong:
+   *
+   *   A LINK SHARED FROM THIS SCREEN reproduced the tab only by coincidence —
+   *   it happened to be the default. The day the default moves, every such link
+   *   opens the other kind of delivery.
+   *
+   *   A MISSPELT PARAM STAYED ON SCREEN. `?type=bananas` renders *Beli putus*
+   *   and the address bar keeps claiming otherwise; stamping the RESOLVED value
+   *   makes the URL agree with the form.
+   *
+   *   THE BACK BUTTON. Toggling to *Konsinyasi* and back used to leave one
+   *   history entry with no `type` and one with it, so Back walked between two
+   *   URLs that render identically.
+   *
+   * `replace`, never `push`: opening a page must not cost a history entry the
+   * user has to press Back through to leave.
+   *
+   * ONCE, AND THE REF IS WHAT SAYS SO rather than an empty dependency list that
+   * lies about what the effect reads. `useRouter()` is documented as stable, but
+   * an effect whose only guard is that promise re-runs on every render the day it
+   * is not — and this one navigates, so the failure would be a form that drags
+   * the address bar back to the tab it opened on while somebody is using it.
+   *
+   * It is also what makes React's development double-invoke write one URL rather
+   * than two.
+   */
+  const stampedUrl = useRef(false);
+  useEffect(() => {
+    if (stampedUrl.current) return;
+    stampedUrl.current = true;
+
+    router.replace(receiptUrl(supplierId, initialPurchaseType), {
+      scroll: false,
+    });
+  }, [router, supplierId, initialPurchaseType]);
+
+  /**
+   * LOCATION FIRST, THEN THE SHELF — the order every hand-typed stock form in
+   * this app asks its two scoping questions in, and the same hook behind it.
+   *
+   * THE BRANCH IS NOT IN THE PAYLOAD, and that is the one way this differs from
+   * the adjustment form. `POST /goods-receipts` takes no `branchId`: the service
+   * resolves it from the warehouse (`warehouse.defaultBranchId`, then the
+   * session's branch). So this picker SCOPES THE FIELD BELOW rather than
+   * deciding the books — which is exactly what it is for, since offering a
+   * warehouse pinned to another branch could only produce a refusal after the
+   * whole delivery had been typed.
+   */
+  const scope = useBranchScope();
+  /**
+   * ONE BRANCH IS NOT A CHOICE — a tenant with a single shop reaches the
+   * warehouse without opening a dropdown that has one option in it. Derived
+   * rather than pushed into state by an effect, which would render once with the
+   * empty value and leave the warehouse list needlessly empty in between.
+   */
+  const branchId = pickedBranch || scope.soleBranch;
+
+  /**
+   * ACTIVE warehouses only — this form WRITES, and the API refuses a delivery at
+   * an inactive location — and only the ones THIS BRANCH may post at: its own,
+   * plus the shared central warehouse, which belongs to no branch and serves all
+   * of them. Empty until a branch is named, so a warehouse cannot be chosen and
+   * then silently invalidated by a branch picked after it.
+   */
+  const scopedWarehouses = useMemo(
+    () => warehousesForBranch(branchId, lookups.warehouses),
+    [branchId, lookups.warehouses],
   );
 
   /**
-   * What the "+ Tambah barang" picker may still offer.
-   *
-   * A PRODUCT ALREADY ON THE FORM IS REMOVED, because the API refuses a receipt
-   * carrying one twice and there is no reason to let a user build a payload that
-   * cannot be saved. Preventing it beats validating it: the duplicate rule is not
-   * something a clerk can be expected to know, and discovering it from a 400
-   * after filling forty lines is the worst possible moment.
+   * THE CATALOGUE IS NO LONGER HELD HERE. It used to be `lookups.products`,
+   * filtered to the active ones and poured into a per-row `<Select>`; the picker
+   * dialog now asks the SERVER for the matches to one search — active products
+   * that hold stock, which is exactly what a receipt line may name — so a tenant
+   * with five thousand SKUs pays for the fifty they looked at. `lookups` stays
+   * for the warehouses, which are a short list nobody searches.
    */
-  const availableProducts = useMemo(() => {
-    const used = new Set(lines.map((line) => line.productId));
-    return receivableProducts.filter((product) => !used.has(product._id));
-  }, [receivableProducts, lines]);
 
-  // The first warehouse becomes the default once the list arrives. Kept out of an
-  // effect: a value derived from props/state does not need to round-trip through
-  // one, and `warehouseId` staying "" until then is a legitimate intermediate.
+  /**
+   * Filled in only when the branch has exactly ONE warehouse to offer — the same
+   * rule `soleBranch` applies one field up: one option is not a choice, and two
+   * are. This used to take the first of the whole list, which under a branch
+   * that owns a warehouse AND reaches the shared one would silently pick between
+   * two real answers.
+   *
+   * Kept out of an effect: a value derived from state does not need to round-trip
+   * through one, and `warehouseId` staying "" until a branch is named is a
+   * legitimate intermediate.
+   */
   const effectiveWarehouseId =
-    warehouseId || (writableWarehouses[0]?._id ?? "");
+    warehouseId || (scopedWarehouses.length === 1 ? scopedWarehouses[0]._id : "");
+
+  /**
+   * The lots already on the shelf AT THIS WAREHOUSE, so a second delivery of a
+   * batch that is already there joins it instead of minting a duplicate row.
+   *
+   * ONE REQUEST FOR THE WHOLE DELIVERY, keyed on the warehouse — a lot belongs to
+   * a location, and the same product's lots elsewhere are different boxes. Empty
+   * until a warehouse is named, which is why the picker below only offers
+   * "+ Batch baru" then: there is nothing to add to yet.
+   */
+  const lots = useWarehouseBatches(effectiveWarehouseId);
+
+  /**
+   * Whether this save will file a bill as well as a delivery.
+   *
+   * THE TICK BOX IS THE ANSWER, not the state of the fields under it. A form
+   * that inferred the intent from "is the number box empty" cannot tell a
+   * delivery whose faktur has not arrived from one where somebody was
+   * interrupted mid-word — so it can only either nag about an empty box that is
+   * legitimately empty, or drop a half-typed number silently. Asked outright,
+   * both boxes below become plainly required and blank means blank.
+   *
+   * Never on konsinyasi, whatever the box says: nothing has been bought, and the
+   * API refuses the field there rather than ignoring it.
+   */
+  const filingInvoice = !consignment && fileInvoice;
+
+  /**
+   * When the vendor expects to be paid — `tanggal faktur + termin`, the same
+   * arithmetic the server freezes onto the document.
+   *
+   * SHOWN, NOT SENT. `dueDate` is derived server-side from the supplier's terms
+   * precisely so a clerk cannot grant themselves terms the vendor never agreed
+   * to; this is a preview of that answer, computed from the terms already loaded
+   * with the supplier list. Null when either half is unknown, which is honest —
+   * a due date guessed from a missing term would be a date somebody plans around.
+   */
+  const dueDate = useMemo(() => {
+    const terms = suppliers.find(
+      (item) => item._id === supplier,
+    )?.paymentTermDays;
+    if (terms === undefined || invoiceDate === "") return null;
+
+    const at = new Date(`${invoiceDate}T00:00:00`);
+    if (Number.isNaN(at.getTime())) return null;
+
+    at.setDate(at.getDate() + terms);
+    return at.toLocaleDateString("id-ID", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  }, [suppliers, supplier, invoiceDate]);
+
+  /**
+   * WHY PRODUCTS CANNOT BE PICKED YET, or null once they can.
+   *
+   * THE HEADER IS ANSWERED BEFORE THE LINES, and on this form that is not merely
+   * tidiness. A row for goods that expire has to say WHICH LOT it lands in, and
+   * the lots on offer are the ones held at the destination warehouse — which is
+   * decided by the branch, which is asked after the supplier. Opening the picker
+   * with any of the three unanswered produces rows whose batch column can only
+   * offer "+ Batch baru", so a delivery of goods already on the shelf would mint
+   * a duplicate lot with nothing on screen suggesting otherwise.
+   *
+   * ONE REASON, NAMING THE FIRST UNANSWERED QUESTION rather than listing all
+   * three. They are answered top to bottom and each one narrows the next — a
+   * warehouse cannot be chosen before its branch — so the first is the only one
+   * the reader can act on.
+   */
+  const pickerBlocker = !supplier
+    ? "Pilih supplier dulu — satu penerimaan adalah satu kiriman dari satu supplier."
+    : !branchId
+      ? "Pilih cabang dulu — gudang tujuan diambil dari cabang itu."
+      : !effectiveWarehouseId
+        ? "Pilih gudang tujuan dulu — batch yang sudah ada di gudang itulah yang ditawarkan per baris."
+        : null;
+
+  /**
+   * The lots THIS row may join.
+   *
+   * FILTERED BY OWNERSHIP, which the adjustment sheet has no need to do. A
+   * consignment lot holds goods that are still the supplier's and carries its own
+   * hand-entered cost; an owned lot holds goods that were bought. Pouring one
+   * kind into the other would leave a single lot whose stock is half titipan and
+   * half milik toko, with one `isConsignment` flag to describe both — and a
+   * consignment settlement reading that flag would bill the shop for its own
+   * goods, or fail to bill for the supplier's.
+   */
+  function lotsFor(productId: string) {
+    return (lots.byProduct.get(productId) ?? []).filter(
+      (lot) => lot.isConsignment === consignment,
+    );
+  }
 
   /**
    * The payload, built once and used for BOTH the preview and the save.
@@ -243,22 +559,54 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
       // ignore it. Omitted when blank so an untouched field is not "0".
       ...(consignment || trimmedTax === "" ? {} : { taxAmount: trimmedTax }),
       ...(notes.trim() === "" ? {} : { notes: notes.trim() }),
+      /**
+       * Omitted entirely rather than sent empty, and omitted on consignment
+       * however full the boxes are — the API forbids the key there, it does not
+       * ignore it. A value typed under *Beli putus* is kept in state, not
+       * destroyed, so toggling back restores it: the same treatment `costOf`
+       * gives the purchase price.
+       */
+      ...(filingInvoice
+        ? {
+            invoice: {
+              invoiceNumber: invoiceNumber.trim(),
+              invoiceDate,
+            },
+          }
+        : {}),
       items: lines.map((line) => {
         const product = productById.get(line.productId);
+        /**
+         * NAMING A LOT AND DESCRIBING ONE ARE DIFFERENT REQUESTS, and the API
+         * refuses the pair rather than preferring one — so the code and the date
+         * are omitted entirely for a row that names an existing lot. That lot
+         * already has both, and sending a second answer could only contradict it.
+         */
+        const joiningLot =
+          picksLot(product) &&
+          line.batchChoice !== "" &&
+          line.batchChoice !== NEW_BATCH;
+
+        if (joiningLot) {
+          return {
+            productId: line.productId,
+            qty: line.qty.trim(),
+            costPerUnit: costOf(line, consignment).trim(),
+            batchId: line.batchChoice,
+          };
+        }
+
         return {
           productId: line.productId,
           qty: line.qty.trim(),
-          costPerUnit: line.costPerUnit.trim(),
-          // Filled in for the clerk when they left it blank. Done HERE rather
-          // than in the field itself so the row keeps showing what the supplier
-          // actually printed — nothing — while the preview and the save both
-          // carry the code that will really be written.
-          ...(needsLot(product, consignment)
-            ? {
-                batchCode:
-                  line.batchCode.trim() ||
-                  autoBatchCode(product?.sku, line.expiryDate, receiptDate),
-              }
+          costPerUnit: costOf(line, consignment).trim(),
+          // THEIRS travels, ours does not: the lot's code is minted by the
+          // server, so a receipt describes the goods — the number on the carton
+          // and when they expire — and never names what the lot will be called.
+          // Omitted rather than sent blank when the supplier printed nothing.
+          ...(needsLot(product, consignment) &&
+          line.supplierBatchCode.trim() !== ""
+            ? { supplierBatchCode: line.supplierBatchCode.trim() }
             : {}),
           ...(needsLot(product, consignment) && line.expiryDate !== ""
             ? { expiryDate: line.expiryDate }
@@ -277,6 +625,9 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
     notes,
     lines,
     productById,
+    filingInvoice,
+    invoiceNumber,
+    invoiceDate,
   ]);
 
   /**
@@ -292,6 +643,37 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
    * stays because "unreachable" and "unreachable today" are different claims, and
    * the failure mode is a raw id in a red box.
    */
+  /**
+   * Rows whose product does not belong on the tab the form is now on.
+   *
+   * ONLY REACHABLE BY SWITCHING TABS after picking — the picker cannot produce
+   * one. Rather than police the switch, the form reports it: the rows were added
+   * deliberately, and a tab click that silently deleted somebody's typed
+   * quantities is a worse outcome than the receipt this warns about.
+   *
+   * NOT A SUBMIT BLOCKER either, and that is a judgement rather than an
+   * oversight. The API takes `purchaseType` and the product's flag independently
+   * and has no rule connecting them, so refusing here would invent one in the
+   * browser — and there are real receipts on the wrong side of it, like the
+   * first delivery of goods a vendor has just agreed to convert to titipan. It
+   * is named, and the clerk decides.
+   *
+   * A product missing from `productById` is skipped rather than flagged: that is
+   * a row whose product was removed from the catalogue mid-edit, which
+   * `duplicateProductId` below already explains and which this cannot diagnose.
+   */
+  const mismatchedLines = useMemo(
+    () =>
+      lines
+        .map((line) => productById.get(line.productId))
+        .filter(
+          (product): product is Product =>
+            product !== undefined &&
+            product.isConsignment !== consignment,
+        ),
+    [lines, productById, consignment],
+  );
+
   const duplicateProductId = useMemo(() => {
     const seen = new Set<string>();
     for (const line of lines) {
@@ -308,6 +690,9 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
    * see and fix in the form; the server has the final word on the rest.
    */
   const previewEnabled =
+    // A half-filled bill is a payload the server refuses; asking it about one
+    // buys a red panel quoting a field the clerk is still filling in.
+    (!filingInvoice || (invoiceNumber.trim() !== "" && invoiceDate !== "")) &&
     Boolean(supplier) &&
     Boolean(effectiveWarehouseId) &&
     lines.length > 0 &&
@@ -317,25 +702,125 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
     lines.every((line) => {
       const product = productById.get(line.productId);
       if (!isPositive(line.qty)) return false;
-      if (!isDecimal(line.costPerUnit)) return false;
-      // No batch-code gate: a blank one is filled by `autoBatchCode`. The
-      // expiry date is not derivable and still blocks the preview.
-      if (product?.hasExpiry && line.expiryDate === "") return false;
+      if (!isDecimal(costOf(line, consignment))) return false;
+      // WHICH LOT comes first: until it is answered the server cannot be told
+      // whether this line joins one or opens one, and the two are different
+      // requests.
+      if (picksLot(product) && line.batchChoice === "") return false;
+      // No batch-code gate: the supplier's number is optional and ours is the
+      // server's to mint. The expiry date is not derivable and still blocks the
+      // preview — but only for a lot being CREATED. One being joined already
+      // has a date of its own.
+      if (
+        product?.hasExpiry &&
+        line.batchChoice === NEW_BATCH &&
+        line.expiryDate === ""
+      )
+        return false;
       return true;
     }) &&
     (consignment || taxAmount.trim() === "" || isDecimal(taxAmount.trim()));
 
-  const { preview, loading: previewLoading, error: previewError } =
-    useReceiptPreview(payload, previewEnabled);
+  const {
+    preview,
+    loading: previewLoading,
+    error: previewError,
+  } = useReceiptPreview(payload, previewEnabled);
+
+  /**
+   * The lots this delivery TOUCHES — the ones it would open, and the ones
+   * already on the shelf it would add to.
+   *
+   * AS THE SERVER DECIDED THEM: `isNewBatch`, `batchId` and `batchCode` all come
+   * back from `/goods-receipts/preview` rather than from anything computed here.
+   * Empty until the preview has run, which is what the card's empty state says.
+   *
+   * BOTH, because the card below is the answer to "where do these goods land",
+   * and a delivery that joins an existing lot creates nothing. Listing only the
+   * new ones left that receipt reading "tidak ada batch baru", which is true and
+   * says nothing about what is about to happen. `isNewBatch` separates the two
+   * for the label; `batchId` is what a joined row carries instead.
+   */
+  const lotMovements = useMemo(
+    () =>
+      (preview?.movements ?? []).filter(
+        (movement) => movement.isNewBatch || movement.batchId !== null,
+      ),
+    [preview],
+  );
+
+  /**
+   * THE CODE EACH ROW'S LOT WILL ACTUALLY BE SAVED WITH, from the server.
+   *
+   * BY POSITION, which is safe on this endpoint and only on this endpoint: a
+   * receipt is entirely inbound, and an inbound line never fans out the way a
+   * withdrawal splits across lots. `payload.items` is built from `lines` in
+   * order, and the preview answers one row per item in that same order.
+   *
+   * Null before a preview has run, and null on a row that opens no lot. The
+   * field falls back to a locally derived HINT there — which can be one suffix
+   * out, since the code is unique across the tenant and nothing in the browser
+   * knows which are taken.
+   */
+  const previewedCodes = useMemo(
+    () => (preview?.movements ?? []).map((movement) => movement.batchCode),
+    [preview],
+  );
+
+  /**
+   * Whether the lot COLUMN is worth its width — true as soon as one row is about
+   * goods that expire. A delivery of nothing but non-perishables never sees it.
+   */
+  const anyLotPicked = useMemo(
+    () => lines.some((line) => picksLot(productById.get(line.productId))),
+    [lines, productById],
+  );
+
+  /**
+   * Whether anything on the sheet is OPENING a lot, which is the only case where
+   * an expiry date has to be typed. An asterisk over a column of disabled boxes
+   * marks as required a field nobody can fill, which is how the mark stops
+   * meaning anything.
+   */
+  const anyNewLot = useMemo(
+    () => lines.some((line) => line.batchChoice === NEW_BATCH),
+    [lines],
+  );
 
   /** Line subtotals are plain multiplication — no server rule is involved. */
   const localSubtotal = sumDecimals(
-    lines.map((line) =>
-      isDecimal(line.qty) && isDecimal(line.costPerUnit)
-        ? multiplyDecimals(line.qty, line.costPerUnit)
-        : "0",
-    ),
+    lines.map((line) => {
+      const cost = costOf(line, consignment);
+      return isDecimal(line.qty) && isDecimal(cost)
+        ? multiplyDecimals(line.qty, cost)
+        : "0";
+    }),
   );
+
+  /**
+   * Forgets which lot every row named, WITHOUT touching anything else on it.
+   *
+   * Called when the warehouse or the purchase type changes, because a lot id is
+   * only meaningful against one of each: the lots on offer belong to a location,
+   * and they are filtered by whether the goods are the shop's — see `lotsFor`.
+   * Left alone, a stale id would post the delivery into a lot at the warehouse
+   * the clerk has just navigated away from, or be refused by the server naming a
+   * code nobody can see on screen any more.
+   *
+   * THE ROWS THEMSELVES SURVIVE, unlike the adjustment sheet, which empties on
+   * the same event. There, every row's system quantity was read from the old
+   * warehouse and means nothing at the new one. Here a row is a product, a
+   * quantity and a price off the invoice in the clerk's hand — none of which the
+   * warehouse decides — so throwing away a forty-line delivery because somebody
+   * corrected the destination would be the worse trade.
+   */
+  function clearBatchChoices() {
+    setLines((prev) =>
+      prev.map((line) =>
+        line.batchChoice === "" ? line : { ...line, batchChoice: "" },
+      ),
+    );
+  }
 
   function updateLine(index: number, patch: Partial<LineDraft>) {
     setLines((prev) =>
@@ -343,19 +828,40 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
     );
   }
 
-  function addLine(productId: string) {
-    const product = productById.get(productId);
+  /**
+   * SEVERAL AT ONCE, because a van carries several. The old picker added one row
+   * per trip through a dropdown; the dialog hands back everything that was
+   * ticked, across however many searches it took to find them.
+   */
+  function addLines(products: Product[]) {
+    setProductById((prev) => {
+      const next = new Map(prev);
+      for (const product of products) next.set(product._id, product);
+      return next;
+    });
     setLines((prev) => [
       ...prev,
-      {
-        productId,
+      ...products.map((product) => ({
+        productId: product._id,
         qty: "1",
         // Seeded with the current average so a re-order at the same price is one
         // keystroke, and a price CHANGE is visible as a change.
-        costPerUnit: product?.hppAvg ?? "",
-        batchCode: "",
+        //
+        // TRIMMED, because the seed lands in an INPUT. The API stores money at
+        // four decimals, which is right for a ledger and noise in a box somebody
+        // is about to type over: `4000.0000` reads as a number the form did
+        // something to, and it is the fixed zeros — not the value — that say so.
+        // `trimQty` is the shared "stored decimal → editable string" shortener
+        // (its name is about where it was first needed, not what it does); it
+        // leaves a real fraction alone, so `12500.5000` still seeds `12500.5`.
+        costPerUnit: trimQty(product.hppAvg),
+        // Left unanswered rather than defaulted to "+ Batch baru": the whole
+        // point of the picker is that a delivery of goods already on the shelf
+        // should join them, and a default would quietly opt every row out of it.
+        batchChoice: "",
+        supplierBatchCode: "",
         expiryDate: "",
-      },
+      })),
     ]);
   }
 
@@ -363,7 +869,11 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
     const next: Record<string, string> = {};
 
     if (!supplier) next.supplier = "Pilih supplier.";
-    if (!effectiveWarehouseId) next.warehouse = "Pilih gudang tujuan.";
+    // Named before the warehouse, because the warehouse cannot be answered until
+    // it is — a bare "Pilih gudang tujuan." over a disabled picker says nothing
+    // about what to do next.
+    if (!branchId) next.branch = "Pilih cabang dulu.";
+    else if (!effectiveWarehouseId) next.warehouse = "Pilih gudang tujuan.";
     if (lines.length === 0) next.lines = "Tambahkan minimal satu barang.";
 
     if (duplicateProductId !== null) {
@@ -379,24 +889,56 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
           next.lines = `${label}: qty harus lebih dari nol.`;
           break;
         }
-        if (!isDecimal(line.costPerUnit)) {
-          next.lines = consignment
-            ? `${label}: HPP manual wajib diisi untuk barang konsinyasi.`
-            : `${label}: harga beli wajib diisi.`;
+        // Never reachable on a consignment, where the cost is the constant
+        // "0" — kept unconditional anyway, because a rule that is only true
+        // while a neighbouring branch holds is a rule that breaks quietly when
+        // that branch changes.
+        if (!isDecimal(costOf(line, consignment))) {
+          next.lines = `${label}: harga beli wajib diisi.`;
           break;
         }
-        // Kode batch is NOT checked: blank means "supplier tidak memberi nomor",
-        // and the payload derives one. The expiry date has no such fallback —
-        // it is the thing the code is derived FROM, and FEFO is wrong without it.
-        if (product?.hasExpiry && line.expiryDate === "") {
+        if (picksLot(product) && line.batchChoice === "") {
+          next.lines = `${label}: pilih batch dulu — lot yang sudah ada, atau batch baru.`;
+          break;
+        }
+        // Kode batch supplier is NOT checked: blank means "supplier tidak
+        // memberi nomor", which is the ordinary case, and our own code is the
+        // server's. The expiry date has no such fallback — it is what the code
+        // is derived FROM, and FEFO is wrong without it.
+        // Asked only of a lot being CREATED: one being joined carries the date it
+        // was created with, and the form shows it rather than asking again.
+        if (
+          product?.hasExpiry &&
+          line.batchChoice === NEW_BATCH &&
+          line.expiryDate === ""
+        ) {
           next.lines = `${label}: tanggal kedaluwarsa wajib diisi.`;
           break;
         }
       }
     }
 
-    if (!consignment && taxAmount.trim() !== "" && !isDecimal(taxAmount.trim())) {
+    if (
+      !consignment &&
+      taxAmount.trim() !== "" &&
+      !isDecimal(taxAmount.trim())
+    ) {
       next.taxAmount = "Gunakan angka, maksimal 4 desimal.";
+    }
+
+    /**
+     * BOTH REQUIRED, BUT ONLY ONCE THE BOX IS TICKED. Untick it and neither is
+     * asked for at all — that is the whole point of asking outright. Ticked,
+     * they are the two things the server cannot derive: the number is the
+     * vendor's own, and the date is what their payment terms are counted from.
+     */
+    if (filingInvoice) {
+      if (invoiceNumber.trim() === "") {
+        next.invoiceNumber = "Nomor faktur wajib diisi.";
+      }
+      if (invoiceDate === "") {
+        next.invoiceDate = "Tanggal faktur wajib diisi.";
+      }
     }
 
     setFieldErrors(next);
@@ -420,7 +962,9 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
       swalToast(
         consignment
           ? `${receipt.receiptNumber} tersimpan — stok naik, belum ada utang.`
-          : `${receipt.receiptNumber} tersimpan — HPP dan utang diperbarui.`,
+          : filingInvoice
+            ? `${receipt.receiptNumber} tersimpan — HPP dan utang diperbarui, faktur ${invoiceNumber.trim()} ikut tercatat.`
+            : `${receipt.receiptNumber} tersimpan — HPP dan utang diperbarui.`,
       );
       // `replace`, not `push`: the create form must not be reachable by going
       // back, because going back to it and submitting again receives the goods
@@ -437,495 +981,940 @@ export function ReceiptForm({ supplierId }: { supplierId?: string }) {
     }
   }
 
-  const lookupsPending = suppliersLoading || lookups.loading;
-
   return (
-    <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
-      {formError && <Alert variant="error">{formError}</Alert>}
-      {lookups.error && <Alert variant="error">{lookups.error}</Alert>}
+    <>
+      {picking && (
+        <ReceiptAddProductsDialog
+          existingProductIds={lines.map((line) => line.productId)}
+          consignment={consignment}
+          onAdd={addLines}
+          onClose={() => setPicking(false)}
+        />
+      )}
 
-      <div>
-        <div className="inline-flex rounded-lg bg-accent p-1">
-          {(
-            [
-              ["beli_putus", "Beli putus"],
-              ["konsinyasi", "Konsinyasi (titipan)"],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setPurchaseType(value)}
-              className={cn(
-                "rounded-md px-3.5 py-2 text-sm font-medium transition",
-                purchaseType === value
-                  ? "bg-surface text-foreground shadow-sm"
-                  : "text-muted hover:text-foreground",
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <p className="mt-1.5 text-xs text-muted">
-          {consignment
-            ? "Barang masuk gudang tapi masih milik supplier — tidak ada utang dan tidak ada jurnal. HPP diisi manual, dan setiap baris punya lot sendiri — kode batch terisi otomatis kalau dikosongkan."
-            : "Barang jadi milik toko saat diterima — utang ke supplier langsung tercatat dan jurnal diposting."}
-        </p>
-      </div>
+      <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
+        {formError && <Alert variant="error">{formError}</Alert>}
+        {lookups.error && <Alert variant="error">{lookups.error}</Alert>}
 
-      <Card title="Dokumen">
-        <div className="grid gap-4 sm:grid-cols-3">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="supplier">Supplier</Label>
-            <Select value={supplier} onValueChange={setSupplier}>
-              <SelectTrigger id="supplier" aria-label="Supplier">
-                <SelectValue placeholder="Pilih supplier…" />
-              </SelectTrigger>
-              <SelectContent>
-                {suppliers.map((item) => (
-                  <SelectItem key={item._id} value={item._id}>
-                    {item.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {fieldErrors.supplier && (
-              <p role="alert" className="text-xs text-danger">
-                {fieldErrors.supplier}
-              </p>
-            )}
+        <div>
+          <div className="inline-flex rounded-lg bg-accent p-1">
+            {(
+              [
+                ["beli_putus", "Beli putus"],
+                ["konsinyasi", "Konsinyasi (titipan)"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => pickPurchaseType(value)}
+                className={cn(
+                  "rounded-md px-3.5 py-2 text-sm font-medium transition",
+                  purchaseType === value
+                    ? "bg-surface text-foreground shadow-sm"
+                    : "text-muted hover:text-foreground",
+                )}
+              >
+                {label}
+              </button>
+            ))}
           </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="warehouse">Masuk ke gudang</Label>
-            <Select value={effectiveWarehouseId} onValueChange={setWarehouseId}>
-              <SelectTrigger id="warehouse" aria-label="Masuk ke gudang">
-                <SelectValue placeholder="Pilih gudang…" />
-              </SelectTrigger>
-              <SelectContent>
-                {writableWarehouses.map((warehouse) => (
-                  <SelectItem key={warehouse._id} value={warehouse._id}>
-                    {warehouse.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {fieldErrors.warehouse && (
-              <p role="alert" className="text-xs text-danger">
-                {fieldErrors.warehouse}
-              </p>
-            )}
-          </div>
-
-          <TextField
-            label="Tanggal terima"
-            name="receiptDate"
-            type="date"
-            value={receiptDate}
-            onChange={(event) => setReceiptDate(event.target.value)}
-            hint="Tanggal barang tiba, bukan tanggal input."
-          />
-
-          {/* PPN belongs to a purchase. There is none on a consignment, and the
-              API refuses the field there outright. */}
-          {!consignment && (
-            <TextField
-              label="PPN masukan"
-              name="taxAmount"
-              inputMode="decimal"
-              value={taxAmount}
-              onChange={(event) => setTaxAmount(event.target.value)}
-              error={fieldErrors.taxAmount}
-              hint="Masuk ke akun 1301, bukan ke nilai persediaan."
-              placeholder="0"
-            />
-          )}
+          <p className="mt-1.5 text-xs text-muted">
+            {consignment
+              ? "Barang masuk gudang tapi masih milik supplier — tidak ada utang dan tidak ada jurnal, dan harga belinya nol karena belum ada yang dibeli. Setiap baris punya lot sendiri — kode batch terisi otomatis kalau dikosongkan."
+              : "Barang jadi milik toko saat diterima — utang ke supplier langsung tercatat dan jurnal diposting."}
+          </p>
         </div>
-      </Card>
 
-      <Card
-        title={
-          <span className="flex flex-wrap items-center gap-2">
-            Barang diterima
-            <Badge variant="outline">{lines.length} baris</Badge>
-            <span className="ml-auto w-64 font-normal">
-              <Select value="" onValueChange={addLine}>
+        <Card title="Dokumen">
+          {/* TWO COLUMNS, THREE ROWS, and the rows are the order the questions
+              are actually answered in: WHO delivered and WHEN, then WHERE it
+              landed — cabang before gudang, since the second is a list the first
+              decides — and only then the tax on the invoice. A three-column grid
+              put the branch and the warehouse on different lines at some widths,
+              which is the one pairing that has to stay together. */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="supplier">Supplier</Label>
+              <Select value={supplier} onValueChange={setSupplier}>
+                {/* `w-full` at the CALL SITE. `ui/select`'s trigger is `w-fit`
+                    by default, which sizes it to the longest supplier's name and
+                    leaves the three pickers in this card three different widths
+                    beside a full-width date field. The vendored file stays
+                    re-syncable from the shadcn CLI — ui-rules §14 — so the
+                    override lives here. */}
                 <SelectTrigger
-                  aria-label="Tambah barang"
-                  disabled={availableProducts.length === 0}
+                  id="supplier"
+                  aria-label="Supplier"
+                  className="w-full"
                 >
                   <SelectValue
                     placeholder={
-                      availableProducts.length === 0 && lines.length > 0
-                        ? "Semua produk sudah ada"
-                        : "+ Tambah barang…"
+                      suppliersLoading ? "Memuat supplier…" : "Pilih supplier…"
                     }
                   />
                 </SelectTrigger>
                 <SelectContent>
-                  {availableProducts.map((product) => (
-                    <SelectItem key={product._id} value={product._id}>
-                      {product.name}
+                  {suppliers.map((item) => (
+                    <SelectItem key={item._id} value={item._id}>
+                      {item.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-            </span>
-          </span>
-        }
-      >
-        {lookupsPending && lines.length === 0 ? (
-          <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted">
-            <Spinner /> Memuat katalog…
-          </div>
-        ) : lines.length === 0 ? (
-          <div className="py-10 text-center">
-            <p className="font-medium">Belum ada barang</p>
-            <p className="mt-1 text-sm text-muted">
-              Pilih produk yang diterima dari supplier ini.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-[10px] tracking-widest text-muted uppercase">
-                  <th className="px-2 py-2 text-left font-medium">Produk</th>
-                  <th className="px-2 py-2 text-right font-medium">Qty</th>
-                  <th className="px-2 py-2 text-right font-medium">
-                    {consignment ? "HPP manual" : "Harga beli"}
-                  </th>
-                  <th className="px-2 py-2 text-left font-medium">
-                    Kode batch
-                  </th>
-                  <th className="px-2 py-2 text-left font-medium">
-                    Expired{" "}
-                    {/* The column, not the cell, carries the mark: a date input
-                        cannot hold a placeholder, so an empty one looks finished
-                        and needs saying somewhere. `danger-ink` rather than
-                        `danger` because a lone asterisk has no word beside it to
-                        carry the meaning — see ui-rules §13. Hidden from screen
-                        readers, which get `aria-required` off the input itself
-                        and would otherwise hear a bare star. */}
-                    <span
-                      aria-hidden
-                      className="text-xs font-bold text-danger-ink"
-                    >
-                      *
-                    </span>
-                  </th>
-                  <th className="px-2 py-2 text-right font-medium">Subtotal</th>
-                  <th className="px-2 py-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {lines.map((line, index) => {
-                  const product = productById.get(line.productId);
-                  const lotTracked = needsLot(product, consignment);
-                  const expiryRequired = Boolean(product?.hasExpiry);
-                  // Shown as the batch field's placeholder, so the clerk can see
-                  // the code they are about to accept rather than discovering it
-                  // on the receipt afterwards. Withheld until the expiry date is
-                  // in, because until then it would be derived from the wrong
-                  // date and change under them the moment they type one.
-                  const autoCode =
-                    expiryRequired && line.expiryDate === ""
-                      ? null
-                      : autoBatchCode(
-                          product?.sku,
-                          line.expiryDate,
-                          receiptDate,
-                        );
-
-                  return (
-                    <tr
-                      key={`${line.productId}-${index}`}
-                      className="border-b border-border/60"
-                    >
-                      <td className="px-2 py-2">
-                        <p className="font-medium">{product?.name ?? "—"}</p>
-                        <p className="tabular-nums text-xs text-muted">
-                          {product?.sku}
-                          {product?.unit && ` · ${product.unit}`}
-                        </p>
-                      </td>
-
-                      <td className="px-2 py-2">
-                        <Input
-                          aria-label={`Qty ${product?.name ?? ""}`}
-                          inputMode="decimal"
-                          value={line.qty}
-                          onChange={(event) =>
-                            updateLine(index, { qty: event.target.value })
-                          }
-                          className="ml-auto max-w-20 text-right tabular-nums"
-                        />
-                      </td>
-
-                      <td className="px-2 py-2">
-                        <Input
-                          aria-label={`Harga ${product?.name ?? ""}`}
-                          inputMode="decimal"
-                          value={line.costPerUnit}
-                          onChange={(event) =>
-                            updateLine(index, {
-                              costPerUnit: event.target.value,
-                            })
-                          }
-                          className="ml-auto max-w-28 text-right tabular-nums"
-                        />
-                      </td>
-
-                      <td className="px-2 py-2">
-                        {lotTracked ? (
-                          <Input
-                            aria-label={`Kode batch ${product?.name ?? ""}`}
-                            value={line.batchCode}
-                            onChange={(event) =>
-                              updateLine(index, {
-                                batchCode: event.target.value,
-                              })
-                            }
-                            placeholder={autoCode ?? "otomatis"}
-                            title={
-                              autoCode
-                                ? `Kosongkan untuk memakai ${autoCode}`
-                                : "Kosongkan untuk kode otomatis dari SKU dan tanggal expired"
-                            }
-                            className="max-w-40 tabular-nums text-xs"
-                          />
-                        ) : (
-                          <span className="text-xs text-muted">—</span>
-                        )}
-                      </td>
-
-                      <td className="px-2 py-2">
-                        {expiryRequired ? (
-                          <Input
-                            aria-label={`Expired ${product?.name ?? ""}`}
-                            type="date"
-                            required
-                            aria-required
-                            value={line.expiryDate}
-                            onChange={(event) =>
-                              updateLine(index, {
-                                expiryDate: event.target.value,
-                              })
-                            }
-                            className={cn(
-                              "max-w-36 text-xs",
-                              line.expiryDate === "" && "border-danger",
-                            )}
-                          />
-                        ) : (
-                          <span className="text-xs text-muted">—</span>
-                        )}
-                      </td>
-
-                      <td className="px-2 py-2 text-right tabular-nums text-xs">
-                        {isDecimal(line.qty) && isDecimal(line.costPerUnit)
-                          ? formatMoney(
-                              multiplyDecimals(line.qty, line.costPerUnit),
-                            )
-                          : "—"}
-                      </td>
-
-                      <td className="px-2 py-2 text-right">
-                        <UIButton
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="text-danger"
-                          onClick={() =>
-                            setLines((prev) =>
-                              prev.filter((_, i) => i !== index),
-                            )
-                          }
-                        >
-                          Hapus
-                        </UIButton>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* Says the rule ONCE, above the row-level marks, because the two fields
-            changed places: the code used to be mandatory and the date easy to
-            miss, and a clerk who learned the old form would otherwise read the
-            empty batch box as the thing blocking them. */}
-        {lines.some((line) =>
-          needsLot(productById.get(line.productId), consignment),
-        ) && (
-          <p className="mt-3 text-xs text-muted">
-            Produk berkedaluwarsa <b>wajib</b> punya tanggal expired — FEFO
-            menjual lot terdekat lebih dulu, dan tanpa tanggal urutannya tidak
-            ada. <b>Kode batch boleh kosong</b>: kalau supplier tidak mencetak
-            nomor lot, sistem memakai{" "}
-            <span className="tabular-nums">SKU:tanggal-expired</span>.
-          </p>
-        )}
-
-        {/* A duplicate is reported the moment it exists, not on submit: it blocks
-            the preview too, so waiting for a save attempt would leave the panels
-            silently empty with nothing on screen explaining why. */}
-        {duplicateProductId !== null ? (
-          <p role="alert" className="mt-3 text-xs text-danger">
-            {duplicateMessage(productById.get(duplicateProductId)?.name)}
-          </p>
-        ) : (
-          fieldErrors.lines && (
-            <p role="alert" className="mt-3 text-xs text-danger">
-              {fieldErrors.lines}
-            </p>
-          )
-        )}
-      </Card>
-
-      {/* --------------------------------------------------- what will happen */}
-      {previewError && <Alert variant="error">{previewError}</Alert>}
-
-      {previewEnabled && previewLoading && !preview && (
-        <div className="flex items-center gap-2 text-sm text-muted">
-          <Spinner /> Menghitung dampak penerimaan…
-        </div>
-      )}
-
-      {preview && (
-        <>
-          <div className="flex flex-col gap-3">
-            <p className="text-[10px] font-medium tracking-widest text-primary-hover uppercase">
-              Perhitungan HPP rata-rata tertimbang
-            </p>
-            {preview.hppAvg.map((row) => (
-              <div key={row.productId}>
-                <p className="mb-1 text-xs font-medium">
-                  {productById.get(row.productId)?.name ?? row.productId}
+              {fieldErrors.supplier && (
+                <p role="alert" className="text-xs text-danger">
+                  {fieldErrors.supplier}
                 </p>
-                <HppStrip preview={row} />
-              </div>
-            ))}
-            <p className="text-xs text-muted">
-              Angka inilah yang dipakai setiap penjualan berikutnya untuk
-              menghitung HPP dan margin. Cocokkan dengan faktur supplier di
-              tangan — setelah disimpan, tidak bisa diubah.
-            </p>
-          </div>
+              )}
+            </div>
 
-          {preview.movements.some((movement) => movement.isNewBatch) && (
-            <Card title="Lot yang akan dibuat">
-              <ul className="flex flex-col gap-1 text-sm">
-                {preview.movements
-                  .filter((movement) => movement.isNewBatch)
-                  .map((movement, index) => (
-                    <li key={index} className="flex flex-wrap gap-2">
-                      <span className="font-medium">
-                        {productById.get(movement.productId)?.name ??
-                          movement.productId}
-                      </span>
-                      <span className="tabular-nums text-xs text-muted">
-                        {movement.batchCode ?? "—"}
-                        {movement.batchExpiryDate &&
-                          ` · exp ${movement.batchExpiryDate.slice(0, 10)}`}
-                      </span>
-                      <span className="ml-auto tabular-nums text-xs">
-                        {formatQty(movement.qty)}
-                      </span>
-                    </li>
+            <TextField
+              label="Tanggal terima"
+              name="receiptDate"
+              type="date"
+              value={receiptDate}
+              onChange={(event) => setReceiptDate(event.target.value)}
+              hint="Tanggal barang tiba, bukan tanggal input."
+            />
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="branch">Cabang</Label>
+              {/* ONLY THE BRANCHES THIS USER HOLDS. `useBranchScope` narrows the
+                  list with `accessibleBranches`, because the server answers 403
+                  for any other — offering one could only produce a refusal after
+                  the delivery was typed. */}
+              <Select
+                value={branchId}
+                onValueChange={(value) => {
+                  if (value === branchId) return;
+                  setPickedBranch(value);
+                  // The warehouse below belongs to the OLD branch and may not
+                  // exist under the new one. The lines stay: a product is not
+                  // scoped to a location, and its cost seed is the tenant-wide
+                  // average. Their LOTS do not — see `clearBatchChoices`.
+                  setWarehouseId("");
+                  clearBatchChoices();
+                }}
+              >
+                <SelectTrigger id="branch" aria-label="Cabang" className="w-full">
+                  <SelectValue
+                    placeholder={
+                      scope.loading ? "Memuat cabang…" : "Pilih cabang…"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {scope.branches.map((branch) => (
+                    <SelectItem key={branch._id} value={branch._id}>
+                      {branch.name}
+                    </SelectItem>
                   ))}
-              </ul>
-            </Card>
-          )}
-        </>
-      )}
-
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,320px)]">
-        {/* The preview labels its own accounts now — see ReceiptJournalLine.
-            This used to go through a shim that guessed them and got it wrong. */}
-        <JournalPreview
-          lines={preview?.journal ?? []}
-          emptyReason={
-            consignment
-              ? "Konsinyasi tidak menjurnal — barang belum menjadi milik toko, jadi belum ada utang yang tercatat."
-              : "Lengkapi barang yang diterima untuk melihat jurnal yang akan dibuat."
-          }
-        />
-
-        <Card title="Ringkasan">
-          <div className="flex flex-col gap-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-muted">Subtotal</span>
-              <b className="tabular-nums">
-                {formatMoney(preview?.total ?? localSubtotal)}
-              </b>
+                </SelectContent>
+              </Select>
+              {fieldErrors.branch && (
+                <p role="alert" className="text-xs text-danger">
+                  {fieldErrors.branch}
+                </p>
+              )}
             </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="warehouse">Masuk ke gudang</Label>
+              <Select
+                value={effectiveWarehouseId}
+                onValueChange={(value) => {
+                  if (value === effectiveWarehouseId) return;
+                  setWarehouseId(value);
+                  // Every lot named on a row is held at the OLD warehouse.
+                  clearBatchChoices();
+                }}
+                // Nothing to offer until a branch is named: the list IS that
+                // branch's warehouses, so an enabled empty picker would read as
+                // "cabang ini tidak punya gudang".
+                disabled={branchId === ""}
+              >
+                <SelectTrigger
+                  id="warehouse"
+                  aria-label="Masuk ke gudang"
+                  className="w-full"
+                >
+                  <SelectValue
+                    placeholder={
+                      branchId === ""
+                        ? "Pilih cabang dulu…"
+                        : "Pilih gudang…"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {scopedWarehouses.map((warehouse) => (
+                    <SelectItem key={warehouse._id} value={warehouse._id}>
+                      {warehouse.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {fieldErrors.warehouse && (
+                <p role="alert" className="text-xs text-danger">
+                  {fieldErrors.warehouse}
+                </p>
+              )}
+            </div>
+
+            {/* PPN belongs to a purchase. There is none on a consignment, and the
+                API refuses the field there outright. */}
             {!consignment && (
-              <div className="flex justify-between">
-                <span className="text-muted">PPN</span>
-                <b className="tabular-nums">
-                  {formatMoney(
-                    preview?.taxAmount ??
-                      (isDecimal(taxAmount.trim()) ? taxAmount.trim() : "0"),
-                  )}
-                </b>
-              </div>
-            )}
-            <div className="mt-1 flex justify-between border-t border-border pt-2">
-              <b>Total</b>
-              <b className="tabular-nums text-base">
-                {formatMoney(preview?.grandTotal ?? localSubtotal)}
-              </b>
-            </div>
-            {preview ? (
-              <p className="mt-1 text-xs text-muted">
-                Nomor sementara{" "}
-                <span className="tabular-nums">{preview.receiptNumber}</span> —
-                masih bisa berubah kalau ada penerimaan lain lebih dulu.
-              </p>
-            ) : (
-              <p className="mt-1 text-xs text-muted">
-                Angka sementara, dihitung di browser. Yang mengikat adalah hasil
-                dari server setelah semua baris lengkap.
-              </p>
-            )}
-            {consignment && (
-              <p className="text-xs text-muted">
-                Nilai titipan — belum menjadi utang.
-              </p>
+              <TextField
+                label="PPN masukan"
+                name="taxAmount"
+                inputMode="decimal"
+                value={taxAmount}
+                onChange={(event) => setTaxAmount(event.target.value)}
+                error={fieldErrors.taxAmount}
+                hint="Masuk ke akun 1301, bukan ke nilai persediaan."
+                placeholder="0"
+              />
             )}
           </div>
         </Card>
-      </div>
 
-      <TextField
-        label="Catatan"
-        name="notes"
-        value={notes}
-        onChange={(event) => setNotes(event.target.value)}
-        placeholder="opsional"
-        className="max-w-xl"
-      />
-
-      <div className="flex flex-wrap items-center gap-2">
-        <Button type="submit" disabled={saving || lines.length === 0}>
-          {saving ? "Menyimpan…" : "Simpan & terima barang"}
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          disabled={saving}
-          onClick={() => router.push("/dashboard/purchasing/receipts")}
+        <Card
+          title={
+            <span className="flex flex-wrap items-center gap-2">
+              Barang diterima
+              {lines.length > 0 && (
+                <Badge variant="outline">{lines.length} baris</Badge>
+              )}
+            </span>
+          }
         >
-          Batal
-        </Button>
-        <p className="text-xs text-muted">
-          Sekali disimpan, penerimaan tidak bisa diedit atau dihapus.
-        </p>
-      </div>
-    </form>
+          {/**
+           * THE BUTTON FOLLOWS THE LIST, above it while it is empty and below it
+           * once it is not — the same arrangement the transfer form, the opname
+           * sheet, the opening stock document and the adjustment use. On an empty
+           * card it is the only thing to do, so it goes where the eye lands first;
+           * once rows exist the list grows downwards, so the place a reader ends
+           * is the place the next row comes from.
+           */}
+          {mismatchedLines.length > 0 && (
+            <Alert variant="warning" className="mb-4">
+              {consignment
+                ? "Baris ini bukan produk konsinyasi: "
+                : "Baris ini ditandai konsinyasi (titipan): "}
+              <b>
+                {mismatchedLines.map((product) => product.name).join(", ")}
+              </b>
+              .{" "}
+              {consignment
+                ? "Kalau memang bukan titipan, hapus barisnya atau pindah ke tab Beli putus."
+                : "Kalau memang titipan, hapus barisnya atau pindah ke tab Konsinyasi."}
+            </Alert>
+          )}
+
+          {lines.length === 0 ? (
+            <div className="flex flex-col items-center gap-4 py-8 text-center">
+              <UIButton
+                type="button"
+                variant="secondary"
+                onClick={() => setPicking(true)}
+                disabled={saving || pickerBlocker !== null}
+              >
+                + Tambah produk
+              </UIButton>
+
+              <div>
+                <p className="font-medium text-foreground">Belum ada barang</p>
+                {/* The greyed button says NOTHING on its own, and a control that
+                    cannot be pressed with no explanation reads as a bug. This
+                    paragraph is where the empty state already talks, so the
+                    reason goes here rather than into a second banner. */}
+                <p className="mx-auto mt-1 max-w-md text-sm text-muted">
+                  {pickerBlocker ??
+                    "Cari dan centang beberapa produk sekaligus — semuanya tercatat sebagai satu penerimaan dari supplier ini."}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* The lots failed to load, so every picker below offers only
+                  "+ Batch baru" — which would silently mint a duplicate of a lot
+                  that IS on the shelf. Said out loud rather than left to look
+                  like "gudang ini belum punya batch". */}
+              {anyLotPicked && lots.error && (
+                <Alert variant="error" className="mb-4">
+                  {lots.error}
+                </Alert>
+              )}
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-[10px] tracking-widest text-muted uppercase">
+                      <th className="px-2 py-2 text-left font-medium">Produk</th>
+                      {/* LEFT, not right, though both columns hold numbers.
+                          What sits under them is an INPUT BOX of a fixed width,
+                          not a figure — the box starts at the left edge of the
+                          cell, so a right-aligned label floats away from the
+                          control it names. Subtotal keeps `text-right`, because
+                          that column really is a number. */}
+                      <th className="px-2 py-2 text-left font-medium">Qty</th>
+                      {/* ONE NAME, BOTH WAYS ROUND — "HPP manual" was the
+                          consignment version, and it named an accounting
+                          concept at somebody reading a surat jalan. WAJIB only
+                          on beli putus: the figure is on the supplier's invoice
+                          and cannot be derived from the running average, since a
+                          receipt that fell back to it could never move HPP. A
+                          consignment asks nothing — see `costOf`. */}
+                      <th className="px-2 py-2 text-left font-medium">
+                        Harga beli
+                        {!consignment && <Required />}
+                      </th>
+                      {/* WHICH LOT, asked before what it is called — a delivery
+                          of goods that expire either joins a batch already on the
+                          shelf or opens one, and the two columns to its right are
+                          read-only or typed depending on the answer. */}
+                      {anyLotPicked && (
+                        <th className="px-2 py-2 text-left font-medium">
+                          Batch
+                          <Required />
+                        </th>
+                      )}
+                      {/* TWO CODES, TWO COLUMNS. Ours identifies the row and
+                          gets barcoded; theirs identifies the factory batch and
+                          is what a recall is traced by. One column carrying
+                          both would make them look like one fact. */}
+                      <th className="px-2 py-2 text-left font-medium">
+                        Kode batch internal
+                      </th>
+                      <th className="px-2 py-2 text-left font-medium">
+                        Kode batch supplier
+                      </th>
+                      <th className="px-2 py-2 text-left font-medium">
+                        {/* The column, not the cell, carries the mark: a date
+                            input cannot hold a placeholder, so an empty one
+                            looks finished and needs saying somewhere. Only while
+                            something is being TYPED, though — a lot being joined
+                            brings its own date, and the box showing it is
+                            disabled. */}
+                        Expired
+                        {anyNewLot && <Required />}
+                      </th>
+                      <th className="px-2 py-2 text-right font-medium">Subtotal</th>
+                      <th className="px-2 py-2" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lines.map((line, index) => {
+                      const product = productById.get(line.productId);
+                      const lotTracked = needsLot(product, consignment);
+                      const expiryRequired = Boolean(product?.hasExpiry);
+                      const choosesLot = picksLot(product);
+                      /**
+                       * The lot this row JOINS, when it names one that already
+                       * exists. Its code and date are shown beside it read-only:
+                       * they describe goods on the shelf, and nothing typed on a
+                       * receipt may rewrite them.
+                       */
+                      const namedLot =
+                        choosesLot &&
+                        line.batchChoice !== "" &&
+                        line.batchChoice !== NEW_BATCH
+                          ? (lotsFor(line.productId).find(
+                              (lot) => lot._id === line.batchChoice,
+                            ) ?? null)
+                          : null;
+                      /**
+                       * Whether the row DESCRIBES a lot — types a code, and a
+                       * date if the goods carry one — rather than naming one or
+                       * saying nothing yet.
+                       *
+                       * Goods that expire describe one only once "+ Batch baru"
+                       * has been chosen: before that the answer is still open,
+                       * and offering the boxes would invite somebody to type a
+                       * code the very next click discards. Consigned goods that
+                       * never expire have no picker at all — every consignment
+                       * intake opens its own lot — so their code box is simply
+                       * always there.
+                       */
+                      const describingLot = choosesLot
+                        ? line.batchChoice === NEW_BATCH
+                        : lotTracked;
+                      /*
+                        WHAT THIS ROW'S LOT WILL BE CALLED.
+
+                        The preview's answer when there is one — that is the code
+                        the server has actually settled on, suffix included, and
+                        the one a label gets printed from. Before it comes back,
+                        a locally derived hint keeps the column from reading
+                        empty while somebody types.
+
+                        The hint is WITHHELD until the expiry date is in: derived
+                        from the wrong date it would change under them the moment
+                        they type one.
+                      */
+                      const previewedCode = previewedCodes[index] ?? null;
+                      const codeHint =
+                        expiryRequired && line.expiryDate === ""
+                          ? undefined
+                          : batchCodeHint(
+                              product?.sku,
+                              line.expiryDate,
+                              receiptDate,
+                            );
+
+                      return (
+                        <tr
+                          key={`${line.productId}-${index}`}
+                          className="border-b border-border/60"
+                        >
+                          <td className="px-2 py-2">
+                            <p className="font-medium">{product?.name ?? "—"}</p>
+                            <p className="tabular-nums text-xs text-muted">
+                              {product?.sku}
+                              {product?.unit && ` · ${product.unit}`}
+                            </p>
+                          </td>
+
+                          <td className="px-2 py-2">
+                            <Input
+                              aria-label={`Qty ${product?.name ?? ""}`}
+                              inputMode="decimal"
+                              value={line.qty}
+                              onChange={(event) =>
+                                updateLine(index, { qty: event.target.value })
+                              }
+                              className="max-w-20 text-right tabular-nums"
+                            />
+                          </td>
+
+                          <td className="px-2 py-2">
+                            <Input
+                              aria-label={`Harga ${product?.name ?? ""}`}
+                              inputMode="decimal"
+                              // Locked at nothing on a consignment: the goods
+                              // are still the supplier's, so there is no price
+                              // to type. `disabled` rather than readOnly so it
+                              // is skipped by the keyboard too — there is
+                              // nothing to do in it.
+                              required={!consignment}
+                              aria-required={!consignment}
+                              disabled={consignment}
+                              value={costOf(line, consignment)}
+                              onChange={(event) =>
+                                updateLine(index, {
+                                  costPerUnit: event.target.value,
+                                })
+                              }
+                              className="max-w-28 text-right tabular-nums"
+                            />
+                          </td>
+
+                          {anyLotPicked && (
+                            <td className="px-2 py-2">
+                              {choosesLot ? (
+                                <FilterSelect
+                                  layout="field"
+                                  label=""
+                                  ariaLabel={`Batch ${product?.name ?? ""}`}
+                                  value={line.batchChoice}
+                                  active={line.batchChoice !== ""}
+                                  placeholder="Pilih batch"
+                                  /* No warehouse, no lots — the list would
+                                     offer "+ Batch baru" as if it were the only
+                                     answer, and minting a duplicate of a lot
+                                     that IS on the shelf is exactly what this
+                                     picker exists to prevent. Reachable only by
+                                     changing the branch under rows that were
+                                     added before. */
+                                  disabled={
+                                    saving || effectiveWarehouseId === ""
+                                  }
+                                  disabledHint="Pilih gudang tujuan dulu."
+                                  className="max-w-56"
+                                  options={[
+                                    /* BOTH CODES IN THE OPTION, because the
+                                       whole act here is matching a row on
+                                       screen to a carton in somebody's hands —
+                                       and what is printed on the carton is the
+                                       SUPPLIER's number. Ours identifies the
+                                       row; theirs is what can be read off the
+                                       box. Omitted when the lot has none, which
+                                       is the ordinary case. */
+                                    ...lotsFor(line.productId).map((lot) => ({
+                                      value: lot._id,
+                                      label: lotOptionLabel(lot),
+                                    })),
+                                    {
+                                      value: NEW_BATCH,
+                                      label: "+ Batch baru…",
+                                    },
+                                  ]}
+                                  onChange={(value) =>
+                                    updateLine(index, { batchChoice: value })
+                                  }
+                                />
+                              ) : (
+                                // Said rather than left blank: an empty cell
+                                // under "Batch" reads as one nobody filled in.
+                                <span className="text-xs text-muted">—</span>
+                              )}
+                            </td>
+                          )}
+
+                          {/* OURS — never typed, always shown. It is what the
+                              label is printed with, so whoever is unloading has
+                              to be able to read it off the screen. */}
+                          <td className="px-2 py-2">
+                            {namedLot || describingLot ? (
+                              <InternalBatchCodeDisplay
+                                code={
+                                  namedLot ? namedLot.batchCode : previewedCode
+                                }
+                                hint={namedLot ? undefined : codeHint}
+                                productName={product?.name}
+                                className="max-w-40 text-xs"
+                              />
+                            ) : (
+                              <span className="text-xs text-muted">—</span>
+                            )}
+                          </td>
+
+                          {/* THEIRS — typed, optional, and only on a lot being
+                              OPENED. A lot being joined recorded the supplier's
+                              number when it was created; retagging it from a
+                              later delivery would rewrite the first one's recall
+                              trail, and the API refuses the pair. */}
+                          <td className="px-2 py-2">
+                            {namedLot ? (
+                              /* DISABLED RATHER THAN PLAIN TEXT, the same way
+                                 the column beside it is: the value stays in a
+                                 box in a column of boxes, and the grey says it
+                                 cannot be changed here. */
+                              <SupplierBatchCodeInput
+                                value={namedLot.supplierBatchCode ?? ""}
+                                onChange={() => {}}
+                                productName={product?.name}
+                                disabled
+                                className="max-w-40 text-xs"
+                              />
+                            ) : describingLot ? (
+                              <SupplierBatchCodeInput
+                                value={line.supplierBatchCode}
+                                onChange={(value) =>
+                                  updateLine(index, {
+                                    supplierBatchCode: value,
+                                  })
+                                }
+                                productName={product?.name}
+                                className="max-w-40 text-xs"
+                              />
+                            ) : (
+                              <span className="text-xs text-muted">—</span>
+                            )}
+                          </td>
+
+                          <td className="px-2 py-2">
+                            {namedLot ? (
+                              namedLot.expiryDate ? (
+                                <Input
+                                  aria-label={`Expired ${product?.name ?? ""}`}
+                                  type="date"
+                                  value={namedLot.expiryDate.slice(0, 10)}
+                                  disabled
+                                  className="max-w-36 text-xs"
+                                />
+                              ) : (
+                                <span className="text-xs text-muted">—</span>
+                              )
+                            ) : describingLot && expiryRequired ? (
+                              <Input
+                                aria-label={`Expired ${product?.name ?? ""}`}
+                                type="date"
+                                required
+                                aria-required
+                                value={line.expiryDate}
+                                onChange={(event) =>
+                                  updateLine(index, {
+                                    expiryDate: event.target.value,
+                                  })
+                                }
+                                // No red border while it is merely empty: a row
+                                // that has just been added has not been got
+                                // wrong yet. The asterisk on the column header
+                                // says it is required, the note under the table
+                                // says why, and `validate` names the row by
+                                // product if a save is attempted without it.
+                                className="max-w-36 text-xs"
+                              />
+                            ) : (
+                              <span className="text-xs text-muted">—</span>
+                            )}
+                          </td>
+
+                          <td className="px-2 py-2 text-right tabular-nums text-xs">
+                            {isDecimal(line.qty) &&
+                            isDecimal(costOf(line, consignment))
+                              ? formatMoney(
+                                  multiplyDecimals(
+                                    line.qty,
+                                    costOf(line, consignment),
+                                  ),
+                                )
+                              : "—"}
+                          </td>
+
+                          <td className="px-2 py-2 text-right">
+                            <UIButton
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="text-danger"
+                              onClick={() =>
+                                setLines((prev) =>
+                                  prev.filter((_, i) => i !== index),
+                                )
+                              }
+                            >
+                              Hapus
+                            </UIButton>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Sized to its label, left-aligned, like the same button under the
+                  transfer form's, the opname sheet's and the opening stock
+                  document's tables. */}
+              <div className="mt-4 border-t border-border/60 pt-3">
+                <UIButton
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setPicking(true)}
+                  disabled={saving || pickerBlocker !== null}
+                >
+                  + Tambah produk
+                </UIButton>
+                {/* Reachable with rows already on the form: changing the branch
+                    clears the warehouse under them. The rows survive that — see
+                    `clearBatchChoices` — but nothing more may be added until a
+                    destination is named again. */}
+                {pickerBlocker && (
+                  <p className="mt-2 text-xs text-muted">{pickerBlocker}</p>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* Says the rule ONCE, above the row-level marks, because the two fields
+              changed places: the code used to be mandatory and the date easy to
+              miss, and a clerk who learned the old form would otherwise read the
+              empty batch box as the thing blocking them. */}
+          {lines.some((line) =>
+            needsLot(productById.get(line.productId), consignment),
+          ) && (
+            <p className="mt-3 text-xs text-muted">
+              {anyLotPicked && (
+                <>
+                  Kalau barang ini <b>batch-nya sudah ada</b> di gudang tujuan,
+                  pilih batch itu — stoknya bertambah di lot yang sama, bukan
+                  bikin lot kembar. Kalau memang kiriman baru, pilih{" "}
+                  <b>+ Batch baru</b>.{" "}
+                </>
+              )}
+              Batch baru untuk produk berkedaluwarsa <b>wajib</b> punya tanggal
+              expired — FEFO menjual lot terdekat lebih dulu, dan tanpa tanggal
+              urutannya tidak ada. <b>Kode batch dibuat sistem</b> dari SKU dan
+              tanggal expired, jadi tidak bisa diketik — kode itu yang nanti
+              dicetak jadi barcode dan discan kasir. Yang diisi manual cuma{" "}
+              <b>kode batch supplier</b>, nomor yang tercetak di kartonnya, dan
+              itu pun opsional: dipakai kalau suatu saat supplier menarik satu
+              batch dan semua lot dari batch itu harus ditemukan.
+            </p>
+          )}
+
+          {/* A duplicate is reported the moment it exists, not on submit: it blocks
+              the preview too, so waiting for a save attempt would leave the panels
+              silently empty with nothing on screen explaining why. */}
+          {duplicateProductId !== null ? (
+            <p role="alert" className="mt-3 text-xs text-danger">
+              {duplicateMessage(productById.get(duplicateProductId)?.name)}
+            </p>
+          ) : (
+            fieldErrors.lines && (
+              <p role="alert" className="mt-3 text-xs text-danger">
+                {fieldErrors.lines}
+              </p>
+            )
+          )}
+        </Card>
+
+        {/* ------------------------------------------------ the vendor's own bill */}
+        {/* CONSIGNMENT HAS NO BILL. Nothing has been bought, so there is no debt
+            for a faktur to document — and the API refuses the field there rather
+            than ignoring it. Hidden rather than disabled: a greyed card for a
+            document that will never exist is a question, not an answer. */}
+        {!consignment && (
+          <Card
+            title={
+              <span className="flex flex-wrap items-center gap-2">
+                Faktur pembelian
+                <Badge variant="outline">opsional</Badge>
+              </span>
+            }
+          >
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id="fileInvoice"
+                checked={fileInvoice}
+                onCheckedChange={(checked) => setFileInvoice(checked === true)}
+                disabled={saving}
+              />
+              <div>
+                <Label htmlFor="fileInvoice">
+                  Sekalian buat faktur pembelian
+                </Label>
+
+                {/* WHAT EACH ANSWER MEANS, said before the choice rather than
+                    discovered after it — and the unticked half is the one that
+                    has to be spelled out, because a box left empty reads as
+                    "nothing happens" when what actually happens is a debt.
+
+                    THE DEBT IS NOT WHAT THIS DECIDES. A beli-putus receipt
+                    credits 2101 Utang Supplier the moment it posts, tick or no
+                    tick; the faktur is the vendor's paperwork on top of it. A
+                    clerk who reads the empty box as "belum ada utang" would
+                    leave a payable nobody is watching, so the text names it. */}
+                <p className="mt-1 text-xs text-muted">
+                  <b>Dicentang:</b> faktur supplier langsung tercatat bersama
+                  penerimaan ini — nomor, tanggal, dan jatuh tempo ikut
+                  tersimpan sekali simpan.
+                </p>
+                <p className="mt-1 text-xs text-muted">
+                  <b>Tidak dicentang:</b> barang tetap masuk dan{" "}
+                  <b>utang ke supplier tetap tercatat</b> — yang belum ada hanya
+                  dokumen fakturnya, jadi nomor faktur dan tanggal jatuh tempo
+                  masih kosong. Pakai ini kalau van cuma bawa surat jalan;
+                  fakturnya dibuat nanti di halaman{" "}
+                  <Link
+                    href="/dashboard/purchasing/payables/new"
+                    className="underline underline-offset-4"
+                  >
+                    Faktur pembelian
+                  </Link>
+                  .
+                </p>
+              </div>
+            </div>
+
+            {/* The boxes appear only once they are asked for. Rendered rather
+                than disabled: two greyed fields under an unticked box are a
+                question about a document that is not being created. */}
+            {fileInvoice && (
+              <div className="mt-4 grid gap-4 border-t border-border/60 pt-4 sm:grid-cols-2">
+                <TextField
+                  label="No. faktur supplier"
+                  name="invoiceNumber"
+                  value={invoiceNumber}
+                  onChange={(event) => setInvoiceNumber(event.target.value)}
+                  placeholder="mis. INV/2026/014"
+                  maxLength={60}
+                  disabled={saving}
+                  required
+                  error={fieldErrors.invoiceNumber}
+                  /* THE VENDOR'S NUMBER, NOT OURS — the one numbered field in
+                     the system somebody types, because it is what they will
+                     quote when they chase payment. */
+                  hint="Nomor yang tercetak di faktur supplier, bukan nomor dari sistem."
+                />
+
+                <TextField
+                  label="Tanggal faktur"
+                  name="invoiceDate"
+                  type="date"
+                  value={invoiceDate}
+                  onChange={(event) => setInvoiceDate(event.target.value)}
+                  disabled={saving}
+                  required
+                  error={fieldErrors.invoiceDate}
+                  /* The date on the vendor's paper, which is NOT always the day
+                     the goods came — and it is the one the terms count from, so
+                     a wrong one moves the due date. */
+                  hint={
+                    dueDate
+                      ? `Jatuh tempo ${dueDate}, dihitung dari termin supplier.`
+                      : "Tanggal yang tercetak di faktur — jatuh tempo dihitung dari sini."
+                  }
+                />
+              </div>
+            )}
+
+            {/* THE RECONCILIATION, SAID OUT LOUD. The bill must equal the
+                delivery to the rupiah — the payable is already on the books at
+                these numbers — so the form shows what it is about to bill rather
+                than asking somebody to retype it into boxes whose only possible
+                wrong answer is a 400. */}
+            {filingInvoice && (
+              <p className="mt-4 border-t border-border/60 pt-3 text-xs text-muted">
+                Faktur ini akan menagih{" "}
+                <b className="tabular-nums text-foreground">
+                  {formatMoney(preview?.grandTotal ?? localSubtotal)}
+                </b>{" "}
+                — persis nilai penerimaan ini, karena utangnya sudah tercatat di
+                angka itu. Kalau faktur supplier berbeda, selisihnya
+                diselesaikan lewat retur pembelian, bukan dengan mengubah angka
+                di sini.
+              </p>
+            )}
+          </Card>
+        )}
+
+        {/* --------------------------------------------------- what will happen */}
+        {previewError && <Alert variant="error">{previewError}</Alert>}
+
+        {previewEnabled && previewLoading && !preview && (
+          <div className="flex items-center gap-2 text-sm text-muted">
+            <Spinner /> Menghitung dampak penerimaan…
+          </div>
+        )}
+
+        {/* THE TWO PANELS THAT USED TO SIT HERE ARE GONE — the weighted-average
+            arithmetic (`HppStrip`, one strip per product) and the automatic
+            journal (`JournalPreview`). Both are still computed by
+            `/goods-receipts/preview`, which is what the totals below are read
+            from, so nothing about WHAT is posted changed: only what this screen
+            shows while it is being typed. The receipt's own detail page still
+            carries the journal after it is saved. */}
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,320px)]">
+          {/* A LOT IS A BATCH in the shop's language, so the card says batch —
+              `isNewBatch` and `batchCode` are the API's words for the same
+              thing, and the screen should use the counter's.
+
+              IT NAMES BOTH OUTCOMES, because a delivery may now join a lot
+              instead of opening one, and "dibuat" alone would leave the joined
+              rows with nowhere to be listed — the panel would say "tidak ada
+              batch baru" over a receipt that is about to move stock into three
+              of them. */}
+          <Card title="Batch yang akan dibuat / ditambah">
+            {lotMovements.length > 0 ? (
+              <ul className="flex flex-col gap-1 text-sm">
+                {lotMovements.map((movement, index) => (
+                  <li key={index} className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">
+                      {productById.get(movement.productId)?.name ??
+                        movement.productId}
+                    </span>
+                    <span className="tabular-nums text-xs text-muted">
+                      {movement.batchCode ?? "—"}
+                      {/* Theirs beside ours, because this panel is the last
+                          thing read before saving and the supplier's number is
+                          the half a clerk can check against the carton in front
+                          of them. */}
+                      {movement.supplierBatchCode &&
+                        ` · supplier ${movement.supplierBatchCode}`}
+                      {movement.batchExpiryDate &&
+                        ` · exp ${movement.batchExpiryDate.slice(0, 10)}`}
+                    </span>
+                    {/* WHICH OF THE TWO, said per row rather than by splitting
+                        the card in half: the rows are read as one list of "where
+                        the goods land", and two short lists under two headings
+                        make the reader do the merging. */}
+                    <Badge variant="outline" className="text-[10px]">
+                      {movement.isNewBatch ? "baru" : "gabung"}
+                    </Badge>
+                    <span className="ml-auto tabular-nums text-xs">
+                      {formatQty(movement.qty)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              // Says WHY it is empty, like JournalPreview's `emptyReason` did:
+              // an empty panel beside a filled-in form otherwise reads as
+              // something still loading.
+              <p className="py-2 text-sm text-muted">
+                {preview
+                  ? "Tidak ada batch. Batch hanya dipakai untuk produk yang melacak kedaluwarsa, dan untuk setiap baris konsinyasi."
+                  : "Lengkapi barang yang diterima untuk melihat batch yang akan dibuat."}
+              </p>
+            )}
+          </Card>
+
+          <Card title="Ringkasan">
+            <div className="flex flex-col gap-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted">Subtotal</span>
+                <b className="tabular-nums">
+                  {formatMoney(preview?.total ?? localSubtotal)}
+                </b>
+              </div>
+              {!consignment && (
+                <div className="flex justify-between">
+                  <span className="text-muted">PPN</span>
+                  <b className="tabular-nums">
+                    {formatMoney(
+                      preview?.taxAmount ??
+                        (isDecimal(taxAmount.trim()) ? taxAmount.trim() : "0"),
+                    )}
+                  </b>
+                </div>
+              )}
+              <div className="mt-1 flex justify-between border-t border-border pt-2">
+                <b>Total</b>
+                <b className="tabular-nums text-base">
+                  {formatMoney(preview?.grandTotal ?? localSubtotal)}
+                </b>
+              </div>
+              {preview ? (
+                <p className="mt-1 text-xs text-muted">
+                  Nomor sementara{" "}
+                  <span className="tabular-nums">{preview.receiptNumber}</span> —
+                  masih bisa berubah kalau ada penerimaan lain lebih dulu.
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-muted">
+                  Angka sementara, dihitung di browser. Yang mengikat adalah hasil
+                  dari server setelah semua baris lengkap.
+                </p>
+              )}
+              {consignment && (
+                <p className="text-xs text-muted">
+                  Nilai titipan — belum menjadi utang.
+                </p>
+              )}
+            </div>
+          </Card>
+        </div>
+
+        <TextField
+          label="Catatan"
+          name="notes"
+          value={notes}
+          onChange={(event) => setNotes(event.target.value)}
+          placeholder="opsional"
+          className="max-w-xl"
+        />
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="submit" disabled={saving || lines.length === 0}>
+            {saving ? "Menyimpan…" : "Simpan & terima barang"}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={saving}
+            onClick={() => router.push("/dashboard/purchasing/receipts")}
+          >
+            Batal
+          </Button>
+          <p className="text-xs text-muted">
+            Sekali disimpan, penerimaan tidak bisa diedit atau dihapus.
+          </p>
+          </div>
+      </form>
+    </>
   );
 }

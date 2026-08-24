@@ -53,6 +53,8 @@ const PRODUCT = "p1";
 function product(overrides: Partial<Product> = {}): Product {
   return {
     _id: PRODUCT,
+    isConsignment: false,
+    isPreorder: false,
     sku: "RC-3KG",
     name: "Royal Canin Adult 3kg",
     productType: "standalone",
@@ -116,10 +118,14 @@ function movement(overrides: Partial<StockMovement> = {}): StockMovement {
     updatedAt: "2026-08-01T02:00:00.000Z",
     balanceAfter: "100.0000",
     batchCode: null,
+    supplierBatchCode: null,
     batchExpiryDate: null,
     createdByName: null,
     warehouseName: "Gudang Pusat",
     destinationWarehouseName: null,
+    productName: null,
+    productSku: null,
+    productUnit: null,
     // Null for a goods receipt: that collection does not exist in the backend
     // yet, so there is no number to resolve. Only opname rows carry one.
     referenceNo: null,
@@ -135,6 +141,7 @@ function batch(overrides: Partial<ProductBatch> = {}): ProductBatch {
     productId: PRODUCT,
     receiptId: null,
     batchCode: "RC-B26-0455",
+    supplierBatchCode: null,
     expiryDate: "2026-12-31T00:00:00.000Z",
     initialQty: "100.0000",
     qtyRemaining: "100.0000",

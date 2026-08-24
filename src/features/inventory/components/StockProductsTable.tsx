@@ -13,7 +13,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { formatMoney, formatQty, multiplyDecimals, toMinor } from "@/utils/decimal";
+import {
+  formatMoney,
+  formatQty,
+  multiplyDecimals,
+  toMinor,
+} from "@/utils/decimal";
 import type { Product } from "@/types/inventory";
 
 import { qtyIn } from "../utils/catalogue";
@@ -37,6 +42,21 @@ import { qtyIn } from "../utils/catalogue";
  * location reads 0: the backend writes no stock row until the first movement, so
  * "never traded here" and "traded down to nothing" are the same statement on a
  * stock card.
+ *
+ * "ALL OF THEM" MEANS ALL OF THE USER'S, AND THE SERVER SAYS WHICH. Every
+ * quantity on a product is per warehouse, and a warehouse is something an
+ * account may or may not reach — so `GET /api/products` narrows
+ * `stockByWarehouse` to the caller's own shelves before it answers
+ * (PawCRM-Backend, `#stockScope`). What arrives here is already theirs, so this
+ * table adds up the array exactly as it comes.
+ *
+ * IT IS NOT RE-FILTERED HERE, deliberately. The narrowing was briefly done on
+ * this side, back when the API sent every location to everyone; a second copy of
+ * the rule over the same number can only ever disagree with the first, and the
+ * direction it would disagree in — hiding a shelf the account does reach — is
+ * the one nobody would report as a bug. `utils/accessScope.ts` stays a courtesy
+ * for PICKERS, which is a different job: not offering a choice that can only
+ * 403.
  *
  * A TOTAL SAYS SO, on the row. Stock cannot be pooled across warehouses — twelve
  * split four ways is not twelve on any shelf — so a summed figure carries the
@@ -68,7 +88,10 @@ export function StockProductsTable({
   loading,
 }: {
   products: Product[];
-  /** Which warehouse the figures are for; "" is every one of them. */
+  /**
+   * Which warehouse the figures are for; "" is every one the API sent, which is
+   * every one this account may read. See the header.
+   */
   warehouseId: string;
   /** The live search term, highlighted in the columns it matched. */
   search: string;
@@ -104,19 +127,17 @@ export function StockProductsTable({
 
           {products.map((product) => {
             // One id, or none at all — `qtyIn` reads an empty scope as every
-            // warehouse, which is the same convention the catalogue uses.
-            const qty = qtyIn(
-              product.stockByWarehouse,
-              warehouseId ? [warehouseId] : [],
-            );
+            // warehouse, which is the same convention the catalogue uses. Every
+            // row the API sent is already one this account may read, so "every
+            // warehouse" and "every warehouse of theirs" are the same set here.
+            const rows = product.stockByWarehouse;
+            const qty = qtyIn(rows, warehouseId ? [warehouseId] : []);
             // How many locations that figure came from. Only interesting when
             // it came from more than one: "12" and "12, across three shelves"
             // are different answers to "can I pick twelve today".
             const spread = warehouseId
               ? 0
-              : product.stockByWarehouse.filter(
-                  (row) => (toMinor(row.qty) ?? 0n) !== 0n,
-                ).length;
+              : rows.filter((row) => (toMinor(row.qty) ?? 0n) !== 0n).length;
             const deleted = Boolean(product.deletedAt);
             // The `minStock > 0` guard is load-bearing: zero means "no threshold
             // set", and without it every product with no stock and no threshold
@@ -132,7 +153,10 @@ export function StockProductsTable({
               : `/dashboard/inventory/stock-card/${product._id}`;
 
             return (
-              <TableRow key={product._id} className={cn(deleted && "opacity-60")}>
+              <TableRow
+                key={product._id}
+                className={cn(deleted && "opacity-60")}
+              >
                 <TableCell>
                   <div className="flex items-center gap-2">
                     {/* The thumbnail, resolved: a variant with no image of its

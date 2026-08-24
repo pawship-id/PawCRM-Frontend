@@ -53,7 +53,13 @@ export interface ImportRow {
   openingQty?: string;
   /** REQUIRED by the server whenever `openingQty` is filled in. */
   openingCost?: string;
-  batchCode?: string;
+  /**
+   * THEIR code, from the `kode_batch_supplier` column.
+   *
+   * Ours is not a column at all: it is generated and unique across the tenant,
+   * and a spreadsheet has no way of knowing which codes are already taken.
+   */
+  supplierBatchCode?: string;
   expiryDate?: string;
 
   /**

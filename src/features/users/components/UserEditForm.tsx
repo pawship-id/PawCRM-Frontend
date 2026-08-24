@@ -11,11 +11,12 @@ import {
   validateEmail,
   validateFullName,
   validatePhone,
+  validateWarehouseScope,
   validatePassword,
   validateConfirmPassword,
   PASSWORD_MIN_LENGTH,
 } from "@/utils/validation";
-import type { User } from "@/types/api";
+import type { User, WarehouseScopeEntry } from "@/types/api";
 
 import { useLookups } from "../hooks/useLookups";
 import { RoleSelect } from "./RoleSelect";
@@ -48,6 +49,7 @@ export function UserEditForm({ id }: { id: string }) {
   const {
     roles,
     branches,
+    warehouses,
     loading: lookupsLoading,
     error: lookupsError,
   } = useLookups();
@@ -111,6 +113,7 @@ export function UserEditForm({ id }: { id: string }) {
               user={user}
               roles={roles}
               branches={branches}
+              warehouses={warehouses}
               onUpdated={setUser}
             />
           </Card>
@@ -149,11 +152,13 @@ function DetailsSection({
   user,
   roles,
   branches,
+  warehouses,
   onUpdated,
 }: {
   user: User;
   roles: ReturnType<typeof useLookups>["roles"];
   branches: ReturnType<typeof useLookups>["branches"];
+  warehouses: ReturnType<typeof useLookups>["warehouses"];
   onUpdated: (user: User) => void;
 }) {
   const [fullName, setFullName] = useState(user.fullName);
@@ -162,9 +167,19 @@ function DetailsSection({
   const [roleId, setRoleId] = useState(user.roleId ?? "");
   const [allBranches, setAllBranches] = useState(user.allBranches);
   const [branchAccess, setBranchAccess] = useState<string[]>(user.branchAccess);
+  // `?? []` because a user stored before this field existed comes back without
+  // it; the picker then shows every granted branch at "all warehouses", which
+  // is exactly the access that user has today.
+  const [warehouseAccess, setWarehouseAccess] = useState<WarehouseScopeEntry[]>(
+    user.warehouseAccess ?? [],
+  );
 
   const router = useRouter();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  // Keyed by branch id, so the message lands under the branch it belongs to.
+  const [warehouseErrors, setWarehouseErrors] = useState<
+    Record<string, string>
+  >({});
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -183,8 +198,19 @@ function DetailsSection({
     if (phoneError) nextErrors.phone = phoneError;
     if (!allBranches && branchAccess.length === 0)
       nextErrors.branchAccess = "Select all branches or at least one branch";
+
+    // Only meaningful under specific branches: "all branches" carries no rows.
+    const nextWarehouseErrors = allBranches
+      ? {}
+      : validateWarehouseScope(branchAccess, warehouseAccess);
+
     setFieldErrors(nextErrors);
-    if (Object.keys(nextErrors).length > 0) return;
+    setWarehouseErrors(nextWarehouseErrors);
+    if (
+      Object.keys(nextErrors).length > 0 ||
+      Object.keys(nextWarehouseErrors).length > 0
+    )
+      return;
 
     setSaving(true);
     try {
@@ -195,6 +221,14 @@ function DetailsSection({
         roleId: roleId || null,
         allBranches,
         branchAccess: allBranches ? [] : branchAccess,
+        // Sent on every save, not only when it changed: the backend recomputes
+        // the whole scope whenever any part of it arrives, and omitting the
+        // rows would have it fall back to the stored ones.
+        warehouseAccess: allBranches
+          ? []
+          : warehouseAccess.filter((entry) =>
+              branchAccess.includes(entry.branchId),
+            ),
       });
       onUpdated(updated);
       swalToast("User updated.");
@@ -266,13 +300,17 @@ function DetailsSection({
         <div className="sm:col-span-2">
           <BranchScopeField
             branches={branches}
+            warehouses={warehouses}
             allBranches={allBranches}
             branchAccess={branchAccess}
+            warehouseAccess={warehouseAccess}
             onChange={(next) => {
               setAllBranches(next.allBranches);
               setBranchAccess(next.branchAccess);
+              setWarehouseAccess(next.warehouseAccess);
             }}
             error={fieldErrors.branchAccess}
+            warehouseError={warehouseErrors}
             disabled={disabled}
           />
         </div>

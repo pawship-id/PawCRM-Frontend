@@ -119,7 +119,7 @@ const ACTIONS: Array<{
     href: "/dashboard/inventory/transfers",
     title: "Transfer Stok",
     description:
-      "Pindahkan barang antar gudang. Batch beserta tanggal kedaluwarsanya ikut pindah.",
+      "Riwayat perpindahan barang antar gudang, dan tempat mencatat yang baru. Batch beserta tanggal kedaluwarsanya ikut pindah.",
     feature: "stockMovements",
     action: "create",
   },
@@ -297,8 +297,14 @@ export function InventoryHub() {
                 <p className="truncate text-sm font-medium">
                   {batch.productName ?? "—"}
                 </p>
+                {/* THEIRS BESIDE OURS, on one line. This is a glance widget —
+                    the row is two lines already — so the pair is joined rather
+                    than stacked, and the full codes are one click away on the
+                    batch list. */}
                 <p className="truncate tabular-nums text-xs text-muted">
                   {batch.batchCode}
+                  {batch.supplierBatchCode &&
+                    ` · supplier ${batch.supplierBatchCode}`}
                 </p>
               </div>
               <div className="text-right">

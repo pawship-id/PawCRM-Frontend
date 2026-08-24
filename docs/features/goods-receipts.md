@@ -136,6 +136,45 @@ The toggle changes what the form means, not just which fields show.
 | `taxAmount`            | optional                              | **forbidden** — omitted from payload |
 | Lot per line           | only when the product `hasExpiry`     | **always**                          |
 | Return possible        | yes                                   | no — there is no purchase to reverse |
+| Picker offers          | products with `isConsignment: false`  | products with `isConsignment: true` |
+
+### The tab lives in the URL
+
+`?type=beli_putus|konsinyasi`, read by the page on the server and rewritten with
+`router.replace` on every tab click. Without it a refresh mid-receipt drops
+silently back to *beli putus* — and since the tab decides the prices, the journal
+and the picker, the form would look identical and mean something else.
+
+`replace` rather than `push`: the tab is a mode this form is in, not a place the
+user navigated to, and with `push` the Back button would walk through every tab
+click before leaving the screen. The `?supplier=` param is carried along, since
+this route is reached from a supplier's detail page and dropping it would empty
+that field on the next refresh. Anything that is not exactly `konsinyasi` falls
+back to the default — a query string is user input, and the default is the safe
+side: an outright purchase posts a journal a clerk can see and correct, where a
+wrongly-defaulted consignment posts none at all.
+
+### The picker offers one kind of goods
+
+**+ Tambah produk** filters on `products.isConsignment`, matching the tab. A
+*beli putus* delivery built out of somebody else's stock is the same failure the
+duplicate guard above prevents, arriving later: the goods are on the shelf and
+the journal is posted before anybody notices.
+
+**Filtered by the SERVER** (`GET /products?isConsignment=`), not in the browser.
+The candidate list is capped at 50 matches, so a local filter would drop rows
+that never left the server and leave the count disagreeing with the list. The
+modal restates the tab as a badge in its own title, because the tabs are behind
+the overlay while it is open.
+
+**Switching tabs after picking warns; it does not delete.** The rows were added
+deliberately, and a tab click that silently threw away typed quantities is worse
+than the receipt the warning is about. It is not a submit blocker either: the API
+takes `purchaseType` and the product flag independently and has no rule
+connecting them, so refusing here would invent one in the browser — and there are
+real receipts on the wrong side of it, like the first delivery of goods a vendor
+has just agreed to convert to titipan. The banner names the rows; the clerk
+decides.
 
 `taxAmount` is *omitted from the payload* on consignment rather than sent as
 `"0"`. The API refuses the key there rather than ignoring it, on the grounds that

@@ -3,10 +3,11 @@
 The two screens that **write** to the stock ledger, against `POST /api/stock-movements`.
 Branch: `feature/inventory-purchasing`.
 
-| Screen | Route | Sidebar | File |
-|---|---|---|---|
-| Stok awal & penyesuaian | `/dashboard/inventory/adjustments` | Inventory → **Penyesuaian Stok** | `StockAdjustmentForm.tsx` |
-| Transfer stok antar gudang | `/dashboard/inventory/transfers` | Inventory → **Transfer Stok** | `StockTransferForm.tsx` |
+| Screen                  | Route                                | Sidebar                             | File                       |
+| ----------------------- | ------------------------------------ | ----------------------------------- | -------------------------- |
+| Stok awal & penyesuaian | `/dashboard/inventory/adjustments`   | Inventory → **Penyesuaian Stok**    | `StockAdjustmentForm.tsx`  |
+| Transfer stok — daftar  | `/dashboard/inventory/transfers`     | Inventory → **Transfer Stok**       | `StockTransfersScreen.tsx` |
+| Transfer stok — form    | `/dashboard/inventory/transfers/new` | the list's **Transfer baru** button | `StockTransferForm.tsx`    |
 
 Penyesuaian sits **last** in the Inventory menu, and that is the ordering doing its job: a
 real discrepancy is found by an opname and goods that moved are moved by a transfer, so
@@ -17,6 +18,34 @@ hold — an adjustment with no document behind it is the easiest way to hide a s
 Both moved off the in-memory prototype store (`features/inventory/data/demoStore.ts`) onto
 the real API. The UI is unchanged; what changed is that pressing Simpan now writes
 something that survives a refresh.
+
+## The transfer route opens on a list
+
+It used to open straight onto the form, and a transfer is the posting that suffered most
+from it: it writes no journal and mints no document number, so once the form cleared itself
+the only trace was a pair of rows on two different stock cards. "Apa saja yang dibawa ke
+bazar Sabtu lalu" was unanswerable — even though the module deliberately writes a
+multi-product transfer as ONE posting under one correlation id precisely so that it could be
+answered.
+
+The list reads `GET /api/stock-movements/transfers`, which groups on that correlation id
+**server-side**. Not the ledger filtered to `transfer_manual`: that pages rows, so one
+transfer could straddle a page boundary and be listed twice with half its lots each time.
+
+Two columns carry the counts, and they differ on purpose — **Produk** is what somebody
+typed, **Lot** is how many lots FEFO drew from to satisfy it. **Nilai** is the cost of the
+goods that moved, with a footnote under the table saying it is not a journal figure, because
+the list is where somebody adds that column up.
+
+Saving now returns to the list rather than clearing the form in place. That was the only
+thing the form could do while this route _was_ the form; a toast over an empty form is a
+receipt that disappears in four seconds.
+
+The page is gated on `stockMovements:**read**` — the list is a record of what moved, and
+anybody who may page the stock card may read what explains its rows. The write is gated
+separately, on the **Transfer baru** button and on the `/new` route. The sidebar entry stays
+on `create`, like Penyesuaian Stok's: a menu row is an invitation, and inviting a role that
+cannot write to a screen whose one action is a write is an invitation to a disabled button.
 
 ## Why these two, together
 
@@ -30,16 +59,16 @@ So this pair completes the stock module's write side. There is no third form wai
 
 ## The difference between them
 
-| | Penyesuaian | Transfer |
-|---|---|---|
-| Question | "the system is wrong, correct it" | "the goods moved" |
-| Warehouses | one | two |
-| Total stock | **changes** | **unchanged** — only the location |
-| Quantity | may be negative | must be positive; direction comes from the two ids |
-| Ledger rows | 1, or one per lot under FEFO | **≥ 2** — an out/in pair per lot |
-| Journal | yes | **no** |
-| Weighted average | may move | never |
-| Batch fields | yes, on the way in | none — lots travel as they are |
+|                  | Penyesuaian                       | Transfer                                           |
+| ---------------- | --------------------------------- | -------------------------------------------------- |
+| Question         | "the system is wrong, correct it" | "the goods moved"                                  |
+| Warehouses       | one                               | two                                                |
+| Total stock      | **changes**                       | **unchanged** — only the location                  |
+| Quantity         | may be negative                   | must be positive; direction comes from the two ids |
+| Ledger rows      | 1, or one per lot under FEFO      | **≥ 2** — an out/in pair per lot                   |
+| Journal          | yes                               | **no**                                             |
+| Weighted average | may move                          | never                                              |
+| Batch fields     | yes, on the way in                | none — lots travel as they are                     |
 
 The client sends an `operation`; the server decides the movement type, the reference, the
 signs and how many rows come out. Neither form ever names a `movementType`.
@@ -73,12 +102,12 @@ a new one is in flight, because clearing it makes the panel flicker between ever
 and its response, which reads as instability rather than as work.
 
 **One payload, two uses.** Each form builds its request object once and passes it to both
-the preview and the save. A preview of a *different* request is worse than no preview, and
+the preview and the save. A preview of a _different_ request is worse than no preview, and
 that object is the only place the two could diverge — `StockMovementForms.test.tsx` asserts
 they match, modulo the retry token the preview endpoint refuses.
 
 The endpoint **refuses what the create refuses**, so an inactive warehouse or a missing
-batch code surfaces while the user is still filling the form rather than after they press
+expiry date surfaces while the user is still filling the form rather than after they press
 save.
 
 ## Retrying a save is safe
@@ -95,8 +124,10 @@ purpose — and stock is the one number where guessing wrong needs a physical co
 ## What is validated where
 
 Only rules a user can fix **without a round trip** are checked locally: a missing quantity,
-a non-decimal, a missing batch code on a product that tracks expiry, two identical
-warehouses. Everything else — an inactive warehouse, a product that cannot hold stock, a
+a non-decimal, a missing expiry date on a product that tracks expiry, two identical
+warehouses. The batch CODE is not among them: left blank it is filled with
+`sku:tanggal-expired` (`autoBatchCode` in `src/lib/batchCode.ts`, mirroring the gateway's own
+rule), and the field's placeholder shows the code the lot will take. Everything else — an inactive warehouse, a product that cannot hold stock, a
 quantity the API reads differently — comes back as a 400 and is rendered verbatim via
 `ApiError.fullMessage`, which carries the actionable half of the refusal
 ("Warehouse 'Gudang Bazar' is not active and cannot accept movement") that `message` alone
@@ -136,14 +167,14 @@ the preview now names every lot it would touch.
 All three found here are closed — `PawCRM-Backend` 0.21.0, gaps 7–9 of
 **`PawCRM-Backend/docs/stock-card-gaps.md`**.
 
-| # | Gap | How it closed |
-|---|---|---|
-| 7 | No preview endpoint | `POST /stock-movements/preview` — `utils/preview.ts` deleted |
-| 8 | Posting accounts not discoverable | The preview's `journal` carries resolved codes **and** names |
-| 9 | No idempotency key | `idempotencyKey` on the create; the forms mint one per intent |
+| #   | Gap                               | How it closed                                                 |
+| --- | --------------------------------- | ------------------------------------------------------------- |
+| 7   | No preview endpoint               | `POST /stock-movements/preview` — `utils/preview.ts` deleted  |
+| 8   | Posting accounts not discoverable | The preview's `journal` carries resolved codes **and** names  |
+| 9   | No idempotency key                | `idempotencyKey` on the create; the forms mint one per intent |
 
 **One limitation carried over from gap 9**, and it is the server's rather than this
-feature's: the API's replay check is a read followed by a write, so it makes a *retry* safe
+feature's: the API's replay check is a read followed by a write, so it makes a _retry_ safe
 and does not make two genuinely simultaneous requests safe. The form's disabled-while-saving
 button covers the double click, which is the case a browser can actually produce.
 

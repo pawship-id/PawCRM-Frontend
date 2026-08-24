@@ -19,7 +19,7 @@ import {
  */
 
 const HEADER =
-  "parent_sku,parent_nama,sku,nama,barcode,kategori,satuan,harga_jual,min_stock,has_expiry,stok_awal,hpp_awal,kode_batch,tgl_expired";
+  "parent_sku,parent_nama,sku,nama,barcode,kategori,satuan,harga_jual,min_stock,has_expiry,stok_awal,hpp_awal,kode_batch_supplier,tgl_expired";
 
 const sheet = (...lines: string[]) => [HEADER, ...lines].join("\n");
 

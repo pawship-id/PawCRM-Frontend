@@ -44,6 +44,7 @@ export const stockOpnameService = {
         page: query.page,
         limit: query.limit,
         search: query.search,
+        branchId: query.branchId,
         warehouseId: query.warehouseId,
         status: query.status,
         categoryFilter: query.categoryFilter,
@@ -60,6 +61,11 @@ export const stockOpnameService = {
    * `productSku`, `productName`, `productUnit` and `productHasExpiry` arrive
    * resolved, so the sheet neither renders ObjectIds nor fetches the catalogue
    * alongside itself to learn which lines will need a batch code.
+   *
+   * On the sheet itself: `branchName`, `warehouseName`, `createdByName` and
+   * `submittedByName`. `branchName` is the sheet's OWN branch, never its
+   * warehouse's default — the two differ at a shared warehouse, which is the
+   * case the field exists for.
    */
   getById: (id: string) => apiClient.get<Opname>(`/stock-opnames/${id}`),
 

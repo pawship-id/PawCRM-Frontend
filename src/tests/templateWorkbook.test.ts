@@ -16,7 +16,7 @@ import { readSheet } from "@/features/inventory/utils/sheet";
 
 /** The template the server serves, near enough for these purposes. */
 const HEADER =
-  "parent_sku,parent_nama,sku,nama,barcode,kategori,satuan,harga_jual,min_stock,has_expiry,stok_awal,hpp_awal,kode_batch,tgl_expired,attr_Ukuran";
+  "parent_sku,parent_nama,sku,nama,barcode,kategori,satuan,harga_jual,min_stock,has_expiry,stok_awal,hpp_awal,kode_batch_supplier,tgl_expired,attr_Ukuran";
 
 const EXAMPLE =
   ",,SHAMPOO-001,Shampoo Anjing,8992700001234,Perawatan,pcs,45000,5,tidak,12,30000,,,";
@@ -77,7 +77,7 @@ describe("csvToTemplateWorkbook", () => {
     expect(sheet.E2.t).toBe("s");
   });
 
-  it("formats sku, parent_sku and kode_batch as text too", async () => {
+  it("formats sku, parent_sku and kode_batch_supplier as text too", async () => {
     const sheet = await readBack(await csvToTemplateWorkbook(TEMPLATE_CSV));
 
     expect(sheet.A3.z).toBe("@");
