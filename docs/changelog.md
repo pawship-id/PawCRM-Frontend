@@ -7,6 +7,37 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Booking Bridge: tarik booking, atau bikin di tempat
+
+`BookingBridgeDialog` and its ad-hoc tab, exported from `@/features/booking`. No route —
+the POS cart panel mounts it in Fase 6, and `/dashboard/booking` keeps its placeholder. Fase
+4 of the POS module.
+
+**Both tabs are reachable every time** (FR-3), and **which one opens is derived from the
+data during render**, not pushed into state by an effect. That is a real bug avoided rather
+than a lint rule appeased: an effect that flipped the tab when the fetch landed would, on a
+slow connection, move a cashier who had already tapped through — possibly mid-tick. `tab`
+starts as `null` meaning "not chosen", and once chosen it wins for the life of the dialog.
+
+**The pull path writes nothing.** `onPull` hands the ticked bookings back; marking them as
+pulled belongs to whatever creates the cart, inside the transaction that writes it. A dialog
+that did it itself would leave bookings claimed by a cart that was never built — invisible to
+the bridge for the rest of the day, for a sale that never happened.
+
+**The ad-hoc tab creates a real booking**, `origin: "pos_adhoc"` and already `confirmed` —
+the customer is standing at the counter. One pet per confirmation: a pet × service matrix
+submitted at once would have to create several bookings from one form and decide what to do
+when the third fails after the first two were written.
+
+**`apiClient` gained array query params.** `buildUrl` stringified every value, so
+`status: ["confirmed", "in_progress"]` became `status=confirmed%2Cin_progress` — one value,
+which every enum check on the far side rejects. Arrays now become repeated params, which is
+what Express parses back into an array. It looks like it works until the first filter that
+takes more than one value, so `api-client.test.ts` pins it. See
+[docs/features/booking-bridge.md](./features/booking-bridge.md).
+
+---
+
 ## [Unreleased] — Cari & daftar pelanggan tanpa keluar dari kasir
 
 `CustomerSearchDialog` and `CustomerQuickAddDialog`, exported from

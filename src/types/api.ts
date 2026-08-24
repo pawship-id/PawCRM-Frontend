@@ -910,6 +910,121 @@ export interface UpdateCustomerInput {
   vipTier?: VipTier | null;
 }
 
+/** Where a booking stands. Mirrors BOOKING_STATUSES in booking.model.js. */
+export type BookingStatus =
+  | "draft"
+  | "confirmed"
+  | "in_progress"
+  | "completed"
+  | "cancelled";
+
+/**
+ * How the booking came to exist.
+ *
+ * `pos_adhoc` is a walk-in who bought a service at the till with no appointment —
+ * the POS creates one to hang the attribution on. A field rather than an
+ * inference from `posTransactionId`, because a booked appointment paid at the
+ * till also ends up with one.
+ */
+export type BookingOrigin = "booking" | "pos_adhoc";
+
+/**
+ * One service on a booking.
+ *
+ * `name` and `price` are a SNAPSHOT taken when the booking was made — a booking
+ * is a quote. Reading the price through `serviceId` at payment time would
+ * silently reprice every outstanding booking the moment the catalogue changed.
+ *
+ * `price` is a decimal STRING, never a number.
+ */
+export interface BookingItem {
+  serviceId: string;
+  name: string;
+  price: string;
+  /** null = FR-3's "Belum ditentukan". Assignment is a scheduling question. */
+  groomerUserId: string | null;
+}
+
+/**
+ * A booking, as returned by GET /api/bookings. One animal, one day, one or more
+ * services.
+ *
+ * ONE BOOKING IS ONE PET. FR-3 groups POS cart lines by booking and labels each
+ * group with the animal's name, so a booking covering two pets would produce a
+ * group that cannot be labelled.
+ */
+export interface Booking {
+  _id: string;
+  tenantId: string;
+  branchId: string;
+  bookingNumber: string;
+  customerId: string;
+  petId: string;
+  items: BookingItem[];
+  scheduledAt: string;
+  status: BookingStatus;
+  origin: BookingOrigin;
+  /** Set by the POS when this booking is paid for. */
+  posTransactionId: string | null;
+  /** When its services were dropped into a POS cart. Cleared on cancel. */
+  pulledToCartAt: string | null;
+  notes: string | null;
+  cancelReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Query parameters accepted by GET /api/bookings. All optional. */
+export interface BookingListQuery {
+  page?: number;
+  limit?: number;
+  customerId?: string;
+  petId?: string;
+  branchId?: string;
+  /** One status or several — a day sheet usually wants more than one. */
+  status?: BookingStatus | BookingStatus[];
+  origin?: BookingOrigin;
+  /** Calendar dates; the server expands them in the tenant's timezone. */
+  scheduledFrom?: string;
+  scheduledTo?: string;
+  /** Only bookings not already sitting in a POS cart. */
+  notPulled?: boolean;
+}
+
+/**
+ * Body of POST /api/bookings.
+ *
+ * An item carries NO PRICE: it is read from the catalogue and snapshotted by the
+ * server, because a price a client can set is a discount a client can grant.
+ *
+ * `branchId` is optional — the server falls back to the session's current branch.
+ */
+export interface CreateBookingInput {
+  customerId: string;
+  petId: string;
+  items: { serviceId: string; groomerUserId?: string | null }[];
+  scheduledAt: string;
+  branchId?: string;
+  status?: BookingStatus;
+  origin?: BookingOrigin;
+  notes?: string | null;
+}
+
+/**
+ * Body of PATCH /api/bookings/:id.
+ *
+ * `status` IS DELIBERATELY ABSENT — it moves through its own route, because a
+ * transition has rules a `$set` cannot express.
+ */
+export interface UpdateBookingInput {
+  customerId?: string;
+  petId?: string;
+  items?: { serviceId: string; groomerUserId?: string | null }[];
+  scheduledAt?: string;
+  branchId?: string;
+  notes?: string | null;
+}
+
 /**
  * The four kinds of real money movement a POS sale can settle through. Mirrors
  * CHANNEL_TYPES in paymentChannel.model.js.

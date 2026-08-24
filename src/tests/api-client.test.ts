@@ -78,6 +78,37 @@ describe("apiClient", () => {
         expect.anything(),
       );
     });
+
+    it("sends an array as REPEATED params, never comma-joined", async () => {
+      /*
+        Joining would produce `status=confirmed%2Cin_progress` — one value, which
+        every `.valid(...)` enum check on the far side rejects. Repeating is what
+        Express parses back into an array. This looks like it works until the
+        first filter that takes more than one value, which is why it is pinned.
+      */
+      const spy = mockFetch({ success: true, data: null });
+
+      await apiClient.get("/bookings", {
+        query: { status: ["confirmed", "in_progress"] },
+      });
+
+      expect(spy).toHaveBeenCalledWith(
+        `${BASE}/bookings?status=confirmed&status=in_progress`,
+        expect.anything(),
+      );
+    });
+
+    it("contributes nothing for an empty array", async () => {
+      // "Filter by none of these" is not a filter.
+      const spy = mockFetch({ success: true, data: null });
+
+      await apiClient.get("/bookings", { query: { page: 1, status: [] } });
+
+      expect(spy).toHaveBeenCalledWith(
+        `${BASE}/bookings?page=1`,
+        expect.anything(),
+      );
+    });
   });
 
   describe("request body", () => {

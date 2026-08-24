@@ -17,8 +17,21 @@ import type { ApiResponse, ApiSuccess } from "@/types/api";
 export interface RequestOptions extends Omit<RequestInit, "body" | "method"> {
   /** Serialized as JSON unless it is already a FormData/string body. */
   body?: unknown;
-  /** Query string parameters; undefined and null entries are dropped. */
-  query?: Record<string, string | number | boolean | undefined | null>;
+  /**
+   * Query string parameters; undefined and null entries are dropped.
+   *
+   * An ARRAY becomes repeated params (`?status=a&status=b`) rather than a
+   * comma-joined value — see buildUrl.
+   */
+  query?: Record<
+    | string,
+    | string
+    | number
+    | boolean
+    | undefined
+    | null
+    | Array<string | number | boolean>
+  >;
   /** Abort the request after this many milliseconds. Default 15000. */
   timeoutMs?: number;
 }
@@ -33,9 +46,30 @@ function buildUrl(path: string, query?: RequestOptions["query"]): string {
 
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
-    if (value !== undefined && value !== null) {
-      params.append(key, String(value));
+    if (value === undefined || value === null) continue;
+
+    /*
+      AN ARRAY BECOMES REPEATED PARAMS — `?status=a&status=b` — which is what
+      Express parses back into an array, and what a Joi `alternatives().try(one,
+      array)` schema accepts.
+
+      The obvious alternative, joining with a comma, produces "a,b" as a single
+      value and fails every `.valid(...)` check on the far side. It looks like it
+      works until the first filter that takes more than one value.
+
+      An empty array contributes nothing, which is the honest reading: "filter by
+      none of these" is not a filter.
+    */
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        if (entry !== undefined && entry !== null) {
+          params.append(key, String(entry));
+        }
+      }
+      continue;
     }
+
+    params.append(key, String(value));
   }
 
   const queryString = params.toString();

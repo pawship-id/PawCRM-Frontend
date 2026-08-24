@@ -145,6 +145,20 @@ export const PERMISSION_CATALOG = {
    * channel deleted by mistake without freeing its name to something else first.
    */
   paymentChannels: ["create", "read", "update", "delete", "restore"],
+
+  /**
+   * Appointments. NOT the uniform five, and the two departures are the point.
+   *
+   * No `delete`/`restore`: a booking that did not happen is CANCELLED, which is
+   * a fact worth keeping — a customer who cancels three times in a month is
+   * information a soft delete would erase.
+   *
+   * `cancel` is separated from `update` because they are different levels of
+   * trust: a receptionist may reschedule all day, while calling an appointment
+   * off is often somebody else's call. The API gates the status route on
+   * whichever the payload implies.
+   */
+  bookings: ["create", "read", "update", "cancel"],
   // The audit trail is read-only (mirrors the backend catalog): records are
   // system-appended and never edited or deleted, so `read` is the only action.
   auditLogs: ["read"],
