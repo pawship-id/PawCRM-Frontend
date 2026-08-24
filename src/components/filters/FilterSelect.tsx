@@ -47,13 +47,14 @@ export interface FilterSelectProps<T> {
   /**
    * "inline" — a trigger in a `FilterBar`, reading `Gudang: Semua ⌄`.
    * "field" — a labeled full-width row inside a `FilterPanel`.
+   * "form" — the same row standing in a FORM: 44px, and `error` is honoured.
    *
    * The SAME control either way. The bar and the panel are two arrangements of
    * one grammar (docs/ui-rules.md §8), so a screen that has both — a quick bar
    * that collapses into a panel on a phone — renders one list of fields and
    * hands it a layout, rather than keeping two lists in step by hand.
    */
-  layout?: "inline" | "field";
+  layout?: "inline" | "field" | "form";
   /**
    * Overrides the applied-filter state the trigger shows.
    *
@@ -83,6 +84,13 @@ export interface FilterSelectProps<T> {
    * with no explanation reads as a bug.
    */
   disabledHint?: string;
+  /**
+   * Validation message, `layout="form"` only — a filter cannot be invalid.
+   *
+   * Setting it also marks the trigger `invalid`, so the red border and the red
+   * sentence can never disagree about whether something is wrong.
+   */
+  error?: string;
   align?: "start" | "end";
   className?: string;
 }
@@ -102,6 +110,7 @@ export function FilterSelect<T>({
   required,
   disabled,
   disabledHint,
+  error,
   align = "start",
   className,
 }: FilterSelectProps<T>) {
@@ -131,10 +140,10 @@ export function FilterSelect<T>({
           value={display}
           active={active}
           layout={layout}
-          invalid={invalid}
+          invalid={invalid ?? Boolean(error)}
           disabled={disabled}
           aria-label={ariaLabel ?? label}
-          className={layout === "field" ? undefined : className}
+          className={layout === "inline" ? className : undefined}
         />
       </PopoverTrigger>
 
@@ -143,7 +152,10 @@ export function FilterSelect<T>({
         align={align}
         // A field fills its panel, so its list should too — anything narrower
         // reads as a stray popover rather than the field opening.
-        className={cn("p-0", layout === "field" && "w-(--radix-popover-trigger-width)")}
+        className={cn(
+          "p-0",
+          layout !== "inline" && "w-(--radix-popover-trigger-width)",
+        )}
         // Radix parks focus on the content wrapper, which is the ANCESTOR of
         // the listbox — so arrow keys would fire above the handler and never
         // reach it. Decline that and let the list (or its search box) take focus.
@@ -163,11 +175,12 @@ export function FilterSelect<T>({
     </Popover>
   );
 
-  if (layout === "field") {
+  if (layout !== "inline") {
     return (
       <FilterField
         label={label}
         required={required}
+        error={error}
         // Only while it is actually greyed out: a permanent caption explaining
         // a state the field is not in reads as a warning about nothing. This is
         // the prop's first use — it was declared with the interface and left

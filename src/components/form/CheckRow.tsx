@@ -21,6 +21,13 @@ import { Label } from "../ui/label";
  * checkbox size, the same one the tables use, and a second size is exactly the
  * drift the rules exist to stop — but the label and the description are inside
  * the `<Label>`, so the 44px hit area comes from the row, not from the box.
+ *
+ * THE DESCRIPTION IS NOT PART OF THE ACCESSIBLE NAME, even though it lives
+ * inside the `<label>` so that clicking it toggles. `aria-labelledby` points at
+ * the title alone and `aria-describedby` at the sentence, so the box is still
+ * called "Produk pre-order" rather than "Produk pre-order Boleh dipesan walau
+ * stok kosong. Dibaca POS dan…". A name that runs to forty words is one nobody
+ * can act on, and it makes the control unfindable by its own label.
  */
 export interface CheckRowProps {
   label: string;
@@ -40,6 +47,8 @@ export function CheckRow({
   className,
 }: CheckRowProps) {
   const id = useId();
+  const titleId = `${id}-title`;
+  const descId = `${id}-desc`;
 
   return (
     <div className={cn("flex items-start gap-3 py-3.5", className)}>
@@ -48,12 +57,15 @@ export function CheckRow({
         checked={checked}
         onCheckedChange={(next) => onCheckedChange(next === true)}
         disabled={disabled}
+        aria-labelledby={titleId}
+        aria-describedby={description ? descId : undefined}
         className="mt-0.5"
       />
       <div className="min-w-0">
         {/* `font-normal` on the description, inside the Label, so clicking the
             explanation toggles the box too — that sentence is the part people
-            actually read before deciding. */}
+            actually read before deciding. It is named by `aria-describedby`
+            rather than by the label, so it does not swallow the box's name. */}
         <Label
           htmlFor={id}
           className={cn(
@@ -61,9 +73,12 @@ export function CheckRow({
             disabled && "cursor-not-allowed opacity-60",
           )}
         >
-          {label}
+          <span id={titleId}>{label}</span>
           {description && (
-            <span className="mt-1 block text-xs font-normal text-muted">
+            <span
+              id={descId}
+              className="mt-1 block text-xs font-normal text-muted"
+            >
               {description}
             </span>
           )}

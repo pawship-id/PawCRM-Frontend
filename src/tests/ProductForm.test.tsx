@@ -1809,7 +1809,7 @@ describe("ProductForm", () => {
 
       await user.click(screen.getByLabelText("Produk konsinyasi (titipan)"));
       await user.click(
-        screen.getByRole("button", { name: /Simpan perubahan/ }),
+        screen.getByRole("button", { name: /Simpan produk/ }),
       );
 
       await waitFor(() => expect(update).toHaveBeenCalled());
@@ -1834,7 +1834,7 @@ describe("ProductForm", () => {
       await user.clear(screen.getByLabelText(/Nama produk/));
       await user.type(screen.getByLabelText(/Nama produk/), "Shampoo Kucing");
       await user.click(
-        screen.getByRole("button", { name: /Simpan perubahan/ }),
+        screen.getByRole("button", { name: /Simpan produk/ }),
       );
 
       await waitFor(() => expect(update).toHaveBeenCalled());
@@ -2051,7 +2051,7 @@ describe("ProductForm", () => {
       await user.clear(screen.getByLabelText(/Nama produk/));
       await user.type(screen.getByLabelText(/Nama produk/), "Shampoo Kucing");
       await user.click(
-        screen.getByRole("button", { name: /Simpan perubahan/ }),
+        screen.getByRole("button", { name: /Simpan produk/ }),
       );
 
       await waitFor(() => expect(update).toHaveBeenCalled());
@@ -2087,7 +2087,7 @@ describe("ProductForm", () => {
 
       await user.clear(screen.getByLabelText(/^Merk/));
       await user.click(
-        screen.getByRole("button", { name: /Simpan perubahan/ }),
+        screen.getByRole("button", { name: /Simpan produk/ }),
       );
 
       await waitFor(() => expect(update).toHaveBeenCalled());
@@ -2223,7 +2223,7 @@ describe("ProductForm", () => {
       await user.clear(screen.getByLabelText(/Nama produk/));
       await user.type(screen.getByLabelText(/Nama produk/), "Shampoo Kucing");
       await user.click(
-        screen.getByRole("button", { name: /Simpan perubahan/ }),
+        screen.getByRole("button", { name: /Simpan produk/ }),
       );
 
       await waitFor(() => expect(update).toHaveBeenCalled());
@@ -2281,7 +2281,7 @@ describe("ProductForm", () => {
       await user.clear(screen.getByLabelText("Harga 3kg"));
       await user.type(screen.getByLabelText("Harga 3kg"), "185000");
       await user.click(
-        screen.getByRole("button", { name: /Simpan perubahan/ }),
+        screen.getByRole("button", { name: /Simpan produk/ }),
       );
 
       // The 3kg combination has no stored row yet, so it is created against the

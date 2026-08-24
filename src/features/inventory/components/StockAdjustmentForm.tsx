@@ -6,13 +6,14 @@ import { Trash2 } from "lucide-react";
 
 import {
   Alert,
-  Button,
   Card,
   FilterSelect,
+  FormActionBar,
   InternalBatchCodeDisplay,
   Spinner,
   SupplierBatchCodeInput,
   TextField,
+  TextareaField,
   namedOptions,
 } from "@/components";
 import { Badge } from "@/components/ui/badge";
@@ -472,6 +473,21 @@ export function StockAdjustmentForm() {
       )}
 
       <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
+        {/* Sticky, so a sheet of two hundred rows is saveable from wherever the
+            reader happens to be — see docs/ui-rules.md §16. `No. [auto]` lives
+            here rather than in the grid: the server allocates it on save, so it
+            is not a field anybody fills in, and the first row of a form belongs
+            to what actually needs attention. */}
+        <FormActionBar
+          title="Penyesuaian baru"
+          meta={`No. [auto] · ${lines.length} produk`}
+          submitLabel="Simpan penyesuaian"
+          submitting={saving}
+          disabled={blocking !== null}
+          blockedReason={blocking}
+          cancelHref="/dashboard/inventory/adjustments"
+        />
+
         {formError && <Alert variant="error">{formError}</Alert>}
 
         <Card
@@ -479,44 +495,37 @@ export function StockAdjustmentForm() {
           description="Satu dokumen untuk satu gudang, dengan nomornya sendiri."
         >
           <div className="flex flex-col gap-4">
-            <div className="grid gap-4 sm:grid-cols-3">
+            {/* KAPAN then DI MANA, in that order, on the first row — §16. Every
+                transaction module opens with the same two questions so nobody
+                re-scans a screen they have not used this week. Cabang drops to
+                the second row: it is secondary classification, not the context
+                somebody reads first. */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <TextField
+                label="Tanggal"
+                name="entryDate"
+                type="date"
+                value={entryDate}
+                max={todayValue()}
+                onChange={(event) => {
+                  setEntryDate(event.target.value);
+                }}
+                error={shown("entryDate")}
+                hint="Tanggal kejadiannya, bukan tanggal dokumen dibuat."
+                disabled={saving}
+                required
+              />
+
               <div>
                 <FilterSelect
-                  layout="field"
-                  label="Cabang"
-                  ariaLabel="Cabang"
-                  value={branchId}
-                  options={namedOptions(scope.branches)}
-                  active={false}
-                  required
-                  placeholder={scope.loading ? "Memuat…" : "Pilih cabang"}
-                  onChange={(value) => {
-                    if (value === branchId) return;
-                    markTouched("branchId");
-                    setPickedBranch(value);
-                    // Everything below is scoped to the branch: the warehouse
-                    // may not belong to the new one, and the rows were chosen
-                    // against the old warehouse's stock.
-                    setWarehouseId("");
-                    setLines([]);
-                    setProductById(new Map());
-                  }}
-                />
-                {shown("branchId") && (
-                  <p role="alert" className="mt-1.5 text-xs text-danger">
-                    {errors.branchId}
-                  </p>
-                )}
-              </div>
-              <div>
-                <FilterSelect
-                  layout="field"
+                  layout="form"
                   label="Gudang"
                   ariaLabel="Gudang"
                   value={warehouseId}
                   options={namedOptions(scopedWarehouses)}
                   active={false}
                   required
+                  error={shown("warehouseId")}
                   placeholder={
                     branchId === "" ? "Pilih cabang dulu" : "Pilih gudang"
                   }
@@ -535,35 +544,43 @@ export function StockAdjustmentForm() {
                     setProductById(new Map());
                   }}
                 />
-                {shown("warehouseId") && (
-                  <p role="alert" className="mt-1.5 text-xs text-danger">
-                    {errors.warehouseId}
-                  </p>
-                )}
                 {lines.length > 0 && (
                   <p className="mt-1.5 text-xs text-muted">
                     Mengganti gudang akan mengosongkan daftar produk di bawah.
                   </p>
                 )}
               </div>
-              <TextField
-                label="Tanggal"
-                name="entryDate"
-                type="date"
-                value={entryDate}
-                max={todayValue()}
-                onChange={(event) => {
-                  setEntryDate(event.target.value);
-                }}
-                error={shown("entryDate")}
-                hint="Tanggal kejadiannya, bukan tanggal dokumen dibuat."
-                disabled={saving}
+
+              <FilterSelect
+                layout="form"
+                label="Cabang"
+                ariaLabel="Cabang"
+                value={branchId}
+                options={namedOptions(scope.branches)}
+                active={false}
                 required
+                error={shown("branchId")}
+                placeholder={scope.loading ? "Memuat…" : "Pilih cabang"}
+                onChange={(value) => {
+                  if (value === branchId) return;
+                  markTouched("branchId");
+                  setPickedBranch(value);
+                  // Everything below is scoped to the branch: the warehouse
+                  // may not belong to the new one, and the rows were chosen
+                  // against the old warehouse's stock.
+                  setWarehouseId("");
+                  setLines([]);
+                  setProductById(new Map());
+                }}
               />
             </div>
 
-            <TextField
-              label="Catatan"
+            {/* Keterangan closes the header, always — §16. A real textarea, not
+                the single-line input this was: six months on it is the only
+                explanation left, and a reason nobody can re-read before saving
+                is a reason nobody writes carefully. */}
+            <TextareaField
+              label="Keterangan"
               name="notes"
               value={notes}
               onChange={(event) => {
@@ -931,18 +948,6 @@ export function StockAdjustmentForm() {
         </Card>
 
         <div className="flex flex-col gap-2">
-          <div className="flex gap-2">
-            <Button type="submit" disabled={saving || blocking !== null}>
-              {saving ? "Menyimpan..." : "Simpan penyesuaian"}
-            </Button>
-          </div>
-
-          {blocking && !saving && (
-            <p className="text-xs text-muted">
-              Belum bisa disimpan: <b>{blocking}</b>
-            </p>
-          )}
-
           <p className="text-xs text-muted">
             Kartu stok bersifat <b>append-only</b>. Dokumen ini tidak bisa
             diubah atau dihapus - salah angka dikoreksi dengan dokumen baru, dan

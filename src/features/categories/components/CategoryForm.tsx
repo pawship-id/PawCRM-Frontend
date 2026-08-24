@@ -3,7 +3,14 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { Alert, Button, Card, Spinner, TextField } from "@/components";
+import {
+  Alert,
+  Button,
+  Card,
+  Spinner,
+  TextField,
+  TextareaField,
+} from "@/components";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { ApiError } from "@/services/api-error";
@@ -307,7 +314,18 @@ function CategoryFields({
             required
           />
 
-          <TextField
+          {/* Klasifikasi before the free text, and the free text closes the
+              card — §16's entity order: Nama, identifier, classification,
+              optional attributes, then the note last whatever its length. */}
+          <CategoryParentField
+            value={parentId}
+            onChange={setParentId}
+            categoryId={category?._id}
+            childCount={childCount}
+            disabled={saving}
+          />
+
+          <TextareaField
             label="Deskripsi"
             name="description"
             value={description}
@@ -319,14 +337,6 @@ function CategoryFields({
             hint="Opsional. Sebaris dua baris soal apa yang masuk kategori ini — yang baca orang yang lagi input produk."
             placeholder="mis. Makanan basah dan kering — bukan camilan"
             maxLength={DESCRIPTION_MAX_LENGTH}
-            disabled={saving}
-          />
-
-          <CategoryParentField
-            value={parentId}
-            onChange={setParentId}
-            categoryId={category?._id}
-            childCount={childCount}
             disabled={saving}
           />
         </div>
@@ -369,11 +379,16 @@ function CategoryFields({
         </Card>
       )}
 
-      {/* Stacks on a phone (the primary on top), one row from sm up. */}
+      {/* Stacks on a phone (the primary on top), one row from sm up.
+          STILL AT THE FOOT OF THE PAGE. §16 puts this bar sticky at the top,
+          and three stock forms already carry it — this one waits on purpose
+          until that pattern has been looked at in a browser. What is adopted
+          here is the rest of the rule: Batal is `secondary` per §7, and Simpan
+          names what it saves rather than reading bare "Simpan". */}
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
         <Button
           type="button"
-          variant="ghost"
+          variant="secondary"
           className="w-full sm:w-auto"
           onClick={goBack}
           disabled={saving}
@@ -381,7 +396,7 @@ function CategoryFields({
           Batal
         </Button>
         <Button type="submit" loading={saving} className="w-full sm:w-auto">
-          {editing ? "Simpan" : "Buat kategori"}
+          {editing ? "Simpan kategori" : "Buat kategori"}
         </Button>
       </div>
     </form>
