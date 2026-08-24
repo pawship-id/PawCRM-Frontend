@@ -312,15 +312,15 @@ From [`docs/architecture.md`](./architecture.md), unchanged: a component lives i
 
 **Built** — `src/components/filters/`, exported from `@/components`, used by all 15 toolbars: `FilterBar`, `FilterTrigger`, `FilterSearch`, `FilterSelect`, `FilterMultiSelect`, `FilterDateRange`, `FilterToggle`, `FilterPills`, `FilterChips`, `FilterPanel`, `FilterField`, plus the `withAll` / `triState` / `namedOptions` option builders.
 
-**Built** — `src/components/form/`, exported from `@/components`: `FormField`, `FormActionBar`, `TextareaField`, `SelectField`, `CheckRow` / `CheckRowGroup`, plus `FIELD_HEIGHT`. The searchable full-width picker is **`FilterSelect layout="form"`**, not a form-layer control of its own — see §16. `TextField` now renders through `FormField` — its call sites are unchanged. Rules in §16, anatomy in [`docs/ui-component-specs.md`](./ui-component-specs.md). **One form migrated so far** — `StockAdjustmentForm`. The other 19 still carry their own bottom-of-page buttons.
+**Built** — `src/components/form/`, exported from `@/components`: `FormField`, `FormActionBar`, `TextareaField`, `SelectField`, `CheckRow` / `CheckRowGroup`, plus `FIELD_HEIGHT`. The searchable full-width picker is **`FilterSelect layout="form"`**, not a form-layer control of its own — see §16. `TextField` now renders through `FormField` — its call sites are unchanged. Rules in §16, anatomy in [`docs/ui-component-specs.md`](./ui-component-specs.md). **Two forms migrated so far** — `StockAdjustmentForm`, `OpeningStockForm`. The other 18 still carry their own bottom-of-page buttons.
 
 **Decided but not yet built** — specs exist in [`docs/ui-component-specs.md`](./ui-component-specs.md). Build them when the work calls for one, don't invent a parallel version: `StatusBadge`, `EmptyState`, and a promoted `PageHeading`.
 
 **Migration list** — existing code that violates these rules. Fix opportunistically when you are already in the file; do not open a sweep without being asked:
 
 - 2 screens with filters written inline rather than in a toolbar — `StockOnHandScreen`, `ProductDetail` — still carry their own `const ALL = "all"` sentinel and a raw `ui/select`. They were not part of the 15-toolbar census; migrate them to `@/components` filters. (`ChartOfAccountsScreen` and `JournalEntriesScreen` are done — the latter as one piece of work with its wiring to `GET /api/journal-entries`, which is also what retired `features/accounting/data/dummy.ts`.)
-- 19 forms with their buttons at the bottom of the page → `<FormActionBar>` (§16). Two of them — `ReceiptForm`, `ProductForm` — also have Simpan to the LEFT of Batal.
-- 6 forms still on `layout="field"` with a hand-written `role="alert"` beneath → `layout="form"` + its `error` prop.
+- 18 forms with their buttons at the bottom of the page → `<FormActionBar>` (§16). Two of them — `ReceiptForm`, `ProductForm` — also have Simpan to the LEFT of Batal.
+- 4 form headers still on `layout="field"` with a hand-written `role="alert"` beneath — `ReceiptForm`, `JournalEntryCreateForm`, `StockTransferForm`, `OpnameStartCard` — → `layout="form"` + its `error` prop. (`WarehouseProductPicker` and the per-row batch picker inside `StockAdjustmentForm` stay on `"field"`: a control in a table cell sits among `h-9` inputs, and 44 would tower over them.)
 - ~25 hand-rolled page headings → promoted `PageHeading`
 - 52 hand-written `rounded-xl border border-border bg-surface` → `<Card>`
 - 15 feature status badges with 3 tinting conventions → `StatusBadge`
@@ -384,6 +384,8 @@ Gudang, Pemasok, Pelanggan, Akun, Penerimaan asal — anything somebody would wa
 `layout="form"` is `layout="field"` at 44 px with an `error` prop. In a form always pass **`active={false}`** (or every answered field goes navy, announcing a filter) and a real **`placeholder`** (the default is `"Semua"`, which on a required field claims a choice nobody made).
 
 `SelectField` is for the *short* closed list that needs no searching — Satuan, Tipe akun, Metode. Reach for the picker the moment somebody would want to type.
+
+**A control inside a row table is not a form field.** It sits among `h-9` inputs in a table cell, so it keeps `layout="field"` at 40 px — 44 there would tower over the row it belongs to. The 44 rule is about the header, not about every control on the screen.
 
 ### The action bar
 

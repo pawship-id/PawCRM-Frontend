@@ -6,13 +6,14 @@ import { Trash2 } from "lucide-react";
 
 import {
   Alert,
-  Button,
   Card,
   FilterSelect,
+  FormActionBar,
   InternalBatchCodeDisplay,
   Spinner,
   SupplierBatchCodeInput,
   TextField,
+  TextareaField,
   namedOptions,
 } from "@/components";
 import { Badge } from "@/components/ui/badge";
@@ -353,6 +354,23 @@ export function OpeningStockForm() {
       )}
 
       <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
+        {/* The running total rides in the meta rather than only at the foot of
+            the sheet: it is the number somebody sanity-checks before pressing
+            the button, and the button is no longer next to it. The two lines
+            explaining WHICH accounts it moves stay down there, beside the rows
+            they are about. */}
+        <FormActionBar
+          title="Stok awal baru"
+          meta={`No. [auto] · ${lines.length} produk · ${formatMoney(
+            toDecimalString(totalValue),
+          )}`}
+          submitLabel="Simpan stok awal"
+          submitting={saving}
+          disabled={blocking !== null}
+          blockedReason={blocking}
+          cancelHref="/dashboard/inventory/opening-stock"
+        />
+
         {formError && <Alert variant="error">{formError}</Alert>}
 
         {/* THE ONE PRECONDITION, stated before the first field rather than
@@ -371,48 +389,40 @@ export function OpeningStockForm() {
           description="Satu dokumen untuk satu gudang, dengan nomornya sendiri. Barang yang sama di gudang lain diisi di dokumen terpisah."
         >
           <div className="flex flex-col gap-4">
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div>
-                <FilterSelect
-                  layout="field"
-                  label="Cabang"
-                  ariaLabel="Cabang"
-                  value={branchId}
-                  options={namedOptions(scope.branches)}
-                  active={false}
-                  required
-                  placeholder={scope.loading ? "Memuat…" : "Pilih cabang"}
-                  onChange={(value) => {
-                    if (value === branchId) return;
-                    setPickedBranch(value);
-                    // Everything below is scoped to the branch: the warehouse
-                    // may not belong to the new one, and the rows were chosen
-                    // against the old warehouse's stock.
-                    setWarehouseId("");
-                    setLines([]);
-                    setProductById(new Map());
-                    setFieldErrors({});
-                  }}
-                />
-                {fieldErrors.branchId && (
-                  <p role="alert" className="mt-1.5 text-xs text-danger">
-                    {fieldErrors.branchId}
-                  </p>
-                )}
-              </div>
+            {/* KAPAN then DI MANA on the first row, Cabang below as secondary
+                classification — §16, the same order every transaction module
+                opens with. */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <TextField
+                label="Tanggal"
+                name="entryDate"
+                type="date"
+                value={entryDate}
+                max={todayValue()}
+                onChange={(event) => {
+                  setEntryDate(event.target.value);
+                  setFieldErrors({});
+                }}
+                error={fieldErrors.entryDate}
+                hint="Tanggal stok itu dihitung, bukan tanggal dokumen dibuat."
+                disabled={saving}
+                required
+              />
+
               <div>
                 {/* The filter shell, like every other warehouse picker in the
                     module. `active={false}` because this is not a filter —
                     nothing is narrowed by naming a warehouse, the document
                     simply has one. */}
                 <FilterSelect
-                  layout="field"
+                  layout="form"
                   label="Gudang"
                   ariaLabel="Gudang"
                   value={warehouseId}
                   options={namedOptions(scopedWarehouses)}
                   active={false}
                   required
+                  error={fieldErrors.warehouseId}
                   placeholder={
                     branchId === "" ? "Pilih cabang dulu" : "Pilih gudang"
                   }
@@ -434,11 +444,6 @@ export function OpeningStockForm() {
                     setFieldErrors({});
                   }}
                 />
-                {fieldErrors.warehouseId && (
-                  <p role="alert" className="mt-1.5 text-xs text-danger">
-                    {fieldErrors.warehouseId}
-                  </p>
-                )}
                 {lines.length > 0 && (
                   <p className="mt-1.5 text-xs text-muted">
                     Mengganti gudang akan mengosongkan daftar produk di bawah —
@@ -446,25 +451,35 @@ export function OpeningStockForm() {
                   </p>
                 )}
               </div>
-              <TextField
-                label="Tanggal"
-                name="entryDate"
-                type="date"
-                value={entryDate}
-                max={todayValue()}
-                onChange={(event) => {
-                  setEntryDate(event.target.value);
+
+              <FilterSelect
+                layout="form"
+                label="Cabang"
+                ariaLabel="Cabang"
+                value={branchId}
+                options={namedOptions(scope.branches)}
+                active={false}
+                required
+                error={fieldErrors.branchId}
+                placeholder={scope.loading ? "Memuat…" : "Pilih cabang"}
+                onChange={(value) => {
+                  if (value === branchId) return;
+                  setPickedBranch(value);
+                  // Everything below is scoped to the branch: the warehouse
+                  // may not belong to the new one, and the rows were chosen
+                  // against the old warehouse's stock.
+                  setWarehouseId("");
+                  setLines([]);
+                  setProductById(new Map());
                   setFieldErrors({});
                 }}
-                error={fieldErrors.entryDate}
-                hint="Tanggal stok itu dihitung, bukan tanggal dokumen dibuat."
-                disabled={saving}
-                required
               />
             </div>
 
-            <TextField
-              label="Catatan"
+            {/* Keterangan closes the header, always — §16. Optional here, unlike
+                an adjustment: an opening balance explains itself. */}
+            <TextareaField
+              label="Keterangan"
               name="notes"
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
@@ -782,18 +797,6 @@ export function OpeningStockForm() {
         </Card>
 
         <div className="flex flex-col gap-2">
-          <div className="flex gap-2">
-            <Button type="submit" disabled={saving || blocking !== null}>
-              {saving ? "Menyimpan…" : "Simpan stok awal"}
-            </Button>
-          </div>
-
-          {blocking && !saving && (
-            <p className="text-xs text-muted">
-              Belum bisa disimpan: <b>{blocking}</b>
-            </p>
-          )}
-
           <p className="text-xs text-muted">
             Kartu stok bersifat <b>append-only</b>. Baris yang tertulis di sini
             tidak bisa dihapus atau diedit — salah angka dikoreksi dengan

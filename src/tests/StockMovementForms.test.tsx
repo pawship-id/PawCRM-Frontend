@@ -1720,8 +1720,14 @@ describe("OpeningStockForm", () => {
   });
 
   /**
-   * The value of the sheet, shown before the button — it is the number somebody
-   * sanity-checks, and it is both halves of the entry about to be written.
+   * The value of the sheet — the number somebody sanity-checks, and both halves
+   * of the entry about to be written.
+   *
+   * IT APPEARS TWICE ON PURPOSE, which is why this asserts a count. The summary
+   * block sits beside the rows and says which accounts move; the action bar
+   * carries the figure alone, because the bar is sticky and the button is no
+   * longer next to the summary. A sheet of two hundred rows is saved from
+   * wherever the reader happens to be, and the total has to travel with it.
    */
   it("totals what the sheet will add to inventory and to capital", async () => {
     mockSheet();
@@ -1729,7 +1735,13 @@ describe("OpeningStockForm", () => {
     await fillOneLine(user);
 
     // 24 × 118.500 = 2.844.000
-    expect(await screen.findByText(/2\.844\.000/)).toBeInTheDocument();
+    const shown = await screen.findAllByText(/2\.844\.000/);
+    expect(shown).toHaveLength(2);
+
+    // The summary keeps the explanation; the bar keeps only the number.
+    expect(
+      screen.getByText(/akan menambah/),
+    ).toBeInTheDocument();
   });
 
   /**
