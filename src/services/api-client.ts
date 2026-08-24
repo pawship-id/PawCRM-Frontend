@@ -1,6 +1,6 @@
 import { env } from "@/utils/env";
 import { ApiError } from "./api-error";
-import type { ApiResponse } from "@/types/api";
+import type { ApiResponse, ApiSuccess } from "@/types/api";
 
 /**
  * The single HTTP entry point to the PawCRM backend.
@@ -68,11 +68,23 @@ async function parseBody<T>(response: Response): Promise<ApiResponse<T>> {
   }
 }
 
-async function request<T>(
+/**
+ * The core call, returning the WHOLE envelope.
+ *
+ * Split out from `request` so an annotation that rides beside the payload —
+ * `warnings`, today only the duplicate-phone one — can reach a caller that wants
+ * it. The error path always read the full envelope (that is where `details` and
+ * `reason` come from); the success path threw everything but `data` away, which
+ * made a successful-but-noteworthy response impossible to express.
+ *
+ * Not exported: `request` is what feature modules want, and `apiClient.getEnvelope`
+ * / `postEnvelope` are the two doors for the rest.
+ */
+async function requestEnvelope<T>(
   method: string,
   path: string,
   options: RequestOptions = {},
-): Promise<T> {
+): Promise<ApiSuccess<T>> {
   const { body, query, timeoutMs = DEFAULT_TIMEOUT_MS, ...init } = options;
 
   const isFormData =
@@ -132,6 +144,20 @@ async function request<T>(
     });
   }
 
+  return payload;
+}
+
+/**
+ * The ordinary call: the envelope unwrapped to its payload.
+ *
+ * What every feature module wants, which is why it is the default.
+ */
+async function request<T>(
+  method: string,
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> {
+  const payload = await requestEnvelope<T>(method, path, options);
   return payload.data;
 }
 
@@ -209,6 +235,20 @@ export const apiClient = {
 
   post: <T>(path: string, body?: unknown, options?: RequestOptions) =>
     request<T>("POST", path, { ...options, body }),
+
+  /**
+   * POST returning the whole envelope, `warnings` included.
+   *
+   * For the one shape `post` cannot express: a request that SUCCEEDED and still
+   * has something to say. Creating a customer on a phone number somebody else
+   * holds is the case — it is saved, and the cashier is told.
+   */
+  postEnvelope: <T>(path: string, body?: unknown, options?: RequestOptions) =>
+    requestEnvelope<T>("POST", path, { ...options, body }),
+
+  /** PATCH returning the whole envelope. Same reasoning as `postEnvelope`. */
+  patchEnvelope: <T>(path: string, body?: unknown, options?: RequestOptions) =>
+    requestEnvelope<T>("PATCH", path, { ...options, body }),
 
   put: <T>(path: string, body?: unknown, options?: RequestOptions) =>
     request<T>("PUT", path, { ...options, body }),

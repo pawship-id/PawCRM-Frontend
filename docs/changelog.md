@@ -7,6 +7,37 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Cari & daftar pelanggan tanpa keluar dari kasir
+
+`CustomerSearchDialog` and `CustomerQuickAddDialog`, exported from
+`@/features/customers`. No routes of their own — the POS cart panel mounts them in Fase 6.
+Fase 2 of the POS module.
+
+**Search goes to the SERVER, and that is a departure from every other picker here.**
+`PetOwnerField` and the business-line pickers load a page of options and search inside it,
+so past the page cap they silently cannot find anyone. A till cannot work that way: the shop
+with four hundred pelanggan is exactly the shop that needs this. `?search=` already matched
+name, email and phone — verified against the repository rather than assumed.
+
+**The quick-add lives inside the search dialog**, in its empty state, because the moment
+somebody discovers a customer does not exist is the moment they need to create one. A term
+that reads as a phone number is carried into the form: somebody who typed one has already
+entered that field once.
+
+**Phone is required in the dialog and optional in the API.** The contract has to keep
+accepting a name-only customer — a clinic recording a walk-in is a real case — but the
+reason to quick-add *from the till* is almost always a piutang, and a debtor with no number
+is a debt nobody can chase.
+
+**`apiClient` gained `postEnvelope` / `patchEnvelope`.** The duplicate-phone warning arrives
+beside `data`, and `post` unwraps to `data` and would have thrown it away. `request` is now
+a thin wrapper over an envelope-returning core: the error path always read the full envelope
+(that is where `details` and `reason` come from), while the success path discarded
+everything else — which made a successful-but-noteworthy response impossible to express. See
+[docs/features/customer-quick-add.md](./features/customer-quick-add.md).
+
+---
+
 ## [Unreleased] — Kas & Bank: ke mana uangnya masuk
 
 Keuangan → **Kas & Bank**, at `/dashboard/keuangan/kas-bank`. The named places money can

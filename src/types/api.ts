@@ -14,9 +14,39 @@
  */
 import type { MediaAsset, PreviewHpp, PreviewMovementRow } from "./inventory";
 
+/**
+ * Something that happened alongside a SUCCESSFUL request and that the person who
+ * made it should know about.
+ *
+ * The mirror of `ApiFailure.details`, and it exists for a case a failure cannot
+ * express: creating a customer whose phone number somebody else already holds
+ * SUCCEEDS — two people in one household share a handset, and a shop that could
+ * not register the second is one where the second gets written on paper. But the
+ * cashier still has to be told, so they can check whether this is the same
+ * person walking in twice.
+ */
+export interface ApiWarning {
+  /** Stable identifier a caller can branch on, e.g. "phone-duplicate". */
+  code: string;
+  /** The input it is about, when there is one. Lets a form bind it to a field. */
+  field?: string;
+  /** Ready to show. Written in Bahasa Indonesia by the backend. */
+  message: string;
+}
+
 export interface ApiSuccess<T> {
   success: true;
   data: T;
+  /**
+   * Omitted entirely when there is nothing to warn about, so a response that
+   * carries none is byte-for-byte what it was before warnings existed.
+   *
+   * NOT INSIDE `data`: the warning is about the REQUEST, not about the record,
+   * and folding it in would add a field to every domain shape that nothing
+   * stores. `apiClient.post` unwraps to `data` and drops this — a caller that
+   * needs it uses `apiClient.postEnvelope`.
+   */
+  warnings?: ApiWarning[];
 }
 
 export interface ApiFailure {
