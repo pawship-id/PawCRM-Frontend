@@ -177,6 +177,9 @@ describe("filterNavItems", () => {
     expect(finance?.children?.map((c) => c.label)).toEqual([
       "Ringkasan",
       "Daftar Akun",
+      // Straight after the chart, because a channel's whole purpose is the
+      // account it points at.
+      "Kas & Bank",
       "Jurnal Umum",
       // The two reports read the ledger above them, so they follow it rather
       // than lead — the menu is in the order the work happens.

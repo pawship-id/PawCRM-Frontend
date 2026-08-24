@@ -41,7 +41,7 @@ import {
   module. A species-specific alternative (Dog, Cat) would pick a side the
   register deliberately does not.
 */
-import { PawPrint, Scissors } from "lucide-react";
+import { PawPrint, Scissors, Landmark } from "lucide-react";
 import type {
   Action,
   Feature,
@@ -341,6 +341,14 @@ export const NAV_ITEMS: NavItem[] = [
         href: "/dashboard/keuangan/chart-of-accounts",
         icon: AccountTreeIcon,
         permission: { feature: "chartOfAccounts", action: "read" },
+      },
+      {
+        // Straight after the chart, because a channel's whole purpose is the
+        // account it points at — you cannot map one before the accounts exist.
+        label: "Kas & Bank",
+        href: "/dashboard/keuangan/kas-bank",
+        icon: Landmark,
+        permission: { feature: "paymentChannels", action: "read" },
       },
       {
         label: "Jurnal Umum",

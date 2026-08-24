@@ -7,6 +7,39 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Kas & Bank: ke mana uangnya masuk
+
+Keuangan → **Kas & Bank**, at `/dashboard/keuangan/kas-bank`. The named places money can
+arrive when a cashier takes payment, each mapped to the account it debits. Fase 5 of the
+POS module — the last prerequisite before POS core.
+
+Straight after Daftar Akun in the menu, because a channel's whole purpose is the account it
+points at: you cannot map one before the accounts exist.
+
+**The MDR field does not exist where no fee is deducted.** Cash arrives whole and a bank
+transfer's fee is paid by the *sender*, so only QRIS and EDC can carry a rate. The field is
+hidden for the other two rather than shown and refused — a rate there is not a mistake to
+allow and then report, it is a field with no meaning. Switching back to a fee-less type
+clears a typed rate, because a value left in state would be sent on the next save: a `400`
+for something the user can no longer see.
+
+**The server's four business rules bind to their fields**, not to a banner: a non-asset
+account, an MDR on the wrong type, a tenant-wide cash channel under per-branch scope, and a
+name already used within that tab. The form deliberately does not read `posCashScope` to
+pre-validate the third — that would be a second place for the rule to live — so it states
+what happens in the hint and binds the refusal when it arrives.
+
+**The account picker only offers live assets**, because the server refuses anything else and
+offering the rest would be offering a guaranteed `400`.
+
+**`CHANNEL_TYPE_LABELS` and `CHANNEL_TYPE_ORDER` are exported** from the feature's public
+surface, because the POS payment panel will render the same four tabs in the same order
+with the same words — and two copies of that list is how the settings screen and the till
+start disagreeing about what "EDC" is called. See
+[docs/features/payment-channels.md](./features/payment-channels.md).
+
+---
+
 ## [Unreleased] — Layanan punya katalognya sendiri
 
 Master Data → **Layanan**, at `/dashboard/master/layanan`, with list, create and edit

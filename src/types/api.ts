@@ -881,6 +881,83 @@ export interface UpdateCustomerInput {
 }
 
 /**
+ * The four kinds of real money movement a POS sale can settle through. Mirrors
+ * CHANNEL_TYPES in paymentChannel.model.js.
+ *
+ * `piutang` is absent on purpose although the POS shows it as a fifth tab: it is
+ * a route to AR rather than a place money arrived, so it has no channel row.
+ */
+export type PaymentChannelType = "cash" | "transfer" | "qris" | "edc";
+
+/**
+ * A payment channel, as returned by GET /api/payment-channels. One named place
+ * money can arrive — "BCA — 8730123456" — and the account it debits.
+ *
+ * `branchId: null` is the TENANT-WIDE scope, not "unset". A branch's channel
+ * list returns its own channels plus every tenant-wide one.
+ */
+export interface PaymentChannel {
+  _id: string;
+  tenantId: string;
+  type: PaymentChannelType;
+  name: string;
+  /** The COA account a payment through this channel debits. Always an asset. */
+  accountId: string;
+  /** Only meaningful for qris/edc; the API refuses a rate on the other two. */
+  mdrPercent: number;
+  /** null = every branch. */
+  branchId: string | null;
+  requiresReference: boolean;
+  sortOrder: number;
+  isActive: boolean;
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Query parameters accepted by GET /api/payment-channels. All optional. */
+export interface PaymentChannelListQuery {
+  page?: number;
+  limit?: number;
+  type?: PaymentChannelType;
+  /** Returns this branch's channels AND the tenant-wide ones. */
+  branchId?: string;
+  isActive?: boolean;
+  search?: string;
+  includeDeleted?: boolean;
+}
+
+/** Body of POST /api/payment-channels. */
+export interface CreatePaymentChannelInput {
+  type: PaymentChannelType;
+  name: string;
+  accountId: string;
+  branchId?: string | null;
+  mdrPercent?: number;
+  requiresReference?: boolean;
+  sortOrder?: number;
+  isActive?: boolean;
+}
+
+/**
+ * Body of PATCH /api/payment-channels/:id — every field optional, but the
+ * backend rejects an empty body.
+ *
+ * `type` IS editable; it moves the channel to another tab and re-scopes its name
+ * uniqueness, which the server checks against the destination type.
+ */
+export interface UpdatePaymentChannelInput {
+  type?: PaymentChannelType;
+  name?: string;
+  accountId?: string;
+  branchId?: string | null;
+  mdrPercent?: number;
+  requiresReference?: boolean;
+  sortOrder?: number;
+  isActive?: boolean;
+}
+
+/**
  * A service, as returned by GET /api/services. Something a tenant sells the
  * DOING of — grooming, penitipan, vaksinasi.
  *

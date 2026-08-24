@@ -132,6 +132,19 @@ export const PERMISSION_CATALOG = {
    * `categories`.
    */
   services: ["create", "read", "update", "delete", "restore"],
+
+  /**
+   * The named places money arrives, each mapped to a COA account — Keuangan →
+   * Kas & Bank.
+   *
+   * NOT part of `chartOfAccounts`, and the split is about consequence: editing
+   * the chart reshapes the books, while adding a bank account to the till is an
+   * operational act a manager does when the shop opens a second account.
+   *
+   * `restore` is not the afterthought it looks like — it is what brings back a
+   * channel deleted by mistake without freeing its name to something else first.
+   */
+  paymentChannels: ["create", "read", "update", "delete", "restore"],
   // The audit trail is read-only (mirrors the backend catalog): records are
   // system-appended and never edited or deleted, so `read` is the only action.
   auditLogs: ["read"],
