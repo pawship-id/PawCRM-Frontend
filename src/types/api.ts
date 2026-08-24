@@ -881,6 +881,91 @@ export interface UpdateCustomerInput {
 }
 
 /**
+ * A service, as returned by GET /api/services. Something a tenant sells the
+ * DOING of — grooming, penitipan, vaksinasi.
+ *
+ * NOT a `Product` with a flag. A service owns no stock, posts no HPP line, and
+ * credits a different revenue account; the two are separate collections and
+ * separate permission features. The POS searches them together, which is a query
+ * over both rather than a reason to share a type.
+ *
+ * `price` is a STRING, never a number — the API returns and accepts the decimal
+ * as written, because JSON.parse("199999.99") is already not 199999.99.
+ */
+export interface Service {
+  _id: string;
+  tenantId: string;
+  name: string;
+  /** Optional quick-entry code, uppercased, unique per tenant when present. */
+  code: string | null;
+  businessLineId: string;
+  categoryId: string | null;
+  /** Decimal as a string, e.g. "150000.0000". */
+  price: string;
+  durationMin: number | null;
+  description: string | null;
+  taxExempt: boolean;
+  /** Still offered at the till. Orthogonal to `deletedAt`. */
+  isActive: boolean;
+  /** Soft-delete marker; non-null means deleted (restorable), null means live. */
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Query parameters accepted by GET /api/services. All optional. */
+export interface ServiceListQuery {
+  page?: number;
+  limit?: number;
+  /** "Every grooming service" — the POS pill and the booking form. */
+  businessLineId?: string;
+  categoryId?: string;
+  isActive?: boolean;
+  /** Free-text over name / code. */
+  search?: string;
+  includeDeleted?: boolean;
+}
+
+/**
+ * Body of POST /api/services. `name`, `businessLineId` and `price` are required;
+ * `tenantId` and `createdBy` come from the session.
+ *
+ * `price` MUST be sent as a string. A numeric one is a 400 — see the Service
+ * type.
+ */
+export interface CreateServiceInput {
+  name: string;
+  businessLineId: string;
+  price: string;
+  code?: string | null;
+  categoryId?: string | null;
+  durationMin?: number | null;
+  description?: string | null;
+  taxExempt?: boolean;
+  isActive?: boolean;
+}
+
+/**
+ * Body of PATCH /api/services/:id — every field optional, but the backend
+ * rejects an empty body.
+ *
+ * `businessLineId` IS here, unlike `UpdatePetInput`'s missing `customerId`:
+ * moving a service between lines re-tags nothing historical, because journal
+ * lines carry the id they were posted with.
+ */
+export interface UpdateServiceInput {
+  name?: string;
+  businessLineId?: string;
+  price?: string;
+  code?: string | null;
+  categoryId?: string | null;
+  durationMin?: number | null;
+  description?: string | null;
+  taxExempt?: boolean;
+  isActive?: boolean;
+}
+
+/**
  * The animal species a pet may be. Mirrors PET_SPECIES in pet.model.js — a
  * closed list, because it decides which services and prices a booking may offer.
  */

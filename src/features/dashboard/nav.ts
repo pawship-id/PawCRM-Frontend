@@ -41,7 +41,7 @@ import {
   module. A species-specific alternative (Dog, Cat) would pick a side the
   register deliberately does not.
 */
-import { PawPrint } from "lucide-react";
+import { PawPrint, Scissors } from "lucide-react";
 import type {
   Action,
   Feature,
@@ -423,6 +423,15 @@ export const NAV_ITEMS: NavItem[] = [
         href: "/dashboard/master/pets",
         icon: PawPrint,
         permission: { feature: "pets", action: "read" },
+      },
+      {
+        // Beside Hewan rather than under Inventory → Produk, because the split is
+        // about who edits: the groomer who prices a bath is not the person
+        // pricing sacks of feed, and the RBAC catalogue makes the same split.
+        label: "Layanan",
+        href: "/dashboard/master/layanan",
+        icon: Scissors,
+        permission: { feature: "services", action: "read" },
       },
       {
         label: "Roles",

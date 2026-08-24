@@ -7,6 +7,40 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Layanan punya katalognya sendiri
+
+Master Data → **Layanan**, at `/dashboard/master/layanan`, with list, create and edit
+screens. What a tenant sells the *doing of* — grooming, penitipan, vaksinasi. Fase 3 of the
+POS module.
+
+Placed beside Hewan rather than under Inventory → Produk, because the split is about who
+edits: the groomer who prices a bath is not the person pricing sacks of feed, and the RBAC
+catalogue makes the same split.
+
+**The price box takes digits only, and refusing the decimal point is the point.** In
+Indonesian, `.` is the thousands separator — somebody typing `150.000` means a hundred and
+fifty thousand, and read as a decimal it is **150 rupiah**, stored silently with the form
+showing exactly what they typed. Allowing sen would not fix it: `150.000` is a valid
+three-decimal amount *and* a valid mistyped hundred-fifty-thousand, and no rule reads the
+writer's mind. Nothing is lost either, because `formatMoney` rounds to whole units on the
+way out — accepting input the UI then hides is worse than refusing it. The first version
+validated with `isDecimal` and let it through; a test caught it.
+
+**The price is a string end to end** — typed as text, validated as digits, sent as written,
+never `Number()`-ed. `inputMode="numeric"` rather than `type="number"`, because a number
+input in some browsers silently reformats what was typed.
+
+**Business-line options are fetched, not spelled out.** A tenant names its own lines, so a
+hardcoded list would show the wrong words for everyone who did not call theirs "Grooming".
+Capped at the API's 100-per-page limit, the same ceiling `PetOwnerField` documents.
+
+**`durationMin` is collected and read by nothing yet.** Booking will. Adding it afterwards
+would mean backfilling every service a tenant already priced, from memory — so the field
+goes in now and the card says plainly that nothing uses it today. See
+[docs/features/service-catalog.md](./features/service-catalog.md).
+
+---
+
 ## [Unreleased] — Hewan punya halamannya sendiri
 
 Master Data → **Hewan**: the register of animals a tenant's customers bring in, at

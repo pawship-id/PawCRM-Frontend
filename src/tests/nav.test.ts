@@ -51,6 +51,9 @@ describe("filterNavItems", () => {
       // belongs to one, and the register is unreadable without knowing whose
       // animals you are looking at.
       "Hewan",
+      // Beside Hewan rather than under Inventory → Produk: the split is about
+      // who edits, and the RBAC catalogue makes the same one.
+      "Layanan",
       "Roles",
       "Audit Log",
     ]);

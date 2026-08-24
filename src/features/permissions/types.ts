@@ -121,6 +121,17 @@ export const PERMISSION_CATALOG = {
    * hears that a pet died is the same person who edits the row.
    */
   pets: ["create", "read", "update", "delete", "restore"],
+
+  /**
+   * The catalogue of what a tenant sells the DOING of — grooming, penitipan.
+   *
+   * ITS OWN FEATURE, not part of `products`, and the split is about who edits
+   * rather than about where the rows are stored: the groomer who sets a bathing
+   * price has no business repricing sacks of feed, and one grant covering both
+   * would give them that. The same reasoning `supplierCategories` uses against
+   * `categories`.
+   */
+  services: ["create", "read", "update", "delete", "restore"],
   // The audit trail is read-only (mirrors the backend catalog): records are
   // system-appended and never edited or deleted, so `read` is the only action.
   auditLogs: ["read"],
