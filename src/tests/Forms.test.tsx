@@ -195,10 +195,15 @@ describe("CheckRow", () => {
     }
     render(<Harness />);
 
+    // Named by the title ALONE — the forty-word description is a description,
+    // not a name, so an exact query still finds the box.
     const box = screen.getByRole("checkbox", {
-      name: /Produk punya masa kedaluwarsa/,
+      name: "Produk punya masa kedaluwarsa",
     });
     expect(box).not.toBeChecked();
+    expect(box).toHaveAccessibleDescription(
+      "Setiap penerimaan wajib mengisi kode batch dan tanggal kedaluwarsa.",
+    );
 
     await user.click(
       screen.getByText(/Setiap penerimaan wajib mengisi kode batch/),

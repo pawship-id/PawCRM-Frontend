@@ -8,7 +8,10 @@ import {
   Alert,
   Button,
   Card,
+  CheckRow,
+  CheckRowGroup,
   InternalBatchCodeDisplay,
+  SelectField,
   Spinner,
   TextField,
 } from "@/components";
@@ -2129,95 +2132,45 @@ function ProductFormFields({
       {/* ---------------------------------------------------------- common */}
       <Card title="Informasi produk">
         <div className="flex flex-col gap-4">
+          {/* §16's entity order: Nama first and full-width, then the
+              identifiers, then the classification, then the optional
+              attributes, then the flags. Nama shared a row with SKU before —
+              which read as though the two were a pair, when one is what the
+              product IS and the other is how the system finds it. */}
+          <TextField
+            label="Nama produk"
+            name="name"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            error={fieldErrors.name}
+            placeholder="mis. Royal Canin Adult"
+            required
+          />
+
           <div className="grid gap-4 sm:grid-cols-2">
-            <TextField
-              label="Nama produk"
-              name="name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              error={fieldErrors.name}
-              placeholder="mis. Royal Canin Adult"
-              required
-            />
             {/* Shown in every mode, insisted on only where something is sold.
                 A parent keeps the field because filling it seeds every variant
-                SKU below — it is a convenience, not a requirement. */}
-            <TextField
-              label="SKU"
-              name="sku"
-              value={sku}
-              onChange={(event) => setSku(event.target.value.toUpperCase())}
-              error={fieldErrors.sku}
-              hint={
-                mode === "variants"
-                  ? "Opsional — dipakai sebagai awalan SKU varian. Induk tidak dijual, jadi boleh dikosongkan."
-                  : "Unik per tenant"
-              }
-              placeholder="RC-ADULT"
-              className="tabular-nums"
-              required={mode !== "variants"}
-            />
-          </div>
+                SKU below — it is a convenience, not a requirement.
 
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="category">Kategori</Label>
-              <Select value={categoryId} onValueChange={setCategoryId}>
-                {/* w-full: the shadcn trigger defaults to `w-fit`, which is
-                    right for a toolbar filter and wrong in a form grid — it
-                    leaves the control narrower than the inputs beside it, and
-                    the width then jumps with whichever category is selected. */}
-                <SelectTrigger
-                  id="category"
-                  aria-label="Kategori"
-                  className="w-full"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map((category) => (
-                    <SelectItem key={category._id} value={category._id}>
-                      {category.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {mode === "variants" && (
-                <p className="text-xs text-muted">
-                  Varian mewarisi kategori ini dari induknya.
-                </p>
-              )}
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="unit">Satuan</Label>
-              <Select value={unit} onValueChange={setUnit}>
-                <SelectTrigger id="unit" aria-label="Satuan" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PRODUCT_UNITS.map((option) => (
-                    <SelectItem key={option} value={option}>
-                      {option}
-                    </SelectItem>
-                  ))}
-                  {/* A product catalogued as "botol" before the list closed is
-                      still editable, and its unit has to be SHOWN rather than
-                      silently rewritten to pcs by a select that cannot render
-                      it. Offered as its own option, so changing it stays a
-                      decision the user makes. */}
-                  {legacyUnit && (
-                    <SelectItem value={legacyUnit}>
-                      {legacyUnit} (satuan lama)
-                    </SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted">
-                {mode === "variants"
-                  ? "Varian mewarisi satuan ini dari induknya."
-                  : "Opsional — kosong berarti pcs."}
-              </p>
+                It spans the row on a family, where Barcode is not offered: a
+                lone half-width field beside empty space reads as one somebody
+                forgot to fill in. */}
+            <div className={mode === "variants" ? "sm:col-span-2" : undefined}>
+              <TextField
+                label="SKU"
+                name="sku"
+                value={sku}
+                onChange={(event) => setSku(event.target.value.toUpperCase())}
+                error={fieldErrors.sku}
+                hint={
+                  mode === "variants"
+                    ? "Opsional — dipakai sebagai awalan SKU varian. Induk tidak dijual, jadi boleh dikosongkan."
+                    : "Unik per tenant"
+                }
+                placeholder="RC-ADULT"
+                className="tabular-nums"
+                required={mode !== "variants"}
+              />
             </div>
 
             {mode !== "variants" && (
@@ -2258,6 +2211,49 @@ function ProductFormFields({
                 )}
               </div>
             )}
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <SelectField
+              label="Kategori"
+              value={categoryId}
+              onChange={setCategoryId}
+              options={categories.map((category) => ({
+                value: category._id,
+                label: category.name,
+              }))}
+              placeholder="Pilih kategori"
+              hint={
+                mode === "variants"
+                  ? "Varian mewarisi kategori ini dari induknya."
+                  : undefined
+              }
+            />
+
+            <SelectField
+              label="Satuan"
+              value={unit}
+              onChange={setUnit}
+              options={[
+                ...PRODUCT_UNITS.map((option) => ({
+                  value: option,
+                  label: option,
+                })),
+                // A product catalogued as "botol" before the list closed is
+                // still editable, and its unit has to be SHOWN rather than
+                // silently rewritten to pcs by a select that cannot render it.
+                // Offered as its own option, so changing it stays a decision
+                // the user makes.
+                ...(legacyUnit
+                  ? [{ value: legacyUnit, label: `${legacyUnit} (satuan lama)` }]
+                  : []),
+              ]}
+              hint={
+                mode === "variants"
+                  ? "Varian mewarisi satuan ini dari induknya."
+                  : "Opsional — kosong berarti pcs."
+              }
+            />
 
             <TextField
               label="Merk"
@@ -2270,87 +2266,83 @@ function ProductFormFields({
             />
           </div>
 
-          <div className="flex items-start gap-2">
-            <Checkbox
-              id="isPreorder"
+          {/* Three flags that were built by hand three times. The hairline
+              between them is what stops the second checkbox reading as part of
+              the first one's explanation. */}
+          <CheckRowGroup className="mt-1">
+            <CheckRow
+              label="Produk pre-order"
               checked={isPreorder}
-              onCheckedChange={(checked) => setIsPreorder(checked === true)}
+              onCheckedChange={setIsPreorder}
+              description={
+                <>
+                  Boleh dipesan walau stok kosong. Dibaca POS dan sinkronisasi
+                  e-commerce.
+                  {/* Unlike hasExpiry, this does NOT cascade — it is a per-SKU
+                      availability statement, and stock is held per variant.
+                      Saying so is what stops somebody expecting the checkbox to
+                      behave like the one directly below it. */}
+                  {mode === "variants" &&
+                    " Setelan ini milik induk saja; atur per varian di tabel varian."}
+                </>
+              }
             />
-            <div>
-              <Label htmlFor="isPreorder">Produk pre-order</Label>
-              <p className="text-xs text-muted">
-                Boleh dipesan walau stok kosong. Dibaca POS dan sinkronisasi
-                e-commerce.
-                {/* Unlike hasExpiry, this does NOT cascade — it is a per-SKU
-                    availability statement, and stock is held per variant.
-                    Saying so is what stops somebody expecting the checkbox to
-                    behave like the one directly below it. */}
-                {mode === "variants" &&
-                  " Setelan ini milik induk saja; atur per varian di tabel varian."}
-              </p>
-            </div>
-          </div>
 
-          {mode !== "bundle" && (
-            <div className="flex items-start gap-2">
-              <Checkbox
-                id="hasExpiry"
+            {mode !== "bundle" && (
+              <CheckRow
+                label="Produk punya masa kedaluwarsa"
                 checked={hasExpiry}
-                onCheckedChange={(checked) => setHasExpiry(checked === true)}
+                onCheckedChange={setHasExpiry}
+                description={
+                  <>
+                    Kalau dicentang, setiap penerimaan <b>wajib</b> mengisi kode
+                    batch dan tanggal kedaluwarsa — itulah yang membuat FEFO dan
+                    laporan expired bisa bekerja.
+                    {/* On an EXISTING family the change cascades, which is a
+                        bigger action than the checkbox looks. Saying so here is
+                        cheaper than a user discovering it from a stock card six
+                        weeks on. */}
+                    {mode === "variants" &&
+                      (existing
+                        ? " Mengubahnya ikut mengubah SEMUA varian produk ini — setelan ini milik induk, bukan milik ukurannya."
+                        : " Varian mewarisi setelan ini dari induknya.")}
+                  </>
+                }
               />
-              <div>
-                <Label htmlFor="hasExpiry">Produk punya masa kedaluwarsa</Label>
-                <p className="text-xs text-muted">
-                  Kalau dicentang, setiap penerimaan <b>wajib</b> mengisi kode
-                  batch dan tanggal kedaluwarsa — itulah yang membuat FEFO dan
-                  laporan expired bisa bekerja.
-                  {/* On an EXISTING family the change cascades, which is a bigger
-                      action than the checkbox looks. Saying so here is cheaper
-                      than a user discovering it from a stock card six weeks on. */}
-                  {mode === "variants" &&
-                    (existing
-                      ? " Mengubahnya ikut mengubah SEMUA varian produk ini — setelan ini milik induk, bukan milik ukurannya."
-                      : " Varian mewarisi setelan ini dari induknya.")}
-                </p>
-              </div>
-            </div>
-          )}
+            )}
 
-          {/* Hidden on a bundle and on a variant, which is where the API
-              refuses the field: a bundle owns no stock to be titipan, and a
-              variant is told by its parent. A disabled checkbox was the other
-              option and is worse — it renders a decision the user cannot make
-              on this screen, next to two they can. */}
-          {mode !== "bundle" && !editingVariant && (
-            <div className="flex items-start gap-2">
-              <Checkbox
-                id="isConsignment"
+            {/* Hidden on a bundle and on a variant, which is where the API
+                refuses the field: a bundle owns no stock to be titipan, and a
+                variant is told by its parent. A disabled checkbox was the other
+                option and is worse — it renders a decision the user cannot make
+                on this screen, next to two they can. */}
+            {mode !== "bundle" && !editingVariant && (
+              <CheckRow
+                label="Produk konsinyasi (titipan)"
                 checked={isConsignment}
-                onCheckedChange={(checked) => setIsConsignment(checked === true)}
+                onCheckedChange={setIsConsignment}
+                description={
+                  <>
+                    Barang ada di toko tapi <b>belum jadi milik toko</b> —
+                    pemasok dibayar dari yang laku, sisanya dikembalikan.
+                    Dipakai untuk menandai dan memfilter di katalog serta
+                    laporan.
+                    {/* Says what the flag does NOT do, deliberately.
+                        Consignment already exists as a supplier type and as a
+                        property of a received batch; somebody who has met those
+                        will assume this checkbox reroutes the journal, and it
+                        does not. */}{" "}
+                    Penentuan jurnal dan pembayaran tetap mengikuti penerimaan
+                    barang serta tipe pemasoknya.
+                    {mode === "variants" &&
+                      (existing
+                        ? " Mengubahnya ikut mengubah SEMUA varian produk ini — setelan ini milik induk, bukan milik ukurannya."
+                        : " Varian mewarisi setelan ini dari induknya.")}
+                  </>
+                }
               />
-              <div>
-                <Label htmlFor="isConsignment">
-                  Produk konsinyasi (titipan)
-                </Label>
-                <p className="text-xs text-muted">
-                  Barang ada di toko tapi <b>belum jadi milik toko</b> — pemasok
-                  dibayar dari yang laku, sisanya dikembalikan. Dipakai untuk
-                  menandai dan memfilter di katalog serta laporan.
-                  {/* Says what the flag does NOT do, deliberately. Consignment
-                      already exists as a supplier type and as a property of a
-                      received batch; somebody who has met those will assume this
-                      checkbox reroutes the journal, and it does not. */}
-                  {" "}
-                  Penentuan jurnal dan pembayaran tetap mengikuti penerimaan
-                  barang serta tipe pemasoknya.
-                  {mode === "variants" &&
-                    (existing
-                      ? " Mengubahnya ikut mengubah SEMUA varian produk ini — setelan ini milik induk, bukan milik ukurannya."
-                      : " Varian mewarisi setelan ini dari induknya.")}
-                </p>
-              </div>
-            </div>
-          )}
+            )}
+          </CheckRowGroup>
         </div>
       </Card>
 
@@ -2458,7 +2450,11 @@ function ProductFormFields({
                   disabled={inventoryAccounts.length === 0}
                 >
                   {/* w-fit by default — see the note on the category select. */}
-                  <SelectTrigger id="inventoryAccountId" className="w-full">
+                  <SelectTrigger
+                    id="inventoryAccountId"
+                    size="lg"
+                    className="w-full"
+                  >
                     <SelectValue
                       placeholder={
                         inventoryAccounts.length === 0
@@ -2488,7 +2484,11 @@ function ProductFormFields({
                   onValueChange={setCogsAccountId}
                   disabled={cogsAccounts.length === 0}
                 >
-                  <SelectTrigger id="cogsAccountId" className="w-full">
+                  <SelectTrigger
+                    id="cogsAccountId"
+                    size="lg"
+                    className="w-full"
+                  >
                     <SelectValue
                       placeholder={
                         cogsAccounts.length === 0
@@ -2971,6 +2971,7 @@ function ProductFormFields({
                       "Tetap — saya isi manual" and "Otomatis". */}
                   <SelectTrigger
                     id="pricingMode"
+                    size="lg"
                     aria-label="Mode harga"
                     className="w-full"
                   >
@@ -3096,6 +3097,7 @@ function ProductFormFields({
                     onValueChange={setOpeningWarehouseId}
                   >
                     <SelectTrigger
+                      size="lg"
                       id="openingWarehouse"
                       aria-label="Masuk ke gudang"
                       className="w-full"
@@ -3364,20 +3366,24 @@ function ProductFormFields({
         </Card>
       )}
 
+      {/* BATAL LEFT, SIMPAN RIGHT — §16. These were the other way round, and a
+          save button that swaps sides between screens is one people mis-click.
+
+          STILL AT THE FOOT OF THE PAGE: the sticky bar is deferred, see the
+          PENDING note in §16.
+
+          "Simpan perubahan" named the ACT rather than the object. The label
+          says what it saves, in both verbs. */}
       <div className="flex flex-wrap gap-2">
-        <Button type="submit" disabled={saving}>
-          {saving
-            ? "Menyimpan…"
-            : existing
-              ? "Simpan perubahan"
-              : "Simpan produk"}
-        </Button>
         <Button
           type="button"
           variant="secondary"
           onClick={() => router.push("/dashboard/inventory/products")}
         >
           Batal
+        </Button>
+        <Button type="submit" disabled={saving}>
+          {saving ? "Menyimpan…" : "Simpan produk"}
         </Button>
       </div>
     </form>
