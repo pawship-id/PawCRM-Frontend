@@ -39,7 +39,16 @@ export interface FilterTriggerProps
    * "field" — inside a `FilterField`, where the name is already drawn above:
    * full width, value only, chevron pushed to the far edge.
    */
-  layout?: "inline" | "field";
+  /**
+   * "inline" — a trigger on a `FilterBar`, reading `Gudang: Semua ⌄`, 40px.
+   * "field"  — a full-width labelled row inside a `FilterPanel`, still 40px.
+   * "form"   — the same full-width row standing in a FORM, 44px.
+   *
+   * The third one is a HEIGHT, not a new shape. docs/ui-rules.md §8 pins filter
+   * controls at 40 and §16 pins form controls at 44, and this shell serves both
+   * — seven forms already open their Gudang, Pemasok and Akun pickers from it.
+   */
+  layout?: "inline" | "field" | "form";
   /**
    * Whether the choice is currently wrong — a form-mode concern this shell did
    * not have while it was only ever a filter. A filter cannot be invalid; a
@@ -78,10 +87,10 @@ export const FilterTrigger = React.forwardRef<
       className={cn(
         // `group` so the label and chevron can react to this button's own
         // data-active / data-state (Radix sets the latter via asChild).
-        "group inline-flex h-10 min-w-0 items-center gap-2 rounded-md border border-border bg-surface px-3 text-sm transition",
-        layout === "field"
-          ? "w-full justify-between"
-          : "max-w-60 shrink-0",
+        "group inline-flex min-w-0 items-center gap-2 rounded-md border border-border bg-surface px-3 text-sm transition",
+        layout === "inline" ? "max-w-60 shrink-0" : "w-full justify-between",
+        // 44 in a form, 40 everywhere else. See the `layout` prop.
+        layout === "form" ? "h-11" : "h-10",
         "hover:border-input-hover",
         // Focus is a pair: the orange halo alone is 2.33:1 on white and misses
         // the 3:1 non-text floor. See docs/ui-rules.md §7.

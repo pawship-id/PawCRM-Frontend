@@ -19,12 +19,11 @@ import {
   CheckRow,
   CheckRowGroup,
   FormActionBar,
-  SearchSelect,
   SelectField,
   TextareaField,
 } from "@/components/form";
 import { TextField } from "@/components/TextField";
-import type { FilterOption } from "@/components/filters";
+import { FilterSelect, type FilterOption } from "@/components/filters";
 
 const WAREHOUSES: FilterOption<string>[] = [
   { value: "w1", label: "Gudang Pusat" },
@@ -114,61 +113,66 @@ describe("SelectField", () => {
   });
 });
 
-describe("SearchSelect", () => {
+describe('FilterSelect layout="form" — the searchable field', () => {
   it("searches inside the popover and closes on a pick", async () => {
     const user = userEvent.setup();
 
     function Harness() {
-      const [warehouse, setWarehouse] = useState<string | null>(null);
+      const [warehouse, setWarehouse] = useState("");
       return (
-        <SearchSelect
+        <FilterSelect
+          layout="form"
           label="Gudang"
           value={warehouse}
-          onChange={setWarehouse}
           options={WAREHOUSES}
+          active={false}
+          required
           placeholder="Pilih gudang"
-          searchPlaceholder="Cari gudang…"
+          searchable
+          onChange={setWarehouse}
         />
       );
     }
     render(<Harness />);
 
-    const trigger = screen.getByRole("combobox", { name: /Gudang/ });
+    const trigger = screen.getByLabelText("Gudang");
     expect(trigger).toHaveTextContent("Pilih gudang");
-    expect(trigger).toHaveAttribute("aria-expanded", "false");
 
     await user.click(trigger);
-    expect(trigger).toHaveAttribute("aria-expanded", "true");
-
-    await user.type(screen.getByPlaceholderText("Cari gudang…"), "bazar");
+    await user.type(screen.getByLabelText("Cari gudang"), "bazar");
     expect(screen.getByRole("option", { name: "Gudang Bazar" })).toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: "Gudang Pusat" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "Gudang Pusat" }),
+    ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("option", { name: "Gudang Bazar" }));
 
     // A form field is not a query: there is no Terapkan, so picking is the end
     // of the interaction.
     expect(trigger).toHaveTextContent("Gudang Bazar");
-    expect(trigger).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("says so when nothing matches, rather than showing an empty box", async () => {
-    const user = userEvent.setup();
+  it("announces an error and marks the trigger, replacing the hint", () => {
     render(
-      <SearchSelect
+      <FilterSelect
+        layout="form"
         label="Gudang"
-        value={null}
-        onChange={jest.fn()}
+        value=""
         options={WAREHOUSES}
-        searchPlaceholder="Cari gudang…"
-        emptyLabel="Tidak ditemukan"
+        active={false}
+        required
+        placeholder="Pilih gudang"
+        disabled
+        disabledHint="Pilih cabang dulu"
+        error="Gudang wajib dipilih"
+        onChange={jest.fn()}
       />,
     );
 
-    await user.click(screen.getByRole("combobox", { name: /Gudang/ }));
-    await user.type(screen.getByPlaceholderText("Cari gudang…"), "zzz");
-
-    expect(screen.getByText("Tidak ditemukan")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Gudang wajib dipilih");
+    expect(screen.queryByText("Pilih cabang dulu")).not.toBeInTheDocument();
+    // The red border and the red sentence cannot disagree.
+    expect(screen.getByLabelText("Gudang")).toHaveAttribute("data-invalid", "true");
   });
 });
 
@@ -303,7 +307,7 @@ describe("the form layer as one system", () => {
 
     function Harness() {
       const [date, setDate] = useState("");
-      const [warehouse, setWarehouse] = useState<string | null>(null);
+      const [warehouse, setWarehouse] = useState("");
       const [notes, setNotes] = useState("");
 
       return (
@@ -323,12 +327,14 @@ describe("the form layer as one system", () => {
             value={date}
             onChange={(event) => setDate(event.target.value)}
           />
-          <SearchSelect
+          <FilterSelect
+            layout="form"
             label="Gudang"
             required
             value={warehouse}
             onChange={setWarehouse}
             options={WAREHOUSES}
+            active={false}
             placeholder="Pilih gudang"
           />
           <TextareaField
@@ -348,7 +354,7 @@ describe("the form layer as one system", () => {
     // validation would otherwise refuse the submit and the bar would look broken.
     await user.type(screen.getByLabelText(/Tanggal/), "2026-08-24");
 
-    await user.click(screen.getByRole("combobox", { name: /Gudang/ }));
+    await user.click(screen.getByLabelText("Gudang"));
     await user.click(
       within(screen.getByRole("listbox")).getByRole("option", {
         name: "Gudang Pusat",

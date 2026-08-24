@@ -8,6 +8,13 @@
  * `FormSection` is not here on purpose: a form's section is a `<Card title
  * description>` from `@/components`, unchanged. There was nothing to build.
  *
+ * THERE IS NO `SearchSelect` HERE, and that is the correction this folder most
+ * needed: `FilterSelect layout="form"` is the searchable full-width picker, and
+ * seven forms were already opening their Gudang, Pemasok and Akun lists from it
+ * before this folder existed. One trigger shell, three arrangements — a bar, a
+ * panel, a form. A second implementation would have been the fifteen-toolbars
+ * mistake with a different noun.
+ *
  * `TagField` is not here either, and that is a decision, not an omission — the
  * guideline gives Tag a slot in every transaction header, but no `tags` field
  * exists on the stock or purchasing API, and a control with nowhere to save to is
@@ -15,7 +22,6 @@
  */
 export {
   FIELD_HEIGHT,
-  FIELD_SHELL,
   FormField,
   type FormFieldProps,
   type FormFieldRenderProps,
@@ -27,9 +33,4 @@ export {
   type SelectFieldOption,
   type SelectFieldProps,
 } from "./SelectField";
-export {
-  SearchSelect,
-  type SearchSelectOption,
-  type SearchSelectProps,
-} from "./SearchSelect";
 export { TextareaField, type TextareaFieldProps } from "./TextareaField";

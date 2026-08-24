@@ -23,6 +23,16 @@ export interface FilterFieldProps {
   /** Explanatory line under the control. */
   hint?: ReactNode;
   /**
+   * Validation message — red, announced, and it REPLACES the hint.
+   *
+   * A filter cannot be invalid, so this belongs to `layout="form"`. It exists
+   * because the three stock forms each hand-wrote `<p role="alert" className=
+   * "mt-1.5 text-xs text-danger">` under their FilterSelects — ten copies of
+   * the markup `TextField` already owned, which is how an error ends up red on
+   * one screen and silent to a screen reader on the next.
+   */
+  error?: string;
+  /**
    * Draws the red `*` after the caption, the same marker `TextField` renders
    * for a required input — a filter is never required, but a `layout="field"`
    * control standing in a form is a form field and has to say so in the one
@@ -37,6 +47,7 @@ export function FilterField({
   htmlFor,
   children,
   hint,
+  error,
   required,
   className,
 }: FilterFieldProps) {
@@ -56,7 +67,15 @@ export function FilterField({
         </span>
       )}
       {children}
-      {hint && <p className="mt-1.5 text-xs text-muted">{hint}</p>}
+      {error ? (
+        // Semibold at 13px, per docs/ui-rules.md §13: --danger is 4.38:1 as
+        // text, so danger copy is never small and never colour alone.
+        <p role="alert" className="mt-1.5 text-xs font-semibold text-danger">
+          {error}
+        </p>
+      ) : hint ? (
+        <p className="mt-1.5 text-xs text-muted">{hint}</p>
+      ) : null}
     </div>
   );
 }

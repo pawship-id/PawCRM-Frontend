@@ -94,18 +94,3 @@ export function FormField({
  * So 44 is applied by the form layer, to the form layer.
  */
 export const FIELD_HEIGHT = "h-11";
-
-/**
- * The shared look of a control that is not a plain `<input>` — a select trigger
- * or a searchable combobox — so those two do not drift from `ui/input`.
- *
- * The focus treatment is a PAIR, not a ring alone: navy border plus orange halo.
- * The halo on its own is 2.33:1 and misses the 3:1 non-text floor. See §7.
- */
-export const FIELD_SHELL = [
-  "flex w-full items-center justify-between gap-2 rounded-md border border-border",
-  "bg-surface px-3 text-sm shadow-xs transition-[color,box-shadow] outline-none",
-  "focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50",
-  "aria-invalid:border-danger aria-invalid:ring-danger/20",
-  "disabled:cursor-not-allowed disabled:opacity-50",
-].join(" ");

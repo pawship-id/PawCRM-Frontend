@@ -463,7 +463,7 @@ Every control below renders through it, which is why their labels line up and th
 | `hint` | `ReactNode` | Announced via `aria-describedby` only while there is no error. |
 | `children` | render prop | Receives `{ id, aria-describedby, aria-invalid }`. |
 
-Also exported: `FIELD_HEIGHT` (`h-11`) and `FIELD_SHELL` (the border / background / focus-pair of a non-`<input>` control).
+Also exported: `FIELD_HEIGHT` (`h-11`).
 
 **Why 44 px and not 36 or 40.** §1.5 sets the touch floor at 44×44, and filling a form is a considered act where a mistake is expensive — a wrong SKU, a wrong quantity — unlike picking a filter, which one click undoes. It is applied by the form layer, **never** by editing `ui/input.tsx`: that file is also the input behind every filter control, which §8 pins at 40.
 
@@ -487,24 +487,24 @@ The short list — roughly eight options or fewer, no searching. Satuan, Tipe ak
 
 Renders `<SelectTrigger size="lg">` — a Buloo retune of the vendored file, because `data-[size=default]:h-9` is an attribute selector and outranks a plain `h-11` whatever order tailwind-merge puts them in.
 
-## `SearchSelect`
+## The long select is `FilterSelect layout="form"`
 
-The long list — one somebody would want to **type** into. Gudang, Pemasok, Pelanggan, Akun, Penerimaan asal.
+**There is no `SearchSelect`.** One was written and deleted the same day: `FilterSelect` already had a `layout="field"` mode, and **seven forms** — `StockAdjustmentForm`, `OpeningStockForm`, `StockTransferForm`, `ReceiptForm`, `JournalEntryCreateForm`, `OpnameStartCard`, `WarehouseProductPicker` — were already opening their Gudang, Pemasok and Akun pickers from it. A second implementation would have been the fifteen-toolbars mistake with a different noun.
 
-Its option list, search box, keyboard cursor and empty state **are `FilterOptionList`**, imported rather than copied. Two things differ, and they are why this is its own component rather than a `layout` prop on `FilterSelect`:
+**One trigger shell, three arrangements**, all `FilterTrigger`:
 
-1. Full width with the label above, not a `Gudang: Semua ⌄` pill sized by its content — a form control lines up with the inputs beside it.
-2. A grey **placeholder** when empty. A filter always has a value (`Semua` is a value); an unanswered required field must look unanswered.
+| `layout` | Shape | Height | Where |
+| --- | --- | --- | --- |
+| `inline` | `Gudang: Semua ⌄`, width from content | 40 | a `FilterBar` |
+| `field` | label above, full width | 40 | a `FilterPanel` |
+| `form` | label above, full width | **44** | a form |
 
-Picking closes the popover. **There is no Terapkan** — a form field is not a query, so there is nothing to batch and nothing to re-run.
+`layout="form"` also honours **`error`** — red, `role="alert"`, and it replaces the hint. That prop is new: the three stock forms each hand-wrote `<p role="alert" className="mt-1.5 text-xs text-danger">` under their pickers, ten copies of markup `TextField` already owned. Setting `error` also marks the trigger `invalid`, so the red border and the red sentence cannot disagree.
 
-| Prop | Type | Notes |
-| --- | --- | --- |
-| `value` | `T \| null` | `null` means nothing chosen. |
-| `options` | `FilterOption<T>[]` | Re-exported as `SearchSelectOption`. |
-| `placeholder` / `searchPlaceholder` / `emptyLabel` | `string` | `"Pilih gudang"`, `"Cari gudang…"`, `"Tidak ditemukan"`. |
+Two props that trip people up, both pre-existing:
 
-Accessibility: the trigger is `role="combobox"` with `aria-expanded` and `aria-haspopup="listbox"`; the list is `FilterOptionList`'s `<ul role="listbox">`, so `getByRole("option", { name })` works the way the screen tests already expect.
+- **`active={false}` is required in a form.** `active` means "a filter is applied" and turns the trigger navy. A required input always has a value, so without it every answered field is permanently navy, announcing a filter on a form.
+- **`placeholder` must be set.** It defaults to `"Semua"`, which is what an unset *filter* means; on a required field that claims a choice nobody made. Write `"Pilih gudang"`.
 
 ## `CheckRow` · `CheckRowGroup`
 

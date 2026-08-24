@@ -37,7 +37,9 @@ The fastest way to be consistent here. Check this table before writing markup.
 | `import … from "@/components/icons"` | `lucide-react` | Two icon sets; `icons.tsx` is being retired. §11 |
 | `font-mono` on anything | `tabular-nums` | There are two typefaces, and mono is not one of them. §5 |
 | a native `<select>` for a filter | a labeled trigger + popover | `Label: Value ⌄`, so long lists can carry in-popover search. §8 |
-| a `<Label>` + `<Input>` pair with hand-written error markup | `<TextField>` / `<SelectField>` / `<SearchSelect>` from `@/components` | The aria wiring is the part that drifts. §16 |
+| a `<Label>` + `<Input>` pair with hand-written error markup | `<TextField>` / `<SelectField>` from `@/components` | The aria wiring is the part that drifts. §16 |
+| a second searchable picker for a form | `<FilterSelect layout="form">` | One trigger, three arrangements — bar, panel, form. §16 |
+| `<p role="alert">` hand-written under a `FilterSelect` | its `error` prop | 10 copies existed across three stock forms. §16 |
 | a single-line `<Input>` for Keterangan / Catatan / Alasan | `<TextareaField>` | A reason nobody can re-read is a reason nobody writes carefully. §16 |
 | a `<Button type="submit">` at the bottom of a form | `<FormActionBar>` | 20 forms, 20 slightly different footers. §16 |
 | `<table>` | `@/components/ui/table` | §10 |
@@ -310,14 +312,15 @@ From [`docs/architecture.md`](./architecture.md), unchanged: a component lives i
 
 **Built** — `src/components/filters/`, exported from `@/components`, used by all 15 toolbars: `FilterBar`, `FilterTrigger`, `FilterSearch`, `FilterSelect`, `FilterMultiSelect`, `FilterDateRange`, `FilterToggle`, `FilterPills`, `FilterChips`, `FilterPanel`, `FilterField`, plus the `withAll` / `triState` / `namedOptions` option builders.
 
-**Built** — `src/components/form/`, exported from `@/components`: `FormField`, `FormActionBar`, `TextareaField`, `SelectField`, `SearchSelect`, `CheckRow` / `CheckRowGroup`, plus the `FIELD_HEIGHT` / `FIELD_SHELL` constants. `TextField` now renders through `FormField` — its call sites are unchanged. Rules in §16, anatomy in [`docs/ui-component-specs.md`](./ui-component-specs.md). **Nothing has been migrated onto it yet:** all 20 forms still carry their own bottom-of-page buttons.
+**Built** — `src/components/form/`, exported from `@/components`: `FormField`, `FormActionBar`, `TextareaField`, `SelectField`, `CheckRow` / `CheckRowGroup`, plus `FIELD_HEIGHT`. The searchable full-width picker is **`FilterSelect layout="form"`**, not a form-layer control of its own — see §16. `TextField` now renders through `FormField` — its call sites are unchanged. Rules in §16, anatomy in [`docs/ui-component-specs.md`](./ui-component-specs.md). **One form migrated so far** — `StockAdjustmentForm`. The other 19 still carry their own bottom-of-page buttons.
 
 **Decided but not yet built** — specs exist in [`docs/ui-component-specs.md`](./ui-component-specs.md). Build them when the work calls for one, don't invent a parallel version: `StatusBadge`, `EmptyState`, and a promoted `PageHeading`.
 
 **Migration list** — existing code that violates these rules. Fix opportunistically when you are already in the file; do not open a sweep without being asked:
 
 - 2 screens with filters written inline rather than in a toolbar — `StockOnHandScreen`, `ProductDetail` — still carry their own `const ALL = "all"` sentinel and a raw `ui/select`. They were not part of the 15-toolbar census; migrate them to `@/components` filters. (`ChartOfAccountsScreen` and `JournalEntriesScreen` are done — the latter as one piece of work with its wiring to `GET /api/journal-entries`, which is also what retired `features/accounting/data/dummy.ts`.)
-- 20 forms with their buttons at the bottom of the page → `<FormActionBar>` (§16). Two of them — `ReceiptForm`, `ProductForm` — also have Simpan to the LEFT of Batal.
+- 19 forms with their buttons at the bottom of the page → `<FormActionBar>` (§16). Two of them — `ReceiptForm`, `ProductForm` — also have Simpan to the LEFT of Batal.
+- 6 forms still on `layout="field"` with a hand-written `role="alert"` beneath → `layout="form"` + its `error` prop.
 - ~25 hand-rolled page headings → promoted `PageHeading`
 - 52 hand-written `rounded-xl border border-border bg-surface` → `<Card>`
 - 15 feature status badges with 3 tinting conventions → `StatusBadge`
@@ -373,6 +376,14 @@ A read-only number is not a field somebody fills in, so it does not get a slot i
 **Form Entitas has no kapan/di mana**, so its order is simpler: **Nama** (always first, full-width) → identifier (SKU / Kode) → classification (Kategori / Satuan) → optional attributes (Merk / Barcode) → check-rows → Keterangan, still last.
 
 **The one sanctioned exception to "Keterangan is last":** published content. A product's Deskripsi goes to the marketplace, uses a rich-text editor, and is filled in alongside the photo gallery. The rule is about internal notes, not about copy somebody writes for a customer.
+
+### The searchable picker is a filter control wearing a third hat
+
+Gudang, Pemasok, Pelanggan, Akun, Penerimaan asal — anything somebody would want to **type** into — is `<FilterSelect layout="form">`. Not a form-layer component of its own: `FilterTrigger` is the one trigger shell in this app, and seven forms were already opening from it before the form layer existed.
+
+`layout="form"` is `layout="field"` at 44 px with an `error` prop. In a form always pass **`active={false}`** (or every answered field goes navy, announcing a filter) and a real **`placeholder`** (the default is `"Semua"`, which on a required field claims a choice nobody made).
+
+`SelectField` is for the *short* closed list that needs no searching — Satuan, Tipe akun, Metode. Reach for the picker the moment somebody would want to type.
 
 ### The action bar
 
