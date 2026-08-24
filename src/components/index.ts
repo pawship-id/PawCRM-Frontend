@@ -19,6 +19,14 @@ export { Spinner } from "./Spinner";
 export { HighlightText } from "./HighlightText";
 export { Pagination } from "./Pagination";
 export { ConfirmDialog } from "./ConfirmDialog";
+export {
+  InternalBatchCodeDisplay,
+  SupplierBatchCodeInput,
+} from "./BatchCodeFields";
+export type {
+  InternalBatchCodeDisplayProps,
+  SupplierBatchCodeInputProps,
+} from "./BatchCodeFields";
 export type { ConfirmDialogProps } from "./ConfirmDialog";
 /** The filter layer — see components/filters/index.ts. */
 export * from "./filters";

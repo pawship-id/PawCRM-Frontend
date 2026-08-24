@@ -14,6 +14,7 @@ export { ImportScreen } from "./components/ImportScreen";
 export { StockProductsScreen } from "./components/StockProductsScreen";
 export { StockCardScreen } from "./components/StockCardScreen";
 export { BatchesScreen } from "./components/BatchesScreen";
+export { BatchLabelSheet } from "./components/BatchLabelSheet";
 export { OpnameScreen } from "./components/OpnameScreen";
 export { OpnameSheet } from "./components/OpnameSheet";
 export { OpnameStatusBadge } from "./components/OpnameStatusBadge";

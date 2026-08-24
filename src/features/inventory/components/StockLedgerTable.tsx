@@ -87,7 +87,9 @@ export function StockLedgerTable({
             <tr className="border-b border-border text-[10px] uppercase tracking-widest text-muted">
               <th className="px-4 py-2.5 text-left font-medium">Waktu</th>
               <th className="px-4 py-2.5 text-left font-medium">Tipe</th>
-              <th className="px-4 py-2.5 text-left font-medium">Kode batch</th>
+              <th className="px-4 py-2.5 text-left font-medium">
+                Kode batch internal
+              </th>
               <th className="px-4 py-2.5 text-right font-medium">
                 Masuk / keluar
               </th>

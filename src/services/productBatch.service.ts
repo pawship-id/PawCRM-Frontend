@@ -50,10 +50,35 @@ export const productBatchService = {
         branchId: query.branchId,
         hasRemaining: query.hasRemaining,
         search: query.search,
+        // THE RECALL FILTER. Exact where `search` is a substring: a recall is a
+        // decision to pull goods off a shelf, so the set has to be the set the
+        // supplier named.
+        supplierBatchCode: query.supplierBatchCode,
         expiryFrom: query.expiryFrom,
         expiryTo: query.expiryTo,
         sort: query.sort,
       },
+    }),
+
+  /**
+   * GET /product-batches/lookup — THE SCAN: one lot, by the code on its label.
+   *
+   * Lot codes are generated and unique within the tenant precisely so they can
+   * be barcoded, and a barcode is only worth printing if something can turn it
+   * back into a lot. A till scanning a carton, a label being reprinted, a
+   * storekeeper typing a code off a shelf — all three ask this.
+   *
+   * OURS ONLY, not the supplier's. A supplier code names a whole factory batch,
+   * which is routinely several lots, so it has no single answer — that question
+   * is `list({ supplierBatchCode })`, which returns a list because a recall IS
+   * a list.
+   *
+   * 404 for a code nothing carries, and for a lot on a shelf outside the user's
+   * scope — the two are deliberately indistinguishable.
+   */
+  lookup: (code: string) =>
+    apiClient.get<ProductBatch>("/product-batches/lookup", {
+      query: { code },
     }),
 
   /**

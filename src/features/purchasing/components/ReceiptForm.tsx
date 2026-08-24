@@ -9,7 +9,9 @@ import {
   Button,
   Card,
   FilterSelect,
+  InternalBatchCodeDisplay,
   Spinner,
+  SupplierBatchCodeInput,
   TextField,
 } from "@/components";
 import { Badge } from "@/components/ui/badge";
@@ -26,7 +28,7 @@ import {
 } from "@/components/ui/select";
 import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
-import { autoBatchCode } from "@/lib/batchCode";
+import { batchCodeHint, lotOptionLabel } from "@/lib/batchCode";
 import { ApiError } from "@/services/api-error";
 import { goodsReceiptService } from "@/services/goodsReceipt.service";
 import {
@@ -69,8 +71,17 @@ interface LineDraft {
    * `picksLot`.
    */
   batchChoice: string;
-  /** Typed only while `batchChoice` is NEW_BATCH; an existing lot has its own. */
-  batchCode: string;
+  /**
+   * THEIR code — the batch number printed on the carton, typed only while
+   * `batchChoice` is NEW_BATCH. A lot being JOINED already recorded one when it
+   * was opened, and retagging it here would rewrite the first delivery's recall
+   * trail.
+   *
+   * OUR code is not a field: it is generated and unique across the tenant, and
+   * the API refuses a client-supplied one. What the row SHOWS is the code the
+   * preview says the lot will be saved with — see `InternalBatchCodeDisplay`.
+   */
+  supplierBatchCode: string;
   expiryDate: string;
 }
 
@@ -86,8 +97,9 @@ function today(): string {
  * delivery is consigned, because consignment stock always gets its own lot: its
  * cost was entered by hand rather than derived from a purchase.
  *
- * The code itself is no longer the clerk's problem — see `autoBatchCode`. What
- * IS still theirs is the expiry date, which nothing can derive.
+ * The code itself is not the clerk's to give — the server generates it. What IS
+ * still theirs is the expiry date, which nothing can derive, and the supplier's
+ * own batch number when the carton carries one.
  *
  * MODULE-LEVEL, taking `consignment` as an argument rather than closing over it.
  * Defined inside the component it would be a new function every render, and the
@@ -588,16 +600,13 @@ export function ReceiptForm({
           productId: line.productId,
           qty: line.qty.trim(),
           costPerUnit: costOf(line, consignment).trim(),
-          // Filled in for the clerk when they left it blank. Done HERE rather
-          // than in the field itself so the row keeps showing what the supplier
-          // actually printed — nothing — while the preview and the save both
-          // carry the code that will really be written.
-          ...(needsLot(product, consignment)
-            ? {
-                batchCode:
-                  line.batchCode.trim() ||
-                  autoBatchCode(product?.sku, line.expiryDate, receiptDate),
-              }
+          // THEIRS travels, ours does not: the lot's code is minted by the
+          // server, so a receipt describes the goods — the number on the carton
+          // and when they expire — and never names what the lot will be called.
+          // Omitted rather than sent blank when the supplier printed nothing.
+          ...(needsLot(product, consignment) &&
+          line.supplierBatchCode.trim() !== ""
+            ? { supplierBatchCode: line.supplierBatchCode.trim() }
             : {}),
           ...(needsLot(product, consignment) && line.expiryDate !== ""
             ? { expiryDate: line.expiryDate }
@@ -698,9 +707,10 @@ export function ReceiptForm({
       // whether this line joins one or opens one, and the two are different
       // requests.
       if (picksLot(product) && line.batchChoice === "") return false;
-      // No batch-code gate: a blank one is filled by `autoBatchCode`. The
-      // expiry date is not derivable and still blocks the preview — but only for
-      // a lot being CREATED. One being joined already has a date of its own.
+      // No batch-code gate: the supplier's number is optional and ours is the
+      // server's to mint. The expiry date is not derivable and still blocks the
+      // preview — but only for a lot being CREATED. One being joined already
+      // has a date of its own.
       if (
         product?.hasExpiry &&
         line.batchChoice === NEW_BATCH &&
@@ -736,6 +746,24 @@ export function ReceiptForm({
       (preview?.movements ?? []).filter(
         (movement) => movement.isNewBatch || movement.batchId !== null,
       ),
+    [preview],
+  );
+
+  /**
+   * THE CODE EACH ROW'S LOT WILL ACTUALLY BE SAVED WITH, from the server.
+   *
+   * BY POSITION, which is safe on this endpoint and only on this endpoint: a
+   * receipt is entirely inbound, and an inbound line never fans out the way a
+   * withdrawal splits across lots. `payload.items` is built from `lines` in
+   * order, and the preview answers one row per item in that same order.
+   *
+   * Null before a preview has run, and null on a row that opens no lot. The
+   * field falls back to a locally derived HINT there — which can be one suffix
+   * out, since the code is unique across the tenant and nothing in the browser
+   * knows which are taken.
+   */
+  const previewedCodes = useMemo(
+    () => (preview?.movements ?? []).map((movement) => movement.batchCode),
     [preview],
   );
 
@@ -831,7 +859,7 @@ export function ReceiptForm({
         // point of the picker is that a delivery of goods already on the shelf
         // should join them, and a default would quietly opt every row out of it.
         batchChoice: "",
-        batchCode: "",
+        supplierBatchCode: "",
         expiryDate: "",
       })),
     ]);
@@ -873,9 +901,10 @@ export function ReceiptForm({
           next.lines = `${label}: pilih batch dulu — lot yang sudah ada, atau batch baru.`;
           break;
         }
-        // Kode batch is NOT checked: blank means "supplier tidak memberi nomor",
-        // and the payload derives one. The expiry date has no such fallback —
-        // it is the thing the code is derived FROM, and FEFO is wrong without it.
+        // Kode batch supplier is NOT checked: blank means "supplier tidak
+        // memberi nomor", which is the ordinary case, and our own code is the
+        // server's. The expiry date has no such fallback — it is what the code
+        // is derived FROM, and FEFO is wrong without it.
         // Asked only of a lot being CREATED: one being joined carries the date it
         // was created with, and the form shows it rather than asking again.
         if (
@@ -1251,8 +1280,15 @@ export function ReceiptForm({
                           <Required />
                         </th>
                       )}
+                      {/* TWO CODES, TWO COLUMNS. Ours identifies the row and
+                          gets barcoded; theirs identifies the factory batch and
+                          is what a recall is traced by. One column carrying
+                          both would make them look like one fact. */}
                       <th className="px-2 py-2 text-left font-medium">
-                        Kode batch
+                        Kode batch internal
+                      </th>
+                      <th className="px-2 py-2 text-left font-medium">
+                        Kode batch supplier
                       </th>
                       <th className="px-2 py-2 text-left font-medium">
                         {/* The column, not the cell, carries the mark: a date
@@ -1304,15 +1340,24 @@ export function ReceiptForm({
                       const describingLot = choosesLot
                         ? line.batchChoice === NEW_BATCH
                         : lotTracked;
-                      // Shown as the batch field's placeholder, so the clerk can see
-                      // the code they are about to accept rather than discovering it
-                      // on the receipt afterwards. Withheld until the expiry date is
-                      // in, because until then it would be derived from the wrong
-                      // date and change under them the moment they type one.
-                      const autoCode =
+                      /*
+                        WHAT THIS ROW'S LOT WILL BE CALLED.
+
+                        The preview's answer when there is one — that is the code
+                        the server has actually settled on, suffix included, and
+                        the one a label gets printed from. Before it comes back,
+                        a locally derived hint keeps the column from reading
+                        empty while somebody types.
+
+                        The hint is WITHHELD until the expiry date is in: derived
+                        from the wrong date it would change under them the moment
+                        they type one.
+                      */
+                      const previewedCode = previewedCodes[index] ?? null;
+                      const codeHint =
                         expiryRequired && line.expiryDate === ""
-                          ? null
-                          : autoBatchCode(
+                          ? undefined
+                          : batchCodeHint(
                               product?.sku,
                               line.expiryDate,
                               receiptDate,
@@ -1388,9 +1433,17 @@ export function ReceiptForm({
                                   disabledHint="Pilih gudang tujuan dulu."
                                   className="max-w-56"
                                   options={[
+                                    /* BOTH CODES IN THE OPTION, because the
+                                       whole act here is matching a row on
+                                       screen to a carton in somebody's hands —
+                                       and what is printed on the carton is the
+                                       SUPPLIER's number. Ours identifies the
+                                       row; theirs is what can be read off the
+                                       box. Omitted when the lot has none, which
+                                       is the ordinary case. */
                                     ...lotsFor(line.productId).map((lot) => ({
                                       value: lot._id,
-                                      label: `${lot.batchCode} · sisa ${formatQty(lot.qtyRemaining)}`,
+                                      label: lotOptionLabel(lot),
                                     })),
                                     {
                                       value: NEW_BATCH,
@@ -1409,41 +1462,52 @@ export function ReceiptForm({
                             </td>
                           )}
 
+                          {/* OURS — never typed, always shown. It is what the
+                              label is printed with, so whoever is unloading has
+                              to be able to read it off the screen. */}
+                          <td className="px-2 py-2">
+                            {namedLot || describingLot ? (
+                              <InternalBatchCodeDisplay
+                                code={
+                                  namedLot ? namedLot.batchCode : previewedCode
+                                }
+                                hint={namedLot ? undefined : codeHint}
+                                productName={product?.name}
+                                className="max-w-40 text-xs"
+                              />
+                            ) : (
+                              <span className="text-xs text-muted">—</span>
+                            )}
+                          </td>
+
+                          {/* THEIRS — typed, optional, and only on a lot being
+                              OPENED. A lot being joined recorded the supplier's
+                              number when it was created; retagging it from a
+                              later delivery would rewrite the first one's recall
+                              trail, and the API refuses the pair. */}
                           <td className="px-2 py-2">
                             {namedLot ? (
-                              /* DISABLED, NOT PLAIN TEXT: it stays in the same
-                                 box in the same column as the row above that is
-                                 typing one, so the eye reads a column of codes
-                                 rather than a column of two different things.
-                                 The grey is what says it cannot be changed. */
-                              <Input
-                                aria-label={`Kode batch ${product?.name ?? ""}`}
-                                value={namedLot.batchCode}
+                              /* DISABLED RATHER THAN PLAIN TEXT, the same way
+                                 the column beside it is: the value stays in a
+                                 box in a column of boxes, and the grey says it
+                                 cannot be changed here. */
+                              <SupplierBatchCodeInput
+                                value={namedLot.supplierBatchCode ?? ""}
+                                onChange={() => {}}
+                                productName={product?.name}
                                 disabled
-                                className="max-w-40 tabular-nums text-xs"
+                                className="max-w-40 text-xs"
                               />
                             ) : describingLot ? (
-                              <Input
-                                aria-label={`Kode batch ${product?.name ?? ""}`}
-                                value={line.batchCode}
-                                onChange={(event) =>
+                              <SupplierBatchCodeInput
+                                value={line.supplierBatchCode}
+                                onChange={(value) =>
                                   updateLine(index, {
-                                    batchCode: event.target.value,
+                                    supplierBatchCode: value,
                                   })
                                 }
-                                // "opsional" rather than the code itself. The
-                                // placeholder used to preview what would be
-                                // generated, which read as a value already in
-                                // the box — and the one thing a clerk needs to
-                                // know here is that leaving it empty is fine.
-                                // The code is still on the tooltip.
-                                placeholder="opsional"
-                                title={
-                                  autoCode
-                                    ? `Kosongkan untuk memakai ${autoCode}`
-                                    : "Kosongkan untuk kode otomatis dari SKU dan tanggal expired"
-                                }
-                                className="max-w-40 tabular-nums text-xs"
+                                productName={product?.name}
+                                className="max-w-40 text-xs"
                               />
                             ) : (
                               <span className="text-xs text-muted">—</span>
@@ -1563,9 +1627,12 @@ export function ReceiptForm({
               )}
               Batch baru untuk produk berkedaluwarsa <b>wajib</b> punya tanggal
               expired — FEFO menjual lot terdekat lebih dulu, dan tanpa tanggal
-              urutannya tidak ada. <b>Kode batch boleh kosong</b>: kalau
-              supplier tidak mencetak nomor lot, sistem memakai{" "}
-              <span className="tabular-nums">SKU:tanggal-expired</span>.
+              urutannya tidak ada. <b>Kode batch dibuat sistem</b> dari SKU dan
+              tanggal expired, jadi tidak bisa diketik — kode itu yang nanti
+              dicetak jadi barcode dan discan kasir. Yang diisi manual cuma{" "}
+              <b>kode batch supplier</b>, nomor yang tercetak di kartonnya, dan
+              itu pun opsional: dipakai kalau suatu saat supplier menarik satu
+              batch dan semua lot dari batch itu harus ditemukan.
             </p>
           )}
 
@@ -1742,6 +1809,12 @@ export function ReceiptForm({
                     </span>
                     <span className="tabular-nums text-xs text-muted">
                       {movement.batchCode ?? "—"}
+                      {/* Theirs beside ours, because this panel is the last
+                          thing read before saving and the supplier's number is
+                          the half a clerk can check against the carton in front
+                          of them. */}
+                      {movement.supplierBatchCode &&
+                        ` · supplier ${movement.supplierBatchCode}`}
                       {movement.batchExpiryDate &&
                         ` · exp ${movement.batchExpiryDate.slice(0, 10)}`}
                     </span>

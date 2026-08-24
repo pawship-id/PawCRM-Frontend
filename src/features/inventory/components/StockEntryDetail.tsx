@@ -216,6 +216,11 @@ export function StockEntryDetail({
 
                     <TableCell className="text-muted">
                       {line.batchCode ?? "—"}
+                      {line.supplierBatchCode && (
+                        <span className="block text-xs tabular-nums">
+                          supplier: {line.supplierBatchCode}
+                        </span>
+                      )}
                       {line.expiryDate && (
                         <span className="block text-xs tabular-nums">
                           exp {line.expiryDate.slice(0, 10)}

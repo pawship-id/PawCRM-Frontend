@@ -4,14 +4,21 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { Alert, Button, ConfirmDialog, Spinner } from "@/components";
+import {
+  Alert,
+  Button,
+  ConfirmDialog,
+  InternalBatchCodeDisplay,
+  Spinner,
+  SupplierBatchCodeInput,
+} from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { usePermissions } from "@/features/permissions";
 import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
-import { autoBatchCode } from "@/lib/batchCode";
+import { batchCodeHint } from "@/lib/batchCode";
 import { ApiError } from "@/services/api-error";
 import { stockOpnameService } from "@/services/stockOpname.service";
 import type { OpnameItem } from "@/types/inventory";
@@ -76,7 +83,10 @@ const SHEET_EXPORT_COLUMNS: XlsxColumn<OpnameItem>[] = [
   // The column that tells "not counted yet" from "counted, and it matched" —
   // both post nothing, and only one of them means the sheet is unfinished.
   { header: "Dihitung", value: (item) => (item.countedAt ? "ya" : "belum") },
-  { header: "Kode batch", value: (item) => item.batchCode ?? "" },
+  // OURS once the sheet has been submitted and the lot exists; blank on a
+  // draft, where there is no lot yet to have a code.
+  { header: "Kode batch internal", value: (item) => item.postedBatchCode ?? "" },
+  { header: "Kode batch supplier", value: (item) => item.supplierBatchCode ?? "" },
   {
     header: "Kedaluwarsa",
     value: (item) => item.expiryDate ?? "",
@@ -654,7 +664,11 @@ function SheetRow({
   readOnly: boolean;
   onEdit: (
     productId: string,
-    patch: { physicalQty?: string; batchCode?: string; expiryDate?: string },
+    patch: {
+      physicalQty?: string;
+      supplierBatchCode?: string;
+      expiryDate?: string;
+    },
   ) => void;
   onCounted: (productId: string, counted: boolean) => void;
   /** Absent when the sheet is final or the role may not edit it. */
@@ -663,7 +677,8 @@ function SheetRow({
   const diffMinor = toMinor(item.diffQty) ?? 0n;
   const counted = item.countedAt !== null;
   // Found stock of goods that expire has to DATE its lot, or the API refuses
-  // it. The code is optional — a blank one is filled from that same date.
+  // it. Neither code is asked for: ours is derived from that same date when the
+  // sheet is submitted, and the supplier's is optional.
   const needsLot = Boolean(item.productHasExpiry) && diffMinor > 0n;
   const lotMissing = needsLot && !item.expiryDate;
 
@@ -778,32 +793,38 @@ function SheetRow({
               <p className="min-w-64 flex-1 text-xs text-muted">
                 <b>{item.productName}</b> punya masa kedaluwarsa dan ditemukan
                 lebih banyak dari catatan — isi tanggal kedaluwarsanya. Kode
-                batch boleh dikosongkan.
+                batchnya dibuat sistem dari tanggal itu; kode batch supplier
+                boleh dikosongkan.
               </p>
 
-              {/* THE TWO FIELDS ARE ONE GROUP, and wrap as one. Left as
-                  siblings of the sentence above, the code and its date were
+              {/* THE THREE FIELDS ARE ONE GROUP, and wrap as one. Left as
+                  siblings of the sentence above, the codes and the date were
                   pushed onto separate lines by a long product name — and a lot
-                  is only a lot when both halves are read together. */}
+                  is only a lot when they are read together. */}
               <div className="flex shrink-0 items-end gap-3">
-                <Input
-                  aria-label={`Kode batch ${item.productName ?? ""}`}
-                  value={item.batchCode ?? ""}
-                  onChange={(event) =>
-                    onEdit(item.productId, { batchCode: event.target.value })
-                  }
-                  /* The derived name, but only once the date it derives from
-                     exists — a preview of a code the server will not use is
-                     worse than no preview. */
-                  placeholder={
+                {/* OURS. A draft has opened no lot yet, so there is no code to
+                    show until the sheet is submitted — only the hint the code
+                    will be derived from. */}
+                <InternalBatchCodeDisplay
+                  code={item.postedBatchCode ?? null}
+                  hint={
                     item.expiryDate
-                      ? autoBatchCode(
+                      ? batchCodeHint(
                           item.productSku,
                           item.expiryDate.slice(0, 10),
                           "",
                         )
-                      : "Kode batch (opsional)"
+                      : undefined
                   }
+                  productName={item.productName}
+                  className="max-w-44"
+                />
+                <SupplierBatchCodeInput
+                  value={item.supplierBatchCode ?? ""}
+                  onChange={(value) =>
+                    onEdit(item.productId, { supplierBatchCode: value })
+                  }
+                  productName={item.productName}
                   className="w-44"
                 />
                 <Input

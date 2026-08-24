@@ -31,7 +31,7 @@ const TEXT_COLUMNS = new Set([
   "parent_sku",
   "sku",
   "barcode",
-  "kode_batch",
+  "kode_batch_supplier",
 ]);
 
 /** A real date column: Excel stores a serial, and the month is never ambiguous. */

@@ -1,3 +1,4 @@
+import { batchCodeHint } from "@/lib/batchCode";
 import {
   divideRound,
   toDecimalString,
@@ -284,7 +285,8 @@ function seed(): DemoState {
       warehouseId: "wh_utama",
       productId: "prd_rc3kg",
       receiptId: "gr_1",
-      batchCode: "RC-B26-0455",
+      batchCode: "RCA3KG-260924",
+      supplierBatchCode: "RC-B26-0455",
       expiryDate: dayOffset(24),
       initialQty: "10.0000",
       qtyRemaining: "3.0000",
@@ -301,7 +303,8 @@ function seed(): DemoState {
       warehouseId: "wh_utama",
       productId: "prd_rc3kg",
       receiptId: "gr_2",
-      batchCode: "RC-B26-0512",
+      batchCode: "RCA3KG-261120",
+      supplierBatchCode: "RC-B26-0512",
       expiryDate: dayOffset(180),
       initialQty: "20.0000",
       qtyRemaining: "17.0000",
@@ -318,7 +321,8 @@ function seed(): DemoState {
       warehouseId: "wh_utama",
       productId: "prd_wsk",
       receiptId: "gr_1",
-      batchCode: "WSK-B26-0512",
+      batchCode: "WSKM-261120",
+      supplierBatchCode: "WSK-B26-0512",
       expiryDate: dayOffset(5),
       initialQty: "60.0000",
       qtyRemaining: "8.0000",
@@ -335,7 +339,8 @@ function seed(): DemoState {
       warehouseId: "wh_utama",
       productId: "prd_wsk",
       receiptId: "gr_3",
-      batchCode: "WSK-B26-0640",
+      batchCode: "WSKM-270310",
+      supplierBatchCode: "WSK-B26-0640",
       expiryDate: dayOffset(150),
       initialQty: "36.0000",
       qtyRemaining: "36.0000",
@@ -581,6 +586,7 @@ function mv(
      */
     balanceAfter: null,
     batchCode: null,
+    supplierBatchCode: null,
     batchExpiryDate: null,
     createdByName: null,
     warehouseName: null,
@@ -888,7 +894,19 @@ export function postAdjustment(input: CreateAdjustmentInput): StockMovement[] {
         warehouseId: input.warehouseId,
         productId: input.productId,
         receiptId: null,
-        batchCode: input.batchCode ?? "AUTO",
+        /*
+          THE SHAPE, NOT THE UNIQUENESS. The real gateway probes for a free code
+          and suffixes past the ones taken (see the server's
+          StockMovementService#generateBatchCode); the demo store has one shop's
+          worth of rows and no such contention, so the stem alone is honest
+          enough for a screen that is only showing what a form would produce.
+        */
+        batchCode: batchCodeHint(
+          product.sku,
+          input.expiryDate ?? "",
+          dayOffset(0),
+        ),
+        supplierBatchCode: input.supplierBatchCode ?? null,
         expiryDate: input.expiryDate ?? null,
         initialQty: toDecimalString(qty),
         qtyRemaining: toDecimalString(qty),
@@ -1426,7 +1444,7 @@ export function saveProduct(input: SaveProductInput): Product {
       warehouseId: input.openingWarehouseId ?? state.warehouses[0]._id,
       qty: item.qty,
       costPerUnit: item.cost,
-      batchCode: item.product.hasExpiry ? "OPENING" : undefined,
+      supplierBatchCode: undefined,
       expiryDate: item.product.hasExpiry ? dayOffset(180) : undefined,
     });
   }
@@ -1702,7 +1720,7 @@ export function submitReceipt(input: SubmitReceiptInput): GoodsReceipt {
       warehouseId: input.warehouseId,
       qty: line.qty,
       costPerUnit: line.costPerUnit,
-      batchCode: line.batchCode,
+      supplierBatchCode: line.supplierBatchCode,
       expiryDate: line.expiryDate,
       isConsignment: consignment,
     });

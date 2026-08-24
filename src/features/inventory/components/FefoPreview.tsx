@@ -63,8 +63,17 @@ export function FefoPreview({
 
             <div className="min-w-0 flex-1">
               {row.batchCode ? (
-                <p className="truncate tabular-nums text-xs text-foreground">
+                /* THEIRS BESIDE OURS: this panel answers "which cartons is this
+                   coming out of", and the number on the carton is the
+                   supplier's. */
+                <p className="tabular-nums text-xs text-foreground">
                   {row.batchCode}
+                  {row.supplierBatchCode && (
+                    <span className="text-muted">
+                      {" "}
+                      · supplier {row.supplierBatchCode}
+                    </span>
+                  )}
                 </p>
               ) : (
                 <p className="text-xs text-muted">

@@ -57,7 +57,18 @@ interface LineDraft {
   notes: string;
 }
 
-/** The lot label a row shows: what is on the box, and how much of it is left. */
+/**
+ * The lot label a row shows: what it is called, what is on the box, when it
+ * turns, and how much of it is left.
+ *
+ * BOTH CODES, because choosing a lot is matching a row on screen to a carton in
+ * somebody's hands — and the number printed on the carton is the SUPPLIER's.
+ * Dropped when the lot carries none, which is the ordinary case.
+ *
+ * Its own function rather than `lotOptionLabel`: a transfer is the one picker
+ * where the EXPIRY belongs on the row, since what a person moving goods between
+ * warehouses is usually deciding is which of two dates to send.
+ */
 function lotLabel(lot: ProductBatch): string {
   const expiry = lot.expiryDate
     ? new Date(lot.expiryDate).toLocaleDateString("id-ID", {
@@ -69,6 +80,7 @@ function lotLabel(lot: ProductBatch): string {
 
   return [
     lot.batchCode,
+    lot.supplierBatchCode && `supplier ${lot.supplierBatchCode}`,
     expiry && `exp ${expiry}`,
     `sisa ${formatQty(lot.qtyRemaining)}`,
   ]

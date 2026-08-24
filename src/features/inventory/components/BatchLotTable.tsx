@@ -70,7 +70,9 @@ export function BatchLotTable({
         <thead>
           <tr className="border-b border-border text-[10px] uppercase tracking-widest text-muted">
             <th className="px-4 py-2.5 text-left font-medium">Urutan FEFO</th>
-            <th className="px-4 py-2.5 text-left font-medium">Kode batch</th>
+            <th className="px-4 py-2.5 text-left font-medium">
+              Kode batch internal
+            </th>
             <th className="px-4 py-2.5 text-left font-medium">Kedaluwarsa</th>
             <th className="px-4 py-2.5 text-right font-medium">Sisa Stock</th>
             <th className="px-4 py-2.5 text-right font-medium">Harga beli batch</th>

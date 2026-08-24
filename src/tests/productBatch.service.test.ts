@@ -36,6 +36,7 @@ const EVERY_LIST_FILTER: Required<ProductBatchListQuery> = {
   branchId: "b1",
   hasRemaining: true,
   search: "WSK-B26",
+  supplierBatchCode: "RC-2608",
   expiryFrom: "2026-01-01",
   expiryTo: "2026-12-31",
   sort: "newest",

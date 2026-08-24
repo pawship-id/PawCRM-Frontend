@@ -7,7 +7,7 @@ import {
   ReceiptForm,
   ReceiptsScreen,
 } from "@/features/purchasing";
-import { autoBatchCode } from "@/lib/batchCode";
+import { batchCodeHint } from "@/lib/batchCode";
 import { goodsReceiptService } from "@/services/goodsReceipt.service";
 import { purchaseReturnService } from "@/services/purchaseReturn.service";
 import { productBatchService } from "@/services/productBatch.service";
@@ -1592,7 +1592,8 @@ describe("choosing which batch the goods land in", () => {
     warehouseId: WAREHOUSE._id,
     productId: EXPIRING_PRODUCT._id,
     receiptId: null,
-    batchCode: "VAK-A26",
+    batchCode: "VAKSIN-270301",
+    supplierBatchCode: "VAK-A26",
     expiryDate: "2027-03-01T00:00:00.000Z",
     initialQty: "20.0000",
     qtyRemaining: "8.0000",
@@ -1640,15 +1641,16 @@ describe("choosing which batch the goods land in", () => {
   });
 
   /**
-   * The code and the date DESCRIBE a lot, which mints it. Sending them beside a
-   * lot that already exists is two answers to one question, and the API refuses
-   * the pair rather than preferring one — so the payload must carry neither.
+   * The supplier's code and the date DESCRIBE a lot, which mints it. Sending
+   * them beside a lot that already exists is two answers to one question, and
+   * the API refuses the pair rather than preferring one — so the payload must
+   * carry neither.
    */
-  it("sends batchId, and no code or date, when an existing lot is chosen", async () => {
+  it("sends batchId, and no description, when an existing lot is chosen", async () => {
     const user = await withExpiringLine();
 
     await user.click(await screen.findByLabelText(/^Batch Vaksin Rabies/));
-    await user.click(await screen.findByRole("option", { name: /VAK-A26/ }));
+    await user.click(await screen.findByRole("option", { name: /VAKSIN-270301/ }));
 
     await user.click(
       screen.getByRole("button", { name: /Simpan & terima barang/ }),
@@ -1657,8 +1659,26 @@ describe("choosing which batch the goods land in", () => {
     await waitFor(() => expect(goodsReceiptService.create).toHaveBeenCalled());
     const [item] = asMock(goodsReceiptService.create).mock.calls[0][0].items;
     expect(item.batchId).toBe("b1");
-    expect(item.batchCode).toBeUndefined();
+    expect(item.supplierBatchCode).toBeUndefined();
     expect(item.expiryDate).toBeUndefined();
+  });
+
+  /**
+   * THE PICKER NAMES BOTH CODES, and that is what makes it usable: choosing a
+   * lot is the act of matching a row on screen to a carton in somebody's hands,
+   * and the number printed on the carton is the SUPPLIER's. Ours identifies the
+   * row; theirs is what can be read off the box.
+   */
+  it("offers each lot under both of its codes", async () => {
+    const user = await withExpiringLine();
+
+    await user.click(await screen.findByLabelText(/^Batch Vaksin Rabies/));
+
+    expect(
+      await screen.findByRole("option", {
+        name: /VAKSIN-270301 · supplier VAK-A26 · sisa/,
+      }),
+    ).toBeInTheDocument();
   });
 
   /**
@@ -1669,19 +1689,32 @@ describe("choosing which batch the goods land in", () => {
     const user = await withExpiringLine();
 
     await user.click(await screen.findByLabelText(/^Batch Vaksin Rabies/));
-    await user.click(await screen.findByRole("option", { name: /VAK-A26/ }));
+    await user.click(await screen.findByRole("option", { name: /VAKSIN-270301/ }));
 
-    const code = screen.getByLabelText(/^Kode batch Vaksin Rabies/);
-    expect(code).toHaveValue("VAK-A26");
-    expect(code).toBeDisabled();
+    const code = screen.getByLabelText(/^Kode batch internal Vaksin Rabies/);
+    expect(code).toHaveTextContent("VAKSIN-270301");
+    expect(code.tagName).toBe("OUTPUT");
+
+    // Theirs is locked too: the lot recorded a supplier batch when it was
+    // opened, and a later delivery retagging it would rewrite the first one's
+    // recall trail.
+    const supplier = screen.getByLabelText(
+      /^Kode batch supplier Vaksin Rabies/,
+    );
+    expect(supplier).toHaveValue("VAK-A26");
+    expect(supplier).toBeDisabled();
 
     const expiry = screen.getByLabelText(/^Expired Vaksin Rabies/);
     expect(expiry).toHaveValue("2027-03-01");
     expect(expiry).toBeDisabled();
   });
 
-  /** The other branch: a genuinely new lot is still described, as it always was. */
-  it("asks for a code and a date when the lot is new", async () => {
+  /**
+   * The other branch: a genuinely new lot is still described — but only by its
+   * date and, optionally, the number on the carton. OUR code is shown and
+   * disabled, because the server mints it.
+   */
+  it("asks for a date and the supplier's code when the lot is new", async () => {
     const user = await withExpiringLine();
 
     await user.click(await screen.findByLabelText(/^Batch Vaksin Rabies/));
@@ -1691,6 +1724,12 @@ describe("choosing which batch the goods land in", () => {
     expect(expiry).not.toBeDisabled();
     await user.type(expiry, "2028-01-01");
 
+    // OURS is on the row but is not a field at all — the server mints it, so
+    // there is nothing to type into.
+    expect(
+      screen.getByLabelText(/^Kode batch internal Vaksin Rabies/).tagName,
+    ).toBe("OUTPUT");
+
     await user.click(
       screen.getByRole("button", { name: /Simpan & terima barang/ }),
     );
@@ -1698,10 +1737,42 @@ describe("choosing which batch the goods land in", () => {
     await waitFor(() => expect(goodsReceiptService.create).toHaveBeenCalled());
     const [item] = asMock(goodsReceiptService.create).mock.calls[0][0].items;
     expect(item.batchId).toBeUndefined();
-    // Left blank, so the form fills it from the SKU and the date — the rule the
-    // server keeps too.
-    expect(item.batchCode).toBe("VAKSIN:2028-01-01");
+    // Never sent: ours is the server's to mint, and the API refuses a
+    // client-supplied one outright.
+    expect(item).not.toHaveProperty("batchCode");
+    // Left blank, so it is omitted rather than sent as an empty string.
+    expect(item.supplierBatchCode).toBeUndefined();
     expect(item.expiryDate).toBe("2028-01-01");
+  });
+
+  /**
+   * THE ONE CODE A PERSON SUPPLIES. Optional — most cartons carry no number —
+   * but when one does, it is what a recall notice will name, so it has to reach
+   * the lot rather than being dropped on the way.
+   */
+  it("sends the supplier's batch number when the carton carries one", async () => {
+    const user = await withExpiringLine();
+
+    await user.click(await screen.findByLabelText(/^Batch Vaksin Rabies/));
+    await user.click(await screen.findByRole("option", { name: /Batch baru/ }));
+
+    await user.type(
+      await screen.findByLabelText(/^Expired Vaksin Rabies/),
+      "2028-01-01",
+    );
+    await user.type(
+      screen.getByLabelText(/^Kode batch supplier Vaksin Rabies/),
+      "VAK-B28",
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: /Simpan & terima barang/ }),
+    );
+
+    await waitFor(() => expect(goodsReceiptService.create).toHaveBeenCalled());
+    const [item] = asMock(goodsReceiptService.create).mock.calls[0][0].items;
+    expect(item.supplierBatchCode).toBe("VAK-B28");
+    expect(item).not.toHaveProperty("batchCode");
   });
 
   /**
@@ -1800,10 +1871,10 @@ describe("goods receipt payload rules", () => {
  * Asserted on the function rather than through the row: adding a line means
  * driving a Radix select, which jsdom cannot do — see the header.
  */
-describe("autoBatchCode", () => {
+describe("batchCodeHint", () => {
   it("keys on the expiry date, because that is what distinguishes a lot", () => {
-    expect(autoBatchCode("SHAMPOO", "2027-03-01", "2026-08-06")).toBe(
-      "SHAMPOO:2027-03-01",
+    expect(batchCodeHint("SHAMPOO", "2027-03-01", "2026-08-06")).toBe(
+      "SHAMPOO-270301",
     );
   });
 
@@ -1813,19 +1884,32 @@ describe("autoBatchCode", () => {
    * consignment of them from the next.
    */
   it("falls back to the receipt date when the goods do not expire", () => {
-    expect(autoBatchCode("PASIR", "", "2026-08-06")).toBe("PASIR:2026-08-06");
+    expect(batchCodeHint("PASIR", "", "2026-08-06")).toBe("PASIR-260806");
   });
 
   /**
-   * `batchCode` maxes out at 60 characters at the API. Truncating the SKU keeps
-   * the date — the half that makes the code mean something — and loses the tail
-   * of a catalogue value that should not have been that long.
+   * The code is printed as a barcode and travels in the lookup URL, so the
+   * shape is a promise to hardware: upper case, digits and `-`, nothing else.
+   * An SKU's own punctuation is dropped rather than kept, because `-` is the
+   * separator and two of them would be unreadable.
+   */
+  it("emits nothing a barcode or a URL has to escape", () => {
+    expect(batchCodeHint("RC/ADULT:1KG", "2027-03-01", "")).toBe(
+      "RCADULT1KG-270301",
+    );
+  });
+
+  /**
+   * A HINT, NOT THE CODE. The saved one is unique across the tenant, so a
+   * second lot of the same goods is `…-2` — which nothing in the browser can
+   * know. The preview endpoints answer with the real one; this is the fallback
+   * for the moment before one has come back.
    */
   it("stays inside the API's 60-character limit", () => {
-    const code = autoBatchCode("X".repeat(80), "2027-03-01", "2026-08-06");
+    const code = batchCodeHint("X".repeat(80), "2027-03-01", "2026-08-06");
 
-    expect(code.length).toBe(60);
-    expect(code.endsWith(":2027-03-01")).toBe(true);
+    expect(code.length).toBeLessThanOrEqual(60);
+    expect(code.endsWith("-270301")).toBe(true);
   });
 });
 

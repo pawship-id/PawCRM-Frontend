@@ -170,7 +170,8 @@ function hint(query: BatchesQuery, searching: boolean) {
   if (searching) {
     return (
       <>
-        Pencarian kode batch, nama produk, dan SKU berlaku di{" "}
+        Pencarian kode batch (punya kita maupun punya supplier), nama produk,
+        dan SKU berlaku di{" "}
         <b>seluruh batch</b> — termasuk yang sudah habis dan yang tidak punya
         tanggal kedaluwarsa — jadi rentang kedaluwarsa dinonaktifkan selama
         kotak pencarian terisi.
@@ -258,8 +259,8 @@ export function BatchesToolbar({
         <FilterSearch
           value={query.search}
           onChange={(search) => onChange({ search })}
-          placeholder="Cari kode batch, nama produk, atau SKU…"
-          ariaLabel="Cari kode batch, nama produk, atau SKU"
+          placeholder="Cari kode batch, kode supplier, nama produk, atau SKU…"
+          ariaLabel="Cari kode batch, kode supplier, nama produk, atau SKU"
           fill
         />
       }

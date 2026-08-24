@@ -9,7 +9,9 @@ import {
   Button,
   Card,
   FilterSelect,
+  InternalBatchCodeDisplay,
   Spinner,
+  SupplierBatchCodeInput,
   TextField,
   namedOptions,
 } from "@/components";
@@ -26,7 +28,7 @@ import {
 } from "@/components/ui/table";
 import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
-import { autoBatchCode } from "@/lib/batchCode";
+import { batchCodeHint, lotOptionLabel } from "@/lib/batchCode";
 import { blockingReason } from "../utils/blocker";
 import { ApiError } from "@/services/api-error";
 import { stockEntryService } from "@/services/stockEntry.service";
@@ -106,7 +108,12 @@ interface DraftLine {
   batchChoice: string;
   newQty: string;
   costPerUnit: string;
-  batchCode: string;
+  /**
+   * THEIR code — the number printed on the carton, typed only while a new lot
+   * is being opened. Ours is generated and unique across the tenant, so the API
+   * refuses a client-supplied one and this form never holds it.
+   */
+  supplierBatchCode: string;
   expiryDate: string;
   isConsignment: boolean;
 }
@@ -232,7 +239,7 @@ export function StockAdjustmentForm() {
         batchChoice: "",
         newQty: "",
         costPerUnit: "",
-        batchCode: "",
+        supplierBatchCode: "",
         expiryDate: "",
         isConsignment: false,
       })),
@@ -368,11 +375,12 @@ export function StockAdjustmentForm() {
             // refuses the pair, so the form never assembles it.
             batchId:
               line.batchChoice && !makingBatch ? line.batchChoice : undefined,
-            // Omitted rather than sent blank when nobody typed one: the
-            // gateway fills it, and "" would claim a code was meant.
-            batchCode:
-              makingBatch && line.batchCode.trim() !== ""
-                ? line.batchCode.trim()
+            // THEIRS, and only on a lot being OPENED — a lot being joined
+            // recorded the supplier's number when it was created. Omitted
+            // rather than sent blank: "" would claim a code was meant.
+            supplierBatchCode:
+              makingBatch && line.supplierBatchCode.trim() !== ""
+                ? line.supplierBatchCode.trim()
                 : undefined,
             expiryDate: makingBatch ? line.expiryDate : undefined,
             // Only arriving stock carries a cost, and consignment never does.
@@ -627,7 +635,11 @@ export function StockAdjustmentForm() {
                           expiring when. */}
                       {anyBatchNamed && (
                         <>
-                          <TableHead>Kode batch</TableHead>
+                          {/* TWO CODES, TWO COLUMNS. Ours identifies the row
+                              and gets barcoded; theirs identifies the factory
+                              batch and is what a recall is traced by. */}
+                          <TableHead>Kode batch internal</TableHead>
+                          <TableHead>Kode batch supplier</TableHead>
                           <TableHead>
                             Kedaluwarsa
                             {/* Only when something is being TYPED. An asterisk
@@ -697,9 +709,13 @@ export function StockAdjustmentForm() {
                                     options={[
                                       ...(
                                         lots.byProduct.get(line.productId) ?? []
+                                      /* BOTH CODES — see `lotOptionLabel`.
+                                         Picking a lot is matching a row to a
+                                         carton, and the number printed on the
+                                         carton is the supplier's. */
                                       ).map((lot) => ({
                                         value: lot._id,
-                                        label: `${lot.batchCode} - sisa ${formatQty(lot.qtyRemaining)}`,
+                                        label: lotOptionLabel(lot),
                                       })),
                                       {
                                         value: NEW_BATCH,
@@ -723,42 +739,59 @@ export function StockAdjustmentForm() {
 
                             {anyBatchNamed && (
                               <>
+                                {/* OURS — never typed, always shown. This screen
+                                    has no preview endpoint, so a lot being
+                                    OPENED can only show the derived hint: the
+                                    real code, suffix and all, is settled when
+                                    the entry is saved. */}
                                 <TableCell>
                                   {makingBatch ? (
-                                    <Input
-                                      aria-label={`Kode batch baru ${product?.name ?? ""}`}
-                                      value={line.batchCode}
-                                      onChange={(event) =>
-                                        patchLine(index, {
-                                          batchCode: event.target.value,
-                                        })
-                                      }
-                                      /* The derived name, but only once the
-                                         date it derives from exists — a preview
-                                         of a code the server will not use is
-                                         worse than no preview. */
-                                      placeholder={
+                                    <InternalBatchCodeDisplay
+                                      code={null}
+                                      hint={
                                         line.expiryDate
-                                          ? autoBatchCode(
+                                          ? batchCodeHint(
                                               product?.sku,
                                               line.expiryDate,
                                               "",
                                             )
-                                          : "Kode batch (opsional)"
+                                          : undefined
                                       }
-                                      className="w-44"
-                                      disabled={saving}
+                                      productName={product?.name}
+                                      className="max-w-44 text-xs"
                                     />
                                   ) : namedLot ? (
-                                    /* DISABLED, NOT READ-ONLY TEXT: it stays in
-                                       the same box in the same column as the
-                                       row above that is typing one, so the eye
-                                       reads a column of codes rather than a
-                                       column of two different things. The grey
-                                       is what says it cannot be changed. */
-                                    <Input
-                                      aria-label={`Kode batch ${product?.name ?? ""}`}
-                                      value={namedLot.batchCode}
+                                    <InternalBatchCodeDisplay
+                                      code={namedLot.batchCode}
+                                      productName={product?.name}
+                                      className="max-w-44 text-xs"
+                                    />
+                                  ) : (
+                                    <span className="text-muted">—</span>
+                                  )}
+                                </TableCell>
+                                {/* THEIRS — typed, optional, and only on a lot
+                                    being OPENED. Retagging a lot that already
+                                    exists would rewrite the recall trail of the
+                                    delivery that opened it. */}
+                                <TableCell>
+                                  {makingBatch ? (
+                                    <SupplierBatchCodeInput
+                                      value={line.supplierBatchCode}
+                                      onChange={(value) =>
+                                        patchLine(index, {
+                                          supplierBatchCode: value,
+                                        })
+                                      }
+                                      productName={product?.name}
+                                      disabled={saving}
+                                      className="w-44"
+                                    />
+                                  ) : namedLot ? (
+                                    <SupplierBatchCodeInput
+                                      value={namedLot.supplierBatchCode ?? ""}
+                                      onChange={() => {}}
+                                      productName={product?.name}
                                       disabled
                                       className="w-44"
                                     />

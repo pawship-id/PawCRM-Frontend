@@ -82,7 +82,8 @@ function item(overrides: Partial<OpnameItem> = {}): OpnameItem {
     diffValue: "0.0000",
     countedAt: null,
     notes: null,
-    batchCode: null,
+    supplierBatchCode: null,
+    postedBatchCode: null,
     expiryDate: null,
     productSku: "SHAMPOO",
     productName: "Shampoo Anjing",
@@ -1015,7 +1016,7 @@ describe("OpnameSheet", () => {
     renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
 
     expect(
-      await screen.findByLabelText(/Kode batch Vaksin Rabies/),
+      await screen.findByLabelText(/Kode batch internal Vaksin Rabies/),
     ).toBeInTheDocument();
     expect(
       screen.getByText(/belum punya tanggal kedaluwarsa/),
@@ -1026,9 +1027,15 @@ describe("OpnameSheet", () => {
   });
 
   /**
-   * THE PLACEHOLDER IS THE EXPLANATION. A counter who leaves the code blank can
-   * read what the lot will be called, which beats a sentence saying one will be
-   * generated — and it only appears once the date it derives from is there.
+   * OUR CODE IS SHOWN BUT NOT TYPED. A counter can read what the found lot will
+   * be called — it is what they write on the carton — while the field itself is
+   * disabled, because the server mints the code and a typed one could name a lot
+   * that already exists.
+   *
+   * A HINT, and only once the date it derives from is there. A draft has opened
+   * no lot yet, so there is nothing but the hint to show; the real code is
+   * settled when the sheet is submitted, and can carry a suffix this cannot
+   * know about.
    */
   it("previews the code the found lot will take, once it is dated", async () => {
     const user = userEvent.setup();
@@ -1050,17 +1057,23 @@ describe("OpnameSheet", () => {
 
     renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
 
-    const code = await screen.findByLabelText(/Kode batch Vaksin Rabies/);
-    expect(code).toHaveAttribute("placeholder", "Kode batch (opsional)");
+    /*
+       SHOWN AS TEXT, IN FULL. A disabled `<input>` clipped a code wider than
+       the cell and could not be selected — on the one field a label is printed
+       from.
+     */
+    const code = await screen.findByLabelText(
+      /Kode batch internal Vaksin Rabies/,
+    );
+    expect(code.tagName).toBe("OUTPUT");
+    expect(code).toHaveTextContent("otomatis");
 
     await user.type(
       screen.getByLabelText(/Tanggal kedaluwarsa Vaksin Rabies/),
       "2027-03-01",
     );
 
-    await waitFor(() =>
-      expect(code).toHaveAttribute("placeholder", "VAK-RAB:2027-03-01"),
-    );
+    await waitFor(() => expect(code).toHaveTextContent("VAKRAB-270301"));
   });
 
   /**
@@ -1107,7 +1120,7 @@ describe("OpnameSheet", () => {
     });
 
     expect(
-      await screen.findByLabelText(/Kode batch Vaksin Rabies/),
+      await screen.findByLabelText(/Kode batch internal Vaksin Rabies/),
     ).toBeInTheDocument();
   });
 
@@ -1130,7 +1143,7 @@ describe("OpnameSheet", () => {
 
     await screen.findByText("Vaksin Rabies");
     expect(
-      screen.queryByLabelText(/Kode batch Vaksin Rabies/),
+      screen.queryByLabelText(/Kode batch internal Vaksin Rabies/),
     ).not.toBeInTheDocument();
   });
 

@@ -137,6 +137,7 @@ function returnDetail(overrides: Partial<ReturnDetail> = {}): ReturnDetail {
         productUnit: "botol",
         batchId: null,
         batchCode: null,
+        supplierBatchCode: null,
         batchExpiryDate: null,
         qty: "4.0000",
         costPerUnit: "15000.0000",

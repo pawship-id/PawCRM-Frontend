@@ -159,7 +159,9 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
             <thead>
               <tr className="border-b border-border text-[10px] tracking-widest text-muted uppercase">
                 <th className="px-2 py-2 text-left font-medium">Produk</th>
-                <th className="px-2 py-2 text-left font-medium">Kode Batch</th>
+                <th className="px-2 py-2 text-left font-medium">
+                  Kode batch internal
+                </th>
                 {/* SPLIT OUT OF THE BATCH COLUMN, not added beside it. The code
                     identifies the lot, the expiry decides when it must be sold —
                     two separate questions a clerk asks of the same box, and
@@ -218,6 +220,15 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
                               useReceiptLots. Without it the line still says a
                               lot exists, which is the fact that matters. */}
                           {lot?.batchCode ?? "ada lot"}
+                          {/* THEIRS UNDER OURS: this is the screen a clerk
+                              reconciles against the carton in front of them,
+                              and the supplier's number is the half printed on
+                              it. */}
+                          {lot?.supplierBatchCode && (
+                            <span className="block text-muted">
+                              supplier: {lot.supplierBatchCode}
+                            </span>
+                          )}
                         </span>
                       ) : (
                         <span className="text-xs text-muted">—</span>

@@ -9,7 +9,9 @@ import {
   Button,
   Card,
   FilterSelect,
+  InternalBatchCodeDisplay,
   Spinner,
+  SupplierBatchCodeInput,
   TextField,
   namedOptions,
 } from "@/components";
@@ -26,7 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { autoBatchCode } from "@/lib/batchCode";
+import { batchCodeHint } from "@/lib/batchCode";
 import { blockingReason } from "../utils/blocker";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
@@ -99,7 +101,12 @@ interface DraftLine {
   productId: string;
   qty: string;
   costPerUnit: string;
-  batchCode: string;
+  /**
+   * THEIR code — the number printed on the carton. Ours is generated and unique
+   * across the tenant, so the API refuses a client-supplied one and this form
+   * never holds it.
+   */
+  supplierBatchCode: string;
   expiryDate: string;
   isConsignment: boolean;
 }
@@ -179,7 +186,7 @@ export function OpeningStockForm() {
         productId: product._id,
         qty: "",
         costPerUnit: "",
-        batchCode: "",
+        supplierBatchCode: "",
         expiryDate: "",
         isConsignment: false,
       })),
@@ -245,9 +252,9 @@ export function OpeningStockForm() {
       // Asked while the counter is still at the shelf, rather than surfaced as
       // a 400 after they have walked away.
       if (product?.hasExpiry) {
-        // Only the DATE is asked for. A blank code is filled from it — see
-        // `autoBatchCode` — and asking for one anyway is how lots end up named
-        // "1".
+        // Only the DATE is asked for. The lot's own code is derived from it by
+        // the server, and the supplier's is optional — most cartons carry no
+        // number, and demanding one is how lots end up named "1".
         if (line.expiryDate === "")
           next[`${at}.expiryDate`] = "Produk ini melacak kedaluwarsa.";
       }
@@ -292,10 +299,10 @@ export function OpeningStockForm() {
             costPerUnit: line.costPerUnit.trim(),
             ...(product?.hasExpiry
               ? {
-                  // Omitted rather than sent blank when nobody typed one: the
-                  // gateway fills it, and "" would claim a code was meant.
-                  ...(line.batchCode.trim() !== ""
-                    ? { batchCode: line.batchCode.trim() }
+                  // THEIRS only. Omitted rather than sent blank when nobody
+                  // typed one: "" would claim a code was meant.
+                  ...(line.supplierBatchCode.trim() !== ""
+                    ? { supplierBatchCode: line.supplierBatchCode.trim() }
                     : {}),
                   expiryDate: line.expiryDate,
                 }
@@ -545,7 +552,8 @@ export function OpeningStockForm() {
                           receipt form's table is laid out the same way, and the
                           columns are empty — an em dash — on the rows whose
                           product does not track expiry. */}
-                      <TableHead>Kode batch</TableHead>
+                      <TableHead>Kode batch internal</TableHead>
+                      <TableHead>Kode batch supplier</TableHead>
                       <TableHead>
                         Kadaluarsa
                         {/* The column carries the mark, not the cell: a date
@@ -628,32 +636,46 @@ export function OpeningStockForm() {
                               />
                             </TableCell>
 
+                            {/* OURS — never typed, always shown. This screen has
+                                no preview endpoint, so it can only show the
+                                derived hint: the real code, suffix and all, is
+                                settled when the document is saved. */}
                             <TableCell>
                               {product?.hasExpiry ? (
-                                <Input
-                                  aria-label={`Kode batch ${product.name}`}
-                                  value={line.batchCode}
-                                  onChange={(event) =>
-                                    patchLine(index, {
-                                      batchCode: event.target.value,
-                                    })
-                                  }
-                                  /* The derived name, but only once the date it
-                                     derives from exists — a preview of a code
-                                     the server will not use is worse than no
-                                     preview. */
-                                  placeholder={
+                                <InternalBatchCodeDisplay
+                                  code={null}
+                                  hint={
                                     line.expiryDate
-                                      ? autoBatchCode(
+                                      ? batchCodeHint(
                                           product.sku,
                                           line.expiryDate,
                                           "",
                                         )
-                                      : "opsional"
+                                      : undefined
                                   }
-                                  title="Kosongkan untuk kode otomatis dari SKU dan tanggal kadaluarsa"
-                                  className="w-40 text-xs tabular-nums"
+                                  productName={product.name}
+                                  className="max-w-40 text-xs"
+                                />
+                              ) : (
+                                <span className="text-xs text-muted">—</span>
+                              )}
+                            </TableCell>
+
+                            {/* THEIRS — typed, optional. Most cartons carry no
+                                number; the ones that do are what a recall is
+                                traced by. */}
+                            <TableCell>
+                              {product?.hasExpiry ? (
+                                <SupplierBatchCodeInput
+                                  value={line.supplierBatchCode}
+                                  onChange={(value) =>
+                                    patchLine(index, {
+                                      supplierBatchCode: value,
+                                    })
+                                  }
+                                  productName={product.name}
                                   disabled={saving}
+                                  className="w-40 text-xs"
                                 />
                               ) : (
                                 <span className="text-xs text-muted">—</span>

@@ -77,6 +77,7 @@ function lot(overrides: Partial<ProductBatch> = {}): ProductBatch {
     productId: "p1",
     receiptId: null,
     batchCode: "WSK-B26-0512",
+    supplierBatchCode: null,
     expiryDate: "2026-08-08T00:00:00.000Z",
     initialQty: "10.0000",
     qtyRemaining: "4.0000",
@@ -216,7 +217,7 @@ describe("BatchesScreen", () => {
 
     await screen.findByRole("table");
     await user.type(
-      screen.getByLabelText("Cari kode batch, nama produk, atau SKU"),
+      screen.getByLabelText("Cari kode batch, kode supplier, nama produk, atau SKU"),
       "WSK",
     );
 
@@ -237,7 +238,7 @@ describe("BatchesScreen", () => {
 
     await screen.findByRole("table");
     await user.type(
-      screen.getByLabelText("Cari kode batch, nama produk, atau SKU"),
+      screen.getByLabelText("Cari kode batch, kode supplier, nama produk, atau SKU"),
       "WSK",
     );
 
@@ -275,7 +276,7 @@ describe("BatchesScreen", () => {
     await user.keyboard("{Escape}");
 
     await user.type(
-      screen.getByLabelText("Cari kode batch, nama produk, atau SKU"),
+      screen.getByLabelText("Cari kode batch, kode supplier, nama produk, atau SKU"),
       "WSK",
     );
     await screen.findByRole("table");
@@ -294,7 +295,7 @@ describe("BatchesScreen", () => {
 
     await screen.findByRole("table");
     await user.type(
-      screen.getByLabelText("Cari kode batch, nama produk, atau SKU"),
+      screen.getByLabelText("Cari kode batch, kode supplier, nama produk, atau SKU"),
       "WSK",
     );
     await waitFor(() => expect(listCall).toHaveBeenCalled());
@@ -345,7 +346,7 @@ describe("BatchesScreen", () => {
     // itself when a search flipped the screen would be a control that undoes
     // its own last click.
     await user.type(
-      screen.getByLabelText("Cari kode batch, nama produk, atau SKU"),
+      screen.getByLabelText("Cari kode batch, kode supplier, nama produk, atau SKU"),
       "WSK",
     );
 
@@ -493,7 +494,7 @@ describe("BatchesScreen", () => {
     ).toBeInTheDocument();
 
     await user.type(
-      screen.getByLabelText("Cari kode batch, nama produk, atau SKU"),
+      screen.getByLabelText("Cari kode batch, kode supplier, nama produk, atau SKU"),
       "ZZZ",
     );
 
@@ -513,7 +514,7 @@ describe("BatchesScreen", () => {
     // product's name and SKU are matched server-side, because a lot carries a
     // productId and no name of its own.
     await user.type(
-      screen.getByLabelText("Cari kode batch, nama produk, atau SKU"),
+      screen.getByLabelText("Cari kode batch, kode supplier, nama produk, atau SKU"),
       "Whiskas",
     );
 
@@ -596,7 +597,7 @@ describe("BatchesScreen", () => {
       await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
 
       await user.type(
-        screen.getByLabelText("Cari kode batch, nama produk, atau SKU"),
+        screen.getByLabelText("Cari kode batch, kode supplier, nama produk, atau SKU"),
         "WSK",
       );
       await screen.findByRole("table");

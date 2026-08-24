@@ -71,6 +71,7 @@ function lot(overrides: Partial<ProductBatch> = {}): ProductBatch {
     productId: "p1",
     receiptId: null,
     batchCode: "RC-B26-0455",
+    supplierBatchCode: null,
     expiryDate: "2026-08-20T00:00:00.000Z",
     initialQty: "40.0000",
     qtyRemaining: "12.0000",

@@ -75,6 +75,27 @@ export function StockTransferDetail({ transferId }: { transferId: string }) {
 
   // Every row of one posting shares these, because one posting wrote them.
   const first = out[0];
+
+  /**
+   * THE LOTS THAT NOW SIT AT THE DESTINATION, for reprinting their labels.
+   *
+   * A transfer re-creates each lot at the far warehouse, and batch codes are
+   * unique within the tenant — so the arriving row cannot carry the source's
+   * code and is minted its own. That makes RELABELLING part of the move rather
+   * than an afterthought: the sticker on the carton names a lot at the warehouse
+   * it just left, and a till at the destination scanning it would resolve to the
+   * wrong shelf.
+   *
+   * Read off the `transfer_in` half, which is the side that holds those ids —
+   * the table below renders the `transfer_out` side, which names the lots the
+   * goods came OUT of.
+   */
+  const arrivedLotIds = all
+    .filter(
+      (movement) =>
+        movement.movementType === "transfer_in" && movement.batchId !== null,
+    )
+    .map((movement) => movement.batchId as string);
   const lineValue = (movement: (typeof out)[number]) =>
     movement.hppAtTime
       ? multiplyDecimals(absDecimal(movement.qty), movement.hppAtTime)
@@ -117,6 +138,22 @@ export function StockTransferDetail({ transferId }: { transferId: string }) {
         )}
       </Card>
 
+      {arrivedLotIds.length > 0 && (
+        <Alert variant="info">
+          <p>
+            Batch di gudang tujuan punya <b>kode baru</b> — kode batch unik per
+            lot, jadi lot yang datang tidak bisa memakai kode yang sama dengan
+            asalnya. Tempel ulang labelnya sebelum barang masuk rak.{" "}
+            <Link
+              href={`/dashboard/inventory/batches/labels?ids=${arrivedLotIds.join(",")}`}
+              className="font-medium underline"
+            >
+              Cetak label gudang tujuan →
+            </Link>
+          </p>
+        </Alert>
+      )}
+
       <Card
         title={
           <span className="flex flex-wrap items-center gap-2">
@@ -157,8 +194,22 @@ export function StockTransferDetail({ transferId }: { transferId: string }) {
                     )}
                   </TableCell>
 
+                  {/* THE CODE AT EACH END IS A DIFFERENT CODE, and this is the
+                      one screen where that has to be visible. A transfer
+                      re-creates the lot at the destination, codes are unique
+                      across the tenant, so the arriving row is minted its own —
+                      which means the carton has to be RELABELLED when it lands,
+                      and this table is where somebody reads what to write. The
+                      supplier's number is the half that does NOT change: it
+                      names the factory batch, and moving a box between
+                      warehouses does not move it to a different one. */}
                   <TableCell className="text-muted">
                     {movement.batchCode ?? "—"}
+                    {movement.supplierBatchCode && (
+                      <span className="block text-xs tabular-nums">
+                        supplier: {movement.supplierBatchCode}
+                      </span>
+                    )}
                     {movement.batchExpiryDate && (
                       <span className="block text-xs tabular-nums">
                         exp {movement.batchExpiryDate.slice(0, 10)}

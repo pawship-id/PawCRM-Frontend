@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { HighlightText, Pagination } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -67,7 +69,9 @@ export function BatchesTable({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-[10px] uppercase tracking-widest text-muted">
-              <th className="px-4 py-2.5 text-left font-medium">Kode batch</th>
+              <th className="px-4 py-2.5 text-left font-medium">
+                Kode batch internal
+              </th>
               <th className="px-4 py-2.5 text-left font-medium">Produk</th>
               <th className="px-4 py-2.5 text-left font-medium">Cabang</th>
               <th className="px-4 py-2.5 text-left font-medium">Gudang</th>
@@ -77,12 +81,15 @@ export function BatchesTable({
               </th>
               <th className="px-4 py-2.5 text-right font-medium">HPP</th>
               <th className="px-4 py-2.5 text-right font-medium">Nilai sisa</th>
+              {/* No caption: the column holds one link per row and a header
+                  over it would be a word describing a verb. */}
+              <th className="px-4 py-2.5" />
             </tr>
           </thead>
           <tbody>
             {batches.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-16 text-center">
+                <td colSpan={9} className="px-4 py-16 text-center">
                   <p className="font-medium text-foreground">
                     {searching
                       ? "Tidak ada batch yang cocok"
@@ -179,6 +186,19 @@ export function BatchesTable({
                             batch.costPerUnit,
                           ),
                         )}
+                  </td>
+                  {/* THE OTHER HALF OF A UNIQUE CODE. Lot codes are unique so
+                      that they can be scanned, and a code nothing can print is a
+                      code nothing can scan. Offered on an exhausted lot too — a
+                      label is reprinted for a carton that is still on a shelf,
+                      and "sisa 0" and "gone" are not the same thing. */}
+                  <td className="px-4 py-2.5 text-right">
+                    <Link
+                      href={`/dashboard/inventory/batches/labels?ids=${batch._id}`}
+                      className="text-xs font-medium underline"
+                    >
+                      Cetak label
+                    </Link>
                   </td>
                 </tr>
               );

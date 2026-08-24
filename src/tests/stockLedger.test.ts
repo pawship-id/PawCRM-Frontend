@@ -22,6 +22,7 @@ function batch(overrides: Partial<ProductBatch> = {}): ProductBatch {
     productId: "p1",
     receiptId: null,
     batchCode: "B-1",
+    supplierBatchCode: null,
     expiryDate: null,
     initialQty: "10.0000",
     qtyRemaining: "10.0000",
