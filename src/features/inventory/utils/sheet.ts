@@ -53,7 +53,7 @@ const COLUMNS = {
   has_expiry: "hasExpiry",
   stok_awal: "openingQty",
   hpp_awal: "openingCost",
-  kode_batch: "batchCode",
+  kode_batch_supplier: "supplierBatchCode",
   tgl_expired: "expiryDate",
 } as const;
 
@@ -76,7 +76,7 @@ type TextField = Extract<
   | "name"
   | "barcode"
   | "categoryName"
-  | "batchCode"
+  | "supplierBatchCode"
 >;
 
 /**

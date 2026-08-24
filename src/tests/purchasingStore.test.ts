@@ -99,7 +99,7 @@ describe("goods receipt", () => {
           productId: WSK,
           qty: "24",
           costPerUnit: "32000",
-          batchCode: "WSK-B26-0801",
+          supplierBatchCode: "WSK-B26-0801",
           expiryDate: "2027-03-31",
         },
       ],
@@ -107,7 +107,11 @@ describe("goods receipt", () => {
 
     const batches = demo.batchesAt(WSK, UTAMA);
     expect(batches).toHaveLength(before + 1);
-    expect(batches.some((b) => b.batchCode === "WSK-B26-0801")).toBe(true);
+    // THEIRS is what a receipt supplies; ours is minted by the store, so the
+    // assertion is about the code that travelled, not the one that was made.
+    expect(
+      batches.some((b) => b.supplierBatchCode === "WSK-B26-0801"),
+    ).toBe(true);
   });
 
   it("creates a payable with a due date from the supplier's terms", () => {
@@ -155,7 +159,7 @@ describe("consignment receipt", () => {
           productId: PASIR,
           qty: "12",
           costPerUnit: "58000",
-          batchCode: "PDG-K01",
+          supplierBatchCode: "PDG-K01",
         },
       ],
     });
@@ -359,7 +363,12 @@ describe("purchase return — reverse weighted average", () => {
       receiptType: "konsinyasi",
       receiptDate: TODAY,
       items: [
-        { productId: PASIR, qty: "10", costPerUnit: "58000", batchCode: "K-01" },
+        {
+          productId: PASIR,
+          qty: "10",
+          costPerUnit: "58000",
+          supplierBatchCode: "K-01",
+        },
       ],
     });
     const line = demo.receiptItemsOf(receipt._id)[0];

@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { productService } from "@/services/product.service";
 import { warehouseService } from "@/services/warehouse.service";
 import { ApiError } from "@/services/api-error";
+import { useAuth } from "@/features/auth";
+import { accessibleWarehouses } from "@/utils/accessScope";
 import type { Product, StockWarehouse } from "@/types/inventory";
 
 const PAGE_LIMIT = 100;
@@ -45,12 +47,19 @@ interface StockCardLookups {
  * copy of `STOCK_TRACKING_TYPES`, which would have gone stale the day a fifth
  * product type existed.
  *
+ * THE WAREHOUSES ARE NARROWED TO THE SIGNED-IN USER'S OWN. The server refuses
+ * a post at any other with a 403 and hides their documents from every read, so
+ * offering one here could only produce a rejection or an empty card. A courtesy
+ * over the server's answer, never the isolation itself — `utils/accessScope.ts`
+ * says why.
+ *
  * A FAILURE HERE IS SHOWN, NOT SWALLOWED. `products:read` and `warehouses:read`
  * are separate permissions from `stockMovements:read`, so a role granted only
  * the last one gets pickers that cannot be filled — and "produk gagal dimuat" is
  * an answer its user can act on, where an empty dropdown is not.
  */
 export function useStockCardLookups(): StockCardLookups {
+  const { user } = useAuth();
   const [warehouses, setWarehouses] = useState<StockWarehouse[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [truncated, setTruncated] = useState(false);
@@ -68,7 +77,7 @@ export function useStockCardLookups(): StockCardLookups {
         ]);
         if (!active) return;
 
-        setWarehouses(warehouseResult.items);
+        setWarehouses(accessibleWarehouses(user, warehouseResult.items));
         setProducts(
           [...productResult.items].sort((a, b) =>
             a.name.localeCompare(b.name, "id-ID"),
@@ -90,7 +99,7 @@ export function useStockCardLookups(): StockCardLookups {
     return () => {
       active = false;
     };
-  }, []);
+  }, [user]);
 
   return { warehouses, products, truncated, loading, error };
 }

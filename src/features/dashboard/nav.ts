@@ -166,6 +166,13 @@ export const NAV_ITEMS: NavItem[] = [
         permission: { feature: "stockOpnames", action: "read" },
       },
       {
+        /**
+         * GATED ON `create` THOUGH THE PAGE ONLY NEEDS `read` — the same call
+         * Penyesuaian Stok makes below, and for the same reason. This route
+         * opens on a list now, which anybody who may page the stock card may
+         * read, but a menu row is an invitation and the screen's one action is a
+         * write. Reading it by URL still works.
+         */
         label: "Transfer Stok",
         href: "/dashboard/inventory/transfers",
         icon: TransferIcon,
@@ -255,6 +262,24 @@ export const NAV_ITEMS: NavItem[] = [
         href: "/dashboard/purchasing/suppliers",
         icon: SupplierIcon,
         permission: { feature: "suppliers", action: "read" },
+      },
+      {
+        /**
+         * Directly under Supplier, because it is that list's setup screen — the
+         * same neighbouring the Inventory group gives Kategori under Produk.
+         *
+         * `CategoryIcon`, shared with the product Kategori item, and that is the
+         * intended reading: the two are the same kind of thing (a label set a
+         * tenant maintains), told apart by which group they sit in rather than
+         * by a second icon nobody would learn.
+         *
+         * Gated on its own feature, not on `suppliers`: a role that may read the
+         * vendor list does not automatically get its taxonomy.
+         */
+        label: "Kategori Supplier",
+        href: "/dashboard/purchasing/supplier-categories",
+        icon: CategoryIcon,
+        permission: { feature: "supplierCategories", action: "read" },
       },
       {
         label: "Penerimaan Barang",

@@ -588,6 +588,14 @@ function StoredLines({
               </td>
               <td className="px-2 py-2 tabular-nums text-xs text-muted">
                 {item.batchCode ?? "—"}
+                {/* THEIRS UNDER OURS — a return is read alongside the
+                    supplier's own paperwork, which names the factory batch
+                    rather than our lot. */}
+                {item.supplierBatchCode && (
+                  <span className="block">
+                    supplier: {item.supplierBatchCode}
+                  </span>
+                )}
               </td>
               <td className="px-2 py-2 text-right tabular-nums text-xs">
                 {formatQty(item.qty)}

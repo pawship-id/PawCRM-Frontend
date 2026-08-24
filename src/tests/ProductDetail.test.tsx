@@ -17,6 +17,8 @@ const OTHER_WAREHOUSE = "wh2";
 function makeProduct(overrides: Partial<Product> = {}): Product {
   return {
     _id: "p1",
+    isConsignment: false,
+    isPreorder: false,
     sku: "SHAMPOO",
     name: "Shampoo Anjing",
     productType: "standalone",
@@ -77,6 +79,10 @@ function mockLookups({ branchless = false } = {}) {
         kind: "product",
         isActive: true,
         name: "Makanan",
+        description: null,
+        image: null,
+        parentId: null,
+        parent: null,
         deletedAt: null,
         createdAt: "",
         updatedAt: "",

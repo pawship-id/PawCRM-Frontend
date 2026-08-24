@@ -49,6 +49,17 @@ export interface PurchaseInvoicesQuery {
   search: string;
   /** "" = any supplier, otherwise a specific one. */
   supplierId: string;
+  /**
+   * WHOSE BOOKS the bill posted to. "" = every branch.
+   *
+   * INDEPENDENT OF `warehouseId`, not a parent of it: the shared central
+   * warehouse serves every branch, so "Cabang Selatan" and "Cabang Selatan,
+   * Gudang Timur" narrow the list to different sets and neither implies the
+   * other. The API combines them the same way.
+   */
+  branchId: string;
+  /** WHERE the goods landed. "" = every warehouse. */
+  warehouseId: string;
   view: PayablesView;
   /** `yyyy-mm-dd`, as the date inputs hold them. "" = unbounded. */
   dateFrom: string;
@@ -72,6 +83,8 @@ const DEFAULT_QUERY: PurchaseInvoicesQuery = {
   page: 1,
   search: "",
   supplierId: "",
+  branchId: "",
+  warehouseId: "",
   // OUTSTANDING, not "all". A payables screen is opened to answer "what do we
   // owe" — settled bills are history, and leading with them buries the ten rows
   // that need money under a hundred that do not. "Semua" is one click away.
@@ -199,6 +212,8 @@ export function usePurchaseInvoices(
       limit: PAGE_SIZE,
       search: settled.search.trim() || undefined,
       supplierId: settled.supplierId || undefined,
+      branchId: settled.branchId || undefined,
+      warehouseId: settled.warehouseId || undefined,
       dateFrom: orUndefined(settled.dateFrom),
       dateTo: orUndefined(settled.dateTo),
       sort: settled.sort,

@@ -1,6 +1,7 @@
 import { categoryService } from "@/services/category.service";
 import { apiClient } from "@/services/api-client";
 import type { CategoryListQuery } from "@/types/api";
+import type { MediaAsset } from "@/types/inventory";
 
 /**
  * The category HTTP layer, at the boundary the screen tests cannot see.
@@ -26,6 +27,7 @@ const EVERY_FILTER: Required<CategoryListQuery> = {
   page: 2,
   limit: 20,
   kind: "product",
+  parentId: "5a7f1f77bcf86cd799439077",
   search: "makanan",
   isActive: false,
   includeDeleted: true,
@@ -64,6 +66,41 @@ describe("categoryService", () => {
         query: expect.objectContaining({ isActive: false }),
       }),
     );
+  });
+
+  it("passes a create body through whole, image token included", async () => {
+    const post = jest.spyOn(apiClient, "post").mockResolvedValue({} as never);
+    const image: MediaAsset = {
+      mediaType: "image",
+      url: "http://localhost:5000/media/t1/category/2026/08/a.webp",
+      storageKey: "t1/category/2026/08/a.webp",
+      driver: "local",
+      mimeType: "image/webp",
+      token: "signed",
+    };
+
+    await categoryService.create({
+      name: "Makanan",
+      description: "Basah dan kering",
+      image,
+    });
+
+    // `token` is what makes "this was uploaded through our endpoint" checkable
+    // at all — the API refuses an asset without one, so a service that quietly
+    // reshaped the object would break every upload.
+    expect(post).toHaveBeenCalledWith("/categories", {
+      name: "Makanan",
+      description: "Basah dan kering",
+      image,
+    });
+  });
+
+  it("passes a null image through as the remove instruction it is", async () => {
+    const patch = jest.spyOn(apiClient, "patch").mockResolvedValue({} as never);
+
+    await categoryService.update("c1", { image: null });
+
+    expect(patch).toHaveBeenCalledWith("/categories/c1", { image: null });
   });
 
   it("defaults the page size to 100 — most callers want the whole list", async () => {

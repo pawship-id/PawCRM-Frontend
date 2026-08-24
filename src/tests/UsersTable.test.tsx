@@ -25,6 +25,7 @@ function makeUser(overrides: Partial<User> = {}): User {
     roleId: "r1",
     allBranches: true,
     branchAccess: [],
+    warehouseAccess: [],
     status: "active",
     emailVerifiedAt: null,
     lastLoginAt: null,

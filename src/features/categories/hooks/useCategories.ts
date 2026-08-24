@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { categoryService } from "@/services/category.service";
 import { ApiError } from "@/services/api-error";
+import { SUB_LEVEL_ONLY, TOP_LEVEL_ONLY } from "@/types/api";
 import type {
   Category,
   CategoryListQuery,
@@ -18,6 +19,11 @@ export interface CategoriesQuery {
   search: string;
   /** "" = retired and live both. */
   status: "" | "active" | "inactive";
+  /**
+   * Which level of the tree. "" = both, which is what the screen opens on —
+   * a tenant managing its label set wants to see all of them.
+   */
+  level: "" | "top" | "sub";
   includeDeleted: boolean;
   /** Which ordering to page through. */
   sort: CategorySort;
@@ -36,6 +42,7 @@ const DEFAULT_QUERY: CategoriesQuery = {
   page: 1,
   search: "",
   status: "",
+  level: "",
   includeDeleted: false,
   // The API's own default, restated rather than left out: the panel renders the
   // current value, and a select whose value is `undefined` shows nothing.
@@ -117,6 +124,15 @@ export function useCategories(): UseCategoriesResult {
       ...(settled.status === ""
         ? {}
         : { isActive: settled.status === "active" }),
+      /**
+       * ONE PARAMETER, FOUR STATES — an id, `none`, `sub`, or absent for both
+       * levels. Narrowed on the SERVER rather than by filtering the fetched
+       * page: a client-side filter would leave `pagination.total` counting rows
+       * that are no longer on screen, and a "6 dari 20" that cannot be
+       * reconciled is worse than no count.
+       */
+      ...(settled.level === "top" ? { parentId: TOP_LEVEL_ONLY } : {}),
+      ...(settled.level === "sub" ? { parentId: SUB_LEVEL_ONLY } : {}),
       includeDeleted: settled.includeDeleted || undefined,
       sort: settled.sort,
     };

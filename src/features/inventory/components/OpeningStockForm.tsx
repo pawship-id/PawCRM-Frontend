@@ -9,7 +9,9 @@ import {
   Button,
   Card,
   FilterSelect,
+  InternalBatchCodeDisplay,
   Spinner,
+  SupplierBatchCodeInput,
   TextField,
   namedOptions,
 } from "@/components";
@@ -26,7 +28,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { cn } from "@/lib/utils";
+import { batchCodeHint } from "@/lib/batchCode";
+import { blockingReason } from "../utils/blocker";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { stockEntryService } from "@/services/stockEntry.service";
@@ -98,7 +101,12 @@ interface DraftLine {
   productId: string;
   qty: string;
   costPerUnit: string;
-  batchCode: string;
+  /**
+   * THEIR code — the number printed on the carton. Ours is generated and unique
+   * across the tenant, so the API refuses a client-supplied one and this form
+   * never holds it.
+   */
+  supplierBatchCode: string;
   expiryDate: string;
   isConsignment: boolean;
 }
@@ -145,6 +153,9 @@ export function OpeningStockForm() {
    * would be empty for no reason.
    */
   const branchId = pickedBranch || scope.soleBranch;
+  // `lookups.warehouses` is ALREADY narrowed to what this user may reach
+  // (useStockCardLookups); this second filter answers the other question —
+  // what THAT BRANCH may post at.
   const scopedWarehouses = warehousesForBranch(branchId, lookups.warehouses);
 
   /** Σ(qty × cost) — what this sheet will add to the inventory asset. */
@@ -175,7 +186,7 @@ export function OpeningStockForm() {
         productId: product._id,
         qty: "",
         costPerUnit: "",
-        batchCode: "",
+        supplierBatchCode: "",
         expiryDate: "",
         isConsignment: false,
       })),
@@ -231,13 +242,19 @@ export function OpeningStockForm() {
           "Wajib diisi: tanpa harga, stoknya masuk bernilai nol.";
       } else if (!isDecimal(line.costPerUnit)) {
         next[`${at}.cost`] = "Gunakan angka, maksimal 4 desimal.";
+      } else if (!isPositive(line.costPerUnit)) {
+        // The server refuses it too: this is one of the three paths that
+        // ESTABLISH a product's average, and a zero taken here becomes it.
+        next[`${at}.cost`] =
+          "Harus lebih dari 0 — nol akan mengunci HPP produk ini di nol.";
       }
 
       // Asked while the counter is still at the shelf, rather than surfaced as
       // a 400 after they have walked away.
       if (product?.hasExpiry) {
-        if (line.batchCode.trim() === "")
-          next[`${at}.batchCode`] = "Produk ini melacak kedaluwarsa.";
+        // Only the DATE is asked for. The lot's own code is derived from it by
+        // the server, and the supplier's is optional — most cartons carry no
+        // number, and demanding one is how lots end up named "1".
         if (line.expiryDate === "")
           next[`${at}.expiryDate`] = "Produk ini melacak kedaluwarsa.";
       }
@@ -249,7 +266,10 @@ export function OpeningStockForm() {
   }
 
   /** The first complaint, for the note under a disabled button. */
-  const blocking = Object.values(collectErrors())[0] ?? null;
+  const blocking = blockingReason(
+    collectErrors(),
+    (productId) => productById.get(productId)?.name,
+  );
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -279,7 +299,11 @@ export function OpeningStockForm() {
             costPerUnit: line.costPerUnit.trim(),
             ...(product?.hasExpiry
               ? {
-                  batchCode: line.batchCode.trim(),
+                  // THEIRS only. Omitted rather than sent blank when nobody
+                  // typed one: "" would claim a code was meant.
+                  ...(line.supplierBatchCode.trim() !== ""
+                    ? { supplierBatchCode: line.supplierBatchCode.trim() }
+                    : {}),
                   expiryDate: line.expiryDate,
                 }
               : {}),
@@ -298,7 +322,7 @@ export function OpeningStockForm() {
       // would drop exactly that.
       setFormError(
         error instanceof ApiError
-          ? error.message
+          ? error.fullMessage
           : "Terjadi kesalahan. Coba lagi.",
       );
       setSaving(false);
@@ -460,7 +484,10 @@ export function OpeningStockForm() {
               )}
             </span>
           }
-          description="Harga beli per unit wajib diisi — angka itulah yang jadi dasar HPP dan nilai persediaan."
+          /* The lot columns lost the sentence that used to sit in their own
+             row, so it says it once here instead of on every expiry-tracked
+             line: the date is what is required, the code fills itself in. */
+          description="Harga beli per unit wajib diisi — angka itulah yang jadi dasar HPP dan nilai persediaan. Produk yang melacak kedaluwarsa wajib punya tanggal kadaluarsa; kode batch boleh kosong dan dibuat otomatis."
         >
           {/**
            * THE BUTTON FOLLOWS THE LIST, above it while it is empty and below
@@ -519,6 +546,26 @@ export function OpeningStockForm() {
                         Harga beli / unit
                         <span className="text-danger"> *</span>
                       </TableHead>
+                      {/* THE LOT, AS TWO COLUMNS rather than a row of its own.
+                          A batch belongs to the line that creates it, and a
+                          spanning row underneath read as a second product. The
+                          receipt form's table is laid out the same way, and the
+                          columns are empty — an em dash — on the rows whose
+                          product does not track expiry. */}
+                      <TableHead>Kode batch internal</TableHead>
+                      <TableHead>Kode batch supplier</TableHead>
+                      <TableHead>
+                        Kadaluarsa
+                        {/* The column carries the mark, not the cell: a date
+                            input holds no placeholder, so an empty one looks
+                            finished and needs saying somewhere. Hidden from
+                            screen readers, which hear `aria-invalid` and the
+                            message below the row instead of a bare star. */}
+                        <span aria-hidden className="text-danger">
+                          {" "}
+                          *
+                        </span>
+                      </TableHead>
                       <TableHead />
                     </TableRow>
                   </TableHeader>
@@ -526,13 +573,6 @@ export function OpeningStockForm() {
                     {lines.map((line, index) => {
                       const at = `line.${line.productId}`;
                       const product = productById.get(line.productId);
-                      // Both halves of a lot are missing until both are typed —
-                      // a code with no date is not a lot.
-                      const lotMissing =
-                        product?.hasExpiry === true &&
-                        (line.batchCode.trim() === "" ||
-                          line.expiryDate === "");
-
                       return (
                         // Keyed on the product, not the index: a product appears
                         // at most once, and removing a middle row under an index
@@ -596,6 +636,74 @@ export function OpeningStockForm() {
                               />
                             </TableCell>
 
+                            {/* OURS — never typed, always shown. This screen has
+                                no preview endpoint, so it can only show the
+                                derived hint: the real code, suffix and all, is
+                                settled when the document is saved. */}
+                            <TableCell>
+                              {product?.hasExpiry ? (
+                                <InternalBatchCodeDisplay
+                                  code={null}
+                                  hint={
+                                    line.expiryDate
+                                      ? batchCodeHint(
+                                          product.sku,
+                                          line.expiryDate,
+                                          "",
+                                        )
+                                      : undefined
+                                  }
+                                  productName={product.name}
+                                  className="max-w-40 text-xs"
+                                />
+                              ) : (
+                                <span className="text-xs text-muted">—</span>
+                              )}
+                            </TableCell>
+
+                            {/* THEIRS — typed, optional. Most cartons carry no
+                                number; the ones that do are what a recall is
+                                traced by. */}
+                            <TableCell>
+                              {product?.hasExpiry ? (
+                                <SupplierBatchCodeInput
+                                  value={line.supplierBatchCode}
+                                  onChange={(value) =>
+                                    patchLine(index, {
+                                      supplierBatchCode: value,
+                                    })
+                                  }
+                                  productName={product.name}
+                                  disabled={saving}
+                                  className="w-40 text-xs"
+                                />
+                              ) : (
+                                <span className="text-xs text-muted">—</span>
+                              )}
+                            </TableCell>
+
+                            <TableCell>
+                              {product?.hasExpiry ? (
+                                <Input
+                                  aria-label={`Tanggal kedaluwarsa ${product.name}`}
+                                  type="date"
+                                  value={line.expiryDate}
+                                  onChange={(event) =>
+                                    patchLine(index, {
+                                      expiryDate: event.target.value,
+                                    })
+                                  }
+                                  className="w-40 text-xs"
+                                  aria-invalid={Boolean(
+                                    fieldErrors[`${at}.expiryDate`],
+                                  )}
+                                  disabled={saving}
+                                />
+                              ) : (
+                                <span className="text-xs text-muted">—</span>
+                              )}
+                            </TableCell>
+
                             <TableCell className="text-right">
                               <UIButton
                                 type="button"
@@ -617,70 +725,15 @@ export function OpeningStockForm() {
                               whole table wider than the screen. §1 forbids the
                               red border being the only signal. */}
                           {(fieldErrors[`${at}.qty`] ||
-                            fieldErrors[`${at}.cost`]) && (
+                            fieldErrors[`${at}.cost`] ||
+                            fieldErrors[`${at}.expiryDate`]) && (
                             <TableRow>
-                              <TableCell colSpan={5} className="pt-0">
+                              <TableCell colSpan={7} className="pt-0">
                                 <p role="alert" className="text-xs text-danger">
                                   {fieldErrors[`${at}.qty`] ??
-                                    fieldErrors[`${at}.cost`]}
+                                    fieldErrors[`${at}.cost`] ??
+                                    fieldErrors[`${at}.expiryDate`]}
                                 </p>
-                              </TableCell>
-                            </TableRow>
-                          )}
-
-                          {/* Lot fields on exactly the rows that need them, in
-                              a spanning row so the sheet stays a column of
-                              quantities for the products that do not — the same
-                              arrangement the opname sheet uses. */}
-                          {product?.hasExpiry && (
-                            <TableRow
-                              className={cn(
-                                lotMissing ? "bg-tint-danger" : "bg-accent/40",
-                              )}
-                            >
-                              <TableCell colSpan={5}>
-                                <div className="flex flex-wrap items-end gap-3">
-                                  <p className="min-w-64 flex-1 text-xs text-muted">
-                                    <b>{product.name}</b> melacak kedaluwarsa —
-                                    stok yang masuk harus punya batch.
-                                  </p>
-
-                                  {/* THE TWO FIELDS ARE ONE GROUP and wrap as
-                                      one: a lot is only a lot when both halves
-                                      are read together. */}
-                                  <div className="flex shrink-0 items-end gap-3">
-                                    <Input
-                                      aria-label={`Kode batch ${product.name}`}
-                                      value={line.batchCode}
-                                      onChange={(event) =>
-                                        patchLine(index, {
-                                          batchCode: event.target.value,
-                                        })
-                                      }
-                                      placeholder="Kode batch"
-                                      className="w-44"
-                                      aria-invalid={Boolean(
-                                        fieldErrors[`${at}.batchCode`],
-                                      )}
-                                      disabled={saving}
-                                    />
-                                    <Input
-                                      aria-label={`Tanggal kedaluwarsa ${product.name}`}
-                                      type="date"
-                                      value={line.expiryDate}
-                                      onChange={(event) =>
-                                        patchLine(index, {
-                                          expiryDate: event.target.value,
-                                        })
-                                      }
-                                      className="w-44"
-                                      aria-invalid={Boolean(
-                                        fieldErrors[`${at}.expiryDate`],
-                                      )}
-                                      disabled={saving}
-                                    />
-                                  </div>
-                                </div>
                               </TableCell>
                             </TableRow>
                           )}

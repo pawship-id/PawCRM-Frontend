@@ -25,11 +25,13 @@ import { useStockEntry } from "../hooks/useStockEntry";
  * which warehouse, why, by whom — then the lines, then what the ledger actually
  * did with them.
  *
- * THE LAST PART IS THE ONE NO OTHER SCREEN SHOWS. A document names N products
- * and may have written more than N movement rows, because FEFO splits a
- * withdrawal across every lot it draws from. Saying "3 baris · 5 pergerakan"
- * out loud is what stops that difference reading as a bug the first time
- * somebody counts the stock card.
+ * THE MOVEMENT COUNT IS THE ONE FACT NO OTHER SCREEN SHOWS — and it is shown
+ * only when it DIFFERS from the line count. A document names N products and may
+ * have written more than N rows, because FEFO splits a withdrawal across every
+ * lot it draws from; saying so is what stops the first reader who counts the
+ * stock card reading it as a double posting. When the two agree it is the
+ * ordinary case and says nothing, and two badges holding the same number is a
+ * question a reader stops to answer and gets nothing for.
  *
  * NOTHING IS EDITABLE, and the screen says so rather than leaving somebody to
  * discover it: the document describes movements that cannot be unwritten, so a
@@ -69,6 +71,7 @@ export function StockEntryDetail({
       : entry.createdBy;
   const isAdjustment = kind === "adjustment";
   const lines = entry.lines ?? [];
+  const movementCount = entry.movementIds?.length ?? 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -77,18 +80,37 @@ export function StockEntryDetail({
           <Field label="Nomor">
             <span className="tabular-nums">{entry.entryNumber}</span>
           </Field>
-          <Field label="Tanggal">
+          {/* NAMED FOR WHAT IT DATES, not just "Tanggal" — the field beside it
+              now carries a second date, and two fields called the same thing is
+              how a reader stops trusting either. */}
+          <Field
+            label={isAdjustment ? "Tanggal penyesuaian" : "Tanggal stok awal"}
+          >
             <span className="tabular-nums">{formatDate(entry.entryDate)}</span>
           </Field>
           <Field label="Cabang">{branch?.name ?? "—"}</Field>
           <Field label="Gudang">{warehouse?.name ?? "—"}</Field>
-          <Field label="Dibuat oleh">{author?.name ?? "—"}</Field>
+          {/* WHO AND WHEN AS ONE FACT. `entryDate` is the day the correction
+              BELONGS to and `createdAt` is the day it was typed; they differ
+              whenever anything is entered late, and that gap is the first thing
+              an audit asks about. Shown ALWAYS rather than only when they
+              differ — a reader must be able to SEE they agree, not infer it
+              from a line that is missing. */}
+          <Field label="Dibuat oleh">
+            {author?.name ?? "—"}
+            <span className="mt-0.5 block text-xs font-normal tabular-nums text-muted">
+              {formatDateTime(entry.createdAt)}
+            </span>
+          </Field>
         </dl>
 
         {entry.notes && (
           <div className="mt-4 border-t border-border/60 pt-4">
+            {/* "Catatan" ON BOTH KINDS — the same `notes` field, and what both
+                forms actually ask their author for: a free note for whoever
+                audits it later, not a reason off a list. */}
             <dt className="text-xs font-medium uppercase tracking-wider text-muted">
-              Alasan
+              Catatan
             </dt>
             <dd className="mt-1 text-[15px] text-foreground">{entry.notes}</dd>
           </div>
@@ -100,14 +122,22 @@ export function StockEntryDetail({
           <span className="flex flex-wrap items-center gap-2">
             Produk
             <Badge variant="outline">{entry.lineCount} baris</Badge>
-            {/* The difference between the two is FEFO, said out loud. */}
-            <Badge variant="outline">
-              {entry.movementIds?.length ?? 0} pergerakan
-            </Badge>
+            {/* THE MOVEMENT COUNT ONLY APPEARS WHEN IT DIFFERS, because the
+                difference IS the message: one product can become three rows on
+                the stock card when FEFO draws it from three lots, and a reader
+                who counts those rows without being told reads it as a double
+                posting.
+
+                Equal is the ordinary case and says nothing — two badges holding
+                the same number is a question a reader stops to answer and gets
+                nothing for. */}
+            {movementCount !== entry.lineCount && (
+              <Badge variant="outline">{movementCount} pergerakan</Badge>
+            )}
           </span>
         }
         description={
-          (entry.movementIds?.length ?? 0) > entry.lineCount
+          movementCount > entry.lineCount
             ? "Pergerakannya lebih banyak dari barisnya karena barang diambil dari beberapa batch sekaligus — satu baris kartu stok per batch."
             : undefined
         }
@@ -166,12 +196,31 @@ export function StockEntryDetail({
                       {formatQty(line.qty)}
                     </TableCell>
 
+                    {/* THE PRICE SOMEBODY NAMED, or the one the lot came in at
+                        when they named a lot instead — and the cell says which.
+                        Folding the two into one number would leave a reader
+                        unable to tell a price typed on this document from a fact
+                        about a batch that was already on the shelf. */}
                     <TableCell className="text-right tabular-nums text-muted">
-                      {line.costPerUnit ? formatMoney(line.costPerUnit) : "—"}
+                      {line.costPerUnit ? (
+                        formatMoney(line.costPerUnit)
+                      ) : line.batchCostPerUnit ? (
+                        <>
+                          {formatMoney(line.batchCostPerUnit)}
+                          <span className="block text-xs">dari batch</span>
+                        </>
+                      ) : (
+                        "—"
+                      )}
                     </TableCell>
 
                     <TableCell className="text-muted">
                       {line.batchCode ?? "—"}
+                      {line.supplierBatchCode && (
+                        <span className="block text-xs tabular-nums">
+                          supplier: {line.supplierBatchCode}
+                        </span>
+                      )}
                       {line.expiryDate && (
                         <span className="block text-xs tabular-nums">
                           exp {line.expiryDate.slice(0, 10)}
@@ -232,6 +281,26 @@ function Field({
       <dd className="mt-1 font-medium text-foreground">{children}</dd>
     </div>
   );
+}
+
+/**
+ * "19 Agu 2026, 14.22" — the moment the row was written.
+ *
+ * SHORTER THAN THE DATE BESIDE IT, and carrying a time that one does not. Two
+ * dates in one card have to be told apart at a glance, and the format is the
+ * cheapest way to do it: the one a reader came for is the long one.
+ *
+ * The time earns its place here specifically — two documents typed the same day
+ * are ordinary, and "which came first" is a question only it can answer.
+ */
+function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString("id-ID", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 /** "19 Agustus 2026" — a detail screen has room for the full month. */

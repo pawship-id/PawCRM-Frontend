@@ -38,6 +38,8 @@ import { useProductCandidates } from "../hooks/useProductCandidates";
 export function ProductMultiPicker({
   categoryId = "",
   neverMovedInWarehouse = "",
+  inStockAtWarehouse = "",
+  isConsignment,
   selected,
   onChange,
   excludeIds,
@@ -55,6 +57,30 @@ export function ProductMultiPicker({
    * which is what the opname and transfer pickers want.
    */
   neverMovedInWarehouse?: string;
+  /**
+   * Only products this warehouse HOLDS — the transfer picker's rule, applied by
+   * the SERVER against the balances.
+   *
+   * The near-mirror of the filter above: that one hides what has already moved
+   * here, this one hides what is not here to move. A transfer draws goods off
+   * ONE shelf, so offering a product with nothing on it is the same
+   * conversation held twice, the second time as an error on save. "" is every
+   * product, which is what the opname and opening-stock pickers want.
+   */
+  inStockAtWarehouse?: string;
+  /**
+   * Only consignment goods (`true`) or only owned ones (`false`) — the receipt
+   * picker's rule, applied by the SERVER against `products.isConsignment`.
+   *
+   * Unlike the two filters above this asks nothing of the ledger; ownership is
+   * a property of the product. It is here for the same reason they are, though:
+   * a *Beli putus* delivery built out of somebody else's stock is a
+   * conversation held twice, the second time as a correction after posting.
+   *
+   * Undefined is both kinds — what the opname, transfer and opening-stock
+   * pickers want. `false` is a real filter and NOT the same as undefined.
+   */
+  isConsignment?: boolean;
   selected: Product[];
   onChange: (products: Product[]) => void;
   /**
@@ -72,7 +98,13 @@ export function ProductMultiPicker({
     total,
     loading,
     error,
-  } = useProductCandidates(search, categoryId, neverMovedInWarehouse);
+  } = useProductCandidates(
+    search,
+    categoryId,
+    neverMovedInWarehouse,
+    inStockAtWarehouse,
+    isConsignment,
+  );
 
   const excluded = new Set(excludeIds ?? []);
   const products = matched.filter((product) => !excluded.has(product._id));
@@ -156,8 +188,27 @@ export function ProductMultiPicker({
             {matched.length > 0
               ? "Semua produk yang cocok sudah ditambahkan."
               : search.trim()
-                ? `Tidak ada produk yang cocok dengan "${search.trim()}".`
-                : "Belum ada produk yang menyimpan stok di katalog ini."}
+                ? // The filter is named in the answer, because "tidak ada yang
+                  // cocok" for a product somebody can see on the shelf reads as
+                  // a broken search rather than as an empty warehouse.
+                  inStockAtWarehouse
+                  ? `Tidak ada produk bernama "${search.trim()}" yang berstok di gudang ini.`
+                  : isConsignment === true
+                    ? `Tidak ada produk konsinyasi bernama "${search.trim()}".`
+                    : isConsignment === false
+                      ? `Tidak ada produk beli putus bernama "${search.trim()}".`
+                      : `Tidak ada produk yang cocok dengan "${search.trim()}".`
+                : inStockAtWarehouse
+                  ? "Gudang ini belum menyimpan stok apa pun."
+                  : isConsignment === true
+                    ? // Named rather than left as "belum ada produk", which for
+                      // a tenant staring at a full catalogue reads as a broken
+                      // picker. It also says where the fix is: the flag lives on
+                      // the product, not on this screen.
+                      "Belum ada produk yang ditandai konsinyasi. Centang “Produk konsinyasi (titipan)” di produknya dulu."
+                    : isConsignment === false
+                      ? "Semua produk di katalog ini ditandai konsinyasi."
+                      : "Belum ada produk yang menyimpan stok di katalog ini."}
           </p>
         )}
 

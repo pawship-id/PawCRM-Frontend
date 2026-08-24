@@ -42,7 +42,12 @@ export type SaveState = "idle" | "saving" | "saved" | "error";
 export interface LineEdit {
   physicalQty?: string;
   notes?: string | null;
-  batchCode?: string;
+  /**
+   * THEIR code, off the carton. There is no `batchCode` here and there cannot
+   * be: ours is generated when the sheet is submitted, and the API refuses a
+   * client-supplied one.
+   */
+  supplierBatchCode?: string;
   expiryDate?: string;
 }
 
@@ -187,7 +192,9 @@ export function useOpnameSheet(opnameId: string): UseOpnameSheetResult {
         physicalQty: item.physicalQty,
         counted: item.countedAt !== null,
         notes: item.notes,
-        ...(item.batchCode ? { batchCode: item.batchCode } : {}),
+        ...(item.supplierBatchCode
+          ? { supplierBatchCode: item.supplierBatchCode }
+          : {}),
         ...(item.expiryDate ? { expiryDate: item.expiryDate } : {}),
       })),
     [],

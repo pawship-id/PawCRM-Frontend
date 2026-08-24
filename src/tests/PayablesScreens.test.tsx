@@ -11,6 +11,8 @@ import {
 import { purchaseInvoiceService } from "@/services/purchaseInvoice.service";
 import { goodsReceiptService } from "@/services/goodsReceipt.service";
 import { supplierService } from "@/services/supplier.service";
+import { branchService } from "@/services/branch.service";
+import { warehouseService } from "@/services/warehouse.service";
 import { ApiError } from "@/services/api-error";
 import type {
   GoodsReceiptDetail,
@@ -25,6 +27,8 @@ import { renderWithAuth } from "./helpers/renderWithAuth";
 jest.mock("@/services/purchaseInvoice.service");
 jest.mock("@/services/goodsReceipt.service");
 jest.mock("@/services/supplier.service");
+jest.mock("@/services/branch.service");
+jest.mock("@/services/warehouse.service");
 jest.mock("@/services/productBatch.service");
 
 const push = jest.fn();
@@ -87,7 +91,11 @@ function listRow(
     supplierId: "s1",
     supplierName: "PT Sumber Pangan",
     branchId: "b1",
+    branchName: "Cabang Pusat",
     goodsReceiptId: RECEIPT_ID,
+    // Read back through the delivery, not stored on the invoice — see the type.
+    warehouseId: "wh1",
+    warehouseName: "Gudang Utama",
     invoiceDate: "2026-08-06T00:00:00.000Z",
     dueDate: "2026-09-05T00:00:00.000Z",
     subtotal: "150000.0000",
@@ -116,7 +124,6 @@ function detail(
 
   return {
     ...row,
-    branchName: "Cabang Pusat",
     goodsReceiptNumber: "GR-260806-001",
     createdByName: "Sari",
     payments: [],
@@ -149,6 +156,8 @@ function receiptDetail(): GoodsReceiptDetail {
     supplierName: "PT Sumber Pangan",
     warehouseId: "wh1",
     warehouseName: "Gudang Utama",
+    branchId: "b1",
+    branchName: "Cabang Pusat",
     createdByName: "Sari",
     receiptDate: "2026-08-06T00:00:00.000Z",
     purchaseType: "beli_putus",
@@ -186,6 +195,8 @@ function receiptRow(): GoodsReceiptListRow {
     supplierName: "PT Sumber Pangan",
     warehouseId: "wh1",
     warehouseName: "Gudang Utama",
+    branchId: "b1",
+    branchName: "Cabang Pusat",
     receiptDate: "2026-08-06T00:00:00.000Z",
     purchaseType: "beli_putus",
     total: "150000.0000",
@@ -202,6 +213,38 @@ const page = (items: PurchaseInvoiceListRow[], total = items.length) => ({
   items,
   pagination: { page: 1, limit: 20, total, totalPages: Math.ceil(total / 20) },
 });
+
+/**
+ * The three locations the cabang/gudang pair is exercised against: one pinned to
+ * the branch under test, one pinned elsewhere, and the shared central warehouse
+ * that belongs to no branch and serves them all. `never` because the option
+ * lookups take the full service shapes and only these fields are read.
+ */
+const BRANCH_ID = "b1";
+const WAREHOUSE = {
+  _id: "wh1",
+  name: "Gudang Utama",
+  isActive: true,
+  defaultBranchId: BRANCH_ID,
+};
+const OTHER_WAREHOUSE = {
+  _id: "wh2",
+  name: "Gudang Cabang Selatan",
+  isActive: true,
+  defaultBranchId: "b2",
+};
+const SHARED_WAREHOUSE = {
+  _id: "wh0",
+  name: "Gudang Pusat",
+  isActive: true,
+  defaultBranchId: null,
+};
+
+const optionPage = <T,>(items: T[]) =>
+  ({
+    items,
+    pagination: { page: 1, limit: 100, total: items.length, totalPages: 1 },
+  }) as never;
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -220,6 +263,12 @@ beforeEach(() => {
     items: [],
     pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
   });
+  asMock(branchService.list).mockResolvedValue(
+    optionPage([{ _id: BRANCH_ID, name: "Cabang Pusat", isActive: true }]),
+  );
+  asMock(warehouseService.list).mockResolvedValue(
+    optionPage([WAREHOUSE, OTHER_WAREHOUSE, SHARED_WAREHOUSE]),
+  );
 });
 
 /* ------------------------------------------------------------------- list */
@@ -508,6 +557,176 @@ describe("PayablesScreen", () => {
     expect(await screen.findByText(/telat 10 hari/)).toBeInTheDocument();
   });
 
+  /**
+   * WHOSE BOOKS the bill posts to, and WHERE the goods landed. Two columns
+   * rather than one: a branch may receive at its own warehouse AND at the shared
+   * central one, so neither answer stands in for the other.
+   */
+  it("names the branch and the warehouse on every row", async () => {
+    asMock(purchaseInvoiceService.list).mockResolvedValue(
+      page([
+        listRow({ branchName: "Cabang Timur", warehouseName: "Gudang Timur" }),
+      ]),
+    );
+
+    renderWithAuth(<PayablesScreen />);
+
+    expect(await screen.findByText("Cabang Timur")).toBeInTheDocument();
+    expect(screen.getByText("Gudang Timur")).toBeInTheDocument();
+  });
+
+  // A label may be null — a branch hard-deleted since, or a delivery that can no
+  // longer be read. The row still renders; only the label is gone.
+  it("dashes an unnameable branch or warehouse rather than blanking", async () => {
+    asMock(purchaseInvoiceService.list).mockResolvedValue(
+      page([
+        listRow({
+          branchName: null,
+          warehouseId: null,
+          warehouseName: null,
+        }),
+      ]),
+    );
+
+    renderWithAuth(<PayablesScreen />);
+
+    // Waited for the row itself: the headline total also renders "—" until the
+    // summary lands, so counting dashes before the table exists counts that one.
+    await screen.findByRole("link", { name: "INV/2026/VIII/0142" });
+
+    expect(screen.getAllByText("—")).toHaveLength(2);
+  });
+
+  /**
+   * CABANG AND GUDANG ARE A PAIR, and they behave here exactly as they do on the
+   * receipts filter — same helpers, same two rules. A bill and the delivery it
+   * bills are read one after the other by the same person, so two screens that
+   * scope by the same two fields in two different ways is a thing users relearn.
+   */
+  describe("the branch and warehouse filters", () => {
+    it("sends the branch it was left on", async () => {
+      const user = userEvent.setup();
+      renderWithAuth(<PayablesScreen />);
+
+      const panel = await openFilters(user);
+
+      await user.click(within(panel).getByLabelText("Filter cabang"));
+      await user.click(
+        await screen.findByRole("option", { name: "Cabang Pusat" }),
+      );
+      await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+      await waitFor(() =>
+        expect(purchaseInvoiceService.list).toHaveBeenLastCalledWith(
+          expect.objectContaining({ branchId: BRANCH_ID }),
+        ),
+      );
+    });
+
+    /**
+     * A warehouse pinned to one branch ANSWERS the branch question, so the field
+     * above fills itself in — "bills for goods into Gudang Utama" and "…under
+     * any branch" are the same set.
+     */
+    it("fills in the branch when a warehouse that names one is chosen", async () => {
+      const user = userEvent.setup();
+      renderWithAuth(<PayablesScreen />);
+
+      const panel = await openFilters(user);
+
+      await user.click(within(panel).getByLabelText("Filter gudang"));
+      await user.click(
+        await screen.findByRole("option", { name: "Gudang Utama" }),
+      );
+      await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+      await waitFor(() =>
+        expect(purchaseInvoiceService.list).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            warehouseId: WAREHOUSE._id,
+            branchId: BRANCH_ID,
+          }),
+        ),
+      );
+    });
+
+    /**
+     * A warehouse pinned to ANOTHER branch is not offered: that pair matches no
+     * bill, so offering it could only produce an empty list nobody could
+     * explain. The shared central warehouse stays — it serves every branch.
+     */
+    it("offers only the warehouses the chosen branch could have been billed for", async () => {
+      const user = userEvent.setup();
+      renderWithAuth(<PayablesScreen />);
+
+      const panel = await openFilters(user);
+
+      await user.click(within(panel).getByLabelText("Filter cabang"));
+      await user.click(
+        await screen.findByRole("option", { name: "Cabang Pusat" }),
+      );
+
+      await user.click(within(panel).getByLabelText("Filter gudang"));
+
+      expect(
+        await screen.findByRole("option", { name: "Gudang Utama" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("option", { name: "Gudang Pusat" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("option", { name: "Gudang Cabang Selatan" }),
+      ).toBeNull();
+    });
+
+    /** Two questions, two counts — not one range with two ends. */
+    it("counts the branch and the warehouse separately", async () => {
+      const user = userEvent.setup();
+      renderWithAuth(<PayablesScreen />);
+
+      const panel = await openFilters(user);
+
+      await user.click(within(panel).getByLabelText("Filter gudang"));
+      await user.click(
+        await screen.findByRole("option", { name: "Gudang Utama" }),
+      );
+      await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+      // The warehouse names its branch, so ONE click sets both — and the badge
+      // says two, because two filters are narrowing the list.
+      expect(
+        await screen.findByRole("button", { name: "Filter" }),
+      ).toHaveTextContent("Filter (2)");
+    });
+
+    // Reset clears what the PANEL holds and re-queries at once; the view lens
+    // outside it is not the button's business.
+    it("clears both on Reset without disturbing the view", async () => {
+      const user = userEvent.setup();
+      renderWithAuth(<PayablesScreen />);
+
+      let panel = await openFilters(user);
+      await user.click(within(panel).getByLabelText("Filter gudang"));
+      await user.click(
+        await screen.findByRole("option", { name: "Gudang Utama" }),
+      );
+      await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+      panel = await openFilters(user);
+      await user.click(within(panel).getByRole("button", { name: "Reset" }));
+
+      await waitFor(() =>
+        expect(purchaseInvoiceService.list).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            branchId: undefined,
+            warehouseId: undefined,
+            outstanding: true,
+          }),
+        ),
+      );
+    });
+  });
+
   it("surfaces a load failure without blanking the screen", async () => {
     asMock(purchaseInvoiceService.list).mockRejectedValue(
       new ApiError("Server error", 500),
@@ -707,6 +926,19 @@ describe("InvoiceDetail", () => {
     expect(
       screen.getByText(/Rincian barang tidak dapat dimuat/),
     ).toBeInTheDocument();
+  });
+
+  it("names the branch and the warehouse the bill belongs to", async () => {
+    asMock(purchaseInvoiceService.getById).mockResolvedValue(
+      detail({ branchName: "Cabang Timur", warehouseName: "Gudang Timur" }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findByText("Cabang")).toBeInTheDocument();
+    expect(screen.getByText("Cabang Timur")).toBeInTheDocument();
+    expect(screen.getByText("Gudang")).toBeInTheDocument();
+    expect(screen.getByText("Gudang Timur")).toBeInTheDocument();
   });
 
   it("names the journal entry behind each payment", async () => {

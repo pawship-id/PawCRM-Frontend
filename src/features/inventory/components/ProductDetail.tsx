@@ -355,6 +355,14 @@ export function ProductDetail({ productId }: { productId: string }) {
               <dd className="font-medium">
                 {product.isPreorder ? "Ya" : "Tidak"}
               </dd>
+              <dt className="text-muted">Konsinyasi</dt>
+              {/* No <InheritedNote>, unlike brand above: a variant is COPIED
+                  this value rather than resolving it, so its own field already
+                  holds the parent's answer and there is no inheritance to
+                  disclose. */}
+              <dd className="font-medium">
+                {product.isConsignment ? "Ya — titipan" : "Tidak — milik toko"}
+              </dd>
               <dt className="text-muted">Status</dt>
               <dd className="font-medium">
                 {deleted ? "Terhapus" : product.isActive ? "Aktif" : "Nonaktif"}

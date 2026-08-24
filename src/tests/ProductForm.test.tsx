@@ -29,6 +29,8 @@ const COGS_ACCOUNT = "acc2";
 function makeProduct(overrides: Partial<Product> = {}): Product {
   return {
     _id: "p1",
+    isConsignment: false,
+    isPreorder: false,
     sku: "SHAMPOO",
     name: "Shampoo Anjing",
     productType: "standalone",
@@ -59,6 +61,10 @@ function mockLookups() {
         kind: "product",
         isActive: true,
         name: "Makanan",
+        description: null,
+        image: null,
+        parentId: null,
+        parent: null,
         deletedAt: null,
         createdAt: "",
         updatedAt: "",
@@ -184,6 +190,10 @@ describe("ProductForm", () => {
             kind: "product",
             isActive: true,
             name: "Makanan",
+            description: null,
+            image: null,
+            parentId: null,
+            parent: null,
             deletedAt: null,
             createdAt: "",
             updatedAt: "",
@@ -194,6 +204,10 @@ describe("ProductForm", () => {
             kind: "product",
             isActive: false,
             name: "Mainan Lama",
+            description: null,
+            image: null,
+            parentId: null,
+            parent: null,
             deletedAt: null,
             createdAt: "",
             updatedAt: "",
@@ -390,7 +404,18 @@ describe("ProductForm", () => {
       expect(create).not.toHaveBeenCalled();
     });
 
-    it("accepts a purchase price of zero — donated stock is real", async () => {
+    /**
+     * ZERO IS REFUSED, and this test used to assert the opposite.
+     *
+     * The old rule let it through because donated stock and free samples are
+     * real — which they are. What it missed is that this is one of the three
+     * paths that ESTABLISH a product's weighted average, so a zero taken here is
+     * not corrected later: it BECOMES the average, every sale of those goods is
+     * costed at nothing and reads as 100% margin, and nobody notices until a
+     * stocktake. A mistyped zero is far commoner than a genuinely free opening
+     * balance, and only one of the two is silent.
+     */
+    it("refuses a purchase price of zero — it would fix HPP at zero", async () => {
       const user = userEvent.setup();
       const create = mockCreate();
 
@@ -404,10 +429,10 @@ describe("ProductForm", () => {
       await user.type(screen.getByLabelText(/Harga beli per unit/), "0");
       await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
 
-      await waitFor(() => expect(create).toHaveBeenCalled());
-      expect(create.mock.calls[0][0]).toMatchObject({
-        openingStock: { costPerUnit: "0" },
-      });
+      expect(
+        await screen.findByText(/Harga beli harus lebih dari 0/i),
+      ).toBeInTheDocument();
+      expect(create).not.toHaveBeenCalled();
     });
 
     it("discards a quantity typed and then switched back off", async () => {
@@ -428,7 +453,7 @@ describe("ProductForm", () => {
       expect(create.mock.calls[0][0]).not.toHaveProperty("openingStock");
     });
 
-    it("demands a batch and an expiry when the goods expire", async () => {
+    it("demands an expiry date when the goods expire", async () => {
       const user = userEvent.setup();
       const create = mockCreate();
 
@@ -442,10 +467,41 @@ describe("ProductForm", () => {
       await user.type(screen.getByLabelText(/Jumlah stok awal/), "10");
       await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
 
-      // The API refuses the movement without them; catching it here keeps the
-      // refusal on the field rather than on an already-created product.
-      expect(await screen.findByText(/kode batch wajib/i)).toBeInTheDocument();
+      // The API refuses the movement without one; catching it here keeps the
+      // refusal on the field rather than on an already-created product. The
+      // CODE is not demanded — a blank one is filled with `sku:tanggal-expired`.
+      expect(
+        await screen.findByText(/tanggal kedaluwarsa wajib/i),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/kode batch wajib/i)).not.toBeInTheDocument();
       expect(create).not.toHaveBeenCalled();
+    });
+
+    it("saves an expiring product whose opening lot has a date but no code", async () => {
+      const user = userEvent.setup();
+      const create = mockCreate();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await fillCommon(user);
+      await user.type(screen.getByLabelText(/Harga jual/), "45000");
+      await user.click(screen.getByLabelText(/Produk punya masa kedaluwarsa/));
+      await user.click(screen.getByLabelText("Isi stok awal sekarang"));
+      await user.type(screen.getByLabelText(/Jumlah stok awal/), "10");
+      await user.type(screen.getByLabelText(/Harga beli per unit/), "30000");
+      await user.type(
+        screen.getByLabelText(/Tanggal kedaluwarsa/),
+        "2027-03-01",
+      );
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      await waitFor(() => expect(create).toHaveBeenCalled());
+      const { openingStock } = create.mock.calls[0][0] as unknown as {
+        openingStock: Record<string, unknown>;
+      };
+      expect(openingStock.expiryDate).toBe("2027-03-01");
+      expect(openingStock).not.toHaveProperty("batchCode");
     });
 
     it("says so when the product was created but its stock was not", async () => {
@@ -453,6 +509,7 @@ describe("ProductForm", () => {
       mockCreate({
         openingStock: {
           posted: false,
+          entries: [],
           movements: [],
           error: "Warehouse 'Gudang' is not active",
         },
@@ -721,9 +778,7 @@ describe("ProductForm", () => {
       await user.type(screen.getByLabelText("Stok awal 1kg"), "6");
       await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
 
-      expect(
-        await screen.findByText(/Harga beli wajib/i),
-      ).toBeInTheDocument();
+      expect(await screen.findByText(/Harga beli wajib/i)).toBeInTheDocument();
       expect(create).not.toHaveBeenCalled();
     });
 
@@ -939,7 +994,9 @@ describe("ProductForm", () => {
       // The cartesian product of nothing is `[[]]`, and the table used to
       // render that faithfully: "1 kombinasi", a nameless row, a SKU of "-",
       // and a refusal reading "Harga jual belum benar pada varian ."
-      expect(await screen.findByText("Belum ada kombinasi")).toBeInTheDocument();
+      expect(
+        await screen.findByText("Belum ada kombinasi"),
+      ).toBeInTheDocument();
       expect(screen.getByText("0 kombinasi")).toBeInTheDocument();
       expect(screen.queryByLabelText(/^SKU /)).not.toBeInTheDocument();
     });
@@ -1123,7 +1180,8 @@ describe("ProductForm", () => {
         expect(toast).toHaveBeenCalledWith(
           expect.objectContaining({
             icon: "error",
-            title: "Varian 3kg: Barcode 8991 dipakai lebih dari sekali di form ini.",
+            title:
+              "Varian 3kg: Barcode 8991 dipakai lebih dari sekali di form ini.",
           }),
         ),
       );
@@ -1365,9 +1423,12 @@ describe("ProductForm", () => {
       ) {
         await user.click(screen.getByLabelText("Kolom yang diubah massal"));
         await user.click(await screen.findByRole("option", { name: column }));
-        if (value) await user.type(screen.getByLabelText("Nilai massal"), value);
+        if (value)
+          await user.type(screen.getByLabelText("Nilai massal"), value);
         await user.click(
-          screen.getByRole("button", { name: value ? "Terapkan" : "Kosongkan" }),
+          screen.getByRole("button", {
+            name: value ? "Terapkan" : "Kosongkan",
+          }),
         );
       }
 
@@ -1517,8 +1578,13 @@ describe("ProductForm", () => {
         await user.click(
           within(openingStrip).getByLabelText("Kolom yang diubah massal"),
         );
-        await user.click(await screen.findByRole("option", { name: "Stok awal" }));
-        await user.type(within(openingStrip).getByLabelText("Nilai massal"), "6");
+        await user.click(
+          await screen.findByRole("option", { name: "Stok awal" }),
+        );
+        await user.type(
+          within(openingStrip).getByLabelText("Nilai massal"),
+          "6",
+        );
         await user.click(
           within(openingStrip).getByRole("button", { name: "Terapkan" }),
         );
@@ -1623,6 +1689,156 @@ describe("ProductForm", () => {
         isPreorder: true,
         shipping: { weight: "500", weightUnit: "gr", length: "20" },
       });
+    });
+
+    /**
+     * Titipan — the tenant holds the goods and does not own them.
+     *
+     * Three assertions rather than one, because the field's rule is not "send a
+     * boolean": it is owned by a standalone or a parent, COPIED down to every
+     * variant by the API, and refused on the two types that cannot hold it. An
+     * input rendered where the API answers 400 is a save that fails on a field
+     * the user never chose.
+     */
+    it("states all three flags on create, even the ones left unticked", async () => {
+      // The flags are the exception to "omit what is blank" that governs every
+      // other field on this form. Those store null to mean "ask the parent"; a
+      // flag has no such state, so the payload says yes or no rather than
+      // saying nothing and relying on the API to guess the same way.
+      const user = userEvent.setup();
+      const create = mockCreate();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await fillCommon(user);
+      await user.type(screen.getByLabelText(/Harga jual/), "45000");
+      await user.click(screen.getByLabelText("Produk pre-order"));
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      await waitFor(() => expect(create).toHaveBeenCalled());
+      expect(create.mock.calls[0][0]).toMatchObject({
+        isPreorder: true,
+        hasExpiry: false,
+        isConsignment: false,
+      });
+    });
+
+    it("sends the titipan flag on create, true or false", async () => {
+      const user = userEvent.setup();
+      const create = mockCreate();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await fillCommon(user);
+      await user.type(screen.getByLabelText(/Harga jual/), "45000");
+      await user.click(screen.getByLabelText("Produk konsinyasi (titipan)"));
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      await waitFor(() => expect(create).toHaveBeenCalled());
+      expect(create.mock.calls[0][0]).toMatchObject({ isConsignment: true });
+    });
+
+    it("states the flag even when it is false, unlike the optional fields", async () => {
+      // Sent rather than omitted: `hasExpiry` beside it is sent unconditionally
+      // too, and a family relies on this value to stamp its variant rows. An
+      // omitted `false` would leave that to two defaults agreeing.
+      const user = userEvent.setup();
+      const create = mockCreate();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await fillCommon(user);
+      await user.type(screen.getByLabelText(/Harga jual/), "45000");
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      await waitFor(() => expect(create).toHaveBeenCalled());
+      expect(create.mock.calls[0][0]).toMatchObject({ isConsignment: false });
+    });
+
+    it("does not offer the flag on a bundle, which owns no stock", async () => {
+      const user = userEvent.setup();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      expect(
+        screen.getByLabelText("Produk konsinyasi (titipan)"),
+      ).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Bundle" }));
+
+      expect(
+        screen.queryByLabelText("Produk konsinyasi (titipan)"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("does not offer the flag on a variant, which is told by its parent", async () => {
+      // A variant opens this form in standalone mode — everything else it is
+      // asked is the same — so hiding this one is a decision the form has to
+      // make from `productType`, not from the mode.
+      jest.spyOn(productService, "getById").mockResolvedValue(
+        makeProduct({
+          productType: "variant",
+          parentId: "parent1",
+          isConsignment: true,
+        }),
+      );
+
+      renderWithAuth(<ProductForm productId="p1" />);
+      await screen.findByDisplayValue("Shampoo Anjing");
+
+      expect(
+        screen.queryByLabelText("Produk konsinyasi (titipan)"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("patches the flag when it is toggled on an existing product", async () => {
+      const user = userEvent.setup();
+      jest
+        .spyOn(productService, "getById")
+        .mockResolvedValue(makeProduct({ isConsignment: false }));
+      const update = jest
+        .spyOn(productService, "update")
+        .mockResolvedValue(makeProduct());
+
+      renderWithAuth(<ProductForm productId="p1" />);
+      await screen.findByDisplayValue("Shampoo Anjing");
+
+      await user.click(screen.getByLabelText("Produk konsinyasi (titipan)"));
+      await user.click(
+        screen.getByRole("button", { name: /Simpan perubahan/ }),
+      );
+
+      await waitFor(() => expect(update).toHaveBeenCalled());
+      expect(update.mock.calls[0][1]).toMatchObject({ isConsignment: true });
+    });
+
+    it("leaves the flag out of a patch that did not touch it", async () => {
+      // The API refuses an empty patch, and a field echoed back unchanged is one
+      // that can collide with itself — the same rule every other field here
+      // follows.
+      const user = userEvent.setup();
+      jest
+        .spyOn(productService, "getById")
+        .mockResolvedValue(makeProduct({ isConsignment: true }));
+      const update = jest
+        .spyOn(productService, "update")
+        .mockResolvedValue(makeProduct());
+
+      renderWithAuth(<ProductForm productId="p1" />);
+      await screen.findByDisplayValue("Shampoo Anjing");
+
+      await user.clear(screen.getByLabelText(/Nama produk/));
+      await user.type(screen.getByLabelText(/Nama produk/), "Shampoo Kucing");
+      await user.click(
+        screen.getByRole("button", { name: /Simpan perubahan/ }),
+      );
+
+      await waitFor(() => expect(update).toHaveBeenCalled());
+      expect(update.mock.calls[0][1]).not.toHaveProperty("isConsignment");
     });
 
     /**
@@ -1939,7 +2155,9 @@ describe("ProductForm", () => {
         // Never the server's own sentence, whatever it was.
         expect(toast).not.toHaveBeenCalledWith(
           expect.objectContaining({
-            title: expect.stringMatching(/error|timed out|Malformed|Unauthorized/i),
+            title: expect.stringMatching(
+              /error|timed out|Malformed|Unauthorized/i,
+            ),
           }),
         );
       });
@@ -1972,13 +2190,17 @@ describe("ProductForm", () => {
        */
       jest
         .spyOn(chartOfAccountsService, "list")
-        .mockRejectedValue(new ApiError('"query.limit" must be less than or equal to 100', 400));
+        .mockRejectedValue(
+          new ApiError('"query.limit" must be less than or equal to 100', 400),
+        );
 
       renderWithAuth(<ProductForm />);
       await screen.findByLabelText(/Nama produk/);
 
       expect(await screen.findByText(/gagal dimuat/i)).toBeInTheDocument();
-      expect(screen.getByText(/must be less than or equal to 100/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/must be less than or equal to 100/),
+      ).toBeInTheDocument();
       expect(
         screen.queryByText(/tidak punya akses ke Akuntansi/i),
       ).not.toBeInTheDocument();
@@ -2016,9 +2238,7 @@ describe("ProductForm", () => {
       renderWithAuth(<ProductForm productId="p1" />);
       await screen.findByDisplayValue("Shampoo Anjing");
 
-      expect(
-        screen.getByRole("button", { name: "Varian" }),
-      ).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Varian" })).toBeDisabled();
       // And no opening stock: an existing product's quantity moves through the
       // stock screens, where the movement gets a reason.
       expect(
@@ -2088,9 +2308,7 @@ describe("ProductForm", () => {
       renderWithAuth(<ProductForm />);
       await screen.findByLabelText(/Nama produk/);
 
-      await user.click(
-        screen.getByRole("button", { name: "Bundle" }),
-      );
+      await user.click(screen.getByRole("button", { name: "Bundle" }));
 
       expect(
         screen.queryByLabelText("Isi stok awal sekarang"),
@@ -2116,7 +2334,7 @@ describe("ProductForm", () => {
               brand: null,
               description: null,
               inventoryAccountId: null,
-            cogsAccountId: null,
+              cogsAccountId: null,
               businessLineId: null,
               shipping: {
                 weight: "500",
@@ -2134,9 +2352,7 @@ describe("ProductForm", () => {
 
       renderWithAuth(<ProductForm />);
       await screen.findByLabelText(/Nama produk/);
-      await user.click(
-        screen.getByRole("button", { name: "Bundle" }),
-      );
+      await user.click(screen.getByRole("button", { name: "Bundle" }));
 
       const weight = screen.getByLabelText(/^Berat/) as HTMLInputElement;
       expect(weight.value).toBe("");
@@ -2187,9 +2403,7 @@ describe("ProductForm", () => {
       await screen.findByLabelText(/Nama produk/);
 
       await user.type(screen.getByLabelText(/Nama produk/), "Paket Grooming");
-      await user.click(
-        screen.getByRole("button", { name: "Bundle" }),
-      );
+      await user.click(screen.getByRole("button", { name: "Bundle" }));
       await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
 
       expect(await screen.findByText("SKU wajib diisi.")).toBeInTheDocument();
@@ -2298,9 +2512,11 @@ describe("ProductForm", () => {
   describe("the duplicate barcode warning", () => {
     it("names the product already holding the code, and links to it", async () => {
       const user = userEvent.setup();
-      jest.spyOn(productService, "getByBarcode").mockResolvedValue(
-        makeProduct({ _id: "p9", sku: "OTHER-1", name: "Produk Lain" }),
-      );
+      jest
+        .spyOn(productService, "getByBarcode")
+        .mockResolvedValue(
+          makeProduct({ _id: "p9", sku: "OTHER-1", name: "Produk Lain" }),
+        );
 
       renderWithAuth(<ProductForm />);
       await screen.findByLabelText(/Nama produk/);

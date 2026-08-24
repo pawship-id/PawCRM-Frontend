@@ -7,6 +7,8 @@
  * through ApiError.fieldErrors. Keep these constants in step with the backend.
  */
 
+import type { WarehouseScopeEntry } from "@/types/api";
+
 export const EMAIL_MAX_LENGTH = 254;
 export const PASSWORD_MIN_LENGTH = 8;
 export const PASSWORD_MAX_LENGTH = 128;
@@ -37,6 +39,17 @@ export const SUPPLIER_ADDRESS_MAX_LENGTH = 255;
 export const SUPPLIER_NPWP_MAX_LENGTH = 24;
 export const SUPPLIER_NOTES_MAX_LENGTH = 500;
 export const SUPPLIER_PAYMENT_TERM_DAYS_MAX = 365;
+export const SUPPLIER_CODE_MAX_LENGTH = 32;
+export const SUPPLIER_WEBSITE_MAX_LENGTH = 255;
+// The address parts, mirroring supplier.model.js. Town/province/country names
+// are proper nouns rather than free text, hence the tighter bound.
+export const SUPPLIER_ADDRESS_LINE_MAX_LENGTH = 255;
+export const SUPPLIER_ADDRESS_PART_MAX_LENGTH = 120;
+export const SUPPLIER_POSTAL_CODE_MAX_LENGTH = 12;
+export const SUPPLIER_BANK_ACCOUNT_NUMBER_MAX_LENGTH = 40;
+export const SUPPLIER_BANK_ACCOUNT_HOLDER_MAX_LENGTH = 120;
+export const SUPPLIER_BANK_NAME_MAX_LENGTH = 80;
+export const SUPPLIER_MAX_BANK_ACCOUNTS = 10;
 
 // Deliberately permissive, matching the backend's { tlds: false } stance.
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -50,6 +63,77 @@ const HEX_PATTERN = /^[0-9a-fA-F]+$/;
  * the 16-digit NIK-based form mandatory from 2024.
  */
 const NPWP_PATTERN = /^(\d{15,16}|\d{2}\.\d{3}\.\d{3}\.\d-\d{3}\.\d{3})$/;
+
+/**
+ * Supplier code shape — CODE_PATTERN in supplier.model.js, restated here.
+ * Deliberately permissive about punctuation and deliberately strict about
+ * whitespace and quotes: a vendor code arrives from whatever the tenant used
+ * before ("SUP/001", "PT-SMB.02"), but a trailing space that renders
+ * identically to its neighbour makes two codes that compare unequal.
+ */
+const SUPPLIER_CODE_PATTERN = /^(?!.*[\\'"`])[\x21-\x7E]{1,32}$/;
+
+/**
+ * A website as TYPED — the scheme is optional, matching WEBSITE_PATTERN on the
+ * backend, because "sumberpangan.co.id" is how a vendor prints its address on a
+ * card. The server prepends `https://` before storing.
+ */
+const WEBSITE_PATTERN = /^(https?:\/\/)?[\w-]+(\.[\w-]+)+(:\d{2,5})?(\/\S*)?$/i;
+
+/**
+ * A bank account number: digits, with the spaces and hyphens a statement prints.
+ *
+ * DELIBERATELY NOT NORMALIZED the way a phone number is — the bank's own
+ * formatting IS the form, and rewriting it is how a transfer goes to the wrong
+ * place. Letters are excluded so nobody can paste "hubungi Bu Rina" into a field
+ * that ends up in a payment file.
+ */
+const BANK_ACCOUNT_NUMBER_PATTERN = /^[0-9][0-9\s-]*$/;
+
+/** E.164, the form the backend stores every number in. See `normalizePhone`. */
+const PHONE_STORAGE_PATTERN = /^\+[1-9]\d{7,14}$/;
+
+/** Everything a human types BETWEEN the digits of a phone number. */
+const PHONE_SEPARATORS_PATTERN = /[\s().-]/g;
+
+/**
+ * Canonicalises a phone number to E.164, or returns `null` when it cannot.
+ *
+ * A MIRROR OF src/utils/phone.js ON THE BACKEND, and it exists for one reason:
+ * the edit form decides what changed by comparing the typed value against the
+ * STORED one. Without normalizing here, re-typing "0812-3456-7890" over a
+ * stored "+6281234567890" would look like a change, and every save would PATCH
+ * a field nobody touched — which is exactly the pointless conflict re-check the
+ * edit form's diffing exists to avoid.
+ *
+ * The server remains the authority: this never decides what is stored, only
+ * whether the form has anything to send.
+ */
+export function normalizePhone(value: string | null): string | null {
+  if (value === null) return null;
+
+  const stripped = value.replace(PHONE_SEPARATORS_PATTERN, "");
+  if (stripped === "") return null;
+
+  const explicitlyInternational = stripped.startsWith("+");
+  const digits = explicitlyInternational ? stripped.slice(1) : stripped;
+  if (!/^\d+$/.test(digits)) return null;
+
+  let e164: string;
+  if (explicitlyInternational) {
+    e164 = `+${digits}`;
+  } else if (digits.startsWith("0")) {
+    // The trunk prefix is REPLACED by the country code, never kept beside it —
+    // "+6208123…" is a number that does not exist.
+    e164 = `+62${digits.slice(1)}`;
+  } else if (digits.startsWith("62")) {
+    e164 = `+${digits}`;
+  } else {
+    e164 = `+62${digits}`;
+  }
+
+  return PHONE_STORAGE_PATTERN.test(e164) ? e164 : null;
+}
 
 /** Returns an error message, or undefined when valid. */
 export function validateEmail(value: string): string | undefined {
@@ -241,13 +325,13 @@ export function validateSupplierPic(value: string): string | undefined {
   return undefined;
 }
 
+/**
+ * The business line. Now also checked for being NORMALIZABLE, not just
+ * well-charactered: the backend rewrites it to E.164 on save, and a value it
+ * cannot read comes back as a 400 — flagging it here saves the round trip.
+ */
 export function validateSupplierPhone(value: string): string | undefined {
-  const phone = value.trim();
-  if (!phone) return undefined;
-  if (phone.length > SUPPLIER_PHONE_MAX_LENGTH) return "Nomor telepon terlalu panjang";
-  if (!PHONE_PATTERN.test(phone))
-    return "Hanya angka, spasi, dan karakter + ( ) - .";
-  return undefined;
+  return validateSupplierPhoneField(value, "Nomor telepon");
 }
 
 export function validateSupplierEmail(value: string): string | undefined {
@@ -279,6 +363,185 @@ export function validateSupplierNpwp(value: string): string | undefined {
   if (npwp.length > SUPPLIER_NPWP_MAX_LENGTH) return "NPWP terlalu panjang";
   if (!NPWP_PATTERN.test(npwp))
     return "NPWP harus 15 atau 16 digit, boleh diformat 01.234.567.8-901.000";
+  return undefined;
+}
+
+/**
+ * A phone-shaped supplier field, checked the way the backend checks it: the
+ * permissive character rule first (so "abc" is reported as bad characters), then
+ * "can this actually be normalized" (so "0812" is reported as an incomplete
+ * number rather than being silently dropped on save).
+ *
+ * `label` names the field in the message — four numbers share this rule, and
+ * "Nomor telepon tidak lengkap" on the WhatsApp row would send the user looking
+ * at the wrong input.
+ */
+function validateSupplierPhoneField(
+  value: string,
+  label: string,
+): string | undefined {
+  const phone = value.trim();
+  if (!phone) return undefined;
+  if (phone.length > SUPPLIER_PHONE_MAX_LENGTH) return `${label} terlalu panjang`;
+  if (!PHONE_PATTERN.test(phone))
+    return "Hanya angka, spasi, dan karakter + ( ) - .";
+  if (!normalizePhone(phone))
+    return `${label} tidak lengkap — contoh: 0812-3456-7890`;
+  return undefined;
+}
+
+export function validateSupplierWhatsapp(value: string): string | undefined {
+  return validateSupplierPhoneField(value, "Nomor WhatsApp");
+}
+
+export function validateSupplierFax(value: string): string | undefined {
+  return validateSupplierPhoneField(value, "Nomor faximili");
+}
+
+export function validateSupplierPicPhone(value: string): string | undefined {
+  return validateSupplierPhoneField(value, "Nomor HP");
+}
+
+export function validateSupplierPicEmail(value: string): string | undefined {
+  const email = value.trim();
+  if (!email) return undefined;
+  if (email.length > SUPPLIER_EMAIL_MAX_LENGTH) return "Email terlalu panjang";
+  if (!EMAIL_PATTERN.test(email)) return "Alamat email tidak valid";
+  return undefined;
+}
+
+export function validateSupplierPicAddress(value: string): string | undefined {
+  const address = value.trim();
+  if (!address) return undefined;
+  if (address.length > SUPPLIER_ADDRESS_MAX_LENGTH)
+    return "Alamat terlalu panjang";
+  return undefined;
+}
+
+/**
+ * The tenant's own code for the vendor. Optional — most suppliers have none —
+ * but strictly shaped when present, because it is compared for equality by a
+ * case-sensitive unique index on the server.
+ */
+export function validateSupplierCode(value: string): string | undefined {
+  const code = value.trim();
+  if (!code) return undefined;
+  if (code.length > SUPPLIER_CODE_MAX_LENGTH) return "ID supplier terlalu panjang";
+  if (!SUPPLIER_CODE_PATTERN.test(code))
+    return "ID supplier tidak boleh mengandung spasi atau tanda kutip";
+  return undefined;
+}
+
+/**
+ * The tenant's own code for the vendor — REQUIRED now, unlike every other
+ * optional field on this form.
+ *
+ * The empty check comes first and is a refusal rather than a pass. That is a
+ * real friction on a supplier stored before the field existed: opening one to
+ * change its phone number means giving it an ID first. It is the intended
+ * reading of "required" — the alternative leaves "required" true only of
+ * suppliers nobody has edited since.
+ */
+export function validateSupplierCodeRequired(
+  value: string,
+): string | undefined {
+  if (!value.trim()) return "ID Pemasok wajib diisi";
+  return validateSupplierCode(value);
+}
+
+/** One part of the billing address. Every part is optional. */
+function validateAddressPart(
+  value: string,
+  max: number,
+  label: string,
+): string | undefined {
+  const part = value.trim();
+  if (!part) return undefined;
+  if (part.length > max) return `${label} terlalu panjang`;
+  return undefined;
+}
+
+export function validateSupplierStreet(value: string): string | undefined {
+  return validateAddressPart(
+    value,
+    SUPPLIER_ADDRESS_LINE_MAX_LENGTH,
+    "Alamat",
+  );
+}
+
+export function validateSupplierCity(value: string): string | undefined {
+  return validateAddressPart(value, SUPPLIER_ADDRESS_PART_MAX_LENGTH, "Kota");
+}
+
+export function validateSupplierPostalCode(value: string): string | undefined {
+  return validateAddressPart(
+    value,
+    SUPPLIER_POSTAL_CODE_MAX_LENGTH,
+    "Kode pos",
+  );
+}
+
+export function validateSupplierProvince(value: string): string | undefined {
+  return validateAddressPart(
+    value,
+    SUPPLIER_ADDRESS_PART_MAX_LENGTH,
+    "Provinsi",
+  );
+}
+
+export function validateSupplierCountry(value: string): string | undefined {
+  return validateAddressPart(value, SUPPLIER_ADDRESS_PART_MAX_LENGTH, "Negara");
+}
+
+/**
+ * One bank-account row. All three parts are required PER ROW.
+ *
+ * A row is a payment instruction, and one missing its bank or its holder is not
+ * a partial record — it is one nobody can pay against, and storing it would put
+ * it in a picker that leads to a failed transfer. Returns the errors keyed by
+ * the row's own field names, or an empty object when the row is sound.
+ */
+export function validateSupplierBankAccount(row: {
+  accountNumber: string;
+  accountHolder: string;
+  bankName: string;
+}): Record<string, string> {
+  const errors: Record<string, string> = {};
+
+  const number = row.accountNumber.trim();
+  if (!number) {
+    errors.accountNumber = "No rekening wajib diisi";
+  } else if (number.length > SUPPLIER_BANK_ACCOUNT_NUMBER_MAX_LENGTH) {
+    errors.accountNumber = "No rekening terlalu panjang";
+  } else if (!BANK_ACCOUNT_NUMBER_PATTERN.test(number)) {
+    errors.accountNumber = "Hanya angka, spasi, dan tanda hubung";
+  }
+
+  const holder = row.accountHolder.trim();
+  if (!holder) {
+    errors.accountHolder = "Atas nama wajib diisi";
+  } else if (holder.length > SUPPLIER_BANK_ACCOUNT_HOLDER_MAX_LENGTH) {
+    errors.accountHolder = "Atas nama terlalu panjang";
+  }
+
+  const bank = row.bankName.trim();
+  if (!bank) {
+    errors.bankName = "Nama bank wajib diisi";
+  } else if (bank.length > SUPPLIER_BANK_NAME_MAX_LENGTH) {
+    errors.bankName = "Nama bank terlalu panjang";
+  }
+
+  return errors;
+}
+
+/** The scheme is optional here; the server adds `https://` when it is missing. */
+export function validateSupplierWebsite(value: string): string | undefined {
+  const website = value.trim();
+  if (!website) return undefined;
+  if (website.length > SUPPLIER_WEBSITE_MAX_LENGTH)
+    return "Alamat website terlalu panjang";
+  if (!WEBSITE_PATTERN.test(website))
+    return "Alamat website tidak valid — contoh: sumberpangan.co.id";
   return undefined;
 }
 
@@ -336,4 +599,33 @@ export function validateConfirmPassword(
   if (!confirm) return "Please confirm your password";
   if (password !== confirm) return "Passwords do not match";
   return undefined;
+}
+
+/**
+ * The client-side half of the warehouse-scope rule: a branch narrowed to
+ * "specific warehouses" must name at least one.
+ *
+ * Returns a map keyed by branch id, so the picker can put the message under the
+ * branch it belongs to rather than at the bottom of the form — with several
+ * branches on screen, one shared message cannot say which is wrong.
+ *
+ * Only granted branches are judged. Rows for branches that were unticked are
+ * dropped by the backend rather than refused, so blocking a save on one would
+ * refuse a payload the server accepts.
+ */
+export function validateWarehouseScope(
+  branchAccess: string[],
+  warehouseAccess: WarehouseScopeEntry[],
+): Record<string, string> {
+  const errors: Record<string, string> = {};
+
+  warehouseAccess
+    .filter((entry) => branchAccess.includes(entry.branchId))
+    .forEach((entry) => {
+      if (!entry.allWarehouses && entry.warehouseIds.length === 0) {
+        errors[entry.branchId] = "Pilih minimal satu gudang";
+      }
+    });
+
+  return errors;
 }

@@ -108,6 +108,16 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
       <div className="flex flex-wrap gap-6 rounded-xl border border-border bg-surface p-4">
         <Field label="Nomor" value={receipt.receiptNumber} mono />
         <Field label="Supplier" value={receipt.supplierName ?? "—"} />
+        {/* BRANCH BEFORE WAREHOUSE — widest scope first, the way the receipt
+            form asks the same two questions, and the same order the list table
+            reads in. They are not the same answer either: a branch may receive
+            at its own warehouse AND at the shared central one, which is exactly
+            why showing only the warehouse left the second question unanswerable
+            from this screen.
+
+            "—" for a delivery written before the branch was recorded; those stay
+            blank until the backfill has run. */}
+        <Field label="Cabang" value={receipt.branchName ?? "—"} />
         <Field label="Gudang" value={receipt.warehouseName ?? "—"} />
         <Field label="Tanggal terima" value={formatDate(receipt.receiptDate)} />
         <Field label="Dicatat oleh" value={receipt.createdByName ?? "—"} />
@@ -149,7 +159,18 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
             <thead>
               <tr className="border-b border-border text-[10px] tracking-widest text-muted uppercase">
                 <th className="px-2 py-2 text-left font-medium">Produk</th>
-                <th className="px-2 py-2 text-left font-medium">Lot</th>
+                <th className="px-2 py-2 text-left font-medium">
+                  Kode batch internal
+                </th>
+                {/* SPLIT OUT OF THE BATCH COLUMN, not added beside it. The code
+                    identifies the lot, the expiry decides when it must be sold —
+                    two separate questions a clerk asks of the same box, and
+                    stacking them in one cell meant neither could be scanned down
+                    the column. Both still come from the best-effort lot lookup:
+                    see useReceiptLots. */}
+                <th className="px-2 py-2 text-left font-medium">
+                  Tanggal kadaluarsa
+                </th>
                 <th className="px-2 py-2 text-right font-medium">Qty</th>
                 {/* How much of each line has already gone back, and how much
                     still may. Both come from the server — see
@@ -194,16 +215,41 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
 
                     <td className="px-2 py-2">
                       {item.batchId ? (
+                        <span className="tabular-nums text-xs">
+                          {/* The lot lookup is best-effort — see
+                              useReceiptLots. Without it the line still says a
+                              lot exists, which is the fact that matters. */}
+                          {lot?.batchCode ?? "ada lot"}
+                          {/* THEIRS UNDER OURS: this is the screen a clerk
+                              reconciles against the carton in front of them,
+                              and the supplier's number is the half printed on
+                              it. */}
+                          {lot?.supplierBatchCode && (
+                            <span className="block text-muted">
+                              supplier: {lot.supplierBatchCode}
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted">—</span>
+                      )}
+                    </td>
+
+                    <td className="px-2 py-2">
+                      {/* THE DATE FIRST, the countdown second. The badge alone
+                          answers "how urgent", but this is the screen where a
+                          clerk reconciles against the date printed on the box,
+                          and a tooltip is not something you can read down a
+                          column. A lot with no expiry is a real answer — dry
+                          goods carry none — and reads the same "—" as a line
+                          with no lot at all, which is why the badge is the only
+                          thing that distinguishes them. */}
+                      {lot?.expiryDate ? (
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="tabular-nums text-xs">
-                            {/* The lot lookup is best-effort — see
-                                useReceiptLots. Without it the line still says a
-                                lot exists, which is the fact that matters. */}
-                            {lot?.batchCode ?? "ada lot"}
+                            {formatDate(lot.expiryDate)}
                           </span>
-                          {lot?.expiryDate && (
-                            <ExpiryBadge date={lot.expiryDate} />
-                          )}
+                          <ExpiryBadge date={lot.expiryDate} />
                         </div>
                       ) : (
                         <span className="text-xs text-muted">—</span>
@@ -247,7 +293,7 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
 
               <tr className="bg-accent/40">
                 <td
-                  colSpan={5}
+                  colSpan={6}
                   className="px-2 py-2 text-right text-xs font-semibold"
                 >
                   Subtotal
@@ -260,7 +306,7 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
               {taxMinor > 0n && (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={6}
                     className="px-2 py-2 text-right text-xs text-muted"
                   >
                     PPN masukan
@@ -273,7 +319,7 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
 
               <tr>
                 <td
-                  colSpan={5}
+                  colSpan={6}
                   className="px-2 py-2 text-right text-xs font-semibold"
                 >
                   Total

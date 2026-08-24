@@ -13,6 +13,8 @@ import { Can } from "@/features/permissions";
 import { isSupplierActive } from "@/types/api";
 import type { GoodsReceiptListRow } from "@/types/api";
 
+import { formatSupplierAddress } from "../supplierAddress";
+
 import { useSupplier } from "../hooks/useSupplier";
 import { useSupplierSummaries } from "../hooks/useSupplierSummaries";
 import { ConsignmentProductsTable } from "./ConsignmentProductsTable";
@@ -79,7 +81,9 @@ export function SupplierDetail({ supplierId }: { supplierId: string }) {
             <SupplierTypeBadge type={supplier.type} />
             <SupplierStatusBadge supplier={supplier} />
           </div>
-          <p className="mt-1 text-sm text-muted">{supplier.address ?? "—"}</p>
+          <p className="mt-1 text-sm text-muted">
+            {formatSupplierAddress(supplier.address) ?? "—"}
+          </p>
         </div>
 
         <div className="ml-auto flex flex-wrap gap-2">
@@ -170,18 +174,182 @@ export function SupplierDetail({ supplierId }: { supplierId: string }) {
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
         <div className="flex flex-col gap-6">
-          <Card title="Kontak & administrasi">
+          {/*
+            THREE CARDS RATHER THAN ONE, matching the form: who the vendor is,
+            how the company is reached, and who is reached at it. The old single
+            "Kontak & administrasi" list mixed the last two, which reads fine at
+            five rows and not at fifteen.
+
+            EVERY VALUE GOES THROUGH `?? "—"`, INCLUDING THE ONES TYPED AS
+            OPTIONAL. A supplier registered before these fields existed carries
+            none of the keys at all — see the note on the `Supplier` type — so
+            this page has to render an em dash rather than "undefined" for a
+            vendor nobody has re-edited since.
+          */}
+          <Card title="Identitas">
             <dl className="grid grid-cols-[110px_1fr] gap-y-2 text-sm">
-              <dt className="text-muted">PIC</dt>
-              <dd className="font-medium">{supplier.pic ?? "—"}</dd>
-              <dt className="text-muted">Telepon</dt>
-              <dd className="font-medium">{supplier.phone ?? "—"}</dd>
-              <dt className="text-muted">Email</dt>
-              <dd className="truncate font-medium">{supplier.email ?? "—"}</dd>
+              <dt className="text-muted">ID supplier</dt>
+              <dd className="font-medium tabular-nums">
+                {supplier.code ?? "—"}
+              </dd>
+              <dt className="text-muted">Kategori</dt>
+              <dd className="font-medium">
+                {/*
+                  `category` is the resolved label; `categoryId` without it means
+                  the label was deleted out from under this vendor, which is
+                  worth saying rather than showing as ungrouped.
+                */}
+                {supplier.category?.name ??
+                  (supplier.categoryId ? "Kategori terhapus" : "—")}
+              </dd>
+              <dt className="text-muted">Tipe pemasok</dt>
+              <dd className="font-medium">
+                {supplier.entityType === "perusahaan"
+                  ? "Perusahaan"
+                  : supplier.entityType === "perorangan"
+                    ? "Perorangan"
+                    : "—"}
+              </dd>
               <dt className="text-muted">NPWP</dt>
               <dd className="tabular-nums text-xs">{supplier.npwp ?? "—"}</dd>
               <dt className="text-muted">Catatan</dt>
               <dd className="text-xs">{supplier.notes ?? "—"}</dd>
+            </dl>
+          </Card>
+
+          <Card title="Kontak bisnis">
+            <dl className="grid grid-cols-[110px_1fr] gap-y-2 text-sm">
+              <dt className="text-muted">Telepon</dt>
+              <dd className="font-medium tabular-nums">
+                {supplier.phone ?? "—"}
+              </dd>
+              <dt className="text-muted">WhatsApp</dt>
+              <dd className="font-medium tabular-nums">
+                {/*
+                  A LINK, not just a number, and it works because the value is
+                  stored in E.164 — `wa.me` wants the digits with no `+` and no
+                  trunk zero, which is exactly what dropping the `+` leaves.
+                */}
+                {supplier.whatsapp ? (
+                  <a
+                    href={`https://wa.me/${supplier.whatsapp.replace(/^\+/, "")}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline underline-offset-2"
+                  >
+                    {supplier.whatsapp}
+                  </a>
+                ) : (
+                  "—"
+                )}
+              </dd>
+              <dt className="text-muted">Email</dt>
+              <dd className="truncate font-medium">{supplier.email ?? "—"}</dd>
+              <dt className="text-muted">Faximili</dt>
+              <dd className="font-medium tabular-nums">
+                {supplier.fax ?? "—"}
+              </dd>
+              <dt className="text-muted">Website</dt>
+              <dd className="truncate font-medium">
+                {/* Safe as an href without patching: the server stores the scheme. */}
+                {supplier.website ? (
+                  <a
+                    href={supplier.website}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline underline-offset-2"
+                  >
+                    {supplier.website}
+                  </a>
+                ) : (
+                  "—"
+                )}
+              </dd>
+            </dl>
+          </Card>
+
+          <Card title="Alamat pembayaran">
+            <dl className="grid grid-cols-[110px_1fr] gap-y-2 text-sm">
+              <dt className="text-muted">Jalan</dt>
+              <dd className="font-medium">{supplier.address?.street ?? "—"}</dd>
+              <dt className="text-muted">Kota</dt>
+              <dd className="font-medium">{supplier.address?.city ?? "—"}</dd>
+              <dt className="text-muted">Kode pos</dt>
+              <dd className="font-medium tabular-nums">
+                {supplier.address?.postalCode ?? "—"}
+              </dd>
+              <dt className="text-muted">Provinsi</dt>
+              <dd className="font-medium">
+                {supplier.address?.province ?? "—"}
+              </dd>
+              <dt className="text-muted">Negara</dt>
+              <dd className="font-medium">{supplier.address?.country ?? "—"}</dd>
+            </dl>
+          </Card>
+
+          <Card title="Akun pembelian">
+            <dl className="grid grid-cols-[110px_1fr] gap-y-2 text-sm">
+              <dt className="text-muted">Akun utang</dt>
+              {/*
+                THE ID IS NOT SHOWN WHEN THERE IS NONE — "default" is the honest
+                label, because the ledger really does post to 2101 and saying
+                "—" would read as "unconfigured" for a vendor that is working
+                exactly as intended. The account NAME is not resolved here: it
+                would cost a chart lookup on a page that already makes four
+                requests, and the edit form is where somebody goes to see or
+                change which account it is.
+              */}
+              <dd className="font-medium">
+                {supplier.payableAccountId ? "Akun khusus" : "Default (2101)"}
+              </dd>
+              <dt className="text-muted">Akun uang muka</dt>
+              <dd className="font-medium">
+                {supplier.advanceAccountId ? "Akun khusus" : "Default"}
+              </dd>
+              <dt className="text-muted">Cabang</dt>
+              <dd className="font-medium">
+                {supplier.allBranches === false
+                  ? `${supplier.branchIds?.length ?? 0} cabang`
+                  : "Semua cabang"}
+              </dd>
+            </dl>
+          </Card>
+
+          <Card title="Rekening bank">
+            {(supplier.bankAccounts ?? []).length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted">
+                Belum ada data
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-3 text-sm">
+                {(supplier.bankAccounts ?? []).map((account) => (
+                  <li key={account._id} className="flex flex-col">
+                    <span className="font-medium tabular-nums">
+                      {account.accountNumber}
+                    </span>
+                    <span className="text-xs text-muted">
+                      {account.accountHolder} · {account.bankName}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+
+          <Card title="Penanggung jawab">
+            <dl className="grid grid-cols-[110px_1fr] gap-y-2 text-sm">
+              <dt className="text-muted">Nama</dt>
+              <dd className="font-medium">{supplier.pic?.name ?? "—"}</dd>
+              <dt className="text-muted">No HP</dt>
+              <dd className="font-medium tabular-nums">
+                {supplier.pic?.phone ?? "—"}
+              </dd>
+              <dt className="text-muted">Email</dt>
+              <dd className="truncate font-medium">
+                {supplier.pic?.email ?? "—"}
+              </dd>
+              <dt className="text-muted">Alamat</dt>
+              <dd className="text-xs">{supplier.pic?.address ?? "—"}</dd>
             </dl>
           </Card>
 

@@ -1,32 +1,29 @@
 "use client";
 
-import { useState } from "react";
-
 import { Alert, Breadcrumb, Pagination, Spinner } from "@/components";
-import type { Category } from "@/types/api";
 
 import { useCategories } from "../hooks/useCategories";
 import { CategoriesTable } from "./CategoriesTable";
 import { CategoriesToolbar } from "./CategoriesToolbar";
-import { CategoryFormDialog } from "./CategoryFormDialog";
-
-/** Which dialog is open: none, create, or rename that category. */
-type DialogState = { mode: "create" } | { mode: "edit"; category: Category } | null;
 
 /**
- * The Inventory → Kategori screen. Owns the list query and the one dialog the
- * create button and every rename action share.
+ * The Inventory → Kategori screen. Owns the list query and nothing else.
  *
- * ONE DIALOG SLOT rather than one per row: only one can be open, and holding
- * the state here is what makes that true by construction instead of by
- * coincidence. `key` remounts it between targets so the name field starts from
- * the right value — without it, renaming B straight after A would open with A's
- * name still in state.
+ * IT USED TO OWN A DIALOG TOO — one slot shared by the create button and every
+ * row's rename action, so that only one could be open at a time. Both now
+ * navigate to a route of their own (`/new` and `/:id`), which makes that
+ * guarantee structural rather than something this component had to hold: there
+ * is one page, and you are either on it or not. See CategoryForm for why the
+ * form left the modal.
+ *
+ * What went with it is worth naming, because it was the dialog's best argument:
+ * the list stayed on screen while a name was typed, and the list is what tells
+ * you whether that name already exists. The 409 still catches a clash — it just
+ * arrives after a save now rather than being visible before one.
  */
 export function CategoriesScreen() {
   const { categories, pagination, query, loading, error, setQuery, refetch } =
     useCategories();
-  const [dialog, setDialog] = useState<DialogState>(null);
 
   return (
     <div className="flex flex-col gap-6">
@@ -40,15 +37,12 @@ export function CategoriesScreen() {
         <h1 className="mt-1 text-2xl font-extrabold text-foreground">Kategori</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">
           Pengelompokan produk di katalog dan laporan. Sebuah kategori hanya
-          punya nama — harga, stok, dan aturan lainnya ada di produknya.
+          punya nama, deskripsi, dan gambar — harga, stok, dan aturan lainnya
+          ada di produknya.
         </p>
       </div>
 
-      <CategoriesToolbar
-        query={query}
-        onChange={setQuery}
-        onCreate={() => setDialog({ mode: "create" })}
-      />
+      <CategoriesToolbar query={query} onChange={setQuery} />
 
       {error && <Alert variant="error">{error}</Alert>}
 
@@ -63,7 +57,6 @@ export function CategoriesScreen() {
             loading={loading}
             search={query.search}
             onChanged={refetch}
-            onEdit={(category) => setDialog({ mode: "edit", category })}
           />
           <Pagination
             page={pagination.page}
@@ -74,15 +67,6 @@ export function CategoriesScreen() {
             onPageChange={(page) => setQuery({ page })}
           />
         </>
-      )}
-
-      {dialog && (
-        <CategoryFormDialog
-          key={dialog.mode === "edit" ? dialog.category._id : "create"}
-          category={dialog.mode === "edit" ? dialog.category : undefined}
-          onClose={() => setDialog(null)}
-          onSaved={refetch}
-        />
       )}
     </div>
   );

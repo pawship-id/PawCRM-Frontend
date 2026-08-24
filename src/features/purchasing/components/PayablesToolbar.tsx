@@ -19,9 +19,20 @@ import {
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
-import type { PurchaseInvoiceSort, Supplier } from "@/types/api";
+import type { Branch, PurchaseInvoiceSort, Supplier } from "@/types/api";
+import type { StockWarehouse } from "@/types/inventory";
+/**
+ * THE SAME TWO RULES THE RECEIPTS AND STOCK-ENTRIES FILTERS USE, from the same
+ * place. Three screens that scope by cabang and gudang in three different ways
+ * is a thing users have to relearn, and the rules are subtle enough to drift if
+ * retyped.
+ */
+import {
+  ownerBranchOf,
+  warehousesUnder,
+} from "@/features/inventory/hooks/useBranchScope";
 
-import { useSupplierOptions } from "../hooks/useSupplierOptions";
+import { useReceiptFilterOptions } from "../hooks/useReceiptFilterOptions";
 import type {
   PayablesView,
   PurchaseInvoicesQuery,
@@ -93,6 +104,8 @@ const SORTS: FilterOption<PurchaseInvoiceSort>[] = [
 /** Everything the panel edits, as one draft. */
 interface PayablesFilters {
   supplierId: string;
+  branchId: string;
+  warehouseId: string;
   dateFrom: string;
   dateTo: string;
   sort: PurchaseInvoiceSort;
@@ -112,6 +125,8 @@ interface PayablesFilters {
  */
 const CLEARED: PayablesFilters = {
   supplierId: "",
+  branchId: "",
+  warehouseId: "",
   dateFrom: "",
   dateTo: "",
   sort: "newest",
@@ -119,8 +134,8 @@ const CLEARED: PayablesFilters = {
 
 /**
  * The payables list controls: the view lens on its own row, then search, one
- * Filter button and the way to file a new supplier bill — with supplier, the
- * issue-date range and the ordering inside the panel.
+ * Filter button and the way to file a new supplier bill — with supplier, cabang,
+ * gudang, the issue-date range and the ordering inside the panel.
  *
  * Purely presentational — it renders the current query and reports changes up to
  * usePurchaseInvoices. Mirrors ReceiptsToolbar.
@@ -153,10 +168,20 @@ export function PayablesToolbar({
   query: PurchaseInvoicesQuery;
   onChange: (patch: Partial<PurchaseInvoicesQuery>) => void;
 }) {
-  const { suppliers } = useSupplierOptions();
+  /**
+   * REUSES useReceiptFilterOptions rather than useSupplierOptions, as the
+   * purchase-returns toolbar already does. That hook feeds FORMS and asks for
+   * `isActive=true`, which is right there and wrong here: a vendor deactivated
+   * last month can still be owed money, and a filter that cannot name them is a
+   * filter that cannot find their bills. The same holds for a warehouse closed
+   * since and a branch that has shut — the debts they ran up are still open.
+   */
+  const { suppliers, warehouses, branches } = useReceiptFilterOptions();
 
   const applied: PayablesFilters = {
     supplierId: query.supplierId,
+    branchId: query.branchId,
+    warehouseId: query.warehouseId,
     dateFrom: query.dateFrom,
     dateTo: query.dateTo,
     sort: query.sort,
@@ -171,6 +196,9 @@ export function PayablesToolbar({
   function apply(next: PayablesFilters) {
     const patch: Partial<PurchaseInvoicesQuery> = {};
     if (next.supplierId !== query.supplierId) patch.supplierId = next.supplierId;
+    if (next.branchId !== query.branchId) patch.branchId = next.branchId;
+    if (next.warehouseId !== query.warehouseId)
+      patch.warehouseId = next.warehouseId;
     if (next.dateFrom !== query.dateFrom) patch.dateFrom = next.dateFrom;
     if (next.dateTo !== query.dateTo) patch.dateTo = next.dateTo;
     if (next.sort !== query.sort) patch.sort = next.sort;
@@ -228,6 +256,8 @@ export function PayablesToolbar({
         <PayablesFilterPanel
           applied={applied}
           suppliers={suppliers}
+          warehouses={warehouses}
+          branches={branches}
           onApply={apply}
         />
       </FilterBar>
@@ -236,19 +266,30 @@ export function PayablesToolbar({
 }
 
 /**
- * Supplier, the issue-date range and the ordering, behind one button.
+ * Supplier, cabang, gudang, the issue-date range and the ordering, behind one
+ * button.
  *
  * The fields wait for Terapkan — that is what a panel is (§8). Reset returns the
  * whole set to its defaults and applies at once, because clearing a filter is
  * not a change anyone composes.
+ *
+ * CABANG AND GUDANG ARE A PAIR, and they behave exactly as the receipts panel's
+ * do — same helpers, same two rules — because a bill and the delivery it bills
+ * are read one after the other by the same person, and two screens that scope by
+ * the same two fields in two different ways is a thing users have to relearn.
+ * See `pickBranch` and `pickWarehouse`.
  */
 function PayablesFilterPanel({
   applied,
   suppliers,
+  warehouses,
+  branches,
   onApply,
 }: {
   applied: PayablesFilters;
   suppliers: Supplier[];
+  warehouses: StockWarehouse[];
+  branches: Branch[];
   onApply: (next: PayablesFilters) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -270,6 +311,12 @@ function PayablesFilterPanel({
    */
   const count = [
     applied.supplierId !== "",
+    // COUNTED SEPARATELY, unlike the date range's two bounds. Cabang and Gudang
+    // are two questions that happen to be related, not one question with two
+    // ends: the shared central warehouse serves every branch, so "Cabang
+    // Selatan" and "Cabang Selatan, Gudang Timur" narrow to different sets.
+    applied.branchId !== "",
+    applied.warehouseId !== "",
     applied.dateFrom !== "" || applied.dateTo !== "",
   ].filter(Boolean).length;
 
@@ -282,6 +329,51 @@ function PayablesFilterPanel({
     // leaving it half-edited for the next visit.
     if (next) setDraft(applied);
     setOpen(next);
+  }
+
+  /** What the chosen branch may have been billed for — its own, plus the shared. */
+  const scoped = warehousesUnder(draft.branchId, warehouses);
+
+  /**
+   * A branch narrows the field below it, so a warehouse already chosen has to be
+   * re-checked against the new list: one the picker no longer offers would sit
+   * on the trigger as a raw id and send a pair no bill matches. Kept when it
+   * survives, because the central warehouse serves every branch and losing it on
+   * each branch change would be a choice undone for nothing.
+   */
+  function pickBranch(branchId: string) {
+    setDraft((prev) => ({
+      ...prev,
+      branchId,
+      warehouseId: warehousesUnder(branchId, warehouses).some(
+        (warehouse) => warehouse._id === prev.warehouseId,
+      )
+        ? prev.warehouseId
+        : "",
+    }));
+  }
+
+  /**
+   * THE OTHER DIRECTION, and it is not symmetrical.
+   *
+   * A warehouse pinned to one branch ANSWERS the branch question, so the field
+   * above fills itself in: "bills for goods into Gudang Timur" and "…under any
+   * branch" are the same set, and leaving Cabang on "Semua cabang" would leave a
+   * reader wondering whether it was still open.
+   *
+   * THE SHARED WAREHOUSE CHANGES NOTHING. It serves every branch, so there is no
+   * single answer to volunteer; guessing one would narrow the list to a fraction
+   * of what was asked for. "Semua gudang" lands here too and is left alone for
+   * the same reason — it names no owner.
+   */
+  function pickWarehouse(warehouseId: string) {
+    const owner = ownerBranchOf(warehouseId, warehouses);
+
+    setDraft((prev) => ({
+      ...prev,
+      warehouseId,
+      branchId: owner ?? prev.branchId,
+    }));
   }
 
   return (
@@ -325,6 +417,28 @@ function PayablesFilterPanel({
           value={draft.supplierId}
           options={withAll(namedOptions(suppliers), "Semua supplier")}
           onChange={(supplierId) => patch({ supplierId })}
+        />
+        {/* BRANCH BEFORE WAREHOUSE — widest scope first, the same order the
+            table's columns read in and the same order the receipts panel asks
+            these two questions. */}
+        <FilterSelect
+          layout="field"
+          label="Cabang"
+          ariaLabel="Filter cabang"
+          value={draft.branchId}
+          options={withAll(namedOptions(branches), "Semua cabang")}
+          onChange={pickBranch}
+        />
+        <FilterSelect
+          layout="field"
+          label="Gudang"
+          ariaLabel="Filter gudang"
+          value={draft.warehouseId}
+          // SCOPED, not the whole list: a warehouse pinned to another branch
+          // combined with this one is a pair no bill can match, so offering it
+          // could only produce an empty list nobody could explain.
+          options={withAll(namedOptions(scoped), "Semua gudang")}
+          onChange={pickWarehouse}
         />
         <FilterDateRange
           layout="field"

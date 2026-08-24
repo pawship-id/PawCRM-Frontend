@@ -101,7 +101,7 @@ export function ProductBatchPanel({ productId }: { productId: string }) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Kode batch</TableHead>
+                <TableHead>Kode batch internal</TableHead>
                 <TableHead>Gudang</TableHead>
                 <TableHead className="text-right">Sisa</TableHead>
                 <TableHead>Kedaluwarsa</TableHead>
@@ -112,6 +112,11 @@ export function ProductBatchPanel({ productId }: { productId: string }) {
                 <TableRow key={batch._id}>
                   <TableCell className="tabular-nums text-xs">
                     {batch.batchCode ?? "—"}
+                    {batch.supplierBatchCode && (
+                      <p className="text-xs text-muted">
+                        supplier: {batch.supplierBatchCode}
+                      </p>
+                    )}
                   </TableCell>
                   <TableCell className="text-xs text-muted">
                     {batch.warehouseName ?? "—"}

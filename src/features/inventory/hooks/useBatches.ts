@@ -19,6 +19,15 @@ import type { BatchSort, ProductBatch } from "@/types/inventory";
 export type Horizon = "7" | "30" | "90" | "all" | "custom";
 
 export interface BatchesQuery {
+  /**
+   * "" = every branch.
+   *
+   * A lot has no branch of its own: it belongs to a warehouse, and the API
+   * resolves this to the warehouses under the branch — its own, plus the shared
+   * central ones. Sent alongside `warehouseId` the two intersect, which is why
+   * the panel keeps the pair consistent rather than letting either stand alone.
+   */
+  branchId: string;
   /** "" = every warehouse. */
   warehouseId: string;
   horizon: Horizon;
@@ -48,6 +57,7 @@ export interface BatchesQuery {
 }
 
 export const DEFAULT_BATCHES_QUERY: BatchesQuery = {
+  branchId: "",
   warehouseId: "",
   // 30 days is the API's own default horizon, and the number the "perhatian"
   // tile is labelled with.
@@ -119,7 +129,7 @@ export function useBatches(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const { warehouseId, horizon, includeSpent, search, sort } = query;
+  const { branchId, warehouseId, horizon, includeSpent, search, sort } = query;
   const custom = horizon === "custom";
   // `expiring` answers a horizon counted from today and nothing else — so the
   // two questions it cannot express, a search and a hand-picked window, are the
@@ -133,6 +143,7 @@ export function useBatches(
       return productBatchService.expiring({
         page,
         limit: PAGE_SIZE,
+        branchId: branchId || undefined,
         warehouseId: warehouseId || undefined,
         withinDays: Number(horizon),
         sort,
@@ -142,6 +153,10 @@ export function useBatches(
     return productBatchService.list({
       page,
       limit: PAGE_SIZE,
+      // BOTH ENDPOINTS TAKE IT, so the filter survives the swap the horizon
+      // makes — one that applied to the alert list and not the audit list would
+      // silently widen the rows the moment somebody searched.
+      branchId: branchId || undefined,
       warehouseId: warehouseId || undefined,
       search: search.trim() || undefined,
       // Bare dates: the API takes the upper bound as the END of the day it
@@ -156,6 +171,7 @@ export function useBatches(
   }, [
     alertMode,
     page,
+    branchId,
     warehouseId,
     horizon,
     includeSpent,

@@ -57,6 +57,32 @@ export function useProductCandidates(
    * other caller wants.
    */
   neverMovedInWarehouse = "",
+  /**
+   * Only products this warehouse HOLDS — the transfer picker's rule, resolved
+   * by the server against the balances.
+   *
+   * The near-mirror of the filter above, and asked the same way and for the
+   * same reason: a transfer draws goods off ONE shelf, so a product with
+   * nothing on it can only ever produce a line the save refuses. "" leaves the
+   * list unfiltered, which is what every other caller wants.
+   */
+  inStockAtWarehouse = "",
+  /**
+   * Only consignment goods (`true`) or only owned ones (`false`) — the receipt
+   * picker's rule, resolved by the SERVER against `products.isConsignment`.
+   *
+   * A BOOLEAN WITH `undefined` AS THE UNFILTERED CASE, not `""` like the two
+   * warehouse ids above. Those are ids, where empty is a natural "none given";
+   * here `false` is a REAL filter meaning "not consignment", so it cannot share
+   * a sentinel with "no filter" — a truthiness test would silently turn the
+   * *Beli putus* picker back into the whole catalogue.
+   *
+   * Server-side for the reason the whole hook is: the list comes back capped at
+   * PAGE_LIMIT, so filtering the returned page in the browser would drop
+   * matches that never left the server and leave `total` counting rows the user
+   * cannot see.
+   */
+  isConsignment: boolean | undefined = undefined,
 ): ProductCandidates {
   const [products, setProducts] = useState<Product[]>([]);
   const [total, setTotal] = useState(0);
@@ -79,6 +105,10 @@ export function useProductCandidates(
           search: search.trim() || undefined,
           categoryId: categoryId || undefined,
           neverMovedInWarehouse: neverMovedInWarehouse || undefined,
+          inStockAtWarehouse: inStockAtWarehouse || undefined,
+          // Passed straight through: `false` is a filter, and `|| undefined`
+          // here would drop exactly the case the receipt picker needs most.
+          isConsignment,
           limit: PAGE_LIMIT,
         })
         .then((result) => {
@@ -105,7 +135,13 @@ export function useProductCandidates(
       active = false;
       clearTimeout(timer);
     };
-  }, [search, categoryId, neverMovedInWarehouse]);
+  }, [
+    search,
+    categoryId,
+    neverMovedInWarehouse,
+    inStockAtWarehouse,
+    isConsignment,
+  ]);
 
   return {
     products,

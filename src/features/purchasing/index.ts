@@ -10,6 +10,16 @@ export { SuppliersScreen } from "./components/SuppliersScreen";
 export { SupplierCreateForm } from "./components/SupplierCreateForm";
 export { SupplierEditForm } from "./components/SupplierEditForm";
 export { SupplierDetail } from "./components/SupplierDetail";
+/**
+ * The vendor groups behind that list. In THIS feature rather than beside the
+ * product Kategori screen, though the two share a collection on the backend:
+ * the screens are used by different people for different jobs, and grouping by
+ * storage would put a purchasing setup screen inside Inventory.
+ */
+export { SupplierCategoriesScreen } from "./components/SupplierCategoriesScreen";
+// One form for both verbs — `/new` and `/:id` — the same split CategoryForm
+// makes, because the fields are identical and only the request differs.
+export { SupplierCategoryForm } from "./components/SupplierCategoryForm";
 // The picker the receipt and return forms choose a vendor with. Exported here
 // because it is the only supported way to list suppliers for selection — it is
 // what keeps a deactivated vendor out of a new purchase.

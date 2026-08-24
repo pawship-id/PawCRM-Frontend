@@ -37,10 +37,15 @@ const DEFAULT_COLOR = "#1A2B4C";
 /**
  * Create or edit a line of business.
  *
- * A DIALOG, NOT A ROUTE, for the reason CategoryFormDialog gives: two fields do
- * not earn a page, and the common case is adding Grooming, Penitipan and Retail
- * one after another — three round trips through the router to type three words.
- * Keeping the list on screen is also what answers "does this name already exist".
+ * A DIALOG, NOT A ROUTE: two fields do not earn a page, and the common case is
+ * adding Grooming, Penitipan and Retail one after another — three round trips
+ * through the router to type three words. Keeping the list on screen is also
+ * what answers "does this name already exist".
+ *
+ * This used to cite the category form, which was the same shape. It is not any
+ * more: a category gained a description and an image picker, and a form with an
+ * uploader in it cannot live in a modal — see CategoryForm for where that line
+ * falls. The test is the field count and what the fields DO, not the module.
  *
  * THE COLOUR IS REQUIRED BY THE API and is not decoration: reports render each
  * line in its own colour, and one without would come out as an unlabelled blank.

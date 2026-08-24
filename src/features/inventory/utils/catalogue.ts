@@ -18,6 +18,11 @@ import type { Product, ProductStockRow, VariantAxis } from "@/types/inventory";
  * inactive or soft-deleted: a product can still hold stock somewhere the
  * warehouse dropdown no longer offers, and an empty scope counts it while an
  * enumerated one would quietly drop it from the total.
+ *
+ * "EVERY ONE" MEANS EVERY ONE THE API SENT, which is every one the signed-in
+ * account may read — the backend narrows each per-warehouse field to the
+ * caller's own shelves. So the empty scope is never a way to reach past what a
+ * user is allowed to see, and nothing here needs to guard against that.
  */
 export type WarehouseScope = readonly string[];
 

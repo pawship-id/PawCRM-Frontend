@@ -111,6 +111,8 @@ describe("qtyIn", () => {
 function bundle(): Product {
   return {
     _id: "b1",
+    isConsignment: false,
+    isPreorder: false,
     sku: "PAKET",
     name: "Paket Hemat",
     productType: "bundle",

@@ -48,6 +48,13 @@ import { ProductTypeBadge } from "./ProductTypeBadge";
  * per-warehouse figures up — exactly, on BigInt minor units, never on floats.
  * See utils/catalogue.
  *
+ * AND ONLY THE SHELVES THIS ACCOUNT REACHES ARE IN IT. Every per-warehouse field
+ * the backend sends — `stockByWarehouse`, `variantStock`, `bundleAvailability` —
+ * is narrowed to the caller before it arrives, so an empty scope adds up their
+ * locations rather than the tenant's. That is the server's answer and not this
+ * table's to re-decide; `utils/accessScope.ts` stays a courtesy for the PICKER,
+ * which is the different job of not offering a choice that can only 403.
+ *
  * THE ROW ACTIONS LIVE BEHIND A KEBAB MENU, as on the supplier list and for the
  * same reason: this table already carries three numeric columns the screen
  * exists for, and a third inline button pushed them off the right edge on a
@@ -240,6 +247,15 @@ export function ProductsTable({
                             {product.isPreorder && (
                               <span className="ml-2 font-sans text-secondary-foreground">
                                 pre-order
+                              </span>
+                            )}
+                            {/* Sits with pre-order rather than in the badge
+                                column beside the type badge: both are one-word
+                                notes ABOUT this SKU, and the badge column is
+                                what the row is. */}
+                            {product.isConsignment && (
+                              <span className="ml-2 font-sans text-secondary-foreground">
+                                titipan
                               </span>
                             )}
                           </p>

@@ -12,7 +12,7 @@
  * movement and HPP rows verbatim, so redeclaring them here would be a second
  * definition of the same payload that drifts the first time the gateway changes.
  */
-import type { PreviewHpp, PreviewMovementRow } from "./inventory";
+import type { MediaAsset, PreviewHpp, PreviewMovementRow } from "./inventory";
 
 export interface ApiSuccess<T> {
   success: true;
@@ -63,6 +63,26 @@ export interface HealthPayload {
  * profile UI does not yet touch (commissionRate, availability) are omitted
  * rather than typed loosely; add them when a screen needs them.
  */
+/**
+ * One branch's worth of warehouse scope on a user.
+ *
+ * A branch is a set of books and a warehouse is a shelf, so the two axes are
+ * nested rather than flat: `allWarehouses` means every shelf of THIS branch and
+ * keeps meaning that as new ones open, which an enumerated list cannot.
+ *
+ * SHARED WAREHOUSES ARE NEVER LISTED HERE. A warehouse with
+ * `defaultBranchId: null` is the central one serving every branch, so it comes
+ * with any branch access at all; the backend refuses one sent in `warehouseIds`
+ * rather than storing a duplicate of a grant the user already has.
+ */
+export interface WarehouseScopeEntry {
+  branchId: string;
+  /** Every warehouse of this branch, including ones opened later. */
+  allWarehouses: boolean;
+  /** Empty whenever `allWarehouses` is true — one representation of "all". */
+  warehouseIds: string[];
+}
+
 export interface User {
   _id: string;
   tenantId: string;
@@ -72,6 +92,13 @@ export interface User {
   roleId: string | null;
   allBranches: boolean;
   branchAccess: string[];
+  /**
+   * Exactly one entry per id in `branchAccess`, and `[]` whenever `allBranches`
+   * is true. Read defensively: users stored before this field existed come back
+   * with `[]` alongside a non-empty `branchAccess`, which the backend reads as
+   * "never configured" and treats as every warehouse of those branches.
+   */
+  warehouseAccess: WarehouseScopeEntry[];
   status: "active" | "suspended";
   emailVerifiedAt: string | null;
   lastLoginAt: string | null;
@@ -175,6 +202,11 @@ export interface UserListQuery {
  * Body of POST /api/users. The backend requires a branch scope: either
  * `allBranches: true` OR a non-empty `branchAccess`. `tenantId` is derived from
  * the session, never sent from here.
+ *
+ * `warehouseAccess` is optional and derived from the branch scope: omitting it
+ * grants every warehouse of every granted branch, which is what a branch grant
+ * meant before the field existed. Rows for branches not granted are dropped by
+ * the backend rather than refused, so a form may send what it has on screen.
  */
 export interface CreateUserInput {
   email: string;
@@ -184,6 +216,7 @@ export interface CreateUserInput {
   roleId?: string | null;
   allBranches?: boolean;
   branchAccess?: string[];
+  warehouseAccess?: WarehouseScopeEntry[];
   status?: User["status"];
 }
 
@@ -199,6 +232,7 @@ export interface UpdateUserInput {
   roleId?: string | null;
   allBranches?: boolean;
   branchAccess?: string[];
+  warehouseAccess?: WarehouseScopeEntry[];
 }
 
 /**
@@ -519,13 +553,18 @@ export interface UpdateWarehouseInput {
 }
 
 /**
- * What a category is FOR. One value today, and the field exists anyway because
- * finance categories used to share this collection and the backend kept the
- * discriminator when they moved to the chart of accounts — see
- * category.model.js. Nothing in the UI offers a choice; every category the
- * frontend creates is a product category.
+ * What a category is FOR — the discriminator on the backend's shared
+ * `categories` collection (see category.model.js).
+ *
+ * TWO KINDS, TWO RESOURCES, AND NO SCREEN EVER CHOOSES BETWEEN THEM. Product
+ * categories come from `/api/categories` and supplier categories from
+ * `/api/supplier-categories`; each endpoint filters on its own kind server-side
+ * and refuses the other one on a write. So the field is something a response
+ * CARRIES, never something a form sets — which is why `CreateCategoryInput`
+ * takes `kind?: "product"` for backwards compatibility and
+ * `CreateSupplierCategoryInput` does not take it at all.
  */
-export type CategoryKind = "product";
+export type CategoryKind = "product" | "supplier";
 
 /**
  * One account of a tenant's chart of accounts.
@@ -546,15 +585,58 @@ export interface ChartAccount {
 /**
  * A product category — the label a product is filed under.
  *
- * Nothing but a name, which is the point: grouping is all a category does. It
- * carries no price, no stock and no rules, so the only thing that can be wrong
- * with one is what it is called.
+ * Grouping is all a category does: it carries no price, no stock and no rules.
+ * The three fields that describe it are therefore all about the LABEL — what it
+ * is called, what belongs under it, and what it looks like on a tile.
  */
 export interface Category {
   _id: string;
   tenantId: string;
-  kind: CategoryKind;
+  /**
+   * Always `"product"` on this shape: every read that produces a `Category`
+   * goes through `/api/categories`, which filters on the kind server-side.
+   * Narrowed rather than left as `CategoryKind` so a screen holding one of
+   * these cannot be handed a supplier category by a type that says it might.
+   */
+  kind: "product";
   name: string;
+  /**
+   * The category this one sits under, or `null` for a top-level category.
+   *
+   * THE TREE IS EXACTLY TWO DEEP. A category with a `parentId` cannot itself
+   * be a parent — the API refuses it — so `parent.parent` is a shape that does
+   * not exist and nothing needs to recurse.
+   */
+  parentId: string | null;
+  /**
+   * The parent, resolved by the API so a list does not need one request per row.
+   *
+   * A SIBLING OF `parentId` RATHER THAN A POPULATED VERSION OF IT: the id stays
+   * an id, so code that only asks "is this a sub-category" reads one scalar,
+   * and code that prints the trail reads `parent.name`. `null` whenever
+   * `parentId` is.
+   */
+  parent: { _id: string; name: string } | null;
+  /**
+   * A sentence or two saying what belongs under this label — a hint for
+   * whoever is filing a product, not marketing copy.
+   *
+   * PLAIN TEXT, unlike a product's description, which is sanitised HTML. Render
+   * it as text; never as `dangerouslySetInnerHTML`.
+   */
+  description: string | null;
+  /**
+   * The one picture that represents the label — a category tile, a POS group
+   * button, a storefront strip.
+   *
+   * ONE IMAGE, NOT A GALLERY: a category is a label, not the thing being
+   * photographed nine ways. Always an image; the API refuses a video here,
+   * because there is no second item to fall back to.
+   *
+   * `thumbUrl` and `mediumUrl` are null on assets stored before those
+   * derivatives existed, so read it as `thumbUrl ?? url`.
+   */
+  image: MediaAsset | null;
   /**
    * Whether the label is still offered for new products.
    *
@@ -571,11 +653,33 @@ export interface Category {
   updatedAt: string;
 }
 
+/**
+ * The two words `?parentId=` accepts alongside an actual category id.
+ *
+ * Words rather than empty values, because an empty query parameter is `""` on
+ * one client and dropped on another, and dropped already means something else
+ * here (both levels).
+ */
+export const TOP_LEVEL_ONLY = "none";
+export const SUB_LEVEL_ONLY = "sub";
+
 /** Query parameters accepted by GET /api/categories. All optional. */
 export interface CategoryListQuery {
   page?: number;
   limit?: number;
-  kind?: CategoryKind;
+  /**
+   * Product only, and the API refuses anything else on this resource. Kept
+   * because the field predates the second kind and clients were already sending
+   * it; there is nothing to vary here — supplier categories have their own
+   * query type below.
+   */
+  kind?: "product";
+  /**
+   * One parent's children (an id), only top-level categories
+   * (`TOP_LEVEL_ONLY`), only sub-categories (`SUB_LEVEL_ONLY`), or — omitted —
+   * both levels, which is what the category screen opens on.
+   */
+  parentId?: string;
   /** Free-text over the name. */
   search?: string;
   /** Retired state. Omit for both — the API applies no default, unlike `includeDeleted`. */
@@ -595,16 +699,114 @@ export type CategorySort = "newest" | "oldest" | "nameAsc" | "nameDesc";
 /** Body of POST /api/categories. `kind` defaults to "product" server-side. */
 export interface CreateCategoryInput {
   name: string;
-  kind?: CategoryKind;
+  /** Product only — the API 400s on any other kind. See CategoryKind. */
+  kind?: "product";
+  /**
+   * Files this category under another. The parent must itself be top-level —
+   * the API refuses a three-level tree with a 400 naming the field.
+   */
+  parentId?: string | null;
+  /** `""` is accepted and stored as null. */
+  description?: string | null;
+  /**
+   * The asset `POST /api/media/upload` returned, HANDED BACK WHOLE — `token`
+   * included. The API refuses an asset without it: everything else in the
+   * object passed through this browser and is therefore client-controlled by
+   * the time it arrives.
+   */
+  image?: MediaAsset | null;
   /** Defaults to true server-side; a category is made because it is wanted. */
   isActive?: boolean;
 }
 
 /**
- * Body of PATCH /api/categories/:id. `name` is the only editable field, and the
- * backend rejects an empty body — so in practice it is required here too.
+ * Body of PATCH /api/categories/:id. Every field is independent, and the
+ * backend rejects an empty body — so at least one must be present.
+ *
+ * Send only what MOVED. A patch that resends an unchanged `image` is a round
+ * trip away from losing it, because the API deletes the bytes an update drops.
  */
 export interface UpdateCategoryInput {
+  name?: string;
+  /** A new id moves it; `null` promotes it back to the top level. */
+  parentId?: string | null;
+  /** `""` and `null` both clear it. */
+  description?: string | null;
+  /** A new asset replaces the picture; `null` removes it. */
+  image?: MediaAsset | null;
+  isActive?: boolean;
+}
+
+/**
+ * A supplier category — the label a VENDOR is grouped by, from
+ * `/api/supplier-categories`.
+ *
+ * A NAME AND A SWITCH. It shares the backend's `categories` collection with
+ * product categories (told apart by `kind`), and it is deliberately NOT the
+ * `Category` shape with fields omitted: this kind has no parent, no
+ * description and no picture, and the API neither returns nor accepts them.
+ * A separate interface is what stops a screen from reaching for
+ * `category.image` and getting `undefined` at runtime from a type that
+ * promised `MediaAsset | null`.
+ */
+export interface SupplierCategory {
+  _id: string;
+  tenantId: string;
+  /** Always `"supplier"` here — the resource filters on it server-side. */
+  kind: "supplier";
+  name: string;
+  /**
+   * Whether the label is still offered when grouping a vendor.
+   *
+   * ORTHOGONAL TO `deletedAt`, the same split product categories make: a
+   * retired label keeps everything already grouped under it and can be
+   * reinstated, where a deleted one is gone from ordinary reads.
+   */
+  isActive: boolean;
+  /** Soft-delete marker; non-null means deleted (restorable), null means live. */
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Query parameters accepted by GET /api/supplier-categories. All optional.
+ *
+ * NO `parentId` AND NO `kind`. There is no tree to filter on, and the kind is
+ * what the resource IS — a parameter with one legal value is a control
+ * pretending to be a choice.
+ */
+export interface SupplierCategoryListQuery {
+  page?: number;
+  limit?: number;
+  /** Free-text over the name. */
+  search?: string;
+  /** Retired state. Omit for both — the API applies no default, unlike `includeDeleted`. */
+  isActive?: boolean;
+  /** Include soft-deleted categories (default false on the backend). */
+  includeDeleted?: boolean;
+  /** Which ordering to page through. Omitted means `newest`, the API's default. */
+  sort?: CategorySort;
+}
+
+/**
+ * Body of POST /api/supplier-categories.
+ *
+ * `name` is the whole form. `kind` is NOT accepted by the API here — unlike the
+ * product resource, which still takes it for backwards compatibility — so it is
+ * absent from this type rather than optional.
+ */
+export interface CreateSupplierCategoryInput {
+  name: string;
+  /** Defaults to true server-side; a category is made because it is wanted. */
+  isActive?: boolean;
+}
+
+/**
+ * Body of PATCH /api/supplier-categories/:id. Both fields are independent, and
+ * the backend rejects an empty body — so at least one must be present.
+ */
+export interface UpdateSupplierCategoryInput {
   name?: string;
   isActive?: boolean;
 }
@@ -694,6 +896,104 @@ export interface UpdateCustomerInput {
 export type SupplierType = "beli_putus" | "konsinyasi" | "both";
 
 /**
+ * The vendor's LEGAL FORM — "tipe pemasok" on the form, and a different axis
+ * from `SupplierType` above, which is easy to conflate because both are read
+ * aloud as "tipe supplier":
+ *
+ *   SupplierType       — the COOPERATION model. What arriving goods do to the
+ *                        ledger (beli_putus / konsinyasi / both).
+ *   SupplierEntityType — WHO the vendor is. A registered company or a private
+ *                        individual.
+ *
+ * They vary independently, so neither predicts the other. `null` on a supplier
+ * means "not recorded", which is what every vendor registered before the field
+ * existed genuinely is — the backend does NOT default it to "perusahaan", and
+ * neither should a screen.
+ */
+export type SupplierEntityType = "perusahaan" | "perorangan";
+
+/**
+ * A supplier category as it comes back ATTACHED to a supplier — the id stays
+ * where it was and this arrives beside it.
+ *
+ * NOT `SupplierCategory` with fields omitted: the attachment is a label, so the
+ * API sends only what a label needs. A screen wanting `isActive` fetches the
+ * category itself.
+ */
+export interface SupplierCategoryRef {
+  _id: string;
+  name: string;
+}
+
+/**
+ * A vendor's postal address — "Alamat Pembayaran", where an invoice and a
+ * payment advice go.
+ *
+ * AN OBJECT, not the single free-text line it replaced, because of what the
+ * parts are FOR: a shipping integration needs the postcode alone and a tax
+ * report groups by province, and neither can be recovered from
+ * "Jl. Rungkut Industri 21, Surabaya" without guessing.
+ *
+ * EVERY PART IS NULLABLE, including `street` — a vendor known only by its city
+ * is a real record. `country` has no default; "Indonesia" would be an assertion
+ * nobody made.
+ */
+export interface SupplierAddress {
+  street: string | null;
+  city: string | null;
+  postalCode: string | null;
+  province: string | null;
+  country: string | null;
+}
+
+/**
+ * The contact person AT the supplier — "Penanggung jawab".
+ *
+ * An object rather than four flat keys: `name` and `phone` are read as a pair on
+ * every screen that chases a short delivery, and grouping them makes "is a PIC
+ * recorded at all" one question instead of four.
+ *
+ * A PLAIN NAME, NEVER A PawCRM USER — this person works for the vendor.
+ * `phone` is stored in E.164 like every other number on a supplier.
+ */
+export interface SupplierPic {
+  name: string | null;
+  email: string | null;
+  address: string | null;
+  phone: string | null;
+}
+
+/**
+ * One of the vendor's bank accounts — where a payment to them is actually sent.
+ *
+ * `_id` IS PRESENT AND STABLE, unlike the two objects above: these are
+ * addressable ROWS. A form edits and removes individual lines, and identifying
+ * one by its position in the array breaks the moment somebody reorders it.
+ *
+ * NOT NORMALIZED THE WAY A PHONE NUMBER IS. The bank's own formatting IS the
+ * form — "123 4567 890" is how it is printed on a statement — and rewriting it
+ * is how a transfer goes to the wrong place. Render it exactly as stored.
+ */
+export interface SupplierBankAccount {
+  _id: string;
+  accountNumber: string;
+  accountHolder: string;
+  bankName: string;
+}
+
+/**
+ * A bank-account row as SENT to the API — no `_id`, because the server owns it.
+ *
+ * The whole list is replaced on every save (see `UpdateSupplierInput`), so a row
+ * the client just added and one it is keeping look identical on the wire.
+ */
+export interface SupplierBankAccountInput {
+  accountNumber: string;
+  accountHolder: string;
+  bankName: string;
+}
+
+/**
  * A vendor the tenant buys from, as returned by /api/suppliers.
  *
  * FIELD NAMES FOLLOW THE BACKEND, not the older prototype types in
@@ -711,16 +1011,116 @@ export type SupplierType = "beli_putus" | "konsinyasi" | "both";
  * not carry it, and a missing flag means active — the backend applies the same
  * rule when it filters and when it refuses a receipt. Read it through
  * `isSupplierActive()` rather than testing it directly.
+ *
+ * EVERY FIELD ADDED AFTER LAUNCH IS OPTIONAL FOR THE SAME REASON, and it is not
+ * defensive typing — it is what the API actually returns. Mongoose applies a
+ * path default when a DOCUMENT IS WRITTEN, not when one is read, and these reads
+ * are `.lean()`: a supplier stored before `code` and `whatsapp` existed comes
+ * back with no such keys at all. Typing them as required would promise a `null`
+ * the server never sends, and the first `supplier.code.trim()` on an old vendor
+ * would throw.
+ *
+ * So `?? null` / `?? false` at the point of use, exactly as `isSupplierActive`
+ * does. The one field that is genuinely computed per read — `category` — follows
+ * the same rule so a caller holding a supplier from an older cached response is
+ * not forced to fabricate it.
  */
 export interface Supplier {
   _id: string;
   tenantId: string;
   name: string;
-  /** The contact person AT the vendor — a plain name, never a PawCRM user. */
-  pic: string | null;
+  /**
+   * The tenant's OWN code for the vendor — "ID Supplier" on the form.
+   *
+   * CLIENT-SUPPLIED, not generated: it is usually the account number the vendor
+   * already appears under in whatever the tenant is migrating off. Unique per
+   * tenant when present, uppercased by the server, and `null` for the many
+   * suppliers nobody ever coded.
+   */
+  code?: string | null;
+  /**
+   * Which supplier category this vendor is filed under, or `null` when
+   * ungrouped. Points at a `categories` document with `kind: "supplier"` — the
+   * API refuses a product category's id with a 400.
+   */
+  categoryId?: string | null;
+  /**
+   * The resolved label for `categoryId`, attached by the API so a list does not
+   * make one request per row.
+   *
+   * `null` FOR AN UNGROUPED SUPPLIER, and also for the rare grouped one whose
+   * category was deleted out from under it — read `categoryId` to tell those
+   * two apart.
+   */
+  category?: SupplierCategoryRef | null;
+  /** The vendor's legal form. `null` means not recorded — see the type. */
+  entityType?: SupplierEntityType | null;
+  /**
+   * Whether purchases from this vendor go on account (credit) rather than being
+   * paid at the counter — "akun hutang" on the form.
+   *
+   * RECORDED, NOT DERIVED. It cannot be read off `type` (a consignment vendor
+   * still has a payable, born at the point of sale) nor off `paymentTermDays`
+   * (0 is both a cash vendor and an on-account vendor with COD terms).
+   */
+  /**
+   * WHERE THIS VENDOR'S DEBT LANDS IN THE LEDGER — the two posting overrides.
+   *
+   * `payableAccountId` is the LIABILITY account their debt is credited to; null
+   * means the seeded 2101. `advanceAccountId` is the ASSET account a prepayment
+   * to them sits in.
+   *
+   * THESE ARE POSTED AGAINST, not decorative: a goods receipt credits the first,
+   * a purchase return debits it, and an invoice payment debits it. All three
+   * read the same field, because a debt created in one account and settled in
+   * another never nets to zero.
+   */
+  payableAccountId?: string | null;
+  advanceAccountId?: string | null;
+  /**
+   * WHICH BRANCHES may choose this vendor — "Dipakai di cabang".
+   *
+   * `allBranches: true` is not sugar for "every id listed": it keeps meaning
+   * every branch as new ones open. When it is true `branchIds` is `[]`, and the
+   * API enforces that pairing, so there is exactly one representation of "all".
+   *
+   * DEFAULTS TO TRUE, unlike the equivalent on a user, because the risk points
+   * the other way: a user accidentally granted every branch is an escalation,
+   * while a supplier scoped to none has silently vanished from every purchasing
+   * screen. Absent means true, for the suppliers stored before the field.
+   */
+  allBranches?: boolean;
+  branchIds?: string[];
+  /** Where a payment to this vendor is sent. Empty when none is recorded. */
+  bankAccounts?: SupplierBankAccount[];
+  /**
+   * The contact person AT the vendor. Always present as an OBJECT — the API
+   * defaults it to four nulls rather than to null, so `supplier.pic.name` never
+   * throws on a vendor nobody has filled in.
+   */
+  pic: SupplierPic;
+  /**
+   * The business line — "No telp bisnis". STORED IN E.164 ("+6281234567890")
+   * from the day the normalizer shipped; suppliers registered before it still
+   * hold whatever was typed ("031-8877-221"), so render it, never parse it.
+   * Applies equally to `whatsapp`, `fax` and `picPhone`.
+   */
   phone: string | null;
+  /**
+   * The WhatsApp line — a separate number from `phone` rather than a flag on
+   * it, because the landline on the invoice is routinely not the sales rep's
+   * handset.
+   */
+  whatsapp?: string | null;
+  fax?: string | null;
+  /** Always stored WITH a scheme, so it is safe to use as an href directly. */
+  website?: string | null;
   email: string | null;
-  address: string | null;
+  /**
+   * The billing address. Always present as an object, for the reason `pic` is —
+   * `supplier.address.city` must not throw on a vendor with no address.
+   */
+  address: SupplierAddress;
   /** Indonesian taxpayer number, needed on a faktur pajak. */
   npwp: string | null;
   notes: string | null;
@@ -762,7 +1162,13 @@ export interface SupplierListQuery {
   page?: number;
   limit?: number;
   type?: SupplierType;
-  /** Free-text over name / pic / phone / npwp. */
+  /**
+   * Narrow to one supplier category. An id, not a name — a label is renamed
+   * from its own screen and a filter keyed on the old spelling would quietly
+   * return nothing. Omit for every category.
+   */
+  categoryId?: string;
+  /** Free-text over name / code / pic / phone / npwp. */
   search?: string;
   /** Narrow by activity. Omit for both — the management list wants both. */
   isActive?: boolean;
@@ -785,29 +1191,107 @@ export interface SupplierListQuery {
 export interface CreateSupplierInput {
   name: string;
   type: SupplierType;
-  pic?: string | null;
+  /**
+   * REQUIRED, both of them, and this is the one breaking change in the shape.
+   *
+   * `code` is unique per tenant and the server uppercases it (may 409).
+   * `paymentTermDays` is demanded rather than defaulted for the reason `type`
+   * is: 0 is a real, deliberate term (cash on delivery) AND what an unanswered
+   * field would silently become, so the client has to say which it means.
+   */
+  code: string;
+  paymentTermDays: number;
+  /** Must name a `kind: "supplier"` category, or the API answers 400. */
+  categoryId?: string | null;
+  entityType?: SupplierEntityType | null;
+  /**
+   * Posting overrides. Each must be a LIVE account of this tenant and of the
+   * right type — liability for the payable, asset for the advance — or the API
+   * answers 400 naming the field.
+   */
+  payableAccountId?: string | null;
+  advanceAccountId?: string | null;
+  /**
+   * Send both halves together. `allBranches: true` with a non-empty `branchIds`
+   * is accepted but the ids are DROPPED; `allBranches: false` with an empty list
+   * is a 400, because a supplier available in no branch has silently vanished
+   * from every purchasing screen.
+   */
+  allBranches?: boolean;
+  branchIds?: string[];
+  /** The WHOLE list — sending it replaces what is stored. */
+  bankAccounts?: SupplierBankAccountInput[];
+  /**
+   * Every part optional; `null` for the whole object clears it. A partial PIC is
+   * a real record — somebody who knows only a name has recorded something
+   * useful.
+   */
+  pic?: Partial<SupplierPic> | null;
+  /**
+   * Phone-shaped fields are NORMALIZED SERVER-SIDE to E.164, so any of
+   * "0812-3456-7890", "+62 812 3456 7890" or "62812 3456 7890" may be sent and
+   * all three come back as "+6281234567890". Send what the user typed; do not
+   * pre-format. A value the server cannot read is a 400 naming the field.
+   */
   phone?: string | null;
+  whatsapp?: string | null;
+  fax?: string | null;
+  /** The scheme is optional — the server prepends `https://` when it is absent. */
+  website?: string | null;
   email?: string | null;
-  address?: string | null;
+  /**
+   * Every part optional; `null` for the whole object clears it. A partial patch
+   * MERGES, exactly as `pic` does.
+   */
+  address?: Partial<SupplierAddress> | null;
   npwp?: string | null;
   notes?: string | null;
-  paymentTermDays?: number;
   isActive?: boolean;
 }
 
 /**
  * Body of PATCH /api/suppliers/:id — every field optional, but the backend
  * rejects an empty body (send only what changed). A nullable field set to
- * `null`/"" clears it; `type`, `paymentTermDays` and `isActive` refuse null,
- * since each always has a meaningful value.
+ * `null`/"" clears it; `type`, `paymentTermDays`, `isActive` and `allBranches`
+ * refuse null, since each always has a meaningful value. `entityType`,
+ * `categoryId` and the two account overrides DO take null — each is genuinely
+ * unknown or deliberately unset. `code` takes neither: see below.
  */
 export interface UpdateSupplierInput {
   name?: string;
   type?: SupplierType;
-  pic?: string | null;
+  /**
+   * NOT NULLABLE, unlike every other optional string here. It is required on
+   * create, and a field that cannot be omitted on the way in must not be
+   * clearable on the way back — otherwise "required" would only hold for
+   * suppliers nobody has edited since. OMITTING it is still fine, which is what
+   * keeps a supplier stored before `code` existed editable at all.
+   */
+  code?: string;
+  categoryId?: string | null;
+  entityType?: SupplierEntityType | null;
+  payableAccountId?: string | null;
+  advanceAccountId?: string | null;
+  allBranches?: boolean;
+  branchIds?: string[];
+  bankAccounts?: SupplierBankAccountInput[];
+  /**
+   * A PARTIAL PATCH MERGES INTO THE STORED OBJECT — the server flattens it to
+   * dot paths, so `{ pic: { name: "x" } }` changes the name and leaves the
+   * email, address and phone alone. `null` for the whole object clears every
+   * part.
+   */
+  pic?: Partial<SupplierPic> | null;
   phone?: string | null;
+  whatsapp?: string | null;
+  fax?: string | null;
+  website?: string | null;
   email?: string | null;
-  address?: string | null;
+  /**
+   * Every part optional; `null` for the whole object clears it. A partial patch
+   * MERGES, exactly as `pic` does.
+   */
+  address?: Partial<SupplierAddress> | null;
   npwp?: string | null;
   notes?: string | null;
   paymentTermDays?: number;
@@ -960,6 +1444,31 @@ export interface GoodsReceiptListRow {
   supplierName: string | null;
   warehouseId: string;
   warehouseName: string | null;
+  /**
+   * WHICH BOOKS this delivery was posted against — the warehouse's default
+   * branch, or the session's when the warehouse serves every branch.
+   *
+   * NOT A SYNONYM FOR `warehouseId`. A branch may receive at its own warehouse
+   * AND at the shared central one, so "what did this shop buy" spans warehouses
+   * rather than naming one. Frozen when the delivery posted, so a warehouse
+   * moved between branches since does not restate a closed period — the journal
+   * entry and the purchase invoice hold the same value for the same reason.
+   *
+   * Server-resolved, never sent: a client that could name it could post a
+   * delivery into another branch's books.
+   */
+  branchId: string;
+  /**
+   * The branch's name, resolved by the server over the page's DISTINCT branch
+   * ids — most tenants receive into one or two, so a page of twenty deliveries
+   * is a one-id lookup rather than twenty.
+   *
+   * NULL IS A REAL ANSWER: a delivery written before `branchId` existed carries
+   * neither until the backfill has run, and a branch closed since is still named
+   * (a delivery posted there did happen). A label may be null; the id it labels
+   * may not.
+   */
+  branchName: string | null;
   receiptDate: string;
   purchaseType: PurchaseType;
   total: string;
@@ -1001,6 +1510,13 @@ export interface GoodsReceiptListQuery {
   search?: string;
   supplierId?: string;
   warehouseId?: string;
+  /**
+   * WHICH BOOKS, and not a synonym for `warehouseId`: a branch may receive at
+   * its own warehouse AND at the shared central one, so "what did this shop buy
+   * in March" spans warehouses rather than naming one. The two narrow along
+   * different axes and combine.
+   */
+  branchId?: string;
   purchaseType?: PurchaseType;
   /**
    * Has the supplier's bill been filed against this delivery yet?
@@ -1089,6 +1605,10 @@ export interface GoodsReceiptDetail {
   supplierName: string | null;
   warehouseId: string;
   warehouseName: string | null;
+  /** WHICH BOOKS — see `GoodsReceiptListRow.branchId`. Server-resolved. */
+  branchId: string;
+  /** The branch's name — see `GoodsReceiptListRow.branchName`. May be null. */
+  branchName: string | null;
   /** Who keyed it in. Null when that user has been deleted since. */
   createdByName: string | null;
   receiptDate: string;
@@ -1117,10 +1637,32 @@ export interface CreateGoodsReceiptItemInput {
    * agreed value in. Zero is legitimate (a free sample is a real delivery).
    */
   costPerUnit: string;
+  /**
+   * THEIR code — the batch number printed on the carton. Optional, always.
+   *
+   * There is no `batchCode` here and sending one is a 400: the lot's own code
+   * is generated by the server and unique across the tenant, because a code a
+   * client could choose is a code two lots could end up sharing — and a scanned
+   * label has to name one lot.
+   */
+  supplierBatchCode?: string;
   /** Required when the product `hasExpiry`, and on every `konsinyasi` line. */
-  batchCode?: string;
-  /** Required when the product `hasExpiry`. */
   expiryDate?: string;
+  /**
+   * The lot ALREADY ON THE SHELF that these goods join — the second van
+   * carrying the batch the first one brought.
+   *
+   * MUTUALLY EXCLUSIVE with `supplierBatchCode` and `expiryDate`, and the API
+   * refuses the pair rather than preferring one: those two DESCRIBE a lot,
+   * which mints it, where this NAMES one, which adds to it. Sent together, one
+   * physical batch would end up as two rows with two expiry dates to keep in
+   * step — and retagging an existing lot would rewrite the recall trail of the
+   * delivery that opened it.
+   *
+   * The lot must hold this product at this receipt's warehouse; the server
+   * checks and names the offending code if not.
+   */
+  batchId?: string;
 }
 
 /**
@@ -1141,6 +1683,33 @@ export interface CreateGoodsReceiptInput {
   /** FORBIDDEN on `konsinyasi` — nothing was bought, so there is no input VAT. */
   taxAmount?: string;
   notes?: string;
+  /**
+   * THE SUPPLIER'S BILL, when it came with the goods.
+   *
+   * OPTIONAL, and the two real cases are why: the faktur is in the clerk's hand
+   * while they unload — the ordinary one, and the one this turns into a single
+   * save — or the van brings only a surat jalan and the bill follows days later.
+   * Absent, the delivery posts exactly as it always did and the bill is filed
+   * afterwards through POST /purchase-invoices.
+   *
+   * ABSENT IS NOT "NO DEBT". A `beli_putus` receipt credits `2101 Utang
+   * Supplier` when it posts, invoice or no invoice; what this adds is the
+   * vendor's paperwork on top of the payable — their number, and a due date.
+   *
+   * FORBIDDEN on `konsinyasi`, refused rather than ignored — nothing has been
+   * bought, so there is no debt for a bill to document.
+   *
+   * THE AMOUNTS ARE NOT HERE. `subtotal` and `taxAmount` must equal the
+   * receipt's to the minor unit, so the server takes them from the delivery
+   * itself; what is left is what a person can only read off the vendor's paper.
+   */
+  invoice?: {
+    /** The VENDOR'S own number, from their document. Unique per vendor. */
+    invoiceNumber: string;
+    /** Defaults to `receiptDate`. What the payment terms are counted from. */
+    invoiceDate?: string;
+    notes?: string;
+  };
   items: CreateGoodsReceiptItemInput[];
 }
 
@@ -1247,8 +1816,31 @@ export interface PurchaseInvoiceListRow {
   supplierId: string;
   /** Null when the vendor was soft-deleted since; the bill still stands. */
   supplierName: string | null;
+  /**
+   * WHOSE BOOKS this bill posts to — the receiving warehouse's default branch,
+   * or the session's when that warehouse serves every branch. Frozen when the
+   * invoice was filed, so moving a warehouse between branches later cannot
+   * restate a closed period.
+   */
   branchId: string;
+  /** The branch's name, resolved server-side. Null if it was hard-deleted. */
+  branchName: string | null;
   goodsReceiptId: string;
+  /**
+   * WHERE THE GOODS LANDED — copied from the delivery when the bill was filed,
+   * so the list can be FILTERED by it: an index cannot span two collections.
+   * The copy cannot drift, because a posted goods receipt is immutable.
+   *
+   * NOT A SYNONYM FOR `branchId`. A branch may receive at its own warehouse AND
+   * at the shared central one, so neither filter can be derived from the other.
+   *
+   * NULL ON A BILL FILED BEFORE THE FIELD EXISTED and not yet backfilled — such
+   * a bill matches no warehouse filter at all. See
+   * `src/seeds/backfillInvoiceWarehouses.js` in the backend.
+   */
+  warehouseId: string | null;
+  /** The warehouse's name. Null if it was hard-deleted, or the id is null. */
+  warehouseName: string | null;
   /** When the supplier ISSUED the bill — what `dueDate` is counted from. */
   invoiceDate: string;
   /** `invoiceDate + supplier.paymentTermDays`, frozen when the bill was filed. */
@@ -1303,7 +1895,6 @@ export interface PurchaseInvoicePayment {
  */
 export interface PurchaseInvoiceDetail
   extends Omit<PurchaseInvoiceListRow, "paymentCount"> {
-  branchName: string | null;
   goodsReceiptNumber: string | null;
   /** Who filed the bill. Null when that user has been deleted since. */
   createdByName: string | null;
@@ -1331,6 +1922,12 @@ export interface PurchaseInvoiceListQuery {
   search?: string;
   supplierId?: string;
   branchId?: string;
+  /**
+   * WHERE THE GOODS LANDED. Combines with `branchId` rather than being implied
+   * by it — the shared central warehouse serves every branch, so neither can be
+   * derived from the other.
+   */
+  warehouseId?: string;
   goodsReceiptId?: string;
   status?: InvoiceStatus;
   outstanding?: boolean;
@@ -1486,7 +2083,10 @@ export interface PurchaseReturnItem {
   productUnit: string | null;
   /** The lot the goods leave from. Null is the ordinary case. */
   batchId: string | null;
+  /** OURS — what the label on the carton in the storeroom reads. */
   batchCode: string | null;
+  /** THEIRS — what the supplier's own paperwork calls these goods. */
+  supplierBatchCode: string | null;
   batchExpiryDate: string | null;
   /** Stored POSITIVE — the stock ledger owns the sign. */
   qty: string;

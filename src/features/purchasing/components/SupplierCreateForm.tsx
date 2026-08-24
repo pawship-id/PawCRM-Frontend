@@ -10,27 +10,10 @@ import { swalToast } from "@/lib/swal";
 
 import {
   SupplierFormFields,
-  orNull,
   validateSupplierForm,
   type SupplierFormValues,
 } from "./SupplierFormFields";
-
-const EMPTY: SupplierFormValues = {
-  name: "",
-  type: "beli_putus",
-  pic: "",
-  phone: "",
-  email: "",
-  address: "",
-  npwp: "",
-  notes: "",
-  // 30 rather than 0, deliberately. The model defaults to 0 (cash on delivery)
-  // because a database needs one unambiguous default; a FORM is a different
-  // question — a supplier saved on 0 by accident makes every invoice due the day
-  // it arrives, which reads as a cash-flow emergency that is not real. Monthly
-  // terms are the ordinary case, and the hint says what 0 means for the rest.
-  paymentTermDays: "30",
-};
+import { emptyFormValues, toSupplierPayload } from "./supplierPayload";
 
 /**
  * Create a supplier via POST /suppliers, then return to the list.
@@ -43,11 +26,22 @@ const EMPTY: SupplierFormValues = {
  * No `isActive` control here: a vendor being created is one the tenant intends
  * to buy from, and offering "create it switched off" would be a state nobody
  * asks for. It is on the edit form, where stopping is a real decision.
+ *
+ * THE REFUSALS THAT CANNOT BE PREVENTED CLIENT-SIDE all arrive the same way and
+ * need no special case: `ApiError.fieldErrors` is keyed by the API's own field
+ * path, and this form's error keys are those paths — so `body.categoryId`,
+ * `body.pic.email` and `body.bankAccounts.0.bankName` each land on the input
+ * that produced them. The set is: a duplicate name, NPWP or code (409), a
+ * category the server has since deleted, and a posting account of the wrong
+ * type or one that has been deactivated since the picker loaded.
  */
 export function SupplierCreateForm() {
   const router = useRouter();
 
-  const [values, setValues] = useState<SupplierFormValues>(EMPTY);
+  // A function initialiser, not a shared constant: `emptyFormValues()` returns
+  // fresh nested objects, so two mounted forms cannot end up sharing one address
+  // or one bank list.
+  const [values, setValues] = useState<SupplierFormValues>(emptyFormValues);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -66,19 +60,7 @@ export function SupplierCreateForm() {
 
     setSaving(true);
     try {
-      const created = await supplierService.create({
-        name: values.name.trim(),
-        type: values.type,
-        pic: orNull(values.pic),
-        phone: orNull(values.phone),
-        email: orNull(values.email),
-        address: orNull(values.address),
-        // Whitespace stripped, matching what the server stores — otherwise the
-        // duplicate check would compare two spellings of one tax number.
-        npwp: orNull(values.npwp.replace(/\s+/g, "")),
-        notes: orNull(values.notes),
-        paymentTermDays: Number(values.paymentTermDays.trim()),
-      });
+      const created = await supplierService.create(toSupplierPayload(values));
 
       // Redirect first, then the toast, so it rides along on the list screen.
       router.push("/dashboard/purchasing/suppliers");

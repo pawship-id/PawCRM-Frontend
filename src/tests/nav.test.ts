@@ -129,6 +129,11 @@ describe("filterNavItems", () => {
     expect(purchasing?.children?.map((c) => c.label)).toEqual([
       "Ringkasan",
       "Supplier",
+      // Directly under Supplier because it is that list's setup screen — the
+      // same place Kategori sits under Produk in the Inventory group. It comes
+      // before Penerimaan Barang rather than after it: nothing about a purchase
+      // starts here, it is what the vendor list is organised with.
+      "Kategori Supplier",
       "Penerimaan Barang",
       "Faktur Pembelian",
       "Retur ke Supplier",

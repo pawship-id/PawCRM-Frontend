@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import {
   Alert,
@@ -11,6 +11,7 @@ import {
   namedOptions,
   withAll,
 } from "@/components";
+import { useAuth } from "@/features/auth";
 import { usePermissions } from "@/features/permissions";
 
 import { useCatalogLookups } from "../hooks/useCatalogLookups";
@@ -39,6 +40,20 @@ import { StockProductsToolbar } from "./StockProductsToolbar";
  * available before the warehouse list arrives, so the Stok column does not start
  * blank and fill in.
  *
+ * AND "EVERY GUDANG" IS EVERY GUDANG THIS ACCOUNT REACHES — decided by the
+ * SERVER, not here. The dropdown has always been narrowed to them
+ * (useCatalogLookups does it); the total was not, because `GET /api/products`
+ * used to send `stockByWarehouse` for every location whoever was asking. So a
+ * storekeeper offered one shop in the picker read the whole tenant's stock the
+ * moment they left the select on its default. The API now narrows the field to
+ * the caller's own shelves, so this screen simply renders what it is given.
+ *
+ * WHAT IS STILL DECIDED HERE IS THE WORDING. A caption that says "semua gudang"
+ * to somebody who reaches two of forty is describing a different number than the
+ * one on screen, and an account granted no warehouse at all reads a table of
+ * zeroes with nothing to explain them. Neither is isolation; both are the screen
+ * owing the reader an accurate sentence.
+ *
  * THE TOTAL AND THE CARD ARE NOT THE SAME NUMBER, and this screen owes the user
  * that. A card is always one product at one warehouse — a running balance across
  * locations would claim stock is somewhere it is not — so a row showing a total
@@ -57,6 +72,7 @@ import { StockProductsToolbar } from "./StockProductsToolbar";
  */
 export function StockProductsScreen() {
   const { can } = usePermissions();
+  const { user } = useAuth();
   const mayReadProducts = can("products", "read");
 
   const lookups = useCatalogLookups({ includeInactive: true });
@@ -65,6 +81,20 @@ export function StockProductsScreen() {
 
   /** Empty = every gudang, the repo's unset convention for a scope. */
   const [warehouseId, setWarehouseId] = useState("");
+
+  /**
+   * How many shelves this account reaches — `null` when it reaches every one.
+   *
+   * FOR THE PROSE, NOT FOR THE FIGURES. The quantities arrive already narrowed
+   * (see the header); this is what lets the caption say which set they cover,
+   * and what makes an all-zero table explainable rather than mysterious. Read
+   * off the same list the dropdown renders, so the sentence and the picker
+   * cannot describe different things.
+   */
+  const reach = useMemo(
+    () => (user?.allBranches ? null : lookups.warehouses.length),
+    [user, lookups.warehouses],
+  );
 
   /**
    * The chosen warehouse's name, for the caption.
@@ -98,8 +128,12 @@ export function StockProductsScreen() {
           */}
           <p className="mt-1 max-w-2xl text-sm text-muted">
             Cari produknya, lalu buka kartu stoknya. Stok dan nilainya dihitung
-            {warehouseName ? ` untuk ${warehouseName}` : " untuk semua gudang"};
-            kartu stoknya sendiri selalu dibaca per gudang.
+            {warehouseName
+              ? ` untuk ${warehouseName}`
+              : reach === null
+                ? " untuk semua gudang"
+                : " untuk semua gudang yang bisa Anda akses"}
+            ; kartu stoknya sendiri selalu dibaca per gudang.
           </p>
         </div>
 
@@ -134,6 +168,19 @@ export function StockProductsScreen() {
         onChange={setQuery}
       />
 
+      {/*
+        Zero reach is a configuration, not a bug in the data — and every figure
+        below reads 0 because of it. Saying so is the difference between a screen
+        somebody reports and one they take to their admin.
+      */}
+      {!lookups.loading && reach === 0 && (
+        <Alert variant="info">
+          Role ini belum diberi akses ke gudang mana pun, jadi semua angka stok
+          dan nilainya terbaca 0. Kartu stoknya sendiri tetap bisa dibuka. Minta
+          admin menambahkan akses gudang untuk role ini.
+        </Alert>
+      )}
+
       {error && <Alert variant="error">{error}</Alert>}
       {/* Separate from the list's own error: a role may hold products:read
           without categories:read or warehouses:read, and this says which half is
@@ -146,9 +193,9 @@ export function StockProductsScreen() {
             Daftar produk tidak bisa ditampilkan
           </p>
           <p className="mx-auto mt-1 max-w-md text-sm text-muted">
-            Role ini boleh membaca kartu stok, tapi belum punya izin baca produk.
-            Minta admin menambahkan izin itu, atau buka kartu stoknya lewat
-            tautan dari halaman detail produk.
+            Role ini boleh membaca kartu stok, tapi belum punya izin baca
+            produk. Minta admin menambahkan izin itu, atau buka kartu stoknya
+            lewat tautan dari halaman detail produk.
           </p>
         </div>
       ) : loading && products.length === 0 ? (

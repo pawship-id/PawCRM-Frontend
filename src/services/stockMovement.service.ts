@@ -7,6 +7,8 @@ import type {
   StockMovementPage,
   StockMovementPreview,
   StockMovementSummary,
+  StockTransferListQuery,
+  StockTransferPage,
 } from "@/types/inventory";
 
 /**
@@ -79,6 +81,32 @@ export const stockMovementService = {
         // List only — see FilterQuery.
         sort: query.sort,
         ...filterParams(query),
+      },
+    }),
+
+  /**
+   * GET /stock-movements/transfers — the manual transfers, one row per TRANSFER.
+   *
+   * NOT `list({ referenceType: "transfer_manual" })`, which returns the ledger
+   * ROWS. A transfer has no document of its own — nothing to hang a header off —
+   * so its rows are tied together only by the correlation id the server puts in
+   * `reference.id`, and grouping a page of rows in the browser would page rows:
+   * one transfer could straddle a page boundary and show up twice, each time
+   * with half its lots. The server groups and pages the groups.
+   *
+   * To read ONE transfer's lines, go back to `list` with that transfer's id:
+   * `list({ referenceType: "transfer_manual", referenceId })`.
+   */
+  listTransfers: (query: StockTransferListQuery = {}) =>
+    apiClient.get<StockTransferPage>("/stock-movements/transfers", {
+      query: {
+        page: query.page,
+        limit: query.limit,
+        warehouseId: query.warehouseId,
+        from: query.from,
+        to: query.to,
+        search: query.search,
+        sort: query.sort,
       },
     }),
 

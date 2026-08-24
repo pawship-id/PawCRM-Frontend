@@ -1,6 +1,6 @@
 import { ApiError } from "./api-error";
 import { env } from "@/utils/env";
-import type { ProductMedia } from "@/types/inventory";
+import type { MediaAsset } from "@/types/inventory";
 
 /**
  * Uploads against /api/media — the one multipart endpoint in the API.
@@ -27,11 +27,16 @@ const UPLOAD_TIMEOUT_MS = 180_000;
 
 export interface UploadOptions {
   /**
-   * `product` puts the asset in the gallery; `description` marks it as an image
-   * embedded in rich text. The value only changes a segment of the storage key,
-   * but the orphan sweeper treats the two differently.
+   * Which key segment the asset is filed under: `product` for a product
+   * gallery, `category` for a category's picture, `description` for an image
+   * embedded in rich text.
+   *
+   * The value only changes a segment of the storage key, but the orphan sweeper
+   * reads that segment — it never touches a `/desc/` file, and for the others it
+   * asks the matching collection whether anything still points at it. A closed
+   * list server-side; anything else falls back to `product`.
    */
-  purpose?: "product" | "description";
+  purpose?: "product" | "category" | "description";
   /**
    * A still frame for a video, captured from a `<video>` element onto a canvas.
    * Without one the tile shows a play icon rather than a blank rectangle.
@@ -46,11 +51,11 @@ export const mediaService = {
    * POST /media/upload — stores one file and returns the asset to attach.
    *
    * The returned object carries a `token`, which MUST travel back inside the
-   * product payload: the API verifies it before storing, because everything
-   * else in the object has passed through a browser and is therefore
-   * client-controlled by the time it returns.
+   * payload that stores it — a product's or a category's. The API verifies it
+   * before storing, because everything else in the object has passed through a
+   * browser and is therefore client-controlled by the time it returns.
    */
-  upload(file: File, options: UploadOptions = {}): Promise<ProductMedia> {
+  upload(file: File, options: UploadOptions = {}): Promise<MediaAsset> {
     const body = new FormData();
     body.append("file", file);
     body.append("purpose", options.purpose ?? "product");
@@ -73,7 +78,7 @@ export const mediaService = {
       request.onload = () => {
         let payload: {
           success?: boolean;
-          data?: ProductMedia;
+          data?: MediaAsset;
           message?: string;
           details?: Array<{ field: string; message: string }>;
         };

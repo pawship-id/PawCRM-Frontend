@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { Alert, Spinner } from "@/components";
 import { cn } from "@/lib/utils";
@@ -12,6 +12,7 @@ import {
   type BatchesQuery,
 } from "../hooks/useBatches";
 import { useBatchSummary } from "../hooks/useBatchSummary";
+import { useBranchOptions } from "../hooks/useBranchOptions";
 import { useWarehouseOptions } from "../hooks/useWarehouseOptions";
 import { BatchesTable } from "./BatchesTable";
 import { BatchesToolbar } from "./BatchesToolbar";
@@ -50,8 +51,61 @@ export function BatchesScreen() {
   const [refreshKey] = useState(0);
 
   const warehouses = useWarehouseOptions();
-  const summary = useBatchSummary(query.warehouseId, refreshKey);
+  const branches = useBranchOptions();
+  const summary = useBatchSummary(
+    query.branchId,
+    query.warehouseId,
+    refreshKey,
+  );
   const list = useBatches(query, page, refreshKey);
+
+  /**
+   * Which shop a lot sits in.
+   *
+   * A BATCH HAS NO BRANCH OF ITS OWN. It belongs to a warehouse, and the
+   * warehouse carries the soft link (`defaultBranchId`) — so the answer is a
+   * two-step walk, the same one the stock card makes when it groups a product's
+   * stock by branch. Both lookups are already loaded whole for this screen, so a
+   * row costs two map reads rather than a request.
+   */
+  const branchIdByWarehouse = useMemo(
+    () =>
+      new Map(
+        warehouses.warehouses.map((warehouse) => [
+          warehouse._id,
+          warehouse.defaultBranchId,
+        ]),
+      ),
+    [warehouses.warehouses],
+  );
+
+  const branchNameById = useMemo(
+    () => new Map(branches.branches.map((branch) => [branch._id, branch.name])),
+    [branches.branches],
+  );
+
+  const branchOf = useCallback(
+    (warehouseId: string) => {
+      // An em dash while the lookups are in flight would read as "this lot sits
+      // in no branch" and then change its mind — the same lie the tiles above
+      // refuse to tell with a premature zero.
+      if (warehouses.loading || branches.loading) return "…";
+
+      const branchId = branchIdByWarehouse.get(warehouseId);
+
+      // The lot names a warehouse this page never loaded — one past the
+      // hundred the filter pulls, or deleted since.
+      if (branchId === undefined) return "—";
+      // No link at all is the CENTRAL warehouse: it belongs to no branch and
+      // serves every one of them, which is a configuration rather than a gap.
+      if (branchId === null) return "Tanpa cabang";
+      // A link this list cannot resolve — a branch deleted since, or a role
+      // holding the batch report without `branches:read`. Neither is "tanpa
+      // cabang", so it must not say so.
+      return branchNameById.get(branchId) ?? "—";
+    },
+    [branchIdByWarehouse, branchNameById, warehouses.loading, branches.loading],
+  );
 
   /** Any filter change is a new question, so it starts at page 1. */
   const setQuery = useCallback((patch: Partial<BatchesQuery>) => {
@@ -88,7 +142,9 @@ export function BatchesScreen() {
         <Stat
           label="Nilai berisiko"
           value={
-            summary.summary ? formatMoney(summary.summary.atRisk.value) : undefined
+            summary.summary
+              ? formatMoney(summary.summary.atRisk.value)
+              : undefined
           }
           loading={summary.loading}
           note="sisa qty × harga beli batch, ketiga bucket di atas"
@@ -104,6 +160,7 @@ export function BatchesScreen() {
           wrong the moment a request is in flight. */}
       <BatchesToolbar
         query={query}
+        branches={branches.branches}
         warehouses={warehouses.warehouses}
         auditMode={!list.alertMode}
         onChange={setQuery}
@@ -118,10 +175,11 @@ export function BatchesScreen() {
       ) : (
         <BatchesTable
           batches={list.batches}
+          branchOf={branchOf}
           page={list.pagination.page}
           totalPages={list.pagination.totalPages}
           total={list.pagination.total}
-          searching={query.search.trim() !== ""}
+          search={query.search}
           onPageChange={setPage}
         />
       )}

@@ -16,8 +16,10 @@ import {
   withAll,
   type FilterOption,
 } from "@/components";
+import type { Branch } from "@/types/api";
 import type { BatchSort, StockWarehouse } from "@/types/inventory";
 
+import { ownerBranchOf, warehousesUnder } from "../hooks/useBranchScope";
 import type { BatchesQuery, Horizon } from "../hooks/useBatches";
 
 /**
@@ -78,6 +80,7 @@ const SORTS: FilterOption<BatchSort>[] = [
 
 /** Everything the panel edits, as one draft. */
 interface BatchFilters {
+  branchId: string;
   warehouseId: string;
   horizon: Horizon;
   includeSpent: boolean;
@@ -95,6 +98,7 @@ interface BatchFilters {
  * The ordering goes back to soonest-first for the same reason.
  */
 const CLEARED: BatchFilters = {
+  branchId: "",
   warehouseId: "",
   horizon: "30",
   includeSpent: false,
@@ -166,7 +170,8 @@ function hint(query: BatchesQuery, searching: boolean) {
   if (searching) {
     return (
       <>
-        Pencarian kode batch, nama produk, dan SKU berlaku di{" "}
+        Pencarian kode batch (punya kita maupun punya supplier), nama produk,
+        dan SKU berlaku di{" "}
         <b>seluruh batch</b> — termasuk yang sudah habis dan yang tidak punya
         tanggal kedaluwarsa — jadi rentang kedaluwarsa dinonaktifkan selama
         kotak pencarian terisi.
@@ -197,11 +202,14 @@ function hint(query: BatchesQuery, searching: boolean) {
 
 export function BatchesToolbar({
   query,
+  branches,
   warehouses,
   auditMode,
   onChange,
 }: {
   query: BatchesQuery;
+  /** Empty when the role cannot read them — the Cabang field then hides. */
+  branches: Branch[];
   warehouses: StockWarehouse[];
   /** True when the whole-collection endpoint is answering. */
   auditMode: boolean;
@@ -210,6 +218,7 @@ export function BatchesToolbar({
   const searching = query.search.trim() !== "";
 
   const applied: BatchFilters = {
+    branchId: query.branchId,
     warehouseId: query.warehouseId,
     horizon: query.horizon,
     includeSpent: query.includeSpent,
@@ -225,6 +234,7 @@ export function BatchesToolbar({
    */
   function apply(next: BatchFilters) {
     const patch: Partial<BatchesQuery> = {};
+    if (next.branchId !== query.branchId) patch.branchId = next.branchId;
     if (next.warehouseId !== query.warehouseId)
       patch.warehouseId = next.warehouseId;
     if (next.horizon !== query.horizon) patch.horizon = next.horizon;
@@ -249,8 +259,8 @@ export function BatchesToolbar({
         <FilterSearch
           value={query.search}
           onChange={(search) => onChange({ search })}
-          placeholder="Cari kode batch, nama produk, atau SKU…"
-          ariaLabel="Cari kode batch, nama produk, atau SKU"
+          placeholder="Cari kode batch, kode supplier, nama produk, atau SKU…"
+          ariaLabel="Cari kode batch, kode supplier, nama produk, atau SKU"
           fill
         />
       }
@@ -258,6 +268,7 @@ export function BatchesToolbar({
     >
       <BatchFilterPanel
         applied={applied}
+        branches={branches}
         warehouses={warehouses}
         auditMode={auditMode}
         searching={searching}
@@ -276,12 +287,14 @@ export function BatchesToolbar({
  */
 function BatchFilterPanel({
   applied,
+  branches,
   warehouses,
   auditMode,
   searching,
   onApply,
 }: {
   applied: BatchFilters;
+  branches: Branch[];
   warehouses: StockWarehouse[];
   auditMode: boolean;
   searching: boolean;
@@ -300,6 +313,7 @@ function BatchFilterPanel({
    * the one thing the badge cannot afford now that the controls are hidden.
    */
   const count = [
+    applied.branchId !== "",
     applied.warehouseId !== "",
     applied.horizon !== CLEARED.horizon,
     applied.includeSpent,
@@ -307,6 +321,50 @@ function BatchFilterPanel({
 
   function patch(change: Partial<BatchFilters>) {
     setDraft((prev) => ({ ...prev, ...change }));
+  }
+
+  /** The warehouses the chosen branch may hold stock in — its own, plus shared. */
+  const scoped = warehousesUnder(draft.branchId, warehouses);
+
+  /**
+   * A branch narrows the field below it, so a warehouse already chosen has to be
+   * re-checked against the new list: a value the picker no longer offers would
+   * sit on the trigger and send a pair the API answers with nothing. Kept when it
+   * survives, because the central warehouse serves every branch and losing it on
+   * each branch change would undo a choice for nothing.
+   */
+  function pickBranch(branchId: string) {
+    setDraft((prev) => ({
+      ...prev,
+      branchId,
+      warehouseId: warehousesUnder(branchId, warehouses).some(
+        (warehouse) => warehouse._id === prev.warehouseId,
+      )
+        ? prev.warehouseId
+        : "",
+    }));
+  }
+
+  /**
+   * THE OTHER DIRECTION, and it is not symmetrical.
+   *
+   * A warehouse pinned to one branch ANSWERS the branch question, so the field
+   * above fills itself in — leaving Cabang on "Semua cabang" would leave a reader
+   * wondering whether it was still open.
+   *
+   * THE SHARED WAREHOUSE CHANGES NOTHING. It serves every branch, so there is no
+   * single answer to fill in and guessing one would narrow the report to a third
+   * of what was asked for. "Semua gudang" lands here for the same reason: it
+   * names no owner, so it has no branch to volunteer.
+   */
+  function pickWarehouse(warehouseId: string) {
+    const owner = ownerBranchOf(warehouseId, warehouses);
+
+    setDraft((prev) => ({
+      ...prev,
+      warehouseId,
+      branchId: owner ?? prev.branchId,
+    }));
   }
 
   function onOpenChange(next: boolean) {
@@ -346,18 +404,44 @@ function BatchFilterPanel({
           unsetValue="expirySoonest"
           onChange={(sort) => patch({ sort })}
         />
+        {/* CABANG ABOVE GUDANG, the order every stock screen asks its two
+            scoping questions in: branch is a unit of bookkeeping and warehouse a
+            unit of stock, and somebody reading an expiry report thinks in the
+            first — they are answering for a shop.
+
+            BOTH ARE OFFERED because the two are not 1:1: a central warehouse
+            serves every branch, and a branch can hold two warehouses. Neither
+            narrows to the other.
+
+            ABSENT WHEN THE BRANCH LIST IS, which is a role without
+            `branches:read` or a lookup that failed. An empty picker reading
+            "Semua cabang" and nothing else is a control that cannot be used and
+            does not say why. */}
+        {branches.length > 0 && (
+          <FilterSelect
+            layout="field"
+            label="Cabang"
+            ariaLabel="Filter cabang"
+            value={draft.branchId}
+            options={withAll(namedOptions(branches), "Semua cabang")}
+            onChange={pickBranch}
+          />
+        )}
         <FilterSelect
           layout="field"
           label="Gudang"
           ariaLabel="Gudang"
           value={draft.warehouseId}
           options={withAll(
-            namedOptions(warehouses, (w) =>
+            // Narrowed by the branch above — a warehouse under another branch
+            // holds none of this branch's stock, so offering it could only
+            // produce an empty report.
+            namedOptions(scoped, (w) =>
               w.isActive ? w.name : `${w.name} (nonaktif)`,
             ),
             "Semua gudang",
           )}
-          onChange={(warehouseId) => patch({ warehouseId })}
+          onChange={pickWarehouse}
         />
         <FilterSelect
           layout="field"

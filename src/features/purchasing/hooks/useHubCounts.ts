@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { goodsReceiptService } from "@/services/goodsReceipt.service";
 import { purchaseReturnService } from "@/services/purchaseReturn.service";
+import { supplierCategoryService } from "@/services/supplierCategory.service";
 import { supplierService } from "@/services/supplier.service";
 import type { PageResult } from "@/types/api";
 
@@ -17,6 +18,8 @@ const COUNT_LIMIT = 1;
 export interface HubCounts {
   /** Suppliers still being bought from — deactivated ones are excluded. */
   activeSuppliers: number | null;
+  /** Vendor groups still offered — retired ones are excluded, as above. */
+  activeSupplierCategories: number | null;
   receipts: number | null;
   returns: number | null;
 }
@@ -24,12 +27,14 @@ export interface HubCounts {
 /** Whether the signed-in role may read each list. Denied → no request, null count. */
 export interface HubCountGates {
   suppliers: boolean;
+  supplierCategories: boolean;
   receipts: boolean;
   returns: boolean;
 }
 
 const EMPTY: HubCounts = {
   activeSuppliers: null,
+  activeSupplierCategories: null,
   receipts: null,
   returns: null,
 };
@@ -76,6 +81,7 @@ function countOf<T>(
  */
 export function useHubCounts({
   suppliers,
+  supplierCategories,
   receipts,
   returns,
 }: HubCountGates): HubCounts {
@@ -85,26 +91,35 @@ export function useHubCounts({
     let active = true;
 
     // Independent: each card is readable without the others, and one endpoint
-    // being down must cost its own figure rather than the other two.
+    // being down must cost its own figure rather than the other three.
     Promise.all([
       countOf(suppliers, () =>
         supplierService.list({ isActive: true, limit: COUNT_LIMIT }),
       ),
+      // `isActive: true` for the same reason the supplier count uses it: the
+      // card says how many groups are still on offer, and a retired label is
+      // not one of them.
+      countOf(supplierCategories, () =>
+        supplierCategoryService.list({ isActive: true, limit: COUNT_LIMIT }),
+      ),
       countOf(receipts, () => goodsReceiptService.list({ limit: COUNT_LIMIT })),
       countOf(returns, () => purchaseReturnService.list({ limit: COUNT_LIMIT })),
-    ]).then(([activeSuppliers, receiptCount, returnCount]) => {
-      if (!active) return;
-      setCounts({
-        activeSuppliers,
-        receipts: receiptCount,
-        returns: returnCount,
-      });
-    });
+    ]).then(
+      ([activeSuppliers, categoryCount, receiptCount, returnCount]) => {
+        if (!active) return;
+        setCounts({
+          activeSuppliers,
+          activeSupplierCategories: categoryCount,
+          receipts: receiptCount,
+          returns: returnCount,
+        });
+      },
+    );
 
     return () => {
       active = false;
     };
-  }, [suppliers, receipts, returns]);
+  }, [suppliers, supplierCategories, receipts, returns]);
 
   return counts;
 }

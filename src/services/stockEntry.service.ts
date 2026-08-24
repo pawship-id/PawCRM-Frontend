@@ -47,6 +47,7 @@ export const stockEntryService = {
         search: query.search,
         dateFrom: query.dateFrom,
         dateTo: query.dateTo,
+        sort: query.sort,
       },
     }),
 
