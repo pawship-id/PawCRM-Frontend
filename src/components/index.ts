@@ -22,3 +22,5 @@ export { ConfirmDialog } from "./ConfirmDialog";
 export type { ConfirmDialogProps } from "./ConfirmDialog";
 /** The filter layer — see components/filters/index.ts. */
 export * from "./filters";
+/** The form layer — see components/form/index.ts. */
+export * from "./form";

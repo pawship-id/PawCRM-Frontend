@@ -6,6 +6,7 @@ Original handoff, copied here byte-for-byte. **Nothing in this folder is importe
 | --- | --- |
 | `buloo-brand-guidelines.html` | The brand book — logo construction, colour, type, voice, applied surfaces. Open it in a browser. |
 | `buloo-filter-section-v2.html` | The filter system spec, with working demos of the quick bar and the filter panel. |
+| `buloo-form-section-v1.html` | The form system spec — field anatomy, Entitas vs Transaksi, field order, the action bar. Rules drawn from it are `docs/ui-rules.md` §16. |
 | `buloo-tokens.css` | The design tokens as the brand team shipped them. |
 
 Logo artwork lives in [`public/brand/`](../../public/brand/): wordmark (`buloo-logo.svg`, `-plain`, `-reversed`, `-mono`) and icon (`buloo-icon-navy.svg`, `-orange`, `-mono`).

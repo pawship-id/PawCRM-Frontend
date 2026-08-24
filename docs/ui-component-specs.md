@@ -434,3 +434,101 @@ Recorded so this stays a decision rather than an oversight:
 | Audit log, Jurnal Umum | A log is chronological by definition. |
 
 `SortableTableHead` is a separate question and is **blocked** until `ui/table` is retuned and the 20 raw-`<table>` files migrate — `ProductsTable` is one of them, so a header-based sort could not land on the flagship list anyway.
+
+---
+
+# Forms
+
+**Built.** `src/components/form/`, re-exported from `@/components`. Read [`docs/ui-rules.md`](./ui-rules.md) §16 for the *decisions* (which pattern a screen gets, what order the fields go in); this file gives the *anatomy*.
+
+Source of the design: [`docs/brand/buloo-form-section-v1.html`](./brand/buloo-form-section-v1.html) — open it, the demos are interactive.
+
+A form's *section* is a `<Card title description>` from `@/components`, unchanged — there was nothing to build. `TagField` is specified in the guideline but **deliberately not built**: no `tags` field exists on the stock or purchasing API, and a control with nowhere to save to is worse than no control.
+
+## The shell — `FormField`
+
+Every control below renders through it, which is why their labels line up and their errors read the same. Not usually imported directly; reach for it when building a *new* form control.
+
+```tsx
+<FormField label="Gudang" required error={fieldErrors.warehouseId} hint="…">
+  {(field) => <SomeControl {...field} />}
+</FormField>
+```
+
+| Prop | Type | Notes |
+| --- | --- | --- |
+| `label` | `string` | **Always above the control.** There is no label-beside variant and there will not be one. |
+| `required` | `boolean` | Renders the red asterisk. The caller passes it to the control too. |
+| `error` | `string` | Red, `role="alert"`, `aria-invalid`. **Wins over `hint`** — two descriptions is one the reader hears and one they do not. |
+| `hint` | `ReactNode` | Announced via `aria-describedby` only while there is no error. |
+| `children` | render prop | Receives `{ id, aria-describedby, aria-invalid }`. |
+
+Also exported: `FIELD_HEIGHT` (`h-11`) and `FIELD_SHELL` (the border / background / focus-pair of a non-`<input>` control).
+
+**Why 44 px and not 36 or 40.** §1.5 sets the touch floor at 44×44, and filling a form is a considered act where a mistake is expensive — a wrong SKU, a wrong quantity — unlike picking a filter, which one click undoes. It is applied by the form layer, **never** by editing `ui/input.tsx`: that file is also the input behind every filter control, which §8 pins at 40.
+
+## `TextField` · `TextareaField`
+
+`TextField` is unchanged at its call sites — same props, and `className` still lands on the input, not the wrapper.
+
+`TextareaField` is new because **there was no textarea in this codebase at all**: every "why did this happen" field was a single-line input, which shows a stock clerk the last forty characters of their own sentence. Opens at four rows, `resize-y` only — horizontal resize breaks the grid it sits in.
+
+## `SelectField`
+
+The short list — roughly eight options or fewer, no searching. Satuan, Tipe akun, Metode pembayaran, PPN.
+
+**This is where the form layer parts company with the filter layer.** §8 forbids a `<select>` for a filter and requires a labelled trigger + popover, because a filter is opened and closed repeatedly while somebody narrows a table. A form field is opened once, answered, and left alone.
+
+| Prop | Type | Notes |
+| --- | --- | --- |
+| `value` | `string` | `""` means nothing chosen — that is what shows `placeholder`. |
+| `options` | `{ value, label, disabled? }[]` | **Never a `""` option.** Radix refuses `<SelectItem value="">`; if a form needs an explicit "none" row, give it a real value (`"tanpa-induk"`), not a sentinel. |
+| `placeholder` | `string` | Bahasa, and never a repeat of the label. |
+
+Renders `<SelectTrigger size="lg">` — a Buloo retune of the vendored file, because `data-[size=default]:h-9` is an attribute selector and outranks a plain `h-11` whatever order tailwind-merge puts them in.
+
+## `SearchSelect`
+
+The long list — one somebody would want to **type** into. Gudang, Pemasok, Pelanggan, Akun, Penerimaan asal.
+
+Its option list, search box, keyboard cursor and empty state **are `FilterOptionList`**, imported rather than copied. Two things differ, and they are why this is its own component rather than a `layout` prop on `FilterSelect`:
+
+1. Full width with the label above, not a `Gudang: Semua ⌄` pill sized by its content — a form control lines up with the inputs beside it.
+2. A grey **placeholder** when empty. A filter always has a value (`Semua` is a value); an unanswered required field must look unanswered.
+
+Picking closes the popover. **There is no Terapkan** — a form field is not a query, so there is nothing to batch and nothing to re-run.
+
+| Prop | Type | Notes |
+| --- | --- | --- |
+| `value` | `T \| null` | `null` means nothing chosen. |
+| `options` | `FilterOption<T>[]` | Re-exported as `SearchSelectOption`. |
+| `placeholder` / `searchPlaceholder` / `emptyLabel` | `string` | `"Pilih gudang"`, `"Cari gudang…"`, `"Tidak ditemukan"`. |
+
+Accessibility: the trigger is `role="combobox"` with `aria-expanded` and `aria-haspopup="listbox"`; the list is `FilterOptionList`'s `<ul role="listbox">`, so `getByRole("option", { name })` works the way the screen tests already expect.
+
+## `CheckRow` · `CheckRowGroup`
+
+A flag with its consequence written next to it. The description is **not decoration**: each of these silently changes what a *later* screen demands — a receipt suddenly requiring a batch code, a POS tile appearing for an out-of-stock item — and a bare label leaves somebody to discover that six weeks on from a stock card.
+
+The box stays `size-4`, the app's one checkbox size; the 44 px target comes from the row. Label *and* description sit inside the `<Label>`, so clicking the explanation toggles the box — that sentence is the part people actually read before deciding.
+
+`CheckRowGroup` stacks two or more with a hairline between them, so the second checkbox does not look like it belongs to the first one's explanation.
+
+## `FormActionBar`
+
+| Prop | Type | Notes |
+| --- | --- | --- |
+| `title` | `string` | The document being filled in. |
+| `meta` | `ReactNode` | Document number, line count, running total. |
+| `submitLabel` | `string` | **`Simpan penyesuaian`, never bare `Simpan`.** §12: the button says what happens. |
+| `submitting` | `boolean` | Spinner + `Menyimpan…`, and blocks a second click *and* Batal. |
+| `disabled` | `boolean` | Required fields still empty. Grey it out; do not shout yet. |
+| `blockedReason` | `string \| null` | Replaces `meta` while Simpan is off. A greyed button with no explanation is the most common dead end in this app. |
+| `cancelHref` / `onCancel` | `string` / `() => void` | Prefer `cancelHref` when it is a route — it renders a real `<a>`. |
+| `extra` | `ReactNode` | Placed **left of Batal**. The primary action never moves to make room. |
+
+**Anatomy.** `sticky top-16 z-10` — not `top-0`, which puts it under DashboardShell's own 64 px sticky header. Order is fixed: **Batal (secondary) left, Simpan (primary) right**, always; two forms in this repo currently do it the other way round, and a save button that moves between screens is one people mis-click.
+
+**Why the top, when a filter panel puts Terapkan at the bottom.** A filter is one decision made once, at the end of a short list — the button belongs where the reading finishes. A form is filled in over minutes, revisited, corrected, and saved when the person decides it is right; hunting for the button means scrolling past everything they just typed.
+
+**Mobile is deliberately unsolved.** The guideline flags sticky-top-right as something to revisit on a real phone, where the top-right is where a thumb reaches least well. Because every form reaches the bar through this component, a bottom-fixed variant below 640 px lands in one file without touching a single form.

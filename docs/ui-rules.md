@@ -37,6 +37,9 @@ The fastest way to be consistent here. Check this table before writing markup.
 | `import … from "@/components/icons"` | `lucide-react` | Two icon sets; `icons.tsx` is being retired. §11 |
 | `font-mono` on anything | `tabular-nums` | There are two typefaces, and mono is not one of them. §5 |
 | a native `<select>` for a filter | a labeled trigger + popover | `Label: Value ⌄`, so long lists can carry in-popover search. §8 |
+| a `<Label>` + `<Input>` pair with hand-written error markup | `<TextField>` / `<SelectField>` / `<SearchSelect>` from `@/components` | The aria wiring is the part that drifts. §16 |
+| a single-line `<Input>` for Keterangan / Catatan / Alasan | `<TextareaField>` | A reason nobody can re-read is a reason nobody writes carefully. §16 |
+| a `<Button type="submit">` at the bottom of a form | `<FormActionBar>` | 20 forms, 20 slightly different footers. §16 |
 | `<table>` | `@/components/ui/table` | §10 |
 | `"No data available"` | `"Belum ada … Tambah yang pertama →"` | §12 |
 
@@ -150,6 +153,8 @@ This is already baked into `ui/button.tsx`, `ui/input.tsx` and `ui/select.tsx`. 
 ---
 
 ## 8. Filters
+
+*Filling in a form is §16. This section is only about narrowing a list.*
 
 One control grammar, two arrangements. Pick the arrangement by counting fields.
 
@@ -303,11 +308,14 @@ From [`docs/architecture.md`](./architecture.md), unchanged: a component lives i
 
 **Built** — `src/components/filters/`, exported from `@/components`, used by all 15 toolbars: `FilterBar`, `FilterTrigger`, `FilterSearch`, `FilterSelect`, `FilterMultiSelect`, `FilterDateRange`, `FilterToggle`, `FilterPills`, `FilterChips`, `FilterPanel`, `FilterField`, plus the `withAll` / `triState` / `namedOptions` option builders.
 
+**Built** — `src/components/form/`, exported from `@/components`: `FormField`, `FormActionBar`, `TextareaField`, `SelectField`, `SearchSelect`, `CheckRow` / `CheckRowGroup`, plus the `FIELD_HEIGHT` / `FIELD_SHELL` constants. `TextField` now renders through `FormField` — its call sites are unchanged. Rules in §16, anatomy in [`docs/ui-component-specs.md`](./ui-component-specs.md). **Nothing has been migrated onto it yet:** all 20 forms still carry their own bottom-of-page buttons.
+
 **Decided but not yet built** — specs exist in [`docs/ui-component-specs.md`](./ui-component-specs.md). Build them when the work calls for one, don't invent a parallel version: `StatusBadge`, `EmptyState`, and a promoted `PageHeading`.
 
 **Migration list** — existing code that violates these rules. Fix opportunistically when you are already in the file; do not open a sweep without being asked:
 
 - 2 screens with filters written inline rather than in a toolbar — `StockOnHandScreen`, `ProductDetail` — still carry their own `const ALL = "all"` sentinel and a raw `ui/select`. They were not part of the 15-toolbar census; migrate them to `@/components` filters. (`ChartOfAccountsScreen` and `JournalEntriesScreen` are done — the latter as one piece of work with its wiring to `GET /api/journal-entries`, which is also what retired `features/accounting/data/dummy.ts`.)
+- 20 forms with their buttons at the bottom of the page → `<FormActionBar>` (§16). Two of them — `ReceiptForm`, `ProductForm` — also have Simpan to the LEFT of Batal.
 - ~25 hand-rolled page headings → promoted `PageHeading`
 - 52 hand-written `rounded-xl border border-border bg-surface` → `<Card>`
 - 15 feature status badges with 3 tinting conventions → `StatusBadge`
@@ -321,3 +329,61 @@ From [`docs/architecture.md`](./architecture.md), unchanged: a component lives i
 
 - **Dark mode is prepared, not shipped.** The `.dark` palette is written and the `dark:` variant is pinned to an opt-in class, but nothing sets `.dark` on `<html>` and there is no toggle. Don't build one without being asked.
 - **A grep-based rule linter** (`scripts/check-ui-rules.mjs`) would ratchet §1 — hex literals, `text-[10px]`, shadcn tokens outside `ui/`, raw `<table`, `@/components/icons` imports. Not written yet.
+
+---
+
+## 16. Forms
+
+*Narrowing a list is §8. This section is only about filling one in.*
+
+**The label is always above the control.** Every field, both patterns, no exceptions — the same arrangement the filter panel's `.ffield` already uses. What changes between the two patterns is the macro grid, never the label.
+
+**Form controls are 44 px tall. Filter controls stay 40.** §1.5 sets the touch floor at 44×44, and filling a form is a considered act where a mistake is expensive — a wrong SKU, a wrong quantity — unlike picking a filter, which one click undoes. **Never reach 44 by editing `ui/input.tsx`**: that file is also the input behind every filter control. The height belongs to the form layer, and `FIELD_HEIGHT` is where it lives.
+
+### Two patterns, chosen by one question
+
+Does it have a table of rows underneath it? That is the whole test.
+
+| | **Form Entitas** | **Form Transaksi** |
+| --- | --- | --- |
+| Holds | one record standing alone | one document: a header plus rows |
+| Macro grid | one card, fields grouped under section headers, 2–3 columns a row | 2 columns for the header, collapsing to 1 on a phone |
+| Row table | none | **always** |
+| Keterangan sits | at the end of the card | at the end of the header, above the rows |
+| Examples | Produk & Varian, Kategori, Supplier, Pelanggan, Akun | Penyesuaian Stok, Stok Awal, Transfer, Penerimaan, Retur, Jurnal |
+
+### Field order — the same questions, in the same order, every module
+
+This is what stops somebody re-scanning the screen each time they open a module they have not used this week.
+
+| | Group | Fields |
+| --- | --- | --- |
+| 1 · row one, left | **Kapan** | Tanggal |
+| 1 · row one, right | **Di mana** | Lokasi, Gudang, Gudang asal / tujuan |
+| 2 | **Dengan siapa** | Pemasok, Pelanggan — full-width on its own when the names run long |
+| 3 | **Klasifikasi sekunder** | Cabang, Channel, Kurir, Akun, Tipe, No. referensi |
+| 4 | **Metadata ringan** | Tag |
+| 5 · full width, always last | **Catatan** | Keterangan |
+| outside the grid | **Identitas otomatis** | `No. [auto]` → the action bar's `meta` |
+
+A read-only number is not a field somebody fills in, so it does not get a slot in the grid — the first row belongs to what actually needs attention.
+
+**Form Entitas has no kapan/di mana**, so its order is simpler: **Nama** (always first, full-width) → identifier (SKU / Kode) → classification (Kategori / Satuan) → optional attributes (Merk / Barcode) → check-rows → Keterangan, still last.
+
+**The one sanctioned exception to "Keterangan is last":** published content. A product's Deskripsi goes to the marketplace, uses a rich-text editor, and is filled in alongside the photo gallery. The rule is about internal notes, not about copy somebody writes for a customer.
+
+### The action bar
+
+**One bar, two buttons, always the same places: Batal (secondary) left, Simpan (primary) right**, in a `sticky top-16 z-10` bar at the top of the form. Not `top-0` — DashboardShell's own header is already there.
+
+- **The label names the object.** `Simpan produk`, `Simpan penyesuaian`. Never bare `Simpan`, never `Submit`. §12.
+- **Disabled until the required fields are answered**, with `blockedReason` saying which one. No error banner before anybody has tried to save; per-field errors appear when a field is touched and left empty.
+- **A form has no `Reset`.** `Batal` leaves without saving — a different act from a filter's Reset, which empties the fields in place.
+
+### Not decided
+
+- **Tag has no home yet.** The guideline gives it a slot in every transaction header, but no `tags` field exists on the stock or purchasing API. `TagField` is not built. Do not add a control with nowhere to save to.
+- **Akun Penyesuaian** is chosen by the server today (5201 Kerugian Persediaan). Whether a user may override it is a permissions question, not a form question.
+- **Transfer Stok has no Tanggal**, in the form or in `CreateTransferInput` — it is stamped by the server. §Diterapkan of the guideline lists it as required. Answer this before adding the field.
+- **Switch vs check-row for "Aktif".** Three entity forms use a switch; the guideline only knows check-rows. Both are correct; having both is not. Record the answer here before changing either.
+- **The action bar on a phone.** Sticky top-right is where a thumb reaches least well. A bottom-fixed variant below 640 px lands in `FormActionBar` alone — do not build one per form.

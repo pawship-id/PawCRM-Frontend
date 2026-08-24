@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Buloo — Form Section v1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --navy-900:#0E1D38; --navy-800:#14284B; --navy-700:#1E3A6B; --navy-600:#2B4E8C;
+  --navy-500:#3E66AC; --navy-100:#E9EFF9; --navy-50:#F6F8FC;
+  --orange-700:#B96A05; --orange-600:#D97F0F; --orange-500:#F5921E; --orange-100:#FFF6EA;
+  --white:#FFFFFF; --slate:#667691; --line:#DFE5EF; --success:#178A5F; --danger:#D64545;
+  --font-d:'Plus Jakarta Sans',sans-serif; --font-b:'Inter',sans-serif; --font-m:'IBM Plex Mono',monospace;
+  --r-input:8px; --r-button:12px; --r-card:16px; --r-panel:24px; --r-pill:999px;
+  --sh-sm:0 1px 2px rgba(20,40,75,.06); --sh-md:0 4px 16px rgba(20,40,75,.08); --sh-lg:0 12px 32px rgba(20,40,75,.12);
+  --ease:cubic-bezier(.2,.8,.2,1); --focus:0 0 0 3px rgba(245,146,30,.45);
+  --fld-h:44px; /* form fields: 44px, not the 40px filter-trigger height — see §Koreksi */
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0; background:var(--navy-50); color:var(--navy-800); font-family:var(--font-b); font-size:15px; line-height:1.6; -webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{font-family:var(--font-d); font-weight:800; letter-spacing:-.02em; color:var(--navy-900); margin:0}
+code{font-family:var(--font-m); font-size:.85em; background:#fff; border:1px solid var(--line); padding:1px 6px; border-radius:6px}
+:focus-visible{outline:none; box-shadow:var(--focus); border-radius:6px}
+.wrap{max-width:1180px; margin:0 auto; padding:0 28px}
+
+.topnav{position:sticky; top:0; z-index:50; background:rgba(246,248,252,.92); backdrop-filter:blur(6px); border-bottom:1px solid var(--line); padding:14px 0}
+.topnav .wrap{display:flex; align-items:center; gap:22px; overflow-x:auto}
+.topnav a{font-size:12.5px; font-weight:700; color:var(--slate); text-decoration:none; white-space:nowrap}
+.topnav a:hover{color:var(--navy-700)}
+.topnav .brand{display:flex; align-items:center; gap:8px; margin-right:8px; flex:none}
+.topnav .brand b{font-family:var(--font-d); font-weight:800; color:var(--navy-900); font-size:14px}
+
+main{padding:44px 0 120px}
+section{padding-top:56px; margin-top:-10px}
+section:first-of-type{padding-top:0}
+.eyebrow{font-family:var(--font-m); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--orange-700); margin:0 0 10px}
+h2{font-size:26px; margin-bottom:10px; max-width:28ch}
+h3{font-size:16.5px; margin-bottom:8px}
+p.lede{font-size:15.5px; color:var(--navy-800); max-width:70ch; margin:0 0 18px}
+p.note{font-size:13.5px; color:var(--slate); max-width:70ch; margin:10px 0 0}
+.callout{background:var(--orange-100); border:1px solid #F0D9AE; border-radius:var(--r-card); padding:18px 20px; margin:0 0 26px}
+.callout b{color:var(--orange-700)}
+.callout p{margin:6px 0 0; font-size:14px; color:var(--navy-800)}
+.g2{display:grid; grid-template-columns:1fr 1fr; gap:20px}
+.g3{display:grid; grid-template-columns:repeat(3,1fr); gap:16px}
+@media (max-width:820px){.g2,.g3{grid-template-columns:1fr}}
+
+.stage{background:#fff; border:1px solid var(--line); border-radius:var(--r-card); box-shadow:var(--sh-sm); padding:22px; margin-bottom:16px}
+.stage-label{font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--slate); margin-bottom:14px; display:flex; justify-content:space-between; align-items:center}
+.ref-tag{display:inline-flex; align-items:center; gap:5px; background:var(--navy-100); color:var(--navy-700); font-size:10.5px; font-weight:700; padding:3px 9px; border-radius:var(--r-pill)}
+
+table.specs{width:100%; border-collapse:collapse; font-size:13.5px; margin:14px 0 28px}
+table.specs th{text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--slate); padding:8px 10px; border-bottom:1px solid var(--line)}
+table.specs td{padding:10px 10px; border-bottom:1px solid var(--line); color:var(--navy-800); vertical-align:top}
+table.specs tr:last-child td{border-bottom:0}
+table.specs code{background:var(--navy-50); color:var(--navy-700)}
+
+.rule-yes{color:var(--success); font-weight:700}
+.rule-no{color:var(--danger); font-weight:700}
+
+/* ============ buttons (shared) ============ */
+.fbtn{height:40px; display:inline-flex; align-items:center; gap:7px; padding:0 16px; border-radius:var(--r-button);
+  font-size:13.5px; font-weight:700; font-family:var(--font-b); cursor:pointer; border:1.5px solid transparent; transition:filter .12s var(--ease), background .12s var(--ease), opacity .12s var(--ease)}
+.fbtn-primary{background:var(--navy-700); color:#fff}
+.fbtn-primary:hover{filter:brightness(1.08)}
+.fbtn-primary:disabled{background:var(--line); color:#9AA7BD; cursor:not-allowed}
+.fbtn-ghost{background:transparent; color:var(--slate); border-color:var(--line)}
+.fbtn-ghost:hover{background:var(--navy-100); color:var(--navy-800)}
+.fbtn-text{background:none; border:0; color:var(--orange-700); font-weight:700; font-size:13px; cursor:pointer; padding:0}
+.fbtn-text:hover{text-decoration:underline}
+
+/* ============ form primitives ============ */
+.card-form{background:#fff; border:1px solid var(--line); border-radius:var(--r-card); box-shadow:var(--sh-sm); overflow:hidden}
+.sec-head{padding:22px 26px 4px}
+.sec-head h3{font-size:17px}
+.sec-head p{font-size:13.5px; color:var(--slate); margin:2px 0 0}
+.sec-body{padding:18px 26px 26px}
+
+.fgrid{display:grid; grid-template-columns:repeat(2,1fr); gap:18px 20px}
+.fgrid.cols-3{grid-template-columns:repeat(3,1fr)}
+.fgrid .full{grid-column:1/-1}
+@media (max-width:640px){.fgrid, .fgrid.cols-3{grid-template-columns:1fr}}
+
+.field label{display:block; font-size:13px; font-weight:700; color:var(--navy-800); margin-bottom:7px}
+.field label .req{color:var(--danger); margin-left:2px}
+.field input[type=text], .field input[type=date], .field input[type=number], .field select, .field textarea{
+  width:100%; height:var(--fld-h); border:1px solid var(--line); border-radius:var(--r-input); background:#fff;
+  padding:0 13px; font-size:13.5px; font-family:var(--font-b); color:var(--navy-800)
+}
+.field input::placeholder, .field textarea::placeholder{color:#9AA7BD}
+.field input:focus, .field select:focus, .field textarea:focus{border-color:var(--navy-700); box-shadow:var(--focus)}
+.field textarea{height:auto; min-height:96px; padding:11px 13px; resize:vertical; font-family:var(--font-b); line-height:1.5}
+.field select{appearance:none; -webkit-appearance:none; background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="%23667691" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>'); background-repeat:no-repeat; background-position:right 12px center}
+.field .help{font-size:12.5px; color:var(--slate); margin-top:6px}
+.field.readonly input{background:var(--navy-50); color:var(--slate)}
+
+/* searchable select — full-width form variant of the filter's fdd/fpop */
+.fselect{position:relative}
+.fselect-trig{width:100%; height:var(--fld-h); display:flex; align-items:center; justify-content:space-between; gap:8px;
+  border:1px solid var(--line); border-radius:var(--r-input); background:#fff; padding:0 13px; cursor:pointer; font-size:13.5px}
+.fselect-trig .val{color:var(--navy-800); font-weight:500}
+.fselect-trig .val.ph{color:#9AA7BD; font-weight:400}
+.fselect-trig svg{color:var(--slate); flex:none; transition:transform .15s var(--ease)}
+.fselect-trig.open{border-color:var(--navy-700); box-shadow:var(--focus)}
+.fselect-trig.open svg{transform:rotate(180deg)}
+.fselect-pop{position:absolute; top:calc(100% + 6px); left:0; right:0; z-index:30; background:#fff; border:1px solid var(--line);
+  border-radius:var(--r-card); box-shadow:var(--sh-lg); display:none; overflow:hidden}
+.fselect.open .fselect-pop{display:block}
+.fselect-search{border-bottom:1px solid var(--line); padding:8px}
+.fselect-search input{width:100%; height:36px; border:1px solid var(--line); border-radius:7px; padding:0 10px; font-size:13px}
+.fselect-list{max-height:220px; overflow-y:auto; padding:6px}
+.fopt{padding:9px 10px; border-radius:8px; cursor:pointer; font-size:13.5px; color:var(--navy-800)}
+.fopt:hover{background:var(--navy-50)}
+.fopt.sel{background:var(--navy-100); color:var(--navy-700); font-weight:600}
+.fopt-empty{padding:16px 10px; text-align:center; color:var(--slate); font-size:13px}
+
+/* check-row: checkbox + bold label + description */
+.checkrow{display:flex; gap:12px; padding:14px 0}
+.checkrow + .checkrow{border-top:1px solid var(--line)}
+.checkrow input{width:19px; height:19px; margin-top:2px; flex:none; accent-color:var(--navy-700); border-radius:5px; cursor:pointer}
+.checkrow .cr-b{font-size:14px; font-weight:700; color:var(--navy-900); cursor:pointer}
+.checkrow .cr-d{font-size:13px; color:var(--slate); margin-top:2px; line-height:1.5}
+
+/* tag chips under a multi-field */
+.tagchips{display:flex; gap:6px; flex-wrap:wrap; margin-top:9px}
+.tagchip{display:inline-flex; align-items:center; gap:6px; height:25px; padding:0 5px 0 11px; border-radius:var(--r-pill); background:var(--navy-100); color:var(--navy-700); font-size:12px; font-weight:600}
+.tagchip button{width:15px; height:15px; border-radius:50%; border:0; background:rgba(30,58,107,.14); color:var(--navy-700); display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:10px}
+
+/* sticky action bar */
+.form-actionbar{position:sticky; top:0; z-index:20; background:rgba(255,255,255,.94); backdrop-filter:blur(6px);
+  display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 26px; border-bottom:1px solid var(--line)}
+.form-actionbar h3{font-size:15px}
+.form-actionbar .meta{font-size:12px; color:var(--slate); margin-top:2px}
+.form-actionbar .btns{display:flex; gap:8px; flex:none}
+.scroll-demo{max-height:430px; overflow-y:auto; border-radius:var(--r-card)}
+
+/* mini line-item table */
+.linetable{width:100%; border-collapse:collapse; font-size:13px; margin-top:4px}
+.linetable th{text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--slate); padding:8px 8px; border-bottom:1px solid var(--line)}
+.linetable td{padding:7px 8px; border-bottom:1px solid var(--line); vertical-align:middle}
+.linetable input{width:100%; height:36px; border:1px solid var(--line); border-radius:7px; padding:0 9px; font-size:13px}
+.linetable .rm{width:26px; height:26px; border-radius:50%; border:0; background:var(--navy-50); color:var(--slate); cursor:pointer; font-size:13px}
+.linetable .rm:hover{background:#FCE9E9; color:var(--danger)}
+.line-empty{padding:20px; text-align:center; color:var(--slate); font-size:13px; border-bottom:1px solid var(--line)}
+.addrow-btn{margin-top:12px}
+
+/* ============ tambah-baris: cari & pilih (rich picker + item rows) ============ */
+.additem{position:relative; display:inline-block}
+.additem-pop{position:absolute; top:calc(100% + 6px); left:0; width:360px; z-index:35; background:#fff; border:1px solid var(--line);
+  border-radius:var(--r-card); box-shadow:var(--sh-lg); display:none; overflow:hidden}
+.additem.open .additem-pop{display:block}
+.additem-search{padding:8px; border-bottom:1px solid var(--line)}
+.additem-search input{width:100%; height:36px; border:1px solid var(--line); border-radius:7px; padding:0 10px; font-size:13px}
+.additem-list{max-height:280px; overflow-y:auto; padding:6px}
+
+.pitem{display:flex; align-items:center; gap:10px; padding:8px; border-radius:10px; cursor:pointer}
+.pitem:hover{background:var(--navy-50)}
+.pitem .av{width:32px; height:32px; border-radius:9px; background:var(--navy-100); color:var(--navy-700); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:11.5px; flex:none}
+.pi-name{font-size:13px; font-weight:700; color:var(--navy-900)}
+.pi-sub{font-size:11.5px; color:var(--slate)}
+.pi-stock{margin-left:auto; font-size:10.5px; font-weight:700; padding:3px 9px; border-radius:var(--r-pill); flex:none; white-space:nowrap}
+.pi-stock.ok{background:#E6F4EE; color:var(--success)}
+.pi-stock.low{background:#FFF1DE; color:var(--orange-700)}
+.pi-stock.out{background:#FCE9E9; color:var(--danger)}
+.pitem-empty{padding:22px 10px; text-align:center; color:var(--slate); font-size:13px; line-height:1.7}
+.pitem-empty a{color:var(--orange-700); font-weight:700; text-decoration:none}
+
+.rowlist{border-top:1px solid var(--line)}
+.rowitem{display:flex; align-items:center; gap:12px; padding:12px 4px; border-bottom:1px solid var(--line); transition:background .6s var(--ease)}
+.rowitem.flash{background:var(--orange-100)}
+.rowitem .av{width:38px; height:38px; border-radius:10px; background:var(--navy-100); color:var(--navy-700); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12.5px; flex:none}
+.ri-info{flex:1; min-width:0}
+.ri-name{font-size:13.5px; font-weight:700; color:var(--navy-900)}
+.ri-sub{font-size:11.5px; color:var(--slate); display:flex; gap:9px; align-items:center; margin-top:2px}
+.ri-sub button{background:none; border:0; color:var(--orange-700); font-weight:700; font-size:11.5px; cursor:pointer; padding:0}
+.ri-sub button:hover{text-decoration:underline}
+.qtystep{display:flex; align-items:center; gap:5px; flex:none}
+.qtystep button{width:26px; height:26px; border-radius:7px; border:1px solid var(--line); background:#fff; cursor:pointer; font-size:14px; color:var(--navy-700)}
+.qtystep button:hover{background:var(--navy-50)}
+.qtystep input{width:38px; height:26px; text-align:center; border:1px solid var(--line); border-radius:7px; font-size:12.5px}
+.ri-price{width:100px; flex:none}
+.ri-price input{width:100%; height:32px; border:1px solid var(--line); border-radius:7px; padding:0 8px; font-size:12.5px; text-align:right}
+.ri-rm{width:26px; height:26px; border-radius:50%; border:0; background:var(--navy-50); color:var(--slate); cursor:pointer; flex:none}
+.ri-rm:hover{background:#FCE9E9; color:var(--danger)}
+.ri-detail{display:none; grid-template-columns:repeat(3,1fr); gap:10px; padding:0 4px 14px 50px; margin-top:-6px; border-bottom:1px solid var(--line)}
+.ri-detail.open{display:grid}
+.ri-detail .field label{font-size:11px; margin-bottom:4px}
+.ri-detail .field input{height:32px; font-size:12px}
+</style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="wrap">
+    <div class="brand"><svg width="20" height="20" viewBox="0 0 512 512"><rect width="512" height="512" rx="132" fill="#1E3A6B"/><g transform="translate(120 165) scale(0.9)" fill="none" stroke="#fff" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14 L20 126"/><circle cx="54" cy="92" r="34"/><path d="M138 58 L138 92 A34 34 0 0 0 206 92 L206 58"/><path d="M256 14 L256 126"/><ellipse cx="344" cy="92" rx="38" ry="34" stroke="#F5921E"/></g></svg><b>buloo · form section v1</b></div>
+    <a href="#insight">Koreksi &amp; keputusan</a>
+    <a href="#anatomy">Anatomi field</a>
+    <a href="#patterns">Entitas vs Transaksi</a>
+    <a href="#field-order">Urutan field</a>
+    <a href="#action-bar">Action bar</a>
+    <a href="#add-row">Tambah baris</a>
+    <a href="#demo-entitas">Contoh — Produk baru</a>
+    <a href="#demo-transaksi">Contoh — Penyesuaian stok</a>
+    <a href="#applied">Diterapkan ke modul</a>
+  </div>
+</nav>
+
+<main>
+<div class="wrap">
+
+<section id="insight">
+  <p class="eyebrow">Revisi setelah baca ulang kedua referensi</p>
+  <h2>Label selalu di atas. Yang beda cuma grid makronya.</h2>
+  <p class="lede">Waktu pertama lihat, referensi Jubelio (Tambah Penyesuaian) kelihatan pakai label-di-samping. Dicek ulang lebih teliti — ternyata tidak. <code>Lokasi*</code> tetap bold <em>di atas</em> select-nya, sama seperti <code>No. Penyesuaian*</code> di atas input-nya. Yang membuatnya <em>terasa</em> beda dari form Produk Buloo bukan posisi label, tapi <strong>grid makro</strong>: Jubelio menyusun field-field pendek itu jadi 2 kolom supaya satu header transaksi muat tanpa scroll panjang, sementara form Produk Buloo full-width satu kartu. Jadi keputusannya jadi sederhana:</p>
+  <div class="g3">
+    <div class="callout"><b>1 · Label selalu di atas</b><p>Konsisten dengan filter panel (<code>.ffield</code>) dan kedua referensi. Yang berubah per pola cuma jumlah kolom makro — 1 kolom untuk Form Entitas, grid 2 kolom (collapse ke 1 di mobile) untuk header Form Transaksi.</p></div>
+    <div class="callout"><b>2 · Tinggi field 44px, bukan 40px</b><p>Filter tetap 40px (keputusan cepat, sekali klik). Form dinaikkan ke 44px karena dua alasan: guideline brand sendiri mensyaratkan touch target minimal 44×44px, dan mengisi form adalah tindakan yang lebih "dipikir" — kesalahan di sini lebih mahal (SKU salah, qty salah) dibanding salah pilih filter.</p></div>
+    <div class="callout"><b>3 · Simpan selalu sticky kanan atas</b><p>Berlaku di kedua pola, bukan cuma Form Transaksi — supaya orang tidak perlu scroll balik ke atas atau ke bawah untuk menyimpan, di form pendek maupun panjang. Ini beda dari filter panel yang taruh tombolnya di bawah, karena tujuannya beda: filter itu satu keputusan, form itu proses mengisi berkali-kali sebelum siap simpan.</p></div>
+  </div>
+  <p class="note">Satu catatan yang belum saya putuskan sepihak: sticky-kanan-atas nyaman di desktop, tapi di layar HP kecil area itu gampang ketutup jempol atau notch. Saya biarkan seperti pilihanmu untuk sekarang (selalu kanan atas), tapi tandai di §Action bar sebagai satu variasi yang mungkin perlu direvisit begitu form ini dites di HP sungguhan.</p>
+</section>
+
+<section id="anatomy">
+  <h2>Anatomi field</h2>
+  <p class="lede">Tujuh primitif. Semua pakai radius <code>8px</code>, tinggi <code>44px</code> (kecuali textarea), dan border <code>--line</code> yang sama dengan sistem filter — supaya form dan filter terasa satu keluarga, bukan dua sistem yang kebetulan bertetangga.</p>
+
+  <h3 style="margin-top:4px">1 · Text / number / date input</h3>
+  <div class="stage">
+    <div class="fgrid" style="max-width:520px">
+      <div class="field"><label>Nama produk <span class="req">*</span></label><input type="text" placeholder="mis. Royal Canin Adult"></div>
+      <div class="field"><label>SKU <span class="req">*</span></label><input type="text" placeholder="RC-ADULT"><div class="help">Unik per tenant</div></div>
+    </div>
+  </div>
+
+  <h3>2 · Select pendek (native, distyle)</h3>
+  <div class="stage">
+    <div class="fgrid cols-3" style="max-width:640px">
+      <div class="field"><label>Satuan</label><select><option>pcs</option><option>box</option><option>kg</option></select><div class="help">Opsional — kosong berarti pcs.</div></div>
+      <div class="field"><label>Akun Penyesuaian</label><select><option>Pilih akun</option><option>Beban Kerusakan</option><option>Penyesuaian Stok Opname</option></select></div>
+      <div class="field readonly"><label>No. Penyesuaian</label><input type="text" value="[auto]" readonly></div>
+    </div>
+  </div>
+  <p class="note">Dipakai untuk daftar pendek (≤8 opsi) yang tidak butuh pencarian. Cukup <code>&lt;select&gt;</code> native yang distyle — tidak perlu popover custom seperti di filter, karena di form orang jarang buka-tutup berkali-kali seperti saat menyaring tabel. Field readonly seperti <code>No. Penyesuaian</code> di atas ini contoh anatominya saja — di form sungguhan biasanya dipindah keluar dari grid, lihat §Urutan field.</p>
+
+  <h3>3 · Select panjang / dicari (Lokasi, Pemasok, Pelanggan, Produk)</h3>
+  <div class="stage">
+    <div style="max-width:340px">
+      <div class="field"><label>Lokasi <span class="req">*</span></label>
+        <div class="fselect" id="anatSelect">
+          <button type="button" class="fselect-trig" id="anatSelectTrig"><span class="val ph">Pilih lokasi</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+          <div class="fselect-pop">
+            <div class="fselect-search"><input type="text" id="anatSelectSearch" placeholder="Cari lokasi…"></div>
+            <div class="fselect-list" id="anatSelectList"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="note">Sama komponennya dengan trigger-cari-di-popover di filter (dipakai untuk field Produk), hanya dibuat penuh-lebar dan menampilkan placeholder abu-abu saat kosong, bukan label tetap seperti <code>Gudang: Semua</code>.</p>
+
+  <h3>4 · Textarea (Keterangan / Notes)</h3>
+  <div class="stage"><div style="max-width:520px" class="field"><label>Keterangan</label><textarea placeholder="Catatan tambahan, opsional…"></textarea></div></div>
+
+  <h3>5 · Multi-select berbentuk tag</h3>
+  <div class="stage">
+    <div style="max-width:340px">
+      <div class="field"><label>Tag</label>
+        <div class="fselect" id="anatTag">
+          <button type="button" class="fselect-trig" id="anatTagTrig"><span class="val ph">Tambah tag</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+          <div class="fselect-pop"><div class="fselect-list" id="anatTagList"></div></div>
+        </div>
+        <div class="tagchips" id="anatTagChips"></div>
+      </div>
+    </div>
+  </div>
+
+  <h3>6 · Check-row (flag dengan penjelasan)</h3>
+  <div class="stage">
+    <div style="max-width:520px">
+      <label class="checkrow"><input type="checkbox"><span><span class="cr-b" style="display:block">Produk pre-order</span><span class="cr-d">Boleh dipesan walau stok kosong. Dibaca POS dan sinkronisasi e-commerce.</span></span></label>
+      <label class="checkrow"><input type="checkbox"><span><span class="cr-b" style="display:block">Produk punya masa kedaluwarsa</span><span class="cr-d">Kalau dicentang, setiap penerimaan wajib mengisi kode batch dan tanggal kedaluwarsa — itulah yang membuat FEFO dan laporan expired bisa bekerja.</span></span></label>
+    </div>
+  </div>
+  <p class="note">Direkonstruksi persis dari form Produk Baru Buloo yang sudah ada — bagian ini sudah benar, tinggal diresmikan jadi komponen supaya dipakai ulang, bukan ditulis manual tiap modul butuh flag baru.</p>
+
+  <h3>7 · Section header (dalam satu kartu)</h3>
+  <div class="stage" style="padding:0">
+    <div class="sec-head"><h3>Informasi produk</h3><p>Judul blok di dalam satu form entitas yang punya beberapa kelompok field.</p></div>
+    <div class="sec-body"><p class="note" style="margin:0">Isi field ada di §Contoh — Produk baru di bawah.</p></div>
+  </div>
+</section>
+
+<section id="patterns">
+  <h2>Dua pola: Form Entitas vs Form Transaksi</h2>
+  <p class="lede">Sama seperti bar vs panel di filter — bentuk field-nya identik (§Anatomi), yang berubah adalah <strong>susunan makro</strong> dan <strong>apakah ada tabel baris di bawahnya</strong>.</p>
+  <table class="specs">
+    <tr><th>Sinyal</th><th>Form Entitas</th><th>Form Transaksi</th></tr>
+    <tr><td>Isinya apa</td><td>Satu record berdiri sendiri (produk, kategori, pelanggan)</td><td>Satu transaksi dengan header + daftar baris yang bisa ditambah</td></tr>
+    <tr><td>Grid makro</td><td>1 kartu, field dikelompokkan per section header, umumnya 2–3 kolom per baris</td><td>Grid 2 kolom untuk field header transaksi, collapse ke 1 kolom di mobile</td></tr>
+    <tr><td>Field yang hampir pasti ada</td><td>Nama, kategori/tipe, satuan, flag (check-row)</td><td>Lokasi/Gudang* , Tanggal*, pihak terkait (Pemasok/Pelanggan) bila relevan, Tag, Keterangan</td></tr>
+    <tr><td>Tabel baris</td><td>Tidak ada</td><td><span class="rule-yes">Selalu ada</span> — daftar produk/item, ditambah baris demi baris</td></tr>
+    <tr><td>Keterangan selalu di posisi</td><td>Akhir kartu, sebelum action bar</td><td>Akhir grid header, sebelum tabel baris</td></tr>
+    <tr><td>Contoh nyata</td><td>Produk &amp; Varian, Kategori, Supplier/Pelanggan</td><td>Penyesuaian Stok, Transfer Stok, Purchasing, Sales &amp; Invoice</td></tr>
+  </table>
+</section>
+
+<section id="field-order">
+  <h2>Urutan field — jawab pertanyaan yang sama, urutan yang sama</h2>
+  <p class="lede">Ini yang bikin orang nggak perlu scan ulang tiap buka modul transaksi baru: grid makro selalu dibuka dengan pertanyaan yang sama duluan — <strong>kapan &amp; di mana</strong> — baru turun ke detail yang lebih spesifik per modul.</p>
+  <table class="specs">
+    <tr><th>Urutan</th><th>Kelompok</th><th>Contoh field</th><th>Kenapa di situ</th></tr>
+    <tr><td>1 · baris pertama, kiri</td><td><b>Kapan</b></td><td>Tanggal, Tanggal pesanan</td><td>Field paling universal di semua modul transaksi — jadi anchor pertama yang dicari mata, sebelum apapun yang lain.</td></tr>
+    <tr><td>1 · baris pertama, kanan</td><td><b>Di mana</b></td><td>Lokasi, Gudang, Gudang asal/tujuan</td><td>Dipasangkan dengan Tanggal — berdua menjawab konteks inti transaksi sebelum masuk ke rincian.</td></tr>
+    <tr><td>2</td><td><b>Dengan siapa</b></td><td>Pemasok, Pelanggan</td><td>Muncul kalau modulnya butuh pihak terkait. Field searchable yang nama pilihannya sering panjang boleh full-width sendiri, tidak dipasangkan.</td></tr>
+    <tr><td>3</td><td><b>Klasifikasi sekunder</b></td><td>Channel, Kurir, Akun, Tipe, No. referensi</td><td>Spesifik per modul. Urutan di antara field-field ini bebas sesuai kepentingan modul, tapi kelompok ini selalu setelah "dengan siapa".</td></tr>
+    <tr><td>4</td><td><b>Metadata ringan</b></td><td>Tag</td><td>Nyaris selalu opsional dan bukan penentu utama transaksi — dekat akhir.</td></tr>
+    <tr><td>5 · full-width, selalu terakhir</td><td><b>Catatan</b></td><td>Keterangan</td><td>Aturan dari §Koreksi tetap berlaku — apapun panjangnya form, Keterangan selalu penutup.</td></tr>
+    <tr><td>Di luar grid</td><td><b>Identitas otomatis</b></td><td>No. Penyesuaian <code>[auto]</code></td><td>Read-only, tidak butuh diisi orang — dipindah ke action bar sebagai teks kecil di sebelah judul, supaya baris pertama grid dipakai field yang beneran perlu perhatian.</td></tr>
+  </table>
+  <div class="callout"><b>Bandingkan dengan referensi asli</b><p>Jubelio menyusun <code>No. Penyesuaian</code> dan <code>Lokasi</code> di baris pertama, <code>Tanggal</code> baru muncul di baris kedua. Untuk PawCRM saya balik: <code>Tanggal</code> naik ke baris pertama berdampingan dengan <code>Lokasi</code>, dan <code>No.</code> yang read-only dipindah keluar dari grid sama sekali. Field yang harus diisi orang selalu menang tempat dibanding field yang cuma ditampilkan.</p></div>
+  <p class="note">Untuk Form Entitas urutannya lebih sederhana karena tidak ada "kapan/di mana": <b>Nama</b> (selalu pertama, full-width) → <b>identifier</b> (SKU/Kode) → <b>klasifikasi</b> (Kategori/Satuan) → atribut opsional (Merk/Barcode) → check-row (flag) → Keterangan kalau ada, tetap paling akhir. Persis urutan di §Contoh — Produk baru di bawah.</p>
+</section>
+
+<section id="action-bar">
+  <h2>Action bar — aturannya</h2>
+  <p class="lede">Satu bar, dua tombol, selalu sama posisinya: <strong>Batal</strong> (ghost) di kiri, <strong>Simpan [objek]</strong> (primary navy) di kanan, keduanya di kanan-atas bar yang <code>position:sticky; top:0</code> terhadap area konten yang bisa di-scroll — bukan terhadap seluruh halaman.</p>
+  <table class="specs">
+    <tr><th>Aturan</th><th>Detail</th></tr>
+    <tr><td>Label tombol</td><td>Selalu spesifik ke objeknya — <code>Simpan produk</code>, <code>Simpan penyesuaian</code> — bukan <code>Simpan</code> polos atau <code>Submit</code>. Konsisten dengan voice guideline: aktif, bukan generik.</td></tr>
+    <tr><td>Status disabled</td><td>Simpan nonaktif (abu-abu) sampai semua field wajib terisi. Tidak perlu pesan error dulu — cukup nonaktifkan, baru validasi per-field muncul saat field itu disentuh lalu ditinggal kosong.</td></tr>
+    <tr><td>Reset vs Batal</td><td>Form tidak pakai <code>Reset</code> seperti filter. <code>Batal</code> menutup/kembali tanpa menyimpan — beda konsep, bukan mengosongkan field di tempat.</td></tr>
+    <tr><td>Konteks tambahan di bar</td><td>Judul form + info kecil (mis. draf tersimpan otomatis, atau jumlah baris) boleh tampil di kiri bar, sejajar dengan tombol.</td></tr>
+  </table>
+  <div class="callout"><b>Soal mobile</b><p>Ini yang saya tandai di §Koreksi — kanan-atas sticky bekerja baik di desktop. Kalau nanti dites di HP dan area kanan-atas terasa sulit dijangkau jempol, opsi cadangannya adalah bar ini turun jadi <em>bottom-fixed, penuh-lebar</em> di bawah 640px (Batal &amp; Simpan bersebelahan, full width) — pola yang sama dengan tombol Terapkan di panel filter. Belum saya terapkan sekarang supaya sesuai jawabanmu; tinggal bilang kalau mau ini ditambahkan.</p></div>
+</section>
+
+<section id="add-row">
+  <p class="eyebrow">Dipindah ke komponennya sendiri</p>
+  <h2>Tambah baris — ini komponen #3, bukan bagian Form Section</h2>
+  <p class="lede">Menambahkan produk atau akun yang <b>sudah ada</b> ke sebuah form transaksi — bukan membuat produk baru — itu perilaku yang berdiri sendiri dan dipakai ulang di banyak modul (Stok Opname, Penyesuaian, Transfer, Kas &amp; Bank, Pengeluaran). Itu persis komponen #3 dari daftar awal kamu, jadi saya kasih file sendiri: <b>buloo-pilih-item-v1.html</b> — lengkap dengan versi untuk baris Produk <em>dan</em> baris Akun (persis skrinsut Tambah Pembayaran), plus aturan interaksinya.</p>
+  <div class="callout"><b>Yang tetap di sini</b><p>Demo Penyesuaian Stok di §Contoh — Penyesuaian stok di bawah tetap dipakai apa adanya sebagai contoh Form Transaksi — cuma dokumentasi komponen "tambah baris"-nya yang saya pindah supaya tidak dobel dengan file yang baru.</p></div>
+</section>
+
+<section id="demo-entitas">
+  <p class="eyebrow">Rekonstruksi</p>
+  <h2>Form Entitas — dari "Produk baru" Buloo</h2>
+  <div class="stage" style="padding:0">
+    <div class="stage-label" style="padding:22px 26px 0"><span>Direkonstruksi dengan token &amp; komponen di atas</span><span class="ref-tag">ref: Buloo saat ini</span></div>
+    <div class="scroll-demo" id="entScroll">
+      <div class="form-actionbar">
+        <div><h3>Produk baru</h3><div class="meta">Pilih bentuknya dulu — dikunci setelah disimpan</div></div>
+        <div class="btns"><button class="fbtn fbtn-ghost">Batal</button><button class="fbtn fbtn-primary" id="entSaveBtn" disabled>Simpan produk</button></div>
+      </div>
+      <div class="card-form" style="border:0; box-shadow:none; border-radius:0">
+        <div class="sec-head"><h3>Informasi produk</h3></div>
+        <div class="sec-body">
+          <div class="fgrid">
+            <div class="field full"><label>Nama produk <span class="req">*</span></label><input type="text" id="entNama" placeholder="mis. Royal Canin Adult"></div>
+            <div class="field"><label>SKU <span class="req">*</span></label><input type="text" id="entSku" placeholder="RC-ADULT"><div class="help">Unik per tenant</div></div>
+            <div class="field"><label>Barcode</label><input type="text" placeholder="899…"><div class="help">Opsional, unik per tenant</div></div>
+            <div class="field"><label>Kategori</label><select><option>Service &amp; Jasa</option><option>Makanan</option><option>Aksesoris</option><option>Obat &amp; Kesehatan</option></select></div>
+            <div class="field"><label>Satuan</label><select><option>pcs</option><option>box</option><option>kg</option></select><div class="help">Opsional — kosong berarti pcs.</div></div>
+            <div class="field full"><label>Merk</label><input type="text" placeholder="Royal Canin"><div class="help">Opsional. Dipakai untuk filter katalog dan listing marketplace.</div></div>
+          </div>
+          <div style="margin-top:6px">
+            <label class="checkrow"><input type="checkbox"><span><span class="cr-b" style="display:block">Produk pre-order</span><span class="cr-d">Boleh dipesan walau stok kosong. Dibaca POS dan sinkronisasi e-commerce.</span></span></label>
+            <label class="checkrow"><input type="checkbox"><span><span class="cr-b" style="display:block">Produk punya masa kedaluwarsa</span><span class="cr-d">Kalau dicentang, setiap penerimaan wajib mengisi kode batch dan tanggal kedaluwarsa.</span></span></label>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="note">Simpan produk nonaktif sampai Nama produk &amp; SKU terisi — coba ketik di keduanya. Scroll di dalam kotak untuk lihat action bar tetap menempel di atas.</p>
+</section>
+
+<section id="demo-transaksi">
+  <p class="eyebrow">Rekonstruksi</p>
+  <h2>Form Transaksi — dari "Tambah Penyesuaian"</h2>
+  <div class="stage" style="padding:0">
+    <div class="stage-label" style="padding:22px 26px 0"><span>Header 2-kolom + tabel baris, komponen identik dengan §Anatomi</span><span class="ref-tag">ref: Jubelio + Pawsi</span></div>
+    <div class="scroll-demo" id="trxScroll">
+      <div class="form-actionbar">
+        <div><h3>Tambah penyesuaian</h3><div class="meta" id="trxMeta">No. <code style="background:none;border:0;padding:0">[auto]</code> · 0 baris ditambahkan</div></div>
+        <div class="btns"><button class="fbtn fbtn-ghost">Batal</button><button class="fbtn fbtn-primary" id="trxSaveBtn" disabled>Simpan penyesuaian</button></div>
+      </div>
+      <div class="card-form" style="border:0; box-shadow:none; border-radius:0">
+        <div class="sec-body">
+          <div class="fgrid">
+            <div class="field"><label>Tanggal <span class="req">*</span></label><input type="date" id="trxTanggal"></div>
+            <div class="field"><label>Lokasi <span class="req">*</span></label>
+              <div class="fselect" id="trxLokasi">
+                <button type="button" class="fselect-trig" id="trxLokasiTrig"><span class="val ph">Pilih lokasi</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+                <div class="fselect-pop"><div class="fselect-search"><input type="text" id="trxLokasiSearch" placeholder="Cari lokasi…"></div><div class="fselect-list" id="trxLokasiList"></div></div>
+              </div>
+            </div>
+            <div class="field"><label>Akun Penyesuaian</label><select><option>Pilih akun</option><option>Beban Kerusakan</option><option>Penyesuaian Stok Opname</option></select></div>
+            <div class="field"><label>Tag</label>
+              <div class="fselect" id="trxTag">
+                <button type="button" class="fselect-trig" id="trxTagTrig"><span class="val ph">Tambah tag</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+                <div class="fselect-pop"><div class="fselect-list" id="trxTagList"></div></div>
+              </div>
+              <div class="tagchips" id="trxTagChips"></div>
+            </div>
+            <div class="field full"><label>Keterangan</label><textarea placeholder="Masukkan keterangan…"></textarea></div>
+          </div>
+        </div>
+        <div style="border-top:1px solid var(--line)"></div>
+        <div class="sec-head"><h3>Baris produk</h3><p>Cari produknya, jangan diketik manual — pola dari §Tambah baris.</p></div>
+        <div class="sec-body" style="padding-top:6px">
+          <div class="rowlist" id="trxLines"></div>
+          <div id="trxLinesEmpty" class="line-empty">Belum ada produk. Cari lewat tombol di bawah untuk mulai.</div>
+          <div class="additem" id="trxAdd">
+            <button type="button" class="fbtn fbtn-ghost addrow-btn" id="trxAddTrig">+ Tambah produk</button>
+            <div class="additem-pop">
+              <div class="additem-search"><input type="text" id="trxAddSearch" placeholder="Cari nama atau SKU…"></div>
+              <div class="additem-list" id="trxAddList"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="note">Urutan field sudah ikut §Urutan field: Tanggal &amp; Lokasi naik ke baris pertama, <code>No. [auto]</code> pindah ke action bar. Coba klik "+ Tambah produk", cari "royal" atau "kucing", lalu pilih — baris baru muncul dengan avatar, qty stepper, dan harga siap diedit. Pilih produk yang sama dua kali untuk lihat qty-nya nambah otomatis (baris lama akan berkedip oranye) alih-alih bikin baris dobel. Simpan penyesuaian butuh Lokasi terisi <em>dan</em> minimal satu produk.</p>
+</section>
+
+<section id="applied">
+  <h2>Diterapkan ke modul PawCRM</h2>
+  <p class="lede">Pola mana yang dipakai tiap modul, berdasarkan ada-tidaknya tabel baris — sinyal paling jelas untuk membedakan keduanya.</p>
+  <table class="specs">
+    <tr><th>Modul</th><th>Pola</th><th>Field header inti</th><th>Catatan</th></tr>
+    <tr><td><b>Produk &amp; Varian</b></td><td>Entitas</td><td>Nama, SKU, Kategori, Satuan, Barcode, Merk + 2 check-row</td><td>Persis §Contoh — Produk baru, hanya dinaikkan ke token 44px.</td></tr>
+    <tr><td><b>Kategori</b></td><td>Entitas</td><td>Nama, Deskripsi</td><td>Form entitas paling sederhana — 1 kolom penuh, tanpa section header kedua.</td></tr>
+    <tr><td><b>Supplier / Pelanggan</b></td><td>Entitas</td><td>Nama, No. WhatsApp, Alamat, Tipe (Beli-Putus/Konsinyasi)</td><td>Tipe bisa jadi radio-row, bukan select, karena kardinalitasnya kecil — sama alasan kenapa jadi pill di filter.</td></tr>
+    <tr><td><b>Stok Opname / Penyesuaian Stok</b></td><td>Transaksi</td><td>Lokasi*, Tanggal*, Akun, Tag, Keterangan + baris produk</td><td>Rekonstruksi langsung dari §Contoh — Penyesuaian stok.</td></tr>
+    <tr><td><b>Transfer Stok</b></td><td>Transaksi</td><td>Gudang asal*, Gudang tujuan*, Tanggal*, Keterangan + baris produk</td><td>Dua field Lokasi berdampingan (asal/tujuan) — validasi tambahan: keduanya tidak boleh sama.</td></tr>
+    <tr><td><b>Purchasing (Faktur Pembelian)</b></td><td>Transaksi</td><td>Pemasok*, Tanggal*, No. referensi, Keterangan + baris produk</td><td>Header form ini beririsan langsung dengan quick-bar filter Accurate yang sudah dibuat — Pemasok &amp; Tanggal muncul di kedua tempat.</td></tr>
+    <tr><td><b>Sales &amp; Invoice / Booking</b> <em>(mendatang)</em></td><td>Transaksi</td><td>Pelanggan*, Lokasi, Channel, Kurir, Tanggal*, Catatan + baris produk</td><td>Field terbanyak dari semua modul — paling butuh grid 2-kolom supaya tidak jadi form sangat panjang.</td></tr>
+  </table>
+</section>
+
+</div>
+</main>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------- searchable full-width select ---------- */
+  function fselect(rootId, opts, opts2){
+    opts2 = opts2 || {};
+    var root = document.getElementById(rootId);
+    var trig = document.getElementById(rootId+'Trig');
+    var list = document.getElementById(rootId+'List');
+    var searchEl = document.getElementById(rootId+'Search');
+    var current = null;
+
+    function renderList(filter){
+      var f = (filter||'').toLowerCase();
+      var shown = opts.filter(function(o){ return o.toLowerCase().indexOf(f) > -1; });
+      list.innerHTML = shown.length ? shown.map(function(o){
+        return '<div class="fopt'+(o===current?' sel':'')+'" data-v="'+o+'">'+o+'</div>';
+      }).join('') : '<div class="fopt-empty">Tidak ditemukan</div>';
+      Array.prototype.slice.call(list.querySelectorAll('.fopt')).forEach(function(el){
+        el.addEventListener('click', function(){
+          current = el.dataset.v; updateTrig(); close();
+          if (opts2.onPick) opts2.onPick(current);
+        });
+      });
+    }
+    function updateTrig(){
+      var v = trig.querySelector('.val');
+      if (current){ v.textContent = current; v.classList.remove('ph'); }
+      else { v.textContent = opts2.placeholder || 'Pilih…'; v.classList.add('ph'); }
+    }
+    function open(){ document.querySelectorAll('.fselect.open').forEach(function(d){ if(d!==root) d.classList.remove('open'); }); root.classList.add('open'); trig.classList.add('open'); renderList(''); if(searchEl){ searchEl.value=''; searchEl.focus(); } }
+    function close(){ root.classList.remove('open'); trig.classList.remove('open'); }
+    trig.addEventListener('click', function(e){ e.stopPropagation(); root.classList.contains('open') ? close() : open(); });
+    if (searchEl) searchEl.addEventListener('input', function(e){ renderList(e.target.value); });
+    document.addEventListener('click', function(e){ if(!root.contains(e.target)) close(); });
+    updateTrig();
+    return { get:function(){return current;} };
+  }
+
+  /* ---------- tag multi-select (chips) ---------- */
+  function ftags(rootId, opts){
+    var root = document.getElementById(rootId);
+    var trig = document.getElementById(rootId+'Trig');
+    var list = document.getElementById(rootId+'List');
+    var chipsEl = document.getElementById(rootId+'Chips');
+    var selected = [];
+
+    function renderList(){
+      list.innerHTML = opts.map(function(o){
+        var sel = selected.indexOf(o) > -1;
+        return '<div class="fopt'+(sel?' sel':'')+'" data-v="'+o+'">'+(sel?'✓ ':'')+o+'</div>';
+      }).join('');
+      Array.prototype.slice.call(list.querySelectorAll('.fopt')).forEach(function(el){
+        el.addEventListener('click', function(){
+          var v = el.dataset.v, i = selected.indexOf(v);
+          if (i>-1) selected.splice(i,1); else selected.push(v);
+          renderList(); renderChips();
+        });
+      });
+    }
+    function renderChips(){
+      chipsEl.innerHTML = selected.map(function(t){ return '<span class="tagchip" data-v="'+t+'">'+t+'<button type="button">✕</button></span>'; }).join('');
+      Array.prototype.slice.call(chipsEl.querySelectorAll('button')).forEach(function(b){
+        b.addEventListener('click', function(){
+          var v = b.parentElement.dataset.v, i = selected.indexOf(v);
+          if (i>-1) selected.splice(i,1);
+          renderList(); renderChips();
+        });
+      });
+    }
+    function open(){ document.querySelectorAll('.fselect.open').forEach(function(d){ if(d!==root) d.classList.remove('open'); }); root.classList.add('open'); trig.classList.add('open'); renderList(); }
+    function close(){ root.classList.remove('open'); trig.classList.remove('open'); }
+    trig.addEventListener('click', function(e){ e.stopPropagation(); root.classList.contains('open') ? close() : open(); });
+    document.addEventListener('click', function(e){ if(!root.contains(e.target)) close(); });
+  }
+
+  var LOKASI = ['Pusat','Pawship Barat','Pawship Timur','Gudang Utama'];
+  var TAGS = ['VIP','Grosir','Konsinyasi','Prioritas'];
+
+  fselect('anatSelect', LOKASI, {placeholder:'Pilih lokasi'});
+  ftags('anatTag', TAGS);
+
+  /* ---------- demo: Form Entitas (Produk baru) ---------- */
+  var entNama = document.getElementById('entNama'), entSku = document.getElementById('entSku'), entSave = document.getElementById('entSaveBtn');
+  function checkEnt(){ entSave.disabled = !(entNama.value.trim() && entSku.value.trim()); }
+  entNama.addEventListener('input', checkEnt); entSku.addEventListener('input', checkEnt);
+
+  /* ---------- demo: Form Transaksi (Penyesuaian) — cari & pilih produk ---------- */
+  var trxSave = document.getElementById('trxSaveBtn'), trxMeta = document.getElementById('trxMeta');
+  var trxLinesEl = document.getElementById('trxLines'), trxEmpty = document.getElementById('trxLinesEmpty');
+  var lokasiPicked = null;
+  var rows = [];
+
+  var DEMO_PRODUCTS = [
+    {sku:'RC-ADULT-2KG', name:'Royal Canin Adult 2kg', stock:24, price:285000},
+    {sku:'WHK-TUNA-12', name:'Whiskas Adult Tuna 1.2kg', stock:6, price:78000},
+    {sku:'SHP-AK-250', name:'Shampoo Anti Kutu 250ml', stock:0, price:45000},
+    {sku:'PSR-WNG-10L', name:'Pasir Kucing Wangi 10L', stock:40, price:65000},
+    {sku:'VIT-BLU-30', name:'Vitamin Bulu Kucing 30ct', stock:3, price:52000},
+    {sku:'COL-NYL-M', name:'Kalung Nylon Medium', stock:15, price:32000}
+  ];
+
+  fselect('trxLokasi', LOKASI, {placeholder:'Pilih lokasi', onPick:function(v){ lokasiPicked = v; checkTrx(); }});
+  ftags('trxTag', TAGS);
+  document.getElementById('trxTanggal').valueAsDate = new Date();
+
+  function fmtRp(n){ return 'Rp' + n.toLocaleString('id-ID'); }
+  function stockClass(s){ return s===0 ? 'out' : (s<=5 ? 'low' : 'ok'); }
+  function initials(name){ return name.trim().slice(0,2).toUpperCase(); }
+
+  function checkTrx(){
+    trxSave.disabled = !(lokasiPicked && rows.length > 0);
+    trxMeta.innerHTML = 'No. <code style="background:none;border:0;padding:0">[auto]</code> · ' + rows.length + ' produk';
+  }
+
+  function renderRows(flashSku){
+    trxEmpty.style.display = rows.length ? 'none' : 'block';
+    trxLinesEl.innerHTML = rows.map(function(r, i){
+      return '<div class="rowitem'+(r.sku===flashSku?' flash':'')+'">' +
+          '<div class="av">'+initials(r.name)+'</div>' +
+          '<div class="ri-info"><div class="ri-name">'+r.name+'</div>' +
+            '<div class="ri-sub"><span>'+r.sku+'</span><button type="button" class="ri-detail-toggle" data-i="'+i+'">Detail</button></div></div>' +
+          '<div class="qtystep"><button type="button" class="qm" data-i="'+i+'">−</button><input type="text" value="'+r.qty+'" data-i="'+i+'" class="qval"><button type="button" class="qp" data-i="'+i+'">+</button></div>' +
+          '<div class="ri-price"><input type="text" value="'+r.price+'" data-i="'+i+'" class="pval"></div>' +
+          '<button type="button" class="ri-rm" data-i="'+i+'">✕</button>' +
+        '</div>' +
+        '<div class="ri-detail" id="det'+i+'">' +
+          '<div class="field"><label>Kode Rak</label><input type="text" placeholder="mis. A-12"></div>' +
+          '<div class="field"><label>No. Serial/Batch</label><input type="text" placeholder="Opsional"></div>' +
+          '<div class="field"><label>Tgl. Expired</label><input type="date"></div>' +
+        '</div>';
+    }).join('');
+
+    Array.prototype.slice.call(trxLinesEl.querySelectorAll('.ri-rm')).forEach(function(b){
+      b.addEventListener('click', function(){ rows.splice(+b.dataset.i,1); renderRows(); checkTrx(); });
+    });
+    Array.prototype.slice.call(trxLinesEl.querySelectorAll('.qm')).forEach(function(b){
+      b.addEventListener('click', function(){ var i=+b.dataset.i; rows[i].qty = Math.max(1, rows[i].qty-1); renderRows(); });
+    });
+    Array.prototype.slice.call(trxLinesEl.querySelectorAll('.qp')).forEach(function(b){
+      b.addEventListener('click', function(){ rows[+b.dataset.i].qty++; renderRows(); });
+    });
+    Array.prototype.slice.call(trxLinesEl.querySelectorAll('.qval')).forEach(function(inp){
+      inp.addEventListener('change', function(){ var i=+inp.dataset.i; rows[i].qty = Math.max(1, parseInt(inp.value)||1); renderRows(); });
+    });
+    Array.prototype.slice.call(trxLinesEl.querySelectorAll('.pval')).forEach(function(inp){
+      inp.addEventListener('change', function(){ rows[+inp.dataset.i].price = parseInt(inp.value)||0; });
+    });
+    Array.prototype.slice.call(trxLinesEl.querySelectorAll('.ri-detail-toggle')).forEach(function(b){
+      b.addEventListener('click', function(){ document.getElementById('det'+b.dataset.i).classList.toggle('open'); });
+    });
+  }
+
+  function addProduct(p){
+    var existing = rows.filter(function(r){ return r.sku===p.sku; })[0];
+    if (existing){ existing.qty++; } else { rows.push({sku:p.sku, name:p.name, qty:1, price:p.price}); }
+    renderRows(p.sku);
+    checkTrx();
+    setTimeout(function(){ var el=trxLinesEl.querySelector('.rowitem.flash'); if(el) el.classList.remove('flash'); }, 700);
+  }
+
+  var addRoot = document.getElementById('trxAdd'), addTrig = document.getElementById('trxAddTrig'),
+      addSearch = document.getElementById('trxAddSearch'), addList = document.getElementById('trxAddList');
+
+  function renderAddList(q){
+    var f = (q||'').toLowerCase();
+    var shown = DEMO_PRODUCTS.filter(function(p){ return p.name.toLowerCase().indexOf(f)>-1 || p.sku.toLowerCase().indexOf(f)>-1; });
+    addList.innerHTML = shown.length ? shown.map(function(p){
+      return '<div class="pitem" data-sku="'+p.sku+'">' +
+          '<div class="av">'+initials(p.name)+'</div>' +
+          '<div><div class="pi-name">'+p.name+'</div><div class="pi-sub">'+p.sku+' · '+fmtRp(p.price)+'</div></div>' +
+          '<span class="pi-stock '+stockClass(p.stock)+'">'+(p.stock===0?'Habis':p.stock+' pcs')+'</span>' +
+        '</div>';
+    }).join('') : '<div class="pitem-empty">Tidak ditemukan. Coba kata kunci lain.</div>';
+    Array.prototype.slice.call(addList.querySelectorAll('.pitem')).forEach(function(el){
+      el.addEventListener('click', function(){
+        addProduct(DEMO_PRODUCTS.filter(function(x){ return x.sku===el.dataset.sku; })[0]);
+        addSearch.value=''; renderAddList(''); addSearch.focus();
+      });
+    });
+  }
+  function openAdd(){ addRoot.classList.add('open'); renderAddList(''); addSearch.value=''; addSearch.focus(); }
+  function closeAdd(){ addRoot.classList.remove('open'); }
+  addTrig.addEventListener('click', function(e){ e.stopPropagation(); addRoot.classList.contains('open') ? closeAdd() : openAdd(); });
+  addSearch.addEventListener('input', function(e){ renderAddList(e.target.value); });
+  document.addEventListener('click', function(e){ if(!addRoot.contains(e.target)) closeAdd(); });
+
+  renderRows();
+  checkTrx();
+})();
+</script>
+</body>
+</html>
