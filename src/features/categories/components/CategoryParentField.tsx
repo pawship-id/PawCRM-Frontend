@@ -112,7 +112,7 @@ export function CategoryParentField({
       {loadError ? (
         <Alert variant="error">{loadError}</Alert>
       ) : roots === null ? (
-        <div className="flex h-9 items-center gap-2 text-sm text-muted">
+        <div className="flex h-11 items-center gap-2 text-sm text-muted">
           <Spinner size={16} /> Memuat kategori induk…
         </div>
       ) : (
@@ -123,7 +123,7 @@ export function CategoryParentField({
         >
           {/* shadcn's SelectTrigger defaults to w-fit, which collapses in a
               form column — the same note ShippingFieldsCard carries. */}
-          <SelectTrigger id="category-parent" className="w-full">
+          <SelectTrigger id="category-parent" size="lg" className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

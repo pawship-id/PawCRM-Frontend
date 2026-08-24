@@ -271,7 +271,7 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
         />
         <Field label="Baris berselisih" value={String(differing.length)} />
         <div className="ml-auto flex flex-col items-end gap-1">
-          <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted">
+          <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
             Status
           </p>
           {done ? (
@@ -397,7 +397,7 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
       >
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-border text-[10px] uppercase tracking-widest text-muted">
+            <tr className="border-b border-border text-xs uppercase tracking-widest text-muted">
               <th className="px-4 py-2.5 text-left font-medium">Produk</th>
               <th className="px-4 py-2.5 text-center font-medium">Dihitung</th>
               <th className="px-4 py-2.5 text-right font-medium">Qty sistem</th>
@@ -473,7 +473,7 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
       {/* ----------------------------------------------------------- summary */}
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-lg border border-dashed border-primary/50 bg-primary/5 p-4">
-          <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-primary-hover">
+          <p className="text-xs font-medium uppercase tracking-[0.14em] text-primary-hover">
             Total selisih
           </p>
           <p
@@ -496,7 +496,7 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
 
         {done ? (
           <div className="rounded-lg border border-border bg-surface p-4">
-            <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted">
+            <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
               Jurnal
             </p>
             {opname.journalEntryId ? (
@@ -892,7 +892,7 @@ function Field({
 }) {
   return (
     <div>
-      <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted">
+      <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
         {label}
       </p>
       <p className={cn("mt-1 text-sm font-semibold", mono && "tabular-nums")}>

@@ -917,7 +917,7 @@ describe("StockTransferForm", () => {
     await addProducts(user);
     await user.type(await screen.findByLabelText(/^Jumlah/), "6");
     await user.type(
-      screen.getByLabelText("Catatan transfer"),
+      screen.getByLabelText("Keterangan"),
       "persiapan bazar",
     );
     await user.type(

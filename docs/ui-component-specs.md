@@ -516,6 +516,11 @@ The box stays `size-4`, the app's one checkbox size; the 44 px target comes from
 
 ## `FormActionBar`
 
+> **PENDING.** Built and in use on three stock forms; **not** to be rolled out
+> further until the pattern has been reviewed in a browser. Forms migrated in the
+> meantime keep their buttons at the foot of the page. See §16.
+
+
 | Prop | Type | Notes |
 | --- | --- | --- |
 | `title` | `string` | The document being filled in. |

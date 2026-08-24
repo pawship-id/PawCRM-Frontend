@@ -6,12 +6,12 @@ import { Trash2 } from "lucide-react";
 
 import {
   Alert,
-  Button,
   Card,
+  FormActionBar,
   FilterSelect,
   namedOptions,
   Spinner,
-  TextField,
+  TextareaField,
 } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button as UIButton } from "@/components/ui/button";
@@ -599,6 +599,30 @@ export function StockTransferForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lines, productById, lots.byProduct, lots.loading]);
 
+  /**
+   * The lines whose QUANTITY is not yet a number the API would accept, by
+   * product id.
+   *
+   * Empty, non-numeric, and zero-or-less all land here: each is a row that is
+   * still being filled in, and `items` drops it from the payload rather than
+   * sending it. Without this the button stayed live over a half-typed sheet and
+   * saved the OTHER rows — a transfer that silently left goods behind.
+   *
+   * Same three cases `validate()` names one by one; this is only the "is any row
+   * unfinished" question, which is what the button needs.
+   */
+  const badQty = useMemo(() => {
+    const found = new Set<string>();
+
+    for (const line of lines) {
+      if (!isDecimal(line.qty) || !isPositive(line.qty)) {
+        found.add(line.productId);
+      }
+    }
+
+    return found;
+  }, [lines]);
+
   /** Whether ANY line tracks lots — which is what summons the batch column. */
   const anyLotTracked = useMemo(
     () =>
@@ -852,8 +876,63 @@ export function StockTransferForm() {
     );
   }
 
+  /**
+   * The same conditions the button already refused on, turned into a sentence.
+   *
+   * DERIVED, NOT A NEW RULE: `blockingReason` is not used here because a
+   * transfer's blockers are live booleans rather than a keyed error map — the
+   * shortage and the missing lot are known as the reader types, not after a
+   * submit.
+   *
+   * EVERY condition that would make the save fail is in here, including the two
+   * that used to wait for a click: an empty sheet and a row without a usable
+   * quantity. The button is therefore live only when the whole form is ready to
+   * post. The greyed-out state is not silent — the bar prints this sentence
+   * beside it, so an untouched form reads "tambahkan produknya dulu" rather
+   * than a dead button with no explanation.
+   *
+   * ORDER IS THE ORDER SOMEBODY FIXES THEM IN: the two warehouses first, then
+   * whether there is anything to send, then each row's own answer.
+   */
+  const blocking = sameWarehouse
+    ? "Gudang asal dan tujuan masih sama"
+    : lines.length === 0
+      ? "Belum ada produk yang ditambahkan"
+      : missingBatch.size > 0
+        ? lots.loading
+          ? "Daftar batch masih dimuat"
+          : "Masih ada baris yang belum dipilih batch-nya"
+        : badQty.size > 0
+          ? "Masih ada baris yang jumlahnya belum diisi dengan benar"
+          : shortages.size > 0
+            ? "Masih ada baris yang melebihi stok"
+            : null;
+
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
+      {/* Sticky — §16. `No. [auto]` rides in the meta because the server
+          allocates it on save, so it is not a field anybody fills in.
+
+          THE MOVED VALUE IS NOT IN HERE, unlike the opening-stock sheet's
+          total. A transfer writes no journal: the value is the same before and
+          after, so it is not a number anybody checks before pressing the
+          button. It stays on the strip beside the two warehouses, which is
+          what it is actually about. */}
+      <FormActionBar
+        title="Transfer stok baru"
+        meta={`No. [auto] · ${lines.length} produk`}
+        submitLabel="Simpan transfer"
+        submitting={saving}
+        // A shortage disables it rather than failing on click: the API would
+        // refuse the whole posting anyway, and the row already says which
+        // product and how much it actually has. `blocking` carries the same
+        // set of conditions as a sentence — the two are read together, so
+        // neither may grow a case the other does not have.
+        disabled={blocking !== null}
+        blockedReason={blocking}
+        cancelHref="/dashboard/inventory/transfers"
+      />
+
       {formError && <Alert variant="error">{formError}</Alert>}
 
       {picking && (
@@ -879,7 +958,7 @@ export function StockTransferForm() {
                   this user is answerable for, and sent to any live shelf of
                   the tenant. */}
               <FilterSelect
-                layout="field"
+                layout="form"
                 label="Dari gudang"
                 ariaLabel="Dari gudang"
                 value={fromWarehouseId}
@@ -890,30 +969,27 @@ export function StockTransferForm() {
               />
 
               <div className="flex flex-col gap-1.5">
+                {/* The error is said as soon as it is true, not only after a
+                    submit attempt — the red border alone would be status by
+                    colour, which §1 forbids. It now comes from the control's
+                    own `error` prop rather than a hand-written `role="alert"`,
+                    which also keeps the red border and the red sentence from
+                    ever disagreeing. */}
                 <FilterSelect
-                  layout="field"
+                  layout="form"
                   label="Ke gudang"
                   ariaLabel="Ke gudang"
                   value={toWarehouseId}
                   options={namedOptions(destinations)}
                   active={false}
                   placeholder="Pilih gudang"
-                  // The one thing a filter never has to say: this choice can
-                  // be wrong. Both ends the same warehouse is a move that
-                  // moves nothing.
-                  invalid={sameWarehouse}
+                  error={
+                    sameWarehouse
+                      ? "Gudang asal dan tujuan harus berbeda."
+                      : fieldErrors.toWarehouseId
+                  }
                   onChange={setTo}
                 />
-                {/* Said as soon as it is true, not only after a submit
-                    attempt. The red border used to be the whole signal until
-                    somebody pressed Simpan — status by colour alone, which §1
-                    forbids, and invisible to anyone who cannot see it. */}
-                {(fieldErrors.toWarehouseId || sameWarehouse) && (
-                  <p role="alert" className="text-xs text-danger">
-                    {fieldErrors.toWarehouseId ??
-                      "Gudang asal dan tujuan harus berbeda."}
-                  </p>
-                )}
                 {/* Not an error — this transfer is allowed and will save. It
                     is the one thing about it the filer cannot check
                     afterwards, so it is said before they do it rather than
@@ -931,8 +1007,8 @@ export function StockTransferForm() {
             {/* The reason for the WHOLE transfer, stamped on every row it
                 writes. Without it a stock card can only ever say "10 keluar ke
                 Gudang Bazar" — which is what happened, never why. */}
-            <TextField
-              label="Catatan transfer"
+            <TextareaField
+              label="Keterangan"
               name="notes"
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
@@ -1107,23 +1183,6 @@ export function StockTransferForm() {
             ditinjau ulang saat laporan keuangan per cabang dibangun.
           </p>
 
-          <Button
-            type="submit"
-            className="sm:self-end"
-            // A shortage disables it rather than failing on click: the API would
-            // refuse the whole posting anyway, and the row already says which
-            // product and how much it actually has.
-            disabled={
-              saving ||
-              sameWarehouse ||
-              shortages.size > 0 ||
-              // The API refuses a lot-tracked product moved without a lot, and
-              // the row already says which one is waiting for an answer.
-              missingBatch.size > 0
-            }
-          >
-            {saving ? "Menyimpan…" : "Simpan transfer"}
-          </Button>
         </div>
       </div>
     </form>

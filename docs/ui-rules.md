@@ -312,15 +312,15 @@ From [`docs/architecture.md`](./architecture.md), unchanged: a component lives i
 
 **Built** — `src/components/filters/`, exported from `@/components`, used by all 15 toolbars: `FilterBar`, `FilterTrigger`, `FilterSearch`, `FilterSelect`, `FilterMultiSelect`, `FilterDateRange`, `FilterToggle`, `FilterPills`, `FilterChips`, `FilterPanel`, `FilterField`, plus the `withAll` / `triState` / `namedOptions` option builders.
 
-**Built** — `src/components/form/`, exported from `@/components`: `FormField`, `FormActionBar`, `TextareaField`, `SelectField`, `CheckRow` / `CheckRowGroup`, plus `FIELD_HEIGHT`. The searchable full-width picker is **`FilterSelect layout="form"`**, not a form-layer control of its own — see §16. `TextField` now renders through `FormField` — its call sites are unchanged. Rules in §16, anatomy in [`docs/ui-component-specs.md`](./ui-component-specs.md). **Two forms migrated so far** — `StockAdjustmentForm`, `OpeningStockForm`. The other 18 still carry their own bottom-of-page buttons.
+**Built** — `src/components/form/`, exported from `@/components`: `FormField`, `FormActionBar`, `TextareaField`, `SelectField`, `CheckRow` / `CheckRowGroup`, plus `FIELD_HEIGHT`. The searchable full-width picker is **`FilterSelect layout="form"`**, not a form-layer control of its own — see §16. `TextField` now renders through `FormField` — its call sites are unchanged. Rules in §16, anatomy in [`docs/ui-component-specs.md`](./ui-component-specs.md). **Four forms migrated so far** — `StockAdjustmentForm`, `OpeningStockForm`, `StockTransferForm` (with the sticky bar), and `CategoryForm` (without it — see the PENDING note in §16). The other 16 are untouched.
 
 **Decided but not yet built** — specs exist in [`docs/ui-component-specs.md`](./ui-component-specs.md). Build them when the work calls for one, don't invent a parallel version: `StatusBadge`, `EmptyState`, and a promoted `PageHeading`.
 
 **Migration list** — existing code that violates these rules. Fix opportunistically when you are already in the file; do not open a sweep without being asked:
 
 - 2 screens with filters written inline rather than in a toolbar — `StockOnHandScreen`, `ProductDetail` — still carry their own `const ALL = "all"` sentinel and a raw `ui/select`. They were not part of the 15-toolbar census; migrate them to `@/components` filters. (`ChartOfAccountsScreen` and `JournalEntriesScreen` are done — the latter as one piece of work with its wiring to `GET /api/journal-entries`, which is also what retired `features/accounting/data/dummy.ts`.)
-- 18 forms with their buttons at the bottom of the page → `<FormActionBar>` (§16). Two of them — `ReceiptForm`, `ProductForm` — also have Simpan to the LEFT of Batal.
-- 4 form headers still on `layout="field"` with a hand-written `role="alert"` beneath — `ReceiptForm`, `JournalEntryCreateForm`, `StockTransferForm`, `OpnameStartCard` — → `layout="form"` + its `error` prop. (`WarehouseProductPicker` and the per-row batch picker inside `StockAdjustmentForm` stay on `"field"`: a control in a table cell sits among `h-9` inputs, and 44 would tower over them.)
+- 17 forms with their buttons at the bottom of the page → `<FormActionBar>` (§16), **once the PENDING note there is lifted**. Two of them — `ReceiptForm`, `ProductForm` — also have Simpan to the LEFT of Batal, which is worth fixing whatever happens to the bar.
+- 3 form headers still on `layout="field"` with a hand-written `role="alert"` beneath — `ReceiptForm`, `JournalEntryCreateForm`, `OpnameStartCard` — → `layout="form"` + its `error` prop. (`WarehouseProductPicker` and the per-row batch picker inside `StockAdjustmentForm` stay on `"field"`: a control in a table cell sits among `h-9` inputs, and 44 would tower over them.)
 - ~25 hand-rolled page headings → promoted `PageHeading`
 - 52 hand-written `rounded-xl border border-border bg-surface` → `<Card>`
 - 15 feature status badges with 3 tinting conventions → `StatusBadge`
@@ -385,9 +385,24 @@ Gudang, Pemasok, Pelanggan, Akun, Penerimaan asal — anything somebody would wa
 
 `SelectField` is for the *short* closed list that needs no searching — Satuan, Tipe akun, Metode. Reach for the picker the moment somebody would want to type.
 
-**A control inside a row table is not a form field.** It sits among `h-9` inputs in a table cell, so it keeps `layout="field"` at 40 px — 44 there would tower over the row it belongs to. The 44 rule is about the header, not about every control on the screen.
+**Three things that look like form fields and are not.** All keep `layout="field"` at 40 px; the 44 rule is about a document's header, not about every control on a screen.
+
+- **A control inside a row table.** It sits among `h-9` inputs in a table cell, and 44 would tower over the row it belongs to.
+- **A bar that opens a document** — `OpnameStartCard`'s Cabang / Gudang / Kategori. Three fixed-width controls on one line with a button beside them is bar geometry, not a form grid, and the act is one decision applied on a click. It creates a document; it is not the document.
+- **A picker embedded in another control** — `WarehouseProductPicker`.
 
 ### The action bar
+
+> **PENDING — do not roll this out further.** Three forms carry the sticky bar
+> (`StockAdjustmentForm`, `OpeningStockForm`, `StockTransferForm`) and the
+> pattern is being looked at in a browser before it goes on the other seventeen.
+> Until that is settled, a form being migrated keeps its buttons **where they
+> already are**, at the foot of the page.
+>
+> Everything else in this section applies now and is not pending: the label
+> names its object, Batal is `secondary` and sits left of Simpan, and Simpan is
+> disabled with a reason rather than left to fail on click.
+
 
 **One bar, two buttons, always the same places: Batal (secondary) left, Simpan (primary) right**, in a `sticky top-16 z-10` bar at the top of the form. Not `top-0` — DashboardShell's own header is already there.
 

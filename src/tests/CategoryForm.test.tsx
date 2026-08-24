@@ -363,7 +363,7 @@ describe("CategoryForm", () => {
 
       await userEvent.clear(nameField());
       await userEvent.type(nameField(), "Makanan Anjing");
-      await submit(/^simpan$/i);
+      await submit(/^simpan kategori$/i);
 
       // The image especially: the API deletes the bytes an update drops, so
       // resending an unchanged asset is one dropped connection away from
@@ -377,7 +377,7 @@ describe("CategoryForm", () => {
       const update = jest.spyOn(categoryService, "update");
 
       await renderEdit(makeCategory());
-      await submit(/^simpan$/i);
+      await submit(/^simpan kategori$/i);
 
       // The API rejects an empty patch body, and "save" on an untouched form is
       // a close that should not look like a failure.
@@ -389,7 +389,7 @@ describe("CategoryForm", () => {
       const update = jest.spyOn(categoryService, "update");
 
       await renderEdit(makeCategory({ description: null }));
-      await submit(/^simpan$/i);
+      await submit(/^simpan kategori$/i);
 
       // `null` and `""` both mean "no description", so an untouched form is
       // still a patch that changes nothing.
@@ -405,7 +405,7 @@ describe("CategoryForm", () => {
 
       await userEvent.clear(descField());
       await userEvent.type(descField(), "Bukan camilan");
-      await submit(/^simpan$/i);
+      await submit(/^simpan kategori$/i);
 
       await waitFor(() =>
         expect(update).toHaveBeenCalledWith("c1", {
@@ -422,7 +422,7 @@ describe("CategoryForm", () => {
       await renderEdit(makeCategory({ description: "Basah dan kering" }));
 
       await userEvent.clear(descField());
-      await submit(/^simpan$/i);
+      await submit(/^simpan kategori$/i);
 
       // "" is what the API reads as "clear it"; it stores null.
       await waitFor(() =>
@@ -440,7 +440,7 @@ describe("CategoryForm", () => {
       await userEvent.click(
         screen.getByRole("button", { name: /hapus gambar/i }),
       );
-      await submit(/^simpan$/i);
+      await submit(/^simpan kategori$/i);
 
       await waitFor(() =>
         expect(update).toHaveBeenCalledWith("c1", { image: null }),
@@ -455,7 +455,7 @@ describe("CategoryForm", () => {
       await renderEdit(makeCategory());
 
       await userEvent.click(screen.getByRole("switch", { name: /aktif/i }));
-      await submit(/^simpan$/i);
+      await submit(/^simpan kategori$/i);
 
       // The name is deliberately absent: sending it would run the 409 check
       // against the category's own name for an edit that never touched it.
@@ -488,7 +488,7 @@ describe("CategoryForm", () => {
       });
 
       await pickParent("Makanan Anjing");
-      await submit(/^simpan$/i);
+      await submit(/^simpan kategori$/i);
 
       await waitFor(() =>
         expect(update).toHaveBeenCalledWith("c1", { parentId: "p2" }),
@@ -505,7 +505,7 @@ describe("CategoryForm", () => {
       });
 
       await pickParent("Tidak ada — kategori induk");
-      await submit(/^simpan$/i);
+      await submit(/^simpan kategori$/i);
 
       // `null`, the same clear-by-null idiom the image field uses.
       await waitFor(() =>
@@ -519,7 +519,7 @@ describe("CategoryForm", () => {
       await renderEdit(makeCategory({ parentId: "p1" }), {
         roots: [makeCategory({ _id: "p1", name: "Makanan Kucing" })],
       });
-      await submit(/^simpan$/i);
+      await submit(/^simpan kategori$/i);
 
       expect(update).not.toHaveBeenCalled();
     });
@@ -581,7 +581,7 @@ describe("CategoryForm", () => {
       });
 
       await pickParent("Makanan Kucing");
-      await submit(/^simpan$/i);
+      await submit(/^simpan kategori$/i);
 
       // Not something the user can fix by retyping the name, so it does not
       // belong against the name field.
