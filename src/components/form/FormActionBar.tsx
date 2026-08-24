@@ -12,14 +12,18 @@ import { Button } from "../ui/button";
  *
  * WHY THE TOP, when the filter panel puts its Terapkan at the bottom: they are
  * different acts. A filter is one decision, made once, at the end of a short
- * list — the button belongs where the reading finishes. A form is filled in over
- * minutes, revisited, corrected, and saved when the person decides it is right;
- * hunting for the button means scrolling past everything they just typed. So it
- * stays visible, and the form is saveable from wherever they happen to be.
+ * list — the button belongs where the reading finishes. A form is a document,
+ * and a document says what it is and what you can do with it at its head.
  *
- * `top-16`, NOT `top-0`. DashboardShell's header is `sticky top-0 z-20` and 64px
- * tall; a second bar at `top-0` sits underneath it and disappears. `z-10` for the
- * same reason — below the header, above the form.
+ * IT DOES NOT STICK BY DEFAULT. The first three forms pinned it, and pinned is
+ * the wrong default: a bar that follows the reader down two hundred rows of a
+ * stock sheet competes with DashboardShell's own sticky header for the top of
+ * the screen, and on a laptop the two of them eat a fifth of the viewport before
+ * any content appears. `sticky` is left as an opt-in for a screen that earns it.
+ *
+ * When it IS set: `top-16`, NOT `top-0`. DashboardShell's header is
+ * `sticky top-0 z-20` and 64px tall; a second bar at `top-0` sits underneath it
+ * and disappears. `z-10` for the same reason — below the header, above the form.
  *
  * ORDER IS FIXED: Batal (secondary) left, Simpan (primary) right, always. Two
  * forms in this repo currently do it the other way round, and a save button that
@@ -67,6 +71,14 @@ export interface FormActionBarProps {
    * The primary action never moves to make room for them.
    */
   extra?: ReactNode;
+  /**
+   * Pin the bar under DashboardShell's header instead of letting it scroll away.
+   *
+   * OFF BY DEFAULT — see the note above. Turn it on only for a screen where
+   * somebody genuinely saves from the bottom of a very long document, and check
+   * what two stacked sticky bars leave of the viewport before you do.
+   */
+  sticky?: boolean;
   className?: string;
 }
 
@@ -81,6 +93,7 @@ export function FormActionBar({
   onCancel,
   cancelLabel = "Batal",
   extra,
+  sticky = false,
   className,
 }: FormActionBarProps) {
   const blocked = disabled && !submitting && Boolean(blockedReason);
@@ -88,8 +101,13 @@ export function FormActionBar({
   return (
     <div
       className={cn(
-        "sticky top-16 z-10 flex flex-wrap items-center justify-between gap-3",
-        "rounded-xl border border-border bg-surface/95 px-4 py-3 shadow-sm backdrop-blur sm:px-6",
+        "flex flex-wrap items-center justify-between gap-3",
+        "rounded-xl border border-border px-4 py-3 shadow-sm sm:px-6",
+        // Translucent only when it is going to have content sliding under it.
+        // A solid surface is the honest one for a bar that stays put.
+        sticky
+          ? "sticky top-16 z-10 bg-surface/95 backdrop-blur"
+          : "bg-surface",
         className,
       )}
     >

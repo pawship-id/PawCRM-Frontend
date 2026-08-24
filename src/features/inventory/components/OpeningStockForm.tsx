@@ -354,11 +354,11 @@ export function OpeningStockForm() {
       )}
 
       <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
-        {/* The running total rides in the meta rather than only at the foot of
-            the sheet: it is the number somebody sanity-checks before pressing
-            the button, and the button is no longer next to it. The two lines
-            explaining WHICH accounts it moves stay down there, beside the rows
-            they are about. */}
+        {/* The document's head — §16, not pinned. The running total rides in
+            the meta rather than only at the foot of the sheet: it is the number
+            somebody sanity-checks before pressing the button, and the button is
+            no longer next to it. The two lines explaining WHICH accounts it
+            moves stay down there, beside the rows they are about. */}
         <FormActionBar
           title="Stok awal baru"
           meta={`No. [auto] · ${lines.length} produk · ${formatMoney(

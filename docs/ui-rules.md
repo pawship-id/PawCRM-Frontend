@@ -312,14 +312,14 @@ From [`docs/architecture.md`](./architecture.md), unchanged: a component lives i
 
 **Built** — `src/components/filters/`, exported from `@/components`, used by all 15 toolbars: `FilterBar`, `FilterTrigger`, `FilterSearch`, `FilterSelect`, `FilterMultiSelect`, `FilterDateRange`, `FilterToggle`, `FilterPills`, `FilterChips`, `FilterPanel`, `FilterField`, plus the `withAll` / `triState` / `namedOptions` option builders.
 
-**Built** — `src/components/form/`, exported from `@/components`: `FormField`, `FormActionBar`, `TextareaField`, `SelectField`, `CheckRow` / `CheckRowGroup`, plus `FIELD_HEIGHT`. The searchable full-width picker is **`FilterSelect layout="form"`**, not a form-layer control of its own — see §16. `TextField` now renders through `FormField` — its call sites are unchanged. Rules in §16, anatomy in [`docs/ui-component-specs.md`](./ui-component-specs.md). **Five forms migrated — all of Inventory.** `StockAdjustmentForm`, `OpeningStockForm`, `StockTransferForm` carry the sticky bar; `CategoryForm` and `ProductForm` were migrated without it, see the PENDING note in §16. The other 15 are untouched, and they are Purchasing, Keuangan and Master.
+**Built** — `src/components/form/`, exported from `@/components`: `FormField`, `FormActionBar`, `TextareaField`, `SelectField`, `CheckRow` / `CheckRowGroup`, plus `FIELD_HEIGHT`. The searchable full-width picker is **`FilterSelect layout="form"`**, not a form-layer control of its own — see §16. `TextField` now renders through `FormField` — its call sites are unchanged. Rules in §16, anatomy in [`docs/ui-component-specs.md`](./ui-component-specs.md). **Five forms migrated — all of Inventory, and all of them consistent.** `StockAdjustmentForm`, `OpeningStockForm`, `StockTransferForm`, `CategoryForm` and `ProductForm` each carry a `FormActionBar` at the head of the form, none of them pinned. The other 15 are untouched, and they are Purchasing, Keuangan and Master.
 
 **Decided but not yet built** — specs exist in [`docs/ui-component-specs.md`](./ui-component-specs.md). Build them when the work calls for one, don't invent a parallel version: `StatusBadge`, `EmptyState`, and a promoted `PageHeading`.
 
 **Migration list** — existing code that violates these rules. Fix opportunistically when you are already in the file; do not open a sweep without being asked:
 
 - 2 screens with filters written inline rather than in a toolbar — `StockOnHandScreen`, `ProductDetail` — still carry their own `const ALL = "all"` sentinel and a raw `ui/select`. They were not part of the 15-toolbar census; migrate them to `@/components` filters. (`ChartOfAccountsScreen` and `JournalEntriesScreen` are done — the latter as one piece of work with its wiring to `GET /api/journal-entries`, which is also what retired `features/accounting/data/dummy.ts`.)
-- 17 forms with their buttons at the bottom of the page → `<FormActionBar>` (§16), **once the PENDING note there is lifted**. `ReceiptForm` also still has Simpan to the LEFT of Batal, which is worth fixing whatever happens to the bar.
+- 15 forms with their buttons at the foot of the page → `<FormActionBar>` at the head (§16). `ReceiptForm` also still has Simpan to the LEFT of Batal.
 - 2 buttons still reading `Simpan perubahan` — `SupplierEditForm`, `PurchaseReturnDetail`. That names the act, not the object; §16 wants `Simpan supplier`, `Simpan retur`.
 - 23 files still using the banned `text-[10px]` (§1.6). `OpnameSheet` is done; the rest are opportunistic.
 - 2 form headers still on `layout="field"` with a hand-written `role="alert"` beneath — `ReceiptForm`, `JournalEntryCreateForm` — → `layout="form"` + its `error` prop. (`OpnameStartCard` stays on `"field"`; it is a bar, see §16.) (`WarehouseProductPicker` and the per-row batch picker inside `StockAdjustmentForm` stay on `"field"`: a control in a table cell sits among `h-9` inputs, and 44 would tower over them.)
@@ -395,15 +395,16 @@ Gudang, Pemasok, Pelanggan, Akun, Penerimaan asal — anything somebody would wa
 
 ### The action bar
 
-> **PENDING — do not roll this out further.** Three forms carry the sticky bar
-> (`StockAdjustmentForm`, `OpeningStockForm`, `StockTransferForm`) and the
-> pattern is being looked at in a browser before it goes on the other seventeen.
-> Until that is settled, a form being migrated keeps its buttons **where they
-> already are**, at the foot of the page.
->
-> Everything else in this section applies now and is not pending: the label
-> names its object, Batal is `secondary` and sits left of Simpan, and Simpan is
-> disabled with a reason rather than left to fail on click.
+**The bar sits at the top of the form and scrolls with it. It is not pinned.**
+That is settled: the three stock forms were built pinned, looked at in a browser,
+and unpinned. Two stacked sticky bars — this one and DashboardShell's own header
+— eat about a fifth of a laptop viewport before any content appears, and a form
+is not read from the bottom often enough to pay for that. `FormActionBar` keeps a
+`sticky` prop for a screen that genuinely earns it; nothing sets it today.
+
+What the bar is *for* survives the change: a document says what it is, what its
+number is, and what can be done with it **at its head** — not in a strip of
+buttons discovered after everything else has been read.
 
 
 **One bar, two buttons, always the same places: Batal (secondary) left, Simpan (primary) right**, in a `sticky top-16 z-10` bar at the top of the form. Not `top-0` — DashboardShell's own header is already there.
@@ -411,6 +412,11 @@ Gudang, Pemasok, Pelanggan, Akun, Penerimaan asal — anything somebody would wa
 - **The label names the object.** `Simpan produk`, `Simpan penyesuaian`. Never bare `Simpan`, never `Submit`. §12.
 - **Disabled until the required fields are answered**, with `blockedReason` saying which one. No error banner before anybody has tried to save; per-field errors appear when a field is touched and left empty.
 - **A form has no `Reset`.** `Batal` leaves without saving — a different act from a filter's Reset, which empties the fields in place.
+
+### Two Inventory screens that do not get one
+
+- **`OpnameStartCard`** — a bar that opens a document, not the document. Three fixed-width controls and a button on one line; see the three "not a form field" cases above.
+- **`OpnameSheet`** — a draft that autosaves, with no submit at all: its button opens a confirm dialog, and filling it in and finishing it are separate permissions. `FormActionBar` renders a `type="submit"` and would need an `onClick` mode to serve it. Worth doing when somebody asks for it; not worth inventing before then.
 
 ### Not decided
 

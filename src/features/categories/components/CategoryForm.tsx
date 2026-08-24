@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 
 import {
   Alert,
-  Button,
   Card,
+  FormActionBar,
   Spinner,
   TextField,
   TextareaField,
@@ -291,6 +291,15 @@ function CategoryFields({
 
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
+      {/* The document's head — §16. Not pinned; it scrolls with the page. */}
+      <FormActionBar
+        title={editing ? "Ubah kategori" : "Kategori baru"}
+        meta={editing ? category.name : undefined}
+        submitLabel={editing ? "Simpan kategori" : "Buat kategori"}
+        submitting={saving}
+        onCancel={goBack}
+      />
+
       {formError && <Alert variant="error">{formError}</Alert>}
 
       <Card
@@ -379,26 +388,6 @@ function CategoryFields({
         </Card>
       )}
 
-      {/* Stacks on a phone (the primary on top), one row from sm up.
-          STILL AT THE FOOT OF THE PAGE. §16 puts this bar sticky at the top,
-          and three stock forms already carry it — this one waits on purpose
-          until that pattern has been looked at in a browser. What is adopted
-          here is the rest of the rule: Batal is `secondary` per §7, and Simpan
-          names what it saves rather than reading bare "Simpan". */}
-      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-        <Button
-          type="button"
-          variant="secondary"
-          className="w-full sm:w-auto"
-          onClick={goBack}
-          disabled={saving}
-        >
-          Batal
-        </Button>
-        <Button type="submit" loading={saving} className="w-full sm:w-auto">
-          {editing ? "Simpan kategori" : "Buat kategori"}
-        </Button>
-      </div>
     </form>
   );
 }

@@ -473,11 +473,14 @@ export function StockAdjustmentForm() {
       )}
 
       <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
-        {/* Sticky, so a sheet of two hundred rows is saveable from wherever the
-            reader happens to be — see docs/ui-rules.md §16. `No. [auto]` lives
-            here rather than in the grid: the server allocates it on save, so it
-            is not a field anybody fills in, and the first row of a form belongs
-            to what actually needs attention. */}
+        {/* The document's head: what it is, its number, and what can be done
+            with it — see docs/ui-rules.md §16. NOT pinned; the bar scrolls
+            with the page, because two stacked sticky bars (this and
+            DashboardShell's) take too much of a laptop viewport.
+
+            `No. [auto]` lives here rather than in the grid: the server
+            allocates it on save, so it is not a field anybody fills in, and the
+            first row of a form belongs to what actually needs attention. */}
         <FormActionBar
           title="Penyesuaian baru"
           meta={`No. [auto] · ${lines.length} produk`}

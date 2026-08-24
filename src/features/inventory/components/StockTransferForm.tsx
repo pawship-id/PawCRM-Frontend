@@ -910,8 +910,9 @@ export function StockTransferForm() {
 
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
-      {/* Sticky — §16. `No. [auto]` rides in the meta because the server
-          allocates it on save, so it is not a field anybody fills in.
+      {/* The document's head — §16. Not pinned; it scrolls with the page.
+          `No. [auto]` rides in the meta because the server allocates it on
+          save, so it is not a field anybody fills in.
 
           THE MOVED VALUE IS NOT IN HERE, unlike the opening-stock sheet's
           total. A transfer writes no journal: the value is the same before and

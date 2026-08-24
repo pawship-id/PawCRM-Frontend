@@ -10,6 +10,7 @@ import {
   Card,
   CheckRow,
   CheckRowGroup,
+  FormActionBar,
   InternalBatchCodeDisplay,
   SelectField,
   Spinner,
@@ -2101,6 +2102,19 @@ function ProductFormFields({
         </p>
       )}
 
+      {/* The document's head — §16. Not pinned; it scrolls with the page.
+          An existing product's SKU rides in the meta the way a stock document's
+          number does: it is the thing that identifies this record and it is not
+          a field anybody fills in here. A new one has nothing to put there
+          yet. */}
+      <FormActionBar
+        title={existing ? "Ubah produk" : "Produk baru"}
+        meta={existing?.sku ?? undefined}
+        submitLabel="Simpan produk"
+        submitting={saving}
+        onCancel={() => router.push("/dashboard/inventory/products")}
+      />
+
       {/* ------------------------------------------------------------ mode */}
       <div>
         <div className="inline-flex flex-wrap rounded-lg bg-accent p-1">
@@ -3366,26 +3380,6 @@ function ProductFormFields({
         </Card>
       )}
 
-      {/* BATAL LEFT, SIMPAN RIGHT — §16. These were the other way round, and a
-          save button that swaps sides between screens is one people mis-click.
-
-          STILL AT THE FOOT OF THE PAGE: the sticky bar is deferred, see the
-          PENDING note in §16.
-
-          "Simpan perubahan" named the ACT rather than the object. The label
-          says what it saves, in both verbs. */}
-      <div className="flex flex-wrap gap-2">
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={() => router.push("/dashboard/inventory/products")}
-        >
-          Batal
-        </Button>
-        <Button type="submit" disabled={saving}>
-          {saving ? "Menyimpan…" : "Simpan produk"}
-        </Button>
-      </div>
     </form>
   );
 }

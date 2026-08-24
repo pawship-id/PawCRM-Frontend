@@ -516,10 +516,6 @@ The box stays `size-4`, the app's one checkbox size; the 44 px target comes from
 
 ## `FormActionBar`
 
-> **PENDING.** Built and in use on three stock forms; **not** to be rolled out
-> further until the pattern has been reviewed in a browser. Forms migrated in the
-> meantime keep their buttons at the foot of the page. See §16.
-
 
 | Prop | Type | Notes |
 | --- | --- | --- |
@@ -531,9 +527,12 @@ The box stays `size-4`, the app's one checkbox size; the 44 px target comes from
 | `blockedReason` | `string \| null` | Replaces `meta` while Simpan is off. A greyed button with no explanation is the most common dead end in this app. |
 | `cancelHref` / `onCancel` | `string` / `() => void` | Prefer `cancelHref` when it is a route — it renders a real `<a>`. |
 | `extra` | `ReactNode` | Placed **left of Batal**. The primary action never moves to make room. |
+| `sticky` | `boolean` | **Default `false`.** Pins the bar under DashboardShell's header. Nothing sets it — see the anatomy note. |
 
-**Anatomy.** `sticky top-16 z-10` — not `top-0`, which puts it under DashboardShell's own 64 px sticky header. Order is fixed: **Batal (secondary) left, Simpan (primary) right**, always; two forms in this repo currently do it the other way round, and a save button that moves between screens is one people mis-click.
+**Anatomy.** A card-shaped bar at the head of the form, scrolling with the page. Order is fixed: **Batal (secondary) left, Simpan (primary) right**, always; a save button that moves between screens is one people mis-click.
 
-**Why the top, when a filter panel puts Terapkan at the bottom.** A filter is one decision made once, at the end of a short list — the button belongs where the reading finishes. A form is filled in over minutes, revisited, corrected, and saved when the person decides it is right; hunting for the button means scrolling past everything they just typed.
+**It was pinned, and was unpinned.** The first three forms shipped with `sticky top-16`. Held against DashboardShell's own `sticky top-0` header, two bars competed for the top of the screen and took roughly a fifth of a laptop viewport before any content appeared. The `sticky` prop remains for a screen that earns it — `top-16`, never `top-0`, and `z-10` so it stays below the header — but it defaults to off and nothing sets it.
 
-**Mobile is deliberately unsolved.** The guideline flags sticky-top-right as something to revisit on a real phone, where the top-right is where a thumb reaches least well. Because every form reaches the bar through this component, a bottom-fixed variant below 640 px lands in one file without touching a single form.
+**Why the top, when a filter panel puts Terapkan at the bottom.** A filter is one decision made once, at the end of a short list — the button belongs where the reading finishes. A form is a document, and a document says what it is, what its number is, and what can be done with it at its head — not in a strip of buttons found after everything else has been read.
+
+**Mobile.** Now largely moot: an unpinned bar at the head of the form is reached by scrolling, not by a thumb stretching to a fixed top-right corner. If a bottom-fixed variant below 640 px is ever wanted, it lands in this one file without touching a single form.
