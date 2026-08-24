@@ -7,6 +7,53 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Hewan punya halamannya sendiri
+
+Master Data → **Hewan**: the register of animals a tenant's customers bring in, at
+`/dashboard/master/pets`, with list, register and edit screens. Fase 1 of the POS module
+— the Booking Bridge cannot be built without it.
+
+**A pet has two lifecycle axes, and the UI keeps them apart.** `isActive` says the animal
+is no longer in the shop's care — it passed away, or was rehomed — while its grooming
+history stays true and readable. `deletedAt` says the record should never have existed.
+The delete confirmation says as much and points at the switch instead, because
+conflating them would force a shop to delete a pet that died in order to stop it
+appearing in a booking dropdown, taking its history with it.
+
+**The owner picker is disabled when editing.** `customerId` is absent from the API's
+PATCH schema — reassigning an animal would silently move its bookings and invoices under
+a different name — so the control does not offer what the server would drop. Its hint
+says what to do instead.
+
+**Umur is derived at render time, never stored.** An age written into a record is wrong
+the day after it is written. Whole years only: a month-precise age reads as clinical
+precision the screen does not have, since a birth date is usually the owner's best guess.
+
+**The customer edit screen gained a Hewan card**, directly above its danger zone. Retired
+pets are listed there too — they still belong to that owner, and hiding them would make
+the card disagree with the delete guard, which counts them and refuses to remove the
+customer. Both places a customer can be deleted now show the refusal's `reason` rather
+than its headline: "Cannot delete customer" on its own leaves somebody staring at a button
+that will not work.
+
+**`PetQuickAddDialog` ships without a route.** Two fields, and it is exported for the POS
+Booking Bridge (Fase 4), which has to register an animal mid-sale — a redirect to the
+full form would abandon a half-built cart.
+
+**The owner picker loads 100 customers**, which is the API's page cap rather than a number
+chosen here — `pagination` refuses `limit` above it, and refuses rather than clamps. This
+field shipped asking for 200 and came back empty with the server's English "Validation
+failed" under it, which is the same mistake `chartOfAccounts.service.ts` made when it
+landed. `PetForm.test.tsx` now asserts the cap, and the picker shows our own sentence
+instead of the server's whatever goes wrong.
+
+Two limits are written down rather than left to be discovered: that 100-customer ceiling,
+and the absence of a photo field, because the upload control still lives inside the
+categories feature. See
+[docs/features/pet-management.md](./features/pet-management.md).
+
+---
+
 ## [Unreleased] — Dua kode batch, dan labelnya bisa dicetak
 
 Every screen that opens a lot now shows **two** batch codes, and only one of them can be

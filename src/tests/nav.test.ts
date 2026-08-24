@@ -47,6 +47,10 @@ describe("filterNavItems", () => {
       "Branch",
       "Warehouse",
       "Customer",
+      // Directly under Customer, because that is the relationship: every pet
+      // belongs to one, and the register is unreadable without knowing whose
+      // animals you are looking at.
+      "Hewan",
       "Roles",
       "Audit Log",
     ]);

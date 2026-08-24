@@ -32,6 +32,16 @@ import {
   AccountTreeIcon,
   JournalIcon,
 } from "@/components/icons";
+/*
+  From lucide directly, not from components/icons — ui-rules §11 is retiring that
+  file, so a NEW item should not add to it.
+
+  PawPrint despite §12's "no paw prints as bullets": that rule is about paw
+  prints used as decoration, and this is the functional icon identifying a
+  module. A species-specific alternative (Dog, Cat) would pick a side the
+  register deliberately does not.
+*/
+import { PawPrint } from "lucide-react";
 import type {
   Action,
   Feature,
@@ -404,6 +414,15 @@ export const NAV_ITEMS: NavItem[] = [
         href: "/dashboard/master/customers",
         icon: CustomerIcon,
         permission: { feature: "customers", action: "read" },
+      },
+      {
+        // Directly under Customer, because that is the relationship: every pet
+        // belongs to one, and the register is unreadable without knowing whose
+        // animals you are looking at.
+        label: "Hewan",
+        href: "/dashboard/master/pets",
+        icon: PawPrint,
+        permission: { feature: "pets", action: "read" },
       },
       {
         label: "Roles",

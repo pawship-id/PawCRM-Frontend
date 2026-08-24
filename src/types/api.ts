@@ -881,6 +881,120 @@ export interface UpdateCustomerInput {
 }
 
 /**
+ * The animal species a pet may be. Mirrors PET_SPECIES in pet.model.js — a
+ * closed list, because it decides which services and prices a booking may offer.
+ */
+export type PetSpecies =
+  | "dog"
+  | "cat"
+  | "bird"
+  | "rabbit"
+  | "hamster"
+  | "reptile"
+  | "fish"
+  | "other";
+
+/**
+ * `unknown` is a REAL value, not a missing one: a rescue arrives unsexed and
+ * "nobody has checked yet" is the honest answer. Mirrors PET_SEXES.
+ */
+export type PetSex = "male" | "female" | "unknown";
+
+/**
+ * A pet, as returned by GET /api/pets. An animal one of the tenant's customers
+ * brings in.
+ *
+ * TWO LIFECYCLE AXES, unlike Customer's one. `isActive: false` means the animal
+ * is no longer in the tenant's care — it passed away, or was rehomed — while its
+ * history stays true. `deletedAt` means the record should never have existed: a
+ * duplicate, a typo saved twice. Conflating them would force a shop to delete a
+ * dead pet to stop it appearing in a booking dropdown, taking its grooming
+ * history with it.
+ *
+ * `customerId` is set at creation and never changed — see UpdatePetInput.
+ */
+export interface Pet {
+  _id: string;
+  tenantId: string;
+  customerId: string;
+  name: string;
+  species: PetSpecies;
+  sex: PetSex;
+  breed: string | null;
+  /** ISO date. The birth date, never an age — an age is wrong the day after it is written. */
+  birthDate: string | null;
+  weightKg: number | null;
+  color: string | null;
+  microchipNo: string | null;
+  notes: string | null;
+  photo: MediaAsset | null;
+  /** Still in the tenant's care. See the two-axes note above. */
+  isActive: boolean;
+  /** Soft-delete marker; non-null means deleted (restorable), null means live. */
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Query parameters accepted by GET /api/pets. All optional. */
+export interface PetListQuery {
+  page?: number;
+  limit?: number;
+  /** The filter this endpoint exists for — one customer's animals. */
+  customerId?: string;
+  species?: PetSpecies;
+  /** `true` for a booking picker, which wants only pets still in the tenant's care. */
+  isActive?: boolean;
+  /** Free-text over name / breed. */
+  search?: string;
+  /** Include soft-deleted pets (default false on the backend). */
+  includeDeleted?: boolean;
+}
+
+/**
+ * Body of POST /api/pets. `customerId`, `name` and `species` are required;
+ * `tenantId` and `createdBy` are derived from the session, never sent from here.
+ * `sex` defaults to "unknown" on the server when omitted.
+ */
+export interface CreatePetInput {
+  customerId: string;
+  name: string;
+  species: PetSpecies;
+  sex?: PetSex;
+  breed?: string | null;
+  birthDate?: string | null;
+  weightKg?: number | null;
+  color?: string | null;
+  microchipNo?: string | null;
+  notes?: string | null;
+  photo?: MediaAsset | null;
+  isActive?: boolean;
+}
+
+/**
+ * Body of PATCH /api/pets/:id — every field optional, but the backend rejects an
+ * empty body (send only what changed, at least one field).
+ *
+ * `customerId` IS DELIBERATELY ABSENT. Reassigning an animal to another owner
+ * would silently move its bookings, invoices and grooming history under a
+ * different name; the API strips the key. A rehomed pet is registered again under
+ * the new owner and the old record retired with `isActive: false`.
+ */
+export interface UpdatePetInput {
+  name?: string;
+  species?: PetSpecies;
+  sex?: PetSex;
+  breed?: string | null;
+  birthDate?: string | null;
+  weightKg?: number | null;
+  color?: string | null;
+  microchipNo?: string | null;
+  notes?: string | null;
+  photo?: MediaAsset | null;
+  isActive?: boolean;
+}
+
+/**
  * How a tenant works with a supplier — the COOPERATION MODEL, which decides
  * whether goods arriving create a debt.
  *

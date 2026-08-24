@@ -110,6 +110,17 @@ export const PERMISSION_CATALOG = {
     "unlock",
   ],
   roles: ["create", "read", "update", "delete", "restore"],
+
+  /**
+   * The animals a tenant's customers bring in. The uniform five, because the
+   * lifecycle is uniform: registered, edited, retired, soft-deleted, restored.
+   *
+   * Retiring a pet (`isActive: false`) is gated by `update`, not by an action of
+   * its own — unlike an opname's `submit`. It is a correction to a record, not a
+   * decision with financial consequences, and the person at the counter who
+   * hears that a pet died is the same person who edits the row.
+   */
+  pets: ["create", "read", "update", "delete", "restore"],
   // The audit trail is read-only (mirrors the backend catalog): records are
   // system-appended and never edited or deleted, so `read` is the only action.
   auditLogs: ["read"],
