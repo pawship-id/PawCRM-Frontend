@@ -21,6 +21,22 @@ export const authService = {
   /** GET /auth/me — the current user; rejects with a 401 ApiError if signed out. */
   me: () => apiClient.get<MePayload>("/auth/me"),
 
+  /**
+   * POST /auth/switch-branch — points the SESSION at a branch.
+   *
+   * SESSION-WIDE, not per-screen, and that is the correct semantic rather than a
+   * limitation: `currentBranchId` is what decides which branch a POS sale, a
+   * shift and a journal entry are booked to, and a branch that meant something
+   * different on each screen would be a bookkeeping error nobody could see.
+   *
+   * A user scoped to exactly one branch starts pointed at it. An all-branches
+   * user starts at `null` and must choose — see auth.service.js#createSession.
+   */
+  switchBranch: (branchId: string) =>
+    apiClient.post<{ currentBranchId: string }>("/auth/switch-branch", {
+      branchId,
+    }),
+
   /** POST /auth/logout — ends the current session and clears the cookie. */
   logout: () => apiClient.post<{ revoked: boolean }>("/auth/logout"),
 

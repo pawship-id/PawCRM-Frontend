@@ -159,6 +159,35 @@ export const PERMISSION_CATALOG = {
    * whichever the payload implies.
    */
   bookings: ["create", "read", "update", "cancel"],
+
+  /**
+   * Cashier shifts. NOT the uniform five: a shift is opened, looked at, and
+   * closed, and it is never edited or deleted at all — the Z-Report is the point
+   * at which the day's cash becomes a fact, and a shift that could be amended
+   * afterwards would make it an opinion.
+   *
+   * `close` is separated from `open` because they are different levels of trust:
+   * any cashier starts their own shift, while counting the drawer and declaring
+   * the variance is often the supervisor's. The till hides the Tutup Kasir
+   * button from a role without it rather than showing one that will refuse.
+   */
+  posShifts: ["open", "read", "close"],
+
+  /**
+   * POS sales. NOT the uniform five, for the reason `journalEntries` is not
+   * either: a completed sale is a financial record, so there is no `update` and
+   * no `delete`. A wrong sale is VOIDED or RETURNED, and both leave the original
+   * visible.
+   *
+   * `create` covers building a basket AND discarding a parked one — throwing away
+   * a cart you just built is part of ringing one up, not a separate power.
+   *
+   * `discountOverride` gates approving a discount above the cashier's 10% limit
+   * (FR-4). An ACTION rather than a feature of its own, because it is a thing
+   * done TO a sale, and because the role that may approve one is usually the
+   * role that may void — which a grant on this feature can express.
+   */
+  posTransactions: ["create", "read", "void", "refund", "discountOverride"],
   // The audit trail is read-only (mirrors the backend catalog): records are
   // system-appended and never edited or deleted, so `read` is the only action.
   auditLogs: ["read"],

@@ -311,7 +311,19 @@ export const NAV_ITEMS: NavItem[] = [
       },
     ],
   },
-  { label: "POS", href: "/dashboard/pos", icon: PosIcon },
+  /**
+   * Gated on READING transactions rather than opening a shift: somebody who may
+   * look at the day's sales but not ring one up should still reach the screen,
+   * where the Buka Kasir form is what they will not be offered.
+   */
+  {
+    // "Kasir", not "POS" — ui-rules §12 lists POS among the words the product
+    // does not use. The route keeps its identifier.
+    label: "Kasir",
+    href: "/dashboard/pos",
+    icon: PosIcon,
+    permission: { feature: "posTransactions", action: "read" },
+  },
   { label: "Sales & Invoice", href: "/dashboard/sales", icon: SalesIcon },
   /**
    * Keuangan — a GROUP rather than a leaf, now that the module has screens.

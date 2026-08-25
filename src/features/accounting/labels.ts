@@ -47,7 +47,10 @@ export const ACCOUNT_TYPE_TONE: Record<AccountType, string> = {
  * question somebody reading an unfamiliar entry asks first.
  */
 export const SOURCE_LABEL: Record<JournalSourceType, string> = {
-  pos: "POS",
+  // "Kasir", not "POS" — ui-rules §12 lists POS among the words the product
+  // does not use. The route and the source type keep their identifiers.
+  pos: "Kasir",
+  pos_cogs: "HPP kasir",
   invoice: "Faktur",
   receipt: "Penerimaan kas",
   goods_receipt: "Penerimaan barang",
@@ -66,6 +69,9 @@ export const SOURCE_LABEL: Record<JournalSourceType, string> = {
  */
 export const SOURCE_TONE: Record<JournalSourceType, string> = {
   pos: "bg-tint-brand text-primary",
+  // The same tone as its revenue half, deliberately: the two entries are one
+  // sale, and tinting the cost side differently would suggest another event.
+  pos_cogs: "bg-tint-brand text-primary",
   invoice: "bg-tint-brand text-primary",
   receipt: "bg-tint-success text-success",
   goods_receipt: "bg-tint-warning text-secondary-foreground",

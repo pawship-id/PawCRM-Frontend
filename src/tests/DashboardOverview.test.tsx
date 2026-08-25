@@ -171,7 +171,7 @@ describe("DashboardOverview", () => {
 
     await screen.findByText("3");
     expect(screen.getByText("Booking hari ini")).toBeInTheDocument();
-    expect(screen.getByText(/menunggu modul pos/i)).toBeInTheDocument();
+    expect(screen.getByText(/menunggu modul kasir/i)).toBeInTheDocument();
     expect(screen.getAllByText("Segera")).toHaveLength(2);
     expect(screen.queryByText("No data yet")).not.toBeInTheDocument();
   });

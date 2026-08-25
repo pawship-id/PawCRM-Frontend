@@ -910,6 +910,289 @@ export interface UpdateCustomerInput {
   vipTier?: VipTier | null;
 }
 
+/* ------------------------------------------------------------------- POS */
+
+/** Open, or closed. Two values and no third — see posShift.model.js. */
+export type PosShiftStatus = "open" | "closed";
+
+/**
+ * A cashier's session at one till.
+ *
+ * The closing four are null together while the shift is open: a half-closed
+ * shift is not a state the model can hold. Every money field is a decimal
+ * STRING.
+ */
+export interface PosShift {
+  _id: string;
+  tenantId: string;
+  branchId: string;
+  warehouseId: string;
+  shiftNumber: string;
+  cashierUserId: string;
+  openedAt: string;
+  openingCash: string;
+  closedAt: string | null;
+  countedCash: string | null;
+  /** Opening float plus the shift's own cash takings. Computed by the server. */
+  expectedCash: string | null;
+  /** countedCash − expectedCash. Positive is a surplus. */
+  difference: string | null;
+  closingNotes: string | null;
+  status: PosShiftStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** One channel's takings during a shift. `net` is amount minus change given. */
+export interface PosPaymentBreakdownRow {
+  channelId: string;
+  channelType: PaymentChannelType;
+  channelName: string;
+  count: number;
+  amount: string;
+  change: string;
+  net: string;
+}
+
+/**
+ * The X-Report (FR-9). Read-only and repeatable — running it commits to nothing.
+ *
+ * `expectedCash` counts ONLY cash: a transfer settles into a bank account, and
+ * counting it would make the drawer look flush and the cashier look short.
+ */
+export interface PosXReport {
+  shift: PosShift;
+  transactionCount: number;
+  breakdown: PosPaymentBreakdownRow[];
+  totals: {
+    takings: string;
+    cashTakings: string;
+    expectedCash: string;
+  };
+}
+
+/** What a cart line is. A service consumes no stock and posts no HPP. */
+export type PosItemKind = "product" | "service";
+
+/** How a discount was expressed. Both are stored — see PosDiscount. */
+export type PosDiscountMode = "percent" | "amount";
+
+/**
+ * A discount at either level.
+ *
+ * `resolvedAmount` IS THE AUTHORITY — `mode` and `value` record what was typed.
+ * FR-4: changing a line's quantity after a nominal discount does not rescale it.
+ *
+ * `approvedBy` is set only when the discount exceeded the cashier's limit. Null
+ * means it was within limit, not that nobody approved it.
+ */
+export interface PosDiscount {
+  mode: PosDiscountMode;
+  value: string;
+  resolvedAmount: string;
+  approvedBy: string | null;
+}
+
+/** One line in the basket. `name` and `unitPrice` are snapshots. */
+export interface PosItem {
+  kind: PosItemKind;
+  refId: string;
+  name: string;
+  sku: string | null;
+  qty: string;
+  unitPrice: string;
+  /**
+   * `qty × unitPrice`, GROSS — before this line's own discount.
+   *
+   * Read, never recomputed. Multiplying qty by price here would round
+   * differently from the server's minor-unit arithmetic on a fractional quantity
+   * or a 7,5% discount, and the basket would then disagree with the receipt.
+   */
+  lineTotal: string;
+  discount: PosDiscount | null;
+  hppAtTime: string | null;
+  bookingId: string | null;
+  petId: string | null;
+  petName: string | null;
+  groomerName: string | null;
+}
+
+/** An ADDITIVE charge — ongkos kirim, packaging (FR-5). Never negative. */
+export interface PosCharge {
+  label: string;
+  amount: string;
+}
+
+/** One settlement. Channel type and name are snapshotted beside the id. */
+export interface PosPayment {
+  channelId: string;
+  channelType: PaymentChannelType;
+  channelName: string;
+  amount: string;
+  change: string | null;
+  reference: string | null;
+}
+
+/** Every figure, computed once when the basket settles. Null until then. */
+export interface PosTotals {
+  subtotal: string;
+  itemDiscount: string;
+  cartDiscount: string;
+  otherCharges: string;
+  dpp: string;
+  tax: string;
+  grandTotal: string;
+}
+
+/**
+ * The live figures a till shows while a basket is being built (FR-2).
+ *
+ * A SEPARATE TYPE FROM `PosTotals`, not an optional-fields version of it,
+ * because they are different kinds of fact: this is derived and changes with
+ * every tap, `PosTotals` is a record frozen at payment.
+ */
+export interface PosRunningTotals {
+  subtotal: string;
+  itemDiscount: string;
+  cartDiscount: string;
+  otherCharges: string;
+  net: string;
+}
+
+/**
+ * Where a basket stands.
+ *
+ * `open` is the Hotel module's open bill, carried with no UI. There is no
+ * `cancelled`: an unpaid cart is deleted, a paid one is voided.
+ */
+export type PosTransactionStatus = "held" | "open" | "paid" | "void";
+
+/**
+ * A basket at the till.
+ *
+ * THE SHAPE IS A LIFECYCLE, not a completed sale — which is why almost
+ * everything is nullable. `transactionNumber` is null until payment, because the
+ * counter is not reversible and parked carts would burn the series.
+ */
+export interface PosTransaction {
+  _id: string;
+  tenantId: string;
+  branchId: string;
+  warehouseId: string;
+  shiftId: string;
+  transactionNumber: string | null;
+  customerId: string | null;
+  items: PosItem[];
+  cartDiscount: PosDiscount | null;
+  otherCharges: PosCharge[];
+  note: string | null;
+  payments: PosPayment[];
+  /** The FROZEN record, written at settlement. Null until then. */
+  totals: PosTotals | null;
+  /**
+   * What the basket comes to right now — computed by the server on every read,
+   * never stored.
+   *
+   * NO TAX IN IT: the split is frozen at payment. For the tax-inclusive default
+   * `net` is what the customer pays.
+   */
+  runningTotals: PosRunningTotals;
+  status: PosTransactionStatus;
+  heldLabel: string | null;
+  bookingIds: string[];
+  paidAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Whether a tile can be sold right now. Absent on services and parents. */
+export type PosStockState = "ok" | "low" | "out";
+
+/**
+ * One tile in the till grid — a product OR a service, flattened to one shape.
+ *
+ * `stock: null` is NOT the same as `ok`: a service, a parent and a bundle all
+ * carry null, because a badge saying "in stock" on a grooming invites the
+ * question of how many are left.
+ */
+export interface PosCatalogItem {
+  kind: PosItemKind;
+  _id: string;
+  name: string;
+  code: string | null;
+  /** Null on a parent — its variants carry the price. */
+  price: string | null;
+  categoryId: string | null;
+  unit: string | null;
+  productType?: string;
+  parentId?: string | null;
+  isConsignment?: boolean;
+  /** Null unless this is a parent. */
+  variantCount: number | null;
+  stock: { qty: string; state: PosStockState } | null;
+}
+
+/** Query parameters accepted by GET /api/pos/catalog. */
+export interface PosCatalogQuery {
+  page?: number;
+  limit?: number;
+  search?: string;
+  categoryId?: string;
+  /** The "Layanan" pill sends ["service"]. Absent means both. */
+  kinds?: PosItemKind[];
+}
+
+/** Body of POST /api/pos/shifts. `cashierUserId` is NOT accepted. */
+export interface OpenShiftInput {
+  warehouseId: string;
+  openingCash: string;
+  branchId?: string;
+}
+
+/**
+ * Body of POST /api/pos/shifts/:id/close.
+ *
+ * `expectedCash` and `difference` are NOT accepted — the server computes both.
+ * A client-supplied expectation is a variance a client can make disappear.
+ */
+export interface CloseShiftInput {
+  countedCash: string;
+  closingNotes?: string | null;
+}
+
+/**
+ * One line as the till sends it.
+ *
+ * NO `unitPrice`, `name` or `sku` — the server reads all three from the
+ * catalogue, because a price a client can set is a discount a client can grant.
+ */
+export interface PosItemInput {
+  kind: PosItemKind;
+  refId: string;
+  qty?: string;
+  discount?: { mode: PosDiscountMode; value: string; approvedBy?: string } | null;
+  bookingId?: string | null;
+  petId?: string | null;
+  petName?: string | null;
+  groomerName?: string | null;
+}
+
+/**
+ * Body of PATCH /api/pos/transactions/:id.
+ *
+ * THE WHOLE BASKET IS SENT. A cart discount is measured against the
+ * post-item-discount subtotal, so changing one line changes what every other
+ * figure means.
+ */
+export interface UpdateCartInput {
+  items?: PosItemInput[];
+  cartDiscount?: { mode: PosDiscountMode; value: string; approvedBy?: string } | null;
+  otherCharges?: PosCharge[];
+  customerId?: string | null;
+  note?: string | null;
+  heldLabel?: string | null;
+}
+
 /** Where a booking stands. Mirrors BOOKING_STATUSES in booking.model.js. */
 export type BookingStatus =
   | "draft"

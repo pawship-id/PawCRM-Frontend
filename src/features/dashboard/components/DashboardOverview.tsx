@@ -30,7 +30,7 @@ import { NAV_ITEMS, type NavItem } from "../nav";
 /** The tiles with nothing behind them yet. See the header. */
 const PENDING_KPIS = [
   { label: "Booking hari ini", href: "/dashboard/booking", blockedBy: "Menunggu modul Booking" },
-  { label: "Penjualan hari ini", href: "/dashboard/pos", blockedBy: "Menunggu modul POS" },
+  { label: "Penjualan hari ini", href: "/dashboard/pos", blockedBy: "Menunggu modul kasir" },
 ];
 
 // The section shortcuts are the top-level leaf sections (a direct href, and not

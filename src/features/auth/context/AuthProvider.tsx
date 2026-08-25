@@ -37,6 +37,15 @@ export interface AuthContextValue {
   refresh: () => Promise<void>;
   /** Optimistically replace the cached user after a successful mutation. */
   setUser: (user: User) => void;
+  /**
+   * Point the session at a branch.
+   *
+   * IN THE AUTH CONTEXT RATHER THAN IN THE FEATURE THAT NEEDS IT, because the
+   * branch is session state: it decides which branch a POS sale, a shift and a
+   * journal entry are booked to. A screen that switched it privately would leave
+   * every other screen reading a different one.
+   */
+  switchBranch: (branchId: string) => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
@@ -133,6 +142,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const setUser = useCallback((next: User) => setUserState(next), []);
 
+  const switchBranch = useCallback(async (branchId: string) => {
+    const { currentBranchId } = await authService.switchBranch(branchId);
+    // Only the branch is replaced. Re-fetching /me would work and would also
+    // throw away the permission set for a round trip that answers nothing new.
+    setSession((current) => ({ ...current, currentBranchId }));
+  }, []);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       status,
@@ -144,6 +160,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut,
       refresh,
       setUser,
+      switchBranch,
     }),
     [
       status,
@@ -155,6 +172,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut,
       refresh,
       setUser,
+      switchBranch,
     ],
   );
 

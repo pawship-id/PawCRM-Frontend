@@ -3,7 +3,7 @@ import { render } from "@testing-library/react";
 
 import { AuthContext } from "@/features/auth/context/AuthProvider";
 import type { AuthContextValue } from "@/features/auth/context/AuthProvider";
-import type { PermissionGrant, User } from "@/types/api";
+import type { PermissionGrant, SessionContext, User } from "@/types/api";
 
 /**
  * Renders `ui` inside an AuthContext so permission-gated UI (Can /
@@ -47,28 +47,45 @@ export const FULL_REACH_USER = {
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 } as User;
+/**
+ * A session already pointed at a branch.
+ *
+ * The default for the same reason `FULL_REACH_USER` is: a component test should
+ * test its component, not the branch selection that now precedes every screen
+ * booking anything. It used to be `null`, which was invisible only because
+ * nothing read it — and the first screen that did (the till) would have turned
+ * unrelated suites into branch-picker tests. Pass `session` to exercise a
+ * signed-in user who has not chosen one yet.
+ */
+export const BRANCHED_SESSION: SessionContext = { currentBranchId: "b1" };
+
 export function renderWithAuth(
   ui: ReactElement,
   {
     permissions = [],
     isSuperAdmin = true,
     user = FULL_REACH_USER,
+    session = BRANCHED_SESSION,
+    switchBranch = jest.fn(),
   }: {
     permissions?: PermissionGrant[];
     isSuperAdmin?: boolean;
     user?: User | null;
+    session?: SessionContext | null;
+    switchBranch?: jest.Mock;
   } = {},
 ) {
   const value: AuthContextValue = {
     status: "authenticated",
     user,
-    session: null,
+    session,
     permissions,
     isSuperAdmin,
     signIn: jest.fn(),
     signOut: jest.fn(),
     refresh: jest.fn(),
     setUser: jest.fn(),
+    switchBranch,
   };
 
   const wrapper = ({ children }: { children: ReactNode }) => (
