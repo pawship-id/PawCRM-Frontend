@@ -11,6 +11,22 @@ import { ApiError } from "@/services/api-error";
 import type { CreatedProduct, Product } from "@/types/inventory";
 
 const push = jest.fn();
+/*
+  THE RICH-TEXT EDITOR IS MOCKED, and it is worth saying why in a suite about a
+  product form.
+
+  `RichTextEditor` builds a full ProseMirror instance on every mount. Not one of
+  the 88 tests below drives it — `description` appears only as `null` in the
+  fixtures — so the suite was constructing 88 editors to test SKU validation.
+  That was most of its 40-second runtime and why it timed out under a parallel
+  run while passing alone.
+
+  The mock is a real textarea with the same accessible name (see
+  src/components/__mocks__/RichTextEditor.tsx), so a test that later wants to
+  type a description still can.
+*/
+jest.mock("@/components/RichTextEditor");
+
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: (href: string) => push(href) }),
 }));

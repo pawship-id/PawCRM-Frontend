@@ -56,6 +56,31 @@ const config: Config = {
    * than running until the CI job is killed.
    */
   testTimeout: 15_000,
+  /**
+   * HALF THE CORES, against Jest's default of one worker per core minus one.
+   *
+   * Measured, not guessed. On an 8-core machine the default (7 workers) ran this
+   * suite in 78–134 seconds and FAILED 3 of 6 runs — always `ProductForm`, always
+   * a 15-second timeout, always passing when re-run alone. At 4 workers: 65, 94,
+   * 105 and 165 seconds, 0 failures in 4.
+   *
+   * WALL TIME IS NOT THE ARGUMENT, and the spread says why: 65 to 165 seconds
+   * for an identical suite. This machine's available CPU varies that much on its
+   * own, which is exactly the condition seven workers cannot absorb and four can.
+   * "Fewer workers is faster" is NOT a claim this data supports — an early 65s
+   * run suggested it and the later ones did not reproduce it.
+   *
+   * What it does support is STABILITY: the timeouts stopped across a spread that
+   * still contains the default's worst case. Four runs is a small sample — treat
+   * this as "the failure stopped reproducing", not as proof it cannot happen.
+   *
+   * A PERCENTAGE RATHER THAN A NUMBER so CI, which usually has fewer cores than
+   * a laptop, scales down with it instead of oversubscribing worse.
+   *
+   * Revisit alongside `testTimeout`: raising the timeout would have hidden this
+   * rather than fixed it, and the suite would have stayed twice as slow.
+   */
+  maxWorkers: "50%",
   testMatch: ["<rootDir>/src/**/*.test.{ts,tsx}"],
   collectCoverageFrom: [
     "src/**/*.{ts,tsx}",

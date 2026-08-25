@@ -32,6 +32,16 @@ import {
   AccountTreeIcon,
   JournalIcon,
 } from "@/components/icons";
+/*
+  From lucide directly, not from components/icons — ui-rules §11 is retiring that
+  file, so a NEW item should not add to it.
+
+  PawPrint despite §12's "no paw prints as bullets": that rule is about paw
+  prints used as decoration, and this is the functional icon identifying a
+  module. A species-specific alternative (Dog, Cat) would pick a side the
+  register deliberately does not.
+*/
+import { PawPrint, Scissors, Landmark } from "lucide-react";
 import type {
   Action,
   Feature,
@@ -333,6 +343,14 @@ export const NAV_ITEMS: NavItem[] = [
         permission: { feature: "chartOfAccounts", action: "read" },
       },
       {
+        // Straight after the chart, because a channel's whole purpose is the
+        // account it points at — you cannot map one before the accounts exist.
+        label: "Kas & Bank",
+        href: "/dashboard/keuangan/kas-bank",
+        icon: Landmark,
+        permission: { feature: "paymentChannels", action: "read" },
+      },
+      {
         label: "Jurnal Umum",
         href: "/dashboard/keuangan/journal-entries",
         icon: JournalIcon,
@@ -404,6 +422,24 @@ export const NAV_ITEMS: NavItem[] = [
         href: "/dashboard/master/customers",
         icon: CustomerIcon,
         permission: { feature: "customers", action: "read" },
+      },
+      {
+        // Directly under Customer, because that is the relationship: every pet
+        // belongs to one, and the register is unreadable without knowing whose
+        // animals you are looking at.
+        label: "Hewan",
+        href: "/dashboard/master/pets",
+        icon: PawPrint,
+        permission: { feature: "pets", action: "read" },
+      },
+      {
+        // Beside Hewan rather than under Inventory → Produk, because the split is
+        // about who edits: the groomer who prices a bath is not the person
+        // pricing sacks of feed, and the RBAC catalogue makes the same split.
+        label: "Layanan",
+        href: "/dashboard/master/layanan",
+        icon: Scissors,
+        permission: { feature: "services", action: "read" },
       },
       {
         label: "Roles",

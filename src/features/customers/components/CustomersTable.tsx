@@ -79,9 +79,12 @@ export function CustomersTable({
       onChanged();
       swalToast(kind === "delete" ? "Customer deleted." : "Customer restored.");
     } catch (error) {
+      // `reason` first — deleting a customer that still has pets is refused with
+      // a 409 whose message is only the headline; the count of what is in the way
+      // is in `reason`. See CustomerEditForm's DangerSection.
       setActionError(
         error instanceof ApiError
-          ? error.message
+          ? (error.reason ?? error.message)
           : "Something went wrong. Please try again.",
       );
     } finally {

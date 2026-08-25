@@ -110,6 +110,55 @@ export const PERMISSION_CATALOG = {
     "unlock",
   ],
   roles: ["create", "read", "update", "delete", "restore"],
+
+  /**
+   * The animals a tenant's customers bring in. The uniform five, because the
+   * lifecycle is uniform: registered, edited, retired, soft-deleted, restored.
+   *
+   * Retiring a pet (`isActive: false`) is gated by `update`, not by an action of
+   * its own — unlike an opname's `submit`. It is a correction to a record, not a
+   * decision with financial consequences, and the person at the counter who
+   * hears that a pet died is the same person who edits the row.
+   */
+  pets: ["create", "read", "update", "delete", "restore"],
+
+  /**
+   * The catalogue of what a tenant sells the DOING of — grooming, penitipan.
+   *
+   * ITS OWN FEATURE, not part of `products`, and the split is about who edits
+   * rather than about where the rows are stored: the groomer who sets a bathing
+   * price has no business repricing sacks of feed, and one grant covering both
+   * would give them that. The same reasoning `supplierCategories` uses against
+   * `categories`.
+   */
+  services: ["create", "read", "update", "delete", "restore"],
+
+  /**
+   * The named places money arrives, each mapped to a COA account — Keuangan →
+   * Kas & Bank.
+   *
+   * NOT part of `chartOfAccounts`, and the split is about consequence: editing
+   * the chart reshapes the books, while adding a bank account to the till is an
+   * operational act a manager does when the shop opens a second account.
+   *
+   * `restore` is not the afterthought it looks like — it is what brings back a
+   * channel deleted by mistake without freeing its name to something else first.
+   */
+  paymentChannels: ["create", "read", "update", "delete", "restore"],
+
+  /**
+   * Appointments. NOT the uniform five, and the two departures are the point.
+   *
+   * No `delete`/`restore`: a booking that did not happen is CANCELLED, which is
+   * a fact worth keeping — a customer who cancels three times in a month is
+   * information a soft delete would erase.
+   *
+   * `cancel` is separated from `update` because they are different levels of
+   * trust: a receptionist may reschedule all day, while calling an appointment
+   * off is often somebody else's call. The API gates the status route on
+   * whichever the payload implies.
+   */
+  bookings: ["create", "read", "update", "cancel"],
   // The audit trail is read-only (mirrors the backend catalog): records are
   // system-appended and never edited or deleted, so `read` is the only action.
   auditLogs: ["read"],

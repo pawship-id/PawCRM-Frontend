@@ -47,6 +47,13 @@ describe("filterNavItems", () => {
       "Branch",
       "Warehouse",
       "Customer",
+      // Directly under Customer, because that is the relationship: every pet
+      // belongs to one, and the register is unreadable without knowing whose
+      // animals you are looking at.
+      "Hewan",
+      // Beside Hewan rather than under Inventory → Produk: the split is about
+      // who edits, and the RBAC catalogue makes the same one.
+      "Layanan",
       "Roles",
       "Audit Log",
     ]);
@@ -170,6 +177,9 @@ describe("filterNavItems", () => {
     expect(finance?.children?.map((c) => c.label)).toEqual([
       "Ringkasan",
       "Daftar Akun",
+      // Straight after the chart, because a channel's whole purpose is the
+      // account it points at.
+      "Kas & Bank",
       "Jurnal Umum",
       // The two reports read the ledger above them, so they follow it rather
       // than lead — the menu is in the order the work happens.

@@ -14,9 +14,39 @@
  */
 import type { MediaAsset, PreviewHpp, PreviewMovementRow } from "./inventory";
 
+/**
+ * Something that happened alongside a SUCCESSFUL request and that the person who
+ * made it should know about.
+ *
+ * The mirror of `ApiFailure.details`, and it exists for a case a failure cannot
+ * express: creating a customer whose phone number somebody else already holds
+ * SUCCEEDS — two people in one household share a handset, and a shop that could
+ * not register the second is one where the second gets written on paper. But the
+ * cashier still has to be told, so they can check whether this is the same
+ * person walking in twice.
+ */
+export interface ApiWarning {
+  /** Stable identifier a caller can branch on, e.g. "phone-duplicate". */
+  code: string;
+  /** The input it is about, when there is one. Lets a form bind it to a field. */
+  field?: string;
+  /** Ready to show. Written in Bahasa Indonesia by the backend. */
+  message: string;
+}
+
 export interface ApiSuccess<T> {
   success: true;
   data: T;
+  /**
+   * Omitted entirely when there is nothing to warn about, so a response that
+   * carries none is byte-for-byte what it was before warnings existed.
+   *
+   * NOT INSIDE `data`: the warning is about the REQUEST, not about the record,
+   * and folding it in would add a field to every domain shape that nothing
+   * stores. `apiClient.post` unwraps to `data` and drops this — a caller that
+   * needs it uses `apiClient.postEnvelope`.
+   */
+  warnings?: ApiWarning[];
 }
 
 export interface ApiFailure {
@@ -878,6 +908,397 @@ export interface UpdateCustomerInput {
   phone?: string | null;
   address?: string | null;
   vipTier?: VipTier | null;
+}
+
+/** Where a booking stands. Mirrors BOOKING_STATUSES in booking.model.js. */
+export type BookingStatus =
+  | "draft"
+  | "confirmed"
+  | "in_progress"
+  | "completed"
+  | "cancelled";
+
+/**
+ * How the booking came to exist.
+ *
+ * `pos_adhoc` is a walk-in who bought a service at the till with no appointment —
+ * the POS creates one to hang the attribution on. A field rather than an
+ * inference from `posTransactionId`, because a booked appointment paid at the
+ * till also ends up with one.
+ */
+export type BookingOrigin = "booking" | "pos_adhoc";
+
+/**
+ * One service on a booking.
+ *
+ * `name` and `price` are a SNAPSHOT taken when the booking was made — a booking
+ * is a quote. Reading the price through `serviceId` at payment time would
+ * silently reprice every outstanding booking the moment the catalogue changed.
+ *
+ * `price` is a decimal STRING, never a number.
+ */
+export interface BookingItem {
+  serviceId: string;
+  name: string;
+  price: string;
+  /** null = FR-3's "Belum ditentukan". Assignment is a scheduling question. */
+  groomerUserId: string | null;
+}
+
+/**
+ * A booking, as returned by GET /api/bookings. One animal, one day, one or more
+ * services.
+ *
+ * ONE BOOKING IS ONE PET. FR-3 groups POS cart lines by booking and labels each
+ * group with the animal's name, so a booking covering two pets would produce a
+ * group that cannot be labelled.
+ */
+export interface Booking {
+  _id: string;
+  tenantId: string;
+  branchId: string;
+  bookingNumber: string;
+  customerId: string;
+  petId: string;
+  items: BookingItem[];
+  scheduledAt: string;
+  status: BookingStatus;
+  origin: BookingOrigin;
+  /** Set by the POS when this booking is paid for. */
+  posTransactionId: string | null;
+  /** When its services were dropped into a POS cart. Cleared on cancel. */
+  pulledToCartAt: string | null;
+  notes: string | null;
+  cancelReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Query parameters accepted by GET /api/bookings. All optional. */
+export interface BookingListQuery {
+  page?: number;
+  limit?: number;
+  customerId?: string;
+  petId?: string;
+  branchId?: string;
+  /** One status or several — a day sheet usually wants more than one. */
+  status?: BookingStatus | BookingStatus[];
+  origin?: BookingOrigin;
+  /** Calendar dates; the server expands them in the tenant's timezone. */
+  scheduledFrom?: string;
+  scheduledTo?: string;
+  /** Only bookings not already sitting in a POS cart. */
+  notPulled?: boolean;
+}
+
+/**
+ * Body of POST /api/bookings.
+ *
+ * An item carries NO PRICE: it is read from the catalogue and snapshotted by the
+ * server, because a price a client can set is a discount a client can grant.
+ *
+ * `branchId` is optional — the server falls back to the session's current branch.
+ */
+export interface CreateBookingInput {
+  customerId: string;
+  petId: string;
+  items: { serviceId: string; groomerUserId?: string | null }[];
+  scheduledAt: string;
+  branchId?: string;
+  status?: BookingStatus;
+  origin?: BookingOrigin;
+  notes?: string | null;
+}
+
+/**
+ * Body of PATCH /api/bookings/:id.
+ *
+ * `status` IS DELIBERATELY ABSENT — it moves through its own route, because a
+ * transition has rules a `$set` cannot express.
+ */
+export interface UpdateBookingInput {
+  customerId?: string;
+  petId?: string;
+  items?: { serviceId: string; groomerUserId?: string | null }[];
+  scheduledAt?: string;
+  branchId?: string;
+  notes?: string | null;
+}
+
+/**
+ * The four kinds of real money movement a POS sale can settle through. Mirrors
+ * CHANNEL_TYPES in paymentChannel.model.js.
+ *
+ * `piutang` is absent on purpose although the POS shows it as a fifth tab: it is
+ * a route to AR rather than a place money arrived, so it has no channel row.
+ */
+export type PaymentChannelType = "cash" | "transfer" | "qris" | "edc";
+
+/**
+ * A payment channel, as returned by GET /api/payment-channels. One named place
+ * money can arrive — "BCA — 8730123456" — and the account it debits.
+ *
+ * `branchId: null` is the TENANT-WIDE scope, not "unset". A branch's channel
+ * list returns its own channels plus every tenant-wide one.
+ */
+export interface PaymentChannel {
+  _id: string;
+  tenantId: string;
+  type: PaymentChannelType;
+  name: string;
+  /** The COA account a payment through this channel debits. Always an asset. */
+  accountId: string;
+  /** Only meaningful for qris/edc; the API refuses a rate on the other two. */
+  mdrPercent: number;
+  /** null = every branch. */
+  branchId: string | null;
+  requiresReference: boolean;
+  sortOrder: number;
+  isActive: boolean;
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Query parameters accepted by GET /api/payment-channels. All optional. */
+export interface PaymentChannelListQuery {
+  page?: number;
+  limit?: number;
+  type?: PaymentChannelType;
+  /** Returns this branch's channels AND the tenant-wide ones. */
+  branchId?: string;
+  isActive?: boolean;
+  search?: string;
+  includeDeleted?: boolean;
+}
+
+/** Body of POST /api/payment-channels. */
+export interface CreatePaymentChannelInput {
+  type: PaymentChannelType;
+  name: string;
+  accountId: string;
+  branchId?: string | null;
+  mdrPercent?: number;
+  requiresReference?: boolean;
+  sortOrder?: number;
+  isActive?: boolean;
+}
+
+/**
+ * Body of PATCH /api/payment-channels/:id — every field optional, but the
+ * backend rejects an empty body.
+ *
+ * `type` IS editable; it moves the channel to another tab and re-scopes its name
+ * uniqueness, which the server checks against the destination type.
+ */
+export interface UpdatePaymentChannelInput {
+  type?: PaymentChannelType;
+  name?: string;
+  accountId?: string;
+  branchId?: string | null;
+  mdrPercent?: number;
+  requiresReference?: boolean;
+  sortOrder?: number;
+  isActive?: boolean;
+}
+
+/**
+ * A service, as returned by GET /api/services. Something a tenant sells the
+ * DOING of — grooming, penitipan, vaksinasi.
+ *
+ * NOT a `Product` with a flag. A service owns no stock, posts no HPP line, and
+ * credits a different revenue account; the two are separate collections and
+ * separate permission features. The POS searches them together, which is a query
+ * over both rather than a reason to share a type.
+ *
+ * `price` is a STRING, never a number — the API returns and accepts the decimal
+ * as written, because JSON.parse("199999.99") is already not 199999.99.
+ */
+export interface Service {
+  _id: string;
+  tenantId: string;
+  name: string;
+  /** Optional quick-entry code, uppercased, unique per tenant when present. */
+  code: string | null;
+  businessLineId: string;
+  categoryId: string | null;
+  /** Decimal as a string, e.g. "150000.0000". */
+  price: string;
+  durationMin: number | null;
+  description: string | null;
+  taxExempt: boolean;
+  /** Still offered at the till. Orthogonal to `deletedAt`. */
+  isActive: boolean;
+  /** Soft-delete marker; non-null means deleted (restorable), null means live. */
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Query parameters accepted by GET /api/services. All optional. */
+export interface ServiceListQuery {
+  page?: number;
+  limit?: number;
+  /** "Every grooming service" — the POS pill and the booking form. */
+  businessLineId?: string;
+  categoryId?: string;
+  isActive?: boolean;
+  /** Free-text over name / code. */
+  search?: string;
+  includeDeleted?: boolean;
+}
+
+/**
+ * Body of POST /api/services. `name`, `businessLineId` and `price` are required;
+ * `tenantId` and `createdBy` come from the session.
+ *
+ * `price` MUST be sent as a string. A numeric one is a 400 — see the Service
+ * type.
+ */
+export interface CreateServiceInput {
+  name: string;
+  businessLineId: string;
+  price: string;
+  code?: string | null;
+  categoryId?: string | null;
+  durationMin?: number | null;
+  description?: string | null;
+  taxExempt?: boolean;
+  isActive?: boolean;
+}
+
+/**
+ * Body of PATCH /api/services/:id — every field optional, but the backend
+ * rejects an empty body.
+ *
+ * `businessLineId` IS here, unlike `UpdatePetInput`'s missing `customerId`:
+ * moving a service between lines re-tags nothing historical, because journal
+ * lines carry the id they were posted with.
+ */
+export interface UpdateServiceInput {
+  name?: string;
+  businessLineId?: string;
+  price?: string;
+  code?: string | null;
+  categoryId?: string | null;
+  durationMin?: number | null;
+  description?: string | null;
+  taxExempt?: boolean;
+  isActive?: boolean;
+}
+
+/**
+ * The animal species a pet may be. Mirrors PET_SPECIES in pet.model.js — a
+ * closed list, because it decides which services and prices a booking may offer.
+ */
+export type PetSpecies =
+  | "dog"
+  | "cat"
+  | "bird"
+  | "rabbit"
+  | "hamster"
+  | "reptile"
+  | "fish"
+  | "other";
+
+/**
+ * `unknown` is a REAL value, not a missing one: a rescue arrives unsexed and
+ * "nobody has checked yet" is the honest answer. Mirrors PET_SEXES.
+ */
+export type PetSex = "male" | "female" | "unknown";
+
+/**
+ * A pet, as returned by GET /api/pets. An animal one of the tenant's customers
+ * brings in.
+ *
+ * TWO LIFECYCLE AXES, unlike Customer's one. `isActive: false` means the animal
+ * is no longer in the tenant's care — it passed away, or was rehomed — while its
+ * history stays true. `deletedAt` means the record should never have existed: a
+ * duplicate, a typo saved twice. Conflating them would force a shop to delete a
+ * dead pet to stop it appearing in a booking dropdown, taking its grooming
+ * history with it.
+ *
+ * `customerId` is set at creation and never changed — see UpdatePetInput.
+ */
+export interface Pet {
+  _id: string;
+  tenantId: string;
+  customerId: string;
+  name: string;
+  species: PetSpecies;
+  sex: PetSex;
+  breed: string | null;
+  /** ISO date. The birth date, never an age — an age is wrong the day after it is written. */
+  birthDate: string | null;
+  weightKg: number | null;
+  color: string | null;
+  microchipNo: string | null;
+  notes: string | null;
+  photo: MediaAsset | null;
+  /** Still in the tenant's care. See the two-axes note above. */
+  isActive: boolean;
+  /** Soft-delete marker; non-null means deleted (restorable), null means live. */
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Query parameters accepted by GET /api/pets. All optional. */
+export interface PetListQuery {
+  page?: number;
+  limit?: number;
+  /** The filter this endpoint exists for — one customer's animals. */
+  customerId?: string;
+  species?: PetSpecies;
+  /** `true` for a booking picker, which wants only pets still in the tenant's care. */
+  isActive?: boolean;
+  /** Free-text over name / breed. */
+  search?: string;
+  /** Include soft-deleted pets (default false on the backend). */
+  includeDeleted?: boolean;
+}
+
+/**
+ * Body of POST /api/pets. `customerId`, `name` and `species` are required;
+ * `tenantId` and `createdBy` are derived from the session, never sent from here.
+ * `sex` defaults to "unknown" on the server when omitted.
+ */
+export interface CreatePetInput {
+  customerId: string;
+  name: string;
+  species: PetSpecies;
+  sex?: PetSex;
+  breed?: string | null;
+  birthDate?: string | null;
+  weightKg?: number | null;
+  color?: string | null;
+  microchipNo?: string | null;
+  notes?: string | null;
+  photo?: MediaAsset | null;
+  isActive?: boolean;
+}
+
+/**
+ * Body of PATCH /api/pets/:id — every field optional, but the backend rejects an
+ * empty body (send only what changed, at least one field).
+ *
+ * `customerId` IS DELIBERATELY ABSENT. Reassigning an animal to another owner
+ * would silently move its bookings, invoices and grooming history under a
+ * different name; the API strips the key. A rehomed pet is registered again under
+ * the new owner and the old record retired with `isActive: false`.
+ */
+export interface UpdatePetInput {
+  name?: string;
+  species?: PetSpecies;
+  sex?: PetSex;
+  breed?: string | null;
+  birthDate?: string | null;
+  weightKg?: number | null;
+  color?: string | null;
+  microchipNo?: string | null;
+  notes?: string | null;
+  photo?: MediaAsset | null;
+  isActive?: boolean;
 }
 
 /**

@@ -7,6 +7,182 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Booking Bridge: tarik booking, atau bikin di tempat
+
+`BookingBridgeDialog` and its ad-hoc tab, exported from `@/features/booking`. No route —
+the POS cart panel mounts it in Fase 6, and `/dashboard/booking` keeps its placeholder. Fase
+4 of the POS module.
+
+**Both tabs are reachable every time** (FR-3), and **which one opens is derived from the
+data during render**, not pushed into state by an effect. That is a real bug avoided rather
+than a lint rule appeased: an effect that flipped the tab when the fetch landed would, on a
+slow connection, move a cashier who had already tapped through — possibly mid-tick. `tab`
+starts as `null` meaning "not chosen", and once chosen it wins for the life of the dialog.
+
+**The pull path writes nothing.** `onPull` hands the ticked bookings back; marking them as
+pulled belongs to whatever creates the cart, inside the transaction that writes it. A dialog
+that did it itself would leave bookings claimed by a cart that was never built — invisible to
+the bridge for the rest of the day, for a sale that never happened.
+
+**The ad-hoc tab creates a real booking**, `origin: "pos_adhoc"` and already `confirmed` —
+the customer is standing at the counter. One pet per confirmation: a pet × service matrix
+submitted at once would have to create several bookings from one form and decide what to do
+when the third fails after the first two were written.
+
+**`apiClient` gained array query params.** `buildUrl` stringified every value, so
+`status: ["confirmed", "in_progress"]` became `status=confirmed%2Cin_progress` — one value,
+which every enum check on the far side rejects. Arrays now become repeated params, which is
+what Express parses back into an array. It looks like it works until the first filter that
+takes more than one value, so `api-client.test.ts` pins it. See
+[docs/features/booking-bridge.md](./features/booking-bridge.md).
+
+---
+
+## [Unreleased] — Cari & daftar pelanggan tanpa keluar dari kasir
+
+`CustomerSearchDialog` and `CustomerQuickAddDialog`, exported from
+`@/features/customers`. No routes of their own — the POS cart panel mounts them in Fase 6.
+Fase 2 of the POS module.
+
+**Search goes to the SERVER, and that is a departure from every other picker here.**
+`PetOwnerField` and the business-line pickers load a page of options and search inside it,
+so past the page cap they silently cannot find anyone. A till cannot work that way: the shop
+with four hundred pelanggan is exactly the shop that needs this. `?search=` already matched
+name, email and phone — verified against the repository rather than assumed.
+
+**The quick-add lives inside the search dialog**, in its empty state, because the moment
+somebody discovers a customer does not exist is the moment they need to create one. A term
+that reads as a phone number is carried into the form: somebody who typed one has already
+entered that field once.
+
+**Phone is required in the dialog and optional in the API.** The contract has to keep
+accepting a name-only customer — a clinic recording a walk-in is a real case — but the
+reason to quick-add *from the till* is almost always a piutang, and a debtor with no number
+is a debt nobody can chase.
+
+**`apiClient` gained `postEnvelope` / `patchEnvelope`.** The duplicate-phone warning arrives
+beside `data`, and `post` unwraps to `data` and would have thrown it away. `request` is now
+a thin wrapper over an envelope-returning core: the error path always read the full envelope
+(that is where `details` and `reason` come from), while the success path discarded
+everything else — which made a successful-but-noteworthy response impossible to express. See
+[docs/features/customer-quick-add.md](./features/customer-quick-add.md).
+
+---
+
+## [Unreleased] — Kas & Bank: ke mana uangnya masuk
+
+Keuangan → **Kas & Bank**, at `/dashboard/keuangan/kas-bank`. The named places money can
+arrive when a cashier takes payment, each mapped to the account it debits. Fase 5 of the
+POS module — the last prerequisite before POS core.
+
+Straight after Daftar Akun in the menu, because a channel's whole purpose is the account it
+points at: you cannot map one before the accounts exist.
+
+**The MDR field does not exist where no fee is deducted.** Cash arrives whole and a bank
+transfer's fee is paid by the *sender*, so only QRIS and EDC can carry a rate. The field is
+hidden for the other two rather than shown and refused — a rate there is not a mistake to
+allow and then report, it is a field with no meaning. Switching back to a fee-less type
+clears a typed rate, because a value left in state would be sent on the next save: a `400`
+for something the user can no longer see.
+
+**The server's four business rules bind to their fields**, not to a banner: a non-asset
+account, an MDR on the wrong type, a tenant-wide cash channel under per-branch scope, and a
+name already used within that tab. The form deliberately does not read `posCashScope` to
+pre-validate the third — that would be a second place for the rule to live — so it states
+what happens in the hint and binds the refusal when it arrives.
+
+**The account picker only offers live assets**, because the server refuses anything else and
+offering the rest would be offering a guaranteed `400`.
+
+**`CHANNEL_TYPE_LABELS` and `CHANNEL_TYPE_ORDER` are exported** from the feature's public
+surface, because the POS payment panel will render the same four tabs in the same order
+with the same words — and two copies of that list is how the settings screen and the till
+start disagreeing about what "EDC" is called. See
+[docs/features/payment-channels.md](./features/payment-channels.md).
+
+---
+
+## [Unreleased] — Layanan punya katalognya sendiri
+
+Master Data → **Layanan**, at `/dashboard/master/layanan`, with list, create and edit
+screens. What a tenant sells the *doing of* — grooming, penitipan, vaksinasi. Fase 3 of the
+POS module.
+
+Placed beside Hewan rather than under Inventory → Produk, because the split is about who
+edits: the groomer who prices a bath is not the person pricing sacks of feed, and the RBAC
+catalogue makes the same split.
+
+**The price box takes digits only, and refusing the decimal point is the point.** In
+Indonesian, `.` is the thousands separator — somebody typing `150.000` means a hundred and
+fifty thousand, and read as a decimal it is **150 rupiah**, stored silently with the form
+showing exactly what they typed. Allowing sen would not fix it: `150.000` is a valid
+three-decimal amount *and* a valid mistyped hundred-fifty-thousand, and no rule reads the
+writer's mind. Nothing is lost either, because `formatMoney` rounds to whole units on the
+way out — accepting input the UI then hides is worse than refusing it. The first version
+validated with `isDecimal` and let it through; a test caught it.
+
+**The price is a string end to end** — typed as text, validated as digits, sent as written,
+never `Number()`-ed. `inputMode="numeric"` rather than `type="number"`, because a number
+input in some browsers silently reformats what was typed.
+
+**Business-line options are fetched, not spelled out.** A tenant names its own lines, so a
+hardcoded list would show the wrong words for everyone who did not call theirs "Grooming".
+Capped at the API's 100-per-page limit, the same ceiling `PetOwnerField` documents.
+
+**`durationMin` is collected and read by nothing yet.** Booking will. Adding it afterwards
+would mean backfilling every service a tenant already priced, from memory — so the field
+goes in now and the card says plainly that nothing uses it today. See
+[docs/features/service-catalog.md](./features/service-catalog.md).
+
+---
+
+## [Unreleased] — Hewan punya halamannya sendiri
+
+Master Data → **Hewan**: the register of animals a tenant's customers bring in, at
+`/dashboard/master/pets`, with list, register and edit screens. Fase 1 of the POS module
+— the Booking Bridge cannot be built without it.
+
+**A pet has two lifecycle axes, and the UI keeps them apart.** `isActive` says the animal
+is no longer in the shop's care — it passed away, or was rehomed — while its grooming
+history stays true and readable. `deletedAt` says the record should never have existed.
+The delete confirmation says as much and points at the switch instead, because
+conflating them would force a shop to delete a pet that died in order to stop it
+appearing in a booking dropdown, taking its history with it.
+
+**The owner picker is disabled when editing.** `customerId` is absent from the API's
+PATCH schema — reassigning an animal would silently move its bookings and invoices under
+a different name — so the control does not offer what the server would drop. Its hint
+says what to do instead.
+
+**Umur is derived at render time, never stored.** An age written into a record is wrong
+the day after it is written. Whole years only: a month-precise age reads as clinical
+precision the screen does not have, since a birth date is usually the owner's best guess.
+
+**The customer edit screen gained a Hewan card**, directly above its danger zone. Retired
+pets are listed there too — they still belong to that owner, and hiding them would make
+the card disagree with the delete guard, which counts them and refuses to remove the
+customer. Both places a customer can be deleted now show the refusal's `reason` rather
+than its headline: "Cannot delete customer" on its own leaves somebody staring at a button
+that will not work.
+
+**`PetQuickAddDialog` ships without a route.** Two fields, and it is exported for the POS
+Booking Bridge (Fase 4), which has to register an animal mid-sale — a redirect to the
+full form would abandon a half-built cart.
+
+**The owner picker loads 100 customers**, which is the API's page cap rather than a number
+chosen here — `pagination` refuses `limit` above it, and refuses rather than clamps. This
+field shipped asking for 200 and came back empty with the server's English "Validation
+failed" under it, which is the same mistake `chartOfAccounts.service.ts` made when it
+landed. `PetForm.test.tsx` now asserts the cap, and the picker shows our own sentence
+instead of the server's whatever goes wrong.
+
+Two limits are written down rather than left to be discovered: that 100-customer ceiling,
+and the absence of a photo field, because the upload control still lives inside the
+categories feature. See
+[docs/features/pet-management.md](./features/pet-management.md).
+
+---
+
 ## [Unreleased] — Dua kode batch, dan labelnya bisa dicetak
 
 Every screen that opens a lot now shows **two** batch codes, and only one of them can be
