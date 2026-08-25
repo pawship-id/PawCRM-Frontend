@@ -1,38 +1,88 @@
 "use client";
 
-import { Plus, Layers } from "lucide-react";
+import { Plus, Layers, Package as PackageIcon, Scissors } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
+import { HighlightText } from "@/components";
+
+import { PosStockBadge } from "./PosStockBadge";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { formatMoney } from "@/utils/decimal";
-import type { PosCatalogItem, PosStockState } from "@/types/api";
+import type { PosCatalogItem } from "@/types/api";
+
+
+
 
 /**
- * The stock badge (FR-1).
+ * Whether the barcode is what brought this tile back.
  *
- * NAMED TINT + SATURATED INK + TRANSPARENT BORDER, the one badge convention —
- * ui-rules §9. The tints are the `bg-tint-*` tokens rather than opacity
- * arithmetic, which goes muddy composited over a selected row.
- *
- * ORANGE IS THE LOW ONE, and this is the one place the POS spends it: §4 gives
- * orange the meaning "a human must act", and a shelf about to run out is exactly
- * that. It is `text-warning`, not `text-secondary` — §1.2, orange is a fill and
- * never a text colour. `out` is red because the tile is unusable, not urgent.
- *
- * EVERY BADGE CARRIES A WORD — §1.3 — so "Habis" is legible to somebody who
- * cannot tell the tints apart.
+ * True only when the term is in the barcode AND is not already visible in the
+ * name or the SKU — if it is visible there, the highlight has already explained
+ * the tile and a second row would be noise.
  */
-const STOCK_STYLES: Record<PosStockState, string> = {
-  ok: "bg-tint-success text-success",
-  low: "bg-tint-warning text-warning",
-  out: "bg-tint-danger text-danger",
-};
+function barcodeExplainsMatch(item: PosCatalogItem, search?: string): boolean {
+  const term = search?.trim().toLowerCase();
 
-function stockLabel(state: PosStockState, qty: string): string {
-  if (state === "out") return "Habis";
-  // Whole units: nobody sells a third of a sack at a till.
-  return `${Math.floor(Number(qty))} tersisa`;
+  if (!term || !item.barcode) {
+    return false;
+  }
+
+  const visible = `${item.name} ${item.code ?? ""}`.toLowerCase();
+
+  return item.barcode.toLowerCase().includes(term) && !visible.includes(term);
+}
+
+/**
+ * The tile's picture (FR-1).
+ *
+ * A FIXED-RATIO BOX, not an image sized by its own pixels: a grid whose rows
+ * jump as photos load is one a cashier misclicks, and a shop's photos are
+ * whatever the supplier sent — portrait, square, a screenshot.
+ *
+ * `thumbUrl` FIRST. It is the 320px derivative that exists for exactly this: a
+ * grid of eight products should not download eight full-size originals over a
+ * shop's wifi. The chain narrows rather than assuming, because both derivatives
+ * are null on media stored before they existed.
+ *
+ * THE PLACEHOLDER IS BY KIND, not by category. FR-1 asks for "ikon kategori",
+ * and a category carries an IMAGE rather than an icon name — so honouring that
+ * literally would mean a second lookup to render a fallback. What the icon has
+ * to do is tell a cashier at a glance whether the tile is a thing or a service,
+ * and two icons do that.
+ */
+function PosProductThumbnail({ item }: { item: PosCatalogItem }) {
+  const src = item.image?.thumbUrl ?? item.image?.mediumUrl ?? item.image?.url;
+
+  if (!src) {
+    const Icon = item.kind === "service" ? Scissors : PackageIcon;
+
+    return (
+      <div className="flex aspect-square w-full items-center justify-center rounded-lg bg-secondary/25">
+        <Icon className="size-8 text-secondary-foreground" aria-hidden />
+      </div>
+    );
+  }
+
+  return (
+    <div className="aspect-square w-full overflow-hidden rounded-lg bg-surface-hover">
+      {/*
+        A plain <img>, not next/image. The URLs come from whichever storage the
+        tenant configured — GCS, Cloudinary, or the local mount — and next/image
+        needs every one of those hosts declared at build time. A till that
+        stopped showing photos because a tenant switched provider would be a
+        worse failure than an unoptimised request.
+
+        `alt=""` because the product's name is directly below it: a screen reader
+        announcing the name twice is noise, not access.
+      */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt=""
+        loading="lazy"
+        className="size-full object-cover"
+      />
+    </div>
+  );
 }
 
 /**
@@ -53,11 +103,19 @@ function stockLabel(state: PosStockState, qty: string): string {
  */
 export function PosProductCard({
   item,
+  search,
   onAdd,
   onExpand,
   disabled = false,
 }: {
   item: PosCatalogItem;
+  /**
+   * The term the grid was filtered on, for the highlight.
+   *
+   * PASS THE SETTLED TERM, not what is being typed — see usePosCatalog. Empty
+   * renders plain text, so this is always safe to pass.
+   */
+  search?: string;
   onAdd: (item: PosCatalogItem) => void;
   /** Called for a parent — the variant picker opens instead of adding. */
   onExpand: (item: PosCatalogItem) => void;
@@ -68,27 +126,39 @@ export function PosProductCard({
 
   return (
     <div className="flex flex-col justify-between gap-3 rounded-xl border border-border bg-surface p-3">
+      <PosProductThumbnail item={item} />
+
       <div className="min-w-0">
         <div className="flex items-start justify-between gap-2">
           <span className="line-clamp-2 text-sm font-medium text-foreground">
-            {item.name}
+            <HighlightText text={item.name} query={search} />
           </span>
-          {item.stock && (
-            <Badge
-              variant="outline"
-              className={cn(
-                "shrink-0 border-transparent",
-                STOCK_STYLES[item.stock.state],
-              )}
-            >
-              {stockLabel(item.stock.state, item.stock.qty)}
-            </Badge>
-          )}
+          <PosStockBadge stock={item.stock} />
         </div>
 
         {item.code && (
           <span className="mt-0.5 block truncate text-xs tabular-nums text-muted">
-            {item.code}
+            <HighlightText text={item.code} query={search} />
+          </span>
+        )}
+
+        {/*
+          THE BARCODE, AND ONLY WHEN IT IS THE REASON THIS TILE IS HERE.
+
+          A search looks at four fields while a tile shows two, so a scan used to
+          return a result with nothing on it marking the match. Showing the
+          barcode always would fix that — and put thirteen digits of small grey
+          text on all eight tiles, permanently, for something nobody reads unless
+          they scanned.
+
+          So the row appears when the term is IN the barcode and is not already
+          visible in the name or the SKU. That is the exact case where the tile
+          would otherwise be unexplained.
+        */}
+        {barcodeExplainsMatch(item, search) && (
+          <span className="mt-0.5 block truncate text-xs tabular-nums text-muted">
+            {/* The word, so the digits are not a number nobody can place. */}
+            Barcode <HighlightText text={item.barcode ?? ""} query={search} />
           </span>
         )}
       </div>

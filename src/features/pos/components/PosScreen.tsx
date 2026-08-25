@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Alert, Spinner } from "@/components";
 import { posService } from "@/services/pos.service";
+import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import type { PosCatalogItem, PosTransaction } from "@/types/api";
 
@@ -93,7 +94,20 @@ export function PosScreen() {
   const addTile = useCallback(
     (tile: PosCatalogItem) => {
       setNotice(null);
-      void cart.addItem(tile);
+
+      /*
+        A TOAST ON EVERY ADD, from the grid as well as from the variant picker.
+
+        The picker needed one most — it stays open now, so a tap that changed
+        only a small count on the row it was tapped from was easy to miss — but
+        putting it here rather than in the picker means adding from a tile gets
+        the same answer. Two different confirmations for one act is how a cashier
+        learns to trust neither.
+
+        `swalToast` lands top-right, which is deliberately NOT where the basket
+        is: it confirms without covering the thing it is confirming.
+      */
+      void cart.addItem(tile).then(() => swalToast(`${tile.name} ditambahkan.`));
     },
     [cart],
   );
@@ -192,10 +206,25 @@ export function PosScreen() {
 
       <PosVariantDialog
         parent={variantParent}
-        onPick={(variant) => {
-          setVariantParent(null);
-          addTile(variant);
-        }}
+        busy={cart.busy}
+        /*
+          Built from the basket on every render, so the counts in the picker and
+          the lines in the cart can never disagree — they are one source read
+          twice rather than two states kept in step.
+        */
+        inCart={
+          new Map(
+            (cart.cart?.items ?? [])
+              .filter((item) => item.kind === "product")
+              .map((item) => [String(item.refId), Math.floor(Number(item.qty))]),
+          )
+        }
+        /*
+          THE MODAL STAYS OPEN (FR-1). A customer buying two of a thing usually
+          buys two DIFFERENT sizes of it, and closing after each pick made that
+          ordinary case four taps longer than it needed to be.
+        */
+        onPick={addTile}
         onOpenChange={(open) => {
           if (!open) setVariantParent(null);
         }}

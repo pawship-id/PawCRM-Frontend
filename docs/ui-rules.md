@@ -330,7 +330,7 @@ From [`docs/architecture.md`](./architecture.md), unchanged: a component lives i
 - ~58 `text-muted-foreground`, 31 `bg-card`, 13 `text-destructive` outside `components/ui/` → app vocabulary
 - 9 files importing `@/components/icons` → lucide, then delete `icons.tsx`
 - 49 files reaching sweetalert through `lib/swal.ts` → a tokened toast, then drop the dependency
-- English UI strings in customers / users / roles / branches / warehouses → Bahasa
+- English UI strings in customers / users / roles / branches / warehouses → Bahasa. (`Pagination` is done — 25 Aug: "Halaman 2 dari 5", "Sebelumnya"/"Berikutnya", and its `unitPlural` default changed from `${unit}s`, which appended an English plural to an Indonesian noun for every caller that omitted it.)
 
 **Open questions — record an answer here, don't guess in code:**
 

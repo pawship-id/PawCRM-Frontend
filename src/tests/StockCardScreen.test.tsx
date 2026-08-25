@@ -595,7 +595,7 @@ describe("StockCardScreen", () => {
     const user = userEvent.setup();
     renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
 
-    await user.click(await screen.findByRole("button", { name: "Page 3" }));
+    await user.click(await screen.findByRole("button", { name: "Halaman 3" }));
 
     // Page-jumping was impossible while the balance was reconstructed by walking
     // backwards from the newest row.

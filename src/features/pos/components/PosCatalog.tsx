@@ -32,7 +32,7 @@ export function PosCatalog({
   /** True while a cart write is in flight — tiles stop accepting taps. */
   busy?: boolean;
 }) {
-  const { items, pagination, state, loading, error, setState } =
+  const { items, pagination, state, matchedSearch, loading, error, setState } =
     usePosCatalog();
 
   return (
@@ -77,6 +77,7 @@ export function PosCatalog({
               <PosProductCard
                 key={`${item.kind}-${item._id}`}
                 item={item}
+                search={matchedSearch}
                 onAdd={onAdd}
                 onExpand={onExpand}
                 disabled={busy}

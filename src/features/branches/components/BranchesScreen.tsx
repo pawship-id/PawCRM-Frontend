@@ -44,8 +44,8 @@ export function BranchesScreen() {
             page={pagination.page}
             totalPages={pagination.totalPages}
             total={pagination.total}
-            unit="branch"
-            unitPlural="branches"
+            unit="cabang"
+            unitPlural="cabang"
             onPageChange={(page) => setQuery({ page })}
           />
         </>

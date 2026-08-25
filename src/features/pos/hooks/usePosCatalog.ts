@@ -40,6 +40,8 @@ interface UsePosCatalogResult {
   items: PosCatalogItem[];
   pagination: PageResult<PosCatalogItem>["pagination"];
   state: PosCatalogState;
+  /** The term the items on screen were fetched with — what to highlight. */
+  matchedSearch: string;
   loading: boolean;
   error: string | null;
   /** Merge a change; anything but `page` returns to page 1. */
@@ -113,5 +115,23 @@ export function usePosCatalog(): UsePosCatalogResult {
     };
   }, [settled]);
 
-  return { items, pagination, state, loading, error, setState };
+  return {
+    items,
+    pagination,
+    state,
+    /*
+      THE TERM THE ITEMS ON SCREEN WERE ACTUALLY FETCHED WITH — the settled one,
+      not what is being typed right now.
+
+      The difference matters for the highlight. `state.search` runs ahead of the
+      results by the length of the debounce, so highlighting with it would mark
+      up the PREVIOUS page of results against a term they were never matched on:
+      a cashier typing "royal" would watch highlights blink off and land
+      somewhere else a moment later.
+    */
+    matchedSearch: settled.search.trim(),
+    loading,
+    error,
+    setState,
+  };
 }

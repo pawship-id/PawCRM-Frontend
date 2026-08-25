@@ -1129,6 +1129,31 @@ export interface PosCatalogItem {
   _id: string;
   name: string;
   code: string | null;
+  /**
+   * What a scanner reads. Null on a service and on anything never scanned in.
+   *
+   * DRAWN ONLY WHEN A SEARCH MATCHED IT — see PosProductCard. A search looks at
+   * four fields while a tile shows two, so a scan used to return a result with
+   * nothing on it explaining why.
+   */
+  barcode: string | null;
+  /**
+   * The one photo a tile draws, at the three sizes it may draw it at.
+   *
+   * RESOLVED BY THE SERVER through `variant's own → its own gallery → its
+   * parent's` — the same chain the catalogue screen uses. A variant showing its
+   * parent's photo in Inventory and a blank square at the till would read as a
+   * bug in the till.
+   *
+   * Null on a service (there is no field for one) and on anything never
+   * photographed. The tile draws a placeholder rather than a broken image.
+   */
+  image: {
+    url: string;
+    mediumUrl: string | null;
+    thumbUrl: string | null;
+    mediaType: string;
+  } | null;
   /** Null on a parent — its variants carry the price. */
   price: string | null;
   categoryId: string | null;
@@ -1147,6 +1172,15 @@ export interface PosCatalogQuery {
   limit?: number;
   search?: string;
   categoryId?: string;
+  /**
+   * One parent's variants — what the picker a parent tile opens asks for.
+   *
+   * ASKED OF THE CATALOGUE rather than the products endpoint, and that is the
+   * whole reason the picker can show stock at all: the catalogue knows the
+   * shift's warehouse, the products endpoint does not, and a badge drawn from
+   * the second would be counting a shelf in another building.
+   */
+  parentId?: string;
   /** The "Layanan" pill sends ["service"]. Absent means both. */
   kinds?: PosItemKind[];
 }

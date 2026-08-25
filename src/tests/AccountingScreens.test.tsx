@@ -902,7 +902,7 @@ describe("JournalEntriesScreen", () => {
     await waitFor(() => expect(totals).toHaveBeenCalledTimes(1));
 
     // Paging asks for rows, not for a figure that cannot have changed.
-    await userEvent.click(screen.getByRole("button", { name: "Page 2" }));
+    await userEvent.click(screen.getByRole("button", { name: "Halaman 2" }));
     await waitFor(() =>
       expect(journalEntryService.list).toHaveBeenLastCalledWith(
         expect.objectContaining({ page: 2 }),

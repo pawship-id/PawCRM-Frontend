@@ -3,28 +3,29 @@ import userEvent from "@testing-library/user-event";
 
 import { PosScreen } from "@/features/pos";
 import { posService } from "@/services/pos.service";
-import { productService } from "@/services/product.service";
 import { warehouseService } from "@/services/warehouse.service";
 import { categoryService } from "@/services/category.service";
 import { userService } from "@/services/user.service";
 import { branchService } from "@/services/branch.service";
+import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import type { PosShift, PosTransaction } from "@/types/api";
 
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
 jest.mock("@/services/pos.service");
-jest.mock("@/services/product.service");
 jest.mock("@/services/warehouse.service");
 jest.mock("@/services/category.service");
 jest.mock("@/services/user.service");
+// SweetAlert reaches for window.matchMedia, which jsdom does not provide — the
+// same mock every other suite here uses.
+jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
 jest.mock("@/services/branch.service");
 
 const mockedPos = posService as jest.Mocked<typeof posService>;
 const mockedCategories = categoryService as jest.Mocked<typeof categoryService>;
 const mockedWarehouses = warehouseService as jest.Mocked<typeof warehouseService>;
 const mockedUsers = userService as jest.Mocked<typeof userService>;
-const mockedProducts = productService as jest.Mocked<typeof productService>;
 const mockedBranches = branchService as jest.Mocked<typeof branchService>;
 
 const SHIFT_ID = "5a7f1f77bcf86cd7994390d1";
@@ -110,6 +111,27 @@ const cartWithItem: PosTransaction = {
   },
 };
 
+
+/** One variant, as the catalogue returns it — with the shift's own stock. */
+const variantTile = (
+  id: string,
+  name: string,
+  code: string,
+  stock: { qty: string; state: "ok" | "low" | "out" },
+) => ({
+  kind: "product" as const,
+  _id: id,
+  name,
+  code,
+  barcode: null,
+  price: "45000.0000",
+  categoryId: "c1",
+  unit: "pcs",
+  image: null,
+  variantCount: null,
+  stock,
+});
+
 const catalogPage = {
   items: [
     {
@@ -117,10 +139,12 @@ const catalogPage = {
       _id: PRODUCT_ID,
       name: "Royal Canin Adult 2kg",
       code: "RC-ADULT-2KG",
+      barcode: "8991234567890",
       price: "100000.0000",
       categoryId: "c1",
       unit: "pcs",
       variantCount: null,
+      image: { url: "rc.jpg", thumbUrl: "rc-320.jpg", mediumUrl: null, mediaType: "image" },
       stock: { qty: "12.0000", state: "ok" as const },
     },
     {
@@ -128,10 +152,13 @@ const catalogPage = {
       _id: PARENT_ID,
       name: "Kalung Anjing",
       code: null,
+      barcode: null,
       price: null,
       categoryId: "c1",
       unit: "pcs",
       variantCount: 3,
+      // Never photographed — the tile draws a placeholder.
+      image: null,
       stock: null,
     },
   ],
@@ -221,14 +248,19 @@ describe("PosScreen — the catalogue (FR-1)", () => {
 
   it("opens a variant picker for a parent rather than adding it", async () => {
     const user = userEvent.setup();
-    mockedProducts.listVariants.mockResolvedValue({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      parent: { _id: PARENT_ID } as any,
-      items: [
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        { _id: VARIANT_ID, name: "Kalung Anjing — M", sku: "KA-M", sellPrice: "45000.0000", categoryId: "c1", unit: "pcs" } as any,
-      ],
-    });
+    mockedPos.catalog.mockImplementation(async (query) =>
+      query?.parentId
+        ? {
+            items: [
+              variantTile(VARIANT_ID, "Kalung Anjing — M", "KA-M", {
+                qty: "4.0000",
+                state: "ok",
+              }),
+            ],
+            pagination: { page: 1, limit: 48, total: 1, totalPages: 1 },
+          }
+        : catalogPage,
+    );
 
     renderWithAuth(<PosScreen />);
 
@@ -236,7 +268,15 @@ describe("PosScreen — the catalogue (FR-1)", () => {
       await screen.findByRole("button", { name: /pilih varian kalung anjing/i }),
     );
 
-    expect(await screen.findByText("Kalung Anjing — M")).toBeInTheDocument();
+    /*
+      "M", not "Kalung Anjing — M". Every variant's stored name repeats its
+      parent's, and the modal's subtitle already says it — repeating it on every
+      row pushed the part that actually distinguishes the sizes off the end of
+      the line.
+    */
+    expect(await screen.findByText("M")).toBeInTheDocument();
+    expect(screen.queryByText("Kalung Anjing — M")).not.toBeInTheDocument();
+
     // A parent is not sellable — nothing was rung up by opening the picker.
     expect(mockedPos.updateCart).not.toHaveBeenCalled();
   });
@@ -590,5 +630,569 @@ describe("PosShiftGate — the warehouse picker", () => {
     expect(
       screen.getByRole("option", { name: "Gudang Toko Pusat" }),
     ).toBeInTheDocument();
+  });
+});
+
+/**
+ * FR-1's thumbnail.
+ *
+ * The grid was a wall of names before this — every tile text only. What these
+ * guard is the FALLBACK, not the happy path: a shop's catalogue is always part
+ * photographed, and a tile that broke on the unphotographed half would be worse
+ * than no photos at all.
+ */
+describe("PosProductCard — the photo", () => {
+  /*
+    QUERIED BY TAG, NOT BY ROLE, and that is not a shortcut. `alt=""` gives an
+    image the `presentation` role on purpose — the product's name is directly
+    below it, and a screen reader announcing it twice is noise rather than
+    access. `getByRole("img")` would therefore find nothing, which is the
+    behaviour these tests want, not a reason to give the image a redundant label.
+  */
+  const images = (container: HTMLElement) =>
+    Array.from(container.querySelectorAll("img"));
+
+  it("draws the 320px derivative, not the full-size original", async () => {
+    const { container } = renderWithAuth(<PosScreen />);
+
+    await screen.findByText("Royal Canin Adult 2kg");
+
+    // A grid of eight products should not download eight originals over a
+    // shop's wifi.
+    expect(images(container)[0]).toHaveAttribute("src", "rc-320.jpg");
+  });
+
+  it("leaves the photo unlabelled — the name is right below it", async () => {
+    const { container } = renderWithAuth(<PosScreen />);
+
+    await screen.findByText("Royal Canin Adult 2kg");
+
+    expect(images(container)[0]).toHaveAttribute("alt", "");
+  });
+
+  it("loads photos lazily — a grid is mostly below the fold", async () => {
+    const { container } = renderWithAuth(<PosScreen />);
+
+    await screen.findByText("Royal Canin Adult 2kg");
+
+    expect(images(container)[0]).toHaveAttribute("loading", "lazy");
+  });
+
+  it("draws a placeholder, not a broken image, when there is no photo", async () => {
+    const { container } = renderWithAuth(<PosScreen />);
+
+    // The parent tile in the fixture has `image: null`. Exactly one <img> on the
+    // page means the other tile fell back rather than rendering src="undefined".
+    await screen.findByText("Kalung Anjing");
+
+    expect(images(container)).toHaveLength(1);
+  });
+
+  it("falls through to the full-size photo when no derivative exists", async () => {
+    mockedPos.catalog.mockResolvedValue({
+      ...catalogPage,
+      items: [
+        {
+          ...catalogPage.items[0],
+          // Media stored before the derivatives existed carries neither.
+          image: {
+            url: "original.jpg",
+            thumbUrl: null,
+            mediumUrl: null,
+            mediaType: "image",
+          },
+        },
+      ],
+    });
+
+    const { container } = renderWithAuth(<PosScreen />);
+
+    await screen.findByText("Royal Canin Adult 2kg");
+
+    expect(images(container)[0]).toHaveAttribute("src", "original.jpg");
+  });
+});
+
+/**
+ * The search highlight.
+ *
+ * Now that a search looks at four fields — name, SKU, barcode and variant
+ * attributes — a tile can appear for a reason nothing on it explains. The
+ * highlight is what makes the visible half legible; the invisible half is a
+ * known limit, recorded below.
+ */
+describe("PosCatalog — highlighting what matched", () => {
+  const marks = (container: HTMLElement) =>
+    Array.from(container.querySelectorAll("mark")).map((el) => el.textContent);
+
+  it("marks the matched characters in a product's name", async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithAuth(<PosScreen />);
+
+    await user.type(
+      await screen.findByLabelText(/cari produk/i),
+      "royal",
+    );
+
+    await waitFor(() => expect(marks(container)).toContain("Royal"));
+  });
+
+  it("marks a matched SKU too — a cashier searches by either", async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithAuth(<PosScreen />);
+
+    await user.type(await screen.findByLabelText(/cari produk/i), "RC-ADULT");
+
+    await waitFor(() => expect(marks(container)).toContain("RC-ADULT"));
+  });
+
+  it("marks nothing when nobody is searching", async () => {
+    const { container } = renderWithAuth(<PosScreen />);
+
+    await screen.findByText("Royal Canin Adult 2kg");
+
+    // A grid full of yellow on an empty search would be noise.
+    expect(marks(container)).toEqual([]);
+  });
+
+  it("highlights with the term the RESULTS came from, not the one being typed", async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithAuth(<PosScreen />);
+
+    const box = await screen.findByLabelText(/cari produk/i);
+    await user.type(box, "royal");
+    await waitFor(() => expect(marks(container)).toContain("Royal"));
+
+    /*
+      Typing more BEFORE the debounce settles must not re-mark the results
+      already on screen: they were never matched on the longer term. Highlighting
+      with the typed value would make a cashier watch highlights blink off and
+      land somewhere else a moment later.
+    */
+    await user.type(box, "xyz");
+
+    expect(marks(container)).toContain("Royal");
+  });
+});
+
+/**
+ * The barcode row.
+ *
+ * A search looks at four fields while a tile shows two, so a scan used to return
+ * a result with nothing on it marking the match. These pin BOTH halves of the
+ * rule — that it appears when it explains something, and that it stays away when
+ * it does not.
+ */
+describe("PosProductCard — the barcode row", () => {
+  const typeSearch = async (user: ReturnType<typeof userEvent.setup>, term: string) =>
+    user.type(await screen.findByLabelText(/cari produk/i), term);
+
+  it("appears, highlighted, when the search matched the barcode", async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithAuth(<PosScreen />);
+
+    await typeSearch(user, "899123");
+
+    expect(await screen.findByText(/Barcode/)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        Array.from(container.querySelectorAll("mark")).map((el) => el.textContent),
+      ).toContain("899123"),
+    );
+  });
+
+  it("stays away when nobody is searching", async () => {
+    renderWithAuth(<PosScreen />);
+
+    await screen.findByText("Royal Canin Adult 2kg");
+
+    // Thirteen digits of small grey text on all eight tiles, permanently, for
+    // something nobody reads unless they scanned.
+    expect(screen.queryByText(/Barcode/)).not.toBeInTheDocument();
+  });
+
+  it("stays away when the term is already visible in the name", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await typeSearch(user, "royal");
+
+    // The highlight on the name has already explained the tile; a second row
+    // would be noise.
+    await screen.findByText("Royal Canin Adult 2kg");
+    expect(screen.queryByText(/Barcode/)).not.toBeInTheDocument();
+  });
+
+  it("stays away on a tile that has no barcode at all", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await typeSearch(user, "899123");
+
+    // The parent tile in the fixture carries none — it must not render
+    // "Barcode" followed by nothing.
+    await screen.findByText(/Barcode/);
+    expect(screen.getAllByText(/Barcode/)).toHaveLength(1);
+  });
+});
+
+/**
+ * FR-1: the variant picker stays open.
+ *
+ * It used to close on every pick, which made the ordinary case — a customer
+ * buying two DIFFERENT sizes of the same thing — four taps longer than it needed
+ * to be. Left open, the picker has to answer two new questions it never had to
+ * before: what did my last tap do, and how do I get out.
+ */
+describe("PosVariantDialog — adding more than one size", () => {
+  const VARIANT_M = "5a7f1f77bcf86cd799439103";
+  const VARIANT_L = "5a7f1f77bcf86cd799439104";
+
+  beforeEach(() => {
+    // The picker asks the CATALOGUE now, so its variants carry the shift's own
+    // stock — see PosVariantDialog.
+    mockedPos.catalog.mockImplementation(async (query) =>
+      query?.parentId
+        ? {
+            items: [
+              variantTile(VARIANT_M, "Kalung — M", "KA-M", {
+                qty: "4.0000",
+                state: "ok",
+              }),
+              variantTile(VARIANT_L, "Kalung — L", "KA-L", {
+                qty: "0.0000",
+                state: "out",
+              }),
+            ],
+            pagination: { page: 1, limit: 48, total: 2, totalPages: 1 },
+          }
+        : catalogPage,
+    );
+  });
+
+  const openPicker = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(
+      await screen.findByRole("button", { name: /pilih varian kalung anjing/i }),
+    );
+    await screen.findByText("Kalung — M");
+  };
+
+  it("stays open after a variant is added", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await openPicker(user);
+    await user.click(
+      screen.getByRole("button", { name: /tambah kalung — m/i }),
+    );
+
+    // The other size must still be reachable without reopening.
+    expect(await screen.findByText("Kalung — L")).toBeInTheDocument();
+  });
+
+  it("says how many of each size are already in the basket", async () => {
+    const user = userEvent.setup();
+    mockedPos.updateCart.mockResolvedValue({
+      ...cartWithItem,
+      items: [
+        { ...cartWithItem.items[0], refId: VARIANT_M, name: "Kalung — M", qty: "2.0000" },
+      ],
+    });
+
+    renderWithAuth(<PosScreen />);
+    await openPicker(user);
+    await user.click(screen.getByRole("button", { name: /tambah kalung — m/i }));
+
+    /*
+      With the modal closing, the basket behind it was the feedback. Left open, a
+      button that can be pressed four times has to say what those presses did —
+      otherwise the cashier counts in their head, which is what a till exists to
+      stop.
+    */
+    expect(await screen.findByText("2 di keranjang")).toBeInTheDocument();
+  });
+
+  it("offers a way out, since it no longer closes itself", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await openPicker(user);
+    await user.click(screen.getByRole("button", { name: /selesai/i }));
+
+    await waitFor(() =>
+      expect(screen.queryByText("Kalung — M")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("refuses a second tap while the first is still in flight", async () => {
+    const user = userEvent.setup();
+    // A write that never settles — the state a double-tap would race.
+    mockedPos.updateCart.mockReturnValue(new Promise(() => {}));
+
+    renderWithAuth(<PosScreen />);
+    await openPicker(user);
+
+    const add = screen.getByRole("button", { name: /tambah kalung — m/i });
+    await user.click(add);
+
+    /*
+      Every mutation sends the WHOLE basket, so a second tap built from a basket
+      the first has not yet updated would silently undo it. The modal closing
+      used to make this impossible; open, it is one tap away.
+    */
+    await waitFor(() => expect(add).toBeDisabled());
+  });
+});
+
+/**
+ * Stock per variant, in the picker.
+ *
+ * The picker showed none at first, on the grounds that the endpoint it called
+ * did not know the shift's warehouse and a badge counting a shelf in another
+ * building is worse than no badge. That reasoning was right and the conclusion
+ * was wrong: it left a cashier choosing between sizes unable to see which ones
+ * exist, which is the one question the modal is open to answer.
+ */
+describe("PosVariantDialog — stock per variant", () => {
+  const VARIANT_M = "5a7f1f77bcf86cd799439103";
+  const VARIANT_L = "5a7f1f77bcf86cd799439104";
+
+  const openPicker = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(
+      await screen.findByRole("button", { name: /pilih varian kalung anjing/i }),
+    );
+    await screen.findByText("Kalung — M");
+  };
+
+  beforeEach(() => {
+    mockedPos.catalog.mockImplementation(async (query) =>
+      query?.parentId
+        ? {
+            items: [
+              variantTile(VARIANT_M, "Kalung — M", "KA-M", {
+                qty: "4.0000",
+                state: "ok",
+              }),
+              variantTile(VARIANT_L, "Kalung — L", "KA-L", {
+                qty: "0.0000",
+                state: "out",
+              }),
+            ],
+            pagination: { page: 1, limit: 48, total: 2, totalPages: 1 },
+          }
+        : catalogPage,
+    );
+  });
+
+  it("asks the CATALOGUE, which knows the shift's warehouse", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await openPicker(user);
+
+    // The products endpoint would have answered with the same variants and no
+    // stock — the reason the badge was missing in the first place.
+    expect(mockedPos.catalog).toHaveBeenCalledWith(
+      expect.objectContaining({ parentId: PARENT_ID }),
+    );
+  });
+
+  it("badges how many of each size are left", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await openPicker(user);
+
+    expect(screen.getByText("4 tersisa")).toBeInTheDocument();
+  });
+
+  it("says Habis, not just a colour", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await openPicker(user);
+
+    // ui-rules §1.3 — a badge is legible to somebody who cannot tell the tints
+    // apart.
+    expect(screen.getByText("Habis")).toBeInTheDocument();
+  });
+
+  it("will not let an empty size be added", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await openPicker(user);
+
+    // The row stays visible: a cashier looking for a size needs to see that the
+    // shop stocks it and has run out, not that it does not exist.
+    expect(screen.getByRole("button", { name: /tambah kalung — l/i })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /tambah kalung — m/i }),
+    ).not.toBeDisabled();
+  });
+
+  it("says so when a family has more variants than fit", async () => {
+    mockedPos.catalog.mockImplementation(async (query) =>
+      query?.parentId
+        ? {
+            items: [
+              variantTile(VARIANT_M, "Kalung — M", "KA-M", {
+                qty: "4.0000",
+                state: "ok",
+              }),
+            ],
+            pagination: { page: 1, limit: 48, total: 50, totalPages: 2 },
+          }
+        : catalogPage,
+    );
+
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await user.click(
+      await screen.findByRole("button", { name: /pilih varian kalung anjing/i }),
+    );
+
+    // A silent cap reads as "that is all of them", which on a size picker means
+    // telling a customer the shop does not stock their size.
+    expect(await screen.findByText(/49 varian lain/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * The toast on adding.
+ *
+ * The variant picker stays open, so a tap that changed only a small count on the
+ * row it was tapped from was easy to miss. The confirmation lives on the SCREEN
+ * rather than in the picker so adding from a tile gets the same answer — two
+ * different confirmations for one act is how a cashier learns to trust neither.
+ */
+describe("PosScreen — confirming an add", () => {
+  it("names what was added", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await user.click(
+      await screen.findByRole("button", { name: /tambah royal canin/i }),
+    );
+
+    await waitFor(() =>
+      expect(swalToast).toHaveBeenCalledWith(
+        "Royal Canin Adult 2kg ditambahkan.",
+      ),
+    );
+  });
+
+  it("says nothing until the basket has actually taken it", async () => {
+    const user = userEvent.setup();
+    // A write that never settles — the toast must wait for the server, not fire
+    // on the tap. Confirming an add that then failed would be worse than silence.
+    mockedPos.updateCart.mockReturnValue(new Promise(() => {}));
+
+    renderWithAuth(<PosScreen />);
+    await user.click(
+      await screen.findByRole("button", { name: /tambah royal canin/i }),
+    );
+
+    expect(swalToast).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The variant row's layout.
+ *
+ * The first version put two green badges side by side — stock and cart count —
+ * and the name truncated to make room for them. Two pills of the same colour
+ * answering different questions read as one confused answer, and the part that
+ * actually distinguishes the sizes was the part that got cut.
+ */
+describe("PosVariantDialog — reading a row", () => {
+  const VARIANT_1KG = "5a7f1f77bcf86cd799439105";
+
+  beforeEach(() => {
+    mockedPos.catalog.mockImplementation(async (query) =>
+      query?.parentId
+        ? {
+            items: [
+              {
+                ...variantTile(
+                  VARIANT_1KG,
+                  "Cat Choise Adult — 1kg / Chicken",
+                  "CC-ADULT-1KG-CHICKEN",
+                  { qty: "15.0000", state: "ok" },
+                ),
+              },
+            ],
+            pagination: { page: 1, limit: 48, total: 1, totalPages: 1 },
+          }
+        : {
+            ...catalogPage,
+            items: [
+              {
+                ...catalogPage.items[1],
+                name: "Cat Choise Adult",
+              },
+            ],
+          },
+    );
+  });
+
+  const openPicker = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(
+      await screen.findByRole("button", { name: /pilih varian cat choise adult/i }),
+    );
+  };
+
+  it("shows only what distinguishes the variant, not the family name again", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await openPicker(user);
+
+    // The modal's subtitle already says "Cat Choise Adult".
+    expect(await screen.findByText("1kg / Chicken")).toBeInTheDocument();
+  });
+
+  it("still names the family in full for a screen reader", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await openPicker(user);
+
+    // "Tambah 1kg / Chicken" out of context says nothing about what is being
+    // added — the button's label keeps the whole name even though the row shows
+    // the short one.
+    expect(
+      await screen.findByRole("button", {
+        name: "Tambah Cat Choise Adult — 1kg / Chicken",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("leaves the whole name alone when it does not start with the family's", async () => {
+    mockedPos.catalog.mockImplementation(async (query) =>
+      query?.parentId
+        ? {
+            items: [
+              variantTile(VARIANT_1KG, "Kemasan Ekonomis 5kg", "CC-ECO", {
+                qty: "3.0000",
+                state: "ok",
+              }),
+            ],
+            pagination: { page: 1, limit: 48, total: 1, totalPages: 1 },
+          }
+        : {
+            ...catalogPage,
+            items: [{ ...catalogPage.items[1], name: "Cat Choise Adult" }],
+          },
+    );
+
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await openPicker(user);
+
+    // A tenant may name a variant anything. Better a long row than an empty one.
+    expect(await screen.findByText("Kemasan Ekonomis 5kg")).toBeInTheDocument();
   });
 });

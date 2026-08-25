@@ -81,6 +81,7 @@ export const posService = {
         limit: query.limit,
         search: query.search,
         categoryId: query.categoryId,
+        parentId: query.parentId,
         // An array becomes repeated params — see buildUrl in api-client.ts.
         kinds: query.kinds,
       },
