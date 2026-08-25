@@ -23,6 +23,16 @@
 export type MovementType =
   | "receipt"
   | "pos_sale"
+  /**
+   * A voided sale's goods coming back.
+   *
+   * ITS OWN TYPE RATHER THAN `customer_return`, for the reason
+   * `opening_balance` has one: a void filed under the returns label would make
+   * "what did customers actually bring back" unanswerable, and that number is
+   * how a shop notices it stocks something people do not want. Nothing came back
+   * in a void — the sale is being unwound because it should not have happened.
+   */
+  | "pos_void"
   | "opname_diff"
   | "purchase_return"
   | "customer_return"
@@ -42,6 +52,13 @@ export type MovementType =
 export type ReferenceType =
   | "goods_receipt"
   | "pos_transaction"
+  /**
+   * A void's stock reversal. Distinct from `pos_transaction` so the movements a
+   * sale made and the movements unwinding it are separately findable — and so
+   * the gateway posts no journal for the second set, since a void's ledger is
+   * two reversals of the sale's own entries.
+   */
+  | "pos_void"
   | "stock_opname"
   | "purchase_return"
   | "customer_return"

@@ -6,10 +6,15 @@ import type {
   PosCatalogItem,
   PosCatalogQuery,
   PosReceipt,
+  PosReturn,
+  PosReturnable,
+  PosTransactionListQuery,
   PosShift,
   PosTransaction,
   PosXReport,
   PayInput,
+  VoidSaleInput,
+  CreateReturnInput,
   UpdateCartInput,
 } from "@/types/api";
 
@@ -120,6 +125,26 @@ export const posService = {
   discardCart: (id: string) =>
     apiClient.delete<PosTransaction>(`/pos/transactions/${id}`),
 
+  /**
+   * GET /pos/transactions — settled sales, for the Void list.
+   *
+   * Paginated, unlike `heldCarts`: a busy Saturday is hundreds of sales, and the
+   * list is browsed rather than glanced at.
+   */
+  listTransactions: (query: PosTransactionListQuery = {}) =>
+    apiClient.get<PageResult<PosTransaction>>("/pos/transactions", {
+      query: {
+        page: query.page,
+        limit: query.limit,
+        shiftId: query.shiftId,
+        branchId: query.branchId,
+        customerId: query.customerId,
+        status: query.status,
+        paidFrom: query.paidFrom,
+        paidTo: query.paidTo,
+      },
+    }),
+
   /* --------------------------------------------------------- settlement */
 
   /**
@@ -144,4 +169,38 @@ export const posService = {
    */
   receipt: (id: string) =>
     apiClient.get<PosReceipt>(`/pos/transactions/${id}/receipt`),
+
+  /* ------------------------------------------------------ undoing a sale */
+
+  /**
+   * POST /pos/transactions/:id/void — cancel a sale in full (FR-11).
+   *
+   * Requires `posTransactions:void`, which a cashier may not hold: a void
+   * reverses money already taken.
+   *
+   * REFUSED WITH A `409` once the sale's shift is closed, pointing at Retur.
+   * Once the drawer has been counted and the variance declared, that figure is
+   * what the cashier was measured against.
+   */
+  voidSale: (id: string, input: VoidSaleInput) =>
+    apiClient.post<PosTransaction>(`/pos/transactions/${id}/void`, input),
+
+  /**
+   * GET /pos/transactions/:id/returnable — what is still returnable.
+   *
+   * The Retur form's source of truth. It calls the SAME rule the write enforces,
+   * so the form can only ever offer what the server would accept.
+   */
+  returnable: (id: string) =>
+    apiClient.get<PosReturnable>(`/pos/transactions/${id}/returnable`),
+
+  /**
+   * POST /pos/returns — take goods back, in part (FR-11).
+   *
+   * Requires `posTransactions:refund`. Partial by nature, and the refund is
+   * computed by the server from what was actually PAID — never from the shelf
+   * label, and never from a figure this client sends.
+   */
+  createReturn: (input: CreateReturnInput) =>
+    apiClient.post<PosReturn>("/pos/returns", input),
 };

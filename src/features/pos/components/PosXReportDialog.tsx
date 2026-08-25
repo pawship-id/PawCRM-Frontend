@@ -127,8 +127,25 @@ export function PosXReportDialog({
                   {formatMoney(report.shift.openingCash)}
                 </dd>
               </div>
+              {/*
+                Shown BEFORE the net, and separately, because a cashier reading a
+                drawer that holds less than the day's sales needs to see why. A
+                netted figure with no line explaining it is one nobody trusts —
+                and this is the shape of variance that looks like theft and is
+                not.
+              */}
+              {report.refunds.count > 0 && (
+                <div className="flex justify-between">
+                  <dt className="text-muted">
+                    Retur tunai ({report.refunds.count})
+                  </dt>
+                  <dd className="tabular-nums text-danger">
+                    −{formatMoney(report.refunds.cashRefunds)}
+                  </dd>
+                </div>
+              )}
               <div className="flex justify-between">
-                <dt className="text-muted">Penjualan tunai</dt>
+                <dt className="text-muted">Penjualan tunai bersih</dt>
                 <dd className="tabular-nums text-foreground">
                   {formatMoney(report.totals.cashTakings)}
                 </dd>

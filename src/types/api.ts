@@ -964,8 +964,17 @@ export interface PosXReport {
   shift: PosShift;
   transactionCount: number;
   breakdown: PosPaymentBreakdownRow[];
+  /**
+   * This shift's cash refunds, shown on their own line rather than only netted
+   * away — a figure with no explanation behind it is one nobody trusts.
+   */
+  refunds: {
+    count: number;
+    cashRefunds: string;
+  };
   totals: {
     takings: string;
+    /** NET of this shift's cash refunds. */
     cashTakings: string;
     expectedCash: string;
   };
@@ -1203,6 +1212,103 @@ export interface PosReceipt {
   totals: PosTotals | null;
   payments: PosPayment[];
   note: string | null;
+}
+
+/** Query for GET /api/pos/transactions — the Void list's source. */
+export interface PosTransactionListQuery {
+  page?: number;
+  limit?: number;
+  shiftId?: string;
+  branchId?: string;
+  customerId?: string;
+  status?: PosTransactionStatus | PosTransactionStatus[];
+  paidFrom?: string;
+  paidTo?: string;
+}
+
+/**
+ * Body of POST /api/pos/transactions/:id/void.
+ *
+ * A REASON AND NOTHING ELSE. A void is all or nothing: no item list, because
+ * voiding part of a sale is a return; no amount, because the amount is whatever
+ * the sale was.
+ */
+export interface VoidSaleInput {
+  reason: string;
+}
+
+/**
+ * One line coming back (FR-11).
+ *
+ * `posItemIndex` POINTS AT THE SALE'S LINE rather than naming a product: a
+ * basket can hold the same product twice — one line discounted, one not — and a
+ * return keyed on the product alone could not say which came back.
+ *
+ * NOTE WHAT IS ABSENT: `refundAmount`. The server computes it from what was
+ * actually paid, so the till cannot refund a shelf price on a discounted sale.
+ */
+export interface PosReturnItemInput {
+  posItemIndex: number;
+  qty: string;
+  /** Per line — one bag holds an unopened sack and a chewed toy. */
+  returnToStock: boolean;
+}
+
+/**
+ * What is still returnable on a sale.
+ *
+ * READ FROM THE SERVER, never derived here. The alternative is the browser
+ * subtracting earlier returns itself — a second implementation of a money rule,
+ * and the browser's copy is the one that drifts.
+ */
+export interface PosReturnable {
+  posTransactionId: string;
+  transactionNumber: string | null;
+  status: PosTransactionStatus;
+  items: {
+    posItemIndex: number;
+    kind: PosItemKind;
+    name: string;
+    soldQty: string;
+    remainingQty: string;
+  }[];
+}
+
+/** Body of POST /api/pos/returns. */
+export interface CreateReturnInput {
+  posTransactionId: string;
+  items: PosReturnItemInput[];
+  refundMethod: "cash" | "store_credit";
+  refundChannelId?: string;
+  reason: string;
+}
+
+/** A processed return, as the API returns it. */
+export interface PosReturn {
+  _id: string;
+  tenantId: string;
+  branchId: string;
+  shiftId: string;
+  warehouseId: string;
+  returnNumber: string;
+  posTransactionId: string;
+  items: {
+    posItemIndex: number;
+    kind: PosItemKind;
+    refId: string;
+    name: string;
+    qty: string;
+    refundAmount: string;
+    returnToStock: boolean;
+  }[];
+  refundMethod: "cash" | "store_credit";
+  refundChannelId: string | null;
+  refundTotal: string;
+  reason: string;
+  approvedBy: string | null;
+  journalEntryId: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /** Body of POST /api/pos/shifts. `cashierUserId` is NOT accepted. */

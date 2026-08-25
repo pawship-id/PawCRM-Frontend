@@ -21,6 +21,9 @@ import { PosPaymentDialog } from "./PosPaymentDialog";
 import { ReceiptDialog } from "./ReceiptDialog";
 import { PosShiftBar } from "./PosShiftBar";
 import { PosShiftGate } from "./PosShiftGate";
+import { ReturnDialog } from "./ReturnDialog";
+import { TodayTransactionsDialog } from "./TodayTransactionsDialog";
+import { VoidTransactionDialog } from "./VoidTransactionDialog";
 import { PosVariantDialog } from "./PosVariantDialog";
 import { PosXReportDialog } from "./PosXReportDialog";
 
@@ -59,6 +62,10 @@ export function PosScreen() {
   const [heldError, setHeldError] = useState<string | null>(null);
   const [paying, setPaying] = useState(false);
   const [receiptFor, setReceiptFor] = useState<string | null>(null);
+  const [todayOpen, setTodayOpen] = useState(false);
+  const [voiding, setVoiding] = useState<PosTransaction | null>(null);
+  const [returning, setReturning] = useState<PosTransaction | null>(null);
+  const [todayKey, setTodayKey] = useState(0);
   const [xReportFor, setXReportFor] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -150,6 +157,7 @@ export function PosScreen() {
         shift={shift}
         heldCount={heldCarts.length}
         onOpenHeld={() => setHeldOpen(true)}
+        onOpenToday={() => setTodayOpen(true)}
         onXReport={() => setXReportFor(shift._id)}
         onCloseShift={() => setClosing(true)}
       />
@@ -242,6 +250,42 @@ export function PosScreen() {
         saleId={receiptFor}
         onOpenChange={(open) => {
           if (!open) setReceiptFor(null);
+        }}
+      />
+
+      <TodayTransactionsDialog
+        open={todayOpen}
+        reloadKey={todayKey}
+        onOpenChange={setTodayOpen}
+        onReceipt={(sale) => setReceiptFor(sale._id)}
+        onVoid={setVoiding}
+        onReturn={setReturning}
+      />
+
+      <VoidTransactionDialog
+        sale={voiding}
+        onOpenChange={(open) => {
+          if (!open) setVoiding(null);
+        }}
+        onVoided={(sale) => {
+          setVoiding(null);
+          // The list is behind this dialog and now says the wrong thing.
+          setTodayKey((key) => key + 1);
+          setNotice(`${sale.transactionNumber} dibatalkan.`);
+        }}
+      />
+
+      <ReturnDialog
+        sale={returning}
+        onOpenChange={(open) => {
+          if (!open) setReturning(null);
+        }}
+        onReturned={(created) => {
+          setReturning(null);
+          setTodayKey((key) => key + 1);
+          setNotice(
+            `Retur ${created.returnNumber} diproses. Uangnya keluar dari laci ini.`,
+          );
         }}
       />
 

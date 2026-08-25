@@ -1,6 +1,6 @@
 "use client";
 
-import { Receipt, Bookmark } from "lucide-react";
+import { Receipt, Bookmark, History } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
@@ -35,12 +35,14 @@ export function PosShiftBar({
   shift,
   heldCount,
   onOpenHeld,
+  onOpenToday,
   onXReport,
   onCloseShift,
 }: {
   shift: PosShift;
   heldCount: number;
   onOpenHeld: () => void;
+  onOpenToday: () => void;
   onXReport: () => void;
   onCloseShift: () => void;
 }) {
@@ -73,6 +75,21 @@ export function PosShiftBar({
           Keranjang tersimpan
           {/* The count is a word beside a number, not a bare dot — §1.3. */}
           {heldCount > 0 && ` (${heldCount})`}
+        </Button>
+
+        {/*
+          Where a void or a return starts (FR-11). On the bar rather than behind
+          a menu, because it is also how a cashier reprints a receipt somebody
+          lost — which is the most common reason to reach for it.
+        */}
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={onOpenToday}
+        >
+          <History className="size-4" />
+          Transaksi hari ini
         </Button>
 
         <Button type="button" variant="secondary" size="sm" onClick={onXReport}>

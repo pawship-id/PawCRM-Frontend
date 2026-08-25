@@ -395,6 +395,7 @@ describe("PosScreen — closing the till (FR-9)", () => {
       shift,
       transactionCount: 4,
       breakdown: [],
+      refunds: { count: 0, cashRefunds: "0.0000" },
       totals: {
         takings: "300000.0000",
         cashTakings: "200000.0000",

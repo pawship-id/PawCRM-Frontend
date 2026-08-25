@@ -49,6 +49,15 @@ import type { StockCardFilters as Filters } from "../hooks/useStockCard";
 const MOVEMENT_FILTERS: FilterOption<MovementType | "">[] = [
   { value: "receipt", label: "Penerimaan" },
   { value: "pos_sale", label: "Penjualan" },
+  /*
+    Directly under the sale it unwinds, because that is how the pair is read.
+
+    THIS LIST IS AN ARRAY, so `tsc` does not check it against `MovementType` the
+    way it checks the label Records — a type added to the union and forgotten
+    here produces rows on the card that no filter can select. Adding a movement
+    type means visiting this list by hand.
+  */
+  { value: "pos_void", label: "Batal penjualan" },
   { value: "adjustment", label: "Penyesuaian" },
   { value: "opname_diff", label: "Selisih opname" },
   { value: "transfer_in", label: "Transfer masuk" },
