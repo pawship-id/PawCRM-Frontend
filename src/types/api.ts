@@ -1051,6 +1051,14 @@ export interface PosTotals {
   dpp: string;
   tax: string;
   grandTotal: string;
+  /**
+   * How much of `grandTotal` walked out unpaid, as a receivable (FR-7).
+   *
+   * "0.0000" on an ordinary sale, which is almost all of them. Frozen with the
+   * rest, because the receipt prints it — and it must keep saying what it said
+   * on the day even after the debt is settled.
+   */
+  credit: string;
 }
 
 /**
@@ -1114,6 +1122,13 @@ export interface PosTransaction {
   payments: PosPayment[];
   /** The FROZEN record, written at settlement. Null until then. */
   totals: PosTotals | null;
+  /**
+   * The receivable a credit sale raised (FR-7). Null on every cash sale.
+   *
+   * Its PRESENCE is the answer to "was this sold on account" — which the void
+   * screen needs before it offers a button it will then refuse.
+   */
+  customerInvoiceId: string | null;
   /**
    * What the basket comes to right now — computed by the server on every read,
    * never stored.
@@ -1217,9 +1232,49 @@ export interface PosPaymentInput {
   reference?: string;
 }
 
-/** Body of POST /api/pos/transactions/:id/pay. */
+/**
+ * Selling on account (FR-7).
+ *
+ * NOTE WHAT IS ABSENT: the amount. Credit closes whatever the payment lines did
+ * not — the server derives it, and a client that could name its own figure could
+ * raise a receivable smaller than the shortfall and leave the difference
+ * belonging to nobody.
+ *
+ * A DUE DATE OR A TERM, NEVER BOTH — the server refuses the pair, because two
+ * ways of saying the same thing eventually disagree.
+ */
+export interface CreditTerms {
+  /** ISO date. Wins over `termDays`; send one or the other. */
+  dueDate?: string;
+  /** Days from the sale. Defaults to 30 when neither is given. */
+  termDays?: number;
+}
+
+/**
+ * Body of POST /api/pos/transactions/:id/pay.
+ *
+ * `payments` MAY BE EMPTY when `credit` is present — a sale settled entirely on
+ * account moves no money at all. One of the two must be there.
+ */
 export interface PayInput {
   payments: PosPaymentInput[];
+  credit?: CreditTerms;
+}
+
+/**
+ * How much a customer may still buy on account (FR-7).
+ *
+ * `creditLimit` AND `remaining` ARE NULL WHEN THERE IS NO CEILING, which is not
+ * the same as zero: "no limit" and "nothing left" are opposite facts, and a till
+ * that conflated them would draw a full bar for an unlimited customer.
+ */
+export interface CustomerCreditStatus {
+  customerId: string;
+  /** What they owe across every live receivable, right now. */
+  outstanding: string;
+  invoiceCount: number;
+  creditLimit: string | null;
+  remaining: string | null;
 }
 
 /** One printed line on a receipt. */
@@ -1261,6 +1316,22 @@ export interface PosReceipt {
   otherCharges: PosCharge[];
   totals: PosTotals | null;
   payments: PosPayment[];
+  /**
+   * What is still owed, and when — on a credit sale only (FR-7).
+   *
+   * NOT FROZEN, unlike `totals`, and the difference is deliberate: this is the
+   * CURRENT state of the debt, so a reprint after an instalment shows what is
+   * left rather than what was owed on the day. That is what a customer asking
+   * for a reprint wants to know.
+   */
+  credit: {
+    invoiceNumber: string;
+    dueDate: string;
+    total: string;
+    paidAmount: string;
+    outstandingAmount: string;
+    status: "unpaid" | "partial" | "paid" | "void";
+  } | null;
   note: string | null;
 }
 

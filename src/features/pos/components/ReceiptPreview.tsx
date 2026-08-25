@@ -22,6 +22,24 @@ function paidAtLabel(paidAt: string | null): string {
 }
 
 /**
+ * A due date, with no time on it.
+ *
+ * DELIBERATELY NOT `paidAtLabel`. A payment happened at a moment and the minute
+ * is part of the record; a due date is a DAY, and printing "24/09/2026 17.00"
+ * would invite a customer to read a deadline into the hour.
+ */
+function dueDateLabel(dueDate: string): string {
+  const at = new Date(dueDate);
+  if (Number.isNaN(at.getTime())) return "";
+
+  return at.toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+/**
  * The receipt itself (FR-8).
  *
  * WHAT IS ON SCREEN IS WHAT PRINTS. There is no separate print template — the
@@ -182,6 +200,40 @@ export function ReceiptPreview({
           </li>
         ))}
       </ul>
+
+      {/*
+        WHAT IS STILL OWED, AND WHEN (FR-7).
+
+        THE MOST IMPORTANT THING ON A CREDIT SLIP, so it is not folded in with
+        the payment lines above — those say what money arrived, and this says
+        what did not. The invoice number is here because it is what the customer
+        quotes when they come back to pay; the date is what makes "overdue" mean
+        anything to them.
+
+        NOT PRINTED AT ALL on a cash sale, which is almost every sale. A line
+        reading "Sisa piutang Rp 0" on an ordinary receipt would invite the
+        question of what debt it is talking about.
+      */}
+      {receipt.credit && (
+        <dl className="mt-2 space-y-0.5 border-t border-dashed border-border pt-2 text-xs">
+          <div className="flex justify-between font-semibold">
+            <dt>Sisa piutang</dt>
+            <dd className="tabular-nums">
+              {formatMoney(receipt.credit.outstandingAmount)}
+            </dd>
+          </div>
+          <div className="flex justify-between text-muted">
+            <dt>Jatuh tempo</dt>
+            <dd className="tabular-nums">
+              {dueDateLabel(receipt.credit.dueDate)}
+            </dd>
+          </div>
+          <div className="flex justify-between text-muted">
+            <dt>No. faktur</dt>
+            <dd className="tabular-nums">{receipt.credit.invoiceNumber}</dd>
+          </div>
+        </dl>
+      )}
 
       {receipt.note && (
         <p className="mt-2 border-t border-dashed border-border pt-2 text-xs">

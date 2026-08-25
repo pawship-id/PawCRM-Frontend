@@ -63,7 +63,9 @@ const sale = (overrides: Partial<PosTransaction> = {}): PosTransaction => ({
     dpp: "270270.2703",
     tax: "29729.7297",
     grandTotal: "300000.0000",
+    credit: "0.0000",
   },
+  customerInvoiceId: null,
   runningTotals: {
     subtotal: "300000.0000",
     itemDiscount: "0.0000",

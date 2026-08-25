@@ -71,6 +71,7 @@ const emptyCart: PosTransaction = {
   note: null,
   payments: [],
   totals: null,
+  customerInvoiceId: null,
   runningTotals: {
     subtotal: "0.0000",
     itemDiscount: "0.0000",

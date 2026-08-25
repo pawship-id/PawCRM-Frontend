@@ -16,13 +16,10 @@ import { paymentChannelService } from "@/services/paymentChannel.service";
 import { posService } from "@/services/pos.service";
 import { ApiError } from "@/services/api-error";
 import { formatMoney } from "@/utils/decimal";
-import type {
-  PaymentChannel,
-  PaymentChannelType,
-  PosTransaction,
-} from "@/types/api";
+import type { PaymentChannel, PosTransaction } from "@/types/api";
 
-import { PaymentChannelPicker } from "./PaymentChannelPicker";
+import { PaymentChannelPicker, type PaymentRoute } from "./PaymentChannelPicker";
+import { PosCreditPanel, defaultDueDate } from "./PosCreditPanel";
 import { PaymentLinesList, type DraftPayment } from "./PaymentLinesList";
 
 /** The API's page cap — asking for more is a 400. */
@@ -94,8 +91,16 @@ export function PosPaymentDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const [channels, setChannels] = useState<PaymentChannel[]>([]);
-  const [activeType, setActiveType] = useState<PaymentChannelType>("cash");
+  const [activeRoute, setActiveRoute] = useState<PaymentRoute>("cash");
   const [lines, setLines] = useState<DraftPayment[]>([]);
+  /**
+   * The due date, held even while the Piutang pill is not the active one.
+   *
+   * A cashier who taps Piutang, sets a date, taps back to Tunai to add a part
+   * payment and returns must find their date still there — losing it would be a
+   * screen punishing somebody for doing the ordinary thing in a different order.
+   */
+  const [dueDate, setDueDate] = useState(() => defaultDueDate());
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -131,7 +136,7 @@ export function PosPaymentDialog({
         setChannels(result.items);
         // Land on a type the shop actually has, so the first tab is never empty.
         const first = result.items.find((channel) => channel.type === "cash");
-        setActiveType(first?.type ?? result.items[0]?.type ?? "cash");
+        setActiveRoute(first?.type ?? result.items[0]?.type ?? "cash");
       })
       .catch(() => {
         if (active) setError("Metode bayar gagal dimuat. Coba lagi.");
@@ -188,12 +193,41 @@ export function PosPaymentDialog({
   );
   const badAmount = lines.some((line) => !TYPED_RUPIAH.test(line.amount.trim()));
 
-  const canSubmit =
-    lines.length > 0 &&
-    remaining === 0 &&
-    !overpaid &&
-    !missingReference &&
-    !badAmount;
+  /**
+   * Why a sale cannot be put on account right now — null when it can.
+   *
+   * ONE RULE, ONE SENTENCE, and it is FR-2's: "Pelanggan wajib untuk Piutang".
+   * A debt with no debtor is not a receivable, it is a write-off nobody has
+   * approved. The server refuses it too; this is the courtesy that stops a
+   * cashier finding out after they have bagged the goods.
+   */
+  const creditBlockedReason = cart.customer
+    ? null
+    : "Pilih pelanggan dulu — piutang harus ada yang menanggung.";
+
+  const onCredit = activeRoute === "piutang" && creditBlockedReason === null;
+
+  /*
+    THE REMAINDER IS THE RECEIVABLE. It is not typed and not chosen: whatever the
+    payment lines did not cover walks out on account, which is FR-7's "satu klik
+    menutup seluruh sisa tagihan sebagai AR". A cashier taking 100.000 towards a
+    300.000 bill enters that one line and taps Piutang; the 200.000 follows.
+  */
+  const creditAmount = onCredit ? remaining : 0;
+
+  const canSubmit = onCredit
+    ? // Nothing left to put on account is a refusal, not a sale: it would raise
+      // an invoice for zero that sits in the collection list for ever.
+      creditAmount > 0 &&
+      dueDate !== "" &&
+      !overpaid &&
+      !missingReference &&
+      !badAmount
+    : lines.length > 0 &&
+      remaining === 0 &&
+      !overpaid &&
+      !missingReference &&
+      !badAmount;
 
   function addLine(channel: PaymentChannel) {
     setLines((current) => [
@@ -224,6 +258,9 @@ export function PosPaymentDialog({
 
     try {
       const sale = await posService.pay(cart._id, {
+        // Sent only when the sale is actually going on account — an empty
+        // object here would be the server's cue to raise a receivable.
+        ...(onCredit ? { credit: { dueDate } } : {}),
         payments: lines.map((line, index) => ({
           channelId: line.channelId,
           amount: line.amount.trim(),
@@ -268,11 +305,23 @@ export function PosPaymentDialog({
           <div className="space-y-4">
             <PaymentChannelPicker
               channels={channels}
-              activeType={activeType}
-              onTypeChange={setActiveType}
+              activeRoute={activeRoute}
+              onRouteChange={setActiveRoute}
               onPick={addLine}
+              creditBlockedReason={creditBlockedReason}
               disabled={submitting}
             />
+
+            {onCredit && cart.customer && (
+              <PosCreditPanel
+                customerId={cart.customer._id}
+                customerName={cart.customer.name}
+                amount={creditAmount}
+                dueDate={dueDate}
+                disabled={submitting}
+                onDueDateChange={setDueDate}
+              />
+            )}
 
             <PaymentLinesList
               lines={lines.map((line, index) => ({
@@ -305,14 +354,23 @@ export function PosPaymentDialog({
               </p>
             )}
 
-            {/* The number the cashier reads while typing. */}
+            {/*
+              The number the cashier reads while typing.
+
+              IT MEANS TWO DIFFERENT THINGS and says which. On a cash sale a
+              remainder above zero is something still to collect, and green at
+              zero is the signal to press Selesaikan. On a credit sale the same
+              figure is what the customer will owe — so it is not a shortfall,
+              green would be a lie, and calling it "Sisa" would invite a cashier
+              to keep typing until it went away.
+            */}
             <div className="flex items-baseline justify-between border-t border-border pt-3">
               <span className="text-sm font-semibold text-foreground">
-                Sisa
+                {onCredit ? "Sisa jadi piutang" : "Sisa"}
               </span>
               <span
                 className={
-                  remaining === 0
+                  remaining === 0 && !onCredit
                     ? "text-xl font-semibold tabular-nums text-success"
                     : "text-xl font-semibold tabular-nums text-foreground"
                 }

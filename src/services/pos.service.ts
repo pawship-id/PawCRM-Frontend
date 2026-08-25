@@ -13,6 +13,7 @@ import type {
   PosTransaction,
   PosXReport,
   PayInput,
+  CustomerCreditStatus,
   VoidSaleInput,
   CreateReturnInput,
   UpdateCartInput,
@@ -160,6 +161,20 @@ export const posService = {
    */
   pay: (id: string, input: PayInput) =>
     apiClient.post<PosTransaction>(`/pos/transactions/${id}/pay`, input),
+
+  /**
+   * GET /pos/customers/:id/credit — how much this customer may still owe (FR-7).
+   *
+   * ASKED BEFORE THE SALE, NOT DURING IT. The plafon is enforced when the payment
+   * is taken, and a cashier who finds out there is what has already told the
+   * customer the sale went through.
+   *
+   * ON THE POS SURFACE, gated by the till's own permission: a cashier who can
+   * ring up a sale can see whether this customer may have one on account,
+   * without being handed the receivables ledger.
+   */
+  creditStatus: (customerId: string) =>
+    apiClient.get<CustomerCreditStatus>(`/pos/customers/${customerId}/credit`),
 
   /**
    * GET /pos/transactions/:id/receipt — the printable payload (FR-8).

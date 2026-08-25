@@ -48,6 +48,7 @@ const receipt = (overrides: Partial<PosReceipt> = {}): PosReceipt => ({
     dpp: "270270.2703",
     tax: "29729.7297",
     grandTotal: "300000.0000",
+    credit: "0.0000",
   },
   payments: [
     {
@@ -59,6 +60,7 @@ const receipt = (overrides: Partial<PosReceipt> = {}): PosReceipt => ({
       reference: null,
     },
   ],
+  credit: null,
   note: null,
   ...overrides,
 });
@@ -200,5 +202,57 @@ describe("ReceiptDialog — sharing", () => {
     await user.click(await screen.findByRole("button", { name: /salin/i }));
 
     expect(await screen.findByLabelText(/teks struk/i)).toBeInTheDocument();
+  });
+});
+
+/**
+ * A credit sale's slip (FR-7).
+ *
+ * The most important thing on it is what the customer still owes — and the
+ * number they will quote when they come back to pay.
+ */
+describe("ReceiptPreview — sold on account", () => {
+  const CREDIT = {
+    invoiceNumber: "INV-2026-0041",
+    dueDate: "2026-09-24T10:00:00.000Z",
+    total: "300000.0000",
+    paidAmount: "100000.0000",
+    outstandingAmount: "200000.0000",
+    status: "partial" as const,
+  };
+
+  it("prints what is owed, when, and under which number", async () => {
+    mockedPos.receipt.mockResolvedValue(receipt({ credit: CREDIT }));
+
+    renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
+
+    expect(await screen.findByText("Sisa piutang")).toBeInTheDocument();
+    expect(screen.getByText("Rp 200.000")).toBeInTheDocument();
+    expect(screen.getByText("INV-2026-0041")).toBeInTheDocument();
+    expect(screen.getByText("24/09/2026")).toBeInTheDocument();
+  });
+
+  /*
+    A DAY, NOT A MOMENT. Printing "24/09/2026 17.00" would invite a customer to
+    read a deadline into the hour.
+  */
+  it("prints the due date without a time on it", async () => {
+    mockedPos.receipt.mockResolvedValue(receipt({ credit: CREDIT }));
+
+    renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
+
+    await screen.findByText("Sisa piutang");
+    expect(screen.queryByText(/24\/09\/2026 \d/)).not.toBeInTheDocument();
+  });
+
+  it("prints nothing about piutang on an ordinary cash sale", async () => {
+    mockedPos.receipt.mockResolvedValue(receipt({ credit: null }));
+
+    renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
+
+    await screen.findByText(/buloo petshop/i);
+    // Not "Rp 0" and not a heading with nothing under it — absent entirely.
+    expect(screen.queryByText("Sisa piutang")).not.toBeInTheDocument();
+    expect(screen.queryByText(/jatuh tempo/i)).not.toBeInTheDocument();
   });
 });
