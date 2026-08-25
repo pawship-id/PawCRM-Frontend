@@ -1091,6 +1091,22 @@ export interface PosTransaction {
   shiftId: string;
   transactionNumber: string | null;
   customerId: string | null;
+  /**
+   * Who the basket belongs to, named.
+   *
+   * RESOLVED ON READ rather than snapshotted onto the basket: a cart is
+   * short-lived, and a customer renamed between parking and paying should show
+   * the new name. Unlike `totals`, this is a label rather than a record of what
+   * was agreed.
+   *
+   * Still present when the customer has since been removed from the list — an id
+   * on screen is worse than a name that belongs to a retired record.
+   */
+  customer: {
+    _id: string;
+    name: string;
+    phone: string | null;
+  } | null;
   items: PosItem[];
   cartDiscount: PosDiscount | null;
   otherCharges: PosCharge[];

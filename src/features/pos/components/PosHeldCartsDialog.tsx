@@ -14,9 +14,22 @@ import {
 import { formatMoney } from "@/utils/decimal";
 import type { PosTransaction } from "@/types/api";
 
-/** How a parked basket names itself when nobody labelled it. */
+/**
+ * How a parked basket names itself.
+ *
+ * THE CUSTOMER'S NAME FIRST — FR-6: "label default keranjang tersimpan = nama
+ * pelanggan (bila ada) atau 'Keranjang N'". A row reading "Keranjang 2" tells a
+ * cashier holding two identical-looking baskets nothing at all, and picking the
+ * wrong one means resuming somebody else's shopping.
+ *
+ * An explicit `heldLabel` still wins: a cashier who named it meant that name.
+ *
+ * "Keranjang N" IS THE LAST RESORT, not the default. It is right for a walk-in
+ * with no name to give, and only then.
+ */
 function cartLabel(cart: PosTransaction, index: number): string {
   if (cart.heldLabel) return cart.heldLabel;
+  if (cart.customer?.name) return cart.customer.name;
   return `Keranjang ${index + 1}`;
 }
 
@@ -82,6 +95,15 @@ export function PosHeldCartsDialog({
                   <span className="block text-xs tabular-nums text-muted">
                     {cart.items.length} item ·{" "}
                     {formatMoney(cart.runningTotals.net)}
+                    {/*
+                      The phone as the second identifier, when the row is named
+                      after a customer. Two people called "Ibu Sri" is ordinary;
+                      two on one number is not — and since 25 Aug the system
+                      refuses the second.
+                    */}
+                    {!cart.heldLabel && cart.customer?.phone
+                      ? ` · ${cart.customer.phone}`
+                      : ""}
                   </span>
                 </div>
 

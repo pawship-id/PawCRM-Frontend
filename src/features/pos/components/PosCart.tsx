@@ -8,6 +8,7 @@ import { formatMoney } from "@/utils/decimal";
 import type { PosDiscountMode, PosTransaction } from "@/types/api";
 
 import { PosCartLine } from "./PosCartLine";
+import { PosCustomerSection } from "./PosCustomerSection";
 import { PosDiscountPopover } from "./PosDiscountPopover";
 import { PosOtherChargesEditor } from "./PosOtherChargesEditor";
 
@@ -39,6 +40,8 @@ export function PosCart({
   onCharges,
   onHold,
   onCheckout,
+  onPickCustomer,
+  onClearCustomer,
 }: {
   cart: PosTransaction | null;
   busy: boolean;
@@ -55,6 +58,10 @@ export function PosCart({
   onCharges: (charges: PosTransaction["otherCharges"]) => void;
   onHold: () => void;
   onCheckout: () => void;
+  /** Opens the picker — for choosing one, or replacing the current one. */
+  onPickCustomer: () => void;
+  /** Makes the basket a walk-in again. A different act from replacing. */
+  onClearCustomer: () => void;
 }) {
   const items = cart?.items ?? [];
   const totals = cart?.runningTotals;
@@ -83,6 +90,17 @@ export function PosCart({
           <Alert variant="error">{error}</Alert>
         </div>
       )}
+
+      {/*
+        ABOVE THE LINES, because it is what a cashier sets first when it matters
+        at all — and because on a receipt it is printed there.
+      */}
+      <PosCustomerSection
+        customer={cart?.customer ?? null}
+        busy={busy}
+        onPick={onPickCustomer}
+        onClear={onClearCustomer}
+      />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {empty ? (

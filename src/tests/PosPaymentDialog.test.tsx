@@ -46,6 +46,7 @@ const cart: PosTransaction = {
   shiftId: "s1",
   transactionNumber: null,
   customerId: null,
+  customer: null,
   items: [],
   cartDiscount: null,
   otherCharges: [],

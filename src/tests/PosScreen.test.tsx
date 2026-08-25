@@ -7,6 +7,7 @@ import { warehouseService } from "@/services/warehouse.service";
 import { categoryService } from "@/services/category.service";
 import { userService } from "@/services/user.service";
 import { branchService } from "@/services/branch.service";
+import { customerService } from "@/services/customer.service";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import type { PosShift, PosTransaction } from "@/types/api";
@@ -21,6 +22,7 @@ jest.mock("@/services/user.service");
 // same mock every other suite here uses.
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
 jest.mock("@/services/branch.service");
+jest.mock("@/services/customer.service");
 
 const mockedPos = posService as jest.Mocked<typeof posService>;
 const mockedCategories = categoryService as jest.Mocked<typeof categoryService>;
@@ -62,6 +64,7 @@ const emptyCart: PosTransaction = {
   shiftId: SHIFT_ID,
   transactionNumber: null,
   customerId: null,
+  customer: null,
   items: [],
   cartDiscount: null,
   otherCharges: [],
@@ -166,6 +169,14 @@ const catalogPage = {
 };
 
 beforeEach(() => {
+  const mockedCustomers = customerService as jest.Mocked<typeof customerService>;
+  mockedCustomers.list.mockResolvedValue({
+    items: [
+      { _id: "cust-1", name: "Ibu Rina", phone: "0812-3456-7890" },
+    ],
+    pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any);
   mockedPos.currentShift.mockResolvedValue(shift);
   mockedPos.heldCarts.mockResolvedValue([]);
   mockedPos.catalog.mockResolvedValue(catalogPage);
@@ -1194,5 +1205,221 @@ describe("PosVariantDialog — reading a row", () => {
 
     // A tenant may name a variant anything. Better a long row than an empty one.
     expect(await screen.findByText("Kemasan Ekonomis 5kg")).toBeInTheDocument();
+  });
+});
+
+/**
+ * FR-2 — who the basket belongs to.
+ *
+ * The picker and quick-add were built in Fase 2 and never mounted anywhere: the
+ * phase notes said the POS cart panel would do it, and Fase 6 did not. These pin
+ * the wiring, which is all that was missing.
+ */
+describe("PosScreen — choosing a customer", () => {
+  it("offers the choice, and says it is optional", async () => {
+    renderWithAuth(<PosScreen />);
+
+    // Most sales at a petshop till are walk-ins, so the empty state invites
+    // rather than warns.
+    expect(
+      await screen.findByRole("button", { name: /pilih pelanggan/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/opsional/i)).toBeInTheDocument();
+  });
+
+  it("saves the chosen customer to the basket", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await user.click(
+      await screen.findByRole("button", { name: /pilih pelanggan/i }),
+    );
+    await user.click(await screen.findByText("Ibu Rina"));
+
+    await waitFor(() =>
+      expect(mockedPos.updateCart).toHaveBeenCalledWith(CART_ID, {
+        customerId: "cust-1",
+      }),
+    );
+  });
+
+  it("sends the customer ALONE, not alongside the lines", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await user.click(
+      await screen.findByRole("button", { name: /pilih pelanggan/i }),
+    );
+    await user.click(await screen.findByText("Ibu Rina"));
+
+    await waitFor(() => expect(mockedPos.updateCart).toHaveBeenCalled());
+
+    // Nothing about the customer changes what anything costs, so there is no
+    // other figure to keep in step — and sending the lines alongside would let a
+    // mis-set customer disturb the prices.
+    const [, patch] = mockedPos.updateCart.mock.calls[0];
+    expect(patch).not.toHaveProperty("items");
+  });
+
+  it("shows the customer once the basket carries one", async () => {
+    mockedPos.updateCart.mockResolvedValue({
+      ...cartWithItem,
+      customerId: "cust-1",
+      customer: { _id: "cust-1", name: "Ibu Rina", phone: "0812-3456-7890" },
+    });
+
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await user.click(
+      await screen.findByRole("button", { name: /pilih pelanggan/i }),
+    );
+    await user.click(await screen.findByText("Ibu Rina"));
+
+    const basket = within(await screen.findByRole("complementary"));
+    expect(await basket.findByText("0812-3456-7890")).toBeInTheDocument();
+    // Two separate acts: Ganti reopens the picker, × makes it a walk-in again.
+    expect(basket.getByRole("button", { name: "Ganti" })).toBeInTheDocument();
+    expect(
+      basket.getByRole("button", { name: /lepas ibu rina/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("clears the customer without touching the lines", async () => {
+    mockedPos.updateCart.mockResolvedValue({
+      ...cartWithItem,
+      customerId: "cust-1",
+      customer: { _id: "cust-1", name: "Ibu Rina", phone: "0812" },
+    });
+
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await user.click(
+      await screen.findByRole("button", { name: /pilih pelanggan/i }),
+    );
+    await user.click(await screen.findByText("Ibu Rina"));
+
+    const basket = within(await screen.findByRole("complementary"));
+    await user.click(await basket.findByRole("button", { name: /lepas ibu rina/i }));
+
+    await waitFor(() => {
+      const last = mockedPos.updateCart.mock.calls.at(-1);
+      expect(last?.[1]).toEqual({ customerId: null });
+    });
+  });
+});
+
+/**
+ * One telephone, one customer (FR-2, overridden 25 Aug 2026).
+ *
+ * The PRD said a repeated number is saved with a warning. The tenant decided a
+ * number identifies a customer, so it is refused — and the form STAYS OPEN with
+ * the message beside the field holding the number, because that is the one thing
+ * to change and closing would throw away a name already typed.
+ */
+describe("PosScreen — a phone number already in use", () => {
+  it("refuses, names the holder, and keeps the form", async () => {
+    const user = userEvent.setup();
+    const mockedCustomers = customerService as jest.Mocked<typeof customerService>;
+    mockedCustomers.list.mockResolvedValue({
+      items: [],
+      pagination: { page: 1, limit: 20, total: 0, totalPages: 0 },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    mockedCustomers.createWithWarnings.mockRejectedValue(
+      new ApiError("Nomor HP sudah dipakai", 409, {
+        reason: "No. HP ini sudah terdaftar atas nama Ibu Rina",
+      }),
+    );
+
+    renderWithAuth(<PosScreen />);
+
+    await user.click(
+      await screen.findByRole("button", { name: /pilih pelanggan/i }),
+    );
+    await user.type(
+      await screen.findByLabelText(/cari pelanggan/i),
+      "081234567890",
+    );
+    await user.click(
+      await screen.findByRole("button", { name: /daftarkan pelanggan baru/i }),
+    );
+    await user.type(await screen.findByLabelText(/nama pelanggan/i), "Pak Budi");
+    await user.click(screen.getByRole("button", { name: /simpan pelanggan/i }));
+
+    // Named, so the cashier knows whether they are about to register somebody
+    // twice.
+    expect(
+      await screen.findByText(/sudah terdaftar atas nama Ibu Rina/),
+    ).toBeInTheDocument();
+
+    // And the name they typed is still there — retyping it with one digit
+    // different is exactly what closing would have cost them.
+    expect(screen.getByLabelText(/nama pelanggan/i)).toHaveValue("Pak Budi");
+  });
+});
+
+/**
+ * FR-6's label rule, reachable at last.
+ *
+ * "Label default keranjang tersimpan = nama pelanggan (bila ada) atau
+ * 'Keranjang N'". It could not be met while the cart carried only an id.
+ */
+describe("PosHeldCartsDialog — naming a parked basket", () => {
+  it("names it after the customer", async () => {
+    const user = userEvent.setup();
+    mockedPos.heldCarts.mockResolvedValue([
+      {
+        ...cartWithItem,
+        heldLabel: null,
+        customer: { _id: "cust-1", name: "Ibu Rina", phone: "0812-3456" },
+      },
+    ]);
+
+    renderWithAuth(<PosScreen />);
+    await user.click(
+      await screen.findByRole("button", { name: /keranjang tersimpan/i }),
+    );
+
+    const dialog = within(await screen.findByRole("dialog"));
+    // "Keranjang 2" tells a cashier holding two identical baskets nothing.
+    expect(dialog.getByText("Ibu Rina")).toBeInTheDocument();
+    expect(dialog.getByText(/0812-3456/)).toBeInTheDocument();
+  });
+
+  it("falls back to Keranjang N for a walk-in", async () => {
+    const user = userEvent.setup();
+    mockedPos.heldCarts.mockResolvedValue([
+      { ...cartWithItem, heldLabel: null, customer: null },
+    ]);
+
+    renderWithAuth(<PosScreen />);
+    await user.click(
+      await screen.findByRole("button", { name: /keranjang tersimpan/i }),
+    );
+
+    const dialog = within(await screen.findByRole("dialog"));
+    expect(dialog.getByText("Keranjang 1")).toBeInTheDocument();
+  });
+
+  it("lets an explicit label win — a cashier who named it meant that name", async () => {
+    const user = userEvent.setup();
+    mockedPos.heldCarts.mockResolvedValue([
+      {
+        ...cartWithItem,
+        heldLabel: "Titipan sore",
+        customer: { _id: "cust-1", name: "Ibu Rina", phone: "0812" },
+      },
+    ]);
+
+    renderWithAuth(<PosScreen />);
+    await user.click(
+      await screen.findByRole("button", { name: /keranjang tersimpan/i }),
+    );
+
+    const dialog = within(await screen.findByRole("dialog"));
+    expect(dialog.getByText("Titipan sore")).toBeInTheDocument();
+    expect(dialog.queryByText("Ibu Rina")).not.toBeInTheDocument();
   });
 });

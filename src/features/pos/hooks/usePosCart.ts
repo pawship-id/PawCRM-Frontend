@@ -40,6 +40,8 @@ interface UsePosCartResult {
   ) => Promise<void>;
   setCartDiscount: (discount: UpdateCartInput["cartDiscount"]) => Promise<void>;
   setCharges: (charges: PosTransaction["otherCharges"]) => Promise<void>;
+  /** Attach a customer, or `null` to make the basket a walk-in again. */
+  setCustomer: (customerId: string | null) => Promise<void>;
   patch: (input: UpdateCartInput) => Promise<void>;
   /** Retry the refused patch with an approver attached. */
   approve: (approverUserId: string) => Promise<void>;
@@ -221,6 +223,25 @@ export function usePosCart(): UsePosCartResult {
     [send],
   );
 
+  /**
+   * Who the basket belongs to (FR-2).
+   *
+   * SENT ON ITS OWN, unlike the item and discount patches which send the whole
+   * basket. Nothing about the customer changes what anything costs, so there is
+   * no other figure to keep in step — and sending the lines alongside it would
+   * mean a mis-set customer could disturb the prices.
+   *
+   * IT CREATES A CART IF THERE IS NONE, which is deliberate: a cashier who names
+   * the customer before scanning anything is doing the ordinary thing for a
+   * piutang, and making them scan first to unlock it would be backwards.
+   */
+  const setCustomer = useCallback(
+    async (customerId: string | null) => {
+      await send({ customerId });
+    },
+    [send],
+  );
+
   const setCharges = useCallback(
     async (charges: PosTransaction["otherCharges"]) => {
       await send({ otherCharges: charges });
@@ -273,6 +294,7 @@ export function usePosCart(): UsePosCartResult {
     setItemDiscount,
     setCartDiscount,
     setCharges,
+    setCustomer,
     patch: send,
     approve,
     dismissApproval,

@@ -49,6 +49,7 @@ const sale = (overrides: Partial<PosTransaction> = {}): PosTransaction => ({
   shiftId: "s1",
   transactionNumber: "POS-20260825-0001",
   customerId: null,
+  customer: null,
   items: [item()],
   cartDiscount: null,
   otherCharges: [],

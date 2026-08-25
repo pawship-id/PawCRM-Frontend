@@ -9,6 +9,7 @@ import { ApiError } from "@/services/api-error";
 import type { PosCatalogItem, PosTransaction } from "@/types/api";
 
 import { useAuth } from "@/features/auth";
+import { CustomerSearchDialog } from "@/features/customers";
 
 import { usePosCart } from "../hooks/usePosCart";
 import { usePosShift } from "../hooks/usePosShift";
@@ -63,6 +64,7 @@ export function PosScreen() {
   const [heldError, setHeldError] = useState<string | null>(null);
   const [paying, setPaying] = useState(false);
   const [receiptFor, setReceiptFor] = useState<string | null>(null);
+  const [pickingCustomer, setPickingCustomer] = useState(false);
   const [todayOpen, setTodayOpen] = useState(false);
   const [voiding, setVoiding] = useState<PosTransaction | null>(null);
   const [returning, setReturning] = useState<PosTransaction | null>(null);
@@ -196,6 +198,8 @@ export function PosScreen() {
           }
           onCartDiscount={(discount) => void cart.setCartDiscount(discount)}
           onCharges={(charges) => void cart.setCharges(charges)}
+          onPickCustomer={() => setPickingCustomer(true)}
+          onClearCustomer={() => void cart.setCustomer(null)}
           onHold={() => void hold()}
           onCheckout={() => {
             setNotice(null);
@@ -279,6 +283,32 @@ export function PosScreen() {
         saleId={receiptFor}
         onOpenChange={(open) => {
           if (!open) setReceiptFor(null);
+        }}
+      />
+
+      {/*
+        ONE DIALOG, NOT TWO. `CustomerSearchDialog` hosts quick-add itself and
+        carries the typed search term into it — a cashier who typed a phone
+        number does not type it again. Mounting the two separately here would
+        have rebuilt that seam badly.
+      */}
+      <CustomerSearchDialog
+        open={pickingCustomer}
+        onOpenChange={setPickingCustomer}
+        onSelect={(customer, warnings) => {
+          setPickingCustomer(false);
+          void cart.setCustomer(customer._id);
+
+          /*
+            THE DUPLICATE-PHONE WARNING, surfaced (FR-2). The server produces it
+            when a quick-add reuses a number, and this is the only place it can
+            reach a person: the customer IS saved either way, so this is a
+            "check this" rather than a failure — which is why it is a toast and
+            not a blocking dialog.
+          */
+          warnings
+            ?.filter((warning) => warning.message)
+            .forEach((warning) => swalToast(warning.message, "error"));
         }}
       />
 
