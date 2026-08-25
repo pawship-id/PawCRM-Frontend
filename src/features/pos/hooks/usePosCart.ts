@@ -42,6 +42,16 @@ interface UsePosCartResult {
   setCharges: (charges: PosTransaction["otherCharges"]) => Promise<void>;
   /** Attach a customer, or `null` to make the basket a walk-in again. */
   setCustomer: (customerId: string | null) => Promise<void>;
+  /**
+   * FR-3's bridge: drop a customer's bookings into the basket.
+   *
+   * NOT A PATCH, and it cannot be one. The server appends the lines, records
+   * which bookings they came from, and marks those bookings as pulled — three
+   * writes in one transaction. Sending the whole basket back the way every other
+   * mutation here does would race with itself: a cashier who pulled twice would
+   * rebuild the second request from a basket the first had not yet returned.
+   */
+  pullBookings: (bookingIds: string[]) => Promise<void>;
   patch: (input: UpdateCartInput) => Promise<void>;
   /** Retry the refused patch with an approver attached. */
   approve: (approverUserId: string) => Promise<void>;
@@ -123,6 +133,33 @@ export function usePosCart(): UsePosCartResult {
               : "Terjadi kesalahan. Coba lagi.",
           );
         }
+      } finally {
+        setBusy(false);
+      }
+    },
+    [cart],
+  );
+
+  const pullBookings = useCallback(
+    async (bookingIds: string[]) => {
+      setBusy(true);
+      setError(null);
+
+      try {
+        /*
+          A CART MAY NOT EXIST YET — the same lazy creation `send` does. In
+          practice the banner only appears once a customer is attached, which
+          already created one; this is here so the path does not depend on that
+          staying true.
+        */
+        const target = cart ?? (await posService.createCart({}));
+        setCart(await posService.pullBookings(target._id, bookingIds));
+      } catch (err) {
+        setError(
+          err instanceof ApiError
+            ? (err.reason ?? err.message)
+            : "Booking gagal ditarik. Coba lagi.",
+        );
       } finally {
         setBusy(false);
       }
@@ -295,6 +332,7 @@ export function usePosCart(): UsePosCartResult {
     setCartDiscount,
     setCharges,
     setCustomer,
+    pullBookings,
     patch: send,
     approve,
     dismissApproval,

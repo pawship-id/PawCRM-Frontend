@@ -159,6 +159,24 @@ export const posService = {
    * The remainder must be EXACTLY zero. The till disables Selesaikan until it
    * is, and the server checks again — a client-side check is a suggestion.
    */
+  /**
+   * POST /pos/transactions/:id/pull-bookings — FR-3's bridge.
+   *
+   * IDS AND NOTHING ELSE. The lines are built on the server from the bookings
+   * themselves, at the price each was QUOTED — a booking is a quote, and a
+   * client that could name a price could charge whatever it liked while the sale
+   * looked perfectly ordinary.
+   *
+   * ONE CALL DOES THREE WRITES: the lines land in the basket, the basket records
+   * which bookings they came from, and the bookings are marked as pulled so the
+   * bridge never offers them twice.
+   */
+  pullBookings: (id: string, bookingIds: string[]) =>
+    apiClient.post<PosTransaction>(
+      `/pos/transactions/${id}/pull-bookings`,
+      { bookingIds },
+    ),
+
   pay: (id: string, input: PayInput) =>
     apiClient.post<PosTransaction>(`/pos/transactions/${id}/pay`, input),
 

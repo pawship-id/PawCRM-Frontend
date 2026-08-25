@@ -34,8 +34,11 @@ const booking = (overrides: Partial<Booking> = {}): Booking => ({
       name: "Grooming Full Service",
       price: "150000.0000",
       groomerUserId: null,
+      // Never null — the server names an unassigned slot (FR-3's edge case).
+      groomerName: "Belum ditentukan",
     },
   ],
+  petName: "Bruno",
   scheduledAt: "2026-08-24T02:00:00.000Z",
   status: "confirmed",
   origin: "booking",

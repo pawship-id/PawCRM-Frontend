@@ -1516,6 +1516,15 @@ export interface BookingItem {
   price: string;
   /** null = FR-3's "Belum ditentukan". Assignment is a scheduling question. */
   groomerUserId: string | null;
+  /**
+   * The groomer's name, RESOLVED ON READ by the server.
+   *
+   * NEVER NULL, and that is the point: an unassigned groomer comes back as
+   * "Belum ditentukan" (FR-3's edge case), decided once on the server rather
+   * than three times — in the bridge, the cart line and the receipt — where the
+   * three would eventually disagree about what an empty slot is called.
+   */
+  groomerName: string;
 }
 
 /**
@@ -1533,6 +1542,17 @@ export interface Booking {
   bookingNumber: string;
   customerId: string;
   petId: string;
+  /**
+   * The animal's name, RESOLVED ON READ — never snapshotted onto the booking.
+   *
+   * A pet renamed between the appointment and the counter appears under its new
+   * name, because this is a LABEL rather than a record of what was agreed. (The
+   * price on `items[]` is the opposite and IS frozen: a booking is a quote.)
+   *
+   * Null only when the reference is genuinely broken — a pet deleted outright.
+   * Inventing a name for that would hide it.
+   */
+  petName: string | null;
   items: BookingItem[];
   scheduledAt: string;
   status: BookingStatus;

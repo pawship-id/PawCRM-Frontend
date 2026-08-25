@@ -10,11 +10,13 @@ import type { PosCatalogItem, PosTransaction } from "@/types/api";
 
 import { useAuth } from "@/features/auth";
 import { CustomerSearchDialog } from "@/features/customers";
+import { BookingBridgeDialog, useBookingBridge } from "@/features/booking";
 
 import { usePosCart } from "../hooks/usePosCart";
 import { usePosShift } from "../hooks/usePosShift";
 import { PosApprovalDialog } from "./PosApprovalDialog";
 import { PosBranchGate } from "./PosBranchGate";
+import { PosBookingBanner } from "./PosBookingBanner";
 import { PosCart } from "./PosCart";
 import { PosCatalog } from "./PosCatalog";
 import { PosCloseShiftDialog } from "./PosCloseShiftDialog";
@@ -54,6 +56,12 @@ export function PosScreen() {
   const { shift, loading: shiftLoading, error: shiftError, refetch } =
     usePosShift(branchChosen);
   const cart = usePosCart();
+  /*
+    FR-3. Asks nothing until a customer is attached — the banner only exists once
+    somebody has been chosen, and a till showing the catalogue to a walk-in must
+    not be querying appointments on every render.
+  */
+  const bridge = useBookingBridge(cart.cart?.customer?._id ?? null);
 
   const [variantParent, setVariantParent] = useState<PosCatalogItem | null>(
     null,
@@ -65,6 +73,7 @@ export function PosScreen() {
   const [paying, setPaying] = useState(false);
   const [receiptFor, setReceiptFor] = useState<string | null>(null);
   const [pickingCustomer, setPickingCustomer] = useState(false);
+  const [bridgeOpen, setBridgeOpen] = useState(false);
   const [todayOpen, setTodayOpen] = useState(false);
   const [voiding, setVoiding] = useState<PosTransaction | null>(null);
   const [returning, setReturning] = useState<PosTransaction | null>(null);
@@ -200,6 +209,17 @@ export function PosScreen() {
           onCharges={(charges) => void cart.setCharges(charges)}
           onPickCustomer={() => setPickingCustomer(true)}
           onClearCustomer={() => void cart.setCustomer(null)}
+          /*
+            FR-3. Renders nothing when the customer has no appointments today,
+            which is most sales — see PosBookingBanner.
+          */
+          banner={
+            <PosBookingBanner
+              count={bridge.bookings.length}
+              disabled={cart.busy}
+              onOpen={() => setBridgeOpen(true)}
+            />
+          }
           onHold={() => void hold()}
           onCheckout={() => {
             setNotice(null);
@@ -311,6 +331,38 @@ export function PosScreen() {
             .forEach((warning) => swalToast(warning.message, "error"));
         }}
       />
+
+      {/*
+        FR-3's bridge. Mounted ONLY while open and only with a customer: the
+        modal asks for that customer's bookings the moment it mounts, and a
+        permanently-mounted one would ask on every render of the till.
+      */}
+      {bridgeOpen && cart.cart?.customer && (
+        <BookingBridgeDialog
+          customerId={cart.cart.customer._id}
+          customerName={cart.cart.customer.name}
+          open
+          onOpenChange={setBridgeOpen}
+          onPull={(bookings) => {
+            if (bookings.length === 0) return;
+
+            void (async () => {
+              await cart.pullBookings(bookings.map((booking) => booking._id));
+              /*
+                RE-ASKED, not filtered locally. The server decides what is still
+                pullable, and a list trimmed here would disagree with it the
+                moment somebody else rang one up at the second till.
+              */
+              bridge.refetch();
+              swalToast(
+                bookings.length === 1
+                  ? `${bookings[0].bookingNumber} ditarik ke keranjang.`
+                  : `${bookings.length} booking ditarik ke keranjang.`,
+              );
+            })();
+          }}
+        />
+      )}
 
       <TodayTransactionsDialog
         open={todayOpen}

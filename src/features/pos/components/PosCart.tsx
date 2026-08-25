@@ -5,12 +5,60 @@ import { Bookmark, ShoppingCart } from "lucide-react";
 import { Alert, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import { formatMoney } from "@/utils/decimal";
-import type { PosDiscountMode, PosTransaction } from "@/types/api";
+import type { PosDiscountMode, PosItem, PosTransaction } from "@/types/api";
 
 import { PosCartLine } from "./PosCartLine";
 import { PosCustomerSection } from "./PosCustomerSection";
 import { PosDiscountPopover } from "./PosDiscountPopover";
 import { PosOtherChargesEditor } from "./PosOtherChargesEditor";
+
+/**
+ * One run of consecutive lines that belong together.
+ *
+ * `bookingId` NULL IS RETAIL and gets no header — a bag of feed does not belong
+ * to an appointment, and wrapping it in a titled box would invent a group nobody
+ * asked for.
+ *
+ * GROUPED BY RUN, NOT BY KEY. Two bookings for the same animal on the same day
+ * must stay two groups (FR-3's edge case: "keduanya tetap ditampilkan sebagai
+ * baris terpisah, tidak digabung otomatis"), and lines keep the order the cart
+ * stores them in — so a group is a stretch of adjacent lines sharing a booking,
+ * never a bucket collected from across the basket.
+ *
+ * The ORIGINAL INDEX travels with every line, because every callback below —
+ * remove, quantity, discount — addresses a line by its position in the cart. A
+ * grouped view that renumbered them would delete the wrong row.
+ */
+function groupLines(items: PosItem[]): Array<{
+  bookingId: string | null;
+  petName: string | null;
+  lines: Array<{ item: PosItem; index: number }>;
+}> {
+  const groups: ReturnType<typeof groupLines> = [];
+
+  items.forEach((item, index) => {
+    const bookingId = item.bookingId ?? null;
+    const last = groups[groups.length - 1];
+
+    if (last && last.bookingId === bookingId && bookingId !== null) {
+      last.lines.push({ item, index });
+      return;
+    }
+
+    if (last && last.bookingId === null && bookingId === null) {
+      last.lines.push({ item, index });
+      return;
+    }
+
+    groups.push({
+      bookingId,
+      petName: item.petName ?? null,
+      lines: [{ item, index }],
+    });
+  });
+
+  return groups;
+}
 
 /**
  * The right half of the till: the basket and what it comes to.
@@ -42,6 +90,7 @@ export function PosCart({
   onCheckout,
   onPickCustomer,
   onClearCustomer,
+  banner,
 }: {
   cart: PosTransaction | null;
   busy: boolean;
@@ -62,6 +111,8 @@ export function PosCart({
   onPickCustomer: () => void;
   /** Makes the basket a walk-in again. A different act from replacing. */
   onClearCustomer: () => void;
+  /** FR-3's booking banner, or nothing when there is nothing to pull. */
+  banner?: React.ReactNode;
 }) {
   const items = cart?.items ?? [];
   const totals = cart?.runningTotals;
@@ -102,22 +153,55 @@ export function PosCart({
         onClear={onClearCustomer}
       />
 
+      {/*
+        FR-3's banner, passed in rather than built here. What it says depends on
+        a query this component has no business making — and it renders nothing
+        at all when the customer has no appointments today, which is most of the
+        time.
+      */}
+      {banner && <div className="px-4 pb-3">{banner}</div>}
+
       <div className="min-h-0 flex-1 overflow-y-auto">
         {empty ? (
           <p className="px-6 py-16 text-center text-sm text-muted">
             Pilih produk atau layanan di sebelah kiri untuk mulai.
           </p>
         ) : (
-          items.map((item, index) => (
-            <PosCartLine
-              key={`${item.kind}-${item.refId}-${index}`}
-              item={item}
-              index={index}
-              disabled={busy}
-              onQtyChange={onQtyChange}
-              onRemove={onRemove}
-              onDiscountChange={onItemDiscount}
-            />
+          groupLines(items).map((group, groupIndex) => (
+            <div key={group.bookingId ?? `retail-${groupIndex}`}>
+              {/*
+                FR-3: "setiap grup booking menampilkan header dengan nomor
+                booking/ID dan nama hewan". Retail lines get no header — see
+                `groupLines`.
+
+                THE NUMBER IS NOT ON THE LINE. A cart item carries `bookingId`,
+                not `bookingNumber`, so the header shows the animal's name and
+                the booking's short id. Snapshotting the number onto every line
+                would repeat it once per service to save one lookup.
+              */}
+              {group.bookingId && (
+                <div className="flex items-baseline justify-between gap-2 bg-surface px-3 py-1.5">
+                  <span className="truncate text-xs font-medium text-foreground">
+                    {group.petName ?? "Hewan tidak diketahui"}
+                  </span>
+                  <span className="shrink-0 text-xs tabular-nums text-muted">
+                    Booking ·{group.bookingId.slice(-6)}
+                  </span>
+                </div>
+              )}
+
+              {group.lines.map(({ item, index }) => (
+                <PosCartLine
+                  key={`${item.kind}-${item.refId}-${index}`}
+                  item={item}
+                  index={index}
+                  disabled={busy}
+                  onQtyChange={onQtyChange}
+                  onRemove={onRemove}
+                  onDiscountChange={onItemDiscount}
+                />
+              ))}
+            </div>
           ))
         )}
       </div>
