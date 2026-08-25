@@ -61,15 +61,18 @@ const config: Config = {
    *
    * Measured, not guessed. On an 8-core machine the default (7 workers) ran this
    * suite in 78–134 seconds and FAILED 3 of 6 runs — always `ProductForm`, always
-   * a 15-second timeout, always passing when re-run alone. At 4 workers it runs
-   * in ~65 seconds and passes.
+   * a 15-second timeout, always passing when re-run alone. At 4 workers: 65, 94,
+   * 105 and 165 seconds, 0 failures in 4.
    *
-   * Faster with fewer workers is the counter-intuitive part, and it is the tell:
-   * seven jsdom environments on eight cores spend more time being switched
-   * between than they gain from running at once. Every test slows down, and the
-   * longest ones — the component suites that drive `userEvent` character by
-   * character — cross the timeout. The 70% spread in wall time between identical
-   * runs was thrashing, not load.
+   * WALL TIME IS NOT THE ARGUMENT, and the spread says why: 65 to 165 seconds
+   * for an identical suite. This machine's available CPU varies that much on its
+   * own, which is exactly the condition seven workers cannot absorb and four can.
+   * "Fewer workers is faster" is NOT a claim this data supports — an early 65s
+   * run suggested it and the later ones did not reproduce it.
+   *
+   * What it does support is STABILITY: the timeouts stopped across a spread that
+   * still contains the default's worst case. Four runs is a small sample — treat
+   * this as "the failure stopped reproducing", not as proof it cannot happen.
    *
    * A PERCENTAGE RATHER THAN A NUMBER so CI, which usually has fewer cores than
    * a laptop, scales down with it instead of oversubscribing worse.
