@@ -1,0 +1,61 @@
+/*
+  Printing a receipt (FR-8).
+
+  ONE STYLESHEET, THREE WIDTHS, chosen by a data attribute on the sheet rather
+  than by three files. The three differ in almost nothing — a width, a font size,
+  and whether the shop name is large — and three files would drift the moment
+  somebody fixed a margin in one of them.
+
+  EVERYTHING ELSE ON THE PAGE IS HIDDEN when printing. A thermal printer given
+  the dashboard's sidebar wastes half a roll on navy before it reaches the total.
+*/
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  [data-receipt-sheet],
+  [data-receipt-sheet] * {
+    visibility: visible;
+  }
+
+  [data-receipt-sheet] {
+    position: absolute;
+    inset: 0 auto auto 0;
+    margin: 0;
+    /* Black on white, whatever the viewer's theme. A receipt is ink on paper. */
+    background: #fff;
+    color: #000;
+  }
+
+  /*
+    58 mm and 80 mm are THERMAL widths, quoted as the printable area rather than
+    the roll: a 58 mm roll prints about 48 mm. Getting this wrong clips the
+    right-hand column, which is where every amount is.
+  */
+  [data-receipt-sheet="58"] {
+    width: 48mm;
+    padding: 2mm;
+    font-size: 9pt;
+    line-height: 1.35;
+  }
+
+  [data-receipt-sheet="80"] {
+    width: 72mm;
+    padding: 3mm;
+    font-size: 10pt;
+    line-height: 1.4;
+  }
+
+  [data-receipt-sheet="a4"] {
+    width: 190mm;
+    padding: 10mm;
+    font-size: 11pt;
+    line-height: 1.5;
+  }
+
+  @page {
+    margin: 0;
+  }
+}

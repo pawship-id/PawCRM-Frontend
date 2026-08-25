@@ -5,9 +5,11 @@ import type {
   PageResult,
   PosCatalogItem,
   PosCatalogQuery,
+  PosReceipt,
   PosShift,
   PosTransaction,
   PosXReport,
+  PayInput,
   UpdateCartInput,
 } from "@/types/api";
 
@@ -117,4 +119,29 @@ export const posService = {
    */
   discardCart: (id: string) =>
     apiClient.delete<PosTransaction>(`/pos/transactions/${id}`),
+
+  /* --------------------------------------------------------- settlement */
+
+  /**
+   * POST /pos/transactions/:id/pay — take the money.
+   *
+   * THE ONE IRREVERSIBLE CALL IN THIS FILE. It allocates a number, moves stock
+   * and posts two ledger entries; nothing after it can be undone by editing, and
+   * a wrong sale is voided rather than corrected.
+   *
+   * The remainder must be EXACTLY zero. The till disables Selesaikan until it
+   * is, and the server checks again — a client-side check is a suggestion.
+   */
+  pay: (id: string, input: PayInput) =>
+    apiClient.post<PosTransaction>(`/pos/transactions/${id}/pay`, input),
+
+  /**
+   * GET /pos/transactions/:id/receipt — the printable payload (FR-8).
+   *
+   * Assembled on the SERVER, which is what makes a reprint mean anything: every
+   * figure comes from the stored sale, so a receipt printed today for last
+   * Tuesday's sale says what it said on Tuesday.
+   */
+  receipt: (id: string) =>
+    apiClient.get<PosReceipt>(`/pos/transactions/${id}/receipt`),
 };

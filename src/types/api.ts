@@ -1142,6 +1142,69 @@ export interface PosCatalogQuery {
   kinds?: PosItemKind[];
 }
 
+/**
+ * One settlement line, on the way out (FR-7).
+ *
+ * NOTE WHAT IS ABSENT: `channelType` and `channelName`. The server snapshots
+ * both from the channel — labelling a QRIS line "Kas" would move it into the
+ * drawer's expected total and make the cashier short by exactly that amount.
+ */
+export interface PosPaymentInput {
+  channelId: string;
+  /** What the customer handed over. A string — see PosTotals. */
+  amount: string;
+  /** Cash only. The server refuses it on any other channel type. */
+  change?: string;
+  reference?: string;
+}
+
+/** Body of POST /api/pos/transactions/:id/pay. */
+export interface PayInput {
+  payments: PosPaymentInput[];
+}
+
+/** One printed line on a receipt. */
+export interface PosReceiptItem {
+  kind: PosItemKind;
+  name: string;
+  sku: string | null;
+  qty: string;
+  unitPrice: string;
+  lineTotal: string;
+  discount: { resolvedAmount: string } | null;
+  /** FR-8's sub-line, denormalised at sale time so a reprint survives a rename. */
+  petName: string | null;
+  groomerName: string | null;
+}
+
+/**
+ * What GET /pos/transactions/:id/receipt returns (FR-8).
+ *
+ * TWO HALVES THAT AGE DIFFERENTLY, deliberately. `header` is the shop as it is
+ * TODAY — a shop that moved wants its new address on the reprint a customer
+ * walks back in with. `totals` is frozen at settlement, because the tenant's tax
+ * rate may have changed and recomputing would rewrite what was charged.
+ */
+export interface PosReceipt {
+  header: {
+    tenantName: string;
+    branchName: string;
+    /** Empty string, never null — an unfilled field prints as a blank line. */
+    address: string;
+    phone: string;
+  };
+  transactionNumber: string | null;
+  paidAt: string | null;
+  status: PosTransactionStatus;
+  cashierUserId: string | null;
+  customerName: string | null;
+  items: PosReceiptItem[];
+  otherCharges: PosCharge[];
+  totals: PosTotals | null;
+  payments: PosPayment[];
+  note: string | null;
+}
+
 /** Body of POST /api/pos/shifts. `cashierUserId` is NOT accepted. */
 export interface OpenShiftInput {
   warehouseId: string;

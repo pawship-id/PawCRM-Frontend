@@ -17,6 +17,8 @@ import { PosCart } from "./PosCart";
 import { PosCatalog } from "./PosCatalog";
 import { PosCloseShiftDialog } from "./PosCloseShiftDialog";
 import { PosHeldCartsDialog } from "./PosHeldCartsDialog";
+import { PosPaymentDialog } from "./PosPaymentDialog";
+import { ReceiptDialog } from "./ReceiptDialog";
 import { PosShiftBar } from "./PosShiftBar";
 import { PosShiftGate } from "./PosShiftGate";
 import { PosVariantDialog } from "./PosVariantDialog";
@@ -55,6 +57,8 @@ export function PosScreen() {
   const [heldCarts, setHeldCarts] = useState<PosTransaction[]>([]);
   const [heldLoading, setHeldLoading] = useState(false);
   const [heldError, setHeldError] = useState<string | null>(null);
+  const [paying, setPaying] = useState(false);
+  const [receiptFor, setReceiptFor] = useState<string | null>(null);
   const [xReportFor, setXReportFor] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -171,14 +175,10 @@ export function PosScreen() {
           onCartDiscount={(discount) => void cart.setCartDiscount(discount)}
           onCharges={(charges) => void cart.setCharges(charges)}
           onHold={() => void hold()}
-          /*
-            Payment is Fase 7. The button stays where it belongs so the layout is
-            the real one, and says plainly that it is not connected yet rather
-            than failing silently when tapped.
-          */
-          onCheckout={() =>
-            setNotice("Pembayaran belum aktif — menyusul di tahap berikutnya.")
-          }
+          onCheckout={() => {
+            setNotice(null);
+            setPaying(true);
+          }}
         />
       </div>
 
@@ -212,6 +212,37 @@ export function PosScreen() {
         busy={cart.busy}
         onApprove={(approverUserId) => void cart.approve(approverUserId)}
         onCancel={cart.dismissApproval}
+      />
+
+      {/*
+        Rendered only with a basket, so the dialog cannot open against nothing —
+        which is also why `cart.cart` is safe to pass non-null below.
+      */}
+      {cart.cart && (
+        <PosPaymentDialog
+          cart={cart.cart}
+          open={paying}
+          onOpenChange={setPaying}
+          onPaid={(sale) => {
+            setPaying(false);
+            /*
+              THE BASKET IS CLEARED AND THE RECEIPT OPENS IN ONE STEP. The moment
+              the customer is still standing there is the only moment a receipt
+              is worth printing, and a till left holding a paid basket is one a
+              cashier can accidentally ring up twice.
+            */
+            cart.clear();
+            setReceiptFor(sale._id);
+            void loadHeld();
+          }}
+        />
+      )}
+
+      <ReceiptDialog
+        saleId={receiptFor}
+        onOpenChange={(open) => {
+          if (!open) setReceiptFor(null);
+        }}
       />
 
       <PosXReportDialog
