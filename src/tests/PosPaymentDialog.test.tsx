@@ -301,12 +301,18 @@ describe("PosPaymentDialog — what it sends", () => {
     expect(await screen.findByText(/Remaining/)).toBeInTheDocument();
   });
 
-  it("scopes the channel list to the sale's branch", async () => {
+  it("scopes the channel list to the sale's branch, and to money coming IN", async () => {
     open();
 
     await waitFor(() =>
       expect(mockedChannels.list).toHaveBeenCalledWith(
-        expect.objectContaining({ branchId: "b1", isActive: true }),
+        expect.objectContaining({
+          branchId: "b1",
+          isActive: true,
+          // Without this, a bank account the tenant marked pay-out-only would
+          // still appear at the till, and the narrowing would work one way.
+          usableFor: "in",
+        }),
       ),
     );
   });

@@ -112,7 +112,20 @@ export function PosPaymentDialog({
     setError(null);
 
     paymentChannelService
-      .list({ isActive: true, branchId: cart.branchId, limit: FETCH_LIMIT })
+      /*
+        `usableFor: "in"` — the till only offers channels money can ARRIVE
+        through. Without it, a bank account a tenant marked pay-out-only would
+        still appear here, and the narrowing would work in one direction only.
+
+        A channel that declares nothing still matches, by its type: every channel
+        written before the field existed is that kind.
+      */
+      .list({
+        isActive: true,
+        usableFor: "in",
+        branchId: cart.branchId,
+        limit: FETCH_LIMIT,
+      })
       .then((result) => {
         if (!active) return;
         setChannels(result.items);

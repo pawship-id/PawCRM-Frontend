@@ -87,6 +87,9 @@ export function ReturnDialog({
       paymentChannelService.list({
         isActive: true,
         type: "cash",
+        // A refund LEAVES the drawer, so it needs a channel that can pay out —
+        // the same direction a supplier payment asks for.
+        usableFor: "out",
         branchId: branchId ?? undefined,
         limit: FETCH_LIMIT,
       }),

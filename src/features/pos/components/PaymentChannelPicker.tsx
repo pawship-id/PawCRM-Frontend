@@ -15,6 +15,12 @@ const TYPE_LABEL: Record<PaymentChannelType, string> = {
   transfer: "Transfer",
   qris: "QRIS",
   edc: "Kartu",
+  /*
+    Present because the type demands it, and never rendered: TYPE_ORDER below
+    omits it, and the till only ever lists channels that can RECEIVE. A giro is
+    something a shop writes to a supplier, not something a customer hands over.
+  */
+  giro: "Giro",
 };
 
 const TYPE_ORDER: PaymentChannelType[] = ["cash", "qris", "edc", "transfer"];

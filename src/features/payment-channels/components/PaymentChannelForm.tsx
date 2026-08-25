@@ -20,7 +20,13 @@ import { paymentChannelService } from "@/services/paymentChannel.service";
 import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
 import { branchService } from "@/services/branch.service";
 import { swalToast } from "@/lib/swal";
-import type { PaymentChannel, PaymentChannelType } from "@/types/api";
+import type {
+  ChannelDirection,
+  PaymentChannel,
+  PaymentChannelType,
+} from "@/types/api";
+
+import { CheckRow } from "@/components";
 
 import {
   CHANNEL_TYPE_LABELS,
@@ -37,6 +43,24 @@ const LIST_PATH = "/dashboard/keuangan/kas-bank";
 
 /** The two types a processor actually deducts a fee from. Mirrors MDR_TYPES. */
 const MDR_TYPES: PaymentChannelType[] = ["qris", "edc"];
+
+/**
+ * Which way money can move through each type — mirrors TYPE_DIRECTIONS.
+ *
+ * A STRUCTURAL fact, not a preference: a merchant QRIS and a card terminal only
+ * receive, and a giro is only ever written. The server refuses anything wider
+ * than this, so the form is only ever declining to offer what would be refused.
+ */
+const TYPE_DIRECTIONS: Record<PaymentChannelType, ChannelDirection[]> = {
+  cash: ["in", "out"],
+  transfer: ["in", "out"],
+  qris: ["in"],
+  edc: ["in"],
+  giro: ["out"],
+};
+
+/** The only two types where the tenant has a direction to choose. */
+const BIDIRECTIONAL_TYPES: PaymentChannelType[] = ["cash", "transfer"];
 
 const TYPE_OPTIONS = CHANNEL_TYPE_ORDER.map((type) => ({
   value: type,
@@ -76,6 +100,13 @@ export function PaymentChannelForm({ channelId }: { channelId?: string }) {
   const [branchId, setBranchId] = useState("");
   const [mdrPercent, setMdrPercent] = useState("");
   const [requiresReference, setRequiresReference] = useState(false);
+  /*
+    Held as two booleans rather than an array: the form asks two questions, and
+    an array would mean translating both ways on every keystroke. It becomes
+    `usableFor` on submit, and only for the types that have a choice.
+  */
+  const [usableIn, setUsableIn] = useState(true);
+  const [usableOut, setUsableOut] = useState(true);
   const [isActive, setIsActive] = useState(true);
 
   const [nameError, setNameError] = useState<string | null>(null);
@@ -142,6 +173,14 @@ export function PaymentChannelForm({ channelId }: { channelId?: string }) {
         setBranchId(result.branchId ?? "");
         setMdrPercent(result.mdrPercent > 0 ? String(result.mdrPercent) : "");
         setRequiresReference(result.requiresReference);
+        // Absent on a channel written before the field existed, which reads as
+        // "whatever the type allows" — the same default the server applies.
+        const directions =
+          result.usableFor?.length > 0
+            ? result.usableFor
+            : (TYPE_DIRECTIONS[result.type] ?? []);
+        setUsableIn(directions.includes("in"));
+        setUsableOut(directions.includes("out"));
         setIsActive(result.isActive);
       })
       .catch((error) => {
@@ -217,6 +256,13 @@ export function PaymentChannelForm({ channelId }: { channelId?: string }) {
     setSaving(true);
     setFormError(null);
 
+    if (BIDIRECTIONAL_TYPES.includes(type) && !usableIn && !usableOut) {
+      // The server refuses it too; catching it here keeps the message beside the
+      // boxes rather than at the top of the form.
+      setFormError("Pilih minimal satu kegunaan untuk channel ini.");
+      return;
+    }
+
     const payload = {
       type,
       name: trimmedName,
@@ -225,6 +271,19 @@ export function PaymentChannelForm({ channelId }: { channelId?: string }) {
       // than an omitted key.
       branchId: branchId || null,
       mdrPercent: chargesMdr ? mdr : 0,
+      /*
+        Sent only where the tenant was ASKED. For a QRIS, an EDC or a giro there
+        is nothing to choose, so sending anything would be this form asserting a
+        rule the type already decides — and the server would only re-derive it.
+      */
+      ...(BIDIRECTIONAL_TYPES.includes(type)
+        ? {
+            usableFor: [
+              ...(usableIn ? (["in"] as const) : []),
+              ...(usableOut ? (["out"] as const) : []),
+            ],
+          }
+        : {}),
       requiresReference,
     };
 
@@ -402,6 +461,43 @@ export function PaymentChannelForm({ channelId }: { channelId?: string }) {
               tunai wajib punya cabang.
             </p>
           </div>
+
+          {/*
+            ONLY WHERE THERE IS A CHOICE.
+
+            A merchant QRIS and an EDC only receive; a giro is only written. Those
+            three have nothing to decide, and a toggle that cannot be moved is
+            worse than no toggle. Cash and a bank account go both ways, and only
+            the tenant knows whether a second bank account is the one they receive
+            into or the one they pay out of.
+          */}
+          {BIDIRECTIONAL_TYPES.includes(type) && (
+            <div className="flex flex-col gap-2">
+              <Label>Dipakai untuk</Label>
+              <div className="flex flex-col gap-2">
+                <CheckRow
+                  label="Terima uang dari pelanggan"
+                  description="Muncul sebagai pilihan bayar di kasir."
+                  checked={usableIn}
+                  onCheckedChange={setUsableIn}
+                  disabled={saving}
+                />
+                <CheckRow
+                  label="Bayar supplier"
+                  description="Muncul saat mencatat pembayaran tagihan pembelian."
+                  checked={usableOut}
+                  onCheckedChange={setUsableOut}
+                  disabled={saving}
+                />
+              </div>
+              {!usableIn && !usableOut && (
+                <p className="text-xs text-danger" role="alert">
+                  Pilih minimal satu — channel yang tidak dipakai ke mana pun
+                  tidak ada gunanya.
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">

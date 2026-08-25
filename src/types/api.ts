@@ -1484,7 +1484,20 @@ export interface UpdateBookingInput {
  * `piutang` is absent on purpose although the POS shows it as a fifth tab: it is
  * a route to AR rather than a place money arrived, so it has no channel row.
  */
-export type PaymentChannelType = "cash" | "transfer" | "qris" | "edc";
+/**
+ * `giro` ARRIVED WITH THE PURCHASING SIDE. It had no meaning at a till — nobody
+ * hands a shop a post-dated cheque — but it is one of four ways a shop settles a
+ * supplier invoice, so it is a channel type that only moves money OUT.
+ */
+export type PaymentChannelType =
+  | "cash"
+  | "transfer"
+  | "qris"
+  | "edc"
+  | "giro";
+
+/** Which way money moves through a channel. */
+export type ChannelDirection = "in" | "out";
 
 /**
  * A payment channel, as returned by GET /api/payment-channels. One named place
@@ -1502,6 +1515,15 @@ export interface PaymentChannel {
   accountId: string;
   /** Only meaningful for qris/edc; the API refuses a rate on the other two. */
   mdrPercent: number;
+  /**
+   * Which directions this channel may be used in.
+   *
+   * A NARROWING, not a grant: it defaults to everything the TYPE structurally
+   * allows, so a channel that never mentions it behaves the way its type
+   * implies. What it buys is the case the type cannot express — a tenant with
+   * two bank accounts who receives into one and pays out of the other.
+   */
+  usableFor: ChannelDirection[];
   /** null = every branch. */
   branchId: string | null;
   requiresReference: boolean;
@@ -1522,6 +1544,14 @@ export interface PaymentChannelListQuery {
   isActive?: boolean;
   search?: string;
   includeDeleted?: boolean;
+  /**
+   * `out` is what the supplier payment picker asks for.
+   *
+   * Matches a channel that DECLARES the direction, and also one that declares
+   * nothing but is a type implying it — every channel written before the field
+   * existed is the second kind, and a stricter filter would hide all of them.
+   */
+  usableFor?: ChannelDirection;
 }
 
 /** Body of POST /api/payment-channels. */
@@ -2896,7 +2926,23 @@ export interface CreatePurchaseInvoiceInput {
 export interface RecordPaymentInput {
   /** Strictly positive, and never more than `outstandingAmount`. */
   amount: string;
+  /**
+   * What KIND of payment this is — what a reconciler filters by.
+   *
+   * Distinct from `channelId`, which says which ACCOUNT it left. The server
+   * checks the two agree: recording a cash payment under `transfer` would make
+   * that filter lie.
+   */
   method: PaymentMethod;
+  /**
+   * The account the money leaves from — a `paymentChannels` row.
+   *
+   * REQUIRED. The account used to be derived from `method` alone, so a tenant
+   * with three bank accounts paid every supplier from one "1102 Bank" line and
+   * the ledger could not say which — while the selling side, which has named
+   * channels, answered exactly that.
+   */
+  channelId: string;
   /** Defaults to now. The day the money MOVED, which dates the ledger entry. */
   at?: string;
   ref?: string;

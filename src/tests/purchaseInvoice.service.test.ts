@@ -153,6 +153,8 @@ describe("purchaseInvoiceService", () => {
     await purchaseInvoiceService.recordPayment("inv1", {
       amount: "66500",
       method: "transfer",
+      // Required since UT-1: which account the money leaves from.
+      channelId: "chan1",
       at: "2026-08-20",
       ref: "TRF/998877",
     });
@@ -160,6 +162,7 @@ describe("purchaseInvoiceService", () => {
     expect(post).toHaveBeenCalledWith("/purchase-invoices/inv1/payments", {
       amount: "66500",
       method: "transfer",
+      channelId: "chan1",
       at: "2026-08-20",
       ref: "TRF/998877",
     });
