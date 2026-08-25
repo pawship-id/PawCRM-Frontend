@@ -2,9 +2,22 @@
 
 import { useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
+/*
+  LINK IS NOT IMPORTED SEPARATELY, and that is the fix for a warning this file
+  printed on every single mount: `[tiptap warn]: Duplicate extension names
+  found: ['link']`.
+
+  TipTap v3's StarterKit ALREADY BUNDLES `@tiptap/extension-link` — check its
+  package.json dependencies. Adding the package on top registered the extension
+  twice, so ProseMirror built its schema, its plugins and its keymaps for `link`
+  twice per editor. Configuring it THROUGH StarterKit is the v3 way and leaves
+  exactly one registration.
+
+  The behaviour is unchanged: `openOnClick` still differs between the editor and
+  the read-only view below.
+*/
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
-import Link from "@tiptap/extension-link";
 import {
   Bold,
   ImagePlus,
@@ -59,9 +72,8 @@ export function RichTextEditor({
 
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({ link: { openOnClick: false } }),
       Image,
-      Link.configure({ openOnClick: false }),
     ],
     content: value,
     // Next renders this on the server otherwise, and ProseMirror touches
@@ -217,7 +229,10 @@ export function RichTextEditor({
  */
 export function RichTextView({ html }: { html: string | null | undefined }) {
   const editor = useEditor({
-    extensions: [StarterKit, Image, Link.configure({ openOnClick: true })],
+    extensions: [
+      StarterKit.configure({ link: { openOnClick: true } }),
+      Image,
+    ],
     content: html ?? "",
     editable: false,
     immediatelyRender: false,
