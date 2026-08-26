@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { Alert, Spinner } from "@/components";
+import { Alert, ConfirmDialog, Spinner } from "@/components";
 import { posService } from "@/services/pos.service";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
@@ -82,6 +82,22 @@ export function PosScreen() {
    * it always has an intent behind it.
    */
   const [bridgeTab, setBridgeTab] = useState<"pull" | "adhoc" | null>(null);
+  /**
+   * A customer change the cashier has not agreed to the cost of yet.
+   *
+   * Moving a basket to somebody else invalidates every line that names an
+   * animal: the line is for the OLD customer's pet, and so is the draft booking
+   * behind it. The server refuses the move outright, so this is where the
+   * decision is put to the person who can see the basket.
+   *
+   * `null` means nothing is pending — the ordinary case, where the basket holds
+   * no pet-bound line and the change goes straight through.
+   */
+  const [customerSwap, setCustomerSwap] = useState<{
+    customerId: string | null;
+    name: string;
+    lines: number;
+  } | null>(null);
   const [todayOpen, setTodayOpen] = useState(false);
   const [voiding, setVoiding] = useState<PosTransaction | null>(null);
   const [returning, setReturning] = useState<PosTransaction | null>(null);
@@ -177,6 +193,38 @@ export function PosScreen() {
    * building sat in Keranjang Tersimpan beside ones they had genuinely put
    * aside. `status: "held"` is what makes the gesture mean what it says.
    */
+  /**
+   * How many lines would be lost by moving this basket to somebody else.
+   *
+   * ONLY LINES THAT NAME AN ANIMAL. A bag of feed belongs to whoever is paying;
+   * a service sold without naming a pet does too. Only a grooming booked for
+   * Bruno stops making sense when Bruno's owner leaves the basket.
+   */
+  function petLineCount(): number {
+    return (cart.cart?.items ?? []).filter((item) => item.petId).length;
+  }
+
+  /**
+   * Puts a customer on the basket, asking first when it would cost something.
+   *
+   * THE QUESTION IS ONLY ASKED WHEN THERE IS SOMETHING TO LOSE. A basket of
+   * goods, or one with no customer yet, changes hands silently — a confirmation
+   * for a change with no consequence is a dialog that teaches people to click
+   * through dialogs.
+   */
+  function changeCustomer(customerId: string | null, name: string) {
+    const lines = petLineCount();
+    const changing =
+      String(customerId ?? "") !== String(cart.cart?.customerId ?? "");
+
+    if (lines === 0 || !changing) {
+      void cart.setCustomer(customerId);
+      return;
+    }
+
+    setCustomerSwap({ customerId, name, lines });
+  }
+
   async function hold() {
     if (!cart.cart) return;
 
@@ -300,7 +348,7 @@ export function PosScreen() {
           onCartDiscount={(discount) => void cart.setCartDiscount(discount)}
           onCharges={(charges) => void cart.setCharges(charges)}
           onPickCustomer={() => setPickingCustomer(true)}
-          onClearCustomer={() => void cart.setCustomer(null)}
+          onClearCustomer={() => changeCustomer(null, "pembeli yang lewat")}
           /*
             FR-3's two ways in. Nothing at all until a customer is on the basket:
             the bridge lists ONE customer's appointments and ONE customer's pets,
@@ -424,7 +472,7 @@ export function PosScreen() {
         onOpenChange={setPickingCustomer}
         onSelect={(customer, warnings) => {
           setPickingCustomer(false);
-          void cart.setCustomer(customer._id);
+          changeCustomer(customer._id, customer.name);
 
           /*
             THE DUPLICATE-PHONE WARNING, surfaced (FR-2). The server produces it
@@ -483,6 +531,33 @@ export function PosScreen() {
             })();
           }}
         />
+      )}
+
+      {customerSwap && (
+        <ConfirmDialog
+          title="Ganti pelanggan?"
+          confirmLabel="Ganti dan hapus layanannya"
+          destructive
+          busy={cart.busy}
+          onCancel={() => setCustomerSwap(null)}
+          onConfirm={() => {
+            void cart.setCustomer(customerSwap.customerId, {
+              dropPetLines: true,
+            });
+            setCustomerSwap(null);
+          }}
+        >
+          {/*
+            IT SAYS WHAT IS LOST, in the words of the thing being lost. "Ada
+            perubahan yang belum disimpan" is the dialog nobody reads; "2 layanan
+            untuk hewan pelanggan sebelumnya" is a sentence a cashier can check
+            against the screen behind it.
+          */}
+          {customerSwap.lines} layanan di keranjang ini untuk hewan pelanggan
+          sebelumnya, jadi tidak berlaku lagi kalau pelanggannya diganti jadi{" "}
+          {customerSwap.name}. Layanan itu akan dihapus dari keranjang; produk
+          dan biaya lain tetap.
+        </ConfirmDialog>
       )}
 
       <TodayTransactionsDialog

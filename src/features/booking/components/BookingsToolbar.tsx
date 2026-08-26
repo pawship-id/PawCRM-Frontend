@@ -16,13 +16,18 @@ import { BOOKING_STATUS_LABELS } from "./BookingStatusBadge";
  * The visible word is COPY (ui-rules §12) and copy that happens to match the
  * API's value is a coincidence, not a rule — `BOOKING_STATUS_LABELS` is the one
  * place that decides it, so the badge and this filter cannot drift apart.
+ *
+ * IN THE ORDER A BOOKING WALKS THEM, matching `BOOKING_LADDER` on the server:
+ * confirmed before check-in, because an animal cannot arrive for an appointment
+ * nobody agreed to. A picker listing a booking's life out of order is one people
+ * have to read twice.
  */
 const STATUSES = withAll<BookingsQuery["status"]>(
   (
     [
       "draft",
-      "check_in",
       "confirmed",
+      "check_in",
       "in_progress",
       "completed",
       "cancelled",

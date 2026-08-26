@@ -1560,6 +1560,37 @@ export interface BookingItem {
 }
 
 /**
+ * One move in a booking's life, as the API returns it.
+ *
+ * THE TRAIL, not an audit log. `status` says where a booking stands and nothing
+ * about how it got there, and `updatedAt` answers only the last move because the
+ * next one overwrites it. "Jam berapa hewannya datang", "sudah dikonfirmasi
+ * sebelum datang atau langsung check-in", "siapa yang membatalkan" are asked
+ * afterwards, and this is what can answer them.
+ */
+export interface BookingStatusEvent {
+  status: BookingStatus;
+  /** When it happened. ISO instant. */
+  at: string;
+  /** Who moved it. Null when nothing human did — a settlement, a migration. */
+  by: string | null;
+  /**
+   * That person's name, RESOLVED ON READ — same rule as `petName`. Null when
+   * `by` is null, or when the user behind it is gone.
+   */
+  byName: string | null;
+  /**
+   * True when this rung was filled in behind a skipped step rather than chosen.
+   *
+   * A receptionist who takes an animal straight to check-in has confirmed the
+   * appointment by doing so, so the server records the confirmation too — at the
+   * SAME instant. This flag is what keeps that honest: it says which of two
+   * entries stamped at the same second somebody actually decided.
+   */
+  implied: boolean;
+}
+
+/**
  * A booking, as returned by GET /api/bookings. One animal, one day, one or more
  * services.
  *
@@ -1605,6 +1636,15 @@ export interface Booking {
   items: BookingItem[];
   scheduledAt: string;
   status: BookingStatus;
+  /**
+   * Every status it has reached, oldest first.
+   *
+   * EMPTY ON BOOKINGS MADE BEFORE THE TRAIL EXISTED, and left that way on
+   * purpose — back-filling one invented instant per booking would be worse than
+   * saying nothing. Read an empty array as "tidak tercatat", never as "never
+   * moved".
+   */
+  statusHistory: BookingStatusEvent[];
   origin: BookingOrigin;
   /** Set by the POS when this booking is paid for. */
   posTransactionId: string | null;

@@ -7,6 +7,36 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Booking: bikin, jalankan, dan riwayat statusnya
+
+`/dashboard/booking` stops being a list you can only read. `BookingCreateDialog` takes a
+booking — pelanggan, hewan, layanan, jadwal — and `BookingStatusActions` moves one along the
+ladder or calls it off, with `BookingHistoryDialog` showing when it reached each status.
+Details in [`features/booking-screen.md`](./features/booking-screen.md).
+
+**The till only ever sees the END of a booking**, which is what the read-only table missed:
+an animal arriving and a groomer starting were facts nobody could record anywhere. The person
+who knows them is the receptionist watching the door, and this is the screen they have open.
+
+**Every move confirms, including the ordinary ones**, because none can be undone — the ladder
+runs forward only, so a mis-tapped "Tandai selesai" is not a click somebody takes back. The
+dialog is also where the two things worth saying fit: which rungs the jump fills in behind it,
+and that completing a booking here is not the same as being paid for it.
+
+**A jump straight to check-in also records the confirmation, at the same minute.** Nobody
+hands over a dog for an appointment that was never agreed. The filled-in entry is drawn as
+*otomatis*, because two entries stamped at the same second would otherwise claim two separate
+decisions.
+
+**The customer is picked through `CustomerSearchDialog`** rather than a `FilterSelect`: it
+searches on the server, so the shop with four hundred pelanggan can find the four hundredth,
+and it registers a new one without abandoning the half-filled booking. The groomer select
+disappears when `/users` is refused — a receptionist has no reason to hold `users:read`, and
+assignment is optional.
+
+**Status filters, badge labels and the menu now run in ladder order** — confirmed before
+check-in, matching `BOOKING_LADDER` on the server.
+
 ## [Unreleased] — Booking Bridge: tarik booking, atau bikin di tempat
 
 `BookingBridgeDialog` and its ad-hoc tab, exported from `@/features/booking`. No route —

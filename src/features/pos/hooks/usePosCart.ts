@@ -40,8 +40,17 @@ interface UsePosCartResult {
   ) => Promise<void>;
   setCartDiscount: (discount: UpdateCartInput["cartDiscount"]) => Promise<void>;
   setCharges: (charges: PosTransaction["otherCharges"]) => Promise<void>;
-  /** Attach a customer, or `null` to make the basket a walk-in again. */
-  setCustomer: (customerId: string | null) => Promise<void>;
+  /**
+   * Attach a customer, or `null` to make the basket a walk-in again.
+   *
+   * `dropPetLines` also removes every line naming an animal — which the server
+   * REQUIRES when the customer actually changes, because those lines belong to
+   * the person leaving the basket. The till asks first; see PosScreen.
+   */
+  setCustomer: (
+    customerId: string | null,
+    options?: { dropPetLines?: boolean },
+  ) => Promise<void>;
   /**
    * FR-3's bridge: drop a customer's bookings into the basket.
    *
@@ -319,11 +328,33 @@ export function usePosCart(): UsePosCartResult {
    * the customer before scanning anything is doing the ordinary thing for a
    * piutang, and making them scan first to unlock it would be backwards.
    */
+  /**
+   * Attaches, replaces or clears the basket's customer (FR-2).
+   *
+   * `dropPetLines` DROPS EVERY LINE THAT NAMES AN ANIMAL, in the same patch.
+   * Moving a basket from Ibu Rina to Pak Budi leaves Bruno's grooming on it
+   * otherwise — a line naming somebody else's dog, a draft booking behind it
+   * naming somebody else, and a receipt that bills the wrong person for both.
+   * The server refuses that outright; this is how the till complies, once the
+   * cashier has said to.
+   *
+   * THE LINES GO IN THE SAME REQUEST as the customer, not in a second one. Two
+   * patches would leave a window where the basket is somebody else's with the
+   * old lines still on it — and if the second failed, that window would be
+   * permanent.
+   */
   const setCustomer = useCallback(
-    async (customerId: string | null) => {
-      await send({ customerId });
+    async (customerId: string | null, { dropPetLines = false } = {}) => {
+      await send(
+        dropPetLines
+          ? {
+              customerId,
+              items: itemsAsInput().filter((item) => !item.petId),
+            }
+          : { customerId },
+      );
     },
-    [send],
+    [itemsAsInput, send],
   );
 
   const setCharges = useCallback(

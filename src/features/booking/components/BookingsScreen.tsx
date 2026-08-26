@@ -56,7 +56,7 @@ export function BookingsScreen() {
         </div>
       ) : (
         <>
-          <BookingsTable bookings={bookings} />
+          <BookingsTable bookings={bookings} onChanged={refetch} />
           <Pagination
             page={pagination.page}
             totalPages={pagination.totalPages}

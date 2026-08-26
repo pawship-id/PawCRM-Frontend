@@ -42,6 +42,7 @@ const booking = (overrides: Partial<Booking> = {}): Booking => ({
   customerName: "Ibu Rina",
   scheduledAt: "2026-08-24T02:00:00.000Z",
   status: "confirmed",
+  statusHistory: [],
   origin: "booking",
   posTransactionId: null,
   pulledToCartAt: null,

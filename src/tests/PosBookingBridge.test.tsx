@@ -646,3 +646,133 @@ describe("PosCart — a line whose service has already started", () => {
     ).toBeEnabled();
   });
 });
+
+/**
+ * Moving a basket to somebody else invalidates every line that names an animal.
+ *
+ * The line is for the OLD customer's pet, and so is the draft booking behind it.
+ * Left alone, the receipt bills the new customer for the old one's grooming and
+ * nothing on screen looks wrong — which is why the server refuses the move
+ * outright and the till has to ask first.
+ */
+describe("PosScreen — changing who the basket is for", () => {
+  const petLine = {
+    kind: "service",
+    refId: "svc-1",
+    name: "Grooming Full Service",
+    sku: null,
+    qty: "1.0000",
+    unitPrice: "150000.0000",
+    lineTotal: "150000.0000",
+    discount: null,
+    hppAtTime: null,
+    bookingId: "bk-1",
+    petId: PET_ID,
+    petName: "Bruno",
+    groomerName: "Belum ditentukan",
+    bookingStatus: "draft",
+    bookingNumber: null,
+  };
+
+  const withPetLine = () => {
+    const basket = cart({
+      /*
+        A DIFFERENT PERSON from the one in the picker, so choosing "Ibu Rina" is
+        a real change. Re-picking the customer already on the basket costs
+        nothing and is deliberately not confirmed.
+      */
+      customerId: "cust-0",
+      customer: { _id: "cust-0", name: "Pak Budi", phone: "08110000000" },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      items: [petLine] as any,
+    });
+    mockedPos.createCart.mockResolvedValue(basket);
+    mockedPos.updateCart.mockResolvedValue(basket);
+    mockedPos.activeCart.mockResolvedValue(basket);
+  };
+
+  it("asks before throwing the cashier's work away", async () => {
+    const user = userEvent.setup();
+    withPetLine();
+
+    renderWithAuth(<PosScreen />);
+    await screen.findByText("Grooming Full Service");
+
+    await user.click(screen.getByRole("button", { name: /ganti/i }));
+    await user.click(await screen.findByText("Ibu Rina"));
+
+    expect(
+      await screen.findByRole("heading", { name: /ganti pelanggan\?/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("says how many lines are lost, and that goods are not", async () => {
+    const user = userEvent.setup();
+    withPetLine();
+
+    renderWithAuth(<PosScreen />);
+    await screen.findByText("Grooming Full Service");
+
+    await user.click(screen.getByRole("button", { name: /ganti/i }));
+    await user.click(await screen.findByText("Ibu Rina"));
+
+    expect(await screen.findByText(/1 layanan/)).toBeInTheDocument();
+    expect(screen.getByText(/produk dan biaya lain tetap/i)).toBeInTheDocument();
+  });
+
+  /*
+    THE LINES GO IN THE SAME REQUEST as the customer. Two patches would leave a
+    window where the basket is somebody else's with the old lines still on it —
+    and if the second failed, that window would be permanent.
+  */
+  it("sends the new customer and the surviving lines in one patch", async () => {
+    const user = userEvent.setup();
+    withPetLine();
+
+    renderWithAuth(<PosScreen />);
+    await screen.findByText("Grooming Full Service");
+
+    await user.click(screen.getByRole("button", { name: /ganti/i }));
+    await user.click(await screen.findByText("Ibu Rina"));
+    mockedPos.updateCart.mockClear();
+    await user.click(
+      await screen.findByRole("button", { name: /ganti dan hapus layanannya/i }),
+    );
+
+    await waitFor(() => expect(mockedPos.updateCart).toHaveBeenCalled());
+    const [, body] = mockedPos.updateCart.mock.calls[0];
+    expect(body.customerId).toBe("cust-1");
+    expect(body.items).toEqual([]);
+  });
+
+  it("changes nothing when the cashier backs out", async () => {
+    const user = userEvent.setup();
+    withPetLine();
+
+    renderWithAuth(<PosScreen />);
+    await screen.findByText("Grooming Full Service");
+
+    await user.click(screen.getByRole("button", { name: /ganti/i }));
+    await user.click(await screen.findByText("Ibu Rina"));
+    mockedPos.updateCart.mockClear();
+    await user.click(await screen.findByRole("button", { name: /batal/i }));
+
+    expect(mockedPos.updateCart).not.toHaveBeenCalled();
+  });
+
+  /*
+    A confirmation for a change with no consequence is a dialog that teaches
+    people to click through dialogs.
+  */
+  it("asks nothing when the basket holds no line naming an animal", async () => {
+    const user = userEvent.setup();
+
+    renderWithAuth(<PosScreen />);
+    await pickCustomer(user);
+
+    await waitFor(() => expect(mockedPos.updateCart).toHaveBeenCalled());
+    expect(
+      screen.queryByRole("heading", { name: /ganti pelanggan\?/i }),
+    ).not.toBeInTheDocument();
+  });
+});

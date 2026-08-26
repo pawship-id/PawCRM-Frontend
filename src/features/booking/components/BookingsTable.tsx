@@ -12,40 +12,33 @@ import { Badge } from "@/components/ui/badge";
 import { formatMoney, sumDecimals } from "@/utils/decimal";
 import type { Booking } from "@/types/api";
 
+import { formatBookingMoment } from "../format";
+import { BookingStatusActions } from "./BookingStatusActions";
 import { BookingStatusBadge } from "./BookingStatusBadge";
-
-/**
- * When it is scheduled, to the minute.
- *
- * THE TIME MATTERS HERE, unlike on a receipt's due date: a day sheet is read as
- * "who is at ten", and a date with no clock on it cannot answer that.
- */
-function scheduledLabel(value: string): string {
-  const at = new Date(value);
-  if (Number.isNaN(at.getTime())) return "—";
-
-  return at.toLocaleString("id-ID", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 /**
  * The booking list.
  *
- * READ-ONLY, deliberately. Every way a booking legitimately changes today runs
- * through the till — pulled into a basket, completed by a payment, released by a
- * void — and each of those carries rules this table has no way to enforce.
- * Buttons here that bypassed them would be a second, weaker authority over the
- * same documents.
+ * IT MOVES BOOKINGS NOW, and that is a reversal of how it was first built. The
+ * argument for read-only was that every legitimate change ran through the till;
+ * what that missed is that the till only ever sees the END of a booking. An
+ * animal arriving and a groomer starting are facts nobody was able to record at
+ * all, and the person who knows them is the one with this screen open — so the
+ * moves live here, behind the same state machine the server enforces (see
+ * `BookingStatusActions`).
  *
- * WHAT IT IS FOR is seeing that any of it happened at all. Until this screen
- * existed the only way to check a booking was to open the database.
+ * THE EDITABLE SURFACE IS STILL NOT HERE. Rescheduling, changing the services or
+ * swapping the animal go through `PATCH /bookings/:id` and want a form, not a
+ * row; this table moves a booking along and nothing else.
  */
-export function BookingsTable({ bookings }: { bookings: Booking[] }) {
+export function BookingsTable({
+  bookings,
+  onChanged,
+}: {
+  bookings: Booking[];
+  /** Called after a row action, so the screen can re-ask the server. */
+  onChanged: () => void;
+}) {
   if (bookings.length === 0) {
     return (
       <p className="py-16 text-center text-sm text-muted">
@@ -66,6 +59,9 @@ export function BookingsTable({ bookings }: { bookings: Booking[] }) {
             <TableHead>Layanan</TableHead>
             <TableHead className="text-right">Total</TableHead>
             <TableHead>Status</TableHead>
+            {/* Never empty: every reader may open a row's trail, whatever else
+                their role allows. */}
+            <TableHead className="text-right">Aksi</TableHead>
           </TableRow>
         </TableHeader>
 
@@ -100,7 +96,7 @@ export function BookingsTable({ bookings }: { bookings: Booking[] }) {
               </TableCell>
 
               <TableCell className="align-top text-sm tabular-nums text-foreground">
-                {scheduledLabel(booking.scheduledAt)}
+                {formatBookingMoment(booking.scheduledAt)}
               </TableCell>
 
               <TableCell className="align-top text-sm text-foreground">
@@ -147,6 +143,15 @@ export function BookingsTable({ bookings }: { bookings: Booking[] }) {
                     Ada di keranjang
                   </span>
                 )}
+              </TableCell>
+
+              <TableCell className="align-top">
+                <div className="flex justify-end">
+                  <BookingStatusActions
+                    booking={booking}
+                    onChanged={onChanged}
+                  />
+                </div>
               </TableCell>
             </TableRow>
           ))}
