@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { ReceiptDialog } from "@/features/pos/components/ReceiptDialog";
@@ -24,7 +24,8 @@ const receipt = (overrides: Partial<PosReceipt> = {}): PosReceipt => ({
   transactionNumber: "POS-20260825-0001",
   paidAt: "2026-08-25T03:00:00.000Z",
   status: "paid",
-  cashierUserId: null,
+  cashierUserId: "u1",
+  cashierName: "Salwa",
   customerName: null,
   items: [
     {
@@ -284,5 +285,60 @@ describe("ReceiptPreview — the transaction note", () => {
     await screen.findByText(/buloo petshop/i);
     // Not an empty "Catatan:" heading with nothing under it.
     expect(screen.queryByText("Catatan:")).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Who served them (FR-8).
+ *
+ * "Siapa yang melayani" is the first question asked when somebody comes back
+ * unhappy, and until now the slip could not answer it: the id was in the payload
+ * and never on the paper.
+ */
+describe("ReceiptPreview — the cashier", () => {
+  it("names them on the slip", async () => {
+    mockedPos.receipt.mockResolvedValue(receipt({ cashierName: "Salwa" }));
+
+    renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
+
+    expect(await screen.findByText(/Kasir: Salwa/)).toBeInTheDocument();
+  });
+
+  /*
+    TWO SHAPES OF ONE RECEIPT MUST NOT DISAGREE about who served the customer —
+    they would end up holding a slip and a message with different answers to the
+    same question.
+  */
+  it("names them in the copied text too", async () => {
+    const user = userEvent.setup();
+    const writeText = jest.fn().mockResolvedValue(undefined);
+    // `navigator.clipboard` is getter-only in jsdom; defineProperty is the way in.
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+
+    mockedPos.receipt.mockResolvedValue(receipt({ cashierName: "Salwa" }));
+
+    renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
+    await screen.findByText(/Kasir: Salwa/);
+
+    await user.click(screen.getByRole("button", { name: /salin untuk whatsapp/i }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalled());
+    expect(writeText.mock.calls[0][0]).toContain("Kasir: Salwa");
+  });
+
+  /*
+    Null rather than a placeholder — inventing a name for a sale that carries no
+    user would hide that it has none.
+  */
+  it("prints no cashier line when the sale names nobody", async () => {
+    mockedPos.receipt.mockResolvedValue(receipt({ cashierName: null }));
+
+    renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
+
+    await screen.findByText(/buloo petshop/i);
+    expect(screen.queryByText(/^Kasir:/)).not.toBeInTheDocument();
   });
 });

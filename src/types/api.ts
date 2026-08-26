@@ -1344,6 +1344,13 @@ export interface PosReceipt {
   paidAt: string | null;
   status: PosTransactionStatus;
   cashierUserId: string | null;
+  /**
+   * Who rang it up (FR-8). Resolved on read, like the shop's own address.
+   *
+   * Null when the sale carries no user — a seeded or imported one — rather than
+   * a placeholder, because inventing a name would hide that it has none.
+   */
+  cashierName: string | null;
   customerName: string | null;
   items: PosReceiptItem[];
   otherCharges: PosCharge[];

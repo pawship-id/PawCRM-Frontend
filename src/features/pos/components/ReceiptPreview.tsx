@@ -83,6 +83,17 @@ export function ReceiptPreview({
           <span>{receipt.transactionNumber}</span>
           <span>{paidAtLabel(receipt.paidAt)}</span>
         </div>
+        {/*
+          WHO SERVED THEM (FR-8). "Siapa yang melayani" is the first question
+          asked when somebody comes back unhappy, and until now the slip could
+          not answer it — the id was in the payload and never on the paper.
+
+          BELOW THE NUMBER AND THE TIME, above the customer: the top block is
+          about the transaction, and who took the money is part of that.
+        */}
+        {receipt.cashierName && (
+          <div className="mt-0.5">Kasir: {receipt.cashierName}</div>
+        )}
         {receipt.customerName && (
           <div className="mt-0.5">{receipt.customerName}</div>
         )}

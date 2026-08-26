@@ -91,6 +91,13 @@ export function ReceiptDialog({
       source.header.branchName,
       "",
       `No: ${source.transactionNumber ?? "-"}`,
+      /*
+        THE SAME CASHIER THE PAPER NAMES (FR-8). Two shapes of one receipt that
+        disagree about who served the customer is worse than neither naming
+        them — the customer would have a slip and a message with different
+        answers to the same question.
+      */
+      source.cashierName ? `Kasir: ${source.cashierName}` : null,
       "",
       ...source.items.map(
         (item) => `${item.name} — ${formatMoney(item.lineTotal)}`,
