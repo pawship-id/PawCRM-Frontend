@@ -1380,7 +1380,7 @@ describe("PosHeldCartsDialog — naming a parked basket", () => {
       {
         ...cartWithItem,
         heldLabel: null,
-        customer: { _id: "cust-1", name: "Ibu Rina", phone: "0812-3456" },
+          customer: { _id: "cust-1", name: "Ibu Rina", phone: "0812-3456" },
       },
     ]);
 
@@ -1526,6 +1526,54 @@ describe("PosScreen — parking is a decision, not a default", () => {
     expect(
       await screen.findByText(/titipkan atau selesaikan dulu/i),
     ).toBeInTheDocument();
+  });
+
+  /*
+    FR-6: the list carries label, item count, subtotal AND when it was saved.
+    The last one is what a cashier scans for — the trolley nobody has touched
+    since before the last customer.
+
+    It reads `updatedAt`, which is also what the list is sorted by: a basket
+    resumed and added to at 15:40 reads as 15:40, because it is not abandoned.
+  */
+  it("says when each basket was last saved", async () => {
+    const user = userEvent.setup();
+    mockedPos.heldCarts.mockResolvedValue([
+      {
+        ...cartWithItem,
+        status: "held",
+        updatedAt: "2026-08-27T07:32:00.000Z",
+      },
+    ]);
+
+    renderWithAuth(<PosScreen />);
+    await user.click(
+      await screen.findByRole("button", { name: /keranjang tersimpan/i }),
+    );
+
+    // Alongside the count and the subtotal, on one line.
+    const row = await screen.findByText(/1 item/);
+    expect(row).toHaveTextContent("Rp 100.000");
+    expect(row.textContent).toMatch(/\d{2}[.:]\d{2}/);
+  });
+
+  it("moves with the basket — a resumed one reads as touched, not abandoned", async () => {
+    const user = userEvent.setup();
+    mockedPos.heldCarts.mockResolvedValue([
+      {
+        ...cartWithItem,
+        status: "held",
+        updatedAt: "2026-08-27T08:40:00.000Z",
+      },
+    ]);
+
+    renderWithAuth(<PosScreen />);
+    await user.click(
+      await screen.findByRole("button", { name: /keranjang tersimpan/i }),
+    );
+
+    const row = await screen.findByText(/1 item/);
+    expect(row.textContent).toContain("15.40");
   });
 
   it("opens one freely when the till is empty", async () => {

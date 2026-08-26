@@ -27,6 +27,38 @@ import type { PosTransaction } from "@/types/api";
  * "Keranjang N" IS THE LAST RESORT, not the default. It is right for a walk-in
  * with no name to give, and only then.
  */
+/**
+ * When the basket was last saved — hours and minutes, nothing more (FR-6).
+ *
+ * `updatedAt`, WHICH IS ALSO WHAT THIS LIST IS SORTED BY. A parked basket stays
+ * parked while it is being worked on, so a basket resumed and added to at 15:40
+ * reads as 15:40 — it is not an abandoned trolley, and telling those apart is
+ * the whole reason the column is here.
+ *
+ * An earlier version stamped the first parking in a field of its own. It answered
+ * a narrower question — "when was this first put aside" — and answered the useful
+ * one worse.
+ *
+ * NO DATE, because this list is scoped to ONE shift: everything in it was parked
+ * today, by this cashier, since they opened the till. A date on every row would
+ * be the same date on every row.
+ *
+ * ABSOLUTE, NOT "12 menit lalu". A relative time goes stale the moment the
+ * dialog is left open, and a stale one is wrong rather than merely old — while
+ * "14:32" is never wrong and needs no clock ticking behind it.
+ */
+function savedAtLabel(savedAt: string | null): string {
+  if (!savedAt) return "";
+
+  const at = new Date(savedAt);
+  if (Number.isNaN(at.getTime())) return "";
+
+  return at.toLocaleTimeString("id-ID", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function cartLabel(cart: PosTransaction, index: number): string {
   if (cart.heldLabel) return cart.heldLabel;
   if (cart.customer?.name) return cart.customer.name;
@@ -131,15 +163,26 @@ export function PosHeldCartsDialog({
                     {cart.items.length} item ·{" "}
                     {formatMoney(cart.runningTotals.net)}
                     {/*
-                      The phone as the second identifier, when the row is named
-                      after a customer. Two people called "Ibu Sri" is ordinary;
-                      two on one number is not — and since 25 Aug the system
-                      refuses the second.
+                      WHEN IT WAS LAST SAVED, which FR-6 asks the list to carry.
+                      It is what a cashier scans for: the trolley nobody has
+                      touched since before the last customer.
                     */}
-                    {!cart.heldLabel && cart.customer?.phone
-                      ? ` · ${cart.customer.phone}`
-                      : ""}
+                    {cart.updatedAt ? ` · ${savedAtLabel(cart.updatedAt)}` : ""}
                   </span>
+
+                  {/*
+                    The phone on its own line, as a second identifier when the row
+                    is named after a customer. Two people called "Ibu Sri" is
+                    ordinary; two on one number is not — and since 25 Aug the
+                    system refuses the second. Moved off the line above once the
+                    time joined it: four facts separated by three dots is a row
+                    somebody has to parse rather than glance at.
+                  */}
+                  {!cart.heldLabel && cart.customer?.phone && (
+                    <span className="block text-xs tabular-nums text-muted">
+                      {cart.customer.phone}
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex shrink-0 items-center gap-1">

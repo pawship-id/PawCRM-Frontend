@@ -109,7 +109,7 @@ const cart = (overrides: Partial<PosTransaction> = {}): PosTransaction =>
     // A basket the till is building — NOT parked.
     status: "active",
     heldLabel: null,
-    bookingIds: [],
+      bookingIds: [],
     paidAt: null,
     createdAt: "2026-08-26T02:00:00.000Z",
     updatedAt: "2026-08-26T02:00:00.000Z",
