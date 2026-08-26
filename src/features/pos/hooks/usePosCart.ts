@@ -40,6 +40,8 @@ interface UsePosCartResult {
   ) => Promise<void>;
   setCartDiscount: (discount: UpdateCartInput["cartDiscount"]) => Promise<void>;
   setCharges: (charges: PosTransaction["otherCharges"]) => Promise<void>;
+  /** The transaction's free-text note, or null to clear it (FR-5). */
+  setNote: (note: string | null) => Promise<void>;
   /**
    * Attach a customer, or `null` to make the basket a walk-in again.
    *
@@ -346,6 +348,16 @@ export function usePosCart(): UsePosCartResult {
    * old lines still on it — and if the second failed, that window would be
    * permanent.
    */
+  const setNote = useCallback(
+    async (note: string | null) => {
+      // Alone, like the customer: sending the whole basket to change one field
+      // would reprice every line and re-run every approval rule to store a
+      // sentence.
+      await send({ note });
+    },
+    [send],
+  );
+
   const setCustomer = useCallback(
     async (customerId: string | null, { dropPetLines = false } = {}) => {
       await send(
@@ -414,6 +426,7 @@ export function usePosCart(): UsePosCartResult {
     setItemDiscount,
     setCartDiscount,
     setCharges,
+    setNote,
     setCustomer,
     pullBookings,
     patch: send,

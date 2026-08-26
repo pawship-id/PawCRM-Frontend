@@ -1567,3 +1567,165 @@ describe("PosScreen — parking is a decision, not a default", () => {
     expect(screen.queryByText(/gagal/i)).not.toBeInTheDocument();
   });
 });
+
+/**
+ * The transaction's note (FR-5).
+ *
+ * The column, the 500-character limit and the receipt's own rendering all
+ * existed — and there was no box to type one into anywhere on the till. The
+ * third time in this module that something was built underneath and never
+ * mounted above.
+ */
+describe("PosScreen — the transaction note", () => {
+  const withNote = (note: string | null) => {
+    const basket = { ...cartWithItem, note };
+    mockedPos.activeCart.mockResolvedValue(basket);
+    mockedPos.createCart.mockResolvedValue(basket);
+    mockedPos.updateCart.mockResolvedValue(basket);
+  };
+
+  /*
+    HIDDEN UNTIL ASKED FOR. Almost no sale has a note, and a textarea open on
+    every basket is dead space on the one screen where vertical room is scarce.
+  */
+  it("offers to add one without taking up the room for it", async () => {
+    withNote(null);
+    renderWithAuth(<PosScreen />);
+
+    expect(
+      await screen.findByRole("button", { name: /tambah catatan/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("textbox", { name: /catatan transaksi/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  /*
+    IT COMMITS ON BLUR, not on every keystroke. A cart write sends the whole
+    basket, so a PATCH per character would be a request per character.
+  */
+  it("saves what was typed once the cashier moves on", async () => {
+    const user = userEvent.setup();
+    withNote(null);
+    renderWithAuth(<PosScreen />);
+
+    await user.click(
+      await screen.findByRole("button", { name: /tambah catatan/i }),
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: /catatan transaksi/i }),
+      "Jangan pakai parfum",
+    );
+
+    mockedPos.updateCart.mockClear();
+    await user.tab();
+
+    await waitFor(() =>
+      expect(mockedPos.updateCart).toHaveBeenCalledWith(CART_ID, {
+        note: "Jangan pakai parfum",
+      }),
+    );
+  });
+
+  it("writes nothing when the note was not changed", async () => {
+    const user = userEvent.setup();
+    withNote(null);
+    renderWithAuth(<PosScreen />);
+
+    await user.click(
+      await screen.findByRole("button", { name: /tambah catatan/i }),
+    );
+    mockedPos.updateCart.mockClear();
+    await user.tab();
+
+    expect(mockedPos.updateCart).not.toHaveBeenCalled();
+  });
+
+  /*
+    Null rather than "" — an emptied field is a note that is NOT THERE, and the
+    receipt tests for its presence before printing the line.
+  */
+  it("clears it to null rather than to an empty string", async () => {
+    const user = userEvent.setup();
+    withNote("Jangan pakai parfum");
+    renderWithAuth(<PosScreen />);
+
+    await user.click(
+      await screen.findByRole("button", { name: /ubah catatan/i }),
+    );
+    await user.clear(screen.getByRole("textbox", { name: /catatan transaksi/i }));
+
+    mockedPos.updateCart.mockClear();
+    await user.tab();
+
+    await waitFor(() =>
+      expect(mockedPos.updateCart).toHaveBeenCalledWith(CART_ID, { note: null }),
+    );
+  });
+
+  it("shows a stored note without opening the editor", async () => {
+    withNote("Jangan pakai parfum");
+    renderWithAuth(<PosScreen />);
+
+    expect(await screen.findByText("Jangan pakai parfum")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("textbox", { name: /catatan transaksi/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  /*
+    Without a header this is one bare line of text between the charges and the
+    subtotal. A cashier reading "testing" there has no way to know it is the
+    transaction's note rather than a label somebody typed — and nothing at all
+    to suggest tapping it does anything.
+  */
+  it("says that it IS a note, and that it can be changed", async () => {
+    withNote("Jangan pakai parfum");
+    renderWithAuth(<PosScreen />);
+
+    const row = await screen.findByRole("button", { name: /ubah catatan/i });
+
+    expect(row).toHaveTextContent("Catatan");
+    expect(row).toHaveTextContent("Jangan pakai parfum");
+  });
+
+  it("abandons the edit on Escape, leaving the stored note alone", async () => {
+    const user = userEvent.setup();
+    withNote("Jangan pakai parfum");
+    renderWithAuth(<PosScreen />);
+
+    await user.click(
+      await screen.findByRole("button", { name: /ubah catatan/i }),
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: /catatan transaksi/i }),
+      " tambahan",
+    );
+
+    mockedPos.updateCart.mockClear();
+    await user.keyboard("{Escape}");
+
+    expect(mockedPos.updateCart).not.toHaveBeenCalled();
+    expect(screen.getByText("Jangan pakai parfum")).toBeInTheDocument();
+  });
+
+  /*
+    THE BACKEND'S OWN CEILING, enforced by the box rather than by a refusal —
+    FR-5 asks for no hard cap in the UI and a sensible one on the server, and a
+    `maxLength` is the form declining to produce something the server would
+    reject rather than a message after the fact.
+  */
+  it("cannot produce a note the server would refuse", async () => {
+    const user = userEvent.setup();
+    withNote(null);
+    renderWithAuth(<PosScreen />);
+
+    await user.click(
+      await screen.findByRole("button", { name: /tambah catatan/i }),
+    );
+
+    expect(
+      screen.getByRole("textbox", { name: /catatan transaksi/i }),
+    ).toHaveAttribute("maxLength", "500");
+  });
+});

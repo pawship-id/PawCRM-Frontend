@@ -10,6 +10,7 @@ import type { PosDiscountMode, PosItem, PosTransaction } from "@/types/api";
 import { PosCartLine } from "./PosCartLine";
 import { PosCustomerSection } from "./PosCustomerSection";
 import { PosDiscountPopover } from "./PosDiscountPopover";
+import { PosNoteEditor } from "./PosNoteEditor";
 import { PosOtherChargesEditor } from "./PosOtherChargesEditor";
 
 /**
@@ -86,6 +87,7 @@ export function PosCart({
   onItemDiscount,
   onCartDiscount,
   onCharges,
+  onNote,
   onHold,
   onCheckout,
   onPickCustomer,
@@ -108,6 +110,8 @@ export function PosCart({
   onHold: () => void;
   onCheckout: () => void;
   /** Opens the picker — for choosing one, or replacing the current one. */
+  /** The transaction's free-text note, or null to clear it (FR-5). */
+  onNote: (note: string | null) => void;
   onPickCustomer: () => void;
   /** Makes the basket a walk-in again. A different act from replacing. */
   onClearCustomer: () => void;
@@ -209,6 +213,19 @@ export function PosCart({
 
       {!empty && totals && (
         <div className="space-y-3 border-t border-border p-4">
+          {/*
+            THE NOTE SITS WITH THE CHARGES, not with the customer. Both are facts
+            about the SALE rather than about the person, both are typed rarely,
+            and both belong beside the figures they may explain — "ongkir 15.000"
+            and "jangan pakai parfum" answer the same kind of question about the
+            same receipt.
+          */}
+          <PosNoteEditor
+            note={cart?.note ?? null}
+            disabled={busy}
+            onChange={onNote}
+          />
+
           <PosOtherChargesEditor
             charges={cart?.otherCharges ?? []}
             onChange={onCharges}

@@ -256,3 +256,33 @@ describe("ReceiptPreview — sold on account", () => {
     expect(screen.queryByText(/jatuh tempo/i)).not.toBeInTheDocument();
   });
 });
+
+/**
+ * FR-5: the note prints as a line labelled **"Catatan:"**.
+ *
+ * Without the label it is one unmarked paragraph between the payment lines and
+ * "Terima kasih sudah mampir" — and a customer reading their slip has no way to
+ * tell an instruction the cashier typed from part of the shop's boilerplate.
+ */
+describe("ReceiptPreview — the transaction note", () => {
+  it("prints it under a label, not as a loose paragraph", async () => {
+    mockedPos.receipt.mockResolvedValue(
+      receipt({ note: "Jangan pakai parfum" }),
+    );
+
+    renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
+
+    expect(await screen.findByText("Catatan:")).toBeInTheDocument();
+    expect(screen.getByText("Jangan pakai parfum")).toBeInTheDocument();
+  });
+
+  it("prints nothing at all when there is no note", async () => {
+    mockedPos.receipt.mockResolvedValue(receipt({ note: null }));
+
+    renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
+
+    await screen.findByText(/buloo petshop/i);
+    // Not an empty "Catatan:" heading with nothing under it.
+    expect(screen.queryByText("Catatan:")).not.toBeInTheDocument();
+  });
+});

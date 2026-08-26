@@ -235,9 +235,18 @@ export function ReceiptPreview({
         </dl>
       )}
 
+      {/*
+        LABELLED "Catatan:", which FR-5 asks for by name.
+        
+        Without it the note is one unmarked paragraph between the payment lines
+        and "Terima kasih sudah mampir" — and a customer reading their slip has
+        no way to tell an instruction the cashier typed from part of the shop's
+        own boilerplate.
+      */}
       {receipt.note && (
         <p className="mt-2 border-t border-dashed border-border pt-2 text-xs">
-          {receipt.note}
+          <span className="font-medium">Catatan:</span>{" "}
+          <span className="whitespace-pre-wrap">{receipt.note}</span>
         </p>
       )}
 
