@@ -346,26 +346,45 @@ export function PosScreen() {
    * whole change exists to stop. A basket with nothing in it is not worth a row
    * in the list and is left alone.
    */
+  /**
+   * Why no parked basket may be opened right now, or null when one may (FR-6).
+   *
+   * PRD: "melanjutkan keranjang tersimpan diblokir bila keranjang aktif saat ini
+   * belum kosong — kasir diminta menyimpan atau menyelesaikan keranjang aktif
+   * dulu."
+   *
+   * ONLY UNSAVED WORK BLOCKS, and that narrowing is what makes the rule usable
+   * alongside the other one. A basket the cashier already pressed Titipkan on is
+   * `held` and sits in this very list — switching away from it loses nothing,
+   * because "menyimpan dulu" has already happened. Blocking there would make the
+   * list unnavigable: two parked baskets and no way to move between them.
+   *
+   * So the rule is: **an `active` basket with something in it**. That is the one
+   * state where switching would leave work nobody can reach.
+   *
+   * AN EARLIER VERSION PARKED IT AUTOMATICALLY instead of refusing. It lost
+   * nothing either, but it did it silently — and a basket parked without the
+   * cashier noticing is one that can be forgotten until the till is closed.
+   */
+  const resumeBlockedReason =
+    cart.cart &&
+    cart.cart.status !== "held" &&
+    (cart.cart.items?.length ?? 0) > 0
+      ? "Titipkan atau selesaikan dulu keranjang yang sedang dibuka."
+      : null;
+
   async function resume(target: PosTransaction) {
-    const current = cart.cart;
-    const strandable =
-      current &&
-      current._id !== target._id &&
-      current.status !== "held" &&
-      (current.items?.length ?? 0) > 0;
-
-    try {
-      if (strandable) {
-        await posService.updateCart(current._id, { status: "held" });
-      }
-
-      cart.open(target);
-      await loadHeld();
-    } catch {
-      // The basket is already on screen and editable either way; a red banner
-      // for a bookkeeping write would be worse than the inconsistency.
-      cart.open(target);
+    /*
+      Checked here as well as in the dialog. The dialog greys the buttons out so
+      nobody presses them; this is the rule itself, and it must not depend on a
+      control having been drawn correctly.
+    */
+    if (resumeBlockedReason && cart.cart?._id !== target._id) {
+      return;
     }
+
+    cart.open(target);
+    await loadHeld();
   }
 
   async function discardHeld(target: PosTransaction) {
@@ -507,6 +526,7 @@ export function PosScreen() {
         loading={heldLoading}
         error={heldError}
         openCartId={cart.cart?._id ?? null}
+        blockedReason={resumeBlockedReason}
         onResume={(target) => {
           setHeldOpen(false);
           void resume(target);

@@ -53,6 +53,7 @@ export function PosHeldCartsDialog({
   onDiscard,
   onOpenChange,
   openCartId = null,
+  blockedReason = null,
 }: {
   open: boolean;
   carts: PosTransaction[];
@@ -67,6 +68,14 @@ export function PosHeldCartsDialog({
    * parked list and reasonably wonders which copy is real.
    */
   openCartId?: string | null;
+  /**
+   * Why nothing here may be opened right now, or null when it may (FR-6).
+   *
+   * A REASON RATHER THAN A BOOLEAN, because the row has to SAY it. A greyed
+   * Lanjutkan with nothing to explain it is how a cashier presses it three
+   * times and then reports that the till is broken.
+   */
+  blockedReason?: string | null;
   onResume: (cart: PosTransaction) => void;
   onDiscard: (cart: PosTransaction) => void;
   onOpenChange: (open: boolean) => void;
@@ -82,6 +91,17 @@ export function PosHeldCartsDialog({
         </DialogHeader>
 
         {error && <Alert variant="error">{error}</Alert>}
+
+        {/*
+          PRD FR-6: melanjutkan diblokir selama keranjang aktif belum kosong.
+          Said once, above the list, rather than repeated on every row — the
+          reason is about the till, not about any one basket here.
+        */}
+        {blockedReason && (
+          <p className="rounded-lg bg-tint-warning px-3 py-2 text-sm text-foreground">
+            {blockedReason}
+          </p>
+        )}
 
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted">
@@ -127,11 +147,12 @@ export function PosHeldCartsDialog({
                     type="button"
                     size="sm"
                     /*
-                      Nothing to resume when it is already the basket on screen.
-                      Left visible rather than removed so the row keeps the shape
-                      every other row has.
+                      Nothing to resume when it is already the basket on screen —
+                      and nothing may be resumed at all while unsaved work is
+                      open. Left visible rather than removed so the row keeps the
+                      shape every other row has.
                     */
-                    disabled={cart._id === openCartId}
+                    disabled={cart._id === openCartId || blockedReason !== null}
                     onClick={() => onResume(cart)}
                   >
                     Lanjutkan

@@ -1483,11 +1483,15 @@ describe("PosScreen — parking is a decision, not a default", () => {
   });
 
   /*
-    Switching away from a basket is the same act as putting it aside. The only
-    alternative is stranding it — unparked, off the list, unreachable — which is
-    the failure this whole change exists to stop.
+    FR-6, and it follows the PRD: "melanjutkan keranjang tersimpan diblokir bila
+    keranjang aktif saat ini belum kosong — kasir diminta menyimpan atau
+    menyelesaikan keranjang aktif dulu."
+
+    An earlier version parked the open basket automatically instead. It lost
+    nothing either, but it did it silently — and a basket parked without the
+    cashier noticing is one that can be forgotten until the till is closed.
   */
-  it("parks the basket on screen before opening another one", async () => {
+  it("refuses to open another basket while unsaved work is on screen", async () => {
     const user = userEvent.setup();
     const OTHER_ID = "5a7f1f77bcf86cd7994390e2";
     mockedPos.heldCarts.mockResolvedValue([
@@ -1499,19 +1503,32 @@ describe("PosScreen — parking is a decision, not a default", () => {
     // Build an unsaved basket first.
     await user.click(await screen.findByRole("button", { name: /royal canin/i }));
     await waitFor(() => expect(mockedPos.updateCart).toHaveBeenCalled());
-    mockedPos.updateCart.mockClear();
 
     await user.click(screen.getByRole("button", { name: /keranjang tersimpan/i }));
-    await user.click(await screen.findByRole("button", { name: /lanjutkan/i }));
 
-    await waitFor(() =>
-      expect(mockedPos.updateCart).toHaveBeenCalledWith(CART_ID, {
-        status: "held",
-      }),
-    );
+    expect(
+      await screen.findByRole("button", { name: /lanjutkan/i }),
+    ).toBeDisabled();
   });
 
-  it("parks nothing when the basket on screen is empty", async () => {
+  it("says why, rather than leaving a dead button", async () => {
+    const user = userEvent.setup();
+    mockedPos.heldCarts.mockResolvedValue([
+      { ...cartWithItem, _id: "5a7f1f77bcf86cd7994390e2", status: "held" },
+    ]);
+
+    renderWithAuth(<PosScreen />);
+
+    await user.click(await screen.findByRole("button", { name: /royal canin/i }));
+    await waitFor(() => expect(mockedPos.updateCart).toHaveBeenCalled());
+    await user.click(screen.getByRole("button", { name: /keranjang tersimpan/i }));
+
+    expect(
+      await screen.findByText(/titipkan atau selesaikan dulu/i),
+    ).toBeInTheDocument();
+  });
+
+  it("opens one freely when the till is empty", async () => {
     const user = userEvent.setup();
     mockedPos.heldCarts.mockResolvedValue([{ ...cartWithItem, status: "held" }]);
 
@@ -1520,11 +1537,42 @@ describe("PosScreen — parking is a decision, not a default", () => {
     await user.click(
       await screen.findByRole("button", { name: /keranjang tersimpan/i }),
     );
+
+    expect(screen.queryByText(/titipkan atau selesaikan dulu/i)).not.toBeInTheDocument();
     await user.click(await screen.findByRole("button", { name: /lanjutkan/i }));
 
-    await waitFor(() => expect(mockedPos.heldCarts).toHaveBeenCalled());
-    // An empty basket is not worth a row in the list.
+    // Opened, and nothing was written to get there.
     expect(mockedPos.updateCart).not.toHaveBeenCalled();
+  });
+
+  /*
+    ONLY UNSAVED WORK BLOCKS. A basket the cashier already pressed Titipkan on is
+    `held` and sits in this very list — switching away from it loses nothing.
+    Blocking there would make the list unnavigable: two parked baskets and no way
+    to move between them.
+  */
+  it("lets a cashier move between two baskets they have already parked", async () => {
+    const user = userEvent.setup();
+    const OTHER_ID = "5a7f1f77bcf86cd7994390e2";
+    const parked = { ...cartWithItem, status: "held" as const };
+
+    mockedPos.activeCart.mockResolvedValue(parked);
+    mockedPos.createCart.mockResolvedValue(parked);
+    mockedPos.heldCarts.mockResolvedValue([
+      parked,
+      { ...parked, _id: OTHER_ID },
+    ]);
+
+    renderWithAuth(<PosScreen />);
+    // The basket's own controls — the product name is on the catalogue tile too.
+    await screen.findByRole("button", { name: /titipkan/i });
+
+    await user.click(screen.getByRole("button", { name: /keranjang tersimpan/i }));
+
+    expect(screen.queryByText(/titipkan atau selesaikan dulu/i)).not.toBeInTheDocument();
+    // The one already open is the only disabled row.
+    const buttons = await screen.findAllByRole("button", { name: /lanjutkan/i });
+    expect(buttons.filter((b) => !b.hasAttribute("disabled"))).toHaveLength(1);
   });
 
   /*
