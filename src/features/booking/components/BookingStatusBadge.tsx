@@ -8,6 +8,8 @@ import type { BookingStatus } from "@/types/api";
  */
 export const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
   draft: "Draf",
+  /* The animal is at the shop. This is also when the booking earns its number. */
+  check_in: "Check-in",
   confirmed: "Dikonfirmasi",
   in_progress: "Sedang dikerjakan",
   completed: "Selesai",
@@ -21,6 +23,12 @@ export const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
  */
 const STATUS_STYLES: Record<BookingStatus, string> = {
   draft: "bg-muted/40 text-muted",
+  /*
+    ORANGE, and it is the only one that gets it besides `in_progress` — §4 spends
+    orange on "a human must act", and an animal that has arrived and is waiting
+    is exactly that.
+  */
+  check_in: "bg-tint-warning text-warning",
   confirmed: "bg-navy-100 text-primary",
   in_progress: "bg-secondary text-secondary-foreground",
   completed: "bg-success/12 text-success",

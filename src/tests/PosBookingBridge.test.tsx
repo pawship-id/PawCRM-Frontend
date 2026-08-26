@@ -64,6 +64,8 @@ const booking = (overrides: Partial<Booking> = {}): Booking =>
         price: "150000.0000",
         groomerUserId: null,
         groomerName: "Belum ditentukan",
+        bookingStatus: "draft",
+        bookingNumber: null,
       },
     ],
     scheduledAt: "2026-08-26T03:00:00.000Z",
@@ -131,6 +133,8 @@ const pulledCart = () =>
         petId: PET_ID,
         petName: "Bruno",
         groomerName: "Belum ditentukan",
+        bookingStatus: "draft",
+        bookingNumber: null,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any,
     ],
@@ -421,6 +425,8 @@ describe("PosCart — the pulled lines", () => {
             petId: null,
             petName: null,
             groomerName: null,
+      bookingStatus: null,
+      bookingNumber: null,
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
           } as any,
         ],
@@ -535,5 +541,108 @@ describe("PosScreen — adding a service for an animal", () => {
     const [, body] = calls[calls.length - 1];
 
     expect(body.items?.[0]).not.toHaveProperty("petName");
+  });
+});
+
+/**
+ * A service line owns a booking, and the basket may only change it while that
+ * booking is a DRAFT (FR-3).
+ *
+ * Once the animal has checked in or the groomer has started, removing the line
+ * would rewrite work already happening. The server refuses it; this is what
+ * stops a cashier pressing the bin and being told no.
+ */
+describe("PosCart — a line whose service has already started", () => {
+  const line = (overrides = {}) => ({
+    kind: "service",
+    refId: "svc-1",
+    name: "Grooming Full Service",
+    sku: null,
+    qty: "1.0000",
+    unitPrice: "150000.0000",
+    lineTotal: "150000.0000",
+    discount: null,
+    hppAtTime: null,
+    bookingId: "bk-1",
+    petId: PET_ID,
+    petName: "Bruno",
+    groomerName: "Belum ditentukan",
+    bookingStatus: "draft",
+    bookingNumber: null,
+    ...overrides,
+  });
+
+  const render = (item: unknown) =>
+    renderWithAuth(
+      <PosCart
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        cart={cart({ items: [item] as any })}
+        busy={false}
+        error={null}
+        onQtyChange={jest.fn()}
+        onRemove={jest.fn()}
+        onItemDiscount={jest.fn()}
+        onCartDiscount={jest.fn()}
+        onCharges={jest.fn()}
+        onPickCustomer={jest.fn()}
+        onClearCustomer={jest.fn()}
+        onHold={jest.fn()}
+        onCheckout={jest.fn()}
+      />,
+    );
+
+  it("can still be removed while its booking is a draft", async () => {
+    render(line());
+
+    expect(
+      await screen.findByRole("button", { name: /hapus grooming/i }),
+    ).toBeEnabled();
+  });
+
+  it("locks once the animal has checked in", async () => {
+    render(line({ bookingStatus: "check_in", bookingNumber: "BK-260826-001" }));
+
+    expect(
+      await screen.findByRole("button", { name: /hapus grooming/i }),
+    ).toBeDisabled();
+  });
+
+  it("locks once the groomer has started", async () => {
+    render(line({ bookingStatus: "in_progress", bookingNumber: "BK-260826-001" }));
+
+    expect(
+      await screen.findByRole("button", { name: /hapus grooming/i }),
+    ).toBeDisabled();
+  });
+
+  /*
+    A till is touched, not pointed at, so a `title` reaches nobody standing at
+    one — and a greyed bin with no explanation is how somebody presses it three
+    times.
+  */
+  it("says why, in words on the screen", async () => {
+    render(line({ bookingStatus: "check_in", bookingNumber: "BK-260826-001" }));
+
+    expect(
+      await screen.findByText(/BK-260826-001 sudah dimulai/),
+    ).toBeInTheDocument();
+  });
+
+  it("leaves a plain retail line alone", async () => {
+    render(
+      line({
+        kind: "product",
+        name: "Royal Canin 2kg",
+        bookingId: null,
+        petId: null,
+        petName: null,
+        groomerName: null,
+        bookingStatus: null,
+      }),
+    );
+
+    expect(
+      await screen.findByRole("button", { name: /hapus royal canin/i }),
+    ).toBeEnabled();
   });
 });

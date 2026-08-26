@@ -73,8 +73,15 @@ export function BookingsTable({ bookings }: { bookings: Booking[] }) {
           {bookings.map((booking) => (
             <TableRow key={booking._id}>
               <TableCell className="align-top">
+                {/*
+                  NULL WHILE IT IS A DRAFT — the number is earned by leaving
+                  draft, and an invented placeholder would be a number somebody
+                  could quote back across a counter.
+                */}
                 <span className="block text-sm tabular-nums text-foreground">
-                  {booking.bookingNumber}
+                  {booking.bookingNumber ?? (
+                    <span className="text-muted">—</span>
+                  )}
                 </span>
                 {/*
                   WHERE IT CAME FROM, and only when it is the unusual one. Every

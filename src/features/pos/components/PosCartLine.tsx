@@ -42,6 +42,21 @@ export function PosCartLine({
   const qty = Number(item.qty);
   const isService = item.kind === "service";
 
+  /**
+   * Whether this line is work already underway (FR-3).
+   *
+   * A service line for a named animal owns a booking, and the basket may only
+   * change it while that booking is a DRAFT. Once the animal has checked in or
+   * the groomer has started, removing the line would rewrite work that is
+   * already happening — the server refuses it, and this is what stops a cashier
+   * pressing the bin and being told no.
+   *
+   * A LINE WITH NO BOOKING IS ALWAYS FREE — every retail line, and every service
+   * sold without naming an animal.
+   */
+  const locked =
+    item.bookingStatus !== null && item.bookingStatus !== "draft";
+
   return (
     <div className="border-b border-border px-3 py-2 last:border-b-0">
       <div className="flex items-start justify-between gap-2">
@@ -59,6 +74,19 @@ export function PosCartLine({
           {(item.petName || item.groomerName) && (
             <span className="mt-0.5 block truncate text-xs text-muted">
               {[item.petName, item.groomerName].filter(Boolean).join(" · ")}
+            </span>
+          )}
+
+          {/*
+            SAID OUT LOUD, not only on hover. A till is touched, not pointed at,
+            so the `title` above reaches nobody standing at one — and a greyed
+            bin with no explanation is how somebody presses it three times.
+          */}
+          {locked && (
+            <span className="mt-0.5 block text-xs text-warning">
+              {item.bookingNumber
+                ? `${item.bookingNumber} sudah dimulai`
+                : "Layanannya sudah dimulai"}
             </span>
           )}
 
@@ -127,21 +155,34 @@ export function PosCartLine({
         <div className="flex items-center gap-1">
           <PosDiscountPopover
             value={item.discount}
-            disabled={disabled}
+            disabled={disabled || locked}
             label={`Diskon ${item.name}`}
             onApply={(discount) => onDiscountChange(index, discount)}
           />
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-8 text-danger"
-            disabled={disabled}
-            aria-label={`Hapus ${item.name}`}
-            onClick={() => onRemove(index)}
+          {/*
+            WRAPPED, so the hint survives the disabled button. A disabled control
+            swallows pointer events in several engines, and the hint would then
+            never appear on the one occasion it is needed.
+          */}
+          <span
+            title={
+              locked
+                ? "Layanannya sudah dimulai — tidak bisa dihapus dari kasir."
+                : undefined
+            }
           >
-            <Trash2 className="size-4" />
-          </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-8 text-danger"
+              disabled={disabled || locked}
+              aria-label={`Hapus ${item.name}`}
+              onClick={() => onRemove(index)}
+            >
+              <Trash2 className="size-4" />
+            </Button>
+          </span>
         </div>
       </div>
     </div>

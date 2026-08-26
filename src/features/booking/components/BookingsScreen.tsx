@@ -37,8 +37,8 @@ export function BookingsScreen() {
       <div>
         <h1 className="text-2xl font-extrabold text-foreground">Booking</h1>
         <p className="mt-1 text-sm text-muted">
-          Janji grooming dan layanan lain — termasuk yang dibuat langsung di
-          kasir.
+          Janji grooming dan layanan lain, ditambah yang sudah dicatat di kasir
+          tapi belum dibayar.
         </p>
       </div>
 

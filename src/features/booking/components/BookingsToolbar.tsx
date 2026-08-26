@@ -19,7 +19,14 @@ import { BOOKING_STATUS_LABELS } from "./BookingStatusBadge";
  */
 const STATUSES = withAll<BookingsQuery["status"]>(
   (
-    ["draft", "confirmed", "in_progress", "completed", "cancelled"] as BookingStatus[]
+    [
+      "draft",
+      "check_in",
+      "confirmed",
+      "in_progress",
+      "completed",
+      "cancelled",
+    ] as BookingStatus[]
   ).map((status) => ({ value: status, label: BOOKING_STATUS_LABELS[status] })),
   "Semua status",
 );

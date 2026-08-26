@@ -185,3 +185,64 @@ describe("BookingsScreen", () => {
     ).toBeInTheDocument();
   });
 });
+
+/**
+ * A booking taken at the till is a real document from the moment the service
+ * goes into the basket — a draft, with no number yet.
+ *
+ * IT EARNS ITS NUMBER BY LEAVING DRAFT, which in the ordinary case is check-in:
+ * the animal is at the shop, and now there is something two people can refer to
+ * across a counter.
+ */
+describe("BookingsScreen — drafts and the number they have not earned", () => {
+  it("shows a draft with no number rather than an invented one", async () => {
+    mocked.list.mockResolvedValue(
+      page([booking({ status: "draft", bookingNumber: null })]),
+    );
+
+    renderWithAuth(<BookingsScreen />);
+
+    expect(await screen.findByText("Draf")).toBeInTheDocument();
+    expect(screen.getByText("—")).toBeInTheDocument();
+  });
+
+  it("shows the number once the animal has checked in", async () => {
+    mocked.list.mockResolvedValue(
+      page([booking({ status: "check_in", bookingNumber: "BK-260826-001" })]),
+    );
+
+    renderWithAuth(<BookingsScreen />);
+
+    expect(await screen.findByText("Check-in")).toBeInTheDocument();
+    expect(screen.getByText("BK-260826-001")).toBeInTheDocument();
+  });
+
+  it("can be filtered to just the drafts", async () => {
+    const user = userEvent.setup();
+
+    renderWithAuth(<BookingsScreen />);
+    await screen.findByText("BK-260826-001");
+
+    await user.click(screen.getByRole("button", { name: /filter status booking/i }));
+    await user.click(await screen.findByRole("option", { name: "Draf" }));
+
+    await waitFor(() =>
+      expect(
+        mocked.list.mock.calls[mocked.list.mock.calls.length - 1][0]?.status,
+      ).toBe("draft"),
+    );
+  });
+
+  it("offers check-in as a status of its own", async () => {
+    const user = userEvent.setup();
+
+    renderWithAuth(<BookingsScreen />);
+    await screen.findByText("BK-260826-001");
+
+    await user.click(screen.getByRole("button", { name: /filter status booking/i }));
+
+    expect(
+      await screen.findByRole("option", { name: "Check-in" }),
+    ).toBeInTheDocument();
+  });
+});

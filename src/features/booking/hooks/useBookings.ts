@@ -125,5 +125,13 @@ export function useBookings(): UseBookingsResult {
     };
   }, [query, nonce]);
 
-  return { bookings, pagination, query, loading, error, setQuery, refetch };
+  return {
+    bookings,
+    pagination,
+    query,
+    loading,
+    error,
+    setQuery,
+    refetch,
+  };
 }

@@ -1024,6 +1024,20 @@ export interface PosItem {
   petId: string | null;
   petName: string | null;
   groomerName: string | null;
+  /**
+   * Where this line's booking stands, resolved on read (FR-3).
+   *
+   * A service line for a named animal owns a DRAFT booking, and the basket may
+   * only change it while it IS a draft — once the animal has checked in or the
+   * groomer has started, the line is work already underway and the server
+   * refuses to touch it. This is what lets the till grey the control out rather
+   * than let a cashier press it and be told no.
+   *
+   * Null on every retail line.
+   */
+  bookingStatus: BookingStatus | null;
+  /** The booking's number, or null while it is still a draft. */
+  bookingNumber: string | null;
 }
 
 /** An ADDITIVE charge — ongkos kirim, packaging (FR-5). Never negative. */
@@ -1503,6 +1517,7 @@ export interface UpdateCartInput {
 /** Where a booking stands. Mirrors BOOKING_STATUSES in booking.model.js. */
 export type BookingStatus =
   | "draft"
+  | "check_in"
   | "confirmed"
   | "in_progress"
   | "completed"
@@ -1556,7 +1571,17 @@ export interface Booking {
   _id: string;
   tenantId: string;
   branchId: string;
-  bookingNumber: string;
+  /**
+   * BK-260824-003 — and **null while the booking is a draft**.
+   *
+   * ALLOCATED THE FIRST TIME IT LEAVES `draft`, which in the ordinary case is
+   * check-in: the animal is at the shop. Until then there is nothing for two
+   * people to talk about across a counter, and allocation is not reversible —
+   * numbering drafts would make gaps in the series the rule rather than the
+   * exception, because a draft is the one kind of booking that routinely never
+   * happens.
+   */
+  bookingNumber: string | null;
   customerId: string;
   petId: string;
   /**
