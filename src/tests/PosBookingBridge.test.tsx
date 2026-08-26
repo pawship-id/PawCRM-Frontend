@@ -12,6 +12,7 @@ import { branchService } from "@/services/branch.service";
 import { customerService } from "@/services/customer.service";
 import { petService } from "@/services/pet.service";
 import { serviceService } from "@/services/service.service";
+import { swalToast } from "@/lib/swal";
 import type { Booking, PosShift, PosTransaction } from "@/types/api";
 
 import { renderWithAuth } from "./helpers/renderWithAuth";
@@ -919,5 +920,96 @@ describe("PosScreen — the banner follows the basket", () => {
     await waitFor(() => expect(mockedBookings.bridge).toHaveBeenCalled());
 
     expect(mockedBookings.bridge).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * A customer's whole household in one opening (FR-3), and one patch.
+ *
+ * That is what makes the matrix safe: `updateCart` prices the lines, reconciles
+ * them into one draft per animal and writes the basket in a single transaction.
+ * Either all of it lands or none does — there is no partial state to design for.
+ */
+describe("PosScreen — services for more than one animal at once", () => {
+  const PET_B = "5a7f1f77bcf86cd799439122";
+  const SERVICE_B = "svc-2";
+
+  beforeEach(() => {
+    mockedBookings.bridge.mockResolvedValue([]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (petService as any).list.mockResolvedValue({
+      items: [
+        { _id: PET_ID, name: "Bruno" },
+        { _id: PET_B, name: "Cici" },
+      ],
+      pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (serviceService as any).list.mockResolvedValue({
+      items: [
+        { _id: "svc-1", name: "Grooming Full Service", price: "150000.0000" },
+        { _id: SERVICE_B, name: "Potong kuku", price: "25000.0000" },
+      ],
+      pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
+    });
+  });
+
+  it("sends both animals' lines in one cart write", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await pickCustomer(user);
+    await user.click(
+      await screen.findByRole("button", { name: /tambah layanan untuk hewan/i }),
+    );
+
+    await user.click(await screen.findByRole("button", { name: /^Bruno/ }));
+    await user.click(
+      await screen.findByRole("checkbox", { name: /grooming full service/i }),
+    );
+    await user.click(screen.getByRole("button", { name: /^Cici/ }));
+    await user.click(screen.getByRole("checkbox", { name: /potong kuku/i }));
+
+    mockedPos.updateCart.mockClear();
+    await user.click(
+      screen.getByRole("button", { name: /tambah ke keranjang/i }),
+    );
+
+    await waitFor(() => expect(mockedPos.updateCart).toHaveBeenCalledTimes(1));
+
+    const [, body] = mockedPos.updateCart.mock.calls[0];
+    expect(body.items).toEqual([
+      expect.objectContaining({ refId: "svc-1", petId: PET_ID }),
+      expect.objectContaining({ refId: SERVICE_B, petId: PET_B }),
+    ]);
+  });
+
+  /*
+    "3 layanan ditambahkan" for a customer with two dogs leaves the cashier
+    checking the basket to find out which dog got what.
+  */
+  it("names the animals in the toast", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await pickCustomer(user);
+    await user.click(
+      await screen.findByRole("button", { name: /tambah layanan untuk hewan/i }),
+    );
+    await user.click(await screen.findByRole("button", { name: /^Bruno/ }));
+    await user.click(
+      await screen.findByRole("checkbox", { name: /grooming full service/i }),
+    );
+    await user.click(screen.getByRole("button", { name: /^Cici/ }));
+    await user.click(screen.getByRole("checkbox", { name: /potong kuku/i }));
+    await user.click(
+      screen.getByRole("button", { name: /tambah ke keranjang/i }),
+    );
+
+    await waitFor(() =>
+      expect(swalToast).toHaveBeenCalledWith(
+        expect.stringContaining("Bruno, Cici"),
+      ),
+    );
   });
 });

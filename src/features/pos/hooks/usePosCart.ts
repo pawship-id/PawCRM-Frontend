@@ -71,18 +71,22 @@ interface UsePosCartResult {
    */
   openIfEmpty: (next: PosTransaction) => void;
   /**
-   * Adds services for one named animal (FR-3's shortcut).
+   * Adds services for one or more named animals (FR-3's shortcut).
    *
-   * ORDINARY CART LINES, not a booking. The booking behind them is raised when
-   * the sale settles — a line the cashier deletes before paying must leave
-   * nothing behind, and the first version left an appointment for a grooming
-   * nobody was ever charged for.
+   * EVERY ANIMAL IN ONE PATCH. A customer with three dogs is one request, one
+   * transaction and one refusal-or-success — not three chances for the third to
+   * fail after the first two landed.
+   *
+   * ORDINARY CART LINES, not bookings. The drafts behind them are raised by the
+   * cart write itself, so a line the cashier deletes leaves nothing behind.
    *
    * `petName` IS NOT SENT. The server resolves it from `petId` against the
    * basket's own customer; a name a client supplies is a label anybody could
    * forge onto somebody else's receipt.
    */
-  addServices: (petId: string, serviceIds: string[]) => Promise<void>;
+  addServices: (
+    choices: Array<{ petId: string; serviceIds: string[] }>,
+  ) => Promise<void>;
   pullBookings: (bookingIds: string[]) => Promise<void>;
   patch: (input: UpdateCartInput) => Promise<void>;
   /** Retry the refused patch with an approver attached. */
@@ -262,21 +266,20 @@ export function usePosCart(): UsePosCartResult {
   );
 
   const addServices = useCallback(
-    async (petId: string, serviceIds: string[]) => {
-      if (serviceIds.length === 0) return;
+    async (choices: Array<{ petId: string; serviceIds: string[] }>) => {
+      const lines = choices.flatMap(({ petId, serviceIds }) =>
+        // One line per animal per service (FR-3) — never bumped, never merged.
+        serviceIds.map((refId) => ({
+          kind: "service" as const,
+          refId,
+          qty: "1",
+          petId,
+        })),
+      );
 
-      await send({
-        items: [
-          ...itemsAsInput(),
-          // One line per animal per service (FR-3) — never bumped, never merged.
-          ...serviceIds.map((refId) => ({
-            kind: "service" as const,
-            refId,
-            qty: "1",
-            petId,
-          })),
-        ],
-      });
+      if (lines.length === 0) return;
+
+      await send({ items: [...itemsAsInput(), ...lines] });
     },
     [itemsAsInput, send],
   );

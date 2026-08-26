@@ -546,13 +546,23 @@ export function PosScreen() {
           onOpenChange={(next) => {
             if (!next) setBridgeTab(null);
           }}
-          onAdd={({ petId, petName, serviceIds }) => {
+          onAdd={(choices) => {
             void (async () => {
-              await cart.addServices(petId, serviceIds);
+              await cart.addServices(choices);
+
+              /*
+                NAMES THE ANIMALS, not just a count. "3 layanan ditambahkan" for
+                a customer with two dogs leaves the cashier checking the basket
+                to find out which dog got what.
+              */
+              const lines = choices.reduce(
+                (sum, choice) => sum + choice.serviceIds.length,
+                0,
+              );
+              const names = choices.map((choice) => choice.petName).join(", ");
+
               swalToast(
-                serviceIds.length === 1
-                  ? `Layanan untuk ${petName} ditambahkan.`
-                  : `${serviceIds.length} layanan untuk ${petName} ditambahkan.`,
+                `${lines} layanan untuk ${names} ditambahkan.`,
               );
             })();
           }}

@@ -117,17 +117,17 @@ export function BookingBridgeDialog({
   /** Handed every booking the cashier ticked on the first tab. */
   onPull: (bookings: Booking[]) => void;
   /**
-   * Handed the animal and services chosen on the second tab.
+   * Handed every animal the cashier ticked something for on the second tab.
    *
-   * A CHOICE, NOT A BOOKING. Nothing has been written — the booking behind these
-   * services is raised when the sale settles, so a line the cashier deletes from
-   * the basket leaves nothing behind. See `AddServiceTab`.
+   * A LIST, because one opening may cover a customer's whole household (FR-3:
+   * "pilih hewan bisa lebih dari satu"). It reaches the server as ONE cart
+   * patch, so either all of it lands or none does.
+   *
+   * CHOICES, NOT BOOKINGS. Nothing has been written yet — see `AddServiceTab`.
    */
-  onAdd: (choice: {
-    petId: string;
-    petName: string;
-    serviceIds: string[];
-  }) => void;
+  onAdd: (
+    choices: Array<{ petId: string; petName: string; serviceIds: string[] }>,
+  ) => void;
 }) {
   /*
     `refetch` is gone with the ad-hoc tab's write. That tab used to create a
@@ -325,8 +325,8 @@ export function BookingBridgeDialog({
           <AddServiceTab
             customerId={customerId}
             busy={busy}
-            onAdd={(choice) => {
-              onAdd(choice);
+            onAdd={(choices) => {
+              onAdd(choices);
               handleOpenChange(false);
             }}
           />
