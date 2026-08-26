@@ -1013,3 +1013,191 @@ describe("PosScreen — services for more than one animal at once", () => {
     );
   });
 });
+
+/**
+ * A service tapped in the GRID asks whose animal it is for (FR-3).
+ *
+ * WHY THE GRID NEEDS THIS AT ALL. A service sold straight off the catalogue used
+ * to go into the basket as a loose line: no animal, no booking, no history. The
+ * shop could do fifty groomings in a month and answer "how many" with nothing.
+ * The bridge's shortcut recorded all of it — but only if the cashier went
+ * looking for it, and the grid is where the hand lands first.
+ */
+describe("PosScreen — a service tapped in the grid", () => {
+  const SERVICE_TILE = {
+    kind: "service" as const,
+    _id: "svc-1",
+    name: "Grooming Full Service",
+    code: "GRM",
+    barcode: null,
+    price: "150000.0000",
+    categoryId: null,
+    unit: null,
+    variantCount: null,
+    image: null,
+    stock: null,
+  };
+
+  beforeEach(() => {
+    mockedBookings.bridge.mockResolvedValue([]);
+     
+    mockedPos.catalog.mockResolvedValue({
+      items: [SERVICE_TILE],
+      pagination: { page: 1, limit: 8, total: 1, totalPages: 1 },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (petService as any).list.mockResolvedValue({
+      items: [{ _id: PET_ID, name: "Bruno" }],
+      pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+    });
+  });
+
+  const tapTile = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(
+      await screen.findByRole("button", { name: /grooming full service/i }),
+    );
+  };
+
+  it("asks which animal instead of dropping a loose line in", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await pickCustomer(user);
+    await tapTile(user);
+
+    expect(
+      await screen.findByRole("heading", { name: /untuk hewan yang mana/i }),
+    ).toBeInTheDocument();
+    // Nothing is in the basket until the question is answered.
+    expect(mockedPos.updateCart).not.toHaveBeenCalledWith(
+      CART_ID,
+      expect.objectContaining({
+        items: expect.arrayContaining([
+          expect.objectContaining({ refId: "svc-1" }),
+        ]),
+      }),
+    );
+  });
+
+  it("adds the line with the animal on it once answered", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await pickCustomer(user);
+    await tapTile(user);
+    await screen.findByRole("heading", { name: /untuk hewan yang mana/i });
+
+    mockedPos.updateCart.mockClear();
+    await user.click(
+      screen.getByRole("button", { name: /tambah ke keranjang/i }),
+    );
+
+    await waitFor(() => expect(mockedPos.updateCart).toHaveBeenCalled());
+    const [, body] = mockedPos.updateCart.mock.calls[0];
+    expect(body.items).toEqual([
+      expect.objectContaining({ kind: "service", refId: "svc-1", petId: PET_ID }),
+    ]);
+  });
+
+  /*
+    PETS BELONG TO A CUSTOMER, so a basket with nobody on it cannot answer
+    "which animal" at all. The owner is settled first and the tile waits.
+  */
+  it("asks who the customer is first, then which animal", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await screen.findByRole("button", { name: /pilih pelanggan/i });
+    await tapTile(user);
+
+    // The customer picker, not the pet one.
+    expect(await screen.findByText("Ibu Rina")).toBeInTheDocument();
+    await user.click(screen.getByText("Ibu Rina"));
+
+    expect(
+      await screen.findByRole("heading", { name: /untuk hewan yang mana/i }),
+    ).toBeInTheDocument();
+  });
+
+  /*
+    Leaving it queued would pop the pet picker later, the next time a customer
+    was chosen for some unrelated reason.
+  */
+  it("abandons the tile when the customer picker is dismissed", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await screen.findByRole("button", { name: /pilih pelanggan/i });
+    await tapTile(user);
+    await screen.findByText("Ibu Rina");
+
+    await user.keyboard("{Escape}");
+
+    // Now choose a customer for an unrelated reason — nothing should pop up.
+    await user.click(screen.getByRole("button", { name: /pilih pelanggan/i }));
+    await user.click(await screen.findByText("Ibu Rina"));
+
+    await waitFor(() => expect(mockedPos.updateCart).toHaveBeenCalled());
+    expect(
+      screen.queryByRole("heading", { name: /untuk hewan yang mana/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  /*
+    A bag of feed belongs to whoever is paying. Stopping to ask would be a dialog
+    on every scan.
+  */
+  it("asks nothing for a product", async () => {
+    const user = userEvent.setup();
+     
+    mockedPos.catalog.mockResolvedValue({
+      items: [
+        {
+          ...SERVICE_TILE,
+          kind: "product" as const,
+          _id: "p1",
+          name: "Royal Canin 2kg",
+          stock: { qty: "5.0000", state: "ok" as const },
+        },
+      ],
+      pagination: { page: 1, limit: 8, total: 1, totalPages: 1 },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    renderWithAuth(<PosScreen />);
+    await pickCustomer(user);
+    await user.click(
+      await screen.findByRole("button", { name: /royal canin/i }),
+    );
+
+    await waitFor(() => expect(mockedPos.updateCart).toHaveBeenCalled());
+    expect(
+      screen.queryByRole("heading", { name: /untuk hewan yang mana/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers to register an animal the shop has never seen", async () => {
+    const user = userEvent.setup();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (petService as any).list.mockResolvedValue({
+      items: [],
+      pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
+    });
+
+    renderWithAuth(<PosScreen />);
+    await pickCustomer(user);
+    await tapTile(user);
+
+    expect(
+      await screen.findByText(/belum punya hewan terdaftar/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /tambah hewan/i }),
+    ).toBeEnabled();
+    // And no way past the question but answering it or backing out.
+    expect(
+      screen.getByRole("button", { name: /tambah ke keranjang/i }),
+    ).toBeDisabled();
+  });
+});

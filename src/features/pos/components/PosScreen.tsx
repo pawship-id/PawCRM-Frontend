@@ -20,6 +20,7 @@ import { PosBookingActions } from "./PosBookingActions";
 import { PosBookingBanner } from "./PosBookingBanner";
 import { PosCart } from "./PosCart";
 import { PosCatalog } from "./PosCatalog";
+import { PosServicePetDialog } from "./PosServicePetDialog";
 import { PosCloseShiftDialog } from "./PosCloseShiftDialog";
 import { PosHeldCartsDialog } from "./PosHeldCartsDialog";
 import { PosPaymentDialog } from "./PosPaymentDialog";
@@ -207,9 +208,52 @@ export function PosScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shift]);
 
+  /**
+   * A service tapped in the grid, waiting for the animal it is for (FR-3).
+   *
+   * WHY IT WAITS. A service sold straight off the catalogue used to go into the
+   * basket as a loose line — no animal, no booking, no history — so a shop could
+   * do fifty groomings in a month and have nothing to count. The bridge's
+   * shortcut recorded all of that, but only if the cashier went looking for it,
+   * and the grid is where the hand lands first.
+   *
+   * TWO QUESTIONS, IN ORDER. Pets belong to a customer, so a basket with nobody
+   * on it cannot answer "which animal" at all: the customer is settled first,
+   * then this opens.
+   */
+  const [pendingService, setPendingService] = useState<PosCatalogItem | null>(
+    null,
+  );
+  /**
+   * Whether the customer picker is closing because somebody was CHOSEN.
+   *
+   * Choosing fires the dialog's `onOpenChange` as well as `onSelect`, so the two
+   * cases are indistinguishable from the close alone — and telling them apart is
+   * the difference between "the tile goes on waiting for this customer" and "the
+   * cashier backed out, drop it".
+   */
+  const customerChosen = useRef(false);
+
   const addTile = useCallback(
     (tile: PosCatalogItem) => {
       setNotice(null);
+
+      /*
+        A SERVICE ASKS WHOSE ANIMAL IT IS FOR before it goes in. A product does
+        not — a bag of feed belongs to whoever is paying, and stopping to ask
+        would be a dialog on every scan.
+      */
+      if (tile.kind === "service") {
+        setPendingService(tile);
+
+        // No customer yet: that question comes first, and the tile waits.
+        if (!cart.cart?.customer) {
+          customerChosen.current = false;
+          setPickingCustomer(true);
+        }
+
+        return;
+      }
 
       /*
         A TOAST ON EVERY ADD, from the grid as well as from the variant picker.
@@ -391,7 +435,11 @@ export function PosScreen() {
           }
           onCartDiscount={(discount) => void cart.setCartDiscount(discount)}
           onCharges={(charges) => void cart.setCharges(charges)}
-          onPickCustomer={() => setPickingCustomer(true)}
+          onPickCustomer={() => {
+            // Opened on its own, with no tile waiting behind it.
+            customerChosen.current = false;
+            setPickingCustomer(true);
+          }}
           onClearCustomer={() => changeCustomer(null, "pembeli yang lewat")}
           /*
             FR-3's two ways in. Nothing at all until a customer is on the basket:
@@ -513,8 +561,25 @@ export function PosScreen() {
       */}
       <CustomerSearchDialog
         open={pickingCustomer}
-        onOpenChange={setPickingCustomer}
+        onOpenChange={(next) => {
+          setPickingCustomer(next);
+
+          /*
+            A SERVICE WAITING FOR AN OWNER IS ABANDONED WITH THE DIALOG. The
+            cashier tapped a grooming, was asked who it was for, and backed out —
+            leaving it queued would pop the pet picker later, the next time a
+            customer was chosen for some unrelated reason.
+
+            ONLY ON A DISMISSAL. Choosing somebody fires this too, and there the
+            tile is meant to go on waiting for them — which is why the flag
+            exists rather than a bare `if (!next)`.
+          */
+          if (!next && !customerChosen.current) {
+            setPendingService(null);
+          }
+        }}
         onSelect={(customer, warnings) => {
+          customerChosen.current = true;
           setPickingCustomer(false);
           changeCustomer(customer._id, customer.name);
 
@@ -612,6 +677,33 @@ export function PosScreen() {
           dan biaya lain tetap.
         </ConfirmDialog>
       )}
+
+      {/*
+        Which animal a grid service is for. Opens only once a customer is on the
+        basket — see `addTile`, and `PosServicePetDialog` for why the order is
+        not negotiable.
+      */}
+      <PosServicePetDialog
+        service={cart.cart?.customer ? pendingService : null}
+        customerId={cart.cart?.customer?._id ?? ""}
+        customerName={cart.cart?.customer?.name}
+        busy={cart.busy}
+        onOpenChange={(next) => {
+          if (!next) setPendingService(null);
+        }}
+        onPick={(pet) => {
+          const tile = pendingService;
+          if (!tile) return;
+
+          setPendingService(null);
+
+          void cart
+            .addServices([{ petId: pet._id, serviceIds: [tile._id] }])
+            .then(() =>
+              swalToast(`${tile.name} untuk ${pet.name} ditambahkan.`),
+            );
+        }}
+      />
 
       <TodayTransactionsDialog
         open={todayOpen}
