@@ -8,12 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { PetQuickAddDialog } from "@/features/pets";
-import { bookingService } from "@/services/booking.service";
 import { petService } from "@/services/pet.service";
 import { serviceService } from "@/services/service.service";
-import { ApiError } from "@/services/api-error";
 import { formatMoney } from "@/utils/decimal";
-import type { Booking, Pet, Service } from "@/types/api";
+import type { Pet, Service } from "@/types/api";
 
 /** The API's page cap. Asking for more is a 400, not a bigger page. */
 const FETCH_LIMIT = 100;
@@ -29,21 +27,37 @@ const FETCH_LIMIT = 100;
  * when the third fails after the first two were written. Repeating a small,
  * atomic action is the honest shape.
  *
- * IT CREATES A REAL BOOKING, not a loose cart line, because that is what makes
- * the sale attributable: FR-3 requires "atribusi ke hewan & layanan tetap
- * tercatat untuk histori". `origin: "pos_adhoc"` is what tells it apart from an
- * appointment somebody actually made, so "how many of this month's groomings
- * were walk-ins" stays answerable.
+ * IT WRITES NOTHING. The chosen pet and services go into the BASKET, and the
+ * booking behind them is raised only when the sale is settled — FR-3's own
+ * words: "membuat booking baru di backend berstatus Completed **setelah
+ * pembayaran selesai**".
  *
- * CREATED `confirmed`, not `draft`: the customer is standing at the counter. The
- * POS moves it to `completed` when the payment lands (Fase 7).
+ * THAT TIMING IS A RULE, and the first version broke it. It created the booking
+ * the moment this button was pressed, so a line the cashier then deleted from
+ * the basket left the booking standing: an appointment for a grooming nobody was
+ * ever charged for, sitting in the day sheet with nothing to explain it. A
+ * basket is a draft until it is paid for, and nothing it holds should outlive
+ * being deleted from it.
+ *
+ * THE ATTRIBUTION SURVIVES ANYWAY. The cart line carries `petId`, so FR-3's
+ * "atribusi ke hewan & layanan tetap tercatat untuk histori" is satisfied by the
+ * booking the payment raises — with `origin: "pos_adhoc"`, so "how many of this
+ * month's groomings were walk-ins" stays answerable.
  */
 export function AddServiceTab({
   customerId,
-  onCreated,
+  busy = false,
+  onAdd,
 }: {
   customerId: string;
-  onCreated: (booking: Booking) => void;
+  /** True while the cart write this tab started is still in flight. */
+  busy?: boolean;
+  /** The chosen animal and the services ticked for it. Nothing is saved yet. */
+  onAdd: (choice: {
+    petId: string;
+    petName: string;
+    serviceIds: string[];
+  }) => void;
 }) {
   const [pets, setPets] = useState<Pet[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -53,7 +67,6 @@ export function AddServiceTab({
   const [petId, setPetId] = useState("");
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [addingPet, setAddingPet] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   const [petsNonce, setPetsNonce] = useState(0);
@@ -98,32 +111,23 @@ export function AddServiceTab({
     });
   }
 
-  async function submit() {
-    if (saving) return;
+  /**
+   * Hands the choice back. NOTHING IS SAVED HERE — see the header.
+   *
+   * The pet's NAME goes with it only so the caller can name what it just added
+   * in a toast; the server resolves it again from `petId` when it prices the
+   * line, because a name a client sends is a label anybody could forge onto
+   * somebody else's receipt.
+   */
+  function submit() {
+    const pet = pets.find((candidate) => candidate._id === petId);
 
-    setSaving(true);
-    setFormError(null);
-
-    try {
-      const booking = await bookingService.create({
-        customerId,
-        petId,
-        items: [...ticked].map((serviceId) => ({ serviceId })),
-        scheduledAt: new Date().toISOString(),
-        // The customer is at the counter — there is nothing left to confirm.
-        status: "confirmed",
-        origin: "pos_adhoc",
-      });
-
-      onCreated(booking);
-    } catch (error) {
-      setFormError(
-        error instanceof ApiError
-          ? (error.reason ?? error.message)
-          : "Terjadi kesalahan. Coba lagi.",
-      );
-      setSaving(false);
+    if (!pet) {
+      setFormError("Pilih hewannya dulu.");
+      return;
     }
+
+    onAdd({ petId, petName: pet.name, serviceIds: [...ticked] });
   }
 
   if (loading) {
@@ -223,9 +227,9 @@ export function AddServiceTab({
           onClick={submit}
           // FR-3: at least one service must be ticked before this can be
           // submitted. A pet is required by the API, so it gates the button too.
-          disabled={saving || !petId || ticked.size === 0}
+          disabled={busy || !petId || ticked.size === 0}
         >
-          {saving ? "Menyimpan…" : "Tambah ke keranjang"}
+          {busy ? "Menambahkan…" : "Tambah ke keranjang"}
         </Button>
       </div>
 

@@ -61,7 +61,7 @@ const cart: PosTransaction = {
     otherCharges: "0.0000",
     net: "300000.0000",
   },
-  status: "held",
+  status: "active",
   heldLabel: null,
   bookingIds: [],
   paidAt: null,

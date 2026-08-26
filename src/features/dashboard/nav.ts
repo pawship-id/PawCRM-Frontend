@@ -70,8 +70,8 @@ export interface NavChild {
   exact?: boolean;
   /**
    * The permission a user must hold for this link to appear. Omitted means
-   * "always visible" — sections without a catalog feature yet (Booking, POS…)
-   * carry no requirement.
+   * "always visible" — sections without a catalog feature yet (POS…) carry no
+   * requirement.
    */
   permission?: PermissionRequirement;
 }
@@ -97,7 +97,19 @@ export interface NavItem {
 
 export const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: DashboardIcon, exact: true },
-  { label: "Booking", href: "/dashboard/booking", icon: BookingIcon },
+  {
+    label: "Booking",
+    href: "/dashboard/booking",
+    icon: BookingIcon,
+    /*
+      GATED NOW THAT THE SCREEN IS REAL. While Booking was a placeholder the
+      link cost nothing to show; the list behind it is gated `bookings:read` on
+      every route, so without this a user who cannot read bookings would see the
+      menu, click it, and be told the list "tidak bisa dimuat" — which reads as
+      a fault rather than a permission they do not have.
+    */
+    permission: { feature: "bookings", action: "read" },
+  },
   /**
    * Inventory is a GROUP rather than a leaf: the module has five screens that
    * split cleanly into master data (products) and stock activity (the other

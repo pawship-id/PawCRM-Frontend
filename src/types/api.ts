@@ -1079,10 +1079,19 @@ export interface PosRunningTotals {
 /**
  * Where a basket stands.
  *
+ * `active` is the one on the cashier's screen right now — NOT parked, and not in
+ * Keranjang Tersimpan. `held` is one somebody deliberately put aside. Every cart
+ * used to be born `held`, which made parking the default rather than a decision.
+ *
  * `open` is the Hotel module's open bill, carried with no UI. There is no
  * `cancelled`: an unpaid cart is deleted, a paid one is voided.
  */
-export type PosTransactionStatus = "held" | "open" | "paid" | "void";
+export type PosTransactionStatus =
+  | "active"
+  | "held"
+  | "open"
+  | "paid"
+  | "void";
 
 /**
  * A basket at the till.
@@ -1481,6 +1490,14 @@ export interface UpdateCartInput {
   customerId?: string | null;
   note?: string | null;
   heldLabel?: string | null;
+  /**
+   * Parked, or picked back up (FR-6).
+   *
+   * ONLY THESE TWO. `paid` and `void` have their own endpoints with irreversible
+   * work behind them, and `open` belongs to the Hotel module — the server
+   * refuses anything else here.
+   */
+  status?: "active" | "held";
 }
 
 /** Where a booking stands. Mirrors BOOKING_STATUSES in booking.model.js. */
@@ -1553,6 +1570,13 @@ export interface Booking {
    * Inventing a name for that would hide it.
    */
   petName: string | null;
+  /**
+   * The owner's name, RESOLVED ON READ — same rule as `petName`.
+   *
+   * A booking list is read as a day sheet ("whose dog is at ten"), and an id
+   * there is a row nobody can act on.
+   */
+  customerName: string | null;
   items: BookingItem[];
   scheduledAt: string;
   status: BookingStatus;

@@ -39,6 +39,7 @@ const booking = (overrides: Partial<Booking> = {}): Booking => ({
     },
   ],
   petName: "Bruno",
+  customerName: "Ibu Rina",
   scheduledAt: "2026-08-24T02:00:00.000Z",
   status: "confirmed",
   origin: "booking",
@@ -71,7 +72,7 @@ beforeEach(() => {
   );
 });
 
-function open(onPull = jest.fn()) {
+function open(onPull = jest.fn(), onAdd = jest.fn()) {
   renderWithAuth(
     <BookingBridgeDialog
       customerId={CUSTOMER_ID}
@@ -79,9 +80,17 @@ function open(onPull = jest.fn()) {
       open
       onOpenChange={jest.fn()}
       onPull={onPull}
+      onAdd={onAdd}
     />,
   );
   return onPull;
+}
+
+/** The ad-hoc tab's callback, which is the half these tests are about. */
+function openAdhoc() {
+  const onAdd = jest.fn();
+  open(jest.fn(), onAdd);
+  return onAdd;
 }
 
 describe("BookingBridgeDialog — both tabs are always reachable", () => {
@@ -202,10 +211,14 @@ describe("BookingBridgeDialog — the ad-hoc tab", () => {
     ).toBeDisabled();
   });
 
-  it("creates a CONFIRMED, pos_adhoc booking — the customer is at the counter", async () => {
-    const created = booking({ origin: "pos_adhoc" });
-    mockedBookings.create.mockResolvedValue(created);
-    const onPull = open();
+  /*
+    IT WRITES NOTHING. The booking is raised when the sale settles — FR-3's own
+    words, "berstatus Completed setelah pembayaran selesai". The first version
+    created it here, so a line the cashier then deleted from the basket left an
+    appointment for a grooming nobody was ever charged for.
+  */
+  it("hands the choice back rather than creating a booking", async () => {
+    const onAdd = openAdhoc();
 
     await userEvent.click(
       await screen.findByRole("checkbox", { name: /grooming full service/i }),
@@ -214,23 +227,16 @@ describe("BookingBridgeDialog — the ad-hoc tab", () => {
       screen.getByRole("button", { name: /tambah ke keranjang/i }),
     );
 
-    await waitFor(() =>
-      expect(mockedBookings.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          customerId: CUSTOMER_ID,
-          petId: PET_ID,
-          status: "confirmed",
-          origin: "pos_adhoc",
-          items: [{ serviceId: SERVICE_ID }],
-        }),
-      ),
-    );
-    expect(onPull).toHaveBeenCalledWith([created]);
+    expect(onAdd).toHaveBeenCalledWith({
+      petId: PET_ID,
+      petName: "Bella",
+      serviceIds: [SERVICE_ID],
+    });
+    expect(mockedBookings.create).not.toHaveBeenCalled();
   });
 
-  it("sends no price — the catalogue decides", async () => {
-    mockedBookings.create.mockResolvedValue(booking());
-    open();
+  it("sends no price — the server prices the line", async () => {
+    const onAdd = openAdhoc();
 
     await userEvent.click(
       await screen.findByRole("checkbox", { name: /grooming full service/i }),
@@ -239,9 +245,8 @@ describe("BookingBridgeDialog — the ad-hoc tab", () => {
       screen.getByRole("button", { name: /tambah ke keranjang/i }),
     );
 
-    await waitFor(() => expect(mockedBookings.create).toHaveBeenCalled());
-    const [payload] = mockedBookings.create.mock.calls[0];
-    expect(payload.items[0]).not.toHaveProperty("price");
+    const [choice] = onAdd.mock.calls[0];
+    expect(choice).not.toHaveProperty("price");
   });
 
   it("asks only for services still on offer", async () => {

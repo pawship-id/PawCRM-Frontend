@@ -1,15 +1,9 @@
 import type { Metadata } from "next";
-import { SectionPlaceholder } from "@/features/dashboard";
-import { BookingIcon } from "@/components/icons";
+
+import { BookingsScreen } from "@/features/booking";
 
 export const metadata: Metadata = { title: "Booking · Buloo" };
 
 export default function BookingPage() {
-  return (
-    <SectionPlaceholder
-      title="Booking"
-      description="Appointments and scheduling for grooming and clinic visits."
-      icon={BookingIcon}
-    />
-  );
+  return <BookingsScreen />;
 }

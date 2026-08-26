@@ -56,6 +56,7 @@ const booking = (overrides: Partial<Booking> = {}): Booking =>
     customerId: "cust-1",
     petId: PET_ID,
     petName: "Bruno",
+  customerName: "Ibu Rina",
     items: [
       {
         serviceId: "svc-1",
@@ -101,7 +102,8 @@ const cart = (overrides: Partial<PosTransaction> = {}): PosTransaction =>
       otherCharges: "0.0000",
       net: "0.0000",
     },
-    status: "held",
+    // A basket the till is building — NOT parked.
+    status: "active",
     heldLabel: null,
     bookingIds: [],
     paidAt: null,
@@ -144,6 +146,8 @@ const pulledCart = () =>
 beforeEach(() => {
   mockedPos.currentShift.mockResolvedValue(shift);
   mockedPos.heldCarts.mockResolvedValue([]);
+  // The basket recovered on load — null is the ordinary answer.
+  mockedPos.activeCart.mockResolvedValue(null);
   mockedPos.catalog.mockResolvedValue({
     items: [],
     pagination: { page: 1, limit: 8, total: 0, totalPages: 0 },
@@ -287,6 +291,73 @@ describe("PosScreen — pulling a booking into the basket", () => {
   });
 });
 
+/**
+ * FR-3: "modal dibuka dari banner ATAU tombol booking".
+ *
+ * For a while only the banner existed, which made the whole ad-hoc half
+ * unreachable for exactly the customer it was built for — somebody walking in
+ * with no appointment, because the banner only appears when there IS one. A
+ * shortcut you can only reach by already having the thing it replaces is not a
+ * shortcut.
+ */
+describe("PosScreen — the way in that does not need a banner", () => {
+  it("offers the button even when the customer has no bookings today", async () => {
+    const user = userEvent.setup();
+    mockedBookings.bridge.mockResolvedValue([]);
+
+    renderWithAuth(<PosScreen />);
+    await pickCustomer(user);
+
+    expect(
+      await screen.findByRole("button", { name: /tambah layanan untuk hewan/i }),
+    ).toBeInTheDocument();
+    // And no banner, because there is nothing to be alerted about.
+    expect(screen.queryByRole("button", { name: "Tarik" })).not.toBeInTheDocument();
+  });
+
+  it("opens straight onto the ad-hoc tab — the cashier already said so", async () => {
+    const user = userEvent.setup();
+    // Bookings DO exist, so the modal would otherwise default to the pull list.
+    renderWithAuth(<PosScreen />);
+    await pickCustomer(user);
+
+    await user.click(
+      await screen.findByRole("button", { name: /tambah layanan untuk hewan/i }),
+    );
+
+    expect(
+      await screen.findByRole("button", { name: /tambah ke keranjang/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("still opens onto the pull list from the banner", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+    await pickCustomer(user);
+
+    await user.click(await screen.findByRole("button", { name: "Tarik" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Bruno" }),
+    ).toBeInTheDocument();
+  });
+
+  /*
+    An ad-hoc booking needs a pet and a pet needs an owner, so there is no
+    half-state to explain — and PosCustomerSection directly above is already
+    inviting the cashier to choose somebody.
+  */
+  it("shows neither before a customer is chosen", async () => {
+    renderWithAuth(<PosScreen />);
+    await screen.findByRole("button", { name: /pilih pelanggan/i });
+
+    expect(
+      screen.queryByRole("button", { name: /tambah layanan untuk hewan/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Tarik" })).not.toBeInTheDocument();
+  });
+});
+
 describe("PosCart — the pulled lines", () => {
   const render = (basket: PosTransaction) =>
     renderWithAuth(
@@ -396,5 +467,73 @@ describe("PosCart — the pulled lines", () => {
     await screen.findByText("Mandi");
     // Two headers, not one merged group.
     expect(screen.getAllByText("Bruno")).toHaveLength(2);
+  });
+});
+
+/**
+ * FR-3's shortcut, end to end — and the rule about WHEN.
+ *
+ * "Membuat booking baru di backend berstatus Completed **setelah pembayaran
+ * selesai**." The first version created it the moment Tambah ke keranjang was
+ * pressed, so a line the cashier then deleted left an appointment for a grooming
+ * nobody was ever charged for, sitting in the day sheet.
+ */
+describe("PosScreen — adding a service for an animal", () => {
+  const openAdhoc = async (user: ReturnType<typeof userEvent.setup>) => {
+    await pickCustomer(user);
+    await user.click(
+      await screen.findByRole("button", { name: /tambah layanan untuk hewan/i }),
+    );
+    await user.click(
+      await screen.findByRole("checkbox", { name: /grooming full service/i }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: /tambah ke keranjang/i }),
+    );
+  };
+
+  it("puts the service in the basket and writes no booking at all", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await openAdhoc(user);
+
+    await waitFor(() => expect(mockedPos.updateCart).toHaveBeenCalled());
+    expect(mockedBookings.create).not.toHaveBeenCalled();
+  });
+
+  it("carries the animal on the line, so the sale can be attributed", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await openAdhoc(user);
+
+    await waitFor(() => expect(mockedPos.updateCart).toHaveBeenCalled());
+
+    const calls = mockedPos.updateCart.mock.calls;
+    const [, body] = calls[calls.length - 1];
+
+    expect(body.items).toEqual([
+      expect.objectContaining({ kind: "service", refId: "svc-1", petId: PET_ID }),
+    ]);
+  });
+
+  /*
+    A name a client sends is a label anybody could forge onto somebody else's
+    receipt — and the receipt is the document the customer keeps. The server
+    resolves it from `petId` against the basket's own customer.
+  */
+  it("does not send the animal's name", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await openAdhoc(user);
+
+    await waitFor(() => expect(mockedPos.updateCart).toHaveBeenCalled());
+
+    const calls = mockedPos.updateCart.mock.calls;
+    const [, body] = calls[calls.length - 1];
+
+    expect(body.items?.[0]).not.toHaveProperty("petName");
   });
 });

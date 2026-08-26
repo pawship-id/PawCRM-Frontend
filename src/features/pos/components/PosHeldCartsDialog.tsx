@@ -52,11 +52,21 @@ export function PosHeldCartsDialog({
   onResume,
   onDiscard,
   onOpenChange,
+  openCartId = null,
 }: {
   open: boolean;
   carts: PosTransaction[];
   loading: boolean;
   error: string | null;
+  /**
+   * The basket on the till right now, if it is one of these.
+   *
+   * A RESUMED BASKET KEEPS ITS PLACE in this list — it leaves only on the bin,
+   * on its last line coming out, or on payment. That is deliberate, and without
+   * a word for it the cashier sees the basket they are looking at sitting in the
+   * parked list and reasonably wonders which copy is real.
+   */
+  openCartId?: string | null;
   onResume: (cart: PosTransaction) => void;
   onDiscard: (cart: PosTransaction) => void;
   onOpenChange: (open: boolean) => void;
@@ -92,6 +102,11 @@ export function PosHeldCartsDialog({
                   <span className="block truncate text-sm font-medium text-foreground">
                     {cartLabel(cart, index)}
                   </span>
+                  {cart._id === openCartId && (
+                    <span className="block text-xs text-success">
+                      Sedang dibuka di kasir
+                    </span>
+                  )}
                   <span className="block text-xs tabular-nums text-muted">
                     {cart.items.length} item ·{" "}
                     {formatMoney(cart.runningTotals.net)}
@@ -111,6 +126,12 @@ export function PosHeldCartsDialog({
                   <Button
                     type="button"
                     size="sm"
+                    /*
+                      Nothing to resume when it is already the basket on screen.
+                      Left visible rather than removed so the row keeps the shape
+                      every other row has.
+                    */
+                    disabled={cart._id === openCartId}
                     onClick={() => onResume(cart)}
                   >
                     Lanjutkan

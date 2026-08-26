@@ -16,6 +16,7 @@ import { usePosCart } from "../hooks/usePosCart";
 import { usePosShift } from "../hooks/usePosShift";
 import { PosApprovalDialog } from "./PosApprovalDialog";
 import { PosBranchGate } from "./PosBranchGate";
+import { PosBookingActions } from "./PosBookingActions";
 import { PosBookingBanner } from "./PosBookingBanner";
 import { PosCart } from "./PosCart";
 import { PosCatalog } from "./PosCatalog";
@@ -73,7 +74,14 @@ export function PosScreen() {
   const [paying, setPaying] = useState(false);
   const [receiptFor, setReceiptFor] = useState<string | null>(null);
   const [pickingCustomer, setPickingCustomer] = useState(false);
-  const [bridgeOpen, setBridgeOpen] = useState(false);
+  /**
+   * Which half of the Booking Bridge to open on, or null while it is closed.
+   *
+   * ONE PIECE OF STATE FOR BOTH QUESTIONS — "is it open" and "on which tab" —
+   * because they are never independent: closing it forgets the tab, and opening
+   * it always has an intent behind it.
+   */
+  const [bridgeTab, setBridgeTab] = useState<"pull" | "adhoc" | null>(null);
   const [todayOpen, setTodayOpen] = useState(false);
   const [voiding, setVoiding] = useState<PosTransaction | null>(null);
   const [returning, setReturning] = useState<PosTransaction | null>(null);
@@ -102,6 +110,43 @@ export function PosScreen() {
     if (shift) void loadHeld();
   }, [shift, loadHeld]);
 
+  /**
+   * Picks the basket back up after a reload.
+   *
+   * THE CART LIVES ON THE SERVER and the till holds only a reference, so a
+   * refreshed browser — or a laptop that went to sleep — used to leave it
+   * stranded: invisible in Keranjang Tersimpan, which now lists only what was
+   * PARKED, and the next line the cashier added would quietly open a second
+   * basket beside the first.
+   *
+   * ONCE PER SHIFT, and it never overwrites. `openIfEmpty` is what makes the
+   * second part true: the request is in flight while the cashier is free to tap
+   * a product, and a basket they started in the meantime is their own work —
+   * replacing it with what the server remembered would be this recovery causing
+   * exactly the loss it exists to prevent.
+   */
+  useEffect(() => {
+    if (!shift) return;
+
+    let active = true;
+
+    posService
+      .activeCart()
+      .then((found) => {
+        if (active && found) cart.openIfEmpty(found);
+      })
+      .catch(() => {
+        // Silent. A basket that cannot be recovered is not an error worth a red
+        // banner on a till that is otherwise working — the cashier rings it up
+        // again, which is what they would do anyway.
+      });
+
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shift]);
+
   const addTile = useCallback(
     (tile: PosCatalogItem) => {
       setNotice(null);
@@ -123,11 +168,20 @@ export function PosScreen() {
     [cart],
   );
 
+  /**
+   * Parks the basket (FR-6).
+   *
+   * IT WRITES SOMETHING NOW, and until recently it did not. Every cart was born
+   * `held`, so the parking had already happened implicitly on the first line —
+   * this button only cleared the screen, and the basket a cashier was still
+   * building sat in Keranjang Tersimpan beside ones they had genuinely put
+   * aside. `status: "held"` is what makes the gesture mean what it says.
+   */
   async function hold() {
     if (!cart.cart) return;
 
     try {
-      await posService.updateCart(cart.cart._id, { heldLabel: null });
+      await posService.updateCart(cart.cart._id, { status: "held" });
       cart.clear();
       await loadHeld();
       setNotice("Keranjang dititipkan.");
@@ -137,6 +191,44 @@ export function PosScreen() {
           ? (err.reason ?? "Keranjang gagal dititipkan.")
           : "Keranjang gagal dititipkan.",
       );
+    }
+  }
+
+  /**
+   * Picks a parked basket back up.
+   *
+   * IT STAYS PARKED, and that is the whole rule. Resuming does not give up its
+   * place in Keranjang Tersimpan — the basket leaves that list only when the
+   * cashier presses the bin, when the last line comes out of it, or when it is
+   * paid for. Un-parking on resume was the first thing tried here and it was
+   * wrong: a cashier who resumed A, then went back to the list for B, would
+   * leave A unparked, off the list, and unreachable.
+   *
+   * THE BASKET ON SCREEN IS PARKED FIRST, if it holds anything and is not
+   * already parked. Switching away from a basket is the same act as putting it
+   * aside — the only alternative is stranding it, which is the failure this
+   * whole change exists to stop. A basket with nothing in it is not worth a row
+   * in the list and is left alone.
+   */
+  async function resume(target: PosTransaction) {
+    const current = cart.cart;
+    const strandable =
+      current &&
+      current._id !== target._id &&
+      current.status !== "held" &&
+      (current.items?.length ?? 0) > 0;
+
+    try {
+      if (strandable) {
+        await posService.updateCart(current._id, { status: "held" });
+      }
+
+      cart.open(target);
+      await loadHeld();
+    } catch {
+      // The basket is already on screen and editable either way; a red banner
+      // for a bookkeeping write would be worse than the inconsistency.
+      cart.open(target);
     }
   }
 
@@ -210,15 +302,29 @@ export function PosScreen() {
           onPickCustomer={() => setPickingCustomer(true)}
           onClearCustomer={() => void cart.setCustomer(null)}
           /*
-            FR-3. Renders nothing when the customer has no appointments today,
-            which is most sales — see PosBookingBanner.
+            FR-3's two ways in. Nothing at all until a customer is on the basket:
+            the bridge lists ONE customer's appointments and ONE customer's pets,
+            so without somebody chosen there is nothing for it to open onto.
+
+            THE BANNER IS THE ALERT, THE BUTTON IS THE ENTRY. The banner draws
+            nothing when there is no appointment today — which is most sales —
+            and the button is always there, because a walk-in with no booking is
+            exactly who the shortcut was built for.
           */
-          banner={
-            <PosBookingBanner
-              count={bridge.bookings.length}
-              disabled={cart.busy}
-              onOpen={() => setBridgeOpen(true)}
-            />
+          bookingSlot={
+            cart.cart?.customer ? (
+              <>
+                <PosBookingBanner
+                  count={bridge.bookings.length}
+                  disabled={cart.busy}
+                  onOpen={() => setBridgeTab("pull")}
+                />
+                <PosBookingActions
+                  disabled={cart.busy}
+                  onOpen={() => setBridgeTab("adhoc")}
+                />
+              </>
+            ) : null
           }
           onHold={() => void hold()}
           onCheckout={() => {
@@ -259,9 +365,10 @@ export function PosScreen() {
         carts={heldCarts}
         loading={heldLoading}
         error={heldError}
+        openCartId={cart.cart?._id ?? null}
         onResume={(target) => {
-          cart.open(target);
           setHeldOpen(false);
+          void resume(target);
         }}
         onDiscard={(target) => void discardHeld(target)}
         onOpenChange={setHeldOpen}
@@ -337,12 +444,26 @@ export function PosScreen() {
         modal asks for that customer's bookings the moment it mounts, and a
         permanently-mounted one would ask on every render of the till.
       */}
-      {bridgeOpen && cart.cart?.customer && (
+      {bridgeTab && cart.cart?.customer && (
         <BookingBridgeDialog
           customerId={cart.cart.customer._id}
           customerName={cart.cart.customer.name}
           open
-          onOpenChange={setBridgeOpen}
+          initialTab={bridgeTab}
+          busy={cart.busy}
+          onOpenChange={(next) => {
+            if (!next) setBridgeTab(null);
+          }}
+          onAdd={({ petId, petName, serviceIds }) => {
+            void (async () => {
+              await cart.addServices(petId, serviceIds);
+              swalToast(
+                serviceIds.length === 1
+                  ? `Layanan untuk ${petName} ditambahkan.`
+                  : `${serviceIds.length} layanan untuk ${petName} ditambahkan.`,
+              );
+            })();
+          }}
           onPull={(bookings) => {
             if (bookings.length === 0) return;
 

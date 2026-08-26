@@ -14,12 +14,29 @@ describe("filterNavItems", () => {
   const denyAll: CanFn = () => false;
   const allowAll: CanFn = () => true;
 
-  it("keeps items with no permission requirement (Dashboard, Booking…)", () => {
+  it("keeps items with no permission requirement (Dashboard…)", () => {
     const labels = filterNavItems(NAV_ITEMS, denyAll).map((i) => i.label);
-    // Every ungated leaf survives; only the gated group is dropped.
+    // Every ungated leaf survives; the gated ones are dropped.
     expect(labels).toContain("Dashboard");
-    expect(labels).toContain("Booking");
     expect(labels).not.toContain("Master Data");
+  });
+
+  /*
+    GATED ONCE THE SCREEN BECAME REAL. While Booking was a placeholder the link
+    cost nothing to show; the list behind it is gated `bookings:read` on every
+    route, so an ungated menu would send a user who cannot read bookings to a
+    screen that reports a load failure rather than a permission.
+  */
+  it("hides Booking from somebody who cannot read bookings", () => {
+    const labels = filterNavItems(NAV_ITEMS, denyAll).map((i) => i.label);
+    expect(labels).not.toContain("Booking");
+  });
+
+  it("shows Booking to somebody who can", () => {
+    const onlyBookings: CanFn = (feature, action) =>
+      feature === "bookings" && action === "read";
+    const labels = filterNavItems(NAV_ITEMS, onlyBookings).map((i) => i.label);
+    expect(labels).toContain("Booking");
   });
 
   it("hides the Master Data group when no child is permitted", () => {

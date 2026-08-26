@@ -90,7 +90,7 @@ export function PosCart({
   onCheckout,
   onPickCustomer,
   onClearCustomer,
-  banner,
+  bookingSlot,
 }: {
   cart: PosTransaction | null;
   busy: boolean;
@@ -111,8 +111,8 @@ export function PosCart({
   onPickCustomer: () => void;
   /** Makes the basket a walk-in again. A different act from replacing. */
   onClearCustomer: () => void;
-  /** FR-3's booking banner, or nothing when there is nothing to pull. */
-  banner?: React.ReactNode;
+  /** FR-3's booking banner and button, or nothing without a customer. */
+  bookingSlot?: React.ReactNode;
 }) {
   const items = cart?.items ?? [];
   const totals = cart?.runningTotals;
@@ -154,12 +154,13 @@ export function PosCart({
       />
 
       {/*
-        FR-3's banner, passed in rather than built here. What it says depends on
-        a query this component has no business making — and it renders nothing
-        at all when the customer has no appointments today, which is most of the
-        time.
+        FR-3's banner and its way in, passed in rather than built here. What they
+        say depends on a query this component has no business making — and the
+        whole slot is empty until a customer is on the basket.
       */}
-      {banner && <div className="px-4 pb-3">{banner}</div>}
+      {bookingSlot && (
+        <div className="space-y-2 px-4 pb-3">{bookingSlot}</div>
+      )}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {empty ? (

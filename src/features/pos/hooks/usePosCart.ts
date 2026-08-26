@@ -51,6 +51,29 @@ interface UsePosCartResult {
    * mutation here does would race with itself: a cashier who pulled twice would
    * rebuild the second request from a basket the first had not yet returned.
    */
+  /**
+   * Takes over a basket ONLY if the till is still empty.
+   *
+   * `open` would overwrite whatever is there; this cannot. The difference
+   * matters on exactly one path — recovering a cart after a reload, where the
+   * fetch is in flight while the cashier is free to tap a product. Guarding with
+   * `if (!cart)` in the caller would read a value captured before the request
+   * started; the updater form below reads the one React actually holds.
+   */
+  openIfEmpty: (next: PosTransaction) => void;
+  /**
+   * Adds services for one named animal (FR-3's shortcut).
+   *
+   * ORDINARY CART LINES, not a booking. The booking behind them is raised when
+   * the sale settles — a line the cashier deletes before paying must leave
+   * nothing behind, and the first version left an appointment for a grooming
+   * nobody was ever charged for.
+   *
+   * `petName` IS NOT SENT. The server resolves it from `petId` against the
+   * basket's own customer; a name a client supplies is a label anybody could
+   * forge onto somebody else's receipt.
+   */
+  addServices: (petId: string, serviceIds: string[]) => Promise<void>;
   pullBookings: (bookingIds: string[]) => Promise<void>;
   patch: (input: UpdateCartInput) => Promise<void>;
   /** Retry the refused patch with an approver attached. */
@@ -84,6 +107,10 @@ export function usePosCart(): UsePosCartResult {
     setCart(next);
     setError(null);
     setPendingApproval(null);
+  }, []);
+
+  const openIfEmpty = useCallback((next: PosTransaction) => {
+    setCart((current) => current ?? next);
   }, []);
 
   const clear = useCallback(() => {
@@ -225,6 +252,26 @@ export function usePosCart(): UsePosCartResult {
     [itemsAsInput, send],
   );
 
+  const addServices = useCallback(
+    async (petId: string, serviceIds: string[]) => {
+      if (serviceIds.length === 0) return;
+
+      await send({
+        items: [
+          ...itemsAsInput(),
+          // One line per animal per service (FR-3) — never bumped, never merged.
+          ...serviceIds.map((refId) => ({
+            kind: "service" as const,
+            refId,
+            qty: "1",
+            petId,
+          })),
+        ],
+      });
+    },
+    [itemsAsInput, send],
+  );
+
   const setQty = useCallback(
     async (index: number, qty: string) => {
       const items = itemsAsInput();
@@ -325,7 +372,9 @@ export function usePosCart(): UsePosCartResult {
     error,
     pendingApproval,
     open,
+    openIfEmpty,
     addItem,
+    addServices,
     setQty,
     removeItem,
     setItemDiscount,

@@ -94,17 +94,47 @@ export function BookingBridgeDialog({
   customerId,
   customerName,
   open,
+  initialTab,
+  busy = false,
   onOpenChange,
   onPull,
+  onAdd,
 }: {
   customerId: string;
   customerName?: string;
   open: boolean;
+  /**
+   * Which half to land on, when the caller knows what the cashier came for.
+   *
+   * A CASHIER WHO PRESSED "Tambah layanan" HAS ALREADY SAID SO, and opening them
+   * on the pull list would make them find the tab they had just chosen. Left
+   * undefined the tab follows the data — see `activeTab` below.
+   */
+  initialTab?: Tab;
   onOpenChange: (open: boolean) => void;
-  /** Handed every booking the cashier ticked, or the one just created ad-hoc. */
+  /** True while a cart write started from here is still in flight. */
+  busy?: boolean;
+  /** Handed every booking the cashier ticked on the first tab. */
   onPull: (bookings: Booking[]) => void;
+  /**
+   * Handed the animal and services chosen on the second tab.
+   *
+   * A CHOICE, NOT A BOOKING. Nothing has been written — the booking behind these
+   * services is raised when the sale settles, so a line the cashier deletes from
+   * the basket leaves nothing behind. See `AddServiceTab`.
+   */
+  onAdd: (choice: {
+    petId: string;
+    petName: string;
+    serviceIds: string[];
+  }) => void;
 }) {
-  const { bookings, loading, error, refetch } = useBookingBridge(
+  /*
+    `refetch` is gone with the ad-hoc tab's write. That tab used to create a
+    booking, which meant the pull list beside it had gone stale; now it writes
+    nothing, so there is nothing to re-ask about.
+  */
+  const { bookings, loading, error } = useBookingBridge(
     open ? customerId : null,
   );
   /*
@@ -121,7 +151,9 @@ export function BookingBridgeDialog({
   const [ticked, setTicked] = useState<Set<string>>(new Set());
 
   const activeTab: Tab =
-    tab ?? (!loading && bookings.length === 0 ? "adhoc" : "pull");
+    tab ??
+    initialTab ??
+    (!loading && bookings.length === 0 ? "adhoc" : "pull");
 
   /** Closing forgets everything — the next customer starts clean. */
   function handleOpenChange(next: boolean) {
@@ -292,11 +324,9 @@ export function BookingBridgeDialog({
         ) : (
           <AddServiceTab
             customerId={customerId}
-            onCreated={(booking) => {
-              // A fresh ad-hoc booking is handed straight to the cart, and the
-              // pull list is re-asked so it does not offer the same one twice.
-              refetch();
-              onPull([booking]);
+            busy={busy}
+            onAdd={(choice) => {
+              onAdd(choice);
               handleOpenChange(false);
             }}
           />

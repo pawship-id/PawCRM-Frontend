@@ -171,6 +171,16 @@ export const posService = {
    * which bookings they came from, and the bookings are marked as pulled so the
    * bridge never offers them twice.
    */
+  /**
+   * GET /pos/transactions/active — the basket this cashier left open, or null.
+   *
+   * WHAT MAKES A RELOAD COST NOTHING. The cart lives on the server and the till
+   * holds only a reference; without this, a refreshed browser would strand the
+   * basket — invisible in Keranjang Tersimpan, which lists only what was PARKED
+   * — and the next line would quietly open a second one beside it.
+   */
+  activeCart: () => apiClient.get<PosTransaction | null>("/pos/transactions/active"),
+
   pullBookings: (id: string, bookingIds: string[]) =>
     apiClient.post<PosTransaction>(
       `/pos/transactions/${id}/pull-bookings`,

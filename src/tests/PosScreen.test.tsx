@@ -79,7 +79,8 @@ const emptyCart: PosTransaction = {
     otherCharges: "0.0000",
     net: "0.0000",
   },
-  status: "held",
+  // A basket the till is building — NOT parked. Parking is a decision now.
+  status: "active",
   heldLabel: null,
   bookingIds: [],
   paidAt: null,
@@ -180,6 +181,8 @@ beforeEach(() => {
   } as any);
   mockedPos.currentShift.mockResolvedValue(shift);
   mockedPos.heldCarts.mockResolvedValue([]);
+  // The basket recovered on load — null is the ordinary answer.
+  mockedPos.activeCart.mockResolvedValue(null);
   mockedPos.catalog.mockResolvedValue(catalogPage);
   mockedPos.createCart.mockResolvedValue(emptyCart);
   mockedPos.updateCart.mockResolvedValue(cartWithItem);
@@ -1422,5 +1425,142 @@ describe("PosHeldCartsDialog — naming a parked basket", () => {
     const dialog = within(await screen.findByRole("dialog"));
     expect(dialog.getByText("Titipan sore")).toBeInTheDocument();
     expect(dialog.queryByText("Ibu Rina")).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * A basket is not parked until somebody parks it.
+ *
+ * Every cart used to be born `held`, which made parking the DEFAULT rather than
+ * a decision: the basket a cashier was still building appeared in Keranjang
+ * Tersimpan from its first line, beside baskets somebody had genuinely put
+ * aside. Simpan, meanwhile, wrote nothing — the parking had already happened.
+ */
+describe("PosScreen — parking is a decision, not a default", () => {
+  it("Simpan actually parks it, rather than only clearing the screen", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await user.click(await screen.findByRole("button", { name: /royal canin/i }));
+    await waitFor(() => expect(mockedPos.updateCart).toHaveBeenCalled());
+
+    mockedPos.updateCart.mockClear();
+    await user.click(screen.getByRole("button", { name: /titipkan/i }));
+
+    await waitFor(() =>
+      expect(mockedPos.updateCart).toHaveBeenCalledWith(CART_ID, {
+        status: "held",
+      }),
+    );
+  });
+
+  /*
+    A RESUMED BASKET KEEPS ITS PLACE in Keranjang Tersimpan. Un-parking on resume
+    was the first thing tried and it was wrong: a cashier who resumed A, then
+    went back to the list for B, would leave A unparked, off the list, and
+    unreachable. It leaves the list only on the bin, on its last line coming out,
+    or on payment.
+  */
+  it("does not un-park a basket just because it was resumed", async () => {
+    const user = userEvent.setup();
+    mockedPos.heldCarts.mockResolvedValue([{ ...cartWithItem, status: "held" }]);
+
+    renderWithAuth(<PosScreen />);
+
+    await user.click(
+      await screen.findByRole("button", { name: /keranjang tersimpan/i }),
+    );
+    await user.click(await screen.findByRole("button", { name: /lanjutkan/i }));
+
+    await waitFor(() => expect(mockedPos.heldCarts).toHaveBeenCalled());
+    expect(mockedPos.updateCart).not.toHaveBeenCalledWith(
+      CART_ID,
+      expect.objectContaining({ status: "active" }),
+    );
+  });
+
+  /*
+    Switching away from a basket is the same act as putting it aside. The only
+    alternative is stranding it — unparked, off the list, unreachable — which is
+    the failure this whole change exists to stop.
+  */
+  it("parks the basket on screen before opening another one", async () => {
+    const user = userEvent.setup();
+    const OTHER_ID = "5a7f1f77bcf86cd7994390e2";
+    mockedPos.heldCarts.mockResolvedValue([
+      { ...cartWithItem, _id: OTHER_ID, status: "held" },
+    ]);
+
+    renderWithAuth(<PosScreen />);
+
+    // Build an unsaved basket first.
+    await user.click(await screen.findByRole("button", { name: /royal canin/i }));
+    await waitFor(() => expect(mockedPos.updateCart).toHaveBeenCalled());
+    mockedPos.updateCart.mockClear();
+
+    await user.click(screen.getByRole("button", { name: /keranjang tersimpan/i }));
+    await user.click(await screen.findByRole("button", { name: /lanjutkan/i }));
+
+    await waitFor(() =>
+      expect(mockedPos.updateCart).toHaveBeenCalledWith(CART_ID, {
+        status: "held",
+      }),
+    );
+  });
+
+  it("parks nothing when the basket on screen is empty", async () => {
+    const user = userEvent.setup();
+    mockedPos.heldCarts.mockResolvedValue([{ ...cartWithItem, status: "held" }]);
+
+    renderWithAuth(<PosScreen />);
+
+    await user.click(
+      await screen.findByRole("button", { name: /keranjang tersimpan/i }),
+    );
+    await user.click(await screen.findByRole("button", { name: /lanjutkan/i }));
+
+    await waitFor(() => expect(mockedPos.heldCarts).toHaveBeenCalled());
+    // An empty basket is not worth a row in the list.
+    expect(mockedPos.updateCart).not.toHaveBeenCalled();
+  });
+
+  /*
+    The cart lives on the server and the till holds only a reference, so a
+    refreshed browser used to strand it — invisible in Keranjang Tersimpan, which
+    now lists only what was PARKED, and the next line would open a second basket.
+  */
+  it("picks the basket back up after a reload", async () => {
+    mockedPos.activeCart.mockResolvedValue(cartWithItem);
+
+    renderWithAuth(<PosScreen />);
+
+    /*
+      The basket's own controls, not the product name — that appears on the
+      catalogue tile too. Titipkan and Bayar exist only once a basket has
+      something in it, so their presence IS the recovery.
+    */
+    expect(
+      await screen.findByRole("button", { name: /titipkan/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("does not blame the cashier when there is nothing to recover", async () => {
+    mockedPos.activeCart.mockResolvedValue(null);
+
+    renderWithAuth(<PosScreen />);
+
+    await screen.findByRole("button", { name: /pilih pelanggan/i });
+    expect(screen.queryByText(/gagal/i)).not.toBeInTheDocument();
+  });
+
+  it("stays quiet when the recovery itself fails", async () => {
+    mockedPos.activeCart.mockRejectedValue(new Error("offline"));
+
+    renderWithAuth(<PosScreen />);
+
+    // A basket that cannot be recovered is not worth a red banner on a till
+    // that is otherwise working.
+    await screen.findByRole("button", { name: /pilih pelanggan/i });
+    expect(screen.queryByText(/gagal/i)).not.toBeInTheDocument();
   });
 });
