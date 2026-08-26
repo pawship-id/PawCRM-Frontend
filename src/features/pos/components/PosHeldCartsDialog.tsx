@@ -84,22 +84,12 @@ export function PosHeldCartsDialog({
   onResume,
   onDiscard,
   onOpenChange,
-  openCartId = null,
   blockedReason = null,
 }: {
   open: boolean;
   carts: PosTransaction[];
   loading: boolean;
   error: string | null;
-  /**
-   * The basket on the till right now, if it is one of these.
-   *
-   * A RESUMED BASKET KEEPS ITS PLACE in this list — it leaves only on the bin,
-   * on its last line coming out, or on payment. That is deliberate, and without
-   * a word for it the cashier sees the basket they are looking at sitting in the
-   * parked list and reasonably wonders which copy is real.
-   */
-  openCartId?: string | null;
   /**
    * Why nothing here may be opened right now, or null when it may (FR-6).
    *
@@ -154,11 +144,6 @@ export function PosHeldCartsDialog({
                   <span className="block truncate text-sm font-medium text-foreground">
                     {cartLabel(cart, index)}
                   </span>
-                  {cart._id === openCartId && (
-                    <span className="block text-xs text-success">
-                      Sedang dibuka di kasir
-                    </span>
-                  )}
                   <span className="block text-xs tabular-nums text-muted">
                     {cart.items.length} item ·{" "}
                     {formatMoney(cart.runningTotals.net)}
@@ -190,12 +175,12 @@ export function PosHeldCartsDialog({
                     type="button"
                     size="sm"
                     /*
-                      Nothing to resume when it is already the basket on screen —
-                      and nothing may be resumed at all while unsaved work is
-                      open. Left visible rather than removed so the row keeps the
-                      shape every other row has.
+                      Nothing here may be opened while a basket with anything in
+                      it is on screen. Left visible rather than removed so the
+                      row keeps the shape every other row has — and the reason
+                      is stated once above the list.
                     */
-                    disabled={cart._id === openCartId || blockedReason !== null}
+                    disabled={blockedReason !== null}
                     onClick={() => onResume(cart)}
                   >
                     Lanjutkan

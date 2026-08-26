@@ -349,41 +349,52 @@ export function PosScreen() {
   /**
    * Why no parked basket may be opened right now, or null when one may (FR-6).
    *
-   * PRD: "melanjutkan keranjang tersimpan diblokir bila keranjang aktif saat ini
-   * belum kosong — kasir diminta menyimpan atau menyelesaikan keranjang aktif
-   * dulu."
+   * PRD, and followed literally: "melanjutkan keranjang tersimpan diblokir bila
+   * keranjang aktif saat ini belum kosong — kasir diminta menyimpan atau
+   * menyelesaikan keranjang aktif dulu."
    *
-   * ONLY UNSAVED WORK BLOCKS, and that narrowing is what makes the rule usable
-   * alongside the other one. A basket the cashier already pressed Titipkan on is
-   * `held` and sits in this very list — switching away from it loses nothing,
-   * because "menyimpan dulu" has already happened. Blocking there would make the
-   * list unnavigable: two parked baskets and no way to move between them.
-   *
-   * So the rule is: **an `active` basket with something in it**. That is the one
-   * state where switching would leave work nobody can reach.
+   * A BASKET WITH ANYTHING IN IT BLOCKS. There is no narrower rule to write,
+   * because a basket on this screen is never a parked one: resuming takes it OUT
+   * of the list, and parking clears the screen. The two states cannot overlap.
    *
    * AN EARLIER VERSION PARKED IT AUTOMATICALLY instead of refusing. It lost
    * nothing either, but it did it silently — and a basket parked without the
    * cashier noticing is one that can be forgotten until the till is closed.
    */
   const resumeBlockedReason =
-    cart.cart &&
-    cart.cart.status !== "held" &&
-    (cart.cart.items?.length ?? 0) > 0
+    (cart.cart?.items?.length ?? 0) > 0
       ? "Titipkan atau selesaikan dulu keranjang yang sedang dibuka."
       : null;
 
+  /**
+   * Picks a parked basket back up, and takes it OUT of the parked list (FR-6).
+   *
+   * IT UN-PARKS. An earlier version left it parked while it was being worked on,
+   * to stop a cashier stranding basket A by switching to B. The block above now
+   * prevents that outright — with anything on screen, no row can be opened at
+   * all — so the safeguard is no longer needed and the PRD's plainer rule
+   * applies: a resumed basket is the active basket, and the list holds what is
+   * put aside.
+   */
   async function resume(target: PosTransaction) {
     /*
       Checked here as well as in the dialog. The dialog greys the buttons out so
       nobody presses them; this is the rule itself, and it must not depend on a
       control having been drawn correctly.
     */
-    if (resumeBlockedReason && cart.cart?._id !== target._id) {
+    if (resumeBlockedReason) {
       return;
     }
 
     cart.open(target);
+
+    try {
+      await posService.updateCart(target._id, { status: "active" });
+    } catch {
+      // The basket is already on screen and editable; a red banner for a
+      // bookkeeping write would be worse than the row lingering in the list.
+    }
+
     await loadHeld();
   }
 
@@ -525,7 +536,6 @@ export function PosScreen() {
         carts={heldCarts}
         loading={heldLoading}
         error={heldError}
-        openCartId={cart.cart?._id ?? null}
         blockedReason={resumeBlockedReason}
         onResume={(target) => {
           setHeldOpen(false);

@@ -1458,13 +1458,13 @@ describe("PosScreen — parking is a decision, not a default", () => {
   });
 
   /*
-    A RESUMED BASKET KEEPS ITS PLACE in Keranjang Tersimpan. Un-parking on resume
-    was the first thing tried and it was wrong: a cashier who resumed A, then
-    went back to the list for B, would leave A unparked, off the list, and
-    unreachable. It leaves the list only on the bin, on its last line coming out,
-    or on payment.
+    A RESUMED BASKET LEAVES THE LIST — the PRD's plain rule, restored 27 Agt.
+
+    Un-parking was tried first, then reversed to stop a cashier stranding basket
+    A by switching to B, then restored once the block below made that impossible:
+    with anything on screen, no row can be opened at all.
   */
-  it("does not un-park a basket just because it was resumed", async () => {
+  it("takes a resumed basket out of the parked list", async () => {
     const user = userEvent.setup();
     mockedPos.heldCarts.mockResolvedValue([{ ...cartWithItem, status: "held" }]);
 
@@ -1475,10 +1475,10 @@ describe("PosScreen — parking is a decision, not a default", () => {
     );
     await user.click(await screen.findByRole("button", { name: /lanjutkan/i }));
 
-    await waitFor(() => expect(mockedPos.heldCarts).toHaveBeenCalled());
-    expect(mockedPos.updateCart).not.toHaveBeenCalledWith(
-      CART_ID,
-      expect.objectContaining({ status: "active" }),
+    await waitFor(() =>
+      expect(mockedPos.updateCart).toHaveBeenCalledWith(CART_ID, {
+        status: "active",
+      }),
     );
   });
 
@@ -1587,40 +1587,39 @@ describe("PosScreen — parking is a decision, not a default", () => {
     );
 
     expect(screen.queryByText(/titipkan atau selesaikan dulu/i)).not.toBeInTheDocument();
-    await user.click(await screen.findByRole("button", { name: /lanjutkan/i }));
-
-    // Opened, and nothing was written to get there.
-    expect(mockedPos.updateCart).not.toHaveBeenCalled();
+    expect(
+      await screen.findByRole("button", { name: /lanjutkan/i }),
+    ).toBeEnabled();
   });
 
   /*
-    ONLY UNSAVED WORK BLOCKS. A basket the cashier already pressed Titipkan on is
-    `held` and sits in this very list — switching away from it loses nothing.
-    Blocking there would make the list unnavigable: two parked baskets and no way
-    to move between them.
+    THE TWO RULES TOGETHER. Resuming un-parks, so the only way to reach a second
+    parked basket is to put the first one back — which is exactly what the PRD
+    asks the cashier to do, and what makes the un-parking safe.
   */
-  it("lets a cashier move between two baskets they have already parked", async () => {
+  it("lets the cashier switch once they have put the first one back", async () => {
     const user = userEvent.setup();
     const OTHER_ID = "5a7f1f77bcf86cd7994390e2";
-    const parked = { ...cartWithItem, status: "held" as const };
 
-    mockedPos.activeCart.mockResolvedValue(parked);
-    mockedPos.createCart.mockResolvedValue(parked);
+    // A resumed basket: on screen, and no longer in the list.
+    mockedPos.activeCart.mockResolvedValue(cartWithItem);
     mockedPos.heldCarts.mockResolvedValue([
-      parked,
-      { ...parked, _id: OTHER_ID },
+      { ...cartWithItem, _id: OTHER_ID, status: "held" },
     ]);
 
     renderWithAuth(<PosScreen />);
-    // The basket's own controls — the product name is on the catalogue tile too.
     await screen.findByRole("button", { name: /titipkan/i });
 
+    // Blocked while it is open…
     await user.click(screen.getByRole("button", { name: /keranjang tersimpan/i }));
+    expect(await screen.findByRole("button", { name: /lanjutkan/i })).toBeDisabled();
 
-    expect(screen.queryByText(/titipkan atau selesaikan dulu/i)).not.toBeInTheDocument();
-    // The one already open is the only disabled row.
-    const buttons = await screen.findAllByRole("button", { name: /lanjutkan/i });
-    expect(buttons.filter((b) => !b.hasAttribute("disabled"))).toHaveLength(1);
+    // …and free once it is put back.
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: /titipkan/i }));
+
+    await user.click(screen.getByRole("button", { name: /keranjang tersimpan/i }));
+    expect(await screen.findByRole("button", { name: /lanjutkan/i })).toBeEnabled();
   });
 
   /*
