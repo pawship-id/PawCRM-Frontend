@@ -1036,6 +1036,16 @@ export interface PosItem {
    * Null on every retail line.
    */
   bookingStatus: BookingStatus | null;
+  /**
+   * Whether THIS basket raised the booking, or merely pulled it in.
+   *
+   * The difference decides what the till may do. A booking the basket RAISED is
+   * its own document — removing the line deletes it, so once the animal has
+   * checked in that is refused. A booking it PULLED belongs to an appointment
+   * somebody made; removing the line only releases the claim, which is always
+   * safe and is how a mis-pull is undone.
+   */
+  bookingOwned: boolean;
   /** The booking's number, or null while it is still a draft. */
   bookingNumber: string | null;
 }

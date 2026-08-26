@@ -43,19 +43,26 @@ export function PosCartLine({
   const isService = item.kind === "service";
 
   /**
-   * Whether this line is work already underway (FR-3).
+   * Whether this line may still be taken out of the basket (FR-3).
    *
-   * A service line for a named animal owns a booking, and the basket may only
-   * change it while that booking is a DRAFT. Once the animal has checked in or
-   * the groomer has started, removing the line would rewrite work that is
-   * already happening — the server refuses it, and this is what stops a cashier
-   * pressing the bin and being told no.
+   * ONLY A BOOKING THIS BASKET RAISED CAN LOCK IT. Removing such a line DELETES
+   * the booking, so once the animal has checked in that would erase work already
+   * happening — the server refuses it, and this is what stops a cashier pressing
+   * the bin and being told no.
    *
-   * A LINE WITH NO BOOKING IS ALWAYS FREE — every retail line, and every service
-   * sold without naming an animal.
+   * A PULLED APPOINTMENT NEVER LOCKS THE LINE. The basket only claims it;
+   * removing the line releases the claim and touches the document not at all.
+   * That is also how a mis-pull is undone, so locking it would trap the cashier.
+   *
+   * The first version left `bookingOwned` out and locked every pulled line the
+   * moment it landed — the bridge only ever offers `confirmed` appointments, and
+   * `confirmed` is not `draft` — so a pulled grooming could be neither
+   * discounted nor taken back out.
    */
   const locked =
-    item.bookingStatus !== null && item.bookingStatus !== "draft";
+    item.bookingOwned &&
+    item.bookingStatus !== null &&
+    item.bookingStatus !== "draft";
 
   return (
     <div className="border-b border-border px-3 py-2 last:border-b-0">
@@ -153,9 +160,16 @@ export function PosCartLine({
         </div>
 
         <div className="flex items-center gap-1">
+          {/*
+            A DISCOUNT IS NEVER LOCKED. It changes what the customer pays, not
+            what the animal is having — the booking behind the line stores the
+            service and its list price, and neither moves. Greying this out was
+            the same over-reach as locking the bin: it left a cashier unable to
+            give 10% off a grooming that was already on the table.
+          */}
           <PosDiscountPopover
             value={item.discount}
-            disabled={disabled || locked}
+            disabled={disabled}
             label={`Diskon ${item.name}`}
             onApply={(discount) => onDiscountChange(index, discount)}
           />

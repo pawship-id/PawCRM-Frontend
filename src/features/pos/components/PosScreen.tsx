@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Alert, ConfirmDialog, Spinner } from "@/components";
 import { posService } from "@/services/pos.service";
@@ -63,6 +63,50 @@ export function PosScreen() {
     not be querying appointments on every render.
   */
   const bridge = useBookingBridge(cart.cart?.customer?._id ?? null);
+  // Pulled out so the effect below can depend on the stable callback rather
+  // than on the hook's result object, which is new on every render.
+  const { refetch: refetchBridge } = bridge;
+
+  /**
+   * Which appointments the basket is holding, as one comparable string.
+   *
+   * SORTED, so the order the lines happen to sit in never reads as a change.
+   */
+  const claimedBookings = (cart.cart?.items ?? [])
+    .map((item) => item.bookingId)
+    .filter(Boolean)
+    .sort()
+    .join(",");
+
+  const lastClaimed = useRef<string | null>(null);
+
+  /**
+   * Re-asks the bridge whenever the basket's grip on an appointment changes.
+   *
+   * THE BANNER COUNTS WHAT IS STILL PULLABLE, and that number moves in BOTH
+   * directions: pulling one takes it off the list, and taking the line back out
+   * releases the claim and puts it back. Only the first was ever re-asked, so a
+   * cashier who pulled one of two and then removed it saw "1 booking" for a
+   * customer who had two — and no way to get at the one they had just released.
+   *
+   * DERIVED FROM THE BASKET RATHER THAN CALLED FROM EACH PLACE. Removing a line,
+   * swapping the customer, resuming a parked basket and recovering one after a
+   * reload all change this — and a `refetch()` sprinkled at four call sites is
+   * four chances to miss the fifth.
+   *
+   * NOT ON THE FIRST RUN. The hook has just fetched for this customer; a second
+   * request for the same answer is a round trip that changes nothing.
+   */
+  useEffect(() => {
+    if (
+      lastClaimed.current !== null &&
+      lastClaimed.current !== claimedBookings
+    ) {
+      refetchBridge();
+    }
+
+    lastClaimed.current = claimedBookings;
+  }, [claimedBookings, refetchBridge]);
 
   const [variantParent, setVariantParent] = useState<PosCatalogItem | null>(
     null,
@@ -518,11 +562,10 @@ export function PosScreen() {
             void (async () => {
               await cart.pullBookings(bookings.map((booking) => booking._id));
               /*
-                RE-ASKED, not filtered locally. The server decides what is still
-                pullable, and a list trimmed here would disagree with it the
-                moment somebody else rang one up at the second till.
+                The bridge re-asks itself — see the effect on `claimedBookings`.
+                It is the basket's grip on an appointment that decides the count,
+                and that grip changes on more paths than this one.
               */
-              bridge.refetch();
               swalToast(
                 bookings.length === 1
                   ? `${bookings[0].bookingNumber} ditarik ke keranjang.`

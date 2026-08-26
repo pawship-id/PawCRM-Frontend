@@ -65,7 +65,8 @@ const booking = (overrides: Partial<Booking> = {}): Booking =>
         groomerUserId: null,
         groomerName: "Belum ditentukan",
         bookingStatus: "draft",
-        bookingNumber: null,
+        bookingOwned: true,
+            bookingNumber: null,
       },
     ],
     scheduledAt: "2026-08-26T03:00:00.000Z",
@@ -134,7 +135,8 @@ const pulledCart = () =>
         petName: "Bruno",
         groomerName: "Belum ditentukan",
         bookingStatus: "draft",
-        bookingNumber: null,
+        bookingOwned: true,
+            bookingNumber: null,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any,
     ],
@@ -426,7 +428,8 @@ describe("PosCart — the pulled lines", () => {
             petName: null,
             groomerName: null,
       bookingStatus: null,
-      bookingNumber: null,
+      bookingOwned: false,
+          bookingNumber: null,
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
           } as any,
         ],
@@ -568,6 +571,7 @@ describe("PosCart — a line whose service has already started", () => {
     petName: "Bruno",
     groomerName: "Belum ditentukan",
     bookingStatus: "draft",
+    bookingOwned: true,
     bookingNumber: null,
     ...overrides,
   });
@@ -600,7 +604,13 @@ describe("PosCart — a line whose service has already started", () => {
   });
 
   it("locks once the animal has checked in", async () => {
-    render(line({ bookingStatus: "check_in", bookingNumber: "BK-260826-001" }));
+    render(
+      line({
+        bookingOwned: true,
+        bookingStatus: "check_in",
+        bookingNumber: "BK-260826-001",
+      }),
+    );
 
     expect(
       await screen.findByRole("button", { name: /hapus grooming/i }),
@@ -608,11 +618,72 @@ describe("PosCart — a line whose service has already started", () => {
   });
 
   it("locks once the groomer has started", async () => {
-    render(line({ bookingStatus: "in_progress", bookingNumber: "BK-260826-001" }));
+    render(
+      line({
+        bookingOwned: true,
+        bookingStatus: "in_progress",
+        bookingNumber: "BK-260826-001",
+      }),
+    );
 
     expect(
       await screen.findByRole("button", { name: /hapus grooming/i }),
     ).toBeDisabled();
+  });
+
+  /*
+    A PULLED APPOINTMENT NEVER LOCKS THE LINE. The basket only claims it;
+    removing the line releases the claim and touches the document not at all —
+    and that is how a mis-pull is undone, so locking it would trap the cashier.
+
+    The bridge only ever offers `confirmed` appointments, so before
+    `bookingOwned` existed EVERY pulled line locked the instant it landed.
+  */
+  it("never locks a line pulled from somebody's appointment", async () => {
+    render(
+      line({
+        bookingOwned: false,
+        bookingStatus: "confirmed",
+        bookingNumber: "BK-260826-010",
+      }),
+    );
+
+    expect(
+      await screen.findByRole("button", { name: /hapus grooming/i }),
+    ).toBeEnabled();
+  });
+
+  it("does not lock even a pulled one the groomer has started", async () => {
+    render(
+      line({
+        bookingOwned: false,
+        bookingStatus: "in_progress",
+        bookingNumber: "BK-260826-010",
+      }),
+    );
+
+    expect(
+      await screen.findByRole("button", { name: /hapus grooming/i }),
+    ).toBeEnabled();
+  });
+
+  /*
+    A DISCOUNT IS NEVER LOCKED. It changes what the customer pays, not what the
+    animal is having — the booking stores the service and its list price, and
+    neither moves.
+  */
+  it("lets a discount be given on any line, locked or not", async () => {
+    render(
+      line({
+        bookingOwned: true,
+        bookingStatus: "check_in",
+        bookingNumber: "BK-260826-001",
+      }),
+    );
+
+    expect(
+      await screen.findByRole("button", { name: /diskon grooming/i }),
+    ).toBeEnabled();
   });
 
   /*
@@ -621,7 +692,13 @@ describe("PosCart — a line whose service has already started", () => {
     times.
   */
   it("says why, in words on the screen", async () => {
-    render(line({ bookingStatus: "check_in", bookingNumber: "BK-260826-001" }));
+    render(
+      line({
+        bookingOwned: true,
+        bookingStatus: "check_in",
+        bookingNumber: "BK-260826-001",
+      }),
+    );
 
     expect(
       await screen.findByText(/BK-260826-001 sudah dimulai/),
@@ -638,7 +715,8 @@ describe("PosCart — a line whose service has already started", () => {
         petName: null,
         groomerName: null,
         bookingStatus: null,
-      }),
+      bookingOwned: false,
+          }),
     );
 
     expect(
@@ -671,6 +749,7 @@ describe("PosScreen — changing who the basket is for", () => {
     petName: "Bruno",
     groomerName: "Belum ditentukan",
     bookingStatus: "draft",
+    bookingOwned: true,
     bookingNumber: null,
   };
 
@@ -774,5 +853,71 @@ describe("PosScreen — changing who the basket is for", () => {
     expect(
       screen.queryByRole("heading", { name: /ganti pelanggan\?/i }),
     ).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * The banner counts what is still pullable, and that number moves in BOTH
+ * directions.
+ *
+ * Pulling one takes it off the list; taking the line back out releases the claim
+ * and puts it back. Only the first was ever re-asked, so a cashier who pulled
+ * one of two and then removed it saw "1 booking" for a customer who had two —
+ * and no way to get at the one they had just released.
+ */
+describe("PosScreen — the banner follows the basket", () => {
+  const pulledLine = {
+    kind: "service",
+    refId: "svc-1",
+    name: "Grooming Full Service",
+    sku: null,
+    qty: "1.0000",
+    unitPrice: "150000.0000",
+    lineTotal: "150000.0000",
+    discount: null,
+    hppAtTime: null,
+    bookingId: BOOKING_ID,
+    petId: PET_ID,
+    petName: "Bruno",
+    groomerName: "Belum ditentukan",
+    bookingStatus: "confirmed",
+    bookingOwned: false,
+    bookingNumber: "BK-260826-010",
+  };
+
+  it("re-asks when a claimed line is taken back out", async () => {
+    const user = userEvent.setup();
+
+    // The till comes up holding one pulled appointment.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const holding = cart({ items: [pulledLine] as any });
+    mockedPos.activeCart.mockResolvedValue(holding);
+    mockedPos.createCart.mockResolvedValue(holding);
+    // Removing it gives back an empty basket — the claim is released.
+    mockedPos.updateCart.mockResolvedValue(cart({ items: [] }));
+
+    renderWithAuth(<PosScreen />);
+    await screen.findByText("Grooming Full Service");
+
+    const before = mockedBookings.bridge.mock.calls.length;
+    await user.click(screen.getByRole("button", { name: /hapus grooming/i }));
+
+    await waitFor(() =>
+      expect(mockedBookings.bridge.mock.calls.length).toBeGreaterThan(before),
+    );
+  });
+
+  /*
+    The hook has just fetched for this customer; a second request for the same
+    answer is a round trip that changes nothing.
+  */
+  it("does not re-ask merely for coming up", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await pickCustomer(user);
+    await waitFor(() => expect(mockedBookings.bridge).toHaveBeenCalled());
+
+    expect(mockedBookings.bridge).toHaveBeenCalledTimes(1);
   });
 });

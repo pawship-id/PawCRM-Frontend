@@ -106,7 +106,8 @@ const cartWithItem: PosTransaction = {
       petName: null,
       groomerName: null,
       bookingStatus: null,
-      bookingNumber: null,
+      bookingOwned: false,
+          bookingNumber: null,
     },
   ],
   runningTotals: {

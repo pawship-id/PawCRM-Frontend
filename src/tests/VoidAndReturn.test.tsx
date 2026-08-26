@@ -39,6 +39,7 @@ const item = (overrides = {}) => ({
   petName: null,
   groomerName: null,
   bookingStatus: null,
+  bookingOwned: false,
   bookingNumber: null,
   ...overrides,
 });
