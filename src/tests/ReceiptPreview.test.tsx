@@ -23,6 +23,7 @@ const receipt = (overrides: Partial<PosReceipt> = {}): PosReceipt => ({
     receiptFooter: "Terima kasih",
   },
   transactionNumber: "POS-20260825-0001",
+  receiptToken: "tokenForThisSaleOnly",
   paidAt: "2026-08-25T03:00:00.000Z",
   status: "paid",
   cashierUserId: "u1",
@@ -308,13 +309,25 @@ describe("ReceiptPreview — the cashier", () => {
   it("names them in the copied text too", async () => {
     const user = userEvent.setup();
     const writeText = jest.fn().mockResolvedValue(undefined);
-    // `navigator.clipboard` is getter-only in jsdom; defineProperty is the way in.
+    /*
+      AFTER `userEvent.setup()`, never before: setup installs a clipboard stub of
+      its own over `navigator.clipboard`, so defining ours first means testing
+      userEvent's stub instead. `defineProperty` because the property is
+      getter-only in jsdom and cannot be assigned.
+    */
     Object.defineProperty(navigator, "clipboard", {
       value: { writeText },
       configurable: true,
     });
 
-    mockedPos.receipt.mockResolvedValue(receipt({ cashierName: "Salwa" }));
+    /*
+      NO TOKEN, so the button copies TEXT — the fallback for sales settled before
+      links existed. The rule under test is about that text, and a sale with a
+      token would copy a URL instead.
+    */
+    mockedPos.receipt.mockResolvedValue(
+      receipt({ cashierName: "Salwa", receiptToken: null }),
+    );
 
     renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
     await screen.findByText(/Kasir: Salwa/);
@@ -412,7 +425,11 @@ describe("ReceiptPreview — the footer", () => {
       configurable: true,
     });
 
-    mockedPos.receipt.mockResolvedValue(withFooter("Sampai jumpa lagi."));
+    // Tokenless, so the button copies text rather than a link — see above.
+    mockedPos.receipt.mockResolvedValue({
+      ...withFooter("Sampai jumpa lagi."),
+      receiptToken: null,
+    });
 
     renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
     await screen.findByText("Sampai jumpa lagi.");
@@ -501,5 +518,113 @@ describe("ReceiptDialog — the paper size", () => {
     expect(
       screen.getByText(/ukuran kertas: A4 · ubah di pengaturan kasir/i),
     ).toBeInTheDocument();
+  });
+});
+
+/**
+ * "Salin Link WA" (FR-8).
+ *
+ * WHAT THE BUTTON COPIES CHANGED, and the label with it. It used to copy a block
+ * of receipt text because there was no page to link to; now there is one, and
+ * the PRD asks for the link.
+ */
+describe("ReceiptDialog — the WhatsApp link", () => {
+  const writeText = jest.fn();
+
+  /**
+   * A driver with our clipboard behind it.
+   *
+   * THE ORDER IS LOAD-BEARING. `userEvent.setup()` installs a clipboard stub of
+   * its own over `navigator.clipboard`, so defining ours first means every
+   * assertion below silently tests userEvent's stub and sees no calls at all.
+   * `defineProperty` rather than assignment because the property is getter-only
+   * in jsdom.
+   */
+  function setup() {
+    const user = userEvent.setup();
+
+    writeText.mockReset().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+
+    return user;
+  }
+
+  it("copies a link to the customer's own receipt page", async () => {
+    const user = setup();
+    mockedPos.receipt.mockResolvedValue(receipt());
+
+    renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
+
+    await user.click(
+      await screen.findByRole("button", { name: /salin link wa/i }),
+    );
+
+    /*
+      THE ORIGIN THE CASHIER IS ON, not a configured base URL: the till and the
+      receipt page are the same app, and a configured value is one more thing to
+      get wrong per deployment — wrong meaning every link sent that day leads
+      nowhere.
+    */
+    expect(writeText).toHaveBeenCalledWith(
+      `${window.location.origin}/struk/tokenForThisSaleOnly`,
+    );
+  });
+
+  it("says a LINK was copied, not a receipt", async () => {
+    const user = setup();
+    mockedPos.receipt.mockResolvedValue(receipt());
+
+    renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
+    await user.click(
+      await screen.findByRole("button", { name: /salin link wa/i }),
+    );
+
+    expect(
+      await screen.findByText(/tautan struk sudah disalin/i),
+    ).toBeInTheDocument();
+  });
+
+  /*
+    SALES SETTLED BEFORE 27 Agt HAVE NO TOKEN until the backfill seed runs. The
+    button falls back to what it always did rather than refusing — and it renames
+    itself, because a cashier pasting a link where they expected a receipt (or
+    the reverse) would think it had failed.
+  */
+  it("falls back to copying the text when the sale predates links", async () => {
+    const user = setup();
+    mockedPos.receipt.mockResolvedValue(receipt({ receiptToken: null }));
+
+    renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
+
+    await user.click(
+      await screen.findByRole("button", { name: /salin untuk whatsapp/i }),
+    );
+
+    const copied = writeText.mock.calls[0][0];
+    expect(copied).toContain("Buloo Petshop");
+    expect(copied).toContain("POS-20260825-0001");
+    expect(copied).not.toContain("/struk/");
+  });
+
+  it("still shows the text to copy by hand when the clipboard is blocked", async () => {
+    const user = setup();
+    writeText.mockRejectedValue(new Error("denied"));
+    mockedPos.receipt.mockResolvedValue(receipt());
+
+    renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
+    await user.click(
+      await screen.findByRole("button", { name: /salin link wa/i }),
+    );
+
+    // An insecure origin has no clipboard API at all — and a till on plain
+    // http:// is not unusual. What it shows is the link, since that is what it
+    // tried to copy.
+    const box = await screen.findByLabelText(/teks struk/i);
+    expect(box).toHaveValue(
+      `${window.location.origin}/struk/tokenForThisSaleOnly`,
+    );
   });
 });

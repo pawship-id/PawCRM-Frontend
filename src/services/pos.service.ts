@@ -6,6 +6,7 @@ import type {
   PosCatalogItem,
   PosCatalogQuery,
   PosReceipt,
+  PublicReceipt,
   PosReturn,
   PosReturnable,
   PosTransactionListQuery,
@@ -91,11 +92,13 @@ export const posService = {
   /* ------------------------------------------------------------- cart */
 
   /** POST /pos/transactions — an empty cart bound to the shift. */
-  createCart: (input: { customerId?: string | null; heldLabel?: string | null } = {}) =>
-    apiClient.post<PosTransaction>("/pos/transactions", input),
+  createCart: (
+    input: { customerId?: string | null; heldLabel?: string | null } = {},
+  ) => apiClient.post<PosTransaction>("/pos/transactions", input),
 
   /** GET /pos/transactions/:id */
-  getCart: (id: string) => apiClient.get<PosTransaction>(`/pos/transactions/${id}`),
+  getCart: (id: string) =>
+    apiClient.get<PosTransaction>(`/pos/transactions/${id}`),
 
   /**
    * PATCH /pos/transactions/:id — prices the WHOLE basket.
@@ -179,13 +182,13 @@ export const posService = {
    * basket — invisible in Keranjang Tersimpan, which lists only what was PARKED
    * — and the next line would quietly open a second one beside it.
    */
-  activeCart: () => apiClient.get<PosTransaction | null>("/pos/transactions/active"),
+  activeCart: () =>
+    apiClient.get<PosTransaction | null>("/pos/transactions/active"),
 
   pullBookings: (id: string, bookingIds: string[]) =>
-    apiClient.post<PosTransaction>(
-      `/pos/transactions/${id}/pull-bookings`,
-      { bookingIds },
-    ),
+    apiClient.post<PosTransaction>(`/pos/transactions/${id}/pull-bookings`, {
+      bookingIds,
+    }),
 
   pay: (id: string, input: PayInput) =>
     apiClient.post<PosTransaction>(`/pos/transactions/${id}/pay`, input),
@@ -213,6 +216,24 @@ export const posService = {
    */
   receipt: (id: string) =>
     apiClient.get<PosReceipt>(`/pos/transactions/${id}/receipt`),
+
+  /**
+   * GET /public/receipts/:token — the receipt a CUSTOMER opens (FR-8).
+   *
+   * NO SESSION. This is what the link copied by "Salin Link WA" resolves to, and
+   * the person following it out of a chat app has no account here. The token in
+   * the URL is what identifies the sale and what authorises reading it.
+   *
+   * `credentials: "omit"` rather than the client's usual `include`, and it is
+   * deliberate rather than tidiness: a shop's own laptop opening a customer's
+   * link would otherwise send the cashier's session cookie to a route that has
+   * no use for it. Sending a credential where none is needed is how one ends up
+   * somewhere it should not be.
+   */
+  publicReceipt: (token: string) =>
+    apiClient.get<PublicReceipt>(`/public/receipts/${token}`, {
+      credentials: "omit",
+    }),
 
   /* ------------------------------------------------------ undoing a sale */
 

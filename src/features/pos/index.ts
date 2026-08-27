@@ -7,3 +7,9 @@
  * reason to export it now.
  */
 export { PosScreen } from "./components/PosScreen";
+/*
+ * The one thing in here a CUSTOMER opens (FR-8) — /struk/:token, outside the
+ * dashboard entirely. Exported for the same reason `PosScreen` is: a route
+ * imports it and nothing else.
+ */
+export { PublicReceiptScreen } from "./components/PublicReceiptScreen";

@@ -92,7 +92,31 @@ export function ReceiptDialog({
     };
   }, [saleId]);
 
-  /** The receipt as plain text, for a chat window. */
+  /**
+   * The link a customer opens their own receipt with (FR-8).
+   *
+   * BUILT FROM `window.location.origin` rather than from a configured base URL,
+   * because the till and the receipt page are the same app: whatever host the
+   * cashier is on is the host the customer must be sent to. A configured value
+   * would be one more thing to get wrong per deployment, and getting it wrong
+   * means every link sent that day leads nowhere.
+   *
+   * Null on a sale settled before 27 Agt, which has no token — those fall back
+   * to the text below.
+   */
+  function linkFor(source: PosReceipt): string | null {
+    if (!source.receiptToken) return null;
+
+    return `${window.location.origin}/struk/${source.receiptToken}`;
+  }
+
+  /**
+   * The receipt as plain text, for a chat window.
+   *
+   * STILL HERE, as the fallback for a sale that predates links. It was what the
+   * button always copied, so nothing is lost for those — and a cashier reading a
+   * message they can send by hand is better than a button that refuses.
+   */
   function asText(source: PosReceipt): string {
     const lines = [
       source.header.tenantName,
@@ -125,7 +149,13 @@ export function ReceiptDialog({
   async function copy() {
     if (!receipt) return;
 
-    const text = asText(receipt);
+    /*
+      THE LINK IF THERE IS ONE, the text if there is not (FR-8 asks for the
+      link). A link is the better thing to send: it stays readable in a chat
+      window, it shows the shop's own header, and it keeps showing what is still
+      owed on a credit sale — none of which a pasted block of text does.
+    */
+    const text = linkFor(receipt) ?? asText(receipt);
 
     try {
       // Absent entirely on an insecure origin, and rejectable even where it
@@ -177,7 +207,9 @@ export function ReceiptDialog({
 
             {copied && (
               <p className="text-sm text-success">
-                Struk sudah disalin. Tinggal tempel di WhatsApp.
+                {linkFor(receipt)
+                  ? "Tautan struk sudah disalin. Tinggal tempel di WhatsApp."
+                  : "Struk sudah disalin. Tinggal tempel di WhatsApp."}
               </p>
             )}
 
@@ -206,7 +238,12 @@ export function ReceiptDialog({
             disabled={!receipt}
           >
             <Copy className="size-4" />
-            Salin untuk WhatsApp
+            {/*
+              NAMED FOR WHAT IT COPIES. It said "Salin untuk WhatsApp" while it
+              copied a block of text, and a cashier pasting a link where they
+              expected a receipt would think it had failed.
+            */}
+            {receipt?.receiptToken ? "Salin Link WA" : "Salin untuk WhatsApp"}
           </Button>
           <Button
             type="button"

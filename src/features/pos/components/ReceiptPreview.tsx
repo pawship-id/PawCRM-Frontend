@@ -1,7 +1,7 @@
 "use client";
 
 import { formatMoney, formatQty } from "@/utils/decimal";
-import type { PosReceipt } from "@/types/api";
+import type { PublicReceipt } from "@/types/api";
 
 import type { ReceiptSize } from "../deviceSettings";
 
@@ -58,7 +58,13 @@ export function ReceiptPreview({
   receipt,
   size,
 }: {
-  receipt: PosReceipt;
+  /*
+    THE PUBLIC SHAPE, which a `PosReceipt` also satisfies — it is the same
+    receipt plus the cashier's user id, and nothing drawn below reads that.
+    Typing it this way is what lets one component serve both the till and the
+    customer's own page, rather than two that can drift.
+  */
+  receipt: PublicReceipt;
   size: ReceiptSize;
 }) {
   const { header, totals } = receipt;

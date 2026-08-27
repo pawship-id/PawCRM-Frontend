@@ -1116,12 +1116,7 @@ export interface PosRunningTotals {
  * `open` is the Hotel module's open bill, carried with no UI. There is no
  * `cancelled`: an unpaid cart is deleted, a paid one is voided.
  */
-export type PosTransactionStatus =
-  | "active"
-  | "held"
-  | "open"
-  | "paid"
-  | "void";
+export type PosTransactionStatus = "active" | "held" | "open" | "paid" | "void";
 
 /**
  * A basket at the till.
@@ -1355,6 +1350,14 @@ export interface PosReceipt {
     receiptFooter: string;
   };
   transactionNumber: string | null;
+  /**
+   * The unguessable name this sale answers to at /struk/:token (FR-8).
+   *
+   * What "Salin Link WA" builds its URL from. NULL on sales settled before 27
+   * Agt — the till falls back to copying the receipt text for those, which is
+   * what the button did before links existed.
+   */
+  receiptToken: string | null;
   paidAt: string | null;
   status: PosTransactionStatus;
   cashierUserId: string | null;
@@ -1388,6 +1391,16 @@ export interface PosReceipt {
   } | null;
   note: string | null;
 }
+
+/**
+ * The same receipt, as the public page gets it (FR-8).
+ *
+ * ONE FIELD LIGHTER, and the missing one is the point: `cashierUserId` is a
+ * handle on the shop's staff, and a page anybody holding a link can open has no
+ * business carrying one. `cashierName` stays, because the paper prints it and it
+ * is the first thing asked when somebody comes back unhappy.
+ */
+export type PublicReceipt = Omit<PosReceipt, "cashierUserId">;
 
 /** Query for GET /api/pos/transactions — the Void list's source. */
 export interface PosTransactionListQuery {
@@ -1514,7 +1527,11 @@ export interface PosItemInput {
   kind: PosItemKind;
   refId: string;
   qty?: string;
-  discount?: { mode: PosDiscountMode; value: string; approvedBy?: string } | null;
+  discount?: {
+    mode: PosDiscountMode;
+    value: string;
+    approvedBy?: string;
+  } | null;
   bookingId?: string | null;
   petId?: string | null;
   petName?: string | null;
@@ -1530,7 +1547,11 @@ export interface PosItemInput {
  */
 export interface UpdateCartInput {
   items?: PosItemInput[];
-  cartDiscount?: { mode: PosDiscountMode; value: string; approvedBy?: string } | null;
+  cartDiscount?: {
+    mode: PosDiscountMode;
+    value: string;
+    approvedBy?: string;
+  } | null;
   otherCharges?: PosCharge[];
   customerId?: string | null;
   note?: string | null;
@@ -1750,12 +1771,7 @@ export interface UpdateBookingInput {
  * hands a shop a post-dated cheque — but it is one of four ways a shop settles a
  * supplier invoice, so it is a channel type that only moves money OUT.
  */
-export type PaymentChannelType =
-  | "cash"
-  | "transfer"
-  | "qris"
-  | "edc"
-  | "giro";
+export type PaymentChannelType = "cash" | "transfer" | "qris" | "edc" | "giro";
 
 /** Which way money moves through a channel. */
 export type ChannelDirection = "in" | "out";
@@ -1935,14 +1951,7 @@ export interface UpdateServiceInput {
  * closed list, because it decides which services and prices a booking may offer.
  */
 export type PetSpecies =
-  | "dog"
-  | "cat"
-  | "bird"
-  | "rabbit"
-  | "hamster"
-  | "reptile"
-  | "fish"
-  | "other";
+  "dog" | "cat" | "bird" | "rabbit" | "hamster" | "reptile" | "fish" | "other";
 
 /**
  * `unknown` is a REAL value, not a missing one: a rescue arrives unsexed and
@@ -2308,7 +2317,9 @@ export interface Supplier {
  * every vendor a tenant already had. Absent and true are the same answer, which
  * is exactly what the backend's `$ne: false` filter says.
  */
-export function isSupplierActive(supplier: Pick<Supplier, "isActive">): boolean {
+export function isSupplierActive(
+  supplier: Pick<Supplier, "isActive">,
+): boolean {
   return supplier.isActive !== false;
 }
 
@@ -2653,11 +2664,7 @@ export interface GoodsReceiptListRow {
  * than a calendar — see the model. There is no ordering by value: `total` is
  * unindexed, so it would be a blocking in-memory sort of every matched receipt.
  */
-export type GoodsReceiptSort =
-  | "newest"
-  | "oldest"
-  | "numberDesc"
-  | "numberAsc";
+export type GoodsReceiptSort = "newest" | "oldest" | "numberDesc" | "numberAsc";
 
 /**
  * Query parameters accepted by GET /api/goods-receipts. All optional.
@@ -3057,8 +3064,10 @@ export interface PurchaseInvoicePayment {
  * payable was posted by the goods receipt, so an entry here would double it. A
  * screen must not read the null as "nothing was posted".
  */
-export interface PurchaseInvoiceDetail
-  extends Omit<PurchaseInvoiceListRow, "paymentCount"> {
+export interface PurchaseInvoiceDetail extends Omit<
+  PurchaseInvoiceListRow,
+  "paymentCount"
+> {
   goodsReceiptNumber: string | null;
   /** Who filed the bill. Null when that user has been deleted since. */
   createdByName: string | null;
@@ -3142,10 +3151,7 @@ export interface PurchaseInvoiceListQuery {
  * anybody calls it.
  */
 export type PurchaseInvoiceSort =
-  | "newest"
-  | "oldest"
-  | "dueSoonest"
-  | "dueLatest";
+  "newest" | "oldest" | "dueSoonest" | "dueLatest";
 
 /**
  * POST /api/purchase-invoices — file the supplier's bill against a delivery.
@@ -3285,8 +3291,10 @@ export interface PurchaseReturnItem {
  * came in on `konsinyasi`, so there was never a debt to discharge; or the
  * returned value came to zero, which the ledger correctly declines to post.
  */
-export interface PurchaseReturnDetail
-  extends Omit<PurchaseReturnListRow, "itemCount"> {
+export interface PurchaseReturnDetail extends Omit<
+  PurchaseReturnListRow,
+  "itemCount"
+> {
   items: PurchaseReturnItem[];
   journalEntryId: string | null;
   /** Who opened the return. Null when that user has been deleted since. */
@@ -3327,10 +3335,7 @@ export interface PurchaseReturnListQuery {
  * credit note. There is no ordering by value or by status; see the model.
  */
 export type PurchaseReturnSort =
-  | "newest"
-  | "oldest"
-  | "numberDesc"
-  | "numberAsc";
+  "newest" | "oldest" | "numberDesc" | "numberAsc";
 
 /** One line going back, as a client sends it. Three fields, and that is the design. */
 export interface PurchaseReturnItemInput {
