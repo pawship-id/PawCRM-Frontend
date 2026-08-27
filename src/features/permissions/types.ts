@@ -93,6 +93,26 @@ export const PERMISSION_CATALOG = {
    * immutable. No `restore`, for the same reason a discarded opname has none.
    */
   purchaseReturns: ["create", "read", "update", "delete", "submit"],
+  /**
+   * What CUSTOMERS owe — the mirror of `purchaseInvoices`, pointed the other way.
+   *
+   * `create` IS IN THE CATALOGUE BUT GATES NOTHING YET. The backend carries it
+   * and there is no `POST /api/customer-invoices` to protect: raising a
+   * receivable by hand cuts stock, posts two journal entries and allocates a
+   * number, which is PCR-030. Listed here anyway so the Role screen can grant it
+   * before the screen exists, rather than shipping a role that has to be edited
+   * the day it does — and because the catalogue is the backend's, not this
+   * file's, to shorten.
+   *
+   * `pay` IS ITS OWN ACTION. Looking at what a customer owes is something counter
+   * staff do; recording that the money arrived credits `1103 Piutang Usaha` on an
+   * entry nobody can take back. Same separation of duties as `pay` on
+   * `purchaseInvoices`.
+   *
+   * No `delete`: a receivable is voided with the sale that created it, never
+   * removed. A debt that can be deleted is a debt that can be forgiven quietly.
+   */
+  customerInvoices: ["create", "read", "update", "pay"],
   chartOfAccounts: ["create", "read", "update", "delete", "restore"],
   // A posted journal entry is immutable: no delete, no restore. `reverse` is
   // its own action because correcting the ledger is a different privilege from

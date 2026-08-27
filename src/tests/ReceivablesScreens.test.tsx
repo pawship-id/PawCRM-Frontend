@@ -1,0 +1,625 @@
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import type { UserEvent } from "@testing-library/user-event";
+
+import { InvoiceDetail, ReceivablesScreen } from "@/features/sales";
+import { customerInvoiceService } from "@/services/customerInvoice.service";
+import { customerService } from "@/services/customer.service";
+import { branchService } from "@/services/branch.service";
+import { paymentChannelService } from "@/services/paymentChannel.service";
+import { ApiError } from "@/services/api-error";
+import type {
+  CustomerInvoiceDetail,
+  CustomerInvoiceListRow,
+  CustomerOutstandingSummary,
+} from "@/types/api";
+
+import { renderWithAuth } from "./helpers/renderWithAuth";
+
+jest.mock("@/services/customerInvoice.service");
+jest.mock("@/services/customer.service");
+jest.mock("@/services/branch.service");
+jest.mock("@/services/paymentChannel.service");
+
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: jest.fn() }),
+}));
+
+jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
+
+/**
+ * The Faktur Penjualan screens, against mocked services.
+ *
+ * WHAT THESE TESTS GUARD — every one of them is a way this screen could drift
+ * back into computing in the browser what the server already answered:
+ *
+ *  1. `outstandingAmount` AND `isOverdue` COME FROM THE SERVER. A row rendered
+ *     from locally recomputed arithmetic would disagree with the banner above it
+ *     the first time a due date fell mid-render;
+ *  2. THE VIEW FILTERS GO OVER THE WIRE as `outstanding` / `overdue` / `dueSoon`
+ *     booleans. A client-side filter shows four rows above a pager claiming
+ *     twenty;
+ *  3. THE HEADLINE TOTALS ARE THE WHOLE BOOK, from `/outstanding` — never summed
+ *     from the page, which would grow as the user pages;
+ *  4. a payment cannot be double-submitted, because `POST /:id/payments` is not
+ *     idempotent and would book the money arriving twice on two irreversible
+ *     entries;
+ *  5. `pay` is gated separately from `read`, which is the separation of duties
+ *     the backend enforces;
+ *  6. the channel picker asks for channels that can RECEIVE (`usableFor: "in"`)
+ *     — one letter away from the payables form, and the server refuses the
+ *     other direction.
+ *
+ * The Radix selects are not driven — jsdom cannot do their pointer protocol — so
+ * the payment tests rely on the single-channel pre-selection and assert on the
+ * payload.
+ */
+const asMock = <T extends (...args: never[]) => unknown>(fn: T) =>
+  fn as jest.MockedFunction<T>;
+
+/**
+ * Opens the one filter panel and returns it.
+ *
+ * Pelanggan, cabang, sumber, the date range and the ordering all live inside it.
+ * The trigger's text carries a count (`Filter (2)`); its accessible name does
+ * not, so it is found by the stable half. The VIEW pills are deliberately not in
+ * here — they sit outside the bar.
+ */
+async function openFilters(user: UserEvent) {
+  await user.click(screen.getByRole("button", { name: "Filter" }));
+  return screen.findByRole("dialog");
+}
+
+const INVOICE_ID = "inv1";
+const BRANCH_ID = "b1";
+const CUSTOMER_ID = "c1";
+
+function listRow(
+  overrides: Partial<CustomerInvoiceListRow> = {},
+): CustomerInvoiceListRow {
+  return {
+    _id: INVOICE_ID,
+    invoiceNumber: "INV-2026-0042",
+    customerId: CUSTOMER_ID,
+    customerName: "Bu Sari",
+    branchId: BRANCH_ID,
+    branchName: "Cabang Pusat",
+    posTransactionId: "pos1",
+    source: "pos_bridge",
+    invoiceDate: "2026-08-06T00:00:00.000Z",
+    dueDate: "2026-09-05T00:00:00.000Z",
+    total: "300000.0000",
+    paidAmount: "0.0000",
+    outstandingAmount: "300000.0000",
+    isOverdue: false,
+    status: "unpaid",
+    paymentCount: 0,
+    notes: null,
+    ...overrides,
+  };
+}
+
+function detail(
+  overrides: Partial<CustomerInvoiceDetail> = {},
+): CustomerInvoiceDetail {
+  // The detail shape is the list row WITHOUT `paymentCount` — it carries the
+  // payments themselves instead, so the count would be a second source of truth.
+  const row: Omit<CustomerInvoiceListRow, "paymentCount"> & {
+    paymentCount?: number;
+  } = { ...listRow() };
+  delete row.paymentCount;
+
+  return {
+    ...row,
+    createdByName: null,
+    payments: [],
+    journalEntryId: "je-sale",
+    ...overrides,
+  };
+}
+
+function summary(
+  overrides: Partial<CustomerOutstandingSummary> = {},
+): CustomerOutstandingSummary {
+  return {
+    items: [],
+    totalOutstanding: "300000.0000",
+    totalInvoices: 1,
+    totalOverdueOutstanding: "0.0000",
+    totalOverdueInvoices: 0,
+    totalDueSoonOutstanding: "0.0000",
+    totalDueSoonInvoices: 0,
+    horizonDays: 7,
+    ...overrides,
+  };
+}
+
+const page = (items: CustomerInvoiceListRow[]) => ({
+  items,
+  pagination: {
+    page: 1,
+    limit: 20,
+    total: items.length,
+    totalPages: items.length === 0 ? 0 : 1,
+  },
+});
+
+const optionPage = <T,>(items: T[]) =>
+  ({
+    items,
+    pagination: { page: 1, limit: 100, total: items.length, totalPages: 1 },
+  }) as never;
+
+beforeEach(() => {
+  jest.clearAllMocks();
+
+  /*
+    The payment form reads the tenant's INCOMING channels — where the money
+    lands. One BCA account, which the form pre-selects.
+  */
+  asMock(paymentChannelService.list).mockResolvedValue(
+    optionPage([
+      {
+        _id: "chan-bca",
+        type: "transfer",
+        name: "BCA Operasional",
+        accountId: "acc-bca",
+        usableFor: ["in", "out"],
+        isActive: true,
+      },
+    ]),
+  );
+
+  asMock(customerInvoiceService.list).mockResolvedValue(page([]) as never);
+  asMock(customerInvoiceService.outstanding).mockResolvedValue(
+    summary({ totalOutstanding: "0.0000", totalInvoices: 0 }),
+  );
+  asMock(customerInvoiceService.getById).mockResolvedValue(detail());
+  asMock(customerService.list).mockResolvedValue(
+    optionPage([{ _id: CUSTOMER_ID, name: "Bu Sari" }]),
+  );
+  asMock(branchService.list).mockResolvedValue(
+    optionPage([{ _id: BRANCH_ID, name: "Cabang Pusat", isActive: true }]),
+  );
+});
+
+/* ------------------------------------------------------------------- list */
+
+describe("ReceivablesScreen", () => {
+  it("opens on the outstanding view, asked of the server", async () => {
+    // NOT "all". A receivables screen is opened to answer "who still owes us" —
+    // settled and voided invoices are history, and leading with them buries the
+    // rows that need chasing.
+    renderWithAuth(<ReceivablesScreen />);
+
+    await waitFor(() =>
+      expect(customerInvoiceService.list).toHaveBeenCalledWith(
+        expect.objectContaining({ outstanding: true }),
+      ),
+    );
+  });
+
+  it("orders by soonest due — who has waited longest, not what was billed last", async () => {
+    renderWithAuth(<ReceivablesScreen />);
+
+    await waitFor(() =>
+      expect(customerInvoiceService.list).toHaveBeenCalledWith(
+        expect.objectContaining({ sort: "dueSoonest" }),
+      ),
+    );
+  });
+
+  it("sends the overdue lens over the wire rather than filtering the page", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<ReceivablesScreen />);
+
+    await waitFor(() => expect(customerInvoiceService.list).toHaveBeenCalled());
+    await user.click(screen.getByRole("button", { name: "Jatuh tempo" }));
+
+    await waitFor(() =>
+      expect(customerInvoiceService.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ overdue: true }),
+      ),
+    );
+  });
+
+  it("sends an exact status when the lens names one", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<ReceivablesScreen />);
+
+    await waitFor(() => expect(customerInvoiceService.list).toHaveBeenCalled());
+    await user.click(screen.getByRole("button", { name: "Void" }));
+
+    await waitFor(() =>
+      expect(customerInvoiceService.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ status: "void" }),
+      ),
+    );
+  });
+
+  it("renders the server's outstanding figure, never a sum of the page", async () => {
+    asMock(customerInvoiceService.list).mockResolvedValue(
+      page([listRow(), listRow({ _id: "inv2" })]) as never,
+    );
+    asMock(customerInvoiceService.outstanding).mockResolvedValue(
+      // Deliberately NOT 2 × 300.000: the book is bigger than the page.
+      summary({ totalOutstanding: "9500000.0000", totalInvoices: 31 }),
+    );
+
+    renderWithAuth(<ReceivablesScreen />);
+
+    expect(await screen.findByText(/Rp\s?9\.500\.000/)).toBeInTheDocument();
+    expect(screen.getByText("31 faktur belum lunas")).toBeInTheDocument();
+  });
+
+  it("warns about overdue money with the server's own two figures", async () => {
+    asMock(customerInvoiceService.outstanding).mockResolvedValue(
+      summary({
+        totalOverdueInvoices: 3,
+        totalOverdueOutstanding: "4310000.0000",
+      }),
+    );
+
+    renderWithAuth(<ReceivablesScreen />);
+
+    expect(
+      await screen.findByText("3 faktur sudah lewat jatuh tempo"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Rp\s?4\.310\.000/)).toBeInTheDocument();
+  });
+
+  it("captions the due-soon note with the server's window, not a constant", async () => {
+    asMock(customerInvoiceService.outstanding).mockResolvedValue(
+      summary({
+        totalDueSoonInvoices: 4,
+        totalDueSoonOutstanding: "6185000.0000",
+        horizonDays: 14,
+      }),
+    );
+
+    renderWithAuth(<ReceivablesScreen />);
+
+    expect(
+      await screen.findByText("4 faktur jatuh tempo dalam 14 hari"),
+    ).toBeInTheDocument();
+  });
+
+  it("renders the row's lateness from the server's verdict", async () => {
+    asMock(customerInvoiceService.list).mockResolvedValue(
+      page([listRow({ isOverdue: true })]) as never,
+    );
+
+    renderWithAuth(<ReceivablesScreen />);
+
+    expect(await screen.findByText(/telat \d+ hari/)).toBeInTheDocument();
+  });
+
+  /*
+    The one column the payables list does not have. A bridged invoice never
+    passed through a form, and "where did this come from" is asked whenever a
+    figure looks unfamiliar.
+  */
+  it("says which invoices the till raised", async () => {
+    asMock(customerInvoiceService.list).mockResolvedValue(
+      page([
+        listRow({ source: "pos_bridge" }),
+        listRow({ _id: "inv2", source: "manual" }),
+      ]) as never,
+    );
+
+    renderWithAuth(<ReceivablesScreen />);
+
+    expect(await screen.findByText("dari kasir")).toBeInTheDocument();
+    expect(screen.getByText("manual")).toBeInTheDocument();
+  });
+
+  it("shows a voided invoice as owing nothing", async () => {
+    asMock(customerInvoiceService.list).mockResolvedValue(
+      page([listRow({ status: "void", outstandingAmount: "300000.0000" })]) as never,
+    );
+
+    renderWithAuth(<ReceivablesScreen />);
+
+    expect(await screen.findByText("void")).toBeInTheDocument();
+    // The outstanding column is dashed rather than showing a figure somebody
+    // might go and chase.
+    const row = screen.getByRole("row", { name: /INV-2026-0042/ });
+    expect(within(row).getByText("—")).toBeInTheDocument();
+  });
+
+  it("filters by customer through the panel, because search does not match names", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<ReceivablesScreen />);
+
+    await waitFor(() => expect(customerService.list).toHaveBeenCalled());
+    const panel = await openFilters(user);
+
+    await user.click(
+      within(panel).getByRole("button", { name: /Filter pelanggan/ }),
+    );
+    await user.click(await screen.findByRole("option", { name: "Bu Sari" }));
+    await user.click(within(panel).getByRole("button", { name: /Terapkan/i }));
+
+    await waitFor(() =>
+      expect(customerInvoiceService.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ customerId: CUSTOMER_ID }),
+      ),
+    );
+  });
+
+  it("says so when the request fails, rather than showing an empty list", async () => {
+    asMock(customerInvoiceService.list).mockRejectedValue(
+      new ApiError("Server error", 500),
+    );
+
+    renderWithAuth(<ReceivablesScreen />);
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+
+  it("does not offer a create button — there is no route behind one", async () => {
+    renderWithAuth(<ReceivablesScreen />);
+
+    await waitFor(() => expect(customerInvoiceService.list).toHaveBeenCalled());
+    expect(
+      screen.queryByRole("link", { name: /buat faktur/i }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+/* ----------------------------------------------------------------- detail */
+
+describe("InvoiceDetail", () => {
+  it("shows the server's outstanding figure beside what was billed and paid", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      detail({
+        total: "300000.0000",
+        paidAmount: "100000.0000",
+        outstandingAmount: "200000.0000",
+        status: "partial",
+      }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    // Scoped to its own row: the payment form's "Maksimal …" hint carries the
+    // same figure, which is the point — but this assertion is about the summary.
+    const label = await screen.findByText("Sisa tagihan");
+    const row = label.parentElement as HTMLElement;
+    expect(within(row).getByText(/Rp\s?200\.000/)).toBeInTheDocument();
+  });
+
+  it("names the till when nobody typed the invoice", async () => {
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findByText("Otomatis dari kasir")).toBeInTheDocument();
+  });
+
+  it("offers a way back rather than a retry when the id does not resolve", async () => {
+    asMock(customerInvoiceService.getById).mockRejectedValue(
+      new ApiError("Invoice not found", 404),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId="nope" />);
+
+    expect(
+      await screen.findByText("Faktur tidak ditemukan."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /Semua faktur penjualan/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("hides the payment form once the invoice is settled", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      detail({
+        status: "paid",
+        paidAmount: "300000.0000",
+        outstandingAmount: "0.0000",
+      }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findByText("Faktur ini sudah lunas.")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Jumlah diterima")).not.toBeInTheDocument();
+  });
+
+  it("hides it on a voided invoice too — there is nothing to collect", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      detail({ status: "void" }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(
+      await screen.findByText(/sudah di-void/),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Jumlah diterima")).not.toBeInTheDocument();
+  });
+
+  /* --- THE SEPARATION OF DUTIES --- */
+
+  it("shows a read-only role the picture and no way to take money", async () => {
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />, {
+      isSuperAdmin: false,
+      permissions: [{ feature: "customerInvoices", actions: ["read"] }],
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "INV-2026-0042" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Jumlah diterima")).not.toBeInTheDocument();
+    expect(screen.getByText(/customerInvoices:pay/)).toBeInTheDocument();
+  });
+
+  /* --- the payment --- */
+
+  it("asks for channels that can RECEIVE, not pay out", async () => {
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await waitFor(() =>
+      expect(paymentChannelService.list).toHaveBeenCalledWith(
+        expect.objectContaining({ usableFor: "in" }),
+      ),
+    );
+  });
+
+  it("records a payment and renders the invoice the write returned", async () => {
+    const user = userEvent.setup();
+    asMock(customerInvoiceService.recordPayment).mockResolvedValue(
+      detail({
+        status: "partial",
+        paidAmount: "100000.0000",
+        outstandingAmount: "200000.0000",
+        payments: [
+          {
+            paymentId: "pay1",
+            at: "2026-08-27T00:00:00.000Z",
+            amount: "100000.0000",
+            method: "transfer",
+            channelId: "chan-bca",
+            channelName: "BCA Operasional",
+            ref: "TRF-1",
+            byUserId: "u1",
+            byUserName: "Rani",
+            journalEntryId: "je-pay1",
+          },
+        ],
+      }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await user.type(
+      await screen.findByLabelText("Jumlah diterima"),
+      "100000",
+    );
+    await user.click(screen.getByRole("button", { name: "Simpan pembayaran" }));
+
+    await waitFor(() =>
+      expect(customerInvoiceService.recordPayment).toHaveBeenCalledWith(
+        INVOICE_ID,
+        expect.objectContaining({
+          amount: "100000",
+          method: "transfer",
+          channelId: "chan-bca",
+        }),
+      ),
+    );
+
+    // NOT a refetch: the response IS the new state of the document, rendered
+    // straight into the history below.
+    expect(await screen.findByText(/Masuk ke BCA Operasional/)).toBeInTheDocument();
+    expect(customerInvoiceService.getById).toHaveBeenCalledTimes(1);
+  });
+
+  it("fills the amount with what is outstanding when Lunasi is pressed", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await user.click(await screen.findByRole("button", { name: "Lunasi" }));
+
+    expect(await screen.findByLabelText("Jumlah diterima")).toHaveValue(
+      "300000.0000",
+    );
+  });
+
+  it("refuses more than what is outstanding before spending a round trip", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await user.type(await screen.findByLabelText("Jumlah diterima"), "400000");
+    await user.click(screen.getByRole("button", { name: "Simpan pembayaran" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/melebihi/i);
+    expect(customerInvoiceService.recordPayment).not.toHaveBeenCalled();
+  });
+
+  it("refuses a payment of zero", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await user.type(await screen.findByLabelText("Jumlah diterima"), "0");
+    await user.click(screen.getByRole("button", { name: "Simpan pembayaran" }));
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(customerInvoiceService.recordPayment).not.toHaveBeenCalled();
+  });
+
+  /*
+    THE ONE THAT MATTERS MOST. `POST /:id/payments` has no idempotency key, so a
+    double-click books the money arriving twice on two irreversible entries.
+  */
+  it("cannot be double-submitted", async () => {
+    const user = userEvent.setup();
+    let release: (value: CustomerInvoiceDetail) => void = () => {};
+    asMock(customerInvoiceService.recordPayment).mockReturnValue(
+      new Promise<CustomerInvoiceDetail>((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await user.type(await screen.findByLabelText("Jumlah diterima"), "100000");
+    const submit = screen.getByRole("button", { name: "Simpan pembayaran" });
+
+    await user.click(submit);
+    await user.click(submit);
+
+    expect(customerInvoiceService.recordPayment).toHaveBeenCalledTimes(1);
+
+    release(detail({ status: "partial" }));
+  });
+
+  it("shows the server's refusal verbatim when somebody paid first", async () => {
+    const user = userEvent.setup();
+    asMock(customerInvoiceService.recordPayment).mockRejectedValue(
+      new ApiError(
+        "Invoice INV-2026-0042 was paid by someone else while this payment was being recorded",
+        409,
+      ),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await user.type(await screen.findByLabelText("Jumlah diterima"), "100000");
+    await user.click(screen.getByRole("button", { name: "Simpan pembayaran" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/paid by someone else/);
+  });
+
+  it("names the account each payment landed in, for reconciliation", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      detail({
+        status: "partial",
+        paidAmount: "100000.0000",
+        outstandingAmount: "200000.0000",
+        payments: [
+          {
+            paymentId: "pay1",
+            at: "2026-08-27T00:00:00.000Z",
+            amount: "100000.0000",
+            method: "transfer",
+            channelId: "chan-bca",
+            channelName: "BCA Operasional",
+            ref: null,
+            byUserId: "u1",
+            byUserName: "Rani",
+            journalEntryId: "je-pay1",
+          },
+        ],
+      }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(
+      await screen.findByText(/Masuk ke BCA Operasional/),
+    ).toBeInTheDocument();
+    // The journal id is the only handle on a mistake — a payment cannot be
+    // edited or deleted.
+    expect(screen.getByText("je-pay1")).toBeInTheDocument();
+  });
+});

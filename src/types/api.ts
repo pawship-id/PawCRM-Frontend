@@ -3544,3 +3544,204 @@ export interface ConsignmentProductsResult {
   totalValue: string;
   totalLots: number;
 }
+
+/* ============================================================================
+   Customer invoices — receivables (AR)
+   ========================================================================== */
+
+/**
+ * Where a receivable stands. AUTO-COMPUTED server-side from `paidAmount` against
+ * `total` and never accepted from a client.
+ *
+ * `void` IS THE ONE VALUE THE PAYABLE DOES NOT HAVE, and its absence there is
+ * not an oversight: a supplier's bill is their document, so we never cancel one.
+ * A sale can be voided, and the debt it raised has to go with it — which is why
+ * "outstanding AR" is `unpaid | partial` rather than the payable's `!== "paid"`.
+ */
+export type CustomerInvoiceStatus = "unpaid" | "partial" | "paid" | "void";
+
+/**
+ * How a customer paid. `edc` where the payable has `giro`, and the difference is
+ * real rather than cosmetic: a shop is handed a card at the counter and hands a
+ * post-dated cheque to a vendor. The value decides which channel types may be
+ * offered — the server checks `method` against the channel's own `type`.
+ */
+export type CustomerPaymentMethod = "cash" | "transfer" | "qris" | "edc";
+
+/**
+ * WHO RAISED THE DEBT. Read-only on every endpoint — who created a document is
+ * not a client's to declare.
+ *
+ * `pos_bridge` is every receivable in the system today: the till issues one
+ * automatically when a cashier settles with the Piutang method, inside the sale's
+ * own transaction. `manual` is what PCR-030's create form will write.
+ */
+export type CustomerInvoiceSource = "manual" | "pos_bridge";
+
+/** One payment against one receivable, as the detail read returns it. */
+export interface CustomerInvoicePayment {
+  /**
+   * This payment's own identity, and THE LEDGER'S IDEMPOTENCY KEY — its journal
+   * entry carries it as `source.id`. Keyed on the invoice instead, the ledger
+   * would reject the second instalment as a duplicate of the first.
+   */
+  paymentId: string;
+  /** The day the money MOVED, which is what dates the journal entry. */
+  at: string;
+  amount: string;
+  method: CustomerPaymentMethod;
+  channelId: string;
+  /** Null when the channel was retired since; the payment still arrived there. */
+  channelName: string | null;
+  ref: string | null;
+  byUserId: string | null;
+  byUserName: string | null;
+  journalEntryId: string;
+}
+
+/**
+ * One row of GET /api/customer-invoices — a receivable, without its payments.
+ *
+ * `outstandingAmount` AND `isOverdue` ARE DERIVED SERVER-SIDE and must not be
+ * recomputed here. `outstandingAmount` is `total - paidAmount` in exact minor
+ * units; `isOverdue` folds in "not settled and not void", which a bare date
+ * comparison would miss — `dueDate` keeps its value after payment, so a
+ * calendar-only test would report every invoice ever paid late as still
+ * outstanding. Both are evaluated against ONE instant for the whole page.
+ *
+ * The list projects `payments` away; `paymentCount` stands in for them.
+ */
+export interface CustomerInvoiceListRow {
+  _id: string;
+  /** Allocated by us, unlike the payable's — this is our document. */
+  invoiceNumber: string;
+  customerId: string;
+  /** Null when the customer was soft-deleted since; the debt still stands. */
+  customerName: string | null;
+  /**
+   * WHOSE BOOKS carry this debt — the SALE's branch, not the session's. A
+   * receivable belongs where the revenue was recognised.
+   */
+  branchId: string;
+  branchName: string | null;
+  /** The sale that created it, when one did. Null for a manual invoice. */
+  posTransactionId: string | null;
+  source: CustomerInvoiceSource;
+  invoiceDate: string;
+  dueDate: string;
+  total: string;
+  paidAmount: string;
+  outstandingAmount: string;
+  status: CustomerInvoiceStatus;
+  isOverdue: boolean;
+  paymentCount: number;
+  notes: string | null;
+}
+
+/** GET /api/customer-invoices/:id — the row, plus its payments and labels. */
+export interface CustomerInvoiceDetail
+  extends Omit<CustomerInvoiceListRow, "paymentCount"> {
+  /** Who raised it. Null for a till-born invoice, or a user deleted since. */
+  createdByName: string | null;
+  payments: CustomerInvoicePayment[];
+  /** The entry that RECOGNISED the debt — the sale's revenue entry. */
+  journalEntryId: string | null;
+}
+
+/**
+ * Query parameters accepted by GET /api/customer-invoices. All optional.
+ *
+ * `outstanding`, `overdue` and `dueSoon` ARE THE AR TRIAGE and are expressed
+ * server-side so every consumer asks the question identically. Recomputing any of
+ * them from a page of rows would make the screen's filter and the server's count
+ * disagree the moment there is a second page — the failure mode that looks like
+ * working software.
+ *
+ * `overdue` and `dueSoon` are cut at the same instant, so nothing falls into
+ * both and nothing falls between them.
+ */
+export interface CustomerInvoiceListQuery {
+  page?: number;
+  limit?: number;
+  /** Free-text over invoice number / notes. NOT the customer's name — that
+   *  lives in another collection; filter by `customerId` instead. */
+  search?: string;
+  customerId?: string;
+  branchId?: string;
+  status?: CustomerInvoiceStatus;
+  source?: CustomerInvoiceSource;
+  /** `status ∈ {unpaid, partial}` — excludes `void`, which owes nothing. */
+  outstanding?: boolean;
+  overdue?: boolean;
+  /** Outstanding, NOT yet late, due within `horizonDays`. */
+  dueSoon?: boolean;
+  /** The due-soon window, in days. No effect without `dueSoon`. */
+  horizonDays?: number;
+  /** ISO dates bounding `invoiceDate`. `dateTo` covers the whole day it names. */
+  dateFrom?: string;
+  dateTo?: string;
+  sort?: "dueSoonest" | "dueLatest" | "newest" | "oldest";
+}
+
+/** One customer's debt, from GET /api/customer-invoices/outstanding. */
+export interface CustomerOutstandingRow {
+  customerId: string;
+  customerName: string | null;
+  invoiceCount: number;
+  outstanding: string;
+  overdueInvoiceCount: number;
+  overdueOutstanding: string;
+  dueSoonInvoiceCount: number;
+  dueSoonOutstanding: string;
+}
+
+/**
+ * GET /api/customer-invoices/outstanding — the AR summary.
+ *
+ * SUMMED IN THE DATABASE, so it covers the whole book rather than the page on
+ * screen. A client adding up its own rows would show a lower bound presented as a
+ * total the moment there were two pages.
+ *
+ * `horizonDays` IS ECHOED BACK: a panel captioned "7 hari ke depan" reads the
+ * number its figures were computed with rather than repeating a constant that
+ * could drift from the server's.
+ */
+export interface CustomerOutstandingSummary {
+  items: CustomerOutstandingRow[];
+  totalOutstanding: string;
+  totalInvoices: number;
+  totalOverdueOutstanding: string;
+  totalOverdueInvoices: number;
+  totalDueSoonOutstanding: string;
+  totalDueSoonInvoices: number;
+  horizonDays: number;
+}
+
+/**
+ * POST /api/customer-invoices/:id/payments — money arriving.
+ *
+ * ONE SHAPE FOR DP, CICILAN AND PELUNASAN. There is deliberately no `kind` and no
+ * "settle in full" flag: the status is derived from what has been paid, so a
+ * caller settling an invoice sends `outstandingAmount` and the server works out
+ * what that means.
+ *
+ * NOT IDEMPOTENT. There is no idempotency key, so a double-submitted form records
+ * the money arriving twice on two irreversible entries — callers lock their
+ * submit control for the whole flight. Overpayment is REFUSED rather than
+ * absorbed (400), and a concurrent payment loses a compare-and-swap (409); both
+ * are worth showing verbatim, because both tell the user what to do next.
+ */
+export interface RecordCustomerPaymentInput {
+  /** Strictly positive, and never more than `outstandingAmount`. */
+  amount: string;
+  /**
+   * What KIND of payment this is. Distinct from `channelId`, which says which
+   * ACCOUNT it landed in; the server checks the two agree.
+   */
+  method: CustomerPaymentMethod;
+  /** The account the money arrived in — must be usable `in`. */
+  channelId: string;
+  /** Defaults to now. The day the money MOVED, which dates the ledger entry. */
+  at?: string;
+  ref?: string;
+}

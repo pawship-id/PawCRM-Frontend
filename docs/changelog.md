@@ -7,6 +7,58 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Sales & Invoice: faktur penjualan bisa dibaca dan ditagih
+
+`/dashboard/sales` stops being a `SectionPlaceholder`. Two screens against
+`/api/customer-invoices`: the receivables list with its urgency lens and headline
+figures, and one invoice with its payment history and the form that records money
+arriving. Details in [`features/customer-receivables.md`](./features/customer-receivables.md).
+
+**This closed a live hole, not a missing feature.** The till has been able to sell
+on Piutang since UT-3 — the sale posts `Dr 1103`, raises a receivable and stores
+it — and nothing in the product could read that document or record a rupiah
+against it. A shop giving credit at the counter tracked the settlement on paper.
+
+**No "Buat faktur" button, deliberately.** There is no `POST /api/customer-invoices`
+yet: raising one by hand cuts stock, posts two journal entries and allocates a
+number, which is PCR-030. Rendering a button onto a route that does not exist
+would be worse than the gap it papers over. Every invoice on the screen today
+carries a **dari kasir** chip, and `source` is what will tell them apart from the
+manual ones when that form lands.
+
+**Nothing is recomputed in the browser.** `outstandingAmount` and `isOverdue`
+arrive computed against one instant for the whole page, and the headline totals
+come from `/customer-invoices/outstanding` — the whole book, not the twenty rows
+on screen. `isOverdue` in particular folds in "not settled and not void", which a
+calendar-only test here would miss: `dueDate` keeps its value after payment, so
+every invoice ever paid late would flag.
+
+**One form for DP, cicilan and pelunasan.** No "settle in full" control anywhere —
+the status is derived from what has been paid, so `Lunasi` fills the amount box
+rather than sending a different request. The submit locks for the whole flight,
+because `POST /:id/payments` has no idempotency key and a double-click would book
+the money twice on two irreversible entries.
+
+**The channel picker asks for `usableFor: "in"`** — one letter from the payables
+form's `"out"`, and the whole difference between where money lands and where it
+leaves from.
+
+**The page is named for the DOCUMENT, not for its balance.** It shipped as
+"Piutang Pelanggan" and was renamed the same day: every row is a receivable today,
+but an invoice is born unpaid and settles later, so that title would contradict
+its own **Lunas** pill as soon as settled invoices accumulated — which PCR-030
+guarantees. Piutang stays as the default lens (the **Belum lunas** pill) and the
+headline figure (**Total piutang berjalan**), which is where it is true. The
+component identifiers did not follow the copy — ui-rules §12 splits the two.
+
+**`customerInvoices` joined the frontend permission catalogue**, and the Sales nav
+entry is gated on `customerInvoices:read` — it was ungated before, when there was
+nothing behind the link to protect. `pay` is separate from `read`: a read-only
+role sees the whole invoice and, where the payment form would be, a line naming
+the grant it is missing.
+
+---
+
 ## [Unreleased] — Booking: bikin, jalankan, dan riwayat statusnya
 
 `/dashboard/booking` stops being a list you can only read. `BookingCreateDialog` takes a

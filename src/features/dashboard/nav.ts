@@ -336,7 +336,22 @@ export const NAV_ITEMS: NavItem[] = [
     icon: PosIcon,
     permission: { feature: "posTransactions", action: "read" },
   },
-  { label: "Sales & Invoice", href: "/dashboard/sales", icon: SalesIcon },
+  /**
+   * A LEAF, not a group. The module has one destination — the receivables list —
+   * and a dropdown over a single entry is a click that answers nothing. It grows
+   * a Ringkasan and a create route with PCR-030.
+   *
+   * GATED, which it was not before: until the screen existed there was nothing
+   * behind this link to protect, and docs/features/permission-gating.md lists it
+   * among the sections without a catalog feature. It has one now, and who owes a
+   * shop money is not something every role should see.
+   */
+  {
+    label: "Sales & Invoice",
+    href: "/dashboard/sales",
+    icon: SalesIcon,
+    permission: { feature: "customerInvoices", action: "read" },
+  },
   /**
    * Keuangan — a GROUP rather than a leaf, now that the module has screens.
    *

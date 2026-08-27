@@ -11,8 +11,10 @@ request. This only spares a user actions and screens their role cannot use.
 - **Navigation** — a Master Data child (User / Branch / Roles) disappears from
   the sidebar unless the role has the matching `*:read`. The Master Data group
   hides entirely when none of its children are permitted. Sections without a
-  catalog feature yet (Dashboard, Booking, Inventory, POS, Sales) are never
-  gated.
+  catalog feature yet (Dashboard, Booking, Inventory, POS) are never gated.
+  **Sales & Invoice left that list** on 27 Aug 2026: it is gated on
+  `customerInvoices:read` now that there is a screen behind the link, and who
+  owes a shop money is not something every role should see.
 - **Actions** — create buttons and row actions (edit / delete / restore /
   unlock) render only when the role holds the matching action.
 - **Pages** — direct-URL entry to a Master route without the required
