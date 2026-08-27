@@ -442,6 +442,8 @@ export interface Branch {
   name: string;
   address: string | null;
   phone: string | null;
+  /** The line printed at the foot of this branch's receipts (FR-8). */
+  receiptFooter: string | null;
   /**
    * Where the branch actually is, independent of the `address` text. Present on
    * every document written by the current schema — but read it defensively, as
@@ -475,6 +477,8 @@ export interface CreateBranchInput {
   name: string;
   address?: string | null;
   phone?: string | null;
+  /** The line printed at the foot of this branch's receipts (FR-8). */
+  receiptFooter?: string | null;
   /** `null` clears the pin; both coordinates must be sent together. */
   location?: GeoLocationInput | null;
   isActive?: boolean;
@@ -488,6 +492,8 @@ export interface UpdateBranchInput {
   name?: string;
   address?: string | null;
   phone?: string | null;
+  /** The line printed at the foot of this branch's receipts (FR-8). */
+  receiptFooter?: string | null;
   /** `null` clears the pin; both coordinates must be sent together. */
   location?: GeoLocationInput | null;
   isActive?: boolean;
@@ -910,9 +916,674 @@ export interface UpdateCustomerInput {
   vipTier?: VipTier | null;
 }
 
+/* ------------------------------------------------------------------- POS */
+
+/** Open, or closed. Two values and no third — see posShift.model.js. */
+export type PosShiftStatus = "open" | "closed";
+
+/**
+ * A cashier's session at one till.
+ *
+ * The closing four are null together while the shift is open: a half-closed
+ * shift is not a state the model can hold. Every money field is a decimal
+ * STRING.
+ */
+export interface PosShift {
+  _id: string;
+  tenantId: string;
+  branchId: string;
+  warehouseId: string;
+  shiftNumber: string;
+  cashierUserId: string;
+  openedAt: string;
+  openingCash: string;
+  closedAt: string | null;
+  countedCash: string | null;
+  /** Opening float plus the shift's own cash takings. Computed by the server. */
+  expectedCash: string | null;
+  /** countedCash − expectedCash. Positive is a surplus. */
+  difference: string | null;
+  closingNotes: string | null;
+  status: PosShiftStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** One channel's takings during a shift. `net` is amount minus change given. */
+export interface PosPaymentBreakdownRow {
+  channelId: string;
+  channelType: PaymentChannelType;
+  channelName: string;
+  count: number;
+  amount: string;
+  change: string;
+  net: string;
+}
+
+/**
+ * The X-Report (FR-9). Read-only and repeatable — running it commits to nothing.
+ *
+ * `expectedCash` counts ONLY cash: a transfer settles into a bank account, and
+ * counting it would make the drawer look flush and the cashier look short.
+ */
+export interface PosXReport {
+  shift: PosShift;
+  transactionCount: number;
+  breakdown: PosPaymentBreakdownRow[];
+  /**
+   * This shift's cash refunds, shown on their own line rather than only netted
+   * away — a figure with no explanation behind it is one nobody trusts.
+   */
+  refunds: {
+    count: number;
+    cashRefunds: string;
+  };
+  totals: {
+    takings: string;
+    /** NET of this shift's cash refunds. */
+    cashTakings: string;
+    expectedCash: string;
+  };
+}
+
+/** What a cart line is. A service consumes no stock and posts no HPP. */
+export type PosItemKind = "product" | "service";
+
+/** How a discount was expressed. Both are stored — see PosDiscount. */
+export type PosDiscountMode = "percent" | "amount";
+
+/**
+ * A discount at either level.
+ *
+ * `resolvedAmount` IS THE AUTHORITY — `mode` and `value` record what was typed.
+ * FR-4: changing a line's quantity after a nominal discount does not rescale it.
+ *
+ * `approvedBy` is set only when the discount exceeded the cashier's limit. Null
+ * means it was within limit, not that nobody approved it.
+ */
+export interface PosDiscount {
+  mode: PosDiscountMode;
+  value: string;
+  resolvedAmount: string;
+  approvedBy: string | null;
+}
+
+/** One line in the basket. `name` and `unitPrice` are snapshots. */
+export interface PosItem {
+  kind: PosItemKind;
+  refId: string;
+  name: string;
+  sku: string | null;
+  qty: string;
+  unitPrice: string;
+  /**
+   * `qty × unitPrice`, GROSS — before this line's own discount.
+   *
+   * Read, never recomputed. Multiplying qty by price here would round
+   * differently from the server's minor-unit arithmetic on a fractional quantity
+   * or a 7,5% discount, and the basket would then disagree with the receipt.
+   */
+  lineTotal: string;
+  discount: PosDiscount | null;
+  hppAtTime: string | null;
+  bookingId: string | null;
+  petId: string | null;
+  petName: string | null;
+  groomerName: string | null;
+  /**
+   * Where this line's booking stands, resolved on read (FR-3).
+   *
+   * A service line for a named animal owns a DRAFT booking, and the basket may
+   * only change it while it IS a draft — once the animal has checked in or the
+   * groomer has started, the line is work already underway and the server
+   * refuses to touch it. This is what lets the till grey the control out rather
+   * than let a cashier press it and be told no.
+   *
+   * Null on every retail line.
+   */
+  bookingStatus: BookingStatus | null;
+  /**
+   * Whether THIS basket raised the booking, or merely pulled it in.
+   *
+   * The difference decides what the till may do. A booking the basket RAISED is
+   * its own document — removing the line deletes it, so once the animal has
+   * checked in that is refused. A booking it PULLED belongs to an appointment
+   * somebody made; removing the line only releases the claim, which is always
+   * safe and is how a mis-pull is undone.
+   */
+  bookingOwned: boolean;
+  /** The booking's number, or null while it is still a draft. */
+  bookingNumber: string | null;
+}
+
+/** An ADDITIVE charge — ongkos kirim, packaging (FR-5). Never negative. */
+export interface PosCharge {
+  label: string;
+  amount: string;
+}
+
+/** One settlement. Channel type and name are snapshotted beside the id. */
+export interface PosPayment {
+  channelId: string;
+  channelType: PaymentChannelType;
+  channelName: string;
+  amount: string;
+  change: string | null;
+  reference: string | null;
+}
+
+/** Every figure, computed once when the basket settles. Null until then. */
+export interface PosTotals {
+  subtotal: string;
+  itemDiscount: string;
+  cartDiscount: string;
+  otherCharges: string;
+  dpp: string;
+  tax: string;
+  grandTotal: string;
+  /**
+   * How much of `grandTotal` walked out unpaid, as a receivable (FR-7).
+   *
+   * "0.0000" on an ordinary sale, which is almost all of them. Frozen with the
+   * rest, because the receipt prints it — and it must keep saying what it said
+   * on the day even after the debt is settled.
+   */
+  credit: string;
+}
+
+/**
+ * The live figures a till shows while a basket is being built (FR-2).
+ *
+ * A SEPARATE TYPE FROM `PosTotals`, not an optional-fields version of it,
+ * because they are different kinds of fact: this is derived and changes with
+ * every tap, `PosTotals` is a record frozen at payment.
+ */
+export interface PosRunningTotals {
+  subtotal: string;
+  itemDiscount: string;
+  cartDiscount: string;
+  otherCharges: string;
+  net: string;
+}
+
+/**
+ * Where a basket stands.
+ *
+ * `active` is the one on the cashier's screen right now — NOT parked, and not in
+ * Keranjang Tersimpan. `held` is one somebody deliberately put aside. Every cart
+ * used to be born `held`, which made parking the default rather than a decision.
+ *
+ * `open` is the Hotel module's open bill, carried with no UI. There is no
+ * `cancelled`: an unpaid cart is deleted, a paid one is voided.
+ */
+export type PosTransactionStatus = "active" | "held" | "open" | "paid" | "void";
+
+/**
+ * A basket at the till.
+ *
+ * THE SHAPE IS A LIFECYCLE, not a completed sale — which is why almost
+ * everything is nullable. `transactionNumber` is null until payment, because the
+ * counter is not reversible and parked carts would burn the series.
+ */
+export interface PosTransaction {
+  _id: string;
+  tenantId: string;
+  branchId: string;
+  warehouseId: string;
+  shiftId: string;
+  transactionNumber: string | null;
+  customerId: string | null;
+  /**
+   * Who the basket belongs to, named.
+   *
+   * RESOLVED ON READ rather than snapshotted onto the basket: a cart is
+   * short-lived, and a customer renamed between parking and paying should show
+   * the new name. Unlike `totals`, this is a label rather than a record of what
+   * was agreed.
+   *
+   * Still present when the customer has since been removed from the list — an id
+   * on screen is worse than a name that belongs to a retired record.
+   */
+  customer: {
+    _id: string;
+    name: string;
+    phone: string | null;
+  } | null;
+  items: PosItem[];
+  cartDiscount: PosDiscount | null;
+  otherCharges: PosCharge[];
+  note: string | null;
+  payments: PosPayment[];
+  /** The FROZEN record, written at settlement. Null until then. */
+  totals: PosTotals | null;
+  /**
+   * The receivable a credit sale raised (FR-7). Null on every cash sale.
+   *
+   * Its PRESENCE is the answer to "was this sold on account" — which the void
+   * screen needs before it offers a button it will then refuse.
+   */
+  customerInvoiceId: string | null;
+  /**
+   * What the basket comes to right now — computed by the server on every read,
+   * never stored.
+   *
+   * NO TAX IN IT: the split is frozen at payment. For the tax-inclusive default
+   * `net` is what the customer pays.
+   */
+  runningTotals: PosRunningTotals;
+  status: PosTransactionStatus;
+  heldLabel: string | null;
+  bookingIds: string[];
+  paidAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Whether a tile can be sold right now. Absent on services and parents. */
+export type PosStockState = "ok" | "low" | "out";
+
+/**
+ * One tile in the till grid — a product OR a service, flattened to one shape.
+ *
+ * `stock: null` is NOT the same as `ok`: a service, a parent and a bundle all
+ * carry null, because a badge saying "in stock" on a grooming invites the
+ * question of how many are left.
+ */
+export interface PosCatalogItem {
+  kind: PosItemKind;
+  _id: string;
+  name: string;
+  code: string | null;
+  /**
+   * What a scanner reads. Null on a service and on anything never scanned in.
+   *
+   * DRAWN ONLY WHEN A SEARCH MATCHED IT — see PosProductCard. A search looks at
+   * four fields while a tile shows two, so a scan used to return a result with
+   * nothing on it explaining why.
+   */
+  barcode: string | null;
+  /**
+   * The one photo a tile draws, at the three sizes it may draw it at.
+   *
+   * RESOLVED BY THE SERVER through `variant's own → its own gallery → its
+   * parent's` — the same chain the catalogue screen uses. A variant showing its
+   * parent's photo in Inventory and a blank square at the till would read as a
+   * bug in the till.
+   *
+   * Null on a service (there is no field for one) and on anything never
+   * photographed. The tile draws a placeholder rather than a broken image.
+   */
+  image: {
+    url: string;
+    mediumUrl: string | null;
+    thumbUrl: string | null;
+    mediaType: string;
+  } | null;
+  /** Null on a parent — its variants carry the price. */
+  price: string | null;
+  categoryId: string | null;
+  unit: string | null;
+  productType?: string;
+  parentId?: string | null;
+  isConsignment?: boolean;
+  /** Null unless this is a parent. */
+  variantCount: number | null;
+  stock: { qty: string; state: PosStockState } | null;
+}
+
+/** Query parameters accepted by GET /api/pos/catalog. */
+export interface PosCatalogQuery {
+  page?: number;
+  limit?: number;
+  search?: string;
+  categoryId?: string;
+  /**
+   * One parent's variants — what the picker a parent tile opens asks for.
+   *
+   * ASKED OF THE CATALOGUE rather than the products endpoint, and that is the
+   * whole reason the picker can show stock at all: the catalogue knows the
+   * shift's warehouse, the products endpoint does not, and a badge drawn from
+   * the second would be counting a shelf in another building.
+   */
+  parentId?: string;
+  /** The "Layanan" pill sends ["service"]. Absent means both. */
+  kinds?: PosItemKind[];
+}
+
+/**
+ * One settlement line, on the way out (FR-7).
+ *
+ * NOTE WHAT IS ABSENT: `channelType` and `channelName`. The server snapshots
+ * both from the channel — labelling a QRIS line "Kas" would move it into the
+ * drawer's expected total and make the cashier short by exactly that amount.
+ */
+export interface PosPaymentInput {
+  channelId: string;
+  /** What the customer handed over. A string — see PosTotals. */
+  amount: string;
+  /** Cash only. The server refuses it on any other channel type. */
+  change?: string;
+  reference?: string;
+}
+
+/**
+ * Selling on account (FR-7).
+ *
+ * NOTE WHAT IS ABSENT: the amount. Credit closes whatever the payment lines did
+ * not — the server derives it, and a client that could name its own figure could
+ * raise a receivable smaller than the shortfall and leave the difference
+ * belonging to nobody.
+ *
+ * A DUE DATE OR A TERM, NEVER BOTH — the server refuses the pair, because two
+ * ways of saying the same thing eventually disagree.
+ */
+export interface CreditTerms {
+  /** ISO date. Wins over `termDays`; send one or the other. */
+  dueDate?: string;
+  /** Days from the sale. Defaults to 30 when neither is given. */
+  termDays?: number;
+}
+
+/**
+ * Body of POST /api/pos/transactions/:id/pay.
+ *
+ * `payments` MAY BE EMPTY when `credit` is present — a sale settled entirely on
+ * account moves no money at all. One of the two must be there.
+ */
+export interface PayInput {
+  payments: PosPaymentInput[];
+  credit?: CreditTerms;
+}
+
+/**
+ * How much a customer may still buy on account (FR-7).
+ *
+ * `creditLimit` AND `remaining` ARE NULL WHEN THERE IS NO CEILING, which is not
+ * the same as zero: "no limit" and "nothing left" are opposite facts, and a till
+ * that conflated them would draw a full bar for an unlimited customer.
+ */
+export interface CustomerCreditStatus {
+  customerId: string;
+  /** What they owe across every live receivable, right now. */
+  outstanding: string;
+  invoiceCount: number;
+  creditLimit: string | null;
+  remaining: string | null;
+}
+
+/** One printed line on a receipt. */
+export interface PosReceiptItem {
+  kind: PosItemKind;
+  name: string;
+  sku: string | null;
+  qty: string;
+  unitPrice: string;
+  lineTotal: string;
+  discount: { resolvedAmount: string } | null;
+  /** FR-8's sub-line, denormalised at sale time so a reprint survives a rename. */
+  petName: string | null;
+  groomerName: string | null;
+}
+
+/**
+ * What GET /pos/transactions/:id/receipt returns (FR-8).
+ *
+ * TWO HALVES THAT AGE DIFFERENTLY, deliberately. `header` is the shop as it is
+ * TODAY — a shop that moved wants its new address on the reprint a customer
+ * walks back in with. `totals` is frozen at settlement, because the tenant's tax
+ * rate may have changed and recomputing would rewrite what was charged.
+ */
+export interface PosReceipt {
+  header: {
+    tenantName: string;
+    branchName: string;
+    /** Empty string, never null — an unfilled field prints as a blank line. */
+    address: string;
+    phone: string;
+    /**
+     * The closing line (FR-8) — the branch's own words, or the standard ones.
+     *
+     * ALREADY RESOLVED BY THE SERVER. A branch that has written nothing gets
+     * "Terima kasih" here, so neither the printed slip nor the copied text has
+     * to remember a fallback of its own.
+     */
+    receiptFooter: string;
+  };
+  transactionNumber: string | null;
+  /**
+   * The unguessable name this sale answers to at /struk/:token (FR-8).
+   *
+   * What "Salin Link WA" builds its URL from. NULL on sales settled before 27
+   * Agt — the till falls back to copying the receipt text for those, which is
+   * what the button did before links existed.
+   */
+  receiptToken: string | null;
+  paidAt: string | null;
+  status: PosTransactionStatus;
+  cashierUserId: string | null;
+  /**
+   * Who rang it up (FR-8). Resolved on read, like the shop's own address.
+   *
+   * Null when the sale carries no user — a seeded or imported one — rather than
+   * a placeholder, because inventing a name would hide that it has none.
+   */
+  cashierName: string | null;
+  customerName: string | null;
+  items: PosReceiptItem[];
+  otherCharges: PosCharge[];
+  totals: PosTotals | null;
+  payments: PosPayment[];
+  /**
+   * What is still owed, and when — on a credit sale only (FR-7).
+   *
+   * NOT FROZEN, unlike `totals`, and the difference is deliberate: this is the
+   * CURRENT state of the debt, so a reprint after an instalment shows what is
+   * left rather than what was owed on the day. That is what a customer asking
+   * for a reprint wants to know.
+   */
+  credit: {
+    invoiceNumber: string;
+    dueDate: string;
+    total: string;
+    paidAmount: string;
+    outstandingAmount: string;
+    status: "unpaid" | "partial" | "paid" | "void";
+  } | null;
+  note: string | null;
+}
+
+/**
+ * The same receipt, as the public page gets it (FR-8).
+ *
+ * ONE FIELD LIGHTER, and the missing one is the point: `cashierUserId` is a
+ * handle on the shop's staff, and a page anybody holding a link can open has no
+ * business carrying one. `cashierName` stays, because the paper prints it and it
+ * is the first thing asked when somebody comes back unhappy.
+ */
+export type PublicReceipt = Omit<PosReceipt, "cashierUserId">;
+
+/** Query for GET /api/pos/transactions — the Void list's source. */
+export interface PosTransactionListQuery {
+  page?: number;
+  limit?: number;
+  shiftId?: string;
+  branchId?: string;
+  customerId?: string;
+  status?: PosTransactionStatus | PosTransactionStatus[];
+  paidFrom?: string;
+  paidTo?: string;
+}
+
+/**
+ * Body of POST /api/pos/transactions/:id/void.
+ *
+ * A REASON AND NOTHING ELSE. A void is all or nothing: no item list, because
+ * voiding part of a sale is a return; no amount, because the amount is whatever
+ * the sale was.
+ */
+export interface VoidSaleInput {
+  reason: string;
+}
+
+/**
+ * One line coming back (FR-11).
+ *
+ * `posItemIndex` POINTS AT THE SALE'S LINE rather than naming a product: a
+ * basket can hold the same product twice — one line discounted, one not — and a
+ * return keyed on the product alone could not say which came back.
+ *
+ * NOTE WHAT IS ABSENT: `refundAmount`. The server computes it from what was
+ * actually paid, so the till cannot refund a shelf price on a discounted sale.
+ */
+export interface PosReturnItemInput {
+  posItemIndex: number;
+  qty: string;
+  /** Per line — one bag holds an unopened sack and a chewed toy. */
+  returnToStock: boolean;
+}
+
+/**
+ * What is still returnable on a sale.
+ *
+ * READ FROM THE SERVER, never derived here. The alternative is the browser
+ * subtracting earlier returns itself — a second implementation of a money rule,
+ * and the browser's copy is the one that drifts.
+ */
+export interface PosReturnable {
+  posTransactionId: string;
+  transactionNumber: string | null;
+  status: PosTransactionStatus;
+  /**
+   * How this particular sale will be refunded — decided by the server.
+   *
+   * `cash` — money leaves a drawer, and the till has to say which.
+   * `credit_note` — the sale is still on account, so nothing is paid out and
+   * what the customer owes shrinks instead. No channel applies.
+   *
+   * ASKED FOR BEFORE THE FORM IS DRAWN, because a form that asks which drawer
+   * the money comes from — for a refund that moves no money — is asking a
+   * question with no answer, and the cashier would pick one and believe it.
+   */
+  refundMethod: "cash" | "credit_note";
+  /** The bill the refund comes off, when it is a credit note. */
+  invoice: { invoiceNumber: string; outstandingAmount: string } | null;
+  items: {
+    posItemIndex: number;
+    kind: PosItemKind;
+    name: string;
+    soldQty: string;
+    remainingQty: string;
+  }[];
+}
+
+/** Body of POST /api/pos/returns. */
+export interface CreateReturnInput {
+  posTransactionId: string;
+  items: PosReturnItemInput[];
+  refundMethod: "cash" | "store_credit";
+  refundChannelId?: string;
+  reason: string;
+}
+
+/** A processed return, as the API returns it. */
+export interface PosReturn {
+  _id: string;
+  tenantId: string;
+  branchId: string;
+  shiftId: string;
+  warehouseId: string;
+  returnNumber: string;
+  posTransactionId: string;
+  items: {
+    posItemIndex: number;
+    kind: PosItemKind;
+    refId: string;
+    name: string;
+    qty: string;
+    refundAmount: string;
+    returnToStock: boolean;
+  }[];
+  refundMethod: "cash" | "store_credit";
+  refundChannelId: string | null;
+  refundTotal: string;
+  reason: string;
+  approvedBy: string | null;
+  journalEntryId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Body of POST /api/pos/shifts. `cashierUserId` is NOT accepted. */
+export interface OpenShiftInput {
+  warehouseId: string;
+  openingCash: string;
+  branchId?: string;
+}
+
+/**
+ * Body of POST /api/pos/shifts/:id/close.
+ *
+ * `expectedCash` and `difference` are NOT accepted — the server computes both.
+ * A client-supplied expectation is a variance a client can make disappear.
+ */
+export interface CloseShiftInput {
+  countedCash: string;
+  closingNotes?: string | null;
+}
+
+/**
+ * One line as the till sends it.
+ *
+ * NO `unitPrice`, `name` or `sku` — the server reads all three from the
+ * catalogue, because a price a client can set is a discount a client can grant.
+ */
+export interface PosItemInput {
+  kind: PosItemKind;
+  refId: string;
+  qty?: string;
+  discount?: {
+    mode: PosDiscountMode;
+    value: string;
+    approvedBy?: string;
+  } | null;
+  bookingId?: string | null;
+  petId?: string | null;
+  petName?: string | null;
+  groomerName?: string | null;
+}
+
+/**
+ * Body of PATCH /api/pos/transactions/:id.
+ *
+ * THE WHOLE BASKET IS SENT. A cart discount is measured against the
+ * post-item-discount subtotal, so changing one line changes what every other
+ * figure means.
+ */
+export interface UpdateCartInput {
+  items?: PosItemInput[];
+  cartDiscount?: {
+    mode: PosDiscountMode;
+    value: string;
+    approvedBy?: string;
+  } | null;
+  otherCharges?: PosCharge[];
+  customerId?: string | null;
+  note?: string | null;
+  heldLabel?: string | null;
+  /**
+   * Parked, or picked back up (FR-6).
+   *
+   * ONLY THESE TWO. `paid` and `void` have their own endpoints with irreversible
+   * work behind them, and `open` belongs to the Hotel module — the server
+   * refuses anything else here.
+   */
+  status?: "active" | "held";
+}
+
 /** Where a booking stands. Mirrors BOOKING_STATUSES in booking.model.js. */
 export type BookingStatus =
   | "draft"
+  | "check_in"
   | "confirmed"
   | "in_progress"
   | "completed"
@@ -943,6 +1614,46 @@ export interface BookingItem {
   price: string;
   /** null = FR-3's "Belum ditentukan". Assignment is a scheduling question. */
   groomerUserId: string | null;
+  /**
+   * The groomer's name, RESOLVED ON READ by the server.
+   *
+   * NEVER NULL, and that is the point: an unassigned groomer comes back as
+   * "Belum ditentukan" (FR-3's edge case), decided once on the server rather
+   * than three times — in the bridge, the cart line and the receipt — where the
+   * three would eventually disagree about what an empty slot is called.
+   */
+  groomerName: string;
+}
+
+/**
+ * One move in a booking's life, as the API returns it.
+ *
+ * THE TRAIL, not an audit log. `status` says where a booking stands and nothing
+ * about how it got there, and `updatedAt` answers only the last move because the
+ * next one overwrites it. "Jam berapa hewannya datang", "sudah dikonfirmasi
+ * sebelum datang atau langsung check-in", "siapa yang membatalkan" are asked
+ * afterwards, and this is what can answer them.
+ */
+export interface BookingStatusEvent {
+  status: BookingStatus;
+  /** When it happened. ISO instant. */
+  at: string;
+  /** Who moved it. Null when nothing human did — a settlement, a migration. */
+  by: string | null;
+  /**
+   * That person's name, RESOLVED ON READ — same rule as `petName`. Null when
+   * `by` is null, or when the user behind it is gone.
+   */
+  byName: string | null;
+  /**
+   * True when this rung was filled in behind a skipped step rather than chosen.
+   *
+   * A receptionist who takes an animal straight to check-in has confirmed the
+   * appointment by doing so, so the server records the confirmation too — at the
+   * SAME instant. This flag is what keeps that honest: it says which of two
+   * entries stamped at the same second somebody actually decided.
+   */
+  implied: boolean;
 }
 
 /**
@@ -957,12 +1668,49 @@ export interface Booking {
   _id: string;
   tenantId: string;
   branchId: string;
-  bookingNumber: string;
+  /**
+   * BK-260824-003 — and **null while the booking is a draft**.
+   *
+   * ALLOCATED THE FIRST TIME IT LEAVES `draft`, which in the ordinary case is
+   * check-in: the animal is at the shop. Until then there is nothing for two
+   * people to talk about across a counter, and allocation is not reversible —
+   * numbering drafts would make gaps in the series the rule rather than the
+   * exception, because a draft is the one kind of booking that routinely never
+   * happens.
+   */
+  bookingNumber: string | null;
   customerId: string;
   petId: string;
+  /**
+   * The animal's name, RESOLVED ON READ — never snapshotted onto the booking.
+   *
+   * A pet renamed between the appointment and the counter appears under its new
+   * name, because this is a LABEL rather than a record of what was agreed. (The
+   * price on `items[]` is the opposite and IS frozen: a booking is a quote.)
+   *
+   * Null only when the reference is genuinely broken — a pet deleted outright.
+   * Inventing a name for that would hide it.
+   */
+  petName: string | null;
+  /**
+   * The owner's name, RESOLVED ON READ — same rule as `petName`.
+   *
+   * A booking list is read as a day sheet ("whose dog is at ten"), and an id
+   * there is a row nobody can act on.
+   */
+  customerName: string | null;
   items: BookingItem[];
   scheduledAt: string;
   status: BookingStatus;
+  /**
+   * Every status it has reached, oldest first.
+   *
+   * EMPTY ON BOOKINGS MADE BEFORE THE TRAIL EXISTED, and left that way on
+   * purpose — back-filling one invented instant per booking would be worse than
+   * saying nothing. Read an empty array as "tidak tercatat", never as "never
+   * moved".
+   */
+  statusHistory: BookingStatusEvent[];
   origin: BookingOrigin;
   /** Set by the POS when this booking is paid for. */
   posTransactionId: string | null;
@@ -1032,7 +1780,15 @@ export interface UpdateBookingInput {
  * `piutang` is absent on purpose although the POS shows it as a fifth tab: it is
  * a route to AR rather than a place money arrived, so it has no channel row.
  */
-export type PaymentChannelType = "cash" | "transfer" | "qris" | "edc";
+/**
+ * `giro` ARRIVED WITH THE PURCHASING SIDE. It had no meaning at a till — nobody
+ * hands a shop a post-dated cheque — but it is one of four ways a shop settles a
+ * supplier invoice, so it is a channel type that only moves money OUT.
+ */
+export type PaymentChannelType = "cash" | "transfer" | "qris" | "edc" | "giro";
+
+/** Which way money moves through a channel. */
+export type ChannelDirection = "in" | "out";
 
 /**
  * A payment channel, as returned by GET /api/payment-channels. One named place
@@ -1050,6 +1806,15 @@ export interface PaymentChannel {
   accountId: string;
   /** Only meaningful for qris/edc; the API refuses a rate on the other two. */
   mdrPercent: number;
+  /**
+   * Which directions this channel may be used in.
+   *
+   * A NARROWING, not a grant: it defaults to everything the TYPE structurally
+   * allows, so a channel that never mentions it behaves the way its type
+   * implies. What it buys is the case the type cannot express — a tenant with
+   * two bank accounts who receives into one and pays out of the other.
+   */
+  usableFor: ChannelDirection[];
   /** null = every branch. */
   branchId: string | null;
   requiresReference: boolean;
@@ -1070,6 +1835,14 @@ export interface PaymentChannelListQuery {
   isActive?: boolean;
   search?: string;
   includeDeleted?: boolean;
+  /**
+   * `out` is what the supplier payment picker asks for.
+   *
+   * Matches a channel that DECLARES the direction, and also one that declares
+   * nothing but is a type implying it — every channel written before the field
+   * existed is the second kind, and a stricter filter would hide all of them.
+   */
+  usableFor?: ChannelDirection;
 }
 
 /** Body of POST /api/payment-channels. */
@@ -1192,14 +1965,7 @@ export interface UpdateServiceInput {
  * closed list, because it decides which services and prices a booking may offer.
  */
 export type PetSpecies =
-  | "dog"
-  | "cat"
-  | "bird"
-  | "rabbit"
-  | "hamster"
-  | "reptile"
-  | "fish"
-  | "other";
+  "dog" | "cat" | "bird" | "rabbit" | "hamster" | "reptile" | "fish" | "other";
 
 /**
  * `unknown` is a REAL value, not a missing one: a rescue arrives unsexed and
@@ -1565,7 +2331,9 @@ export interface Supplier {
  * every vendor a tenant already had. Absent and true are the same answer, which
  * is exactly what the backend's `$ne: false` filter says.
  */
-export function isSupplierActive(supplier: Pick<Supplier, "isActive">): boolean {
+export function isSupplierActive(
+  supplier: Pick<Supplier, "isActive">,
+): boolean {
   return supplier.isActive !== false;
 }
 
@@ -1910,11 +2678,7 @@ export interface GoodsReceiptListRow {
  * than a calendar — see the model. There is no ordering by value: `total` is
  * unindexed, so it would be a blocking in-memory sort of every matched receipt.
  */
-export type GoodsReceiptSort =
-  | "newest"
-  | "oldest"
-  | "numberDesc"
-  | "numberAsc";
+export type GoodsReceiptSort = "newest" | "oldest" | "numberDesc" | "numberAsc";
 
 /**
  * Query parameters accepted by GET /api/goods-receipts. All optional.
@@ -2314,8 +3078,10 @@ export interface PurchaseInvoicePayment {
  * payable was posted by the goods receipt, so an entry here would double it. A
  * screen must not read the null as "nothing was posted".
  */
-export interface PurchaseInvoiceDetail
-  extends Omit<PurchaseInvoiceListRow, "paymentCount"> {
+export interface PurchaseInvoiceDetail extends Omit<
+  PurchaseInvoiceListRow,
+  "paymentCount"
+> {
   goodsReceiptNumber: string | null;
   /** Who filed the bill. Null when that user has been deleted since. */
   createdByName: string | null;
@@ -2399,10 +3165,7 @@ export interface PurchaseInvoiceListQuery {
  * anybody calls it.
  */
 export type PurchaseInvoiceSort =
-  | "newest"
-  | "oldest"
-  | "dueSoonest"
-  | "dueLatest";
+  "newest" | "oldest" | "dueSoonest" | "dueLatest";
 
 /**
  * POST /api/purchase-invoices — file the supplier's bill against a delivery.
@@ -2444,7 +3207,23 @@ export interface CreatePurchaseInvoiceInput {
 export interface RecordPaymentInput {
   /** Strictly positive, and never more than `outstandingAmount`. */
   amount: string;
+  /**
+   * What KIND of payment this is — what a reconciler filters by.
+   *
+   * Distinct from `channelId`, which says which ACCOUNT it left. The server
+   * checks the two agree: recording a cash payment under `transfer` would make
+   * that filter lie.
+   */
   method: PaymentMethod;
+  /**
+   * The account the money leaves from — a `paymentChannels` row.
+   *
+   * REQUIRED. The account used to be derived from `method` alone, so a tenant
+   * with three bank accounts paid every supplier from one "1102 Bank" line and
+   * the ledger could not say which — while the selling side, which has named
+   * channels, answered exactly that.
+   */
+  channelId: string;
   /** Defaults to now. The day the money MOVED, which dates the ledger entry. */
   at?: string;
   ref?: string;
@@ -2526,8 +3305,10 @@ export interface PurchaseReturnItem {
  * came in on `konsinyasi`, so there was never a debt to discharge; or the
  * returned value came to zero, which the ledger correctly declines to post.
  */
-export interface PurchaseReturnDetail
-  extends Omit<PurchaseReturnListRow, "itemCount"> {
+export interface PurchaseReturnDetail extends Omit<
+  PurchaseReturnListRow,
+  "itemCount"
+> {
   items: PurchaseReturnItem[];
   journalEntryId: string | null;
   /** Who opened the return. Null when that user has been deleted since. */
@@ -2568,10 +3349,7 @@ export interface PurchaseReturnListQuery {
  * credit note. There is no ordering by value or by status; see the model.
  */
 export type PurchaseReturnSort =
-  | "newest"
-  | "oldest"
-  | "numberDesc"
-  | "numberAsc";
+  "newest" | "oldest" | "numberDesc" | "numberAsc";
 
 /** One line going back, as a client sends it. Three fields, and that is the design. */
 export interface PurchaseReturnItemInput {

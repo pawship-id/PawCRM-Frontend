@@ -89,6 +89,14 @@ export interface ChartOfAccountNode extends ChartOfAccount {
  */
 export type JournalSourceType =
   | "pos"
+  /**
+   * The cost-of-goods half of a POS sale, posted separately from the revenue
+   * half. A SECOND SOURCE TYPE RATHER THAN A SECOND ENTRY UNDER `pos`, because
+   * the ledger is idempotent on `(source.type, source.id)` — one sale posting
+   * two entries under one type would collide with itself, and the second would
+   * be silently swallowed as a duplicate.
+   */
+  | "pos_cogs"
   | "invoice"
   | "receipt"
   | "goods_receipt"

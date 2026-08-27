@@ -34,6 +34,7 @@ function branch(_id: string, name: string): Branch {
     name,
     address: null,
     phone: null,
+    receiptFooter: null,
     location: { lat: null, lng: null, source: "manual" },
     isActive: true,
     deletedAt: null,

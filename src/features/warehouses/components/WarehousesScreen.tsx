@@ -58,8 +58,8 @@ export function WarehousesScreen() {
             page={pagination.page}
             totalPages={pagination.totalPages}
             total={pagination.total}
-            unit="warehouse"
-            unitPlural="warehouses"
+            unit="gudang"
+            unitPlural="gudang"
             onPageChange={(page) => setQuery({ page })}
           />
         </>

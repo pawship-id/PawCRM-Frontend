@@ -12,11 +12,11 @@ Backend: `PawCRM-Backend/src/models/booking.model.js` and `/api/bookings`.
 | --- | --- |
 | **Built** | `BookingBridgeDialog` — two tabs: pull today's confirmed bookings, or create one on the spot |
 | **Built** | `useBookingBridge`, `BookingStatusBadge`, and the `bookingService` client |
-| **Not built** | A calendar, a groomer roster, capacity, clash detection, a list screen, a route |
+| **Not built** | A calendar, a groomer roster, capacity, clash detection |
 
-`/dashboard/booking` keeps its placeholder. This is the minimum the POS needs to take money
-for a grooming; the Booking module proper builds the rest **on top of** this collection
-rather than replacing it.
+This is the minimum the POS needs to take money for a grooming; the Booking module proper
+builds the rest **on top of** this collection rather than replacing it. The screen that reads
+and moves the same bookings is [`booking-screen.md`](./booking-screen.md).
 
 The dialog has no route — the POS cart panel mounts it in Fase 6.
 

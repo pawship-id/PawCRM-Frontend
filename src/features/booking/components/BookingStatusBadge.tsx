@@ -3,12 +3,14 @@ import { Badge } from "@/components/ui/badge";
 import type { BookingStatus } from "@/types/api";
 
 /**
- * Indonesian labels for the five statuses. The visible word is copy, not the
+ * Indonesian labels for the six statuses, in the order a booking walks them. The visible word is copy, not the
  * API's value — ui-rules §12.
  */
 export const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
   draft: "Draf",
   confirmed: "Dikonfirmasi",
+  /* The animal is at the shop. This is also when the booking earns its number. */
+  check_in: "Check-in",
   in_progress: "Sedang dikerjakan",
   completed: "Selesai",
   cancelled: "Dibatalkan",
@@ -22,6 +24,12 @@ export const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
 const STATUS_STYLES: Record<BookingStatus, string> = {
   draft: "bg-muted/40 text-muted",
   confirmed: "bg-navy-100 text-primary",
+  /*
+    ORANGE, and it is the only one that gets it besides `in_progress` — §4 spends
+    orange on "a human must act", and an animal that has arrived and is waiting
+    is exactly that.
+  */
+  check_in: "bg-tint-warning text-warning",
   in_progress: "bg-secondary text-secondary-foreground",
   completed: "bg-success/12 text-success",
   cancelled: "bg-muted/40 text-muted",

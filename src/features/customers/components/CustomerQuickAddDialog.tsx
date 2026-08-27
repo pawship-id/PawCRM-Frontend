@@ -108,8 +108,11 @@ export function CustomerQuickAddDialog({
     setFormError(null);
 
     try {
-      // The envelope, not the payload: a duplicate number comes back as a
-      // warning beside the customer, and `create` would drop it.
+      /*
+        The envelope, not the payload. The duplicate-phone WARNING it used to
+        carry is gone — a repeated number is now refused outright — but the shape
+        stays, because other warnings will land beside a created customer.
+      */
       const result = await customerService.createWithWarnings({
         name: trimmedName,
         phone: trimmedPhone,
@@ -119,11 +122,25 @@ export function CustomerQuickAddDialog({
       reset();
       onOpenChange(false);
     } catch (error) {
-      setFormError(
-        error instanceof ApiError
-          ? (error.reason ?? error.message)
-          : "Terjadi kesalahan. Coba lagi.",
-      );
+      /*
+        A TAKEN NUMBER IS A FIELD ERROR, NOT A FORM ERROR, and the dialog STAYS
+        OPEN.
+
+        The number is the one thing to change, so the message belongs beside the
+        box holding it. Closing would throw away a name the cashier has already
+        typed, to make them retype it with one digit different — and the server
+        names the holder ("sudah terdaftar atas nama Ibu Rina"), which is what
+        tells them whether they are about to register somebody twice.
+      */
+      if (error instanceof ApiError && error.status === 409) {
+        setPhoneError(error.reason ?? error.message);
+      } else {
+        setFormError(
+          error instanceof ApiError
+            ? (error.reason ?? error.message)
+            : "Terjadi kesalahan. Coba lagi.",
+        );
+      }
     } finally {
       setSaving(false);
     }

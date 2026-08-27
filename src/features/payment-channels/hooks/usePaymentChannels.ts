@@ -134,6 +134,8 @@ export const CHANNEL_TYPE_LABELS: Record<PaymentChannelType, string> = {
   transfer: "Transfer",
   qris: "QRIS",
   edc: "EDC",
+  // Pay-out only — a giro is a post-dated cheque a business WRITES.
+  giro: "Giro",
 };
 
 /** The order the POS panel renders its tabs, and this screen its groups. */

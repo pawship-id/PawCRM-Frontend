@@ -45,8 +45,8 @@ export function CustomersScreen() {
             page={pagination.page}
             totalPages={pagination.totalPages}
             total={pagination.total}
-            unit="customer"
-            unitPlural="customers"
+            unit="pelanggan"
+            unitPlural="pelanggan"
             onPageChange={(page) => setQuery({ page })}
           />
         </>

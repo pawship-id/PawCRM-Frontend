@@ -64,8 +64,14 @@ export function ConfirmDialog({
         {error && <Alert variant="error">{error}</Alert>}
 
         <DialogFooter>
+          {/*
+            "Batal", not "Cancel" — ui-rules §12. It had gone unnoticed because
+            every screen using this dialog was still half-English; the till is
+            not, and an English word on a cashier's screen is the one place it
+            cannot pass.
+          */}
           <Button variant="outline" onClick={onCancel} disabled={busy}>
-            Cancel
+            Batal
           </Button>
           <Button
             variant={destructive ? "destructive" : "default"}

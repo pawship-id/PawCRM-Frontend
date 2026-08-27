@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Search, Plus, UserRound } from "lucide-react";
 
 import { Alert, Spinner } from "@/components";
+import { HighlightText } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -179,12 +180,31 @@ export function CustomerSearchDialog({
                       <UserRound className="size-4" />
                     </span>
                     <span className="min-w-0 flex-1">
+                      {/*
+                        HIGHLIGHTED WITH THE SETTLED TERM, not what is being
+                        typed. The list is debounced, so marking up the results
+                        on screen against a newer term would highlight rows that
+                        were never matched on it — the marks would blink off and
+                        land somewhere else a moment later.
+
+                        BOTH FIELDS, because the search looks at both: somebody
+                        who typed a number needs to see WHICH row's number
+                        matched, and a name-only highlight would leave a phone
+                        search looking like it returned rows at random.
+                      */}
                       <span className="block truncate font-medium text-foreground">
-                        {customer.name}
+                        <HighlightText text={customer.name} query={settled.search} />
                       </span>
                       {/* tabular-nums so a column of numbers does not jitter. */}
                       <span className="block truncate text-xs tabular-nums text-muted">
-                        {customer.phone ?? "Tanpa no. HP"}
+                        {customer.phone ? (
+                          <HighlightText
+                            text={customer.phone}
+                            query={settled.search}
+                          />
+                        ) : (
+                          "Tanpa no. HP"
+                        )}
                       </span>
                     </span>
                   </button>
@@ -210,17 +230,29 @@ export function CustomerSearchDialog({
         </DialogContent>
       </Dialog>
 
-      <CustomerQuickAddDialog
-        open={adding}
-        onOpenChange={setAdding}
-        // A term that reads as a phone number is carried into the form: somebody
-        // who typed one has already entered that field once.
-        initialPhone={termLooksLikePhone ? term.trim() : ""}
-        onCreated={(customer, warnings) => {
-          setAdding(false);
-          choose(customer, warnings);
-        }}
-      />
+      {/*
+        MOUNTED ONLY WHILE OPEN, and that is what makes `initialPhone` work at
+        all. The form holds the phone in `useState(initialPhone)`, which reads
+        the prop ONCE — so a permanently mounted dialog captured the empty string
+        at first render and never saw the term typed afterwards. The prefill
+        silently did nothing until the dialog had been opened and closed once.
+
+        Mounting on demand also means every open starts from a clean form, which
+        is what somebody registering a second customer expects.
+      */}
+      {adding && (
+        <CustomerQuickAddDialog
+          open
+          onOpenChange={setAdding}
+          // A term that reads as a phone number is carried into the form:
+          // somebody who typed one has already entered that field once.
+          initialPhone={termLooksLikePhone ? term.trim() : ""}
+          onCreated={(customer, warnings) => {
+            setAdding(false);
+            choose(customer, warnings);
+          }}
+        />
+      )}
     </>
   );
 }

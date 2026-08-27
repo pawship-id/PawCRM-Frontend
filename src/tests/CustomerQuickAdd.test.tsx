@@ -258,7 +258,14 @@ describe("CustomerSearchDialog", () => {
       await screen.findByRole("button", { name: /daftarkan pelanggan baru/i }),
     );
 
-    expect(await screen.findByDisplayValue("08123456")).toBeVisible();
+    /*
+      ASSERTED ON THE PHONE FIELD BY NAME, not by its value. `findByDisplayValue`
+      matched the SEARCH BOX — which holds the same string — so this test passed
+      for years while the prefill did nothing at all. The dialog was permanently
+      mounted, and `useState(initialPhone)` had captured the empty string at
+      first render.
+    */
+    expect(await screen.findByLabelText(/no\. hp/i)).toHaveValue("08123456");
   });
 
   it("does not carry a typed NAME into the phone box", async () => {
@@ -273,5 +280,77 @@ describe("CustomerSearchDialog", () => {
     );
 
     expect(screen.getByLabelText(/no\. hp/i)).toHaveValue("");
+  });
+});
+
+/**
+ * The search highlight.
+ *
+ * The search looks at name AND phone, so a phone search used to return rows with
+ * nothing on them marking why — which reads as results at random.
+ */
+describe("CustomerSearchDialog — highlighting what matched", () => {
+  /*
+    QUERIED FROM `document.body`, not the render container. Radix renders a
+    dialog into a PORTAL, so its content is a sibling of the container rather
+    than inside it — `container.querySelectorAll` finds nothing and reads as "the
+    highlight is broken".
+  */
+  const marks = () =>
+    Array.from(document.body.querySelectorAll("mark")).map(
+      (el) => el.textContent,
+    );
+
+  /** `listReturns` lives inside another describe; `mocked` is module-scoped. */
+  const returns = (items: Customer[]) =>
+    mocked.list.mockResolvedValue({
+      items,
+      pagination: { page: 1, limit: 8, total: items.length, totalPages: 1 },
+    });
+
+  it("marks a matched name", async () => {
+    const user = userEvent.setup();
+    returns([
+      { _id: "c1", name: "Ibu Rina Wijaya", phone: "0812-3456-7890" } as Customer,
+    ]);
+
+    renderWithAuth(
+      <CustomerSearchDialog open onOpenChange={jest.fn()} onSelect={jest.fn()} />,
+    );
+
+    await user.type(await screen.findByLabelText(/cari pelanggan/i), "rina");
+
+    await waitFor(() => expect(marks()).toContain("Rina"));
+  });
+
+  it("marks a matched phone number too", async () => {
+    const user = userEvent.setup();
+    returns([
+      { _id: "c1", name: "Ibu Rina Wijaya", phone: "0812-3456-7890" } as Customer,
+    ]);
+
+    renderWithAuth(
+      <CustomerSearchDialog open onOpenChange={jest.fn()} onSelect={jest.fn()} />,
+    );
+
+    await user.type(await screen.findByLabelText(/cari pelanggan/i), "3456");
+
+    // Without this, somebody who typed a number cannot tell WHICH row's number
+    // matched.
+    await waitFor(() => expect(marks()).toContain("3456"));
+  });
+
+  it("marks nothing before anybody searches", async () => {
+    returns([
+      { _id: "c1", name: "Ibu Rina Wijaya", phone: "0812" } as Customer,
+    ]);
+
+    renderWithAuth(
+      <CustomerSearchDialog open onOpenChange={jest.fn()} onSelect={jest.fn()} />,
+    );
+
+    await screen.findByText("Ibu Rina Wijaya");
+
+    expect(marks()).toEqual([]);
   });
 });

@@ -7,6 +7,8 @@ import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
 import { branchService } from "@/services/branch.service";
 import { ApiError } from "@/services/api-error";
 
+import type { ChannelDirection } from "@/types/api";
+
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
 jest.mock("@/services/paymentChannel.service");
@@ -36,6 +38,7 @@ const channelFixture = {
   name: "QRIS Xendit",
   accountId: ACCOUNT_ID,
   mdrPercent: 0.7,
+  usableFor: ["in"] as ChannelDirection[],
   branchId: null,
   requiresReference: true,
   sortOrder: 0,

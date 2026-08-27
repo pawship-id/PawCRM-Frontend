@@ -12,6 +12,7 @@ import { purchaseInvoiceService } from "@/services/purchaseInvoice.service";
 import { goodsReceiptService } from "@/services/goodsReceipt.service";
 import { supplierService } from "@/services/supplier.service";
 import { branchService } from "@/services/branch.service";
+import { paymentChannelService } from "@/services/paymentChannel.service";
 import { warehouseService } from "@/services/warehouse.service";
 import { ApiError } from "@/services/api-error";
 import type {
@@ -28,6 +29,7 @@ jest.mock("@/services/purchaseInvoice.service");
 jest.mock("@/services/goodsReceipt.service");
 jest.mock("@/services/supplier.service");
 jest.mock("@/services/branch.service");
+jest.mock("@/services/paymentChannel.service");
 jest.mock("@/services/warehouse.service");
 jest.mock("@/services/productBatch.service");
 
@@ -247,6 +249,24 @@ const optionPage = <T,>(items: T[]) =>
   }) as never;
 
 beforeEach(() => {
+  /*
+    The payment form reads the tenant's pay-out channels — which account the
+    money leaves from. One BCA account, which the form pre-selects.
+  */
+  asMock(paymentChannelService.list).mockResolvedValue({
+    items: [
+      {
+        _id: "chan-bca",
+        type: "transfer",
+        name: "BCA Operasional",
+        accountId: "acc-bca",
+        usableFor: ["in", "out"],
+        isActive: true,
+      },
+    ],
+    pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any);
   jest.clearAllMocks();
 
   asMock(purchaseInvoiceService.list).mockResolvedValue(page([]));
@@ -789,7 +809,14 @@ describe("InvoiceDetail", () => {
     await waitFor(() =>
       expect(purchaseInvoiceService.recordPayment).toHaveBeenCalledWith(
         INVOICE_ID,
-        expect.objectContaining({ amount: "66500", method: "transfer" }),
+        expect.objectContaining({
+          amount: "66500",
+          method: "transfer",
+          // UT-1: which account paid, not just how. The account used to be
+          // derived from the method alone, so a shop with three rekening could
+          // not tell which one settled a supplier.
+          channelId: "chan-bca",
+        }),
       ),
     );
 
@@ -1217,6 +1244,68 @@ describe("PurchasingHub payables panels", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(/Tidak ada faktur yang jatuh tempo dalam 7 hari/),
+    ).toBeInTheDocument();
+  });
+});
+
+/**
+ * UT-1 — which account paid the supplier.
+ *
+ * The account used to be derived from the METHOD alone: `transfer`, `qris` and
+ * `giro` all credited one hardcoded "1102 Bank". A shop with three rekening paid
+ * every supplier from the same ledger line, while the SELLING side — which names
+ * its channels — answered exactly that question. Reconciliation was possible in
+ * one direction and not the other, in the same tenant.
+ */
+describe("RecordPaymentForm — the account the money leaves from", () => {
+  it("asks for pay-out channels of the chosen method only", async () => {
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await screen.findByLabelText("Jumlah dibayar");
+
+    await waitFor(() =>
+      expect(paymentChannelService.list).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "transfer",
+          // A merchant QRIS receives; offering one here would credit a clearing
+          // account nothing will ever settle.
+          usableFor: "out",
+          isActive: true,
+        }),
+      ),
+    );
+  });
+
+  it("re-reads the list when the method changes", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await screen.findByLabelText("Jumlah dibayar");
+    asMock(paymentChannelService.list).mockClear();
+
+    await user.click(screen.getByLabelText("Metode"));
+    await user.click(await screen.findByRole("option", { name: /tunai/i }));
+
+    // A cash payment leaves a till, not a bank account — the two lists share
+    // nothing.
+    await waitFor(() =>
+      expect(paymentChannelService.list).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "cash", usableFor: "out" }),
+      ),
+    );
+  });
+
+  it("says so when the tenant has no pay-out account for that method", async () => {
+    asMock(paymentChannelService.list).mockResolvedValue({
+      items: [],
+      pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(
+      await screen.findByText(/belum ada rekening transfer/i),
     ).toBeInTheDocument();
   });
 });

@@ -34,10 +34,15 @@ const booking = (overrides: Partial<Booking> = {}): Booking => ({
       name: "Grooming Full Service",
       price: "150000.0000",
       groomerUserId: null,
+      // Never null — the server names an unassigned slot (FR-3's edge case).
+      groomerName: "Belum ditentukan",
     },
   ],
+  petName: "Bruno",
+  customerName: "Ibu Rina",
   scheduledAt: "2026-08-24T02:00:00.000Z",
   status: "confirmed",
+  statusHistory: [],
   origin: "booking",
   posTransactionId: null,
   pulledToCartAt: null,
@@ -68,7 +73,7 @@ beforeEach(() => {
   );
 });
 
-function open(onPull = jest.fn()) {
+function open(onPull = jest.fn(), onAdd = jest.fn()) {
   renderWithAuth(
     <BookingBridgeDialog
       customerId={CUSTOMER_ID}
@@ -76,9 +81,17 @@ function open(onPull = jest.fn()) {
       open
       onOpenChange={jest.fn()}
       onPull={onPull}
+      onAdd={onAdd}
     />,
   );
   return onPull;
+}
+
+/** The ad-hoc tab's callback, which is the half these tests are about. */
+function openAdhoc() {
+  const onAdd = jest.fn();
+  open(jest.fn(), onAdd);
+  return onAdd;
 }
 
 describe("BookingBridgeDialog — both tabs are always reachable", () => {
@@ -105,7 +118,11 @@ describe("BookingBridgeDialog — both tabs are always reachable", () => {
     mockedBookings.bridge.mockResolvedValue([]);
     open();
 
-    expect(await screen.findByText(/^Layanan$/)).toBeVisible();
+    /*
+      The label now names the animal in front of the cashier — the checklist is
+      per pet, and a bare "Layanan" would not say whose.
+    */
+    expect(await screen.findByText(/^Layanan untuk Bella$/)).toBeVisible();
   });
 
   it("does not move a cashier off a tab they chose, when data lands late", async () => {
@@ -199,10 +216,14 @@ describe("BookingBridgeDialog — the ad-hoc tab", () => {
     ).toBeDisabled();
   });
 
-  it("creates a CONFIRMED, pos_adhoc booking — the customer is at the counter", async () => {
-    const created = booking({ origin: "pos_adhoc" });
-    mockedBookings.create.mockResolvedValue(created);
-    const onPull = open();
+  /*
+    IT WRITES NOTHING. The booking is raised when the sale settles — FR-3's own
+    words, "berstatus Completed setelah pembayaran selesai". The first version
+    created it here, so a line the cashier then deleted from the basket left an
+    appointment for a grooming nobody was ever charged for.
+  */
+  it("hands the choice back rather than creating a booking", async () => {
+    const onAdd = openAdhoc();
 
     await userEvent.click(
       await screen.findByRole("checkbox", { name: /grooming full service/i }),
@@ -211,23 +232,15 @@ describe("BookingBridgeDialog — the ad-hoc tab", () => {
       screen.getByRole("button", { name: /tambah ke keranjang/i }),
     );
 
-    await waitFor(() =>
-      expect(mockedBookings.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          customerId: CUSTOMER_ID,
-          petId: PET_ID,
-          status: "confirmed",
-          origin: "pos_adhoc",
-          items: [{ serviceId: SERVICE_ID }],
-        }),
-      ),
-    );
-    expect(onPull).toHaveBeenCalledWith([created]);
+    // A LIST — one opening may cover a customer's whole household (FR-3).
+    expect(onAdd).toHaveBeenCalledWith([
+      { petId: PET_ID, petName: "Bella", serviceIds: [SERVICE_ID] },
+    ]);
+    expect(mockedBookings.create).not.toHaveBeenCalled();
   });
 
-  it("sends no price — the catalogue decides", async () => {
-    mockedBookings.create.mockResolvedValue(booking());
-    open();
+  it("sends no price — the server prices the line", async () => {
+    const onAdd = openAdhoc();
 
     await userEvent.click(
       await screen.findByRole("checkbox", { name: /grooming full service/i }),
@@ -236,9 +249,8 @@ describe("BookingBridgeDialog — the ad-hoc tab", () => {
       screen.getByRole("button", { name: /tambah ke keranjang/i }),
     );
 
-    await waitFor(() => expect(mockedBookings.create).toHaveBeenCalled());
-    const [payload] = mockedBookings.create.mock.calls[0];
-    expect(payload.items[0]).not.toHaveProperty("price");
+    const [choices] = onAdd.mock.calls[0];
+    expect(choices[0]).not.toHaveProperty("price");
   });
 
   it("asks only for services still on offer", async () => {
@@ -269,5 +281,150 @@ describe("BookingBridgeDialog — the ad-hoc tab", () => {
       "aria-pressed",
       "true",
     );
+  });
+});
+
+/**
+ * FR-3: "pilih hewan (bisa lebih dari satu) → centang layanan yang diinginkan
+ * per hewan (bisa lebih dari satu layanan per hewan)".
+ *
+ * THE OBJECTION TO A MATRIX WAS REAL AND IS NOW GONE. It used to be that this
+ * tab created the bookings itself, so several pets meant several writes and a
+ * third that could fail after two had landed. Since the bookings moved to the
+ * cart write, the whole choice goes as ONE patch.
+ */
+describe("BookingBridgeDialog — several animals in one opening", () => {
+  const PET_B = "5a7f1f77bcf86cd7994390d2";
+  const SERVICE_B = "5a7f1f77bcf86cd7994390e2";
+
+  beforeEach(() => {
+    mockedBookings.bridge.mockResolvedValue([]);
+    mockedPets.list.mockResolvedValue(
+      page([
+        { _id: PET_ID, name: "Bella", customerId: CUSTOMER_ID },
+        { _id: PET_B, name: "Cici", customerId: CUSTOMER_ID },
+      ]),
+    );
+    mockedServices.list.mockResolvedValue(
+      page([
+        { _id: SERVICE_ID, name: "Grooming Full Service", price: "150000.0000" },
+        { _id: SERVICE_B, name: "Potong kuku", price: "25000.0000" },
+      ]),
+    );
+  });
+
+  const tick = async (
+    user: ReturnType<typeof userEvent.setup>,
+    petName: string,
+    serviceName: RegExp,
+  ) => {
+    await user.click(await screen.findByRole("button", { name: petName }));
+    await user.click(await screen.findByRole("checkbox", { name: serviceName }));
+  };
+
+  it("hands back one entry per animal, in a single call", async () => {
+    const user = userEvent.setup();
+    const onAdd = openAdhoc();
+
+    await tick(user, "Bella", /grooming full service/i);
+    await tick(user, /^Cici$/ as unknown as string, /potong kuku/i);
+    await user.click(
+      screen.getByRole("button", { name: /tambah ke keranjang/i }),
+    );
+
+    expect(onAdd).toHaveBeenCalledTimes(1);
+    expect(onAdd).toHaveBeenCalledWith([
+      { petId: PET_ID, petName: "Bella", serviceIds: [SERVICE_ID] },
+      { petId: PET_B, petName: "Cici", serviceIds: [SERVICE_B] },
+    ]);
+  });
+
+  /*
+    A SINGLE SHARED SET would apply the last thing ticked to whichever pill
+    happened to be active — which is the whole reason the ticks are kept per
+    animal.
+  */
+  it("keeps each animal's ticks to itself", async () => {
+    const user = userEvent.setup();
+    openAdhoc();
+
+    await tick(user, "Bella", /grooming full service/i);
+    await user.click(await screen.findByRole("button", { name: /^Cici/ }));
+
+    // Cici's checklist starts empty, whatever Bella has.
+    expect(
+      screen.getByRole("checkbox", { name: /grooming full service/i }),
+    ).not.toBeChecked();
+  });
+
+  /*
+    The checklist only ever shows one pet, so without a count on the pill and a
+    summary below, the cashier would be confirming choices they cannot see.
+  */
+  it("shows how many each animal has, and what they are", async () => {
+    const user = userEvent.setup();
+    openAdhoc();
+
+    await tick(user, "Bella", /grooming full service/i);
+    await tick(user, /^Cici$/ as unknown as string, /potong kuku/i);
+
+    // The count rides on the pill…
+    expect(
+      screen.getByRole("button", { name: /Bella, 1 layanan/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Cici, 1 layanan/ }),
+    ).toBeInTheDocument();
+
+    /*
+      …and the summary names what each animal is having. Scoped to the summary
+      block, because the service names also appear in the checklist above it —
+      which is the point: one of them is a control, the other is a record of what
+      has been chosen.
+    */
+    const summary = screen.getByText("Bella", { selector: "dt" }).closest("dl");
+    expect(summary).toHaveTextContent("Grooming Full Service");
+    expect(summary).toHaveTextContent("Potong kuku");
+  });
+
+  it("adds up every animal's services, not just the active one", async () => {
+    const user = userEvent.setup();
+    openAdhoc();
+
+    await tick(user, "Bella", /grooming full service/i);
+    await tick(user, /^Cici$/ as unknown as string, /potong kuku/i);
+
+    expect(screen.getByText("Rp 175.000")).toBeInTheDocument();
+  });
+
+  /*
+    A cashier may tick for Bella, move to Cici, and confirm from there without
+    ticking anything for Cici. The rule is "at least one service", not "at least
+    one for whichever pill is lit".
+  */
+  it("can be submitted from an animal with nothing ticked", async () => {
+    const user = userEvent.setup();
+    openAdhoc();
+
+    await tick(user, "Bella", /grooming full service/i);
+    await user.click(await screen.findByRole("button", { name: /^Cici/ }));
+
+    expect(
+      screen.getByRole("button", { name: /tambah ke keranjang/i }),
+    ).toBeEnabled();
+  });
+
+  it("drops an animal back off the list when its last tick is undone", async () => {
+    const user = userEvent.setup();
+    openAdhoc();
+
+    await tick(user, "Bella", /grooming full service/i);
+    await user.click(
+      screen.getByRole("checkbox", { name: /grooming full service/i }),
+    );
+
+    expect(
+      screen.getByRole("button", { name: /tambah ke keranjang/i }),
+    ).toBeDisabled();
   });
 });

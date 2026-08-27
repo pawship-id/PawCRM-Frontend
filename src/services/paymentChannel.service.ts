@@ -34,6 +34,7 @@ export const paymentChannelService = {
         page: query.page,
         limit: query.limit,
         type: query.type,
+        usableFor: query.usableFor,
         branchId: query.branchId,
         isActive: query.isActive,
         search: query.search,

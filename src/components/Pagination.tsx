@@ -5,12 +5,20 @@ import { Button } from "./Button";
 /**
  * Numbered pager for master-data list screens. Shows the page numbers
  * (1 2 3 …) with a windowed range and ellipses so it stays compact even with
- * many pages, flanked by Previous / Next. Renders nothing when there is at most
- * one page. Driven by the list hook: `onPageChange` sets the query's page.
+ * many pages, flanked by Sebelumnya / Berikutnya. Renders nothing when there is
+ * at most one page. Driven by the list hook: `onPageChange` sets the query's
+ * page.
  *
- * `unit`/`unitPlural` label the total count so each screen reads naturally
- * ("12 users", "3 branches") — English pluralization is irregular, so the plural
- * is a prop rather than a naive `${unit}s`.
+ * `unit` labels the total count so each screen reads naturally — "12 pengguna",
+ * "3 cabang".
+ *
+ * `unitPlural` IS VESTIGIAL AND DEFAULTS TO `unit`. It was written when this
+ * component spoke English, where the plural is irregular enough to be worth a
+ * prop. Indonesian does not inflect for number — "3 produk", not "3 produks" —
+ * so passing it is almost always the same word twice. It stays because 27 call
+ * sites pass it and removing it is churn for nothing; what changed is the
+ * DEFAULT, which used to be `${unit}s` and quietly appended an English plural to
+ * an Indonesian noun for anyone who omitted it.
  */
 
 /** Marks a gap in the numbered range where pages are collapsed. */
@@ -62,15 +70,20 @@ export function Pagination({
   totalPages,
   total,
   unit = "item",
-  unitPlural = `${unit}s`,
+  /*
+    DEFAULTS TO `unit`, not `${unit}s`. Indonesian does not inflect for number,
+    and the old default silently produced "produks" for every caller that
+    omitted this — see the header.
+  */
+  unitPlural = unit,
   onPageChange,
 }: {
   page: number;
   totalPages: number;
   total: number;
-  /** Singular noun for the count, e.g. "user", "branch". */
+  /** Noun for the count, e.g. "produk", "cabang". */
   unit?: string;
-  /** Plural noun for the count, e.g. "users", "branches". */
+  /** Vestigial — defaults to `unit`. See the header. */
   unitPlural?: string;
   onPageChange: (page: number) => void;
 }) {
@@ -81,19 +94,20 @@ export function Pagination({
   return (
     <div className="flex flex-col gap-3 pt-1 sm:flex-row sm:items-center sm:justify-between">
       <p className="text-sm text-muted">
-        Page {page} of {totalPages} · {total} {total === 1 ? unit : unitPlural}
+        Halaman {page} dari {totalPages} · {total}{" "}
+        {total === 1 ? unit : unitPlural}
       </p>
 
       <nav
         className="flex flex-wrap items-center gap-1.5"
-        aria-label="Pagination"
+        aria-label="Paginasi"
       >
         <Button
           variant="secondary"
           disabled={page <= 1}
           onClick={() => onPageChange(page - 1)}
         >
-          Previous
+          Sebelumnya
         </Button>
 
         {items.map((item, index) =>
@@ -110,7 +124,7 @@ export function Pagination({
               key={item}
               variant={item === page ? "primary" : "secondary"}
               className="min-w-9 px-0"
-              aria-label={`Page ${item}`}
+              aria-label={`Halaman ${item}`}
               aria-current={item === page ? "page" : undefined}
               onClick={() => onPageChange(item)}
             >
@@ -124,7 +138,7 @@ export function Pagination({
           disabled={page >= totalPages}
           onClick={() => onPageChange(page + 1)}
         >
-          Next
+          Berikutnya
         </Button>
       </nav>
     </div>

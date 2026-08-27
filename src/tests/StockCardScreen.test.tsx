@@ -1,3 +1,5 @@
+import { MovementBadge } from "@/features/inventory/components/MovementBadge";
+import type { MovementType } from "@/types/inventory";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -593,7 +595,7 @@ describe("StockCardScreen", () => {
     const user = userEvent.setup();
     renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
 
-    await user.click(await screen.findByRole("button", { name: "Page 3" }));
+    await user.click(await screen.findByRole("button", { name: "Halaman 3" }));
 
     // Page-jumping was impossible while the balance was reconstructed by walking
     // backwards from the newest row.
@@ -730,5 +732,48 @@ describe("StockCardScreen", () => {
     renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
 
     expect(await screen.findByText(/tidak bisa diubah/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * Every movement type the ledger can return must render.
+ *
+ * The bug these were written for: `pos_void` was added to the backend enum in
+ * Fase 8 and never taught to the frontend, so `MovementBadge` destructured
+ * `undefined` and the stock card CRASHED the moment a voided sale appeared on
+ * it. `tsc` could not catch it — the union was missing the value too, so the
+ * label Record was complete for the union it knew about, and the gap only
+ * existed between the two codebases.
+ */
+describe("MovementBadge — every type the backend can send", () => {
+  it("renders every member of MovementType", () => {
+    const TYPES: MovementType[] = [
+      "receipt",
+      "pos_sale",
+      "pos_void",
+      "opname_diff",
+      "purchase_return",
+      "customer_return",
+      "transfer_out",
+      "transfer_in",
+      "bundle_consume",
+      "adjustment",
+      "opening_balance",
+    ];
+
+    TYPES.forEach((type) => {
+      const { unmount } = renderWithAuth(<MovementBadge type={type} />);
+      // A missing entry throws on destructure rather than rendering blank, so
+      // reaching this line at all is the assertion.
+      unmount();
+    });
+  });
+
+  it("names a void apart from a customer return", () => {
+    renderWithAuth(<MovementBadge type="pos_void" />);
+
+    // Conflating the two would make "what do customers actually bring back"
+    // unanswerable, and that number is how a shop notices a bad product.
+    expect(screen.getByText("Batal penjualan")).toBeInTheDocument();
   });
 });
