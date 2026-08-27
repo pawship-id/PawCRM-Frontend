@@ -57,7 +57,7 @@ const booking = (overrides: Partial<Booking> = {}): Booking =>
     customerId: "cust-1",
     petId: PET_ID,
     petName: "Bruno",
-  customerName: "Ibu Rina",
+    customerName: "Ibu Rina",
     items: [
       {
         serviceId: "svc-1",
@@ -67,7 +67,7 @@ const booking = (overrides: Partial<Booking> = {}): Booking =>
         groomerName: "Belum ditentukan",
         bookingStatus: "draft",
         bookingOwned: true,
-            bookingNumber: null,
+        bookingNumber: null,
       },
     ],
     scheduledAt: "2026-08-26T03:00:00.000Z",
@@ -109,7 +109,7 @@ const cart = (overrides: Partial<PosTransaction> = {}): PosTransaction =>
     // A basket the till is building — NOT parked.
     status: "active",
     heldLabel: null,
-      bookingIds: [],
+    bookingIds: [],
     paidAt: null,
     createdAt: "2026-08-26T02:00:00.000Z",
     updatedAt: "2026-08-26T02:00:00.000Z",
@@ -137,7 +137,7 @@ const pulledCart = () =>
         groomerName: "Belum ditentukan",
         bookingStatus: "draft",
         bookingOwned: true,
-            bookingNumber: null,
+        bookingNumber: null,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any,
     ],
@@ -152,6 +152,18 @@ const pulledCart = () =>
 
 beforeEach(() => {
   mockedPos.currentShift.mockResolvedValue(shift);
+  // The shift bar's running figures (FR-9) — read on every render of the till.
+  mockedPos.xReport.mockResolvedValue({
+    shift: shift,
+    transactionCount: 0,
+    breakdown: [],
+    refunds: { count: 0, cashRefunds: "0.0000" },
+    totals: {
+      takings: "0.0000",
+      cashTakings: "0.0000",
+      expectedCash: "500000.0000",
+    },
+  });
   mockedPos.heldCarts.mockResolvedValue([]);
   // The basket recovered on load — null is the ordinary answer.
   mockedPos.activeCart.mockResolvedValue(null);
@@ -170,9 +182,15 @@ beforeEach(() => {
     [warehouseService, { _id: "w1", name: "Gudang Utama" }],
     [branchService, { _id: "b1", name: "Toko Pusat" }],
     [userService, { _id: "u1", fullName: "Bu Rina" }],
-    [customerService, { _id: "cust-1", name: "Ibu Rina", phone: "081234567890" }],
+    [
+      customerService,
+      { _id: "cust-1", name: "Ibu Rina", phone: "081234567890" },
+    ],
     [petService, { _id: PET_ID, name: "Bruno" }],
-    [serviceService, { _id: "svc-1", name: "Grooming Full Service", price: "150000.0000" }],
+    [
+      serviceService,
+      { _id: "svc-1", name: "Grooming Full Service", price: "150000.0000" },
+    ],
   ] as const;
 
   lists.forEach(([service, item]) => {
@@ -211,7 +229,9 @@ describe("PosScreen — FR-3's banner", () => {
     await screen.findByRole("button", { name: /pilih pelanggan/i });
 
     expect(mockedBookings.bridge).not.toHaveBeenCalled();
-    expect(screen.queryByRole("button", { name: "Tarik" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Tarik" }),
+    ).not.toBeInTheDocument();
   });
 
   it("appears once the customer has appointments today, and says how many", async () => {
@@ -236,7 +256,9 @@ describe("PosScreen — FR-3's banner", () => {
     await pickCustomer(user);
 
     await waitFor(() => expect(mockedBookings.bridge).toHaveBeenCalled());
-    expect(screen.queryByRole("button", { name: "Tarik" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Tarik" }),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -254,7 +276,7 @@ describe("PosScreen — pulling a booking into the basket", () => {
     expect(screen.getByText("BK-260826-001")).toBeInTheDocument();
   });
 
-  it('names an unassigned groomer rather than leaving the line blank', async () => {
+  it("names an unassigned groomer rather than leaving the line blank", async () => {
     const user = userEvent.setup();
     renderWithAuth(<PosScreen />);
 
@@ -273,7 +295,9 @@ describe("PosScreen — pulling a booking into the basket", () => {
     await user.click(
       await screen.findByRole("checkbox", { name: /BK-260826-001/ }),
     );
-    await user.click(screen.getByRole("button", { name: /tarik ke keranjang/i }));
+    await user.click(
+      screen.getByRole("button", { name: /tarik ke keranjang/i }),
+    );
 
     await waitFor(() => expect(mockedPos.pullBookings).toHaveBeenCalled());
     expect(mockedPos.pullBookings).toHaveBeenCalledWith(CART_ID, [BOOKING_ID]);
@@ -290,7 +314,9 @@ describe("PosScreen — pulling a booking into the basket", () => {
     await user.click(
       await screen.findByRole("checkbox", { name: /BK-260826-001/ }),
     );
-    await user.click(screen.getByRole("button", { name: /tarik ke keranjang/i }));
+    await user.click(
+      screen.getByRole("button", { name: /tarik ke keranjang/i }),
+    );
 
     await waitFor(() =>
       expect(mockedBookings.bridge.mock.calls.length).toBeGreaterThan(before),
@@ -316,10 +342,14 @@ describe("PosScreen — the way in that does not need a banner", () => {
     await pickCustomer(user);
 
     expect(
-      await screen.findByRole("button", { name: /tambah layanan untuk hewan/i }),
+      await screen.findByRole("button", {
+        name: /tambah layanan untuk hewan/i,
+      }),
     ).toBeInTheDocument();
     // And no banner, because there is nothing to be alerted about.
-    expect(screen.queryByRole("button", { name: "Tarik" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Tarik" }),
+    ).not.toBeInTheDocument();
   });
 
   it("opens straight onto the ad-hoc tab — the cashier already said so", async () => {
@@ -329,7 +359,9 @@ describe("PosScreen — the way in that does not need a banner", () => {
     await pickCustomer(user);
 
     await user.click(
-      await screen.findByRole("button", { name: /tambah layanan untuk hewan/i }),
+      await screen.findByRole("button", {
+        name: /tambah layanan untuk hewan/i,
+      }),
     );
 
     expect(
@@ -361,7 +393,9 @@ describe("PosScreen — the way in that does not need a banner", () => {
     expect(
       screen.queryByRole("button", { name: /tambah layanan untuk hewan/i }),
     ).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Tarik" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Tarik" }),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -429,9 +463,9 @@ describe("PosCart — the pulled lines", () => {
             petId: null,
             petName: null,
             groomerName: null,
-      bookingStatus: null,
-      bookingOwned: false,
-          bookingNumber: null,
+            bookingStatus: null,
+            bookingOwned: false,
+            bookingNumber: null,
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
           } as any,
         ],
@@ -493,7 +527,9 @@ describe("PosScreen — adding a service for an animal", () => {
   const openAdhoc = async (user: ReturnType<typeof userEvent.setup>) => {
     await pickCustomer(user);
     await user.click(
-      await screen.findByRole("button", { name: /tambah layanan untuk hewan/i }),
+      await screen.findByRole("button", {
+        name: /tambah layanan untuk hewan/i,
+      }),
     );
     await user.click(
       await screen.findByRole("checkbox", { name: /grooming full service/i }),
@@ -525,7 +561,11 @@ describe("PosScreen — adding a service for an animal", () => {
     const [, body] = calls[calls.length - 1];
 
     expect(body.items).toEqual([
-      expect.objectContaining({ kind: "service", refId: "svc-1", petId: PET_ID }),
+      expect.objectContaining({
+        kind: "service",
+        refId: "svc-1",
+        petId: PET_ID,
+      }),
     ]);
   });
 
@@ -718,8 +758,8 @@ describe("PosCart — a line whose service has already started", () => {
         petName: null,
         groomerName: null,
         bookingStatus: null,
-      bookingOwned: false,
-          }),
+        bookingOwned: false,
+      }),
     );
 
     expect(
@@ -799,7 +839,9 @@ describe("PosScreen — changing who the basket is for", () => {
     await user.click(await screen.findByText("Ibu Rina"));
 
     expect(await screen.findByText(/1 layanan/)).toBeInTheDocument();
-    expect(screen.getByText(/produk dan biaya lain tetap/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/produk dan biaya lain tetap/i),
+    ).toBeInTheDocument();
   });
 
   /*
@@ -818,7 +860,9 @@ describe("PosScreen — changing who the basket is for", () => {
     await user.click(await screen.findByText("Ibu Rina"));
     mockedPos.updateCart.mockClear();
     await user.click(
-      await screen.findByRole("button", { name: /ganti dan hapus layanannya/i }),
+      await screen.findByRole("button", {
+        name: /ganti dan hapus layanannya/i,
+      }),
     );
 
     await waitFor(() => expect(mockedPos.updateCart).toHaveBeenCalled());
@@ -962,7 +1006,9 @@ describe("PosScreen — services for more than one animal at once", () => {
 
     await pickCustomer(user);
     await user.click(
-      await screen.findByRole("button", { name: /tambah layanan untuk hewan/i }),
+      await screen.findByRole("button", {
+        name: /tambah layanan untuk hewan/i,
+      }),
     );
 
     await user.click(await screen.findByRole("button", { name: /^Bruno/ }));
@@ -996,7 +1042,9 @@ describe("PosScreen — services for more than one animal at once", () => {
 
     await pickCustomer(user);
     await user.click(
-      await screen.findByRole("button", { name: /tambah layanan untuk hewan/i }),
+      await screen.findByRole("button", {
+        name: /tambah layanan untuk hewan/i,
+      }),
     );
     await user.click(await screen.findByRole("button", { name: /^Bruno/ }));
     await user.click(
@@ -1042,7 +1090,7 @@ describe("PosScreen — a service tapped in the grid", () => {
 
   beforeEach(() => {
     mockedBookings.bridge.mockResolvedValue([]);
-     
+
     mockedPos.catalog.mockResolvedValue({
       items: [SERVICE_TILE],
       pagination: { page: 1, limit: 8, total: 1, totalPages: 1 },
@@ -1098,7 +1146,11 @@ describe("PosScreen — a service tapped in the grid", () => {
     await waitFor(() => expect(mockedPos.updateCart).toHaveBeenCalled());
     const [, body] = mockedPos.updateCart.mock.calls[0];
     expect(body.items).toEqual([
-      expect.objectContaining({ kind: "service", refId: "svc-1", petId: PET_ID }),
+      expect.objectContaining({
+        kind: "service",
+        refId: "svc-1",
+        petId: PET_ID,
+      }),
     ]);
   });
 
@@ -1152,7 +1204,7 @@ describe("PosScreen — a service tapped in the grid", () => {
   */
   it("asks nothing for a product", async () => {
     const user = userEvent.setup();
-     
+
     mockedPos.catalog.mockResolvedValue({
       items: [
         {
@@ -1194,9 +1246,7 @@ describe("PosScreen — a service tapped in the grid", () => {
     expect(
       await screen.findByText(/belum punya hewan terdaftar/i),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /tambah hewan/i }),
-    ).toBeEnabled();
+    expect(screen.getByRole("button", { name: /tambah hewan/i })).toBeEnabled();
     // And no way past the question but answering it or backing out.
     expect(
       screen.getByRole("button", { name: /tambah ke keranjang/i }),

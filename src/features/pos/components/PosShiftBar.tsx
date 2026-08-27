@@ -7,15 +7,56 @@ import { Can } from "@/features/permissions";
 import { formatMoney } from "@/utils/decimal";
 import type { PosShift } from "@/types/api";
 
-/** The shift's clock, as a person reads it. */
+import type { ShiftTotals } from "../hooks/useShiftTotals";
+
+/**
+ * When the till was opened, as a person reads it.
+ *
+ * THE DATE AS WELL AS THE CLOCK (decided 27 Agt). A shift opened before midnight
+ * and closed after it is ordinary in a shop that trades late, and a bar showing
+ * only "23.40" leaves a cashier guessing which day they are still counting.
+ */
 function openedAtLabel(openedAt: string): string {
   const at = new Date(openedAt);
   if (Number.isNaN(at.getTime())) return "—";
 
-  return at.toLocaleTimeString("id-ID", {
+  return at.toLocaleString("id-ID", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/**
+ * One labelled number on the bar.
+ *
+ * ZERO RATHER THAN A DASH for a figure that has not arrived yet — asked for on
+ * 27 Agt, and the reasoning is that a till which has sold nothing genuinely
+ * holds Rp 0, which is what almost every dash would have meant.
+ *
+ * THE COST, stated rather than hidden: the bar can no longer tell "nothing sold
+ * yet" apart from "the figure could not be read". Both print Rp 0. The X-Report
+ * says so plainly when it fails, and it is the thing to open before counting a
+ * drawer — see `PosXReportDialog`.
+ */
+function Figure({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    // A description list, so a screen reader reads each number WITH its label
+    // rather than as four loose values.
+    <div>
+      <dt className="text-xs opacity-80">{label}</dt>
+      {/* tabular-nums so figures do not jitter as they update — ui-rules §5. */}
+      <dd className="text-sm font-semibold tabular-nums">{children}</dd>
+    </div>
+  );
 }
 
 /**
@@ -33,6 +74,7 @@ function openedAtLabel(openedAt: string): string {
  */
 export function PosShiftBar({
   shift,
+  totals,
   heldCount,
   onOpenHeld,
   onOpenToday,
@@ -41,6 +83,8 @@ export function PosShiftBar({
   onCloseShift,
 }: {
   shift: PosShift;
+  /** This shift's running figures, or null until they have been read. */
+  totals: ShiftTotals | null;
   heldCount: number;
   onOpenHeld: () => void;
   onOpenToday: () => void;
@@ -49,24 +93,50 @@ export function PosShiftBar({
   onCloseShift: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl bg-primary px-4 py-3 text-primary-foreground">
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
-        <div>
-          <span className="block text-xs opacity-80">Shift</span>
-          {/* tabular-nums so the clock does not jitter — ui-rules §5. */}
-          <span className="block text-sm font-semibold tabular-nums">
-            {shift.shiftNumber} · {openedAtLabel(shift.openedAt)}
-          </span>
-        </div>
-        <div>
-          <span className="block text-xs opacity-80">Saldo awal</span>
-          <span className="block text-sm font-semibold tabular-nums">
-            {formatMoney(shift.openingCash)}
-          </span>
-        </div>
-      </div>
+    /*
+      TWO SIDES: what the shift IS on the left, what can be DONE to it on the
+      right. They stack on a phone rather than competing for one line — the
+      figures come first because they are read at a glance and the buttons are
+      reached for deliberately.
+    */
+    <div className="flex flex-col gap-4 rounded-xl bg-primary px-4 py-3 text-primary-foreground sm:flex-row sm:items-center sm:justify-between">
+      {/*
+        A 2×2 GRID, NOT A ROW OF FOUR. Two columns hold at 360px as readily as at
+        1440, so there is one arrangement to look at rather than a wide one and a
+        narrow one that drift apart. The pairing is also the reading order a
+        cashier wants: what this shift IS on top, what it HOLDS underneath.
+      */}
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-2 sm:gap-x-8">
+        <Figure label="Shift">{shift.shiftNumber}</Figure>
+        <Figure label="Tanggal &amp; Jam Buka">
+          {openedAtLabel(shift.openedAt)}
+        </Figure>
+        <Figure label="Saldo awal">{formatMoney(shift.openingCash)}</Figure>
 
-      <div className="flex items-center gap-2">
+        {/*
+          THREE FIGURES, NOT FIVE (decided 27 Agt). FR-9 lists total penjualan and
+          jumlah transaksi here too, and both were built — but the X-Report dialog
+          already showed the pair, and four of the bar's five numbers were the
+          same numbers under different names. The bar keeps what a cashier needs
+          WITHOUT stopping: what is in the drawer. The rest is a report, opened
+          deliberately, and that is where it lives now.
+
+          READ FROM THE X-REPORT so the bar and Tutup Kasir cannot disagree — a
+          cashier who watches this number all afternoon and is measured against a
+          different one at closing has been set up to fail. Cash only, net of
+          change given and of this shift's cash refunds.
+        */}
+        <Figure label="Kas masuk">
+          {formatMoney(totals?.cashTakings ?? "0")}
+        </Figure>
+      </dl>
+
+      {/*
+        WRAPPING, NOT SCROLLING. Five actions do not fit one phone line, and a
+        horizontally scrolling strip hides whichever one falls off the end —
+        including Tutup Kasir, which is the one somebody hunts for at closing.
+      */}
+      <div className="flex flex-wrap items-center gap-2">
         <Button
           type="button"
           variant="secondary"

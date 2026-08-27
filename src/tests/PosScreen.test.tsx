@@ -189,6 +189,22 @@ beforeEach(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any);
   mockedPos.currentShift.mockResolvedValue(shift);
+  /*
+    The shift bar's running figures (FR-9). Read on every render of the till now,
+    not only when somebody opens the X-Report — the bar shows three of these
+    numbers, and the endpoint is the one place they are allowed to come from.
+  */
+  mockedPos.xReport.mockResolvedValue({
+    shift,
+    transactionCount: 0,
+    breakdown: [],
+    refunds: { count: 0, cashRefunds: "0.0000" },
+    totals: {
+      takings: "0.0000",
+      cashTakings: "0.0000",
+      expectedCash: "500000.0000",
+    },
+  });
   mockedPos.heldCarts.mockResolvedValue([]);
   // The basket recovered on load — null is the ordinary answer.
   mockedPos.activeCart.mockResolvedValue(null);
@@ -471,6 +487,123 @@ describe("PosScreen — the till's own settings", () => {
     expect(
       within(dialog).getByText(/berlaku di perangkat ini saja/i),
     ).toBeInTheDocument();
+  });
+});
+
+/**
+ * The shift bar (FR-9).
+ *
+ * WHEN IT OPENED, THE FLOAT, AND WHAT IS IN THE DRAWER. FR-9 lists five figures
+ * here; the takings and the transaction count were built and then moved to the
+ * X-Report on 27 Agt, because that dialog already showed the pair and four of
+ * the bar's five numbers were the same numbers under two sets of names.
+ *
+ * THE CASH FIGURE COMES FROM THE X-REPORT, not from a tally kept in the browser.
+ * The bar and Tutup Kasir must agree to the rupiah: a cashier who watches one
+ * number all afternoon and is measured against a different one at closing has
+ * been set up to fail.
+ */
+describe("PosScreen — the shift bar (FR-9)", () => {
+  /** The navy strip — found through the figures it holds, not by class. */
+  const bar = async () =>
+    (await screen.findByText("Saldo awal")).closest("dl")?.parentElement;
+
+  it("shows when it opened, the float, and what is in the drawer", async () => {
+    mockedPos.xReport.mockResolvedValue({
+      shift,
+      transactionCount: 4,
+      breakdown: [],
+      refunds: { count: 0, cashRefunds: "0.0000" },
+      totals: {
+        takings: "750000.0000",
+        cashTakings: "300000.0000",
+        expectedCash: "800000.0000",
+      },
+    });
+
+    renderWithAuth(<PosScreen />);
+
+    const strip = within((await bar()) as HTMLElement);
+    expect(strip.getByText(/SHF-2026-0001/)).toBeInTheDocument();
+    expect(strip.getByText("Rp 500.000")).toBeInTheDocument();
+    expect(await strip.findByText("Rp 300.000")).toBeInTheDocument();
+  });
+
+  /*
+    THE DATE, NOT ONLY THE CLOCK. A shift opened before midnight and closed after
+    it is ordinary in a shop that trades late, and "23.40" alone leaves a cashier
+    guessing which day they are still counting.
+
+    ITS OWN FIGURE, not appended to the shift number: two unrelated things joined
+    by a dot read as one long code at a glance.
+  */
+  it("dates the shift as well as timing it, under its own label", async () => {
+    renderWithAuth(<PosScreen />);
+
+    const strip = within((await bar()) as HTMLElement);
+    expect(strip.getByText("Tanggal & Jam Buka")).toBeInTheDocument();
+    expect(strip.getByText(/\d{2}\/\d{2}\/\d{4}/)).toBeInTheDocument();
+    // The number stands alone, with nothing glued to it.
+    expect(strip.getByText("SHF-2026-0001")).toBeInTheDocument();
+  });
+
+  /*
+    EACH NUMBER IS READ WITH ITS LABEL. Four loose values in a navy strip are
+    four unexplained numbers to anybody using a screen reader.
+  */
+  it("pairs every figure with its name", async () => {
+    renderWithAuth(<PosScreen />);
+
+    const strip = (await bar()) as HTMLElement;
+    expect(strip.querySelector("dl")).not.toBeNull();
+    expect(strip.querySelectorAll("dt")).toHaveLength(4);
+    expect(strip.querySelectorAll("dd")).toHaveLength(4);
+  });
+
+  /*
+    THREE FIGURES, NOT FIVE (decided 27 Agt). FR-9 lists the takings and the
+    transaction count here too, and both were built — but the X-Report dialog
+    already showed the pair, and four of the bar's five numbers were the same
+    numbers under two sets of names.
+  */
+  it("leaves the takings and the count to the X-Report", async () => {
+    mockedPos.xReport.mockResolvedValue({
+      shift,
+      transactionCount: 4,
+      breakdown: [],
+      refunds: { count: 0, cashRefunds: "0.0000" },
+      totals: {
+        takings: "750000.0000",
+        cashTakings: "300000.0000",
+        expectedCash: "800000.0000",
+      },
+    });
+
+    renderWithAuth(<PosScreen />);
+
+    const strip = within((await bar()) as HTMLElement);
+    await strip.findByText("Rp 300.000");
+    expect(strip.queryByText("Penjualan")).not.toBeInTheDocument();
+    expect(strip.queryByText("Transaksi")).not.toBeInTheDocument();
+    expect(strip.queryByText("Rp 750.000")).not.toBeInTheDocument();
+  });
+
+  /*
+    ZERO, NOT A DASH — asked for on 27 Agt: a till that has sold nothing really
+    does hold Rp 0, which is what almost every dash would have meant.
+
+    THE COST, tested so it is not forgotten: a figure that could not be READ
+    prints the same Rp 0. The X-Report says so plainly when it fails, and it is
+    the thing to open before counting a drawer.
+  */
+  it("prints zero rather than a dash when the figure cannot be read", async () => {
+    mockedPos.xReport.mockRejectedValue(new Error("network"));
+
+    renderWithAuth(<PosScreen />);
+
+    const strip = within((await bar()) as HTMLElement);
+    expect(await strip.findByText("Rp 0")).toBeInTheDocument();
+    expect(strip.queryByText("—")).not.toBeInTheDocument();
   });
 });
 

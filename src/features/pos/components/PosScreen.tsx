@@ -14,6 +14,7 @@ import { BookingBridgeDialog, useBookingBridge } from "@/features/booking";
 
 import { usePosCart } from "../hooks/usePosCart";
 import { usePosShift } from "../hooks/usePosShift";
+import { useShiftTotals } from "../hooks/useShiftTotals";
 import { PosApprovalDialog } from "./PosApprovalDialog";
 import { PosBranchGate } from "./PosBranchGate";
 import { PosBookingActions } from "./PosBookingActions";
@@ -151,11 +152,23 @@ export function PosScreen() {
   const [todayOpen, setTodayOpen] = useState(false);
   const [voiding, setVoiding] = useState<PosTransaction | null>(null);
   const [returning, setReturning] = useState<PosTransaction | null>(null);
-  const [todayKey, setTodayKey] = useState(0);
+  /*
+    BUMPED WHENEVER THE DAY'S TAKINGS CHANGE — a sale settled, voided, or
+    returned. Two things read it: the Transaksi Hari Ini list behind the dialog,
+    and the shift bar's running figures (FR-9). One counter rather than two,
+    because the two must never disagree about whether a sale happened.
+  */
+  const [salesVersion, setSalesVersion] = useState(0);
   const [xReportFor, setXReportFor] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+
+  /*
+    FR-9's running figures. Read from the X-Report so the bar and Tutup Kasir
+    cannot disagree — see `useShiftTotals`.
+  */
+  const shiftTotals = useShiftTotals(shift?._id ?? null, salesVersion);
 
   const loadHeld = useCallback(async () => {
     setHeldLoading(true);
@@ -446,6 +459,7 @@ export function PosScreen() {
     <div className="flex flex-col gap-4">
       <PosShiftBar
         shift={shift}
+        totals={shiftTotals}
         heldCount={heldCarts.length}
         onOpenHeld={() => setHeldOpen(true)}
         onOpenToday={() => setTodayOpen(true)}
@@ -585,6 +599,8 @@ export function PosScreen() {
             cart.clear();
             setReceiptFor(sale._id);
             void loadHeld();
+            // The shift bar and the day's list both just went stale (FR-9).
+            setSalesVersion((version) => version + 1);
           }}
         />
       )}
@@ -748,7 +764,7 @@ export function PosScreen() {
 
       <TodayTransactionsDialog
         open={todayOpen}
-        reloadKey={todayKey}
+        reloadKey={salesVersion}
         onOpenChange={setTodayOpen}
         onReceipt={(sale) => setReceiptFor(sale._id)}
         onVoid={setVoiding}
@@ -763,7 +779,7 @@ export function PosScreen() {
         onVoided={(sale) => {
           setVoiding(null);
           // The list is behind this dialog and now says the wrong thing.
-          setTodayKey((key) => key + 1);
+          setSalesVersion((version) => version + 1);
           setNotice(`${sale.transactionNumber} dibatalkan.`);
         }}
       />
@@ -775,7 +791,7 @@ export function PosScreen() {
         }}
         onReturned={(created) => {
           setReturning(null);
-          setTodayKey((key) => key + 1);
+          setSalesVersion((version) => version + 1);
           setNotice(
             `Retur ${created.returnNumber} diproses. Uangnya keluar dari laci ini.`,
           );
