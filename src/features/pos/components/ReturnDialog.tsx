@@ -23,7 +23,12 @@ import {
 import { paymentChannelService } from "@/services/paymentChannel.service";
 import { posService } from "@/services/pos.service";
 import { ApiError } from "@/services/api-error";
-import type { PaymentChannel, PosReturn, PosTransaction } from "@/types/api";
+import type {
+  PaymentChannel,
+  PosReturn,
+  PosReturnable,
+  PosTransaction,
+} from "@/types/api";
 
 import { ReturnItemsPicker, type ReturnDraftLine } from "./ReturnItemsPicker";
 
@@ -57,6 +62,13 @@ export function ReturnDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const [remaining, setRemaining] = useState<number[]>([]);
+  /*
+    WHAT THIS REFUND ACTUALLY DOES, from the server. A sale still on account is
+    paid back by owing less — see `PosReturnable.refundMethod`.
+  */
+  const [refund, setRefund] = useState<
+    Pick<PosReturnable, "refundMethod" | "invoice">
+  >({ refundMethod: "cash", invoice: null });
   const [channels, setChannels] = useState<PaymentChannel[]>([]);
   const [channelId, setChannelId] = useState("");
   const [draft, setDraft] = useState<Record<number, ReturnDraftLine>>({});
@@ -96,6 +108,10 @@ export function ReturnDialog({
         setRemaining(
           returnable.items.map((item) => Math.floor(Number(item.remainingQty))),
         );
+        setRefund({
+          refundMethod: returnable.refundMethod,
+          invoice: returnable.invoice,
+        });
         setChannels(channelPage.items);
         // One drawer is the overwhelming case; pre-selecting it removes a tap.
         if (channelPage.items.length === 1) {
@@ -126,8 +142,13 @@ export function ReturnDialog({
     [draft],
   );
 
+  /** A credit note needs no drawer, so it needs no choice of drawer. */
+  const needsChannel = refund.refundMethod === "cash";
+
   const canSubmit =
-    chosen.length > 0 && reason.trim().length > 0 && channelId !== "";
+    chosen.length > 0 &&
+    reason.trim().length > 0 &&
+    (!needsChannel || channelId !== "");
 
   async function submit() {
     if (!sale || !canSubmit) return;
@@ -139,8 +160,13 @@ export function ReturnDialog({
       const created = await posService.createReturn({
         posTransactionId: sale._id,
         items: chosen,
+        /*
+          THE SERVER DECIDES AND MAY OVERRULE THIS. Which treatment applies is a
+          fact about the sale's invoice, not a preference — this is what the
+          till believes, and it is corrected rather than obeyed.
+        */
         refundMethod: "cash",
-        refundChannelId: channelId,
+        refundChannelId: needsChannel ? channelId : undefined,
         reason: reason.trim(),
       });
 
@@ -192,37 +218,56 @@ export function ReturnDialog({
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="refund-channel">Uang dikembalikan lewat</Label>
-              {channels.length === 0 ? (
-                <p className="text-sm text-danger">
-                  Belum ada channel tunai di cabang ini. Tambah dulu di Kas
-                  &amp; Bank.
+            {/*
+              NO DRAWER TO CHOOSE, so none is offered. The sale is still on
+              account: the goods coming back reduce the bill instead of paying
+              anything out, which is what stops the shop paying twice — notes
+              across the counter AND an invoice still running for the same
+              items.
+            */}
+            {!needsChannel ? (
+              <div className="space-y-1 rounded-lg border border-border p-3">
+                <p className="text-sm font-medium">Uangnya tidak keluar</p>
+                <p className="text-sm text-muted">
+                  Penjualan ini belum dibayar, jadi returnya{" "}
+                  <strong>mengurangi tagihan</strong>
+                  {refund.invoice ? ` ${refund.invoice.invoiceNumber}` : ""} —
+                  bukan mengembalikan uang tunai.
                 </p>
-              ) : (
-                <Select value={channelId} onValueChange={setChannelId}>
-                  <SelectTrigger id="refund-channel" className="h-11">
-                    <SelectValue placeholder="Pilih laci kas" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {channels.map((channel) => (
-                      <SelectItem key={channel._id} value={channel._id}>
-                        {channel.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-              {/*
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="refund-channel">Uang dikembalikan lewat</Label>
+                {channels.length === 0 ? (
+                  <p className="text-sm text-danger">
+                    Belum ada channel tunai di cabang ini. Tambah dulu di Kas
+                    &amp; Bank.
+                  </p>
+                ) : (
+                  <Select value={channelId} onValueChange={setChannelId}>
+                    <SelectTrigger id="refund-channel" className="h-11">
+                      <SelectValue placeholder="Pilih laci kas" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {channels.map((channel) => (
+                        <SelectItem key={channel._id} value={channel._id}>
+                          {channel.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {/*
                 Said here because it changes whose drawer is short tonight: the
                 refund comes out of the till open right now, not the one that
                 made the sale.
               */}
-              <p className="text-xs text-muted">
-                Uangnya keluar dari laci yang sedang dibuka sekarang, dan ikut
-                terhitung di tutup kasir nanti.
-              </p>
-            </div>
+                <p className="text-xs text-muted">
+                  Uangnya keluar dari laci yang sedang dibuka sekarang, dan ikut
+                  terhitung di tutup kasir nanti.
+                </p>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="return-reason">Alasan</Label>

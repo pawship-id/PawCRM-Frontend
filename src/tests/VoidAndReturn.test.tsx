@@ -95,6 +95,10 @@ beforeEach(() => {
     posTransactionId: SALE_ID,
     transactionNumber: "POS-20260825-0001",
     status: "paid",
+    // Cash is the ordinary answer — the sale was paid for. The credit-note case
+    // has its own block below.
+    refundMethod: "cash",
+    invoice: null,
     items: [
       {
         posItemIndex: 0,
@@ -105,8 +109,12 @@ beforeEach(() => {
       },
     ],
   });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  mockedPos.createReturn.mockResolvedValue({ returnNumber: "RTN-2026-0001" } as any);
+  mockedPos.createReturn.mockResolvedValue(
+    // Only the field the dialog reads back. Prettier moves a directive off the
+    // line it guards when the object spans lines, so it sits inside the call.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    { returnNumber: "RTN-2026-0001" } as any,
+  );
   mockedChannels.list.mockResolvedValue({
     items: [
       {
@@ -191,7 +199,9 @@ describe("TodayTransactionsDialog", () => {
     expect(
       screen.queryByRole("button", { name: /batalkan/i }),
     ).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /retur/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /retur/i }),
+    ).not.toBeInTheDocument();
     // The receipt stays reachable: a void leaves the sale on the record.
     expect(screen.getByRole("button", { name: /struk/i })).toBeInTheDocument();
   });
@@ -262,7 +272,9 @@ describe("VoidTransactionDialog", () => {
     );
 
     await user.type(screen.getByLabelText(/alasan/i), "Salah ketik");
-    await user.click(screen.getByRole("button", { name: /batalkan transaksi/i }));
+    await user.click(
+      screen.getByRole("button", { name: /batalkan transaksi/i }),
+    );
 
     await waitFor(() =>
       expect(mockedPos.voidSale).toHaveBeenCalledWith(SALE_ID, {
@@ -289,7 +301,9 @@ describe("VoidTransactionDialog", () => {
     );
 
     await user.type(screen.getByLabelText(/alasan/i), "Salah");
-    await user.click(screen.getByRole("button", { name: /batalkan transaksi/i }));
+    await user.click(
+      screen.getByRole("button", { name: /batalkan transaksi/i }),
+    );
 
     // Guessing the shift rule in the browser would mean two rules to keep in
     // step, and the browser's copy would be the one that drifted.
@@ -315,7 +329,9 @@ describe("ReturnDialog", () => {
 
     await screen.findByText("Royal Canin Adult 2kg");
 
-    expect(screen.getByRole("button", { name: /proses retur/i })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /proses retur/i }),
+    ).toBeDisabled();
   });
 
   it("will not offer more than the server says is left", async () => {
@@ -324,6 +340,8 @@ describe("ReturnDialog", () => {
       posTransactionId: SALE_ID,
       transactionNumber: "POS-20260825-0001",
       status: "paid",
+      refundMethod: "cash",
+      invoice: null,
       items: [
         {
           posItemIndex: 0,
@@ -364,7 +382,9 @@ describe("ReturnDialog", () => {
 
     // A number computed here that disagreed with the refund would be discovered
     // by a customer at the counter.
-    expect(screen.getByText(/dihitung dari harga yang dibayar/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/dihitung dari harga yang dibayar/i),
+    ).toBeInTheDocument();
   });
 
   it("asks whether each line goes back on the shelf, once something is chosen", async () => {
@@ -377,7 +397,9 @@ describe("ReturnDialog", () => {
       />,
     );
 
-    await user.click(await screen.findByRole("button", { name: /tambah royal/i }));
+    await user.click(
+      await screen.findByRole("button", { name: /tambah royal/i }),
+    );
 
     // One bag holds an unopened sack and a chewed toy.
     expect(screen.getByLabelText(/masih layak jual/i)).toBeInTheDocument();
@@ -389,6 +411,8 @@ describe("ReturnDialog", () => {
       posTransactionId: SALE_ID,
       transactionNumber: "POS-20260825-0001",
       status: "paid",
+      refundMethod: "cash",
+      invoice: null,
       items: [
         {
           posItemIndex: 0,
@@ -423,7 +447,9 @@ describe("ReturnDialog", () => {
 
     // A grooming that already happened is not on a shelf, and a control that
     // does nothing is worse than none.
-    expect(screen.queryByLabelText(/masih layak jual/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(/masih layak jual/i),
+    ).not.toBeInTheDocument();
   });
 
   it("says whose drawer the money comes out of", async () => {
@@ -452,7 +478,9 @@ describe("ReturnDialog", () => {
       />,
     );
 
-    await user.click(await screen.findByRole("button", { name: /tambah royal/i }));
+    await user.click(
+      await screen.findByRole("button", { name: /tambah royal/i }),
+    );
     await user.type(screen.getByLabelText(/alasan/i), "Kemasan sobek");
     await user.click(screen.getByRole("button", { name: /proses retur/i }));
 
@@ -485,5 +513,99 @@ describe("ReturnDialog", () => {
     expect(
       await screen.findByText(/belum ada channel tunai/i),
     ).toBeInTheDocument();
+  });
+});
+
+/**
+ * A return against a sale still on account (FR-11).
+ *
+ * "Retur: outstanding invoice DIKURANGI sejumlah nilai retur." No money leaves,
+ * so the form must not ask which drawer it leaves through — a cashier asked
+ * that question would answer it and believe the answer.
+ */
+describe("ReturnDialog — a sale that has not been paid for", () => {
+  beforeEach(() => {
+    mockedPos.returnable.mockResolvedValue({
+      posTransactionId: SALE_ID,
+      transactionNumber: "POS-20260825-0001",
+      status: "paid",
+      refundMethod: "credit_note",
+      invoice: {
+        invoiceNumber: "INV-2026-0041",
+        outstandingAmount: "300000.0000",
+      },
+      items: [
+        {
+          posItemIndex: 0,
+          kind: "product",
+          name: "Royal Canin Adult 2kg",
+          soldQty: "2.0000",
+          remainingQty: "2.0000",
+        },
+      ],
+    });
+  });
+
+  it("says the bill shrinks instead of money going out", async () => {
+    renderWithAuth(
+      <ReturnDialog
+        sale={sale()}
+        onReturned={jest.fn()}
+        onOpenChange={jest.fn()}
+      />,
+    );
+
+    expect(
+      await screen.findByText(/uangnya tidak keluar/i),
+    ).toBeInTheDocument();
+    // Named, so the cashier can tell the customer which bill moved.
+    expect(screen.getByText(/INV-2026-0041/)).toBeInTheDocument();
+  });
+
+  it("does not ask which drawer the money leaves through", async () => {
+    renderWithAuth(
+      <ReturnDialog
+        sale={sale()}
+        onReturned={jest.fn()}
+        onOpenChange={jest.fn()}
+      />,
+    );
+
+    await screen.findByText(/uangnya tidak keluar/i);
+    expect(
+      screen.queryByText(/uang dikembalikan lewat/i),
+    ).not.toBeInTheDocument();
+  });
+
+  /*
+    AND IT MUST STILL BE SUBMITTABLE. The channel is what used to gate the
+    button; a credit note has none, so a form that kept the gate would refuse
+    every return of an unpaid sale.
+  */
+  it("can be submitted with no channel chosen", async () => {
+    const user = userEvent.setup();
+
+    renderWithAuth(
+      <ReturnDialog
+        sale={sale()}
+        onReturned={jest.fn()}
+        onOpenChange={jest.fn()}
+      />,
+    );
+
+    await screen.findByText(/uangnya tidak keluar/i);
+    await user.click(screen.getByRole("button", { name: /tambah royal/i }));
+    await user.type(
+      screen.getByLabelText(/alasan/i),
+      "Pelanggan berubah pikiran",
+    );
+
+    const submit = screen.getByRole("button", { name: /proses retur/i });
+    expect(submit).toBeEnabled();
+
+    await user.click(submit);
+
+    const [payload] = mockedPos.createReturn.mock.calls[0];
+    expect(payload.refundChannelId).toBeUndefined();
   });
 });

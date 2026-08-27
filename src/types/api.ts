@@ -1453,6 +1453,20 @@ export interface PosReturnable {
   posTransactionId: string;
   transactionNumber: string | null;
   status: PosTransactionStatus;
+  /**
+   * How this particular sale will be refunded — decided by the server.
+   *
+   * `cash` — money leaves a drawer, and the till has to say which.
+   * `credit_note` — the sale is still on account, so nothing is paid out and
+   * what the customer owes shrinks instead. No channel applies.
+   *
+   * ASKED FOR BEFORE THE FORM IS DRAWN, because a form that asks which drawer
+   * the money comes from — for a refund that moves no money — is asking a
+   * question with no answer, and the cashier would pick one and believe it.
+   */
+  refundMethod: "cash" | "credit_note";
+  /** The bill the refund comes off, when it is a credit note. */
+  invoice: { invoiceNumber: string; outstandingAmount: string } | null;
   items: {
     posItemIndex: number;
     kind: PosItemKind;
