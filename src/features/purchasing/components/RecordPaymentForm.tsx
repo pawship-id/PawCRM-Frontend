@@ -68,8 +68,8 @@ function today(): string {
  * THE SUBMIT IS LOCKED FOR THE WHOLE FLIGHT, and this is the one guard that
  * genuinely matters here. `POST /:id/payments` is NOT idempotent — there is no
  * key to send — so a double-click records the cash leaving twice, on two
- * irreversible journal entries. The lock is `saving`, and it is only released
- * on failure; on success the parent replaces the invoice and the form resets.
+ * irreversible journal entries. The lock is `saving`, released in BOTH outcomes
+ * — see the note at the release.
  *
  * THE CLIENT-SIDE BOUND IS A COURTESY, NOT THE AUTHORITY. The server refuses an
  * overpayment against the balance it can see, which is the only one that counts
@@ -164,8 +164,18 @@ export function RecordPaymentForm({
       swalToast(`Pembayaran ${formatMoney(amount)} tercatat.`);
       setAmount("");
       setRef("");
-      // Last, because it re-renders the parent and may unmount this form when
-      // the invoice becomes settled.
+      /*
+        RELEASED ON SUCCESS TOO, and BEFORE `onPaid`. "Success unmounts this
+        form" holds only when the invoice becomes SETTLED; a partial payment
+        leaves the parent rendering the same element in the same position, so
+        React keeps this component's state and the button stayed disabled with a
+        spinner until the page was reloaded — after every instalment.
+
+        Found on the receivables side, which was written from this file. Fixed
+        here too rather than left, because it is the same defect on a form that
+        moves money.
+      */
+      setSaving(false);
       onPaid(updated);
     } catch (caught) {
       // Every refusal here is actionable and specific — "exceeds the 100.000

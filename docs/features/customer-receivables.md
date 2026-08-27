@@ -149,6 +149,30 @@ placeholder names exactly what it searches, and the **Pelanggan** picker in the
 filter panel carries the other half. A placeholder promising a field the server
 does not match is a bug report waiting to be filed.
 
+## Refusals are toasts, and the lock releases in both outcomes
+
+**Both are departures from what shipped first, made after UI verification.**
+
+**Toasts, not an inline `<Alert>`** — a deliberate departure from
+[ui-rules §9](../ui-rules.md), which reserves toasts for "it worked" and gives
+form-level errors an alert that stays on screen. Asked for, and implemented with
+one mitigation for the cost it carries: a toast auto-dismisses, so a refusal the
+user has to ACT on gets **8 seconds** instead of the default 3. The local checks
+("jumlah harus lebih dari nol") keep the default — the user knows what they just
+typed. `swalToast` gained an optional `timer` for this; every existing call site
+is unchanged.
+
+**The submit lock releases on success too.** It used to release only on failure,
+on the reasoning that a successful payment unmounts the form — which holds only
+when the invoice becomes **settled**. After a partial payment the parent renders
+the same element in the same position, React keeps the component's state, and the
+button stayed disabled with a spinner until the page was reloaded. After every
+instalment.
+
+`purchasing/RecordPaymentForm` was written first and had the identical defect;
+it is fixed too, since it is the same one-line bug on another form that moves
+money.
+
 ## Recording a payment
 
 One form for **DP, cicilan and pelunasan** — that is PCR-032's whole user story,
@@ -270,7 +294,7 @@ the document actually holds rather than joining a POS transaction to fake them.
 | `features/sales/components/PaymentReceipt.tsx`            | The kwitansi sheet                |
 | `features/sales/components/PaymentReceiptDialog.tsx`      | Preview + print                   |
 | `features/sales/components/InvoiceStatusBadge.tsx`        | Status + source chips             |
-| `tests/ReceivablesScreens.test.tsx`                       | 36 tests over both screens        |
+| `tests/ReceivablesScreens.test.tsx`                       | 39 tests over both screens        |
 
 `PageHeading` is imported from `@/features/purchasing` rather than copied — it is
 on the migration list to be promoted to `@/components` (ui-rules §15), and a

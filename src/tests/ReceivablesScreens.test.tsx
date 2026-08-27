@@ -16,6 +16,8 @@ import type {
   CustomerOutstandingSummary,
 } from "@/types/api";
 
+import { swalToast } from "@/lib/swal";
+
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
 jest.mock("@/services/customerInvoice.service");
@@ -30,6 +32,14 @@ jest.mock("next/navigation", () => ({
 }));
 
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
+
+/*
+  REFUSALS ARE TOASTS on these screens, not inline alerts — a deliberate
+  departure from ui-rules §9, asked for after the first build. So the assertions
+  read `swalToast` rather than `role="alert"`: there is no alert in the DOM to
+  find, and a test looking for one would pass only by never reaching the refusal.
+*/
+const toast = swalToast as jest.MockedFunction<typeof swalToast>;
 
 /**
  * The Faktur Penjualan screens, against mocked services.
@@ -546,7 +556,12 @@ describe("InvoiceDetail", () => {
     await user.type(await screen.findByLabelText("Jumlah diterima"), "400000");
     await user.click(screen.getByRole("button", { name: "Simpan pembayaran" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/melebihi/i);
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.stringMatching(/melebihi/i),
+        "error",
+      ),
+    );
     expect(customerInvoiceService.recordPayment).not.toHaveBeenCalled();
   });
 
@@ -557,7 +572,9 @@ describe("InvoiceDetail", () => {
     await user.type(await screen.findByLabelText("Jumlah diterima"), "0");
     await user.click(screen.getByRole("button", { name: "Simpan pembayaran" }));
 
-    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(expect.any(String), "error"),
+    );
     expect(customerInvoiceService.recordPayment).not.toHaveBeenCalled();
   });
 
@@ -601,7 +618,18 @@ describe("InvoiceDetail", () => {
     await user.type(await screen.findByLabelText("Jumlah diterima"), "100000");
     await user.click(screen.getByRole("button", { name: "Simpan pembayaran" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/paid by someone else/);
+    /*
+      LONGER THAN THE DEFAULT, and asserted: this message tells the user to
+      reload and re-check a balance. A three-second toast carrying an instruction
+      is one nobody finishes reading.
+    */
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.stringMatching(/paid by someone else/),
+        "error",
+        8000,
+      ),
+    );
   });
 
   it("names the account each payment landed in, for reconciliation", async () => {
@@ -734,7 +762,12 @@ describe("InvoiceDetail — membatalkan pembayaran", () => {
       screen.getByRole("button", { name: "Batalkan pembayaran" }),
     );
 
-    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.stringMatching(/alasan/i),
+        "error",
+      ),
+    );
     expect(customerInvoiceService.voidPayment).not.toHaveBeenCalled();
   });
 
@@ -752,8 +785,12 @@ describe("InvoiceDetail — membatalkan pembayaran", () => {
       screen.getByRole("button", { name: "Batalkan pembayaran" }),
     );
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      /already cancelled/,
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.stringMatching(/already cancelled/),
+        "error",
+        8000,
+      ),
     );
   });
 
@@ -855,6 +892,80 @@ describe("InvoiceDetail — kwitansi", () => {
     const dialog = await screen.findByRole("dialog");
     expect(
       within(dialog).getByText(/PEMBAYARAN INI DIBATALKAN/),
+    ).toBeInTheDocument();
+  });
+});
+
+/* =================== regressions found in UI verification =================== */
+
+describe("InvoiceDetail — the submit lock", () => {
+  /*
+    THE BUG THIS GUARDS. `saving` used to be released only on failure, on the
+    reasoning that success unmounts the form — which holds only when the invoice
+    becomes SETTLED. After a PARTIAL payment the parent re-renders the same
+    element in the same position, React keeps the component's state, and the
+    button stayed disabled with a spinner until the page was reloaded.
+  */
+  it("re-enables the button after a partial payment, without a reload", async () => {
+    const user = userEvent.setup();
+    asMock(customerInvoiceService.recordPayment).mockResolvedValue(
+      detail({
+        status: "partial",
+        paidAmount: "100000.0000",
+        outstandingAmount: "200000.0000",
+        payments: [paymentRow()],
+      }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await user.type(await screen.findByLabelText("Jumlah diterima"), "100000");
+    await user.click(screen.getByRole("button", { name: "Simpan pembayaran" }));
+
+    await waitFor(() =>
+      expect(customerInvoiceService.recordPayment).toHaveBeenCalled(),
+    );
+
+    // Still mounted — the invoice is not settled — and usable again.
+    const submit = await screen.findByRole("button", {
+      name: "Simpan pembayaran",
+    });
+    await waitFor(() => expect(submit).toBeEnabled());
+  });
+});
+
+describe("PaymentReceipt — what does NOT go on a customer's sheet", () => {
+  /*
+    The kwitansi used to carry "dicetak dari … · jurnal <ObjectId>". Neither the
+    PRD nor the PCR sheet asks for it, and a database id on a document handed to
+    a customer is noise. The id stays on the staff-facing timeline.
+  */
+  it("carries no ledger id", async () => {
+    const user = userEvent.setup();
+    asMock(customerInvoiceService.getById).mockResolvedValue(paidDetail());
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await user.click(await screen.findByRole("button", { name: /Kwitansi/ }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).queryByText("je-pay1")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/Dicetak dari/)).not.toBeInTheDocument();
+  });
+
+  it("still names the shop, the customer and what is left", async () => {
+    const user = userEvent.setup();
+    asMock(customerInvoiceService.getById).mockResolvedValue(paidDetail());
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await user.click(await screen.findByRole("button", { name: /Kwitansi/ }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Buloo Petshop")).toBeInTheDocument();
+    expect(within(dialog).getByText("Bu Sari")).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("Sisa tagihan saat ini"),
     ).toBeInTheDocument();
   });
 });

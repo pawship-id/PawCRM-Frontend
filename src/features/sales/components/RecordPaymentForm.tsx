@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { Alert, Button, TextField } from "@/components";
+import { Button, TextField } from "@/components";
 import { Button as UIButton } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -73,8 +73,16 @@ function today(): string {
  * THE SUBMIT IS LOCKED FOR THE WHOLE FLIGHT, and this is the one guard that
  * genuinely matters. `POST /:id/payments` is NOT idempotent — there is no key to
  * send — so a double-click records the money arriving twice, on two irreversible
- * journal entries. The lock is `saving`, and it is only released on failure; on
- * success the parent replaces the invoice and the form resets.
+ * journal entries. The lock is `saving`, released in BOTH outcomes — see the
+ * note at the release: assuming success always unmounts this form was wrong for
+ * every partial payment, and left the button spinning until a reload.
+ *
+ * REFUSALS ARE TOASTS, NOT AN INLINE ALERT — a deliberate departure from
+ * docs/ui-rules.md §9, made on request. The tradeoff it accepts: a toast
+ * auto-dismisses, so a message the user has to act on can be missed. The
+ * server's refusals are given 8 seconds rather than the default 3 for that
+ * reason. The local checks keep the default — the user knows what they just
+ * typed.
  *
  * THE CLIENT-SIDE BOUND IS A COURTESY, NOT THE AUTHORITY. The server refuses an
  * overpayment against the balance it can see, which is the only one that counts
@@ -96,7 +104,6 @@ export function RecordPaymentForm({
   const [channelId, setChannelId] = useState("");
   const [at, setAt] = useState(today());
   const [ref, setRef] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   /*
@@ -141,20 +148,20 @@ export function RecordPaymentForm({
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    setError(null);
 
     if (!isDecimal(amount) || (toMinor(amount) ?? 0n) <= 0n) {
-      setError("Jumlah pembayaran harus lebih dari nol.");
+      swalToast("Jumlah pembayaran harus lebih dari nol.", "error");
       return;
     }
     if ((toMinor(amount) ?? 0n) > outstandingMinor) {
-      setError(
+      swalToast(
         `Jumlah melebihi sisa tagihan ${formatMoney(invoice.outstandingAmount)}.`,
+        "error",
       );
       return;
     }
     if (!channelId) {
-      setError("Pilih rekening tujuan uang masuknya.");
+      swalToast("Pilih rekening tujuan uang masuknya.", "error");
       return;
     }
 
@@ -173,20 +180,34 @@ export function RecordPaymentForm({
       swalToast(`Pembayaran ${formatMoney(amount)} tercatat.`);
       setAmount("");
       setRef("");
-      // Last, because it re-renders the parent and may unmount this form when
-      // the invoice becomes settled.
+      /*
+        RELEASED ON SUCCESS TOO, and BEFORE `onPaid`. This used to be released
+        only on failure, on the reasoning that a successful payment unmounts the
+        form — which is true only when the invoice becomes SETTLED. A partial
+        payment leaves the same branch of the parent rendering the same element
+        in the same position, so React keeps this component's state: the button
+        stayed disabled with a spinner until the page was reloaded, after every
+        instalment.
+
+        Before `onPaid` because that re-renders the parent and may unmount this
+        form; setting state afterwards would be setting it on a dead component.
+      */
+      setSaving(false);
       onPaid(updated);
     } catch (caught) {
       /*
         Every refusal here is actionable and specific — "melebihi sisa tagihan",
         "sudah lunas", "sudah dibayar orang lain sementara pembayaran ini
         dicatat". `fullMessage` carries the backend's reason alongside the
-        message, which is the half that says what to do next.
+        message, which is the half that says what to do next, so the toast gets
+        longer than the default three seconds to be read in.
       */
-      setError(
+      swalToast(
         caught instanceof ApiError
           ? caught.fullMessage
           : "Gagal menyimpan pembayaran. Coba lagi.",
+        "error",
+        8000,
       );
       setSaving(false);
     }
@@ -194,8 +215,6 @@ export function RecordPaymentForm({
 
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
-      {error && <Alert variant="error">{error}</Alert>}
-
       {/* NOT DECORATION: partial payment is the normal case on terms, and "half
           now" is a decision made far more often than an arbitrary figure is
           typed. "Lunasi" fills the box with the outstanding amount — it is not a

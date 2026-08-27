@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { Alert, TextareaField } from "@/components";
+import { TextareaField } from "@/components";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -34,6 +34,10 @@ import type {
  * on the server. Six months later a reversing entry in the ledger with no
  * sentence attached is a correction nobody can account for.
  *
+ * REFUSALS ARE TOASTS, not an inline alert — the same deliberate departure from
+ * docs/ui-rules.md §9 the payment form makes, and for the same reason it was
+ * asked for. Server refusals get 8 seconds; the local check keeps the default.
+ *
  * THE SUBMIT LOCKS FOR THE WHOLE FLIGHT, like the payment form's. The endpoint
  * is guarded — a second cancellation of the same payment matches nothing and
  * comes back 409 — but a double-click would still show the user an error for
@@ -53,12 +57,10 @@ export function VoidPaymentDialog({
   onVoided: (updated: CustomerInvoiceDetail) => void;
 }) {
   const [reason, setReason] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   function close() {
     setReason("");
-    setError(null);
     onClose();
   }
 
@@ -66,12 +68,14 @@ export function VoidPaymentDialog({
     if (!payment) return;
 
     if (!reason.trim()) {
-      setError("Isi alasannya — ini satu-satunya catatan kenapa dibatalkan.");
+      swalToast(
+        "Isi alasannya — ini satu-satunya catatan kenapa dibatalkan.",
+        "error",
+      );
       return;
     }
 
     setSaving(true);
-    setError(null);
 
     try {
       const updated = await customerInvoiceService.voidPayment(
@@ -86,10 +90,14 @@ export function VoidPaymentDialog({
       onVoided(updated);
       onClose();
     } catch (caught) {
-      setError(
+      // Eight seconds rather than three: "sudah dibatalkan orang lain" and
+      // "reload dulu" are instructions, not acknowledgements.
+      swalToast(
         caught instanceof ApiError
           ? caught.fullMessage
           : "Gagal membatalkan pembayaran. Coba lagi.",
+        "error",
+        8000,
       );
       setSaving(false);
     }
@@ -111,8 +119,6 @@ export function VoidPaymentDialog({
               : ""}
           </DialogDescription>
         </DialogHeader>
-
-        {error && <Alert variant="error">{error}</Alert>}
 
         <div className="rounded-lg border border-border bg-surface-hover px-4 py-3 text-sm">
           <p>

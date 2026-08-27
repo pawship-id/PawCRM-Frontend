@@ -43,6 +43,12 @@ function formatDate(iso: string): string {
  * holds. A second endpoint would be a second place for the shop's own details
  * to go stale.
  *
+ * NO LEDGER REFERENCE ON THE SHEET. It used to carry "dicetak dari … · jurnal
+ * <ObjectId>", which was neither asked for by the PRD nor of any use to the
+ * person holding it: a database id on a customer-facing document is noise, and
+ * the journal it names is internal. The id stays where it belongs — on the
+ * invoice's own payment timeline, which is a staff screen.
+ *
  * A CANCELLED PAYMENT STILL PRINTS, marked. Somebody re-printing one is usually
  * doing so precisely because it was cancelled, and a document that silently
  * omitted that would be worse than no document.
@@ -142,11 +148,6 @@ export function PaymentReceipt({
           </div>
         </div>
       </div>
-
-      <p className="mt-8 text-xs text-muted">
-        Dicetak dari {tenant?.name ?? "PawCRM"} · jurnal{" "}
-        <span className="tabular-nums">{payment.journalEntryId}</span>
-      </p>
     </div>
   );
 }

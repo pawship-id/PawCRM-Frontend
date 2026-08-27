@@ -7,6 +7,30 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Faktur Penjualan: perbaikan dari verifikasi UI
+
+**Tombol Simpan pembayaran tidak lagi terkunci selamanya setelah DP.** Kuncinya
+dulu hanya dilepas saat gagal, dengan asumsi pembayaran yang berhasil selalu
+meng-unmount form-nya — benar hanya untuk **pelunasan**. Setelah pembayaran
+sebagian, induknya merender elemen yang sama di posisi yang sama, React menyimpan
+state-nya, dan tombolnya berputar sampai halaman di-reload. Terjadi setiap
+cicilan. `purchasing/RecordPaymentForm` ditulis lebih dulu dan punya cacat yang
+persis sama — ikut diperbaiki.
+
+**Penolakan jadi toast merah di kanan atas**, bukan `<Alert>` di dalam form —
+penyimpangan dari [ui-rules §9](./ui-rules.md) yang disengaja dan diminta. Satu
+mitigasi untuk harga yang dibayarnya: toast hilang sendiri, jadi penolakan
+**server** — yang isinya instruksi seperti "reload dulu" — diberi **8 detik**
+alih-alih 3. `swalToast` dapat parameter `timer` opsional; 49 call site lain
+tidak berubah.
+
+**Kwitansi tidak lagi mencantumkan id jurnal.** Barisnya berbunyi "dicetak dari …
+· jurnal `6a903f15…`" — tidak diminta PRD maupun sheet PCR, dan id database di
+dokumen yang dipegang pelanggan hanyalah derau. Id-nya tetap ada di riwayat
+pembayaran, yang memang layar staf.
+
+---
+
 ## [Unreleased] — Faktur Penjualan: pembayaran bisa dibatalkan, dan ada kwitansinya
 
 `Batalkan` dan `Kwitansi` per baris di riwayat pembayaran. Details in
