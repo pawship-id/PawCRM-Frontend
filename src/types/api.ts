@@ -3708,7 +3708,18 @@ export interface CustomerInvoiceListQuery {
   /** ISO dates bounding `invoiceDate`. `dateTo` covers the whole day it names. */
   dateFrom?: string;
   dateTo?: string;
-  sort?: "dueSoonest" | "dueLatest" | "newest" | "oldest";
+  /**
+   * `totalHighest` / `totalLowest` order by what was BILLED, not by what is
+   * still owed: `total` is stored, the outstanding amount is derived per row and
+   * no index can serve it.
+   */
+  sort?:
+    | "dueSoonest"
+    | "dueLatest"
+    | "newest"
+    | "oldest"
+    | "totalHighest"
+    | "totalLowest";
 }
 
 /** One customer's debt, from GET /api/customer-invoices/outstanding. */
@@ -3743,6 +3754,23 @@ export interface CustomerOutstandingSummary {
   totalDueSoonOutstanding: string;
   totalDueSoonInvoices: number;
   horizonDays: number;
+  /**
+   * WHAT CAME IN THIS MONTH — the third stat card (PCR-033).
+   *
+   * COLLECTIONS, NOT ORIGINATIONS. Beside "Total piutang" and "Lewat jatuh
+   * tempo" it completes one sentence: owed, late, collected. Read as invoices
+   * RAISED this month it would answer a sales question on a collection screen.
+   *
+   * `from`/`to` are the SERVER's month, cut in the TENANT's timezone. Caption
+   * the card from them rather than from the browser's clock, which sits in a
+   * different zone from the tenant's more often than not.
+   */
+  collectedThisMonth: {
+    amount: string;
+    paymentCount: number;
+    from: string;
+    to: string;
+  };
 }
 
 /**

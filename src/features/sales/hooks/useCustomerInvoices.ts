@@ -48,7 +48,9 @@ export type CustomerInvoiceSort =
   | "dueSoonest"
   | "dueLatest"
   | "newest"
-  | "oldest";
+  | "oldest"
+  | "totalHighest"
+  | "totalLowest";
 
 /** The query knobs the receivables screen drives (page + the visible filters). */
 export interface CustomerInvoicesQuery {

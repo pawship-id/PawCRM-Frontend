@@ -144,6 +144,13 @@ function summary(
     totalDueSoonOutstanding: "0.0000",
     totalDueSoonInvoices: 0,
     horizonDays: 7,
+    collectedThisMonth: {
+      amount: "0.0000",
+      paymentCount: 0,
+      // The server's month, cut in the tenant's zone — 00:00 WIB on 1 August.
+      from: "2026-07-31T17:00:00.000Z",
+      to: "2026-08-31T16:59:59.999Z",
+    },
     ...overrides,
   };
 }
@@ -281,10 +288,17 @@ describe("ReceivablesScreen", () => {
 
     renderWithAuth(<ReceivablesScreen />);
 
-    expect(
-      await screen.findByText("3 faktur sudah lewat jatuh tempo"),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/Rp\s?4\.310\.000/)).toBeInTheDocument();
+    /*
+      SCOPED TO THE BANNER. The same figure is on the stat card above it — the
+      sheet's AC asks for both, and the two are not redundant in use: the card is
+      always there with the number, the banner appears only when there is
+      something to act on and says what to do.
+    */
+    const banner = (
+      await screen.findByText("3 faktur sudah lewat jatuh tempo")
+    ).closest("div") as HTMLElement;
+
+    expect(banner).toHaveTextContent(/Rp\s?4\.310\.000/);
   });
 
   it("captions the due-soon note with the server's window, not a constant", async () => {
@@ -1051,5 +1065,123 @@ describe("PaymentHistory — the ledger reference", () => {
     expect(
       await screen.findByRole("link", { name: "je-pay1" }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("ReceivablesScreen — the three stat cards", () => {
+  /*
+    PCR-033's own list: "Stat cards: Total Piutang, Overdue, Bulan Ini". They read
+    as one sentence — owed, late, collected — and the order is the order the
+    questions are asked in.
+  */
+  it("shows all three, from the server's own figures", async () => {
+    asMock(customerInvoiceService.outstanding).mockResolvedValue(
+      summary({
+        totalOutstanding: "9500000.0000",
+        totalInvoices: 31,
+        totalOverdueOutstanding: "4310000.0000",
+        totalOverdueInvoices: 3,
+        collectedThisMonth: {
+          amount: "22940000.0000",
+          paymentCount: 31,
+          from: "2026-07-31T17:00:00.000Z",
+          to: "2026-08-31T16:59:59.999Z",
+        },
+      }),
+    );
+
+    renderWithAuth(<ReceivablesScreen />);
+
+    expect(await screen.findByText(/Rp\s?9\.500\.000/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Rp\s?4\.310\.000/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Rp\s?22\.940\.000/)).toBeInTheDocument();
+    expect(screen.getByText("31 pembayaran diterima")).toBeInTheDocument();
+  });
+
+  /*
+    THE CAPTION COMES FROM THE SERVER'S RANGE, not the browser's clock. The month
+    was cut in the TENANT's timezone; deriving it locally would caption one month
+    over a figure computed for another for a few hours either side of every
+    boundary.
+  */
+  it("captions the month from the range the figure was computed over", async () => {
+    asMock(customerInvoiceService.outstanding).mockResolvedValue(
+      summary({
+        collectedThisMonth: {
+          amount: "1000.0000",
+          paymentCount: 1,
+          // 00:00 WIB on 1 August — a UTC reader would call this July.
+          from: "2026-07-31T17:00:00.000Z",
+          to: "2026-08-31T16:59:59.999Z",
+        },
+      }),
+    );
+
+    renderWithAuth(<ReceivablesScreen />);
+
+    expect(await screen.findByText("Tertagih Agustus 2026")).toBeInTheDocument();
+  });
+
+  /*
+    A CARD THAT VANISHES AT ZERO teaches people its absence means "not loaded".
+    Unlike the two notices below them, which appear only when there is something
+    to act on.
+  */
+  it("stays visible at zero", async () => {
+    asMock(customerInvoiceService.outstanding).mockResolvedValue(
+      summary({
+        totalOutstanding: "0.0000",
+        totalInvoices: 0,
+        totalOverdueInvoices: 0,
+      }),
+    );
+
+    renderWithAuth(<ReceivablesScreen />);
+
+    expect(await screen.findByText("Lewat jatuh tempo")).toBeInTheDocument();
+    expect(screen.getByText("0 faktur perlu ditagih")).toBeInTheDocument();
+    // No banner, though — nothing to act on.
+    expect(
+      screen.queryByText(/sudah lewat jatuh tempo/),
+    ).not.toBeInTheDocument();
+  });
+
+  /*
+    NULL IS NOT ZERO. A failed summary read renders an em dash; "Rp 0" would be a
+    confident wrong answer on a screen whose whole point is figures that can be
+    trusted.
+  */
+  it("renders an absence, not a zero, when the summary fails", async () => {
+    asMock(customerInvoiceService.outstanding).mockRejectedValue(
+      new ApiError("boom", 500),
+    );
+
+    renderWithAuth(<ReceivablesScreen />);
+
+    await waitFor(() => expect(customerInvoiceService.list).toHaveBeenCalled());
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(3);
+    expect(screen.queryByText(/Rp\s?0/)).not.toBeInTheDocument();
+  });
+});
+
+describe("ReceivablesToolbar — ordering by what was billed", () => {
+  it("sends totalHighest over the wire", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<ReceivablesScreen />);
+
+    await waitFor(() => expect(customerInvoiceService.list).toHaveBeenCalled());
+    const panel = await openFilters(user);
+
+    await user.click(within(panel).getByRole("button", { name: /Urutkan/ }));
+    await user.click(
+      await screen.findByRole("option", { name: "Tagihan terbesar" }),
+    );
+    await user.click(within(panel).getByRole("button", { name: /Terapkan/i }));
+
+    await waitFor(() =>
+      expect(customerInvoiceService.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "totalHighest" }),
+      ),
+    );
   });
 });

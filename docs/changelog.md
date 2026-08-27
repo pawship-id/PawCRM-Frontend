@@ -7,6 +7,28 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Faktur Penjualan: tiga stat card + urut berdasarkan tagihan
+
+Dua acceptance criteria PCR-033 yang terlewat di potongan pertama.
+
+**Tiga kartu, dibaca sebagai satu kalimat**: Total piutang · Lewat jatuh tempo ·
+Tertagih <bulan> — berutang, telat, tertagih. Selalu tampil, termasuk saat nol;
+kartu yang hilang saat nol mengajari orang bahwa ketiadaannya berarti "belum
+termuat". Nilai `null` dirender sebagai em dash, bukan "Rp 0" — yang pertama
+berarti bacaannya gagal, yang kedua berarti tidak ada yang berutang.
+
+**Caption bulannya dari rentang milik server**, bukan jam browser. Bulannya
+dipotong di zona waktu tenant; menurunkannya di klien akan memberi caption satu
+bulan di atas angka yang dihitung untuk bulan lain, beberapa jam di kedua sisi
+setiap pergantian.
+
+**Urut "Tagihan terbesar/terkecil"** — berdasarkan `total` yang tersimpan, bukan
+sisa tagihan yang diturunkan per baris dan tak terjangkau indeks. Karena itu tidak
+ada opsi "Sisa terbesar": ia akan jadi kontrol yang diam-diam mengurutkan angka
+lain dari yang disebutnya.
+
+---
+
 ## [Unreleased] — Faktur Penjualan: perbaikan dari verifikasi UI
 
 **Id jurnal di riwayat pembayaran diganti nomor jurnal, dan bisa diklik.**

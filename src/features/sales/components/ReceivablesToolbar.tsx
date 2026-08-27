@@ -69,17 +69,21 @@ const VIEWS: PillOption<ReceivablesView>[] = [
  * debts, oldest deadline first — which is why one is a lens and the other an
  * ordering.
  *
- * NOTHING BY WHAT IS OWED, though it is the column people scan. The outstanding
- * amount is derived rather than stored (`total - paidAmount`, computed per row),
- * so the server cannot order by it. The per-customer version of that question is
- * what `/customer-invoices/outstanding` answers, and it feeds the figures above
- * this table.
+ * BY TAGIHAN, NEVER BY SISA — and the labels have to be exact about it. `total`
+ * is stored, so "Tagihan terbesar" is a real ordering the database can serve;
+ * the outstanding amount is `total - paidAmount`, derived per row, and no index
+ * reaches it. Labelling these "Sisa terbesar" would be a control that quietly
+ * sorted by a different number than the one it named. The per-customer version
+ * of the sisa question is what `/customer-invoices/outstanding` answers, and it
+ * feeds the cards above this table.
  */
 const SORTS: FilterOption<CustomerInvoiceSort>[] = [
   { value: "dueSoonest", label: "Jatuh tempo terdekat" },
   { value: "dueLatest", label: "Jatuh tempo terjauh" },
   { value: "newest", label: "Terbaru" },
   { value: "oldest", label: "Terlama" },
+  { value: "totalHighest", label: "Tagihan terbesar" },
+  { value: "totalLowest", label: "Tagihan terkecil" },
 ];
 
 /**

@@ -110,6 +110,36 @@ The headline totals cover everything unsettled, not the twenty rows on screen. A
 client summing its own page would show a figure that grows as the user pages,
 which is worse than showing nothing because it looks authoritative.
 
+## Three stat cards, and they read as one sentence
+
+**Total piutang · Lewat jatuh tempo · Tertagih <bulan>** — owed, late, collected,
+in the order the questions are asked. PCR-033's own list.
+
+- **Always visible, including at zero.** Unlike the two notices below them, which
+  appear only when there is something to act on. A card that vanishes at zero
+  teaches people its absence means "not loaded".
+- **Null renders as an em dash, not "Rp 0".** Null means the summary read failed;
+  zero means nobody owes anything. On a screen whose point is trustworthy figures,
+  a confident wrong answer is the worst outcome.
+- **The tone colours the numeral, never the card.** A red panel in a row of three
+  turns a dashboard into an alarm; a red numeral says the same without shouting.
+  `danger` only when there IS overdue money — zero overdue is good news.
+- **The month caption comes from the server's range.** The month was cut in the
+  TENANT's timezone; deriving it from the browser would caption one month over a
+  figure computed for another, for a few hours either side of every boundary.
+
+**The overdue figure appears twice** — on the card and, when there is any, in the
+red banner. That is the sheet's AC and it is not redundant in use: the card always
+carries the number, the banner appears only when there is something to do and says
+what.
+
+## Sorting is by what was BILLED
+
+`Tagihan terbesar` / `Tagihan terkecil` order by `total`, which is stored. The
+**outstanding** amount is `total - paidAmount`, derived per row, and no index
+reaches it — so there is deliberately no "Sisa terbesar", which would be a control
+that quietly sorted by a different number than the one it named.
+
 ## The filters go over the wire
 
 The pill row is a **lens**, and each value maps onto the API's own AR
@@ -314,7 +344,7 @@ the document actually holds rather than joining a POS transaction to fake them.
 | `features/sales/components/PaymentReceipt.tsx`            | The kwitansi sheet                |
 | `features/sales/components/PaymentReceiptDialog.tsx`      | Preview + print                   |
 | `features/sales/components/InvoiceStatusBadge.tsx`        | Status + source chips             |
-| `tests/ReceivablesScreens.test.tsx`                       | 43 tests over both screens        |
+| `tests/ReceivablesScreens.test.tsx`                       | 48 tests over both screens        |
 
 `PageHeading` is imported from `@/features/purchasing` rather than copied — it is
 on the migration list to be promoted to `@/components` (ui-rules §15), and a

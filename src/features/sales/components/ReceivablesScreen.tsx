@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Alert, Pagination, Spinner } from "@/components";
 import { PageHeading } from "@/features/purchasing";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
+import { cn } from "@/lib/utils";
 import { formatMoney } from "@/utils/decimal";
 import type { CustomerOutstandingSummary } from "@/types/api";
 
@@ -12,6 +13,21 @@ import { INVOICES_CRUMBS } from "../crumbs";
 import { useCustomerInvoices } from "../hooks/useCustomerInvoices";
 import { ReceivablesTable } from "./ReceivablesTable";
 import { ReceivablesToolbar } from "./ReceivablesToolbar";
+
+/**
+ * `2026-08-01T…` → `Agustus 2026`.
+ *
+ * FROM THE SERVER'S RANGE, not from the browser's clock. The month was cut in the
+ * TENANT's timezone, which is a different month from the reader's for a few hours
+ * either side of every boundary — and a card captioned with one month over a
+ * figure computed for another is the kind of wrong nobody catches for weeks.
+ */
+function monthLabel(iso: string): string {
+  return new Date(iso).toLocaleDateString("id-ID", {
+    month: "long",
+    year: "numeric",
+  });
+}
 
 /**
  * What customers owe the shop, and which of it is late.
@@ -83,26 +99,54 @@ export function ReceivablesScreen() {
           pelunasan semuanya lewat satu tombol yang sama.
         </PageHeading>
 
-        {/* Wide: a right-aligned figure beside the heading. Phone: the two have
-            wrapped onto separate lines, and a shrink-to-fit box at the left edge
-            of an empty row reads as a stray caption — so it takes the whole
-            width and puts the label and the number at opposite ends of one line,
-            which is how a total is read everywhere else. */}
-        <div className="max-sm:w-full sm:text-right">
-          <div className="flex items-baseline gap-3 max-sm:justify-between sm:block">
-            <p className="text-xs font-medium tracking-wide text-muted uppercase">
-              Total piutang berjalan
-            </p>
-            <p className="text-lg font-semibold tabular-nums">
-              {summary === null ? "—" : formatMoney(summary.totalOutstanding)}
-            </p>
-          </div>
-          <p className="text-xs text-muted">
-            {summary === null
+      </div>
+
+      {/*
+        THREE CARDS, AND THEY READ AS ONE SENTENCE: owed, late, collected. That is
+        PCR-033's own list, and the order is the order the questions are asked in.
+
+        ALWAYS VISIBLE, including at zero — unlike the two notices below them,
+        which appear only when there is something to act on. A card that vanishes
+        when its figure is zero teaches people that its absence means "not loaded".
+      */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard
+          label="Total piutang berjalan"
+          value={summary && formatMoney(summary.totalOutstanding)}
+          caption={
+            summary === null
               ? "seluruh pelanggan"
-              : `${summary.totalInvoices} faktur belum lunas`}
-          </p>
-        </div>
+              : `${summary.totalInvoices} faktur belum lunas`
+          }
+        />
+        <StatCard
+          label="Lewat jatuh tempo"
+          value={summary && formatMoney(summary.totalOverdueOutstanding)}
+          caption={
+            summary === null
+              ? "—"
+              : `${summary.totalOverdueInvoices} faktur perlu ditagih`
+          }
+          tone={overdueCount > 0 ? "danger" : "plain"}
+        />
+        <StatCard
+          label={
+            summary === null
+              ? "Tertagih bulan ini"
+              : `Tertagih ${monthLabel(summary.collectedThisMonth.from)}`
+          }
+          value={summary && formatMoney(summary.collectedThisMonth.amount)}
+          caption={
+            summary === null
+              ? "—"
+              : `${summary.collectedThisMonth.paymentCount} pembayaran diterima`
+          }
+          tone={
+            summary && summary.collectedThisMonth.paymentCount > 0
+              ? "success"
+              : "plain"
+          }
+        />
       </div>
 
       {overdueCount > 0 && summary && (
@@ -169,6 +213,50 @@ export function ReceivablesScreen() {
         memposting jurnal yang permanen. Koreksi dilakukan dengan jurnal
         pembalik.
       </p>
+    </div>
+  );
+}
+
+/**
+ * One headline figure, always rendered — even at zero.
+ *
+ * `value` IS NULLABLE AND RENDERS AS AN EM DASH, which is not the same as "Rp 0".
+ * Null means the summary request failed; zero means nobody owes anything. A card
+ * that showed "Rp 0" for a read that never arrived would be a confident wrong
+ * answer, and this screen's whole point is figures that can be trusted.
+ *
+ * THE TONE COLOURS THE NUMBER, never the card. A red panel in a row of three
+ * turns a dashboard into an alarm; a red numeral says the same thing without
+ * shouting, and the row stays scannable. `danger` is only used when there IS
+ * overdue money — at zero it reads as plain, because zero overdue is good news.
+ */
+function StatCard({
+  label,
+  value,
+  caption,
+  tone = "plain",
+}: {
+  label: string;
+  /** Null while the summary is loading or after it failed. */
+  value: string | null;
+  caption: string;
+  tone?: "plain" | "danger" | "success";
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-surface p-5">
+      <p className="text-xs font-medium tracking-wide text-muted uppercase">
+        {label}
+      </p>
+      <p
+        className={cn(
+          "mt-1.5 text-xl font-semibold tabular-nums",
+          tone === "danger" && "text-danger-ink",
+          tone === "success" && "text-success",
+        )}
+      >
+        {value ?? "—"}
+      </p>
+      <p className="mt-1 text-xs text-muted">{caption}</p>
     </div>
   );
 }
