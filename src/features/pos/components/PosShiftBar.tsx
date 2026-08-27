@@ -1,6 +1,6 @@
 "use client";
 
-import { Receipt, Bookmark, History } from "lucide-react";
+import { Receipt, Bookmark, History, Settings } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
@@ -37,6 +37,7 @@ export function PosShiftBar({
   onOpenHeld,
   onOpenToday,
   onXReport,
+  onSettings,
   onCloseShift,
 }: {
   shift: PosShift;
@@ -44,6 +45,7 @@ export function PosShiftBar({
   onOpenHeld: () => void;
   onOpenToday: () => void;
   onXReport: () => void;
+  onSettings: () => void;
   onCloseShift: () => void;
 }) {
   return (
@@ -95,6 +97,30 @@ export function PosShiftBar({
         <Button type="button" variant="secondary" size="sm" onClick={onXReport}>
           <Receipt className="size-4" />
           X-Report
+        </Button>
+
+        {/*
+          Pengaturan Kasir (FR-8) — the paper size this DEVICE prints on.
+
+          ICON ONLY, and the only one on the bar that is: everything beside it is
+          part of serving a customer, and this is set up once and then left
+          alone. `size-9` and an `aria-label` rather than a bare icon, so it
+          still clears ui-rules §1.5's 44 px hit area and still has a name.
+
+          UNGATED. It changes nothing on the server and nothing anybody else can
+          see — a permission on it would be a permission to configure your own
+          browser.
+        */}
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          className="size-9 p-0"
+          aria-label="Pengaturan Kasir"
+          title="Pengaturan Kasir"
+          onClick={onSettings}
+        >
+          <Settings className="size-4" />
         </Button>
 
         {/*

@@ -119,7 +119,10 @@ export function PosCartLine({
         <div className="flex items-center gap-1">
           {isService ? (
             /* A word, not a bare "1" — §1.3. */
-            <Badge variant="outline" className="border-transparent bg-secondary">
+            <Badge
+              variant="outline"
+              className="border-transparent bg-secondary"
+            >
               Layanan
             </Badge>
           ) : (

@@ -88,7 +88,11 @@ export function PaymentChannelPicker({
         and then find nothing it controls. ui-rules §8 covers exactly this shape,
         and PosCategoryPills in this same feature already uses it.
       */}
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Metode bayar">
+      <div
+        className="flex flex-wrap gap-2"
+        role="group"
+        aria-label="Metode bayar"
+      >
         {available.map((type) => (
           <Button
             key={type}
@@ -134,27 +138,28 @@ export function PaymentChannelPicker({
       )}
 
       {activeRoute === "piutang" ? null : (
-      <div className="flex flex-wrap gap-2">
-        {inType.length === 0 ? (
-          <p className="text-sm text-muted">
-            Belum ada channel {TYPE_LABEL[activeRoute as PaymentChannelType].toLowerCase()}. Tambah di
-            Kas &amp; Bank.
-          </p>
-        ) : (
-          inType.map((channel) => (
-            <Button
-              key={channel._id}
-              type="button"
-              variant="secondary"
-              className="h-11"
-              disabled={disabled}
-              onClick={() => onPick(channel)}
-            >
-              {channel.name}
-            </Button>
-          ))
-        )}
-      </div>
+        <div className="flex flex-wrap gap-2">
+          {inType.length === 0 ? (
+            <p className="text-sm text-muted">
+              Belum ada channel{" "}
+              {TYPE_LABEL[activeRoute as PaymentChannelType].toLowerCase()}.
+              Tambah di Kas &amp; Bank.
+            </p>
+          ) : (
+            inType.map((channel) => (
+              <Button
+                key={channel._id}
+                type="button"
+                variant="secondary"
+                className="h-11"
+                disabled={disabled}
+                onClick={() => onPick(channel)}
+              >
+                {channel.name}
+              </Button>
+            ))
+          )}
+        </div>
       )}
     </div>
   );

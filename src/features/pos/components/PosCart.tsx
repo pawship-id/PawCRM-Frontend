@@ -162,9 +162,7 @@ export function PosCart({
         say depends on a query this component has no business making — and the
         whole slot is empty until a customer is on the basket.
       */}
-      {bookingSlot && (
-        <div className="space-y-2 px-4 pb-3">{bookingSlot}</div>
-      )}
+      {bookingSlot && <div className="space-y-2 px-4 pb-3">{bookingSlot}</div>}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {empty ? (
@@ -289,9 +287,7 @@ export function PosCart({
             here rather than left implicit, because a cashier reading a total
             aloud should know whether tax is in it.
           */}
-          <p className="text-xs text-muted">
-            PPN dihitung saat pembayaran.
-          </p>
+          <p className="text-xs text-muted">PPN dihitung saat pembayaran.</p>
 
           <div className="flex gap-2">
             <Button

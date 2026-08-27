@@ -162,9 +162,7 @@ describe("ReceiptDialog — sharing", () => {
       configurable: true,
     });
 
-    renderWithAuth(
-      <ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />,
-    );
+    renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
 
     await user.click(await screen.findByRole("button", { name: /salin/i }));
 
@@ -181,9 +179,7 @@ describe("ReceiptDialog — sharing", () => {
       configurable: true,
     });
 
-    renderWithAuth(
-      <ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />,
-    );
+    renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
 
     await user.click(await screen.findByRole("button", { name: /salin/i }));
 
@@ -198,9 +194,7 @@ describe("ReceiptDialog — sharing", () => {
       configurable: true,
     });
 
-    renderWithAuth(
-      <ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />,
-    );
+    renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
 
     await user.click(await screen.findByRole("button", { name: /salin/i }));
 
@@ -325,7 +319,9 @@ describe("ReceiptPreview — the cashier", () => {
     renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
     await screen.findByText(/Kasir: Salwa/);
 
-    await user.click(screen.getByRole("button", { name: /salin untuk whatsapp/i }));
+    await user.click(
+      screen.getByRole("button", { name: /salin untuk whatsapp/i }),
+    );
 
     await waitFor(() => expect(writeText).toHaveBeenCalled());
     expect(writeText.mock.calls[0][0]).toContain("Kasir: Salwa");
@@ -382,15 +378,11 @@ describe("ReceiptPreview — the footer", () => {
     text has to remember a default of its own.
   */
   it("prints the standard line for a branch with no words of its own", async () => {
-    mockedPos.receipt.mockResolvedValue(
-      withFooter("Terima kasih"),
-    );
+    mockedPos.receipt.mockResolvedValue(withFooter("Terima kasih"));
 
     renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
 
-    expect(
-      await screen.findByText("Terima kasih"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Terima kasih")).toBeInTheDocument();
   });
 
   /*
@@ -403,7 +395,9 @@ describe("ReceiptPreview — the footer", () => {
     renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
 
     await screen.findByText(/buloo petshop/i);
-    expect(screen.queryByText(/terima kasih sudah mampir/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/terima kasih sudah mampir/i),
+    ).not.toBeInTheDocument();
   });
 
   /*
@@ -423,9 +417,89 @@ describe("ReceiptPreview — the footer", () => {
     renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
     await screen.findByText("Sampai jumpa lagi.");
 
-    await user.click(screen.getByRole("button", { name: /salin untuk whatsapp/i }));
+    await user.click(
+      screen.getByRole("button", { name: /salin untuk whatsapp/i }),
+    );
 
     await waitFor(() => expect(writeText).toHaveBeenCalled());
     expect(writeText.mock.calls[0][0]).toContain("Sampai jumpa lagi.");
+  });
+});
+
+/**
+ * The paper size, remembered (FR-8: "per perangkat di Pengaturan POS").
+ *
+ * The complaint this closes is small and constant: the size lived in the
+ * dialog's own state, so it went back to 80 mm the moment the dialog shut. A
+ * shop printing on 58 mm chose 58 mm again on every single sale, all day.
+ */
+describe("ReceiptDialog — the paper size", () => {
+  const STORAGE_KEY = "buloo.pos.receiptSize";
+
+  const sheet = (container: HTMLElement) =>
+    container.ownerDocument.querySelector("[data-receipt-sheet]");
+
+  it("lays the sheet out at what this device was set to", async () => {
+    window.localStorage.setItem(STORAGE_KEY, "58");
+    mockedPos.receipt.mockResolvedValue(receipt());
+
+    const { container } = renderWithAuth(
+      <ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />,
+    );
+
+    await screen.findByText(/buloo petshop/i);
+    // The attribute the print stylesheet keys its three widths off.
+    expect(sheet(container)).toHaveAttribute("data-receipt-sheet", "58");
+  });
+
+  it("falls back to 80 mm for a till nobody has set up", async () => {
+    mockedPos.receipt.mockResolvedValue(receipt());
+
+    const { container } = renderWithAuth(
+      <ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />,
+    );
+
+    await screen.findByText(/buloo petshop/i);
+    expect(sheet(container)).toHaveAttribute("data-receipt-sheet", "80");
+  });
+
+  it("ignores a stored value that is not a paper size", async () => {
+    // Hand-edited storage, or a width this build no longer lays out.
+    window.localStorage.setItem(STORAGE_KEY, "a3");
+    mockedPos.receipt.mockResolvedValue(receipt());
+
+    const { container } = renderWithAuth(
+      <ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />,
+    );
+
+    await screen.findByText(/buloo petshop/i);
+    expect(sheet(container)).toHaveAttribute("data-receipt-sheet", "80");
+  });
+
+  /*
+    NOT A CONTROL HERE, and that is the decision being tested. Paper size follows
+    the printer plugged into the device — it does not change from one customer to
+    the next — so three buttons above a receipt were configuration in the wrong
+    place, and they left Pengaturan Kasir as a second door to one value.
+  */
+  it("offers no way to change it, only a way to find where it lives", async () => {
+    window.localStorage.setItem(STORAGE_KEY, "a4");
+    mockedPos.receipt.mockResolvedValue(receipt());
+
+    renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
+
+    await screen.findByText(/buloo petshop/i);
+    expect(
+      screen.queryByRole("button", { name: "58 mm" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("group", { name: /ukuran kertas/i }),
+    ).not.toBeInTheDocument();
+
+    // Taking the buttons away without saying where they went would leave a
+    // cashier staring at a receipt laid out wrong with nowhere to go.
+    expect(
+      screen.getByText(/ukuran kertas: A4 · ubah di pengaturan kasir/i),
+    ).toBeInTheDocument();
   });
 });

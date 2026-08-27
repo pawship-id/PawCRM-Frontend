@@ -254,8 +254,8 @@ export function PosVariantDialog({
 
         {hidden > 0 && (
           <p className="text-xs text-muted">
-            {hidden} varian lain tidak muat di daftar ini. Cari nama atau SKU-nya
-            di kotak pencarian kasir.
+            {hidden} varian lain tidak muat di daftar ini. Cari nama atau
+            SKU-nya di kotak pencarian kasir.
           </p>
         )}
 

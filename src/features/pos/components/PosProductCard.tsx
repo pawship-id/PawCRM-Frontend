@@ -9,9 +9,6 @@ import { Button } from "@/components/ui/button";
 import { formatMoney } from "@/utils/decimal";
 import type { PosCatalogItem } from "@/types/api";
 
-
-
-
 /**
  * Whether the barcode is what brought this tile back.
  *
@@ -75,12 +72,7 @@ function PosProductThumbnail({ item }: { item: PosCatalogItem }) {
         announcing the name twice is noise, not access.
       */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={src}
-        alt=""
-        loading="lazy"
-        className="size-full object-cover"
-      />
+      <img src={src} alt="" loading="lazy" className="size-full object-cover" />
     </div>
   );
 }

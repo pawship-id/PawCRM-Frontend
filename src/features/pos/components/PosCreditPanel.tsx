@@ -134,7 +134,8 @@ export function PosCreditPanel({
           <span className="tabular-nums text-foreground">
             {formatMoney(status?.outstanding ?? "0")}
           </span>
-          {(status?.invoiceCount ?? 0) > 0 && ` dari ${status?.invoiceCount} faktur`}
+          {(status?.invoiceCount ?? 0) > 0 &&
+            ` dari ${status?.invoiceCount} faktur`}
           {status?.creditLimit === null
             ? " · tanpa plafon"
             : ` · plafon ${formatMoney(status?.creditLimit ?? "0")}, sisa ${formatMoney(
@@ -145,8 +146,8 @@ export function PosCreditPanel({
 
       {overLimit && (
         <p className="text-sm text-danger">
-          Melebihi plafon. Minta pembayaran sebagian dulu, atau naikkan plafonnya
-          di data pelanggan.
+          Melebihi plafon. Minta pembayaran sebagian dulu, atau naikkan
+          plafonnya di data pelanggan.
         </p>
       )}
 

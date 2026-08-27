@@ -17,14 +17,9 @@ import { posService } from "@/services/pos.service";
 import { formatMoney } from "@/utils/decimal";
 import type { PosReceipt } from "@/types/api";
 
-import { ReceiptPreview, type ReceiptSize } from "./ReceiptPreview";
+import { RECEIPT_SIZE_LABELS, useReceiptSize } from "../deviceSettings";
+import { ReceiptPreview } from "./ReceiptPreview";
 import "../print/receipt.css";
-
-const SIZES: { value: ReceiptSize; label: string }[] = [
-  { value: "58", label: "58 mm" },
-  { value: "80", label: "80 mm" },
-  { value: "a4", label: "A4" },
-];
 
 /**
  * The receipt, after the money is taken (FR-8).
@@ -50,7 +45,20 @@ export function ReceiptDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const [receipt, setReceipt] = useState<PosReceipt | null>(null);
-  const [size, setSize] = useState<ReceiptSize>("80");
+  /*
+    THE DEVICE'S SIZE, READ ONLY (FR-8).
+
+    It used to be `useState("80")` with three buttons under the header, which
+    meant the cashier chose it again on every single receipt — the dialog closed
+    and took the answer with it.
+
+    THE BUTTONS ARE GONE RATHER THAN MADE TO STICK. Paper size follows the
+    PRINTER plugged into this device; it does not change from one customer to the
+    next, so offering it here was configuration in the wrong place — and once
+    both this and Pengaturan Kasir wrote the same value, the settings dialog had
+    no job of its own. One value, one place to change it.
+  */
+  const [size] = useReceiptSize();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -152,24 +160,20 @@ export function ReceiptDialog({
           </div>
         ) : (
           <>
-            <div className="flex gap-2" role="group" aria-label="Ukuran kertas">
-              {SIZES.map((option) => (
-                <Button
-                  key={option.value}
-                  type="button"
-                  size="sm"
-                  variant={size === option.value ? "default" : "secondary"}
-                  aria-pressed={size === option.value}
-                  onClick={() => setSize(option.value)}
-                >
-                  {option.label}
-                </Button>
-              ))}
-            </div>
-
             <div className="max-h-80 overflow-y-auto rounded-lg border border-border">
               <ReceiptPreview receipt={receipt} size={size} />
             </div>
+
+            {/*
+              WHERE THE SIZE WENT. Taking the three buttons away without saying
+              so would leave a cashier looking at a receipt laid out wrong with
+              nowhere obvious to go. A sentence, not a control — the fixing
+              happens once, in the place that is about setting the till up.
+            */}
+            <p className="text-sm text-muted">
+              Ukuran kertas: {RECEIPT_SIZE_LABELS[size]} · ubah di Pengaturan
+              Kasir.
+            </p>
 
             {copied && (
               <p className="text-sm text-success">
@@ -180,8 +184,8 @@ export function ReceiptDialog({
             {manualText && (
               <div className="space-y-1">
                 <p className="text-sm text-muted">
-                  Browsernya tidak mengizinkan salin otomatis. Blok teks di bawah
-                  lalu salin sendiri.
+                  Browsernya tidak mengizinkan salin otomatis. Blok teks di
+                  bawah lalu salin sendiri.
                 </p>
                 <textarea
                   readOnly

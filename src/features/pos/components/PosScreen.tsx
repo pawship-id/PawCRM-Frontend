@@ -25,6 +25,7 @@ import { PosCloseShiftDialog } from "./PosCloseShiftDialog";
 import { PosHeldCartsDialog } from "./PosHeldCartsDialog";
 import { PosPaymentDialog } from "./PosPaymentDialog";
 import { ReceiptDialog } from "./ReceiptDialog";
+import { PosSettingsDialog } from "./PosSettingsDialog";
 import { PosShiftBar } from "./PosShiftBar";
 import { PosShiftGate } from "./PosShiftGate";
 import { ReturnDialog } from "./ReturnDialog";
@@ -55,8 +56,12 @@ export function PosScreen() {
   const { session } = useAuth();
   const branchChosen = Boolean(session?.currentBranchId);
 
-  const { shift, loading: shiftLoading, error: shiftError, refetch } =
-    usePosShift(branchChosen);
+  const {
+    shift,
+    loading: shiftLoading,
+    error: shiftError,
+    refetch,
+  } = usePosShift(branchChosen);
   const cart = usePosCart();
   /*
     FR-3. Asks nothing until a customer is attached — the banner only exists once
@@ -149,6 +154,7 @@ export function PosScreen() {
   const [todayKey, setTodayKey] = useState(0);
   const [xReportFor, setXReportFor] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
   const loadHeld = useCallback(async () => {
@@ -267,7 +273,9 @@ export function PosScreen() {
         `swalToast` lands top-right, which is deliberately NOT where the basket
         is: it confirms without covering the thing it is confirming.
       */
-      void cart.addItem(tile).then(() => swalToast(`${tile.name} ditambahkan.`));
+      void cart
+        .addItem(tile)
+        .then(() => swalToast(`${tile.name} ditambahkan.`));
     },
     [cart],
   );
@@ -442,6 +450,7 @@ export function PosScreen() {
         onOpenHeld={() => setHeldOpen(true)}
         onOpenToday={() => setTodayOpen(true)}
         onXReport={() => setXReportFor(shift._id)}
+        onSettings={() => setSettingsOpen(true)}
         onCloseShift={() => setClosing(true)}
       />
 
@@ -517,7 +526,10 @@ export function PosScreen() {
           new Map(
             (cart.cart?.items ?? [])
               .filter((item) => item.kind === "product")
-              .map((item) => [String(item.refId), Math.floor(Number(item.qty))]),
+              .map((item) => [
+                String(item.refId),
+                Math.floor(Number(item.qty)),
+              ]),
           )
         }
         /*
@@ -657,9 +669,7 @@ export function PosScreen() {
               );
               const names = choices.map((choice) => choice.petName).join(", ");
 
-              swalToast(
-                `${lines} layanan untuk ${names} ditambahkan.`,
-              );
+              swalToast(`${lines} layanan untuk ${names} ditambahkan.`);
             })();
           }}
           onPull={(bookings) => {
@@ -789,6 +799,13 @@ export function PosScreen() {
         }}
         onOpenChange={setClosing}
       />
+
+      {/*
+        Pengaturan Kasir (FR-8). Nothing in it reaches the server — it is what
+        THIS browser remembers about the printer in front of it — so it needs no
+        shift, no permission and no refetch when it closes.
+      */}
+      <PosSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </div>
   );
 }

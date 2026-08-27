@@ -3,8 +3,7 @@
 import { formatMoney, formatQty } from "@/utils/decimal";
 import type { PosReceipt } from "@/types/api";
 
-/** The three papers a shop prints on. */
-export type ReceiptSize = "58" | "80" | "a4";
+import type { ReceiptSize } from "../deviceSettings";
 
 function paidAtLabel(paidAt: string | null): string {
   if (!paidAt) return "";
@@ -73,9 +72,7 @@ export function ReceiptPreview({
         <p className="font-semibold">{header.tenantName}</p>
         {header.branchName && <p>{header.branchName}</p>}
         {header.address && <p className="text-xs">{header.address}</p>}
-        {header.phone && (
-          <p className="text-xs tabular-nums">{header.phone}</p>
-        )}
+        {header.phone && <p className="text-xs tabular-nums">{header.phone}</p>}
       </div>
 
       <div className="mt-3 border-t border-dashed border-border pt-2 text-xs tabular-nums">
@@ -143,7 +140,10 @@ export function ReceiptPreview({
       {receipt.otherCharges.length > 0 && (
         <ul className="mt-1 space-y-0.5 text-xs">
           {receipt.otherCharges.map((charge, index) => (
-            <li key={`${charge.label}-${index}`} className="flex justify-between">
+            <li
+              key={`${charge.label}-${index}`}
+              className="flex justify-between"
+            >
               <span>{charge.label}</span>
               <span className="tabular-nums">{formatMoney(charge.amount)}</span>
             </li>
@@ -193,7 +193,9 @@ export function ReceiptPreview({
           <li key={`${payment.channelName}-${index}`}>
             <div className="flex justify-between">
               <span>{payment.channelName}</span>
-              <span className="tabular-nums">{formatMoney(payment.amount)}</span>
+              <span className="tabular-nums">
+                {formatMoney(payment.amount)}
+              </span>
             </div>
             {payment.change && payment.change !== "0.0000" && (
               <div className="flex justify-between text-muted">

@@ -402,7 +402,10 @@ export function usePosCart(): UsePosCartResult {
       if (refused.items) {
         withApprover.items = refused.items.map((item) =>
           item.discount
-            ? { ...item, discount: { ...item.discount, approvedBy: approverUserId } }
+            ? {
+                ...item,
+                discount: { ...item.discount, approvedBy: approverUserId },
+              }
             : item,
         );
       }

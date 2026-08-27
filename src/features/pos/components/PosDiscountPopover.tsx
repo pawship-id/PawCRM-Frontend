@@ -60,8 +60,7 @@ export function PosDiscountPopover({
       ? PERCENT.test(trimmed) && Number(normalised) <= 100
       : WHOLE_RUPIAH.test(trimmed);
 
-  const overLimit =
-    valid && mode === "percent" && Number(normalised) > 10;
+  const overLimit = valid && mode === "percent" && Number(normalised) > 10;
 
   function apply() {
     if (!valid) return;
@@ -87,9 +86,7 @@ export function PosDiscountPopover({
         >
           <Percent className="size-4" />
           {value &&
-            (value.mode === "percent"
-              ? `${value.value}%`
-              : `Rp${value.value}`)}
+            (value.mode === "percent" ? `${value.value}%` : `Rp${value.value}`)}
         </Button>
       </PopoverTrigger>
 

@@ -25,10 +25,7 @@ import { posService } from "@/services/pos.service";
 import { ApiError } from "@/services/api-error";
 import type { PaymentChannel, PosReturn, PosTransaction } from "@/types/api";
 
-import {
-  ReturnItemsPicker,
-  type ReturnDraftLine,
-} from "./ReturnItemsPicker";
+import { ReturnItemsPicker, type ReturnDraftLine } from "./ReturnItemsPicker";
 
 const FETCH_LIMIT = 100;
 
@@ -199,8 +196,8 @@ export function ReturnDialog({
               <Label htmlFor="refund-channel">Uang dikembalikan lewat</Label>
               {channels.length === 0 ? (
                 <p className="text-sm text-danger">
-                  Belum ada channel tunai di cabang ini. Tambah dulu di Kas &amp;
-                  Bank.
+                  Belum ada channel tunai di cabang ini. Tambah dulu di Kas
+                  &amp; Bank.
                 </p>
               ) : (
                 <Select value={channelId} onValueChange={setChannelId}>

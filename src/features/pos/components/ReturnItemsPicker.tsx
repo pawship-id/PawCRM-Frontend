@@ -77,7 +77,9 @@ export function ReturnItemsPicker({
                   className="size-9"
                   disabled={disabled || line.qty <= 0}
                   aria-label={`Kurangi ${item.name}`}
-                  onClick={() => onChange(index, { ...line, qty: line.qty - 1 })}
+                  onClick={() =>
+                    onChange(index, { ...line, qty: line.qty - 1 })
+                  }
                 >
                   <Minus className="size-4" />
                 </Button>
@@ -93,7 +95,9 @@ export function ReturnItemsPicker({
                   className="size-9"
                   disabled={disabled || line.qty >= left}
                   aria-label={`Tambah ${item.name}`}
-                  onClick={() => onChange(index, { ...line, qty: line.qty + 1 })}
+                  onClick={() =>
+                    onChange(index, { ...line, qty: line.qty + 1 })
+                  }
                 >
                   <Plus className="size-4" />
                 </Button>
@@ -108,7 +112,10 @@ export function ReturnItemsPicker({
                   checked={line.returnToStock}
                   disabled={disabled}
                   onCheckedChange={(checked) =>
-                    onChange(index, { ...line, returnToStock: checked === true })
+                    onChange(index, {
+                      ...line,
+                      returnToStock: checked === true,
+                    })
                   }
                 />
                 <Label

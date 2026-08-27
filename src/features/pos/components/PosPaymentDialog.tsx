@@ -18,7 +18,10 @@ import { ApiError } from "@/services/api-error";
 import { formatMoney } from "@/utils/decimal";
 import type { PaymentChannel, PosTransaction } from "@/types/api";
 
-import { PaymentChannelPicker, type PaymentRoute } from "./PaymentChannelPicker";
+import {
+  PaymentChannelPicker,
+  type PaymentRoute,
+} from "./PaymentChannelPicker";
 import { PosCreditPanel, defaultDueDate } from "./PosCreditPanel";
 import { PaymentLinesList, type DraftPayment } from "./PaymentLinesList";
 
@@ -191,7 +194,9 @@ export function PosPaymentDialog({
   const missingReference = lines.some(
     (line) => line.channel.requiresReference && !line.reference?.trim(),
   );
-  const badAmount = lines.some((line) => !TYPED_RUPIAH.test(line.amount.trim()));
+  const badAmount = lines.some(
+    (line) => !TYPED_RUPIAH.test(line.amount.trim()),
+  );
 
   /**
    * Why a sale cannot be put on account right now — null when it can.

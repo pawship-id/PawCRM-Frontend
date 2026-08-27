@@ -26,7 +26,9 @@ jest.mock("@/services/customer.service");
 
 const mockedPos = posService as jest.Mocked<typeof posService>;
 const mockedCategories = categoryService as jest.Mocked<typeof categoryService>;
-const mockedWarehouses = warehouseService as jest.Mocked<typeof warehouseService>;
+const mockedWarehouses = warehouseService as jest.Mocked<
+  typeof warehouseService
+>;
 const mockedUsers = userService as jest.Mocked<typeof userService>;
 const mockedBranches = branchService as jest.Mocked<typeof branchService>;
 
@@ -107,7 +109,7 @@ const cartWithItem: PosTransaction = {
       groomerName: null,
       bookingStatus: null,
       bookingOwned: false,
-          bookingNumber: null,
+      bookingNumber: null,
     },
   ],
   runningTotals: {
@@ -118,7 +120,6 @@ const cartWithItem: PosTransaction = {
     net: "100000.0000",
   },
 };
-
 
 /** One variant, as the catalogue returns it — with the shift's own stock. */
 const variantTile = (
@@ -152,7 +153,12 @@ const catalogPage = {
       categoryId: "c1",
       unit: "pcs",
       variantCount: null,
-      image: { url: "rc.jpg", thumbUrl: "rc-320.jpg", mediumUrl: null, mediaType: "image" },
+      image: {
+        url: "rc.jpg",
+        thumbUrl: "rc-320.jpg",
+        mediumUrl: null,
+        mediaType: "image",
+      },
       stock: { qty: "12.0000", state: "ok" as const },
     },
     {
@@ -174,11 +180,11 @@ const catalogPage = {
 };
 
 beforeEach(() => {
-  const mockedCustomers = customerService as jest.Mocked<typeof customerService>;
+  const mockedCustomers = customerService as jest.Mocked<
+    typeof customerService
+  >;
   mockedCustomers.list.mockResolvedValue({
-    items: [
-      { _id: "cust-1", name: "Ibu Rina", phone: "0812-3456-7890" },
-    ],
+    items: [{ _id: "cust-1", name: "Ibu Rina", phone: "0812-3456-7890" }],
     pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any);
@@ -283,7 +289,9 @@ describe("PosScreen — the catalogue (FR-1)", () => {
     renderWithAuth(<PosScreen />);
 
     await user.click(
-      await screen.findByRole("button", { name: /pilih varian kalung anjing/i }),
+      await screen.findByRole("button", {
+        name: /pilih varian kalung anjing/i,
+      }),
     );
 
     /*
@@ -421,7 +429,9 @@ describe("PosScreen — held carts (FR-6)", () => {
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Kak Rina")).toBeInTheDocument();
 
-    await user.click(within(dialog).getByRole("button", { name: /lanjutkan/i }));
+    await user.click(
+      within(dialog).getByRole("button", { name: /lanjutkan/i }),
+    );
 
     const basket = within(await screen.findByRole("complementary"));
     expect(
@@ -436,6 +446,30 @@ describe("PosScreen — held carts (FR-6)", () => {
 
     expect(
       await screen.findByRole("button", { name: /keranjang tersimpan \(2\)/i }),
+    ).toBeInTheDocument();
+  });
+});
+
+/**
+ * Pengaturan Kasir (FR-8) — reachable from the till, because that is the device.
+ */
+describe("PosScreen — the till's own settings", () => {
+  it("opens them from the shift bar", async () => {
+    const user = userEvent.setup();
+
+    renderWithAuth(<PosScreen />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Pengaturan Kasir" }),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText(/ukuran kertas struk/i),
+    ).toBeInTheDocument();
+    // The scope, stated where somebody about to change it will read it.
+    expect(
+      within(dialog).getByText(/berlaku di perangkat ini saja/i),
     ).toBeInTheDocument();
   });
 });
@@ -466,7 +500,9 @@ describe("PosScreen — closing the till (FR-9)", () => {
     const user = userEvent.setup();
     renderWithAuth(<PosScreen />);
 
-    await user.click(await screen.findByRole("button", { name: /tutup kasir/i }));
+    await user.click(
+      await screen.findByRole("button", { name: /tutup kasir/i }),
+    );
     await screen.findByLabelText(/uang di laci/i);
 
     expect(screen.queryByText(/kas seharusnya/i)).not.toBeInTheDocument();
@@ -476,7 +512,9 @@ describe("PosScreen — closing the till (FR-9)", () => {
     const user = userEvent.setup();
     renderWithAuth(<PosScreen />);
 
-    await user.click(await screen.findByRole("button", { name: /tutup kasir/i }));
+    await user.click(
+      await screen.findByRole("button", { name: /tutup kasir/i }),
+    );
     await user.type(await screen.findByLabelText(/uang di laci/i), "650000");
 
     expect(await screen.findByText(/kas seharusnya/i)).toBeInTheDocument();
@@ -489,7 +527,9 @@ describe("PosScreen — closing the till (FR-9)", () => {
 
     renderWithAuth(<PosScreen />);
 
-    await user.click(await screen.findByRole("button", { name: /tutup kasir/i }));
+    await user.click(
+      await screen.findByRole("button", { name: /tutup kasir/i }),
+    );
     await user.type(await screen.findByLabelText(/uang di laci/i), "100000");
     await user.click(
       screen.getByRole("button", { name: /^tutup kasir$/i, hidden: false }),
@@ -508,7 +548,9 @@ describe("PosScreen — closing the till (FR-9)", () => {
     const user = userEvent.setup();
     renderWithAuth(<PosScreen />);
 
-    await user.click(await screen.findByRole("button", { name: /tutup kasir/i }));
+    await user.click(
+      await screen.findByRole("button", { name: /tutup kasir/i }),
+    );
     // "500.000" is five hundred thousand to a person and 500 to Number().
     await user.type(await screen.findByLabelText(/uang di laci/i), "500.000");
 
@@ -586,14 +628,14 @@ describe("PosScreen — when the shift status cannot be read", () => {
 
     renderWithAuth(<PosScreen />);
 
-    expect(await screen.findByText(/belum punya akses kasir/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/belum punya akses kasir/i),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/muat ulang/i)).not.toBeInTheDocument();
   });
 
   it("still offers a reload for a server-side failure, where it may help", async () => {
-    mockedPos.currentShift.mockRejectedValue(
-      new ApiError("Server error", 500),
-    );
+    mockedPos.currentShift.mockRejectedValue(new ApiError("Server error", 500));
 
     renderWithAuth(<PosScreen />);
 
@@ -747,10 +789,7 @@ describe("PosCatalog — highlighting what matched", () => {
     const user = userEvent.setup();
     const { container } = renderWithAuth(<PosScreen />);
 
-    await user.type(
-      await screen.findByLabelText(/cari produk/i),
-      "royal",
-    );
+    await user.type(await screen.findByLabelText(/cari produk/i), "royal");
 
     await waitFor(() => expect(marks(container)).toContain("Royal"));
   });
@@ -802,8 +841,10 @@ describe("PosCatalog — highlighting what matched", () => {
  * it does not.
  */
 describe("PosProductCard — the barcode row", () => {
-  const typeSearch = async (user: ReturnType<typeof userEvent.setup>, term: string) =>
-    user.type(await screen.findByLabelText(/cari produk/i), term);
+  const typeSearch = async (
+    user: ReturnType<typeof userEvent.setup>,
+    term: string,
+  ) => user.type(await screen.findByLabelText(/cari produk/i), term);
 
   it("appears, highlighted, when the search matched the barcode", async () => {
     const user = userEvent.setup();
@@ -814,7 +855,9 @@ describe("PosProductCard — the barcode row", () => {
     expect(await screen.findByText(/Barcode/)).toBeInTheDocument();
     await waitFor(() =>
       expect(
-        Array.from(container.querySelectorAll("mark")).map((el) => el.textContent),
+        Array.from(container.querySelectorAll("mark")).map(
+          (el) => el.textContent,
+        ),
       ).toContain("899123"),
     );
   });
@@ -890,7 +933,9 @@ describe("PosVariantDialog — adding more than one size", () => {
 
   const openPicker = async (user: ReturnType<typeof userEvent.setup>) => {
     await user.click(
-      await screen.findByRole("button", { name: /pilih varian kalung anjing/i }),
+      await screen.findByRole("button", {
+        name: /pilih varian kalung anjing/i,
+      }),
     );
     await screen.findByText("Kalung — M");
   };
@@ -913,13 +958,20 @@ describe("PosVariantDialog — adding more than one size", () => {
     mockedPos.updateCart.mockResolvedValue({
       ...cartWithItem,
       items: [
-        { ...cartWithItem.items[0], refId: VARIANT_M, name: "Kalung — M", qty: "2.0000" },
+        {
+          ...cartWithItem.items[0],
+          refId: VARIANT_M,
+          name: "Kalung — M",
+          qty: "2.0000",
+        },
       ],
     });
 
     renderWithAuth(<PosScreen />);
     await openPicker(user);
-    await user.click(screen.getByRole("button", { name: /tambah kalung — m/i }));
+    await user.click(
+      screen.getByRole("button", { name: /tambah kalung — m/i }),
+    );
 
     /*
       With the modal closing, the basket behind it was the feedback. Left open, a
@@ -977,7 +1029,9 @@ describe("PosVariantDialog — stock per variant", () => {
 
   const openPicker = async (user: ReturnType<typeof userEvent.setup>) => {
     await user.click(
-      await screen.findByRole("button", { name: /pilih varian kalung anjing/i }),
+      await screen.findByRole("button", {
+        name: /pilih varian kalung anjing/i,
+      }),
     );
     await screen.findByText("Kalung — M");
   };
@@ -1043,7 +1097,9 @@ describe("PosVariantDialog — stock per variant", () => {
 
     // The row stays visible: a cashier looking for a size needs to see that the
     // shop stocks it and has run out, not that it does not exist.
-    expect(screen.getByRole("button", { name: /tambah kalung — l/i })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /tambah kalung — l/i }),
+    ).toBeDisabled();
     expect(
       screen.getByRole("button", { name: /tambah kalung — m/i }),
     ).not.toBeDisabled();
@@ -1068,7 +1124,9 @@ describe("PosVariantDialog — stock per variant", () => {
     renderWithAuth(<PosScreen />);
 
     await user.click(
-      await screen.findByRole("button", { name: /pilih varian kalung anjing/i }),
+      await screen.findByRole("button", {
+        name: /pilih varian kalung anjing/i,
+      }),
     );
 
     // A silent cap reads as "that is all of them", which on a size picker means
@@ -1157,7 +1215,9 @@ describe("PosVariantDialog — reading a row", () => {
 
   const openPicker = async (user: ReturnType<typeof userEvent.setup>) => {
     await user.click(
-      await screen.findByRole("button", { name: /pilih varian cat choise adult/i }),
+      await screen.findByRole("button", {
+        name: /pilih varian cat choise adult/i,
+      }),
     );
   };
 
@@ -1308,7 +1368,9 @@ describe("PosScreen — choosing a customer", () => {
     await user.click(await screen.findByText("Ibu Rina"));
 
     const basket = within(await screen.findByRole("complementary"));
-    await user.click(await basket.findByRole("button", { name: /lepas ibu rina/i }));
+    await user.click(
+      await basket.findByRole("button", { name: /lepas ibu rina/i }),
+    );
 
     await waitFor(() => {
       const last = mockedPos.updateCart.mock.calls.at(-1);
@@ -1328,7 +1390,9 @@ describe("PosScreen — choosing a customer", () => {
 describe("PosScreen — a phone number already in use", () => {
   it("refuses, names the holder, and keeps the form", async () => {
     const user = userEvent.setup();
-    const mockedCustomers = customerService as jest.Mocked<typeof customerService>;
+    const mockedCustomers = customerService as jest.Mocked<
+      typeof customerService
+    >;
     mockedCustomers.list.mockResolvedValue({
       items: [],
       pagination: { page: 1, limit: 20, total: 0, totalPages: 0 },
@@ -1352,7 +1416,10 @@ describe("PosScreen — a phone number already in use", () => {
     await user.click(
       await screen.findByRole("button", { name: /daftarkan pelanggan baru/i }),
     );
-    await user.type(await screen.findByLabelText(/nama pelanggan/i), "Pak Budi");
+    await user.type(
+      await screen.findByLabelText(/nama pelanggan/i),
+      "Pak Budi",
+    );
     await user.click(screen.getByRole("button", { name: /simpan pelanggan/i }));
 
     // Named, so the cashier knows whether they are about to register somebody
@@ -1380,7 +1447,7 @@ describe("PosHeldCartsDialog — naming a parked basket", () => {
       {
         ...cartWithItem,
         heldLabel: null,
-          customer: { _id: "cust-1", name: "Ibu Rina", phone: "0812-3456" },
+        customer: { _id: "cust-1", name: "Ibu Rina", phone: "0812-3456" },
       },
     ]);
 
@@ -1444,7 +1511,9 @@ describe("PosScreen — parking is a decision, not a default", () => {
     const user = userEvent.setup();
     renderWithAuth(<PosScreen />);
 
-    await user.click(await screen.findByRole("button", { name: /royal canin/i }));
+    await user.click(
+      await screen.findByRole("button", { name: /royal canin/i }),
+    );
     await waitFor(() => expect(mockedPos.updateCart).toHaveBeenCalled());
 
     mockedPos.updateCart.mockClear();
@@ -1466,7 +1535,9 @@ describe("PosScreen — parking is a decision, not a default", () => {
   */
   it("takes a resumed basket out of the parked list", async () => {
     const user = userEvent.setup();
-    mockedPos.heldCarts.mockResolvedValue([{ ...cartWithItem, status: "held" }]);
+    mockedPos.heldCarts.mockResolvedValue([
+      { ...cartWithItem, status: "held" },
+    ]);
 
     renderWithAuth(<PosScreen />);
 
@@ -1501,10 +1572,14 @@ describe("PosScreen — parking is a decision, not a default", () => {
     renderWithAuth(<PosScreen />);
 
     // Build an unsaved basket first.
-    await user.click(await screen.findByRole("button", { name: /royal canin/i }));
+    await user.click(
+      await screen.findByRole("button", { name: /royal canin/i }),
+    );
     await waitFor(() => expect(mockedPos.updateCart).toHaveBeenCalled());
 
-    await user.click(screen.getByRole("button", { name: /keranjang tersimpan/i }));
+    await user.click(
+      screen.getByRole("button", { name: /keranjang tersimpan/i }),
+    );
 
     expect(
       await screen.findByRole("button", { name: /lanjutkan/i }),
@@ -1519,9 +1594,13 @@ describe("PosScreen — parking is a decision, not a default", () => {
 
     renderWithAuth(<PosScreen />);
 
-    await user.click(await screen.findByRole("button", { name: /royal canin/i }));
+    await user.click(
+      await screen.findByRole("button", { name: /royal canin/i }),
+    );
     await waitFor(() => expect(mockedPos.updateCart).toHaveBeenCalled());
-    await user.click(screen.getByRole("button", { name: /keranjang tersimpan/i }));
+    await user.click(
+      screen.getByRole("button", { name: /keranjang tersimpan/i }),
+    );
 
     expect(
       await screen.findByText(/titipkan atau selesaikan dulu/i),
@@ -1578,7 +1657,9 @@ describe("PosScreen — parking is a decision, not a default", () => {
 
   it("opens one freely when the till is empty", async () => {
     const user = userEvent.setup();
-    mockedPos.heldCarts.mockResolvedValue([{ ...cartWithItem, status: "held" }]);
+    mockedPos.heldCarts.mockResolvedValue([
+      { ...cartWithItem, status: "held" },
+    ]);
 
     renderWithAuth(<PosScreen />);
 
@@ -1586,7 +1667,9 @@ describe("PosScreen — parking is a decision, not a default", () => {
       await screen.findByRole("button", { name: /keranjang tersimpan/i }),
     );
 
-    expect(screen.queryByText(/titipkan atau selesaikan dulu/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/titipkan atau selesaikan dulu/i),
+    ).not.toBeInTheDocument();
     expect(
       await screen.findByRole("button", { name: /lanjutkan/i }),
     ).toBeEnabled();
@@ -1611,15 +1694,23 @@ describe("PosScreen — parking is a decision, not a default", () => {
     await screen.findByRole("button", { name: /titipkan/i });
 
     // Blocked while it is open…
-    await user.click(screen.getByRole("button", { name: /keranjang tersimpan/i }));
-    expect(await screen.findByRole("button", { name: /lanjutkan/i })).toBeDisabled();
+    await user.click(
+      screen.getByRole("button", { name: /keranjang tersimpan/i }),
+    );
+    expect(
+      await screen.findByRole("button", { name: /lanjutkan/i }),
+    ).toBeDisabled();
 
     // …and free once it is put back.
     await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: /titipkan/i }));
 
-    await user.click(screen.getByRole("button", { name: /keranjang tersimpan/i }));
-    expect(await screen.findByRole("button", { name: /lanjutkan/i })).toBeEnabled();
+    await user.click(
+      screen.getByRole("button", { name: /keranjang tersimpan/i }),
+    );
+    expect(
+      await screen.findByRole("button", { name: /lanjutkan/i }),
+    ).toBeEnabled();
   });
 
   /*
@@ -1748,13 +1839,17 @@ describe("PosScreen — the transaction note", () => {
     await user.click(
       await screen.findByRole("button", { name: /ubah catatan/i }),
     );
-    await user.clear(screen.getByRole("textbox", { name: /catatan transaksi/i }));
+    await user.clear(
+      screen.getByRole("textbox", { name: /catatan transaksi/i }),
+    );
 
     mockedPos.updateCart.mockClear();
     await user.tab();
 
     await waitFor(() =>
-      expect(mockedPos.updateCart).toHaveBeenCalledWith(CART_ID, { note: null }),
+      expect(mockedPos.updateCart).toHaveBeenCalledWith(CART_ID, {
+        note: null,
+      }),
     );
   });
 
