@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Copy, Printer } from "lucide-react";
+import { flushSync } from "react-dom";
+import { Copy, Download, Printer } from "lucide-react";
 
 import { Alert, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
@@ -61,6 +62,15 @@ export function ReceiptDialog({
   const [size] = useReceiptSize();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /*
+    A4 FOR THE DURATION OF ONE SAVE (FR-8's "Unduh PDF").
+
+    Not a second paper size the cashier has to think about — it is turned on for
+    the length of `window.print()` and off again. A PDF is filed, e-mailed and
+    read on a screen, and a 48 mm strip is the wrong shape for all three even
+    when the shop's printer is 58 mm.
+  */
+  const [asPdf, setAsPdf] = useState(false);
   const [copied, setCopied] = useState(false);
   const [manualText, setManualText] = useState<string | null>(null);
 
@@ -146,6 +156,51 @@ export function ReceiptDialog({
     return lines.filter((line) => line !== null).join("\n");
   }
 
+  /**
+   * Save this receipt as a PDF (FR-8).
+   *
+   * THE BROWSER'S OWN "Save as PDF", not a PDF library, and that is what makes
+   * the file "identik dengan preview" that FR-8 asks for: it prints the very
+   * DOM and stylesheet on screen. Every library would redraw the receipt from
+   * the data instead — a SECOND layout, which is exactly what this feature
+   * refused when print was built, and it would drift the first time either
+   * changed.
+   *
+   * WHAT MAKES IT DIFFERENT FROM "Cetak" beside it, rather than a second button
+   * doing one thing: this one is always A4 and names the file, because it is
+   * meant to be kept. Cetak follows the printer plugged into the till.
+   *
+   * THE FILENAME IS `document.title` — that is where every browser takes the
+   * default from — so it is swapped for the length of the dialog and put back.
+   *
+   * `flushSync` is load-bearing. `window.print()` runs synchronously against
+   * whatever is in the DOM at that instant; an ordinary `setState` would still
+   * be queued, and the saved file would carry the till's 58 mm layout while the
+   * screen showed A4.
+   */
+  function saveAsPdf() {
+    if (!receipt) return;
+
+    const previousTitle = document.title;
+
+    flushSync(() => setAsPdf(true));
+    document.title = `Struk ${receipt.transactionNumber ?? ""}`.trim();
+
+    const restore = () => {
+      document.title = previousTitle;
+      setAsPdf(false);
+    };
+
+    /*
+      `afterprint` rather than the line after `print()`. Chrome blocks until the
+      dialog closes, but Safari does not — restoring unconditionally there would
+      put the title back while the dialog was still open, and the file would be
+      saved under the wrong name.
+    */
+    window.addEventListener("afterprint", restore, { once: true });
+    window.print();
+  }
+
   async function copy() {
     if (!receipt) return;
 
@@ -191,7 +246,7 @@ export function ReceiptDialog({
         ) : (
           <>
             <div className="max-h-80 overflow-y-auto rounded-lg border border-border">
-              <ReceiptPreview receipt={receipt} size={size} />
+              <ReceiptPreview receipt={receipt} size={asPdf ? "a4" : size} />
             </div>
 
             {/*
@@ -244,6 +299,20 @@ export function ReceiptDialog({
               expected a receipt would think it had failed.
             */}
             {receipt?.receiptToken ? "Salin Link WA" : "Salin untuk WhatsApp"}
+          </Button>
+          {/*
+            SAVE, not print. Same dialog underneath — the browser has no other
+            door to a PDF — but a different destination, a different layout and a
+            different name, which is what stops it being Cetak twice.
+          */}
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={saveAsPdf}
+            disabled={!receipt}
+          >
+            <Download className="size-4" />
+            Unduh PDF
           </Button>
           <Button
             type="button"

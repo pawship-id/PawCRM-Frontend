@@ -628,3 +628,105 @@ describe("ReceiptDialog — the WhatsApp link", () => {
     );
   });
 });
+
+/**
+ * "Unduh PDF" (FR-8: "file identik dengan preview").
+ *
+ * THE BROWSER'S OWN SAVE-AS-PDF, not a PDF library — which is what makes the
+ * file identical to the preview rather than merely similar: it prints the very
+ * DOM on screen. A library would redraw the receipt from the data, and a second
+ * layout drifts from the first the day either one changes.
+ */
+describe("ReceiptDialog — saving a PDF", () => {
+  const print = jest.fn();
+  const sheet = (container: HTMLElement) =>
+    container.ownerDocument.querySelector("[data-receipt-sheet]");
+
+  beforeEach(() => {
+    print.mockReset();
+    // jsdom has no print implementation — it throws "Not implemented".
+    Object.defineProperty(window, "print", {
+      value: print,
+      configurable: true,
+    });
+  });
+
+  it("opens the print dialog, which is the only door to a PDF", async () => {
+    const user = userEvent.setup();
+    mockedPos.receipt.mockResolvedValue(receipt());
+
+    renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
+    await user.click(await screen.findByRole("button", { name: /unduh pdf/i }));
+
+    expect(print).toHaveBeenCalled();
+  });
+
+  /*
+    WHAT MAKES IT DIFFERENT FROM "Cetak" beside it. A PDF is filed, e-mailed and
+    read on a screen, and a 48 mm strip is the wrong shape for all three — even
+    when the till's own printer is 58 mm.
+  */
+  it("lays the sheet out as A4 even on a 58 mm till", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem("buloo.pos.receiptSize", "58");
+    mockedPos.receipt.mockResolvedValue(receipt());
+
+    const { container } = renderWithAuth(
+      <ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />,
+    );
+    await screen.findByText(/buloo petshop/i);
+    expect(sheet(container)).toHaveAttribute("data-receipt-sheet", "58");
+
+    await user.click(screen.getByRole("button", { name: /unduh pdf/i }));
+
+    /*
+      ALREADY A4 BY THE TIME `print()` RAN, not after. `window.print()` reads
+      whatever is in the DOM at that instant, so a queued setState would have
+      saved the till's 58 mm layout while the screen showed A4 — which is why
+      the component flushes before printing.
+    */
+    expect(sheet(container)).toHaveAttribute("data-receipt-sheet", "a4");
+    expect(print).toHaveBeenCalled();
+  });
+
+  it("leaves Cetak on the printer the till actually has", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem("buloo.pos.receiptSize", "58");
+    mockedPos.receipt.mockResolvedValue(receipt());
+
+    const { container } = renderWithAuth(
+      <ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />,
+    );
+    await user.click(await screen.findByRole("button", { name: /^cetak$/i }));
+
+    expect(sheet(container)).toHaveAttribute("data-receipt-sheet", "58");
+  });
+
+  /*
+    THE FILENAME. Every browser takes the default from `document.title`, so it is
+    swapped for the length of the dialog — "Struk POS-20260825-0001.pdf" rather
+    than whatever the page happened to be called.
+  */
+  it("names the file after the transaction", async () => {
+    const user = userEvent.setup();
+    const before = document.title;
+    mockedPos.receipt.mockResolvedValue(receipt());
+
+    renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
+    await user.click(await screen.findByRole("button", { name: /unduh pdf/i }));
+
+    expect(document.title).toBe("Struk POS-20260825-0001");
+
+    /*
+      PUT BACK ON `afterprint`, not on the line after `print()`. Chrome blocks
+      until the dialog closes and Safari does not — restoring unconditionally
+      would rename the page back while the dialog was still open, and the file
+      would be saved under the old title.
+    */
+    window.dispatchEvent(new Event("afterprint"));
+    expect(document.title).toBe(before);
+    await waitFor(() =>
+      expect(sheet(document.body)).toHaveAttribute("data-receipt-sheet", "80"),
+    );
+  });
+});

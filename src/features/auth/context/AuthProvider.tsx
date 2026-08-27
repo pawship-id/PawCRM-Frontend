@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import type { ReactNode } from "react";
+import { usePathname } from "next/navigation";
 
 import { authService } from "@/services/auth.service";
 import { ApiError } from "@/services/api-error";
@@ -51,6 +52,28 @@ export interface AuthContextValue {
 export const AuthContext = createContext<AuthContextValue | null>(null);
 
 /**
+ * Routes that are read by somebody who has no account here.
+ *
+ * WHY THIS LIST EXISTS. This provider sits in the ROOT layout, so it wraps every
+ * page in the app — including the ones a customer opens from a WhatsApp message.
+ * Without this, every single receipt link opened would fire a `GET /auth/me`
+ * that can only ever 401: a wasted round trip on somebody else's phone, and a
+ * 401 in the log for every receipt anybody ever reads.
+ *
+ * WHY NOT MOVE THE PROVIDER instead, which would be tidier. It would have to be
+ * mounted in both the `(auth)` and `(dashboard)` layouts, which are separate
+ * trees — so signing in would UNMOUNT one provider and mount another, throwing
+ * away the context that login just populated and firing a fresh `/me` on the
+ * first dashboard paint. Trading one wasted request on a public page for one on
+ * every login is not a trade.
+ *
+ * ADD A PREFIX HERE when a new page is opened by somebody signed out. Getting it
+ * wrong is not dangerous — a missing entry costs one 401, a wrong one just means
+ * a signed-in user's context loads a moment later, on their next navigation.
+ */
+export const PUBLIC_ROUTE_PREFIXES = ["/struk"] as const;
+
+/**
  * Holds the authenticated user for the dashboard subtree.
  *
  * On mount it hydrates from GET /auth/me — the single source of truth. A 401
@@ -59,7 +82,25 @@ export const AuthContext = createContext<AuthContextValue | null>(null);
  * turns into a redirect to /login.
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [status, setStatus] = useState<AuthStatus>("loading");
+  const pathname = usePathname();
+  const isPublicRoute = PUBLIC_ROUTE_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname?.startsWith(`${prefix}/`),
+  );
+
+  const [hydratedStatus, setStatus] = useState<AuthStatus>("loading");
+
+  /*
+    DERIVED, NOT SET. On a public route `/me` is never called, so the hydrated
+    status would sit at "loading" forever — and a shell that waits forever is
+    worse than one that says nobody is signed in. Writing it from the effect
+    instead would be a cascading render for something that is a pure function of
+    the route.
+
+    Nothing here clears the auth hint: a signed-in cashier opening a customer's
+    link in the same tab is not being signed out, and navigating back to the
+    dashboard re-runs the effect below and hydrates them again.
+  */
+  const status: AuthStatus = isPublicRoute ? "unauthenticated" : hydratedStatus;
   const [user, setUserState] = useState<User | null>(null);
   const [session, setSession] = useState<SessionContext | null>(null);
   const [permissions, setPermissions] = useState<PermissionGrant[]>([]);
@@ -104,13 +145,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    /*
+      NOTHING TO HYDRATE ON A PUBLIC PAGE. The reader has no account, so `/me`
+      could only ever 401 — see PUBLIC_ROUTE_PREFIXES. What the shell reports
+      meanwhile is decided above, where it costs no render.
+    */
+    if (isPublicRoute) return;
+
     // Mount-time hydration from the server session — the canonical "synchronize
     // with an external system" use of an effect. refresh() only setStates after
     // an awaited /me, so this is not a synchronous cascading render despite what
     // the lint heuristic assumes.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
-  }, [refresh]);
+  }, [refresh, isPublicRoute]);
 
   const signIn = useCallback(async (email: string, password: string) => {
     const {
