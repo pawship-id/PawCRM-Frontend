@@ -109,10 +109,16 @@ export const PERMISSION_CATALOG = {
    * entry nobody can take back. Same separation of duties as `pay` on
    * `purchaseInvoices`.
    *
-   * No `delete`: a receivable is voided with the sale that created it, never
-   * removed. A debt that can be deleted is a debt that can be forgiven quietly.
+   * `void` COVERS BOTH CANCELLATIONS in this module — a whole invoice, and one
+   * payment against it. Separate from `pay` on purpose: taking money in is daily
+   * counter work, while undoing a receipt reverses an entry already reported and
+   * can move an invoice from settled back to owing.
+   *
+   * No `delete`: a receivable is voided, never removed — and the same holds for
+   * a payment, which is marked cancelled rather than dropped so the ledger entry
+   * it posted still has a document behind it.
    */
-  customerInvoices: ["create", "read", "update", "pay"],
+  customerInvoices: ["create", "read", "update", "pay", "void"],
   chartOfAccounts: ["create", "read", "update", "delete", "restore"],
   // A posted journal entry is immutable: no delete, no restore. `reverse` is
   // its own action because correcting the ledger is a different privilege from

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 
 import { Alert, Card, Spinner } from "@/components";
@@ -17,7 +18,9 @@ import { SALES_CRUMBS } from "../crumbs";
 import { useCustomerInvoice } from "../hooks/useCustomerInvoice";
 import { InvoiceSourceBadge, InvoiceStatusBadge } from "./InvoiceStatusBadge";
 import { PaymentHistory } from "./PaymentHistory";
+import { PaymentReceiptDialog } from "./PaymentReceiptDialog";
 import { RecordPaymentForm } from "./RecordPaymentForm";
+import { VoidPaymentDialog } from "./VoidPaymentDialog";
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("id-ID", {
@@ -50,6 +53,15 @@ function formatDate(iso: string): string {
 export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
   const { invoice, loading, error, notFound, applyInvoice, refetch } =
     useCustomerInvoice(invoiceId);
+
+  /*
+    ONE PAYMENT AT A TIME, held by id rather than by object. The invoice is
+    replaced wholesale after a cancellation, so a held object would be the stale
+    copy from before the write — the dialog would then print a kwitansi that
+    still said "aktif" for a payment it had just cancelled.
+  */
+  const [receiptFor, setReceiptFor] = useState<string | null>(null);
+  const [voidingId, setVoidingId] = useState<string | null>(null);
 
   if (loading) {
     return (
@@ -208,7 +220,28 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
         </div>
       </div>
 
-      <PaymentHistory payments={invoice.payments} />
+      <PaymentHistory
+        payments={invoice.payments}
+        onPrint={(payment) => setReceiptFor(payment.paymentId)}
+        onVoid={(payment) => setVoidingId(payment.paymentId)}
+      />
+
+      <PaymentReceiptDialog
+        invoice={invoice}
+        payment={
+          invoice.payments.find((row) => row.paymentId === receiptFor) ?? null
+        }
+        onClose={() => setReceiptFor(null)}
+      />
+
+      <VoidPaymentDialog
+        invoice={invoice}
+        payment={
+          invoice.payments.find((row) => row.paymentId === voidingId) ?? null
+        }
+        onClose={() => setVoidingId(null)}
+        onVoided={applyInvoice}
+      />
 
       {/*
         NOT "no journal was posted". The debt was debited to 1103 by the SALE

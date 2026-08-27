@@ -3597,6 +3597,23 @@ export interface CustomerInvoicePayment {
   byUserId: string | null;
   byUserName: string | null;
   journalEntryId: string;
+
+  /**
+   * WHETHER THIS PAYMENT STILL COUNTS. Derived server-side from `voidedAt` so
+   * every consumer reads one definition of "active" — the same one `paidAmount`
+   * was computed against.
+   *
+   * A cancelled payment is MARKED, NEVER REMOVED: it posted an immutable ledger
+   * entry, and deleting the row would leave that entry pointing at a document
+   * nobody can look up. Render it struck through, not hidden.
+   */
+  isVoided: boolean;
+  voidedAt: string | null;
+  voidedBy: string | null;
+  /** Why it was cancelled. The only record of it — required when cancelling. */
+  voidReason: string | null;
+  /** The entry that UNDID it, beside the one that made it. */
+  reversalJournalEntryId: string | null;
 }
 
 /**
@@ -3731,6 +3748,21 @@ export interface CustomerOutstandingSummary {
  * absorbed (400), and a concurrent payment loses a compare-and-swap (409); both
  * are worth showing verbatim, because both tell the user what to do next.
  */
+/**
+ * POST /api/customer-invoices/:id/payments/:paymentId/void — undo a receipt.
+ *
+ * THE REASON IS THE WHOLE BODY, and it is required: six months later it is the
+ * only thing that explains a reversing entry in the ledger.
+ *
+ * THERE IS NO AMOUNT. A cancellation undoes the payment as recorded, in full — a
+ * partial undo is a different, smaller payment, which is cancel-then-record.
+ * There is no edit-in-place either, for the same reason: changing an amount
+ * would restate cash that has already been reported.
+ */
+export interface VoidCustomerPaymentInput {
+  reason: string;
+}
+
 export interface RecordCustomerPaymentInput {
   /** Strictly positive, and never more than `outstandingAmount`. */
   amount: string;

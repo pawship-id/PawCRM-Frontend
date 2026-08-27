@@ -7,10 +7,12 @@ import { customerInvoiceService } from "@/services/customerInvoice.service";
 import { customerService } from "@/services/customer.service";
 import { branchService } from "@/services/branch.service";
 import { paymentChannelService } from "@/services/paymentChannel.service";
+import { tenantService } from "@/services/tenant.service";
 import { ApiError } from "@/services/api-error";
 import type {
   CustomerInvoiceDetail,
   CustomerInvoiceListRow,
+  CustomerInvoicePayment,
   CustomerOutstandingSummary,
 } from "@/types/api";
 
@@ -20,6 +22,8 @@ jest.mock("@/services/customerInvoice.service");
 jest.mock("@/services/customer.service");
 jest.mock("@/services/branch.service");
 jest.mock("@/services/paymentChannel.service");
+// The kwitansi's header reads the shop's own details.
+jest.mock("@/services/tenant.service");
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn() }),
@@ -169,6 +173,11 @@ beforeEach(() => {
       },
     ]),
   );
+
+  asMock(tenantService.me).mockResolvedValue({
+    _id: "t1",
+    name: "Buloo Petshop",
+  } as never);
 
   asMock(customerInvoiceService.list).mockResolvedValue(page([]) as never);
   asMock(customerInvoiceService.outstanding).mockResolvedValue(
@@ -484,6 +493,11 @@ describe("InvoiceDetail", () => {
             byUserId: "u1",
             byUserName: "Rani",
             journalEntryId: "je-pay1",
+            isVoided: false,
+            voidedAt: null,
+            voidedBy: null,
+            voidReason: null,
+            reversalJournalEntryId: null,
           },
         ],
       }),
@@ -608,6 +622,11 @@ describe("InvoiceDetail", () => {
             byUserId: "u1",
             byUserName: "Rani",
             journalEntryId: "je-pay1",
+            isVoided: false,
+            voidedAt: null,
+            voidedBy: null,
+            voidReason: null,
+            reversalJournalEntryId: null,
           },
         ],
       }),
@@ -621,5 +640,221 @@ describe("InvoiceDetail", () => {
     // The journal id is the only handle on a mistake — a payment cannot be
     // edited or deleted.
     expect(screen.getByText("je-pay1")).toBeInTheDocument();
+  });
+});
+
+/* ============ PCR-032 — membatalkan pembayaran, dan kwitansinya ============ */
+
+const PAYMENT_ID = "pay1";
+
+const paymentRow = (
+  overrides: Partial<CustomerInvoicePayment> = {},
+): CustomerInvoicePayment => ({
+  paymentId: PAYMENT_ID,
+  at: "2026-08-27T00:00:00.000Z",
+  amount: "100000.0000",
+  method: "transfer",
+  channelId: "chan-bca",
+  channelName: "BCA Operasional",
+  ref: "TRF-1",
+  byUserId: "u1",
+  byUserName: "Rani",
+  journalEntryId: "je-pay1",
+  isVoided: false,
+  voidedAt: null,
+  voidedBy: null,
+  voidReason: null,
+  reversalJournalEntryId: null,
+  ...overrides,
+});
+
+const paidDetail = (payments: CustomerInvoicePayment[] = [paymentRow()]) =>
+  detail({
+    status: "partial",
+    paidAmount: "100000.0000",
+    outstandingAmount: "200000.0000",
+    payments,
+  });
+
+describe("InvoiceDetail — membatalkan pembayaran", () => {
+  beforeEach(() => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(paidDetail());
+  });
+
+  it("cancels the payment with its reason and renders what the write returned", async () => {
+    const user = userEvent.setup();
+    asMock(customerInvoiceService.voidPayment).mockResolvedValue(
+      detail({
+        status: "unpaid",
+        paidAmount: "0.0000",
+        outstandingAmount: "300000.0000",
+        payments: [
+          paymentRow({
+            isVoided: true,
+            voidedAt: "2026-08-28T00:00:00.000Z",
+            voidReason: "Salah faktur",
+            reversalJournalEntryId: "je-rev1",
+          }),
+        ],
+      }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await user.click(await screen.findByRole("button", { name: /Batalkan/ }));
+    await user.type(await screen.findByLabelText("Alasan"), "Salah faktur");
+    await user.click(
+      screen.getByRole("button", { name: "Batalkan pembayaran" }),
+    );
+
+    await waitFor(() =>
+      expect(customerInvoiceService.voidPayment).toHaveBeenCalledWith(
+        INVOICE_ID,
+        PAYMENT_ID,
+        { reason: "Salah faktur" },
+      ),
+    );
+
+    /*
+      NOT a refetch: the response IS the new state of the document. Asserted on
+      the row's badge rather than the word alone — the card's footnote uses
+      "dibatalkan" too, and matching that would pass with no row rendered.
+    */
+    expect(await screen.findByText("Salah faktur", { exact: false })).toBeInTheDocument();
+    expect(screen.getAllByText("dibatalkan").length).toBeGreaterThan(0);
+    expect(customerInvoiceService.getById).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses an empty reason before spending a round trip", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await user.click(await screen.findByRole("button", { name: /Batalkan/ }));
+    await user.click(
+      screen.getByRole("button", { name: "Batalkan pembayaran" }),
+    );
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(customerInvoiceService.voidPayment).not.toHaveBeenCalled();
+  });
+
+  it("shows the server's refusal verbatim", async () => {
+    const user = userEvent.setup();
+    asMock(customerInvoiceService.voidPayment).mockRejectedValue(
+      new ApiError("Payment was already cancelled", 409),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await user.click(await screen.findByRole("button", { name: /Batalkan/ }));
+    await user.type(await screen.findByLabelText("Alasan"), "x");
+    await user.click(
+      screen.getByRole("button", { name: "Batalkan pembayaran" }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /already cancelled/,
+    );
+  });
+
+  /* --- THE GATE --- */
+
+  it("hides Batalkan from a role that may take money but not undo one", async () => {
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />, {
+      isSuperAdmin: false,
+      permissions: [
+        { feature: "customerInvoices", actions: ["read", "pay"] },
+      ],
+    });
+
+    expect(await screen.findByText(/Masuk ke BCA Operasional/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Batalkan/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  /* --- a cancelled row stays visible --- */
+
+  it("keeps a cancelled payment on the timeline, with its reason", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      paidDetail([
+        paymentRow({
+          isVoided: true,
+          voidedAt: "2026-08-28T00:00:00.000Z",
+          voidReason: "Dobel input",
+          reversalJournalEntryId: "je-rev1",
+        }),
+      ]),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findByText(/Dobel input/)).toBeInTheDocument();
+    expect(screen.getByText("je-rev1")).toBeInTheDocument();
+    expect(screen.getAllByText("dibatalkan").length).toBeGreaterThan(0);
+  });
+
+  it("offers no second cancellation on a payment already cancelled", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      paidDetail([paymentRow({ isVoided: true, voidReason: "Dobel input" })]),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findByText(/Dobel input/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Batalkan/ }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("InvoiceDetail — kwitansi", () => {
+  beforeEach(() => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(paidDetail());
+  });
+
+  it("prints one PAYMENT, not the whole invoice", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await user.click(await screen.findByRole("button", { name: /Kwitansi/ }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("KWITANSI")).toBeInTheDocument();
+    // The amount received, not the invoice total.
+    expect(within(dialog).getByText(/Rp\s?100\.000/)).toBeInTheDocument();
+    expect(within(dialog).getByText("Jumlah diterima")).toBeInTheDocument();
+  });
+
+  it("carries the shop's own header", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await user.click(await screen.findByRole("button", { name: /Kwitansi/ }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Buloo Petshop")).toBeInTheDocument();
+  });
+
+  /*
+    Somebody re-printing a cancelled payment is usually doing so BECAUSE it was
+    cancelled. A sheet that silently omitted that would be worse than none.
+  */
+  it("still prints a cancelled payment, marked", async () => {
+    const user = userEvent.setup();
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      paidDetail([
+        paymentRow({ isVoided: true, voidReason: "Salah faktur" }),
+      ]),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await user.click(await screen.findByRole("button", { name: /Kwitansi/ }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText(/PEMBAYARAN INI DIBATALKAN/),
+    ).toBeInTheDocument();
   });
 });

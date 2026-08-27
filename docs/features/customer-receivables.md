@@ -180,12 +180,61 @@ invoice, so the response is handed straight to `applyInvoice`: it is the exact
 document the write produced rather than whatever a second read happens to see,
 and it costs one round trip instead of two.
 
-## No update, no delete, and no way to withdraw a payment
+## Cancelling a payment
 
-The service has four methods because the API has four endpoints. There is no
-`PATCH`, no `DELETE` and no way to remove a payment: every payment posts an
-immutable journal entry, so an edit would restate cash already reported and a
-delete would leave the ledger pointing at a document nobody can look up.
+A wrong payment is **cancelled**, not deleted or edited. `Batalkan` on the row
+opens a dialog asking for a reason, and the write:
+
+- posts a **reversing journal entry** against the one the payment made;
+- marks the row `voidedAt` with who, why, and the reversal's id;
+- takes the amount back off `paidAmount`, which can move an invoice from `paid`
+  to `partial` or `unpaid`.
+
+**The row stays on the timeline**, struck through, with its reason and the
+reversal's journal id. It is not hidden: the entry it posted is immutable, and a
+timeline that quietly dropped the row would leave that entry pointing at nothing
+a reader can find. `isVoided` is the server's own flag — the same definition
+`paidAmount` was computed against — so the screen never decides what "active"
+means for itself.
+
+The dialog says all of this **before** the click, not after. A user who expects a
+row to disappear and finds it still there assumes the click failed and does it
+again.
+
+**Gated on `customerInvoices:void`, not `pay`.** A role that may take money in
+sees the timeline and the kwitansi button, and no `Batalkan` at all.
+
+**There is no edit.** Correcting an amount is cancel-then-record-again — two
+events that really happened, and the only version that does not restate cash
+already reported.
+
+## The kwitansi prints ONE payment
+
+`Kwitansi` on a row opens a preview and prints A4. It is proof that *this money*
+was received on *this day* — the invoice's totals appear only as context for what
+is still owed. Printing the invoice instead would hand a customer who paid a
+third of a bill a document whose headline number is the whole of it.
+
+Two details worth knowing:
+
+- **The shop header comes from `useTenant()`,** not from a backend receipt
+  endpoint. The POS has one because a struk needs the cart, the cashier and a
+  public token; a kwitansi needs a name, an address and a payment the caller
+  already holds.
+- **A cancelled payment still prints, marked.** Somebody re-printing one is
+  usually doing so precisely because it was cancelled.
+
+Printing reuses `features/pos/print/receipt.css` and its portal-to-`body`
+arrangement — that stylesheet carries the two ways printing from inside a dialog
+went wrong before it.
+
+## No update, no delete, and no way to EDIT a payment
+
+The service has five methods because the API has five endpoints. There is no
+`PATCH`, no `DELETE` and no way to remove or edit a payment: every payment posts
+an immutable journal entry, so changing an amount would restate cash already
+reported and deleting a row would leave the ledger pointing at a document nobody
+can look up. Cancelling (above) is the correction, and it obeys the same rule.
 
 ### Correcting a wrong payment — read the caveat
 
@@ -216,9 +265,12 @@ the document actually holds rather than joining a POS transaction to fake them.
 | `features/sales/components/ReceivablesTable.tsx`          | The rows                          |
 | `features/sales/components/InvoiceDetail.tsx`             | One invoice                       |
 | `features/sales/components/RecordPaymentForm.tsx`         | The payment                       |
-| `features/sales/components/PaymentHistory.tsx`            | What has arrived                  |
+| `features/sales/components/PaymentHistory.tsx`            | What has arrived, active or not   |
+| `features/sales/components/VoidPaymentDialog.tsx`         | Cancelling one                    |
+| `features/sales/components/PaymentReceipt.tsx`            | The kwitansi sheet                |
+| `features/sales/components/PaymentReceiptDialog.tsx`      | Preview + print                   |
 | `features/sales/components/InvoiceStatusBadge.tsx`        | Status + source chips             |
-| `tests/ReceivablesScreens.test.tsx`                       | 27 tests over both screens        |
+| `tests/ReceivablesScreens.test.tsx`                       | 36 tests over both screens        |
 
 `PageHeading` is imported from `@/features/purchasing` rather than copied — it is
 on the migration list to be promoted to `@/components` (ui-rules §15), and a

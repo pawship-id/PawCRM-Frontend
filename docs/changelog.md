@@ -7,6 +7,35 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Faktur Penjualan: pembayaran bisa dibatalkan, dan ada kwitansinya
+
+`Batalkan` dan `Kwitansi` per baris di riwayat pembayaran. Details in
+[`features/customer-receivables.md`](./features/customer-receivables.md).
+
+**Membatalkan bukan menghapus.** Barisnya tetap di timeline, dicoret, lengkap
+dengan alasan dan id jurnal pembaliknya. Dialognya mengatakan itu **sebelum**
+diklik, bukan setelahnya: pengguna yang mengira barisnya akan hilang lalu
+menemukannya masih ada akan menyangka kliknya gagal dan mengulanginya.
+
+**`isVoided` datang dari server.** Layar tidak pernah memutuskan sendiri apa arti
+"aktif" — definisinya sama dengan yang dipakai menghitung `paidAmount`.
+
+**Digating `customerInvoices:void`, bukan `pay`.** Peran yang boleh menerima uang
+melihat timeline dan tombol kwitansi, tanpa `Batalkan` sama sekali.
+
+**Kwitansi mencetak SATU pembayaran, bukan fakturnya.** Total faktur hanya muncul
+sebagai konteks sisa tagihan — mencetak fakturnya akan memberi pelanggan yang
+baru bayar sepertiga sebuah dokumen yang angka utamanya justru keseluruhan.
+Kop toko diambil dari `useTenant()`, bukan endpoint struk baru. Pembayaran yang
+sudah dibatalkan tetap bisa dicetak, dengan tanda — orang mencetak ulang justru
+biasanya karena itu.
+
+Mekanik cetaknya memakai ulang `features/pos/print/receipt.css` dan pola
+portal-ke-`body` milik struk kasir; stylesheet itu menyimpan dua cara mencetak
+dari dalam dialog yang pernah gagal.
+
+---
+
 ## [Unreleased] — Sales & Invoice: faktur penjualan bisa dibaca dan ditagih
 
 `/dashboard/sales` stops being a `SectionPlaceholder`. Two screens against

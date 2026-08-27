@@ -6,12 +6,13 @@ import type {
   CustomerOutstandingSummary,
   PageResult,
   RecordCustomerPaymentInput,
+  VoidCustomerPaymentInput,
 } from "@/types/api";
 
 /**
  * Customer invoices (piutang pelanggan), against /api/customer-invoices.
  *
- * FOUR METHODS, AND THE ABSENCES ARE THE BACKEND'S DESIGN rather than this
+ * FIVE METHODS, AND THE ABSENCES ARE THE BACKEND'S DESIGN rather than this
  * file's caution:
  *
  *   NO `create`. Raising an invoice by hand cuts stock, posts two journal
@@ -20,12 +21,15 @@ import type {
  *   a sale with the Piutang method issues one automatically, inside the sale's
  *   own transaction. `source` tells the two apart.
  *
- *   NO `update`, NO `remove`, NO way to withdraw a payment. Every payment posts
- *   an immutable journal entry, so an edit would restate cash already reported
- *   and a delete would leave the ledger pointing at a document nobody can look
- *   up. A wrong payment is corrected by REVERSING its entry — see
- *   journalEntry.service — which leaves both the error and the correction
- *   visible.
+ *   NO `update`, NO `remove`, and NO way to EDIT a payment. Every payment posts
+ *   an immutable journal entry, so changing an amount would restate cash already
+ *   reported and deleting a row would leave the ledger pointing at a document
+ *   nobody can look up.
+ *
+ *   `voidPayment` IS THE CORRECTION, and it is not an exception to that rule —
+ *   it posts a REVERSING entry and marks the row, so both the mistake and its
+ *   undoing stay visible. Correcting an amount is cancel-then-record-again,
+ *   which is also what actually happened.
  *
  * Mirrors purchaseInvoiceService, pointed the other way: each method maps one
  * typed domain operation onto a single apiClient request — no React, no state.
@@ -120,6 +124,32 @@ export const customerInvoiceService = {
   recordPayment: (id: string, input: RecordCustomerPaymentInput) =>
     apiClient.post<CustomerInvoiceDetail>(
       `/customer-invoices/${id}/payments`,
+      input,
+    ),
+
+  /**
+   * POST /customer-invoices/:id/payments/:paymentId/void — undo one receipt
+   * (200). THE OTHER ONE THAT MOVES MONEY.
+   *
+   * Posts a REVERSING journal entry against the one the payment made, marks the
+   * row `voidedAt`, and takes the amount back off `paidAmount` — which can move
+   * an invoice from `paid` to `partial` or `unpaid`.
+   *
+   * A POST, NOT A DELETE, because nothing is deleted: the payment stays in the
+   * timeline struck through. The immutable entry it posted still needs a
+   * document behind it.
+   *
+   * REQUIRES `customerInvoices:void`, not `pay`. And it answers with the
+   * UPDATED INVOICE, so the caller hands the response straight back to the
+   * screen rather than refetching.
+   */
+  voidPayment: (
+    id: string,
+    paymentId: string,
+    input: VoidCustomerPaymentInput,
+  ) =>
+    apiClient.post<CustomerInvoiceDetail>(
+      `/customer-invoices/${id}/payments/${paymentId}/void`,
       input,
     ),
 };
