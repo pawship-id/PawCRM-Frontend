@@ -20,6 +20,7 @@ const receipt = (overrides: Partial<PosReceipt> = {}): PosReceipt => ({
     branchName: "Toko Pusat",
     address: "Jl. Melati 12",
     phone: "081234567890",
+    receiptFooter: "Terima kasih",
   },
   transactionNumber: "POS-20260825-0001",
   paidAt: "2026-08-25T03:00:00.000Z",
@@ -83,6 +84,7 @@ describe("ReceiptPreview — FR-8", () => {
             branchName: "Toko Pusat",
             address: "",
             phone: "",
+            receiptFooter: "",
           },
         })}
         size="80"
@@ -262,8 +264,8 @@ describe("ReceiptPreview — sold on account", () => {
  * FR-5: the note prints as a line labelled **"Catatan:"**.
  *
  * Without the label it is one unmarked paragraph between the payment lines and
- * "Terima kasih sudah mampir" — and a customer reading their slip has no way to
- * tell an instruction the cashier typed from part of the shop's boilerplate.
+ * "Terima kasih" — and a customer reading their slip has no way to tell an
+ * instruction the cashier typed from part of the shop's boilerplate.
  */
 describe("ReceiptPreview — the transaction note", () => {
   it("prints it under a label, not as a loose paragraph", async () => {
@@ -340,5 +342,90 @@ describe("ReceiptPreview — the cashier", () => {
 
     await screen.findByText(/buloo petshop/i);
     expect(screen.queryByText(/^Kasir:/)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * The shop's own closing line (FR-8).
+ *
+ * It used to be typed into this component, which meant a shop wanting "Barang
+ * yang sudah dibeli tidak dapat ditukar" had no way to say so, and one wanting
+ * nothing had no way to be quiet.
+ */
+describe("ReceiptPreview — the footer", () => {
+  const withFooter = (receiptFooter: string) =>
+    receipt({
+      header: {
+        tenantName: "Buloo Petshop",
+        branchName: "Toko Pusat",
+        address: "Jl. Melati 12",
+        phone: "081234567890",
+        receiptFooter,
+      },
+    });
+
+  it("prints the branch's own words", async () => {
+    mockedPos.receipt.mockResolvedValue(
+      withFooter("Barang yang sudah dibeli tidak dapat ditukar."),
+    );
+
+    renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
+
+    expect(
+      await screen.findByText("Barang yang sudah dibeli tidak dapat ditukar."),
+    ).toBeInTheDocument();
+  });
+
+  /*
+    THE FALLBACK IS THE SERVER'S — a branch that has written nothing arrives here
+    already carrying "Terima kasih", so neither this component nor the copied
+    text has to remember a default of its own.
+  */
+  it("prints the standard line for a branch with no words of its own", async () => {
+    mockedPos.receipt.mockResolvedValue(
+      withFooter("Terima kasih"),
+    );
+
+    renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
+
+    expect(
+      await screen.findByText("Terima kasih"),
+    ).toBeInTheDocument();
+  });
+
+  /*
+    The component's own rule, not a product one: an empty paragraph is not
+    something to draw. The server never sends this today.
+  */
+  it("draws no paragraph at all for an empty footer", async () => {
+    mockedPos.receipt.mockResolvedValue(withFooter(""));
+
+    renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
+
+    await screen.findByText(/buloo petshop/i);
+    expect(screen.queryByText(/terima kasih sudah mampir/i)).not.toBeInTheDocument();
+  });
+
+  /*
+    TWO SHAPES OF ONE RECEIPT MUST NOT DISAGREE — the same rule the cashier line
+    follows.
+  */
+  it("closes the copied text with the same line", async () => {
+    const user = userEvent.setup();
+    const writeText = jest.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+
+    mockedPos.receipt.mockResolvedValue(withFooter("Sampai jumpa lagi."));
+
+    renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
+    await screen.findByText("Sampai jumpa lagi.");
+
+    await user.click(screen.getByRole("button", { name: /salin untuk whatsapp/i }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalled());
+    expect(writeText.mock.calls[0][0]).toContain("Sampai jumpa lagi.");
   });
 });

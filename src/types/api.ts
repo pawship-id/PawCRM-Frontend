@@ -442,6 +442,8 @@ export interface Branch {
   name: string;
   address: string | null;
   phone: string | null;
+  /** The line printed at the foot of this branch's receipts (FR-8). */
+  receiptFooter: string | null;
   /**
    * Where the branch actually is, independent of the `address` text. Present on
    * every document written by the current schema — but read it defensively, as
@@ -475,6 +477,8 @@ export interface CreateBranchInput {
   name: string;
   address?: string | null;
   phone?: string | null;
+  /** The line printed at the foot of this branch's receipts (FR-8). */
+  receiptFooter?: string | null;
   /** `null` clears the pin; both coordinates must be sent together. */
   location?: GeoLocationInput | null;
   isActive?: boolean;
@@ -488,6 +492,8 @@ export interface UpdateBranchInput {
   name?: string;
   address?: string | null;
   phone?: string | null;
+  /** The line printed at the foot of this branch's receipts (FR-8). */
+  receiptFooter?: string | null;
   /** `null` clears the pin; both coordinates must be sent together. */
   location?: GeoLocationInput | null;
   isActive?: boolean;
@@ -1339,6 +1345,14 @@ export interface PosReceipt {
     /** Empty string, never null — an unfilled field prints as a blank line. */
     address: string;
     phone: string;
+    /**
+     * The closing line (FR-8) — the branch's own words, or the standard ones.
+     *
+     * ALREADY RESOLVED BY THE SERVER. A branch that has written nothing gets
+     * "Terima kasih" here, so neither the printed slip nor the copied text has
+     * to remember a fallback of its own.
+     */
+    receiptFooter: string;
   };
   transactionNumber: string | null;
   paidAt: string | null;

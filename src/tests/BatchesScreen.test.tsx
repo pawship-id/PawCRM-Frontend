@@ -43,6 +43,7 @@ function branch(id = BRANCH, name = "Cabang Timur"): Branch {
     name,
     address: null,
     phone: null,
+    receiptFooter: null,
     location: { lat: null, lng: null, source: "manual" },
     isActive: true,
     deletedAt: null,

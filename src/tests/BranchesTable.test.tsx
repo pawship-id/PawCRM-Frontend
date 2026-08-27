@@ -22,6 +22,7 @@ function makeBranch(overrides: Partial<Branch> = {}): Branch {
     name: "Jakarta",
     address: "Jl. Sudirman 1",
     phone: "021-555-1234",
+    receiptFooter: null,
     location: { lat: null, lng: null, source: "manual" },
     isActive: true,
     deletedAt: null,

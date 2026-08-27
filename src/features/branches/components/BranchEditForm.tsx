@@ -125,6 +125,7 @@ function DetailsSection({
   const [name, setName] = useState(branch.name);
   const [address, setAddress] = useState(branch.address ?? "");
   const [phone, setPhone] = useState(branch.phone ?? "");
+  const [receiptFooter, setReceiptFooter] = useState(branch.receiptFooter ?? "");
   // toLocationFieldsValue tolerates a missing pin, so a branch document written
   // before the field existed renders as two empty inputs rather than throwing.
   const [location, setLocation] = useState<LocationFieldsValue>(() =>
@@ -160,6 +161,8 @@ function DetailsSection({
         name: name.trim(),
         address: address.trim() === "" ? null : address.trim(),
         phone: phone.trim() === "" ? null : phone.trim(),
+        receiptFooter:
+          receiptFooter.trim() === "" ? null : receiptFooter.trim(),
         location: toGeoLocation(location),
         isActive,
       });
@@ -224,7 +227,32 @@ function DetailsSection({
           />
         </div>
 
-        {/* Row 3: the map pin — two half-width fields fill the existing grid. */}
+        {/*
+          Row 3: the receipt's closing line (FR-8).
+
+          FULL WIDTH, beside the address rather than beside the phone, because it
+          is a sentence and not a value.
+
+          THE PLACEHOLDER IS THE TRUTH, not a suggestion: leaving this empty
+          prints "Terima kasih" rather than nothing, so what the field shows
+          greyed out is exactly what the receipt will say. There is
+          no way to ask for a receipt with no closing line at all — that is the
+          price of every receipt having one.
+        */}
+        <div className="sm:col-span-2">
+          <TextField
+            label="Catatan kaki struk"
+            name="receiptFooter"
+            placeholder="Terima kasih"
+            value={receiptFooter}
+            onChange={(e) => setReceiptFooter(e.target.value)}
+            error={fieldErrors.receiptFooter}
+            hint="Dicetak di bagian bawah struk cabang ini. Kosongkan untuk memakai kalimat bawaan."
+            disabled={disabled}
+          />
+        </div>
+
+        {/* Row 4: the map pin — two half-width fields fill the existing grid. */}
         <LocationFields
           value={location}
           onChange={setLocation}

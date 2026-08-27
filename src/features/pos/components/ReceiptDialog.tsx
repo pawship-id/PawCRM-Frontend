@@ -105,7 +105,10 @@ export function ReceiptDialog({
       "",
       `Total: ${formatMoney(source.totals?.grandTotal ?? "0")}`,
       "",
-      "Terima kasih sudah mampir.",
+      // The same closing line the paper prints — the server resolves the shop's
+      // words or the standard ones, so this cannot drift from the slip.
+      // The `||` stays as a guard against an older API, not as a fallback.
+      source.header.receiptFooter || null,
     ];
 
     return lines.filter((line) => line !== null).join("\n");

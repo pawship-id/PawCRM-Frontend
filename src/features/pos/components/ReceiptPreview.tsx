@@ -250,9 +250,9 @@ export function ReceiptPreview({
         LABELLED "Catatan:", which FR-5 asks for by name.
         
         Without it the note is one unmarked paragraph between the payment lines
-        and "Terima kasih sudah mampir" — and a customer reading their slip has
-        no way to tell an instruction the cashier typed from part of the shop's
-        own boilerplate.
+        and "Terima kasih" — and a customer reading their slip has no way to
+        tell an instruction the cashier typed from part of the shop's own
+        boilerplate.
       */}
       {receipt.note && (
         <p className="mt-2 border-t border-dashed border-border pt-2 text-xs">
@@ -261,9 +261,23 @@ export function ReceiptPreview({
         </p>
       )}
 
-      <p className="mt-3 text-center text-xs text-muted">
-        Terima kasih sudah mampir.
-      </p>
+      {/*
+        THE SHOP'S OWN CLOSING LINE (FR-8), from the branch profile — it used to
+        be typed here, which meant a shop wanting "Barang yang sudah dibeli tidak
+        dapat ditukar" had no way to say so.
+
+        THE FALLBACK IS THE SERVER'S, not this component's: the printed slip and
+        the text copied for WhatsApp must close the same way, and a default
+        written into each of them is two places that can drift apart. What
+        arrives here is already the shop's words or the standard ones.
+
+        The guard stays anyway — an empty paragraph is not something to draw.
+      */}
+      {receipt.header.receiptFooter && (
+        <p className="mt-3 text-center text-xs whitespace-pre-wrap text-muted">
+          {receipt.header.receiptFooter}
+        </p>
+      )}
     </div>
   );
 }
