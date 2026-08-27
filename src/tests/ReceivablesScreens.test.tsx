@@ -503,6 +503,8 @@ describe("InvoiceDetail", () => {
             byUserId: "u1",
             byUserName: "Rani",
             journalEntryId: "je-pay1",
+            journalEntryNumber: "JE-2026-08-0412",
+            reversalJournalEntryNumber: null,
             isVoided: false,
             voidedAt: null,
             voidedBy: null,
@@ -650,6 +652,8 @@ describe("InvoiceDetail", () => {
             byUserId: "u1",
             byUserName: "Rani",
             journalEntryId: "je-pay1",
+            journalEntryNumber: "JE-2026-08-0412",
+            reversalJournalEntryNumber: null,
             isVoided: false,
             voidedAt: null,
             voidedBy: null,
@@ -665,9 +669,14 @@ describe("InvoiceDetail", () => {
     expect(
       await screen.findByText(/Masuk ke BCA Operasional/),
     ).toBeInTheDocument();
-    // The journal id is the only handle on a mistake — a payment cannot be
-    // edited or deleted.
-    expect(screen.getByText("je-pay1")).toBeInTheDocument();
+    /*
+      The ledger entry is the only handle on a mistake — a payment cannot be
+      edited or deleted. Named by its NUMBER, which is what the ledger is filed
+      under; the id is the link's address, not the label.
+    */
+    expect(
+      screen.getByRole("link", { name: "JE-2026-08-0412" }),
+    ).toBeInTheDocument();
   });
 });
 
@@ -688,11 +697,13 @@ const paymentRow = (
   byUserId: "u1",
   byUserName: "Rani",
   journalEntryId: "je-pay1",
+  journalEntryNumber: "JE-2026-08-0412",
   isVoided: false,
   voidedAt: null,
   voidedBy: null,
   voidReason: null,
   reversalJournalEntryId: null,
+  reversalJournalEntryNumber: null,
   ...overrides,
 });
 
@@ -827,7 +838,6 @@ describe("InvoiceDetail — membatalkan pembayaran", () => {
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
 
     expect(await screen.findByText(/Dobel input/)).toBeInTheDocument();
-    expect(screen.getByText("je-rev1")).toBeInTheDocument();
     expect(screen.getAllByText("dibatalkan").length).toBeGreaterThan(0);
   });
 
@@ -950,6 +960,9 @@ describe("PaymentReceipt — what does NOT go on a customer's sheet", () => {
 
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).queryByText("je-pay1")).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByText("JE-2026-08-0412"),
+    ).not.toBeInTheDocument();
     expect(within(dialog).queryByText(/Dicetak dari/)).not.toBeInTheDocument();
   });
 
@@ -966,6 +979,77 @@ describe("PaymentReceipt — what does NOT go on a customer's sheet", () => {
     expect(within(dialog).getByText("Bu Sari")).toBeInTheDocument();
     expect(
       within(dialog).getByText("Sisa tagihan saat ini"),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("PaymentHistory — the ledger reference", () => {
+  /*
+    The timeline used to render "jurnal 6a903c1a3d3de99c0994134a". An ObjectId is
+    neither something a person can look up nor something they can quote to whoever
+    can — and it was not a link either.
+  */
+  it("shows the entry NUMBER, linked to the entry itself", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(paidDetail());
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    const link = await screen.findByRole("link", { name: "JE-2026-08-0412" });
+    expect(link).toHaveAttribute(
+      "href",
+      "/dashboard/keuangan/journal-entries/je-pay1",
+    );
+    // The raw id is not on screen anywhere.
+    expect(screen.queryByText("je-pay1")).not.toBeInTheDocument();
+  });
+
+  it("links the reversing entry too, on a cancelled payment", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      paidDetail([
+        paymentRow({
+          isVoided: true,
+          voidReason: "Dobel input",
+          reversalJournalEntryId: "je-rev1",
+          reversalJournalEntryNumber: "JE-2026-08-0498",
+        }),
+      ]),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(
+      await screen.findByRole("link", { name: "JE-2026-08-0498" }),
+    ).toHaveAttribute("href", "/dashboard/keuangan/journal-entries/je-rev1");
+  });
+
+  /*
+    A link that lands on "Akses ditolak" is worse than plain text — it promises
+    somewhere to go. The number still shows: it is what somebody quotes to
+    whoever can open the ledger.
+  */
+  it("shows the number as plain text without `journalEntries:read`", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(paidDetail());
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />, {
+      isSuperAdmin: false,
+      permissions: [{ feature: "customerInvoices", actions: ["read", "pay"] }],
+    });
+
+    expect(await screen.findByText("JE-2026-08-0412")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "JE-2026-08-0412" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("falls back to the id when the number cannot be resolved", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      paidDetail([paymentRow({ journalEntryNumber: null })]),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(
+      await screen.findByRole("link", { name: "je-pay1" }),
     ).toBeInTheDocument();
   });
 });

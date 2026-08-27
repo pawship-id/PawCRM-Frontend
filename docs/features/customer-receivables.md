@@ -252,6 +252,26 @@ Printing reuses `features/pos/print/receipt.css` and its portal-to-`body`
 arrangement — that stylesheet carries the two ways printing from inside a dialog
 went wrong before it.
 
+## The ledger reference is a number, and a link
+
+Each payment names its journal entry by **number** (`JE-2026-08-0412`), linked to
+`/dashboard/keuangan/journal-entries/:id`. A cancelled payment names both: the
+entry it made and the one that undid it.
+
+It used to render the raw ObjectId — neither something a person could look up nor
+something they could quote to whoever can, and not a link either. The number is
+the **label**, the id is the **address**; the API sends both because the ledger's
+route is keyed by id.
+
+**The link is gated, the label is not.** `journalEntries:read` is a separate
+grant, and a link that lands on "Akses ditolak" promises somewhere to go. Without
+it the number renders as plain text — still worth showing, because it is what
+somebody quotes to a colleague who can open the ledger.
+
+When the number cannot be resolved (an entry removed by a repair script) the id
+comes back as the label. A poor label, but a blank space where a ledger reference
+belongs is worse, and the link still works.
+
 ## No update, no delete, and no way to EDIT a payment
 
 The service has five methods because the API has five endpoints. There is no
@@ -294,7 +314,7 @@ the document actually holds rather than joining a POS transaction to fake them.
 | `features/sales/components/PaymentReceipt.tsx`            | The kwitansi sheet                |
 | `features/sales/components/PaymentReceiptDialog.tsx`      | Preview + print                   |
 | `features/sales/components/InvoiceStatusBadge.tsx`        | Status + source chips             |
-| `tests/ReceivablesScreens.test.tsx`                       | 39 tests over both screens        |
+| `tests/ReceivablesScreens.test.tsx`                       | 43 tests over both screens        |
 
 `PageHeading` is imported from `@/features/purchasing` rather than copied — it is
 on the migration list to be promoted to `@/components` (ui-rules §15), and a

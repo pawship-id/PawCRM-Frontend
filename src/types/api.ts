@@ -3597,6 +3597,16 @@ export interface CustomerInvoicePayment {
   byUserId: string | null;
   byUserName: string | null;
   journalEntryId: string;
+  /**
+   * `JE-2026-08-0412` — what the ledger is actually filed under, and what a
+   * person can quote.
+   *
+   * BESIDE THE ID, NEVER INSTEAD OF IT. The number is the LABEL;
+   * `/dashboard/keuangan/journal-entries/:id` is addressed by ID, so a link
+   * needs both. Null only when the entry could not be resolved (hard-deleted by
+   * a repair script) — the link still works, the label degrades.
+   */
+  journalEntryNumber: string | null;
 
   /**
    * WHETHER THIS PAYMENT STILL COUNTS. Derived server-side from `voidedAt` so
@@ -3614,6 +3624,7 @@ export interface CustomerInvoicePayment {
   voidReason: string | null;
   /** The entry that UNDID it, beside the one that made it. */
   reversalJournalEntryId: string | null;
+  reversalJournalEntryNumber: string | null;
 }
 
 /**

@@ -9,6 +9,14 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased] — Faktur Penjualan: perbaikan dari verifikasi UI
 
+**Id jurnal di riwayat pembayaran diganti nomor jurnal, dan bisa diklik.**
+Barisnya dulu berbunyi "jurnal 6a903c1a3d3de99c0994134a" — bukan sesuatu yang
+bisa dicari, dikutip, atau dicocokkan. Sekarang `JE-2026-08-0412`, menaut ke
+`/dashboard/keuangan/journal-entries/:id`; pembayaran yang dibatalkan menaut
+keduanya, entri aslinya dan pembaliknya. Tautannya digating `journalEntries:read`
+— tanpa grant itu nomornya tetap tampil sebagai teks biasa, karena itulah yang
+dikutip ke orang yang bisa membuka buku besarnya.
+
 **Tombol Simpan pembayaran tidak lagi terkunci selamanya setelah DP.** Kuncinya
 dulu hanya dilepas saat gagal, dengan asumsi pembayaran yang berhasil selalu
 meng-unmount form-nya — benar hanya untuk **pelunasan**. Setelah pembayaran

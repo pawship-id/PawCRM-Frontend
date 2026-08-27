@@ -1,11 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { Printer, Undo2 } from "lucide-react";
 
 import { Card } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Can } from "@/features/permissions";
+import { Can, usePermissions } from "@/features/permissions";
 import { cn } from "@/lib/utils";
 import { formatMoney } from "@/utils/decimal";
 import type { CustomerInvoicePayment } from "@/types/api";
@@ -59,6 +60,15 @@ export function PaymentHistory({
   onPrint: (payment: CustomerInvoicePayment) => void;
   onVoid: (payment: CustomerInvoicePayment) => void;
 }) {
+  /*
+    THE LINK IS GATED, THE LABEL IS NOT. `journalEntries:read` is a separate
+    grant, and a link that lands on "Akses ditolak" is worse than plain text —
+    it promises somewhere to go. The number itself is still worth showing to
+    everybody: it is what somebody quotes to whoever CAN open the ledger.
+  */
+  const { can } = usePermissions();
+  const mayReadLedger = can("journalEntries", "read");
+
   return (
     <Card title="Riwayat pembayaran">
       {payments.length === 0 ? (
@@ -105,7 +115,11 @@ export function PaymentHistory({
                 <p className="text-xs text-muted">
                   Masuk ke {payment.channelName ?? "rekening terhapus"} ·{" "}
                   {payment.byUserName ?? "Pengguna terhapus"} · jurnal{" "}
-                  <span className="tabular-nums">{payment.journalEntryId}</span>
+                  <JournalLink
+                    id={payment.journalEntryId}
+                    number={payment.journalEntryNumber}
+                    linked={mayReadLedger}
+                  />
                 </p>
 
                 {/*
@@ -121,9 +135,11 @@ export function PaymentHistory({
                     {payment.reversalJournalEntryId && (
                       <>
                         {" · jurnal pembalik "}
-                        <span className="tabular-nums">
-                          {payment.reversalJournalEntryId}
-                        </span>
+                        <JournalLink
+                          id={payment.reversalJournalEntryId}
+                          number={payment.reversalJournalEntryNumber}
+                          linked={mayReadLedger}
+                        />
                       </>
                     )}
                   </p>
@@ -170,5 +186,43 @@ export function PaymentHistory({
         </p>
       )}
     </Card>
+  );
+}
+
+/**
+ * One ledger entry, as its NUMBER, linked to the entry itself.
+ *
+ * THE NUMBER IS THE LABEL, THE ID IS THE ADDRESS. `JE-2026-08-0412` is what the
+ * ledger is filed under and what somebody quotes; the route is keyed by id. This
+ * used to render the raw ObjectId, which was neither — nobody can look up
+ * "6a903c1a3d3de99c0994134a", and it was not a link either.
+ *
+ * FALLS BACK TO THE ID as text when the number could not be resolved — an entry
+ * removed by a repair script. An id is a poor label, but a blank space where a
+ * ledger reference belongs is worse: the link still works, so the reference is
+ * still followable.
+ */
+function JournalLink({
+  id,
+  number,
+  linked,
+}: {
+  id: string;
+  number: string | null;
+  linked: boolean;
+}) {
+  const label = number ?? id;
+
+  if (!linked) {
+    return <span className="tabular-nums">{label}</span>;
+  }
+
+  return (
+    <Link
+      href={`/dashboard/keuangan/journal-entries/${id}`}
+      className="tabular-nums text-primary-hover underline-offset-2 hover:underline"
+    >
+      {label}
+    </Link>
   );
 }
