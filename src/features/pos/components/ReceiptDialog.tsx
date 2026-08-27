@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { flushSync } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { Copy, Download, Printer } from "lucide-react";
 
 import { Alert, Spinner } from "@/components";
@@ -18,7 +18,11 @@ import { posService } from "@/services/pos.service";
 import { formatMoney } from "@/utils/decimal";
 import type { PosReceipt } from "@/types/api";
 
-import { RECEIPT_SIZE_LABELS, useReceiptSize } from "../deviceSettings";
+import {
+  RECEIPT_SIZE_LABELS,
+  useReceiptSize,
+  type ReceiptSize,
+} from "../deviceSettings";
 import { ReceiptPreview } from "./ReceiptPreview";
 import "../print/receipt.css";
 
@@ -63,14 +67,14 @@ export function ReceiptDialog({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /*
-    A4 FOR THE DURATION OF ONE SAVE (FR-8's "Unduh PDF").
+    THE SIZE BEING PRINTED RIGHT NOW, or null when nothing is.
 
-    Not a second paper size the cashier has to think about — it is turned on for
-    the length of `window.print()` and off again. A PDF is filed, e-mailed and
-    read on a screen, and a 48 mm strip is the wrong shape for all three even
-    when the shop's printer is 58 mm.
+    While this is set, the receipt is ALSO rendered into a node at the top level
+    of the page (see the portal at the bottom of this component) and that copy is
+    the one that prints — see `print/receipt.css` for why printing from inside
+    the dialog could not be made to work.
   */
-  const [asPdf, setAsPdf] = useState(false);
+  const [printing, setPrinting] = useState<ReceiptSize | null>(null);
   const [copied, setCopied] = useState(false);
   const [manualText, setManualText] = useState<string | null>(null);
 
@@ -157,47 +161,44 @@ export function ReceiptDialog({
   }
 
   /**
-   * Save this receipt as a PDF (FR-8).
+   * Print the receipt at one particular size (FR-8).
    *
-   * THE BROWSER'S OWN "Save as PDF", not a PDF library, and that is what makes
-   * the file "identik dengan preview" that FR-8 asks for: it prints the very
-   * DOM and stylesheet on screen. Every library would redraw the receipt from
-   * the data instead — a SECOND layout, which is exactly what this feature
-   * refused when print was built, and it would drift the first time either
-   * changed.
-   *
-   * WHAT MAKES IT DIFFERENT FROM "Cetak" beside it, rather than a second button
-   * doing one thing: this one is always A4 and names the file, because it is
-   * meant to be kept. Cetak follows the printer plugged into the till.
-   *
-   * THE FILENAME IS `document.title` — that is where every browser takes the
-   * default from — so it is swapped for the length of the dialog and put back.
+   * THE COPY THAT PRINTS IS NOT THE ONE ON SCREEN. Setting `printing` renders a
+   * second `ReceiptPreview` into a node attached straight to `document.body`,
+   * and the stylesheet removes everything else on the page. The dialog's own
+   * preview stays exactly as it is — see `print/receipt.css` for the two ways
+   * printing from INSIDE the dialog went wrong before this.
    *
    * `flushSync` is load-bearing. `window.print()` runs synchronously against
    * whatever is in the DOM at that instant; an ordinary `setState` would still
-   * be queued, and the saved file would carry the till's 58 mm layout while the
-   * screen showed A4.
+   * be queued and the page would print with no receipt on it at all.
+   *
+   * THE FILENAME IS `document.title` — that is where every browser takes the
+   * default from when somebody saves rather than prints — so it is swapped for
+   * the length of the dialog and put back.
    */
-  function saveAsPdf() {
+  function printAt(target: ReceiptSize) {
     if (!receipt) return;
 
     const previousTitle = document.title;
 
-    flushSync(() => setAsPdf(true));
+    flushSync(() => setPrinting(target));
     document.title = `Struk ${receipt.transactionNumber ?? ""}`.trim();
-
-    const restore = () => {
-      document.title = previousTitle;
-      setAsPdf(false);
-    };
 
     /*
       `afterprint` rather than the line after `print()`. Chrome blocks until the
       dialog closes, but Safari does not — restoring unconditionally there would
-      put the title back while the dialog was still open, and the file would be
-      saved under the wrong name.
+      tear the receipt back out of the page while the dialog was still open.
     */
-    window.addEventListener("afterprint", restore, { once: true });
+    window.addEventListener(
+      "afterprint",
+      () => {
+        document.title = previousTitle;
+        setPrinting(null);
+      },
+      { once: true },
+    );
+
     window.print();
   }
 
@@ -246,7 +247,7 @@ export function ReceiptDialog({
         ) : (
           <>
             <div className="max-h-80 overflow-y-auto rounded-lg border border-border">
-              <ReceiptPreview receipt={receipt} size={asPdf ? "a4" : size} />
+              <ReceiptPreview receipt={receipt} size={size} />
             </div>
 
             {/*
@@ -305,18 +306,24 @@ export function ReceiptDialog({
             door to a PDF — but a different destination, a different layout and a
             different name, which is what stops it being Cetak twice.
           */}
+          {/*
+            ALWAYS A4, whatever the till's printer is set to. A PDF is filed,
+            e-mailed and read on a screen, and a 48 mm strip is the wrong shape
+            for all three — which is also what stops this being Cetak twice.
+          */}
           <Button
             type="button"
             variant="secondary"
-            onClick={saveAsPdf}
+            onClick={() => printAt("a4")}
             disabled={!receipt}
           >
             <Download className="size-4" />
             Unduh PDF
           </Button>
+          {/* The printer actually plugged into this till. */}
           <Button
             type="button"
-            onClick={() => window.print()}
+            onClick={() => printAt(size)}
             disabled={!receipt}
           >
             <Printer className="size-4" />
@@ -324,6 +331,27 @@ export function ReceiptDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      {/*
+        WHAT ACTUALLY PRINTS (FR-8).
+
+        A direct child of `body`, so it has no positioned, transformed or
+        scrolling ancestor between it and the paper — which is the whole reason
+        it exists rather than the stylesheet simply pointing at the preview
+        above. `print/receipt.css` carries the two failures that led here.
+
+        Present only while printing: an extra copy of the receipt sitting in the
+        DOM the rest of the time would be read out by a screen reader as a second
+        receipt.
+      */}
+      {printing && receipt
+        ? createPortal(
+            <div data-print-root>
+              <ReceiptPreview receipt={receipt} size={printing} />
+            </div>,
+            document.body,
+          )
+        : null}
     </Dialog>
   );
 }

@@ -129,6 +129,22 @@ describe("PublicReceiptScreen", () => {
     expect(screen.getByText(/minta lagi ke petshop-nya/i)).toBeInTheDocument();
   });
 
+  /*
+    A CUSTOMER MAY WELL PRINT THEIR OWN RECEIPT, and `print/receipt.css` removes
+    every top-level node that is not marked. Without this the page would print
+    blank — silently, on somebody else's printer.
+  */
+  it("is printable by the browser's own print", async () => {
+    mockedPos.publicReceipt.mockResolvedValue(receipt());
+
+    const { container } = render(<PublicReceiptScreen token={TOKEN} />);
+
+    await screen.findByText("PawShip");
+    const root = container.querySelector("[data-print-root]");
+    expect(root).not.toBeNull();
+    expect(root?.querySelector("[data-receipt-sheet]")).not.toBeNull();
+  });
+
   it("offers nothing to act on", async () => {
     mockedPos.publicReceipt.mockResolvedValue(receipt());
 

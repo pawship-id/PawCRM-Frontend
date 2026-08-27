@@ -6,24 +6,71 @@
   and whether the shop name is large — and three files would drift the moment
   somebody fixed a margin in one of them.
 
-  EVERYTHING ELSE ON THE PAGE IS HIDDEN when printing. A thermal printer given
-  the dashboard's sidebar wastes half a roll on navy before it reaches the total.
+  THE RECEIPT PRINTS FROM ITS OWN NODE AT THE TOP LEVEL OF THE PAGE, put there by
+  `createPortal` for the length of one print, and everything else on the page is
+  removed outright.
+
+  WHY, AND WHAT THE OLD WAY COST. This used to hide the page with
+  `visibility: hidden` and lift the receipt out with `position: absolute`, which
+  works only if nothing between the sheet and the page is positioned. Inside a
+  dialog everything is: `DialogContent` is `fixed` and centred with a
+  `translate`, and a transformed ancestor becomes the containing block for the
+  absolute box inside it. The receipt anchored to the middle of the dialog
+  instead of the corner of the paper, so it printed starting halfway down the
+  page with its entire right-hand column — every amount on it — running off the
+  edge. Fighting that with `position: static !important` on the dialog only moved
+  the mess: the sheet then landed three pages down, past the invisible-but-still
+  laid-out page above it.
+
+  A node that is a direct child of `body` has no such ancestors, so nothing needs
+  overriding and there is nothing left to get wrong.
 */
 
 @media print {
-  body * {
-    visibility: hidden;
+  /*
+    EVERYTHING BUT THE RECEIPT, GONE — `display: none`, not `visibility: hidden`.
+    Hidden boxes still occupy the page, which is what pushed the receipt onto
+    page three; removed ones do not.
+  */
+  body > *:not([data-print-root]) {
+    display: none !important;
   }
 
-  [data-receipt-sheet],
-  [data-receipt-sheet] * {
-    visibility: visible;
+  [data-print-root] {
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+  }
+
+  /*
+    Radix locks the page's scroll while a dialog is open — `overflow: hidden` on
+    `body`, set inline. A receipt long enough to run past one page would be cut
+    off at the fold by it, and a printout that silently loses its last three
+    items is worse than one that is obviously wrong.
+  */
+  html,
+  body {
+    overflow: visible !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Screen chrome around the receipt on the public page — not ink. */
+  [data-receipt-frame] {
+    border: 0 !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
+  }
+
+  [data-screen-only] {
+    display: none !important;
   }
 
   [data-receipt-sheet] {
-    position: absolute;
-    inset: 0 auto auto 0;
-    margin: 0;
+    /* Centred on the paper: a no-op on a thermal roll, 10mm a side on A4. */
+    margin: 0 auto;
     /* Black on white, whatever the viewer's theme. A receipt is ink on paper. */
     background: #fff;
     color: #000;

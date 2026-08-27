@@ -52,7 +52,16 @@ export function PublicReceiptScreen({ token }: { token: string }) {
   }, [token]);
 
   return (
-    <main className="mx-auto flex w-full max-w-md flex-col gap-4 p-4">
+    /*
+      `data-print-root` because a customer may well hit Ctrl+P on their own
+      receipt, and `print/receipt.css` removes every top-level node that is not
+      one. There is no button for it here — the reader is a customer, and the
+      browser's own print is the thing they will reach for.
+    */
+    <main
+      data-print-root
+      className="mx-auto flex w-full max-w-md flex-col gap-4 p-4"
+    >
       {loading && (
         <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
           <Spinner /> Memuat struk…
@@ -83,11 +92,15 @@ export function PublicReceiptScreen({ token }: { token: string }) {
             </p>
           )}
 
-          <div className="overflow-hidden rounded-xl border border-border">
+          <div
+            data-receipt-frame
+            className="overflow-hidden rounded-xl border border-border"
+          >
             <ReceiptPreview receipt={receipt} size={DEFAULT_RECEIPT_SIZE} />
           </div>
 
-          <p className="text-center text-sm text-muted">
+          {/* Advice about a link, which means nothing once this is on paper. */}
+          <p data-screen-only className="text-center text-sm text-muted">
             Struk ini dikirim oleh {receipt.header.tenantName}. Simpan tautannya
             kalau sewaktu-waktu perlu dibuka lagi.
           </p>

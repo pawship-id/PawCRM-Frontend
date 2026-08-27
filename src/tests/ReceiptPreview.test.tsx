@@ -630,17 +630,27 @@ describe("ReceiptDialog — the WhatsApp link", () => {
 });
 
 /**
- * "Unduh PDF" (FR-8: "file identik dengan preview").
+ * "Unduh PDF" and "Cetak" (FR-8).
  *
  * THE BROWSER'S OWN SAVE-AS-PDF, not a PDF library — which is what makes the
  * file identical to the preview rather than merely similar: it prints the very
- * DOM on screen. A library would redraw the receipt from the data, and a second
- * layout drifts from the first the day either one changes.
+ * markup the dialog draws. A library would redraw the receipt from the data, and
+ * a second layout drifts from the first the day either one changes.
+ *
+ * WHAT PRINTS IS A COPY AT THE TOP LEVEL OF THE PAGE, not the preview inside the
+ * dialog. `print/receipt.css` carries the two ways printing from inside the
+ * dialog went wrong; these are about the node that replaced it.
  */
-describe("ReceiptDialog — saving a PDF", () => {
+describe("ReceiptDialog — printing and saving", () => {
   const print = jest.fn();
-  const sheet = (container: HTMLElement) =>
-    container.ownerDocument.querySelector("[data-receipt-sheet]");
+
+  /** The receipt that would actually reach the paper. */
+  const printedSheet = () =>
+    document.querySelector("[data-print-root] [data-receipt-sheet]");
+
+  /** The one the cashier is looking at. */
+  const previewSheet = () =>
+    document.querySelector("[data-slot='dialog-content'] [data-receipt-sheet]");
 
   beforeEach(() => {
     print.mockReset();
@@ -662,52 +672,80 @@ describe("ReceiptDialog — saving a PDF", () => {
   });
 
   /*
-    WHAT MAKES IT DIFFERENT FROM "Cetak" beside it. A PDF is filed, e-mailed and
-    read on a screen, and a 48 mm strip is the wrong shape for all three — even
-    when the till's own printer is 58 mm.
+    THE RECEIPT HAS TO BE IN THE PAGE BEFORE `print()` RUNS, not after.
+    `window.print()` reads whatever is in the DOM at that instant, so a queued
+    setState would have printed a page with no receipt on it at all — which is
+    why the component flushes first.
   */
-  it("lays the sheet out as A4 even on a 58 mm till", async () => {
+  it("puts the receipt in the page before printing, not after", async () => {
     const user = userEvent.setup();
-    window.localStorage.setItem("buloo.pos.receiptSize", "58");
     mockedPos.receipt.mockResolvedValue(receipt());
 
-    const { container } = renderWithAuth(
-      <ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />,
-    );
+    renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
     await screen.findByText(/buloo petshop/i);
-    expect(sheet(container)).toHaveAttribute("data-receipt-sheet", "58");
+
+    expect(printedSheet()).toBeNull();
 
     await user.click(screen.getByRole("button", { name: /unduh pdf/i }));
 
-    /*
-      ALREADY A4 BY THE TIME `print()` RAN, not after. `window.print()` reads
-      whatever is in the DOM at that instant, so a queued setState would have
-      saved the till's 58 mm layout while the screen showed A4 — which is why
-      the component flushes before printing.
-    */
-    expect(sheet(container)).toHaveAttribute("data-receipt-sheet", "a4");
+    expect(printedSheet()).not.toBeNull();
     expect(print).toHaveBeenCalled();
   });
 
-  it("leaves Cetak on the printer the till actually has", async () => {
+  /*
+    OUTSIDE THE DIALOG, which is the entire point of the node. Inside it every
+    ancestor is positioned, transformed or scrolls, and the receipt printed
+    halfway down the page with its amounts off the edge.
+  */
+  it("prints from a node attached straight to the page", async () => {
+    const user = userEvent.setup();
+    mockedPos.receipt.mockResolvedValue(receipt());
+
+    renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
+    await user.click(await screen.findByRole("button", { name: /unduh pdf/i }));
+
+    const root = document.querySelector("[data-print-root]");
+    expect(root?.parentElement).toBe(document.body);
+    expect(root?.closest("[data-slot='dialog-content']")).toBeNull();
+  });
+
+  /*
+    WHAT MAKES "Unduh PDF" DIFFERENT FROM "Cetak" beside it. A PDF is filed,
+    e-mailed and read on a screen, and a 48 mm strip is the wrong shape for all
+    three — even when the till's own printer is 58 mm.
+  */
+  it("saves as A4 even on a 58 mm till, and leaves the preview alone", async () => {
     const user = userEvent.setup();
     window.localStorage.setItem("buloo.pos.receiptSize", "58");
     mockedPos.receipt.mockResolvedValue(receipt());
 
-    const { container } = renderWithAuth(
-      <ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />,
-    );
+    renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
+    await screen.findByText(/buloo petshop/i);
+
+    await user.click(screen.getByRole("button", { name: /unduh pdf/i }));
+
+    expect(printedSheet()).toHaveAttribute("data-receipt-sheet", "a4");
+    // The cashier's own preview does not flicker to A4 and back.
+    expect(previewSheet()).toHaveAttribute("data-receipt-sheet", "58");
+  });
+
+  it("prints on the paper the till actually has", async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem("buloo.pos.receiptSize", "58");
+    mockedPos.receipt.mockResolvedValue(receipt());
+
+    renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
     await user.click(await screen.findByRole("button", { name: /^cetak$/i }));
 
-    expect(sheet(container)).toHaveAttribute("data-receipt-sheet", "58");
+    expect(printedSheet()).toHaveAttribute("data-receipt-sheet", "58");
   });
 
   /*
-    THE FILENAME. Every browser takes the default from `document.title`, so it is
-    swapped for the length of the dialog — "Struk POS-20260825-0001.pdf" rather
-    than whatever the page happened to be called.
+    THE FILENAME. Every browser takes the default from `document.title` when
+    somebody saves rather than prints — "Struk POS-20260825-0001.pdf" rather than
+    whatever the page happened to be called.
   */
-  it("names the file after the transaction", async () => {
+  it("names the file after the transaction, then puts the page back", async () => {
     const user = userEvent.setup();
     const before = document.title;
     mockedPos.receipt.mockResolvedValue(receipt());
@@ -718,15 +756,38 @@ describe("ReceiptDialog — saving a PDF", () => {
     expect(document.title).toBe("Struk POS-20260825-0001");
 
     /*
-      PUT BACK ON `afterprint`, not on the line after `print()`. Chrome blocks
-      until the dialog closes and Safari does not — restoring unconditionally
-      would rename the page back while the dialog was still open, and the file
-      would be saved under the old title.
+      TIDIED ON `afterprint`, not on the line after `print()`. Chrome blocks
+      until the dialog closes and Safari does not — tearing down unconditionally
+      would pull the receipt out of the page while the dialog was still open.
     */
     window.dispatchEvent(new Event("afterprint"));
+
     expect(document.title).toBe(before);
-    await waitFor(() =>
-      expect(sheet(document.body)).toHaveAttribute("data-receipt-sheet", "80"),
-    );
+    await waitFor(() => expect(printedSheet()).toBeNull());
+  });
+});
+
+/**
+ * What the print stylesheet hangs off (FR-8).
+ *
+ * It removes every top-level node that is not `[data-print-root]`. jsdom applies
+ * no print stylesheet and computes no layout, so nothing here can prove the
+ * receipt lands square on the paper — but it can prove the two ends still agree
+ * on the name they meet under. Renaming one without the other prints a blank
+ * page, silently, in a shop.
+ */
+describe("ReceiptDialog — what the print CSS depends on", () => {
+  it("marks the printed node with the name the stylesheet keeps", async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(window, "print", {
+      value: jest.fn(),
+      configurable: true,
+    });
+    mockedPos.receipt.mockResolvedValue(receipt());
+
+    renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
+    await user.click(await screen.findByRole("button", { name: /^cetak$/i }));
+
+    expect(document.querySelector("[data-print-root]")).not.toBeNull();
   });
 });
