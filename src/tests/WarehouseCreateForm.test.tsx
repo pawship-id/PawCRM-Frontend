@@ -27,6 +27,7 @@ function branchPage(): PageResult<Branch> {
         _id: "b1",
         tenantId: "t1",
         name: "Jakarta",
+        code: null,
         address: null,
         phone: null,
         receiptFooter: null,

@@ -7,6 +7,74 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Badge diskon kasir menyebut angka yang salah
+
+**Perbaikan bug, ditemukan saat uji regresi diskon.** Badge di tombol diskon
+merender `Rp${value.value}` — dua kesalahan sekaligus:
+
+- **angka yang diketik, bukan yang dipotong.** Diskon nominal Rp 110.000 pada
+  baris Rp 100.000 dibatasi jadi Rp 100.000, tapi badge tetap menyebut 110.000.
+  Barisnya bilang "−Rp 100.000", badge di sebelahnya bilang 110000 — dua angka
+  untuk satu diskon, dan yang lebih besar justru di tempat yang menarik mata.
+- **tanpa format.** `110000.0000` — skala Decimal128 mentah. Itu bentuk
+  penyimpanan, bukan sesuatu yang dibaca kasir.
+
+Sekarang mode nominal menampilkan `formatMoney(resolvedAmount)`, dan mode persen
+tetap persen — "10%" yang disepakati dengan pelanggan, rupiahnya sudah ada di
+baris atasnya.
+
+**Satu jebakan di perbaikannya sendiri:** trim nol-di-belakang yang naif
+(`/\.?0+$/`) ikut memakan nol pada "100.0000" dan mengubah **100% jadi 1%**. 100%
+adalah diskon yang nyata — barang pengganti, kompensasi. Sekarang hanya nol di
+bagian desimal yang dibuang, dan ada tesnya khusus untuk itu.
+
+`PosDiscountPopover` sebelumnya tidak punya tes sama sekali; sekarang 6.
+
+## [Unreleased] — Error di form cabang jadi toast
+
+Diminta langsung. **Penyimpangan sengaja dari `docs/ui-rules.md` §9**, dicatat di
+header kedua komponen: form cabang panjang dan bisa di-scroll, jadi `409` kode
+cabang muncul saat kursor ada di tengah halaman — dan Alert yang menempel di atas
+form adalah pesan yang tidak akan dilihat oleh orang yang menyebabkannya.
+
+**Error per-field tetap di bawah field-nya.** Itu memberitahu kotak mana yang
+salah, dan toast tidak bisa menunjuk kotak. Yang dipindah hanya penolakan tingkat
+form yang memang tidak punya field untuk ditempeli.
+
+Penolakan server dapat timer **8 detik**, bukan 3 — ia membawa instruksi, dan tiga
+detik tidak cukup untuk membacanya lalu bertindak.
+
+Pesan validasi cabang diterjemahkan ke Bahasa (§12 mengikat; §15 sudah mencatat
+layar cabang sebagai utang terjemahan). Hint kode cabang sekarang menyebut batas
+8 karakternya di depan.
+
+---
+
+## [Unreleased] — Cabang punya Kode, dan kode itu masuk ke nomor faktur
+
+Pondasi PCR-030. Belum ada layar faktur baru; yang berubah satu isian di Master
+Data.
+
+**Master Data → Branch dapat isian "Kode cabang"** di form tambah dan ubah.
+Isinya masuk ke nomor faktur cabang itu — `INV/CBS/2608/0001` — dan sengaja
+**tidak** diturunkan dari namanya: cabang bisa diganti nama, dan faktur yang sudah
+terbit harus tetap memakai nomor yang sudah terlanjur disebut ke pelanggan.
+
+**Dijadikan huruf besar sambil diketik**, bukan diam-diam saat disimpan. Server
+juga menjadikannya huruf besar, jadi keduanya tersimpan sama saja — tapi kolom
+yang mengubah isinya sendiri setelah orang berpaling terbaca seperti bug, dan yang
+sedang mengecek nomor fakturnya harus melihat persis string yang akan tercetak.
+
+**Boleh dikosongkan.** Setiap cabang yang sudah ada belum punya kode, dan kolom
+wajib akan membuat semuanya tidak bisa disimpan. Cabang tanpa kode tetap bisa
+menjual piutang — nomornya jadi tiga segmen, `INV/2608/0001`.
+
+**Labelnya Bahasa** meskipun form cabang di sekitarnya masih Inggris. Itu
+mengikuti `docs/ui-rules.md` §12 yang mengikat, dan §15 sudah mencatat form cabang
+sebagai utang terjemahan — aturannya menang atas berkas tetangganya.
+
+---
+
 ## [Unreleased] — Akun jurnal per kategori, dan jalan pulang ke "kosong"
 
 Amandemen PCR-009 dari sisi UI. Aturan lengkapnya di

@@ -440,6 +440,15 @@ export interface Branch {
   _id: string;
   tenantId: string;
   name: string;
+  /**
+   * The short identifier that goes INSIDE this branch's invoice numbers —
+   * `INV/CBS/2608/0001`.
+   *
+   * Null on every branch created before invoices needed one, and on any branch
+   * whose owner has not filled it in. A branch with no code cannot issue an
+   * invoice; the API refuses with a message naming the branch.
+   */
+  code: string | null;
   address: string | null;
   phone: string | null;
   /** The line printed at the foot of this branch's receipts (FR-8). */
@@ -475,6 +484,8 @@ export interface BranchListQuery {
  */
 export interface CreateBranchInput {
   name: string;
+  /** A-Z and 0-9 only, 2–8 characters. Uppercased server-side. */
+  code?: string | null;
   address?: string | null;
   phone?: string | null;
   /** The line printed at the foot of this branch's receipts (FR-8). */
@@ -490,6 +501,8 @@ export interface CreateBranchInput {
  */
 export interface UpdateBranchInput {
   name?: string;
+  /** `""` or `null` clears it. Uppercased server-side. */
+  code?: string | null;
   address?: string | null;
   phone?: string | null;
   /** The line printed at the foot of this branch's receipts (FR-8). */

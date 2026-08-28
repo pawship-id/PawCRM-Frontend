@@ -57,6 +57,7 @@ export const SOURCE_LABEL: Record<JournalSourceType, string> = {
   purchase_payment: "Bayar supplier",
   opname: "Stok opname",
   return: "Retur",
+  return_cogs: "HPP retur",
   commission: "Komisi",
   manual: "Manual",
 };
@@ -78,6 +79,9 @@ export const SOURCE_TONE: Record<JournalSourceType, string> = {
   purchase_payment: "bg-tint-danger text-danger",
   opname: "bg-tint-neutral text-muted",
   return: "bg-tint-neutral text-muted",
+  // The same tone as its refund half, the way `pos_cogs` shares `pos`: the two
+  // entries are one return, and a second tint would read as another event.
+  return_cogs: "bg-tint-neutral text-muted",
   commission: "bg-tint-neutral text-muted",
   // Manual entries are the ones an auditor looks at first — a human chose both
   // sides — so they are the only source that carries an outline instead of a

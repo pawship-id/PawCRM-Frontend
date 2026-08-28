@@ -41,6 +41,7 @@ function branch(id = BRANCH, name = "Cabang Timur"): Branch {
     _id: id,
     tenantId: "t1",
     name,
+    code: null,
     address: null,
     phone: null,
     receiptFooter: null,

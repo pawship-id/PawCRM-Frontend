@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Percent } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { formatMoney } from "@/utils/decimal";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -38,6 +39,38 @@ const PERCENT = /^\d{1,3}([.,]\d{1,2})?$/;
  * this does is WARN at the boundary, so the cashier knows an approval is coming
  * before they commit rather than being refused after.
  */
+/**
+ * WHAT THE BADGE SAYS — and it says what was TAKEN OFF, not what was typed.
+ *
+ * THE BUG THIS REPLACES. It rendered `Rp${value.value}`: the raw Decimal128 off
+ * the document, so a Rp 110.000 discount showed as "Rp110000.0000", and the
+ * number was the one the cashier TYPED rather than the one applied. On a
+ * Rp 100.000 line that discount is capped at Rp 100.000 — so the line said
+ * "−Rp 100.000" while the badge beside it said 110000, and the two disagreed
+ * about the same discount.
+ *
+ * A PERCENTAGE STILL SHOWS AS A PERCENTAGE. "10%" is what was agreed with the
+ * customer and it is what the cashier will look for when checking their work;
+ * the rupiah it came to is already on the line above. Trailing zeros are trimmed
+ * because the value is stored at the ledger's scale — "10.0000%" is the same
+ * artefact in the other mode.
+ */
+function triggerLabel(value: PosDiscount): string {
+  if (value.mode === "percent") {
+    // "10.0000" -> "10", "7.5000" -> "7,5". Only the FRACTIONAL zeros go: the
+    // naive `/\.?0+$/` also eats the zeros of "100", which is a real discount
+    // and would have rendered as "1%".
+    const trimmed = value.value
+      .replace(/(\.\d*?)0+$/, "$1")
+      .replace(/\.$/, "");
+    // Comma for the decimal mark — Indonesian, and the same convention
+    // `formatMoney` already prints beside it.
+    return `${trimmed.replace(".", ",") || "0"}%`;
+  }
+
+  return formatMoney(value.resolvedAmount);
+}
+
 export function PosDiscountPopover({
   value,
   onApply,
@@ -85,8 +118,7 @@ export function PosDiscountPopover({
           aria-label={label}
         >
           <Percent className="size-4" />
-          {value &&
-            (value.mode === "percent" ? `${value.value}%` : `Rp${value.value}`)}
+          {value && triggerLabel(value)}
         </Button>
       </PopoverTrigger>
 

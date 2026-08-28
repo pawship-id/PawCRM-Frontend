@@ -103,6 +103,13 @@ export type JournalSourceType =
   | "purchase_payment"
   | "opname"
   | "return"
+  /**
+   * The cost-of-goods half of a SALES return — the goods put back on the shelf,
+   * posted separately from the refund. A SECOND SOURCE TYPE for the same reason
+   * `pos_cogs` is one: both halves name the same return document, and the ledger
+   * is idempotent on `(source.type, source.id)`.
+   */
+  | "return_cogs"
   | "commission"
   | "manual";
 
