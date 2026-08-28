@@ -637,6 +637,19 @@ export interface Category {
   kind: "product";
   name: string;
   /**
+   * WHERE THIS CATEGORY'S PRODUCTS POST BY DEFAULT — the middle tier of
+   * PCR-009's three-level resolution: the item's own account, then this, then
+   * the seeded code.
+   *
+   * Setting an account per product is correct and unusable at four hundred SKUs;
+   * the category is the grouping a shop already maintains, so it is the grouping
+   * the ledger reads. All three null is the ordinary case and posts exactly
+   * where the system did before the tier existed.
+   */
+  salesAccountId: string | null;
+  cogsAccountId: string | null;
+  inventoryAccountId: string | null;
+  /**
    * The category this one sits under, or `null` for a top-level category.
    *
    * THE TREE IS EXACTLY TWO DEEP. A category with a `parentId` cannot itself
@@ -742,6 +755,14 @@ export interface CreateCategoryInput {
    * the API refuses a three-level tree with a 400 naming the field.
    */
   parentId?: string | null;
+  /**
+   * The posting defaults for everything filed under this category. Each must be
+   * of its own type — income / expense / asset — or the API answers 400 naming
+   * the field. Null clears one back to the seeded default.
+   */
+  salesAccountId?: string | null;
+  cogsAccountId?: string | null;
+  inventoryAccountId?: string | null;
   /** `""` is accepted and stored as null. */
   description?: string | null;
   /**
@@ -766,6 +787,10 @@ export interface UpdateCategoryInput {
   name?: string;
   /** A new id moves it; `null` promotes it back to the top level. */
   parentId?: string | null;
+  /** Posting defaults — see CreateCategoryInput. `null` clears one. */
+  salesAccountId?: string | null;
+  cogsAccountId?: string | null;
+  inventoryAccountId?: string | null;
   /** `""` and `null` both clear it. */
   description?: string | null;
   /** A new asset replaces the picture; `null` removes it. */

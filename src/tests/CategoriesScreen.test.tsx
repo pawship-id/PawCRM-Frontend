@@ -23,6 +23,11 @@ function makeCategory(overrides: Partial<Category> = {}): Category {
     _id: "c1",
     tenantId: "t1",
     kind: "product",
+    // Posting defaults — null is the ordinary case, and posts exactly where the
+    // system did before categories had a tier at all.
+    salesAccountId: null,
+    cogsAccountId: null,
+    inventoryAccountId: null,
     isActive: true,
     name: "Makanan Kucing",
     parentId: null,

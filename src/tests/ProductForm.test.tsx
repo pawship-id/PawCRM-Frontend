@@ -41,6 +41,7 @@ const WAREHOUSE = "wh1";
 const CATEGORY = "c1";
 const INVENTORY_ACCOUNT = "acc1";
 const COGS_ACCOUNT = "acc2";
+const SALES_ACCOUNT = "acc3";
 
 function makeProduct(overrides: Partial<Product> = {}): Product {
   return {
@@ -75,6 +76,9 @@ function mockLookups() {
         _id: CATEGORY,
         tenantId: "t1",
         kind: "product",
+        salesAccountId: null,
+        cogsAccountId: null,
+        inventoryAccountId: null,
         isActive: true,
         name: "Makanan",
         description: null,
@@ -120,37 +124,57 @@ function mockLookups() {
   // One call per account TYPE now — the form asks for assets and expenses
   // separately, because the API refuses each override that is not of its own
   // type. Answered from the requested type so each picker gets its own list.
+  // THREE TYPES NOW, and answered from the one asked for rather than by an
+  // else-branch. The income list used to fall out of the `else` and hand the
+  // sales picker an ASSET account — a mock describing something the API would
+  // refuse, and the kind of lie a test cannot see past.
+  const chart = {
+    income: {
+      _id: SALES_ACCOUNT,
+      code: "4103",
+      name: "Penjualan Hotel",
+      accountType: "income" as const,
+    },
+    asset: {
+      _id: INVENTORY_ACCOUNT,
+      code: "1205",
+      name: "Persediaan Hotel",
+      accountType: "asset" as const,
+    },
+    expense: {
+      _id: COGS_ACCOUNT,
+      code: "5102",
+      name: "HPP Hotel",
+      accountType: "expense" as const,
+    },
+  };
+
   jest
     .spyOn(chartOfAccountsService, "list")
-    .mockImplementation(async (query) => ({
-      items:
-        query?.accountType === "expense"
-          ? [
-              {
-                _id: COGS_ACCOUNT,
-                code: "5102",
-                name: "HPP Hotel",
-                accountType: "expense" as const,
-                parentAccountId: null,
-                businessLineId: null,
-                isDefault: false,
-                isActive: true,
-              },
-            ]
-          : [
-              {
-                _id: INVENTORY_ACCOUNT,
-                code: "1205",
-                name: "Persediaan Hotel",
-                accountType: "asset" as const,
-                parentAccountId: null,
-                businessLineId: null,
-                isDefault: false,
-                isActive: true,
-              },
-            ],
-      pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
-    }));
+    .mockImplementation(async (query) => {
+      const row = chart[(query?.accountType ?? "asset") as keyof typeof chart];
+      const items = row
+        ? [
+            {
+              ...row,
+              parentAccountId: null,
+              businessLineId: null,
+              isDefault: false,
+              isActive: true,
+            },
+          ]
+        : [];
+
+      return {
+        items,
+        pagination: {
+          page: 1,
+          limit: 100,
+          total: items.length,
+          totalPages: 1,
+        },
+      };
+    });
 }
 
 function mockCreate(overrides: Partial<CreatedProduct> = {}) {
@@ -204,6 +228,9 @@ describe("ProductForm", () => {
             _id: CATEGORY,
             tenantId: "t1",
             kind: "product",
+            salesAccountId: null,
+            cogsAccountId: null,
+            inventoryAccountId: null,
             isActive: true,
             name: "Makanan",
             description: null,
@@ -218,6 +245,9 @@ describe("ProductForm", () => {
             _id: "c-retired",
             tenantId: "t1",
             kind: "product",
+            salesAccountId: null,
+            cogsAccountId: null,
+            inventoryAccountId: null,
             isActive: false,
             name: "Mainan Lama",
             description: null,
@@ -1909,6 +1939,60 @@ describe("ProductForm", () => {
       ).not.toBeInTheDocument();
     });
 
+    /*
+      THE CASE THE "Ikut kategori" OPTION EXISTS FOR. Radix forbids `value=""`,
+      so before it there was no way back to empty once an account had been
+      picked — while the hint under each picker tells people to leave it empty
+      for the ordinary case, and empty is what makes the category tier apply.
+    */
+    it("puts a picked account back to inherited", async () => {
+      const user = userEvent.setup();
+      const create = mockCreate();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await fillCommon(user);
+      await user.type(screen.getByLabelText(/Harga jual/), "45000");
+
+      await user.click(screen.getByLabelText("Akun penjualan"));
+      await user.click(
+        await screen.findByRole("option", { name: "4103 — Penjualan Hotel" }),
+      );
+      await user.click(screen.getByLabelText("Akun penjualan"));
+      await user.click(
+        await screen.findByRole("option", { name: "Ikut kategori" }),
+      );
+
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      await waitFor(() => expect(create).toHaveBeenCalled());
+      expect(create.mock.calls[0][0]).not.toHaveProperty("salesAccountId");
+    });
+
+    it("sends the sales account the user picked", async () => {
+      const user = userEvent.setup();
+      const create = mockCreate();
+
+      renderWithAuth(<ProductForm />);
+      await screen.findByLabelText(/Nama produk/);
+
+      await fillCommon(user);
+      await user.type(screen.getByLabelText(/Harga jual/), "45000");
+
+      await user.click(screen.getByLabelText("Akun penjualan"));
+      await user.click(
+        await screen.findByRole("option", { name: "4103 — Penjualan Hotel" }),
+      );
+
+      await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+      await waitFor(() => expect(create).toHaveBeenCalled());
+      expect(create.mock.calls[0][0]).toMatchObject({
+        salesAccountId: SALES_ACCOUNT,
+      });
+    });
+
     it("omits the whole section when nothing was filled in", async () => {
       // Absent is what makes a variant inherit. Sending nulls would reach the
       // same place today, but "absent means inherit" is the documented contract
@@ -1994,7 +2078,7 @@ describe("ProductForm", () => {
           resolved: {
             brand: "Royal Canin",
             description: null,
-            inventoryAccountId: null,
+            salesAccountId: null,            inventoryAccountId: null,
             cogsAccountId: null,
             businessLineId: null,
             shipping: {
@@ -2042,7 +2126,7 @@ describe("ProductForm", () => {
           resolved: {
             brand: "Royal Canin",
             description: null,
-            inventoryAccountId: null,
+            salesAccountId: null,            inventoryAccountId: null,
             cogsAccountId: null,
             businessLineId: null,
             shipping: {
@@ -2349,7 +2433,7 @@ describe("ProductForm", () => {
             resolved: {
               brand: null,
               description: null,
-              inventoryAccountId: null,
+              salesAccountId: null,              inventoryAccountId: null,
               cogsAccountId: null,
               businessLineId: null,
               shipping: {

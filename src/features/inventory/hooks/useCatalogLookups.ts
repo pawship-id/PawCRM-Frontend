@@ -31,6 +31,15 @@ interface CatalogLookups {
    * not an asset and a `cogsAccountId` that is not an expense, so filtering here
    * is what stops each picker from offering a choice that cannot be saved.
    */
+  /**
+   * INCOME accounts — where a product's revenue may be pointed.
+   *
+   * New with PCR-009's amendment, and fetched under the same `withAccounting`
+   * flag and the same swallowed rejection as the other two: `chartOfAccounts:read`
+   * is a separate grant, and a role that manages the catalogue without seeing
+   * the books is ordinary rather than a misconfiguration.
+   */
+  salesAccounts: ChartOfAccount[];
   inventoryAccounts: ChartOfAccount[];
   cogsAccounts: ChartOfAccount[];
   /** Empty unless `withBranches` asked for them, or the read was refused. */
@@ -124,6 +133,7 @@ export function useCatalogLookups({
   const [categories, setCategories] = useState<Category[]>([]);
   const [warehouses, setWarehouses] = useState<StockWarehouse[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [salesAccounts, setSalesAccounts] = useState<ChartOfAccount[]>([]);
   const [inventoryAccounts, setInventoryAccounts] = useState<ChartOfAccount[]>(
     [],
   );
@@ -160,12 +170,18 @@ export function useCatalogLookups({
         const [
           categoryResult,
           warehouseResult,
+          incomeResult,
           assetResult,
           expenseResult,
           branchResult,
         ] = await Promise.all([
             categoryService.list(),
             warehouseService.list(includeInactive ? {} : { isActive: true }),
+            withAccounting
+              ? chartOfAccountsService
+                  .list({ accountType: "income", isActive: true })
+                  .catch((err: unknown) => err as ApiError)
+              : Promise.resolve(null),
             withAccounting
               ? chartOfAccountsService
                   .list({ accountType: "asset", isActive: true })
@@ -190,10 +206,17 @@ export function useCatalogLookups({
         );
         // The rejection is carried through as the value, so the reason survives
         // rather than collapsing to "something failed".
+        const incomeFailure =
+          incomeResult instanceof Error ? incomeResult : null;
         const assetFailure = assetResult instanceof Error ? assetResult : null;
         const expenseFailure =
           expenseResult instanceof Error ? expenseResult : null;
 
+        setSalesAccounts(
+          incomeResult && !incomeFailure
+            ? (incomeResult as PageResult<ChartOfAccount>).items
+            : [],
+        );
         setInventoryAccounts(
           assetResult && !assetFailure
             ? (assetResult as PageResult<ChartOfAccount>).items
@@ -204,10 +227,10 @@ export function useCatalogLookups({
             ? (expenseResult as PageResult<ChartOfAccount>).items
             : [],
         );
-        // Either half failing is the same answer to the form: the accounts
+        // ANY of the three failing is the same answer to the form: the accounts
         // could not be read, so the section says why instead of offering an
         // empty picker that looks like an empty chart.
-        const failure = assetFailure ?? expenseFailure;
+        const failure = incomeFailure ?? assetFailure ?? expenseFailure;
         setAccountingError(
           failure
             ? {
@@ -237,6 +260,7 @@ export function useCatalogLookups({
     categories,
     warehouses,
     branches,
+    salesAccounts,
     inventoryAccounts,
     cogsAccounts,
     loading,

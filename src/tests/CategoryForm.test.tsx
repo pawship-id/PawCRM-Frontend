@@ -3,9 +3,11 @@ import userEvent from "@testing-library/user-event";
 
 import { CategoryForm } from "@/features/categories";
 import { categoryService } from "@/services/category.service";
+import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
 import { ApiError } from "@/services/api-error";
 import { TOP_LEVEL_ONLY } from "@/types/api";
 import type { Category, PageResult } from "@/types/api";
+import type { ChartOfAccount } from "@/types/accounting";
 import type { MediaAsset } from "@/types/inventory";
 
 const push = jest.fn();
@@ -60,6 +62,11 @@ function makeCategory(overrides: Partial<Category> = {}): Category {
     _id: "c1",
     tenantId: "t1",
     kind: "product",
+    // Posting defaults — null is the ordinary case, and posts exactly where the
+    // system did before categories had a tier at all.
+    salesAccountId: null,
+    cogsAccountId: null,
+    inventoryAccountId: null,
     isActive: true,
     name: "Makanan Kucing",
     parentId: null,
@@ -73,6 +80,48 @@ function makeCategory(overrides: Partial<Category> = {}): Category {
   };
 }
 
+/**
+ * The chart, filtered the way the card asks for it.
+ *
+ * ONE SPY KEYED ON `accountType`, because the card fires all three requests at
+ * once and a test that stubbed them positionally would pass while the component
+ * asked for the wrong type — which is the one thing the API refuses.
+ */
+function account(
+  _id: string,
+  code: string,
+  name: string,
+  accountType: ChartOfAccount["accountType"],
+): ChartOfAccount {
+  return { _id, code, name, accountType } as ChartOfAccount;
+}
+
+const CHART = [
+  account("a-income", "4103", "Penjualan Treats", "income"),
+  account("a-asset", "1202", "Persediaan Treats", "asset"),
+  account("a-expense", "5102", "HPP Treats", "expense"),
+];
+
+function mockChart(accounts: ChartOfAccount[] = CHART) {
+  return jest
+    .spyOn(chartOfAccountsService, "list")
+    .mockImplementation(async (query = {}) => {
+      const items = accounts.filter(
+        (row) => row.accountType === query.accountType,
+      );
+      return {
+        items,
+        pagination: { page: 1, limit: 100, total: items.length, totalPages: 1 },
+      };
+    });
+}
+
+/** Opens one posting-account select and picks the option with that label. */
+async function pickAccount(field: RegExp, option: RegExp) {
+  await userEvent.click(screen.getByRole("combobox", { name: field }));
+  await userEvent.click(await screen.findByRole("option", { name: option }));
+}
+
 const nameField = () => screen.getByRole("textbox", { name: /nama kategori/i });
 const descField = () => screen.getByRole("textbox", { name: /deskripsi/i });
 const submit = (label: RegExp) =>
@@ -80,8 +129,11 @@ const submit = (label: RegExp) =>
 
 /** Opens the parent select and picks the option with that label. */
 async function pickParent(option: string) {
+  // `find`, not `get`: the picker renders a spinner until its own list of
+  // top-level categories lands, and a test that clicked before then would fail
+  // on the spinner rather than on anything it meant to assert.
   await userEvent.click(
-    screen.getByRole("combobox", { name: /induk kategori/i }),
+    await screen.findByRole("combobox", { name: /induk kategori/i }),
   );
   await userEvent.click(await screen.findByRole("option", { name: option }));
 }
@@ -119,6 +171,7 @@ function page(items: Category[]): PageResult<Category> {
 async function renderEdit(category: Category, lists = {}) {
   jest.spyOn(categoryService, "getById").mockResolvedValue(category);
   mockCategoryLists(lists);
+  mockChart();
   render(<CategoryForm categoryId={category._id} />);
   await waitFor(() => expect(nameField()).toHaveValue(category.name));
 }
@@ -133,7 +186,13 @@ async function renderEdit(category: Category, lists = {}) {
  * is sent, and deletes the bytes an update drops.
  */
 describe("CategoryForm", () => {
-  beforeEach(() => push.mockClear());
+  beforeEach(() => {
+    push.mockClear();
+    // Every render mounts the accounting card, so the chart is stubbed for all
+    // of them — an unstubbed one would reach the real fetch, fail, and render
+    // the "gagal dimuat" branch while the test still passed.
+    mockChart();
+  });
   afterEach(() => jest.restoreAllMocks());
 
   describe("creating", () => {
@@ -601,6 +660,159 @@ describe("CategoryForm", () => {
 
       expect(update).not.toHaveBeenCalled();
       expect(push).toHaveBeenCalledWith(LIST_PATH);
+    });
+  });
+
+  /**
+   * PCR-009's middle tier, from the form's side.
+   *
+   * WHAT IS ASSERTED IS THE REQUEST BODY, like everywhere else on this form,
+   * and the two halves of that are what the card is for: `""` must reach the
+   * server as `null` on an update — because that is how an account is CLEARED —
+   * and must be left out of a create entirely, because a create carrying three
+   * keys nobody filled in reads as though it did.
+   */
+  describe("akun jurnal", () => {
+    it("leaves the three accounts out of a create nobody filled in", async () => {
+      const create = jest
+        .spyOn(categoryService, "create")
+        .mockResolvedValue(makeCategory());
+      mockCategoryLists();
+      render(<CategoryForm />);
+
+      await userEvent.type(nameField(), "Treats");
+      await submit(/buat kategori/i);
+
+      await waitFor(() => expect(create).toHaveBeenCalled());
+      expect(create.mock.calls[0][0]).not.toHaveProperty("salesAccountId");
+      expect(create.mock.calls[0][0]).not.toHaveProperty("cogsAccountId");
+      expect(create.mock.calls[0][0]).not.toHaveProperty("inventoryAccountId");
+    });
+
+    it("sends the account a create picked", async () => {
+      const create = jest
+        .spyOn(categoryService, "create")
+        .mockResolvedValue(makeCategory());
+      mockCategoryLists();
+      render(<CategoryForm />);
+
+      await userEvent.type(nameField(), "Treats");
+      await pickAccount(/akun penjualan/i, /4103/);
+      await submit(/buat kategori/i);
+
+      await waitFor(() => expect(create).toHaveBeenCalled());
+      expect(create.mock.calls[0][0]).toMatchObject({
+        salesAccountId: "a-income",
+      });
+    });
+
+    it("offers only the accounts of each field's own type", async () => {
+      mockCategoryLists();
+      render(<CategoryForm />);
+
+      await userEvent.click(
+        screen.getByRole("combobox", { name: /akun hpp/i }),
+      );
+
+      expect(await screen.findByRole("option", { name: /5102/ })).toBeInTheDocument();
+      expect(screen.queryByRole("option", { name: /4103/ })).not.toBeInTheDocument();
+    });
+
+    /*
+      THE CASE THE SENTINEL EXISTS FOR. Radix forbids `value=""`, so without an
+      explicit "Akun bawaan" option there is no way back to empty once an
+      account has been picked — while the hint under every one of these pickers
+      tells people to leave it empty for the ordinary case.
+    */
+    it("clears an account back to null", async () => {
+      const update = jest.spyOn(categoryService, "update").mockResolvedValue(
+        makeCategory(),
+      );
+      await renderEdit(makeCategory({ salesAccountId: "a-income" }));
+
+      await pickAccount(/akun penjualan/i, /akun bawaan/i);
+      await submit(/simpan kategori/i);
+
+      await waitFor(() => expect(update).toHaveBeenCalled());
+      expect(update.mock.calls[0][1]).toEqual({ salesAccountId: null });
+    });
+
+    it("leaves untouched accounts out of the patch", async () => {
+      const update = jest
+        .spyOn(categoryService, "update")
+        .mockResolvedValue(makeCategory());
+      await renderEdit(makeCategory({ salesAccountId: "a-income" }));
+
+      await userEvent.clear(nameField());
+      await userEvent.type(nameField(), "Treats Premium");
+      await submit(/simpan kategori/i);
+
+      await waitFor(() => expect(update).toHaveBeenCalled());
+      expect(update.mock.calls[0][1]).toEqual({ name: "Treats Premium" });
+    });
+
+    /*
+      A SAVE THAT MOVED NOTHING STILL HAS TO LEAVE RATHER THAN PATCH. The three
+      account fields are `null` on the server and `""` in the form, and comparing
+      them carelessly would make every category with no accounts set look
+      changed — turning "nothing moved" into three nulls that were already null.
+    */
+    it("does not patch when only the accounts were looked at", async () => {
+      const update = jest.spyOn(categoryService, "update");
+      await renderEdit(makeCategory());
+
+      await submit(/simpan kategori/i);
+
+      await waitFor(() => expect(push).toHaveBeenCalledWith(LIST_PATH));
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    /*
+      `chartOfAccounts:read` IS A SEPARATE GRANT. Somebody who organises the
+      catalogue without seeing the books is an ordinary arrangement, so the
+      refusal collapses this one card rather than the form around it.
+    */
+    it("keeps the form usable when the chart is refused", async () => {
+      jest
+        .spyOn(chartOfAccountsService, "list")
+        .mockRejectedValue(new ApiError("Forbidden", 403));
+      const create = jest
+        .spyOn(categoryService, "create")
+        .mockResolvedValue(makeCategory());
+      mockCategoryLists();
+      render(<CategoryForm />);
+
+      expect(await screen.findByText(/tidak punya akses ke Akuntansi/i)).toBeInTheDocument();
+
+      await userEvent.type(nameField(), "Treats");
+      await submit(/buat kategori/i);
+
+      await waitFor(() => expect(create).toHaveBeenCalled());
+    });
+
+    /*
+      ON A CHILD, "EMPTY" MEANS THE PARENT'S ANSWER, not the seeded one — one
+      level of inheritance, which is the whole of it since the tree is capped at
+      two. The copy has to say which, or somebody setting accounts on "Makanan"
+      would read "pakai 4101" under "Makanan Kering" and conclude the setting was
+      ignored.
+    */
+    it("says it follows the parent once the category has one", async () => {
+      mockCategoryLists({ roots: [makeCategory({ _id: "p1", name: "Makanan" })] });
+      render(<CategoryForm />);
+
+      expect(
+        await screen.findByText(/pakai 4101 Penjualan Barang/i),
+      ).toBeInTheDocument();
+
+      await pickParent("Makanan");
+
+      // All three, not one: the parent answers every field it filled in, and a
+      // card that switched only the revenue hint would be lying about the other
+      // two.
+      expect(await screen.findAllByText(/ikut kategori induknya/i)).toHaveLength(
+        3,
+      );
     });
   });
 });

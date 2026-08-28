@@ -7,6 +7,35 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Akun jurnal per kategori, dan jalan pulang ke "kosong"
+
+Amandemen PCR-009 dari sisi UI. Aturan lengkapnya di
+[`docs/features/posting-accounts.md`](./features/posting-accounts.md).
+
+**Kategori sekarang punya kartu "Akun jurnal"** — Akun penjualan, Akun persediaan,
+Akun HPP — tingkat kedua dari tiga. Alasannya: mengatur akun per produk itu benar
+tapi tak terpakai; toko dengan empat ratus SKU di Makanan, Treats dan Perlengkapan
+ingin tiga jawaban, bukan empat ratus. Produk tetap bisa menimpanya satu per satu.
+
+**Copy-nya berubah begitu kategori punya induk**: "Dikosongkan berarti pakai 4101
+Penjualan Barang" menjadi "ikut kategori induknya". Satu tingkat pewarisan, karena
+pohonnya dibatasi dua level. Tanpa perbedaan itu, orang yang mengisi akun di
+"Makanan" akan membaca "pakai 4101" di bawah "Makanan Kering" dan menyimpulkan
+setelannya diabaikan.
+
+**Produk dapat "Akun penjualan"**, dan ketiganya kini punya opsi **"Ikut
+kategori"**. Itu perbaikan bug, bukan kosmetik: Radix Select melarang `value=""`,
+jadi sebelum ini akun yang terlanjur dipilih tidak bisa dikosongkan lagi — padahal
+hint di bawah setiap picker menyuruh mengosongkannya, dan kosong adalah yang
+membuat tingkat kategori berlaku.
+
+**Mock yang berbohong, diperbaiki.** `chartOfAccountsService.list` di
+`ProductForm.test.tsx` menjawab lewat cabang `else`, sehingga permintaan
+`accountType: "income"` dilayani dengan akun **aset** — bentuk yang akan ditolak
+API. Sekarang dijawab dari tipe yang diminta.
+
+---
+
 ## [Unreleased] — Faktur Penjualan: tiga stat card + urut berdasarkan tagihan
 
 Dua acceptance criteria PCR-033 yang terlewat di potongan pertama.

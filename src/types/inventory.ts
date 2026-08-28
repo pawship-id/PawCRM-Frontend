@@ -615,13 +615,22 @@ export interface Product {
   isPreorder: boolean;
   shipping?: ProductShipping;
   /**
-   * Where this product's stock and its cost of sale land in the ledger.
+   * Where this product's revenue, stock and cost of sale land in the ledger.
    *
-   * `inventoryAccountId` is an `asset` account — null means the seeded 1201
-   * Persediaan. `cogsAccountId` is an `expense` account — null means 5101 HPP.
-   * Unlike the `salesAccountId` they replaced, these ARE posted against: every
-   * receipt, opname, adjustment and sale resolves them per product.
+   * `salesAccountId` is an `income` account — null means the category's default,
+   * then the seeded 4101. `inventoryAccountId` is an `asset` account — null
+   * means the category's, then 1201. `cogsAccountId` is an `expense` account —
+   * null means the category's, then 5101.
+   *
+   * ALL THREE ARE THE FIRST TIER of PCR-009's three-level resolution: the item,
+   * then its CATEGORY, then the seeded code. Setting one here overrides the
+   * category for that field alone.
+   *
+   * `salesAccountId` WAS REMOVED ONCE and is back — see product.model.js. It
+   * does not replace `businessLineId` and never could: the account decides which
+   * LINE of the P&L, the business line decides which COLUMN.
    */
+  salesAccountId?: string | null;
   inventoryAccountId?: string | null;
   cogsAccountId?: string | null;
   businessLineId?: string | null;
@@ -770,6 +779,7 @@ export type ProductMedia = MediaAsset;
 export interface ResolvedProductFields {
   brand: string | null;
   description: string | null;
+  salesAccountId: string | null;
   inventoryAccountId: string | null;
   cogsAccountId: string | null;
   businessLineId: string | null;
@@ -1032,6 +1042,8 @@ export interface CreateStandaloneInput extends CreateProductBase {
   isPreorder?: boolean;
   /** Partial objects are the normal case — send only the leaves you mean. */
   shipping?: Partial<ProductShipping>;
+  /** Must be an `income` account of this tenant, or the API answers 400. */
+  salesAccountId?: string | null;
   /** Must be an `asset` account of this tenant, or the API answers 400. */
   inventoryAccountId?: string | null;
   /** Must be an `expense` account of this tenant, or the API answers 400. */
@@ -1067,6 +1079,8 @@ export interface CreateParentInput extends Omit<CreateProductBase, "sku"> {
   isPreorder?: boolean;
   /** Partial objects are the normal case — send only the leaves you mean. */
   shipping?: Partial<ProductShipping>;
+  /** Must be an `income` account of this tenant, or the API answers 400. */
+  salesAccountId?: string | null;
   /** Must be an `asset` account of this tenant, or the API answers 400. */
   inventoryAccountId?: string | null;
   /** Must be an `expense` account of this tenant, or the API answers 400. */
@@ -1112,6 +1126,8 @@ export interface CreateVariantInput {
   isPreorder?: boolean;
   /** Partial objects are the normal case — send only the leaves you mean. */
   shipping?: Partial<ProductShipping>;
+  /** Must be an `income` account of this tenant, or the API answers 400. */
+  salesAccountId?: string | null;
   /** Must be an `asset` account of this tenant, or the API answers 400. */
   inventoryAccountId?: string | null;
   /** Must be an `expense` account of this tenant, or the API answers 400. */
@@ -1153,6 +1169,8 @@ export interface CreateBundleInput extends CreateProductBase {
   isPreorder?: boolean;
   /** Partial objects are the normal case — send only the leaves you mean. */
   shipping?: Partial<ProductShipping>;
+  /** Must be an `income` account of this tenant, or the API answers 400. */
+  salesAccountId?: string | null;
   /** Must be an `asset` account of this tenant, or the API answers 400. */
   inventoryAccountId?: string | null;
   /** Must be an `expense` account of this tenant, or the API answers 400. */
@@ -1216,6 +1234,8 @@ export interface UpdateProductInput {
   description?: string | null;
   isPreorder?: boolean;
   shipping?: Partial<ProductShipping>;
+  /** Must be an `income` account of this tenant, or the API answers 400. */
+  salesAccountId?: string | null;
   inventoryAccountId?: string | null;
   cogsAccountId?: string | null;
   businessLineId?: string | null;

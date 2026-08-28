@@ -609,6 +609,18 @@ const DEFAULT_UNIT = "pcs";
  * its variants) has arrived is what lets that stay true — the alternative is an
  * effect that copies server data into state and a race about which wins.
  */
+/**
+ * The "follow the category" option in each posting-account picker.
+ *
+ * Radix Select forbids `value=""` — the empty string is how it recognises a
+ * cleared field, so an item carrying it throws. Without an item there was no way
+ * BACK to empty once an account had been picked, while all three hints told
+ * people to leave it empty for the ordinary case. The filters layer solved the
+ * identical problem with `withAll`; this is the same trick under the vocabulary
+ * this section uses.
+ */
+const INHERIT_ACCOUNT = "__inherit__";
+
 export function ProductForm({
   productId,
   initialMode,
@@ -685,6 +697,7 @@ export function ProductForm({
       existingVariants={detail.variants}
       categories={selectable}
       warehouses={lookups.warehouses}
+      salesAccounts={lookups.salesAccounts}
       inventoryAccounts={lookups.inventoryAccounts}
       cogsAccounts={lookups.cogsAccounts}
       accountingError={lookups.accountingError}
@@ -734,6 +747,7 @@ function ProductFormFields({
   existingVariants,
   categories,
   warehouses,
+  salesAccounts,
   inventoryAccounts,
   cogsAccounts,
   accountingError,
@@ -743,6 +757,7 @@ function ProductFormFields({
   existingVariants: Product[];
   categories: Category[];
   warehouses: StockWarehouse[];
+  salesAccounts: ChartOfAccount[];
   inventoryAccounts: ChartOfAccount[];
   cogsAccounts: ChartOfAccount[];
   accountingError: { status: number; message: string } | null;
@@ -825,6 +840,9 @@ function ProductFormFields({
   // Stored HTML, seeded from the STORED value like every other inheritable
   // field — never from `resolved`, for the reason spelled out above.
   const [description, setDescription] = useState(existing?.description ?? "");
+  const [salesAccountId, setSalesAccountId] = useState(
+    existing?.salesAccountId ?? "",
+  );
   const [inventoryAccountId, setInventoryAccountId] = useState(
     existing?.inventoryAccountId ?? "",
   );
@@ -1623,6 +1641,7 @@ function ProductFormFields({
       // said the same thing less clearly and made the payload depend on the
       // answer rather than on the question.
       isPreorder,
+      ...(salesAccountId ? { salesAccountId } : {}),
       ...(inventoryAccountId ? { inventoryAccountId } : {}),
       ...(cogsAccountId ? { cogsAccountId } : {}),
       ...(isShippingEmpty(shipping)
@@ -1820,6 +1839,9 @@ function ProductFormFields({
     }
     if (isPreorder !== (product.isPreorder ?? false)) {
       patch.isPreorder = isPreorder;
+    }
+    if (salesAccountId !== (product.salesAccountId ?? "")) {
+      patch.salesAccountId = salesAccountId || null;
     }
     if (inventoryAccountId !== (product.inventoryAccountId ?? "")) {
       patch.inventoryAccountId =
@@ -2456,11 +2478,65 @@ function ProductFormFields({
             </p>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">
+              {/*
+                REVENUE FIRST, because it is the one most shops will set: which
+                line of the P&L this product's sales land on. The two below it
+                are about stock and cost, which fewer tenants separate.
+
+                LEAVING IT EMPTY IS THE ORDINARY CASE and is not "unset" — it
+                falls through to the CATEGORY's default, then to the seeded
+                account. The hint says so, because a blank picker on a money
+                field otherwise reads as something forgotten.
+              */}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="salesAccountId">Akun penjualan</Label>
+                <Select
+                  value={salesAccountId === "" ? INHERIT_ACCOUNT : salesAccountId}
+                  onValueChange={(next) =>
+                    setSalesAccountId(next === INHERIT_ACCOUNT ? "" : next)
+                  }
+                  disabled={salesAccounts.length === 0}
+                >
+                  <SelectTrigger
+                    id="salesAccountId"
+                    size="lg"
+                    className="w-full"
+                  >
+                    <SelectValue
+                      placeholder={
+                        "Belum ada akun pendapatan"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {/* Only when there is something to fall back FROM — with an
+                        empty chart the trigger is disabled and shows its
+                        "belum ada akun" placeholder instead. */}
+                    {salesAccounts.length > 0 && (
+                      <SelectItem value={INHERIT_ACCOUNT}>
+                        Ikut kategori
+                      </SelectItem>
+                    )}
+                    {salesAccounts.map((account) => (
+                      <SelectItem key={account._id} value={account._id}>
+                        {account.code} — {account.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted">
+                  Hanya akun bertipe pendapatan. Kosongkan untuk mengikuti akun
+                  default kategorinya.
+                </p>
+              </div>
+
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="inventoryAccountId">Akun persediaan</Label>
                 <Select
-                  value={inventoryAccountId}
-                  onValueChange={setInventoryAccountId}
+                  value={inventoryAccountId === "" ? INHERIT_ACCOUNT : inventoryAccountId}
+                  onValueChange={(next) =>
+                    setInventoryAccountId(next === INHERIT_ACCOUNT ? "" : next)
+                  }
                   disabled={inventoryAccounts.length === 0}
                 >
                   {/* w-fit by default — see the note on the category select. */}
@@ -2471,13 +2547,21 @@ function ProductFormFields({
                   >
                     <SelectValue
                       placeholder={
-                        inventoryAccounts.length === 0
-                          ? "Belum ada akun aset"
-                          : "1201 — Persediaan Barang Dagangan"
+                        // Reached only with an empty chart: an unset picker
+                        // renders the "Ikut kategori" item, not a placeholder.
+                        "Belum ada akun aset"
                       }
                     />
                   </SelectTrigger>
                   <SelectContent>
+                    {/* Only when there is something to fall back FROM — with an
+                        empty chart the trigger is disabled and shows its
+                        "belum ada akun" placeholder instead. */}
+                    {inventoryAccounts.length > 0 && (
+                      <SelectItem value={INHERIT_ACCOUNT}>
+                        Ikut kategori
+                      </SelectItem>
+                    )}
                     {inventoryAccounts.map((account) => (
                       <SelectItem key={account._id} value={account._id}>
                         {account.code} — {account.name}
@@ -2486,16 +2570,18 @@ function ProductFormFields({
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted">
-                  Hanya akun bertipe aset. Menentukan di akun mana stok produk
-                  ini dicatat saat barang masuk.
+                  Hanya akun bertipe aset. Kosongkan untuk mengikuti akun
+                  default kategorinya, lalu 1201 Persediaan.
                 </p>
               </div>
 
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="cogsAccountId">Akun HPP</Label>
                 <Select
-                  value={cogsAccountId}
-                  onValueChange={setCogsAccountId}
+                  value={cogsAccountId === "" ? INHERIT_ACCOUNT : cogsAccountId}
+                  onValueChange={(next) =>
+                    setCogsAccountId(next === INHERIT_ACCOUNT ? "" : next)
+                  }
                   disabled={cogsAccounts.length === 0}
                 >
                   <SelectTrigger
@@ -2505,13 +2591,19 @@ function ProductFormFields({
                   >
                     <SelectValue
                       placeholder={
-                        cogsAccounts.length === 0
-                          ? "Belum ada akun beban"
-                          : "5101 — Harga Pokok Penjualan"
+                        "Belum ada akun beban"
                       }
                     />
                   </SelectTrigger>
                   <SelectContent>
+                    {/* Only when there is something to fall back FROM — with an
+                        empty chart the trigger is disabled and shows its
+                        "belum ada akun" placeholder instead. */}
+                    {cogsAccounts.length > 0 && (
+                      <SelectItem value={INHERIT_ACCOUNT}>
+                        Ikut kategori
+                      </SelectItem>
+                    )}
                     {cogsAccounts.map((account) => (
                       <SelectItem key={account._id} value={account._id}>
                         {account.code} — {account.name}
