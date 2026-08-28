@@ -24,7 +24,7 @@ import {
   ACCOUNT_TYPE_LABEL,
   CASHFLOW_LABEL,
   formatDate,
-  SOURCE_LABEL,
+  sourceLabel,
   SOURCE_TONE,
 } from "../labels";
 
@@ -161,7 +161,7 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
                   SOURCE_TONE[entry.source.type],
                 )}
               >
-                {SOURCE_LABEL[entry.source.type]}
+                {sourceLabel(entry.source.type)}
               </span>
               {entry.recurring.enabled && (
                 <span

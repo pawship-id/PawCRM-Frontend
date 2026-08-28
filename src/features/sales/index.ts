@@ -10,3 +10,4 @@
  */
 export { ReceivablesScreen } from "./components/ReceivablesScreen";
 export { InvoiceDetail } from "./components/InvoiceDetail";
+export { InvoiceCreateForm } from "./components/InvoiceCreateForm";

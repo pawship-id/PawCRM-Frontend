@@ -134,7 +134,7 @@ function detail(
     invoiceDiscount: null,
     totals: null,
     warehouseId: null,
-    channel: "offline",
+    channel: "manual",
     ...overrides,
   };
 }
@@ -397,8 +397,27 @@ describe("ReceivablesScreen", () => {
     expect(await screen.findByRole("alert")).toBeInTheDocument();
   });
 
-  it("does not offer a create button — there is no route behind one", async () => {
+  /**
+   * The create button, and the grant behind it.
+   *
+   * `customerInvoices:create` IS SEPARATE FROM `read` on purpose: opening this
+   * list is what counter staff do, while raising an invoice cuts stock and posts
+   * two journal entries. A tenant grants the first without the second.
+   */
+  it("offers a create button to a role that may raise one", async () => {
     renderWithAuth(<ReceivablesScreen />);
+
+    await waitFor(() => expect(customerInvoiceService.list).toHaveBeenCalled());
+    expect(
+      screen.getByRole("link", { name: /buat faktur/i }),
+    ).toHaveAttribute("href", "/dashboard/sales/new");
+  });
+
+  it("hides it from a role that may only read", async () => {
+    renderWithAuth(<ReceivablesScreen />, {
+      isSuperAdmin: false,
+      permissions: [{ feature: "customerInvoices", actions: ["read"] }],
+    });
 
     await waitFor(() => expect(customerInvoiceService.list).toHaveBeenCalled());
     expect(

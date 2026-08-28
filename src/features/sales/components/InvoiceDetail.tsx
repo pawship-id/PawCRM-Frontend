@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { SALES_CRUMBS } from "../crumbs";
 import { useCustomerInvoice } from "../hooks/useCustomerInvoice";
 import { InvoiceSourceBadge, InvoiceStatusBadge } from "./InvoiceStatusBadge";
+import { InvoiceItemsTable } from "./InvoiceItemsTable";
 import { PaymentHistory } from "./PaymentHistory";
 import { PaymentReceiptDialog } from "./PaymentReceiptDialog";
 import { RecordPaymentForm } from "./RecordPaymentForm";
@@ -186,6 +187,15 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
               {invoice.notes}
             </p>
           )}
+        </Card>
+
+        {/*
+          ITS OWN CARD, below the summary rather than inside it. The card above
+          answers "who owes what"; this one answers "for what" — a different
+          question, and one that does not exist at all for a till-born invoice.
+        */}
+        <Card title="Barang & jasa">
+          <InvoiceItemsTable invoice={invoice} />
         </Card>
 
         <div className="flex flex-col gap-4">

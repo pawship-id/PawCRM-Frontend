@@ -7,6 +7,127 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Rekap form faktur akhirnya berjumlah
+
+Baris **PPN** ditambahkan ke rekap, untuk tenant yang harga katalognya belum
+termasuk pajak. Sebelumnya daftarnya berbunyi Subtotal Rp 100.000 → Total
+Rp 111.000 tanpa satu baris pun di antaranya, dan satu-satunya petunjuk asal
+selisihnya adalah kalimat di bawah kartu.
+
+**Caption bukan penjelasan untuk aritmatika yang sedang diperiksa orang baris per
+baris** — dan yang menandatangani tagihan Rp 111.000 memang memeriksanya begitu.
+
+**Tidak muncul kalau harga sudah termasuk PPN**, dan itu bukan kelalaian: pajaknya
+ada dan tetap disetor, hanya sudah berada **di dalam** subtotalnya. Baris "PPN
+Rp 0" di situ akan menyangkal pajak yang justru dipungut. Rincian DPP-nya muncul
+di faktur setelah terbit, tempat server sudah menguraikannya.
+
+Label ditulis sebagai satu string, bukan `PPN {rate}%` — interpolasi JSX
+memecahnya jadi tiga simpul teks, yang diumumkan pembaca layar terpotong-potong.
+
+---
+
+## [Unreleased] — Detail faktur menampilkan barisnya, dan tiga daftar berhenti melenceng
+
+**Kartu "Barang & jasa"** di halaman detail faktur: baris item, diskon per baris,
+diskon faktur, DPP/PPN, dan total. Sebelumnya faktur yang dibuat manual hanya
+menampilkan totalnya — rinciannya tersimpan tapi tidak pernah ditampilkan.
+
+**Faktur dari kasir tetap tidak punya baris**, dan itu fakta, bukan kekurangan:
+barisnya ada di transaksi kasirnya, dan menyalinnya ke faktur berarti dua catatan
+untuk satu keranjang yang bebas berbeda isi. Jadi kartunya menyebutkan itu, bukan
+menampilkan tabel kosong yang terbaca seperti "faktur ini tidak berisi apa-apa".
+
+**Baris yang nilainya nol tidak ditampilkan.** Faktur tanpa diskon yang
+menampilkan "Diskon baris — Rp 0" mengundang pertanyaan untuk apa baris itu.
+
+### Perbaikan yang menyertainya
+
+**`invoice_sale`, `customer_invoice` dan `invoice_cogs` ditambahkan ke union
+frontend.** Sebelumnya hanya ada di backend — dan akibatnya nyata: kartu stok
+**jatuh total** (destructuring `undefined`), lalu kolom Sumber di Jurnal Umum
+**kosong diam-diam**, yang lebih senyap dan lebih buruk karena tidak bisa
+dibedakan dari entri yang memang tanpa sumber.
+
+**Ketiga pencarian label sekarang punya cadangan** ke nilai mentahnya. Baris di
+buku besar dan di kartu stok adalah **fakta yang sudah terjadi** — menolak
+menggambar seluruh halaman karena satu baris asing membuat pembacanya kehilangan
+semua baris yang justru dipahami build ini.
+
+---
+
+## [Unreleased] — Setelan pajak akhirnya bisa dilihat dan diubah
+
+`/dashboard/business` dapat kartu **Pajak**: tarif PPN dan saklar "harga katalog
+sudah termasuk PPN".
+
+**Kenapa baru sekarang.** Kedua nilai ini dibaca di setiap penjualan sejak kasir
+dibangun, dan tidak bisa dilihat maupun diubah dari mana pun di aplikasi. Aman
+selama `true` — bawaannya, dan norma harga rak di Indonesia — jadi satu-satunya
+nilai yang dipakai. Berhenti aman begitu faktur bisa dibuat sendiri: toko yang
+salah setel menagih 11% meleset di setiap faktur, tanpa ada layar yang bisa
+menjelaskan kenapa.
+
+**Copy-nya menyebutkan akibatnya, bukan setelannya.** "Inklusif" dan "eksklusif"
+adalah kata akuntan; yang perlu diketahui pemilik toko adalah apakah angka di
+label rak itu yang dibayar pelanggan. Teksnya berubah saat saklarnya digeser.
+
+**Dan menyebutkan apa yang TIDAK terjadi.** Mengubahnya tidak menyentuh transaksi
+yang sudah diposting — masing-masing menyimpan DPP dan PPN-nya sendiri. Tanpa
+kalimat itu, ada yang akan menggeser saklarnya untuk "memperbaiki" bulan lalu dan
+mendapati tidak ada yang berubah.
+
+**Digating `tenants:update`**, terpisah dari `read` yang membuka halamannya. Peran
+yang hanya boleh membaca melihat kedua nilainya sebagai teks, tanpa tombol simpan.
+
+---
+
+## [Unreleased] — Faktur bisa dibuat sendiri, tidak lagi cuma dari kasir
+
+PCR-030 sisi UI. `/dashboard/sales` dapat tombol **Buat faktur**, dan rute baru
+`/dashboard/sales/new`.
+
+**Form Transaksi**, bukan Form Entitas — §16's satu-satunya penentu: ada tabel
+baris di bawahnya. Jadi header dua kolom, baris di bawah, dan Keterangan menutup
+header, bukan halaman.
+
+**Harga tidak bisa diubah di form.** Diambil dari katalog dan ditampilkan sebagai
+teks, bukan input — harga yang bisa diketik klien adalah diskon yang tidak
+disetujui siapa pun. Yang diputuskan form ini cuma: barang apa, berapa, diskon
+berapa.
+
+**Totalnya dihitung di layar** oleh `invoicePreview.ts`, meniru urutan operasi
+server. Risikonya disebutkan terus terang di berkasnya: dua implementasi satu
+aturan bisa menyimpang, dan kegagalannya tidak terlihat seperti bug — layar
+menampilkan satu angka, faktur terbit dengan angka lain. Yang menahannya: aritmatika
+bilangan bulat yang sama (`divideRound` setengah ke atas), urutan yang ditulis di
+kedua berkas, dan **klien tidak pernah mengirim total** — server menghitung ulang
+semuanya.
+
+**Tarif pajak tenant kini dideklarasikan di tipe klien.** `taxRate` dan
+`priceIncludesTax` sebenarnya sudah ikut terkirim di `GET /api/tenants/me`; hanya
+tipenya yang belum menyebutkannya. Tanpa itu form tidak bisa menampilkan total
+yang benar sama sekali: dengan harga sudah termasuk PPN, total = subtotal dikurangi
+diskon; dengan harga belum termasuk, pajaknya ditambahkan di atas — salah cabang
+berarti menaksir tagihan 11% terlalu rendah.
+
+**Pilihan Channel: `Diinput manual` atau `Marketplace`** — kosakata PRD, yaitu
+**dari mana pesanannya masuk**. Sempat saya isi `offline`/`whatsapp`/`instagram`,
+yang menjawab "pelanggan menghubungi lewat mana" — pertanyaan yang berbeda.
+Ketahuan sebelum ada faktur yang terbit, jadi tidak ada data yang perlu diubah.
+
+**Tombolnya digating terpisah dari halamannya.** `read` membuka daftar;
+menerbitkan faktur memotong stok dan mencatat dua jurnal, jadi pengguna penagihan
+melihat semua tagihan dan tidak punya cara membuatnya. Rute di baliknya membawa
+gate yang sama — tombol yang disembunyikan adalah kesopanan, bukan kontrol.
+
+**Error jadi toast**, seperti form cabang — penyimpangan sengaja dari §9, dicatat
+di header komponen: form ini panjang, dan penolakan yang paling penting di sini
+(cabang belum punya kode, stok kurang) muncul saat kursor ada di tabel tengah
+halaman.
+
+---
+
 ## [Unreleased] — Badge diskon kasir menyebut angka yang salah
 
 **Perbaikan bug, ditemukan saat uji regresi diskon.** Badge di tombol diskon

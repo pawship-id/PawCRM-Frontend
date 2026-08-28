@@ -365,6 +365,26 @@ export interface TenantSettings {
    * switch rather than a per-request option.
    */
   hotelMode: "numbered" | "zone";
+
+  /**
+   * PPN, as a plain percentage — `11` means 11%.
+   *
+   * Reaches the client because `GET /api/tenants/me` returns the settings object
+   * whole. The invoice form needs it to show a total that will match what the
+   * server issues.
+   */
+  taxRate?: number;
+
+  /**
+   * Whether catalogue prices already include PPN. **Defaults to true** — that is
+   * the Indonesian shelf-price norm and the server's own default (`!== false`).
+   *
+   * It changes what a total MEANS, not merely how it is displayed: with inclusive
+   * prices the grand total is simply subtotal minus discounts, and the tax is
+   * unwound out of it; with exclusive prices the tax is added on top. A preview
+   * that assumed the wrong one would understate a bill by 11%.
+   */
+  priceIncludesTax?: boolean;
 }
 
 /**
@@ -3732,13 +3752,19 @@ export type InvoiceItemKind = "product" | "service";
 /** How a discount was typed. `amount` is a rupiah figure, not a percentage. */
 export type InvoiceDiscountMode = "percent" | "amount";
 
-/** Where the sale came from — a closed list, not free text. */
-export type InvoiceChannel =
-  | "offline"
-  | "whatsapp"
-  | "instagram"
-  | "marketplace"
-  | "other";
+/**
+ * Where the ORDER came from — did a human type this invoice, or did it sync in
+ * from a marketplace.
+ *
+ * NOT "how did the customer reach us". A first pass filled this with
+ * `offline`/`whatsapp`/`instagram`, which answers a different question than the
+ * PRD asks — the split a shop selling across Tokopedia and Shopee needs is
+ * typed-vs-synced, not phoned-vs-messaged.
+ *
+ * Named marketplaces are deliberately absent until the sync module that would
+ * write them exists.
+ */
+export type InvoiceChannel = "manual" | "marketplace";
 
 /**
  * A discount as STORED: what was typed, and what it actually took off.

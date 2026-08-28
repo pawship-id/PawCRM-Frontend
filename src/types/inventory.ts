@@ -24,6 +24,16 @@ export type MovementType =
   | "receipt"
   | "pos_sale"
   /**
+   * Goods leaving against an issued invoice (PCR-030).
+   *
+   * ITS OWN TYPE RATHER THAN `pos_sale`, for the same reason `pos_void` has one:
+   * a stock card is read to answer "where did this go", and an invoice is not a
+   * till sale. One shop sells across a counter and bills a kennel monthly;
+   * folding both under `pos_sale` would make "how much went out over the
+   * counter" unanswerable.
+   */
+  | "invoice_sale"
+  /**
    * A voided sale's goods coming back.
    *
    * ITS OWN TYPE RATHER THAN `customer_return`, for the reason
@@ -52,6 +62,8 @@ export type MovementType =
 export type ReferenceType =
   | "goods_receipt"
   | "pos_transaction"
+  /** The invoice the goods left against. See `invoice_sale`. */
+  | "customer_invoice"
   /**
    * A void's stock reversal. Distinct from `pos_transaction` so the movements a
    * sale made and the movements unwinding it are separately findable — and so

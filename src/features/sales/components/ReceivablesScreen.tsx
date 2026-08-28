@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 import { Alert, Pagination, Spinner } from "@/components";
 import { PageHeading } from "@/features/purchasing";
+import { Can } from "@/features/permissions";
+import { Button as UIButton } from "@/components/ui/button";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
 import { cn } from "@/lib/utils";
 import { formatMoney } from "@/utils/decimal";
@@ -94,11 +97,24 @@ export function ReceivablesScreen() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <PageHeading crumbs={INVOICES_CRUMBS} title="Faktur Penjualan">
-          Faktur terbit otomatis saat kasir menyelesaikan penjualan dengan
-          pembayaran Piutang. Penagihan boleh dicicil — DP, cicilan, dan
-          pelunasan semuanya lewat satu tombol yang sama.
+          Faktur lahir dari dua tempat: terbit otomatis saat kasir menyelesaikan
+          penjualan dengan pembayaran Piutang, atau dibuat sendiri di sini.
+          Penagihan boleh dicicil — DP, cicilan, dan pelunasan semuanya lewat
+          satu tombol yang sama.
         </PageHeading>
 
+        {/*
+          GATED SEPARATELY FROM THE PAGE. `read` is what opens this list; raising
+          an invoice cuts stock and posts two journal entries, so a collections
+          user sees every bill and no way to create one. The route behind it
+          carries the same gate — a hidden button is a courtesy, never the
+          control.
+        */}
+        <Can feature="customerInvoices" action="create">
+          <UIButton asChild size="lg">
+            <Link href="/dashboard/sales/new">Buat faktur</Link>
+          </UIButton>
+        </Can>
       </div>
 
       {/*
