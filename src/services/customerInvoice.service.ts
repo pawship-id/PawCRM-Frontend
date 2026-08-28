@@ -7,6 +7,7 @@ import type {
   PageResult,
   RecordCustomerPaymentInput,
   VoidCustomerPaymentInput,
+  CreateCustomerInvoiceInput,
 } from "@/types/api";
 
 /**
@@ -72,6 +73,26 @@ export const customerInvoiceService = {
         sort: query.sort,
       },
     }),
+
+  /**
+   * POST /customer-invoices — raise one by hand (PCR-030).
+   *
+   * IRREVERSIBLE. It cuts stock, posts two journal entries and consumes a number
+   * from the branch's series — there is no PATCH beside it and there will not be
+   * one. An issued invoice is corrected by voiding it and raising another, which
+   * is what an immutable ledger means.
+   *
+   * SENDS NO PRICES AND NO NAMES. Both are read from the catalogue server-side;
+   * anything extra this sends is stripped by the validation layer. The only
+   * things a client decides are which item, how many, and what discount.
+   *
+   * THE REFUSALS ARE THE INTERESTING PART, and all of them are 400s a person can
+   * act on: the branch has no code yet (naming the branch and the screen), the
+   * shelf is short (naming every product that is), a bundle was named, or a
+   * product line arrived with no warehouse.
+   */
+  create: (input: CreateCustomerInvoiceInput) =>
+    apiClient.post<CustomerInvoiceDetail>("/customer-invoices", input),
 
   /**
    * GET /customer-invoices/:id — one receivable, with its payments and labels.

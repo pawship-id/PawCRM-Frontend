@@ -677,6 +677,34 @@ describe("PosScreen — closing the till (FR-9)", () => {
     );
   });
 
+  /*
+    THE END OF A STINT, NOT A PAUSE IN ONE. The next person at this till may be
+    somebody else in another shop, and the session still names the branch the
+    closed shift ran in — so an unasked branch is a branch inherited from
+    whoever was standing here last, and the next shift books its sales there.
+  */
+  it("asks for the branch again rather than going straight to Buka Kasir", async () => {
+    const user = userEvent.setup();
+    mockedPos.closeShift.mockResolvedValue({ ...shift, status: "closed" });
+
+    renderWithAuth(<PosScreen />);
+
+    await user.click(
+      await screen.findByRole("button", { name: /tutup kasir/i }),
+    );
+    await user.type(await screen.findByLabelText(/uang di laci/i), "700000");
+    await user.click(
+      screen.getByRole("button", { name: /^tutup kasir$/i, hidden: false }),
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: /pilih cabang/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: /buka kasir/i }),
+    ).not.toBeInTheDocument();
+  });
+
   it("refuses a count typed with thousands separators", async () => {
     const user = userEvent.setup();
     renderWithAuth(<PosScreen />);

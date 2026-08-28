@@ -128,6 +128,13 @@ function detail(
     createdByName: null,
     payments: [],
     journalEntryId: "je-sale",
+    // Empty and null, which is what a TILL-BORN invoice carries: its lines live
+    // on the POS transaction, and its breakdown on that transaction's totals.
+    items: [],
+    invoiceDiscount: null,
+    totals: null,
+    warehouseId: null,
+    channel: "offline",
     ...overrides,
   };
 }

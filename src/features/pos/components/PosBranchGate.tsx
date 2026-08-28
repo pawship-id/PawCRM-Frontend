@@ -27,8 +27,13 @@ const FETCH_LIMIT = 100;
  * its journal entry are booked, and a branch that meant something different on
  * each screen is a bookkeeping error nobody could see. The choice therefore
  * outlives this page.
+ *
+ * IT IS ALSO THE SCREEN AFTER TUTUP KASIR, which is why the caller may pass
+ * `onChosen`: the session still names a branch once a shift is closed, so
+ * nothing about the session would bring this gate back on its own. The screen
+ * that closed the shift holds that flag, and this clears it.
  */
-export function PosBranchGate() {
+export function PosBranchGate({ onChosen }: { onChosen?: () => void } = {}) {
   const { switchBranch } = useAuth();
 
   const [branches, setBranches] = useState<{ value: string; label: string }[]>(
@@ -74,6 +79,7 @@ export function PosBranchGate() {
 
     try {
       await switchBranch(branchId);
+      onChosen?.();
     } catch (err) {
       setError(
         err instanceof ApiError
@@ -88,7 +94,7 @@ export function PosBranchGate() {
     <div className="mx-auto w-full max-w-md rounded-2xl border border-border bg-surface p-6">
       <h1 className="text-2xl font-extrabold text-foreground">Pilih cabang</h1>
       <p className="mt-1 text-[15px] text-muted">
-        Kasir mencatat penjualan per cabang, jadi pilih dulu kamu di mana.
+        Kasir mencatat penjualan per cabang, yuk pilih cabangmu!
       </p>
 
       {error && (

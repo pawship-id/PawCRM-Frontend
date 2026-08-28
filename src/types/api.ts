@@ -3712,6 +3712,119 @@ export interface CustomerInvoiceDetail
   payments: CustomerInvoicePayment[];
   /** The entry that RECOGNISED the debt — the sale's revenue entry. */
   journalEntryId: string | null;
+  /**
+   * The lines a HUMAN typed. **Empty on every till-born invoice** — those lines
+   * live on the POS transaction, and copying them would be two records of one
+   * basket free to disagree. Read `posTransactionId` for the other kind.
+   */
+  items: CustomerInvoiceItem[];
+  invoiceDiscount: InvoiceDiscount | null;
+  /** The breakdown behind `total`. Null on a till-born invoice. */
+  totals: CustomerInvoiceTotals | null;
+  /** Where the goods left from. Null when nothing shipped. */
+  warehouseId: string | null;
+  channel: InvoiceChannel;
+}
+
+/** What an invoice line sells. */
+export type InvoiceItemKind = "product" | "service";
+
+/** How a discount was typed. `amount` is a rupiah figure, not a percentage. */
+export type InvoiceDiscountMode = "percent" | "amount";
+
+/** Where the sale came from — a closed list, not free text. */
+export type InvoiceChannel =
+  | "offline"
+  | "whatsapp"
+  | "instagram"
+  | "marketplace"
+  | "other";
+
+/**
+ * A discount as STORED: what was typed, and what it actually took off.
+ *
+ * `resolvedAmount` IS THE AUTHORITY. `mode` and `value` only record the intent —
+ * changing a quantity after a nominal discount must not rescale it, which is why
+ * the amount is stored rather than re-derived.
+ */
+export interface InvoiceDiscount {
+  mode: InvoiceDiscountMode;
+  value: string;
+  resolvedAmount: string;
+}
+
+/** One line of an invoice, as stored. Prices are snapshots. */
+export interface CustomerInvoiceItem {
+  kind: InvoiceItemKind;
+  refId: string;
+  name: string;
+  sku: string | null;
+  qty: string;
+  unitPrice: string;
+  discount: InvoiceDiscount | null;
+  /** `qty × unitPrice`, BEFORE this line's own discount. */
+  lineTotal: string;
+  /** The cost the consumed lots carried. Null on a service. */
+  hppAtTime: string | null;
+}
+
+/** The money, frozen when the invoice was issued. */
+export interface CustomerInvoiceTotals {
+  subtotal: string;
+  itemDiscount: string;
+  invoiceDiscount: string;
+  /** The taxable base, after both discounts. */
+  dpp: string;
+  tax: string;
+  grandTotal: string;
+}
+
+/**
+ * A discount as TYPED — what a client sends.
+ *
+ * There is deliberately no `resolvedAmount` here: it is computed server-side from
+ * the basis, and a client able to send it could type "10%" while claiming it came
+ * to Rp 900.000.
+ */
+export interface TypedDiscountInput {
+  mode: InvoiceDiscountMode;
+  value: string;
+}
+
+/**
+ * One line a client asks for.
+ *
+ * NO PRICE AND NO NAME. Both are read from the catalogue server-side: a price a
+ * client can set is a discount nobody approved, and a name a client can set is an
+ * invoice saying something the catalogue never did.
+ */
+export interface CreateInvoiceItemInput {
+  kind: InvoiceItemKind;
+  refId: string;
+  qty: string;
+  discount?: TypedDiscountInput | null;
+}
+
+/**
+ * POST /api/customer-invoices — raise one by hand.
+ *
+ * `warehouseId` is required only when the invoice carries a PRODUCT line; a bill
+ * for grooming moves no stock. The server refuses if one is missing.
+ *
+ * `dueDate` and `termDays` are two ways of saying the same thing — send one, and
+ * the server refuses a payload carrying both.
+ */
+export interface CreateCustomerInvoiceInput {
+  customerId: string;
+  branchId: string;
+  warehouseId?: string;
+  items: CreateInvoiceItemInput[];
+  invoiceDiscount?: TypedDiscountInput | null;
+  invoiceDate?: string;
+  dueDate?: string;
+  termDays?: number;
+  channel?: InvoiceChannel;
+  notes?: string | null;
 }
 
 /**
