@@ -34,6 +34,15 @@ export type MovementType =
    */
   | "invoice_sale"
   /**
+   * A voided invoice's goods coming back.
+   *
+   * ITS OWN TYPE RATHER THAN `customer_return`, exactly as `pos_void` has one:
+   * nothing came back — the invoice is being unwound because it should not have
+   * been issued. Folding the two would make "what did customers actually bring
+   * back" unanswerable.
+   */
+  | "invoice_void"
+  /**
    * A voided sale's goods coming back.
    *
    * ITS OWN TYPE RATHER THAN `customer_return`, for the reason
@@ -64,6 +73,8 @@ export type ReferenceType =
   | "pos_transaction"
   /** The invoice the goods left against. See `invoice_sale`. */
   | "customer_invoice"
+  /** The void that returned an invoice's goods. See `invoice_void`. */
+  | "customer_invoice_void"
   /**
    * A void's stock reversal. Distinct from `pos_transaction` so the movements a
    * sale made and the movements unwinding it are separately findable — and so

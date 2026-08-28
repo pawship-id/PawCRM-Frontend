@@ -135,6 +135,8 @@ function detail(
     totals: null,
     warehouseId: null,
     channel: "manual",
+    voidedAt: null,
+    voidReason: null,
     ...overrides,
   };
 }

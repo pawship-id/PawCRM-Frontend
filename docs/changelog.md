@@ -7,6 +7,49 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Faktur bisa di-void
+
+PCR-031. Tombol **Void faktur** di halaman detail, dengan dialog konfirmasi.
+
+**Dialognya menyebutkan apa yang akan terjadi**, bukan cuma bertanya yakin atau
+tidak: barang kembali ke stok, dua jurnal pembalik diposting, dan **fakturnya
+tidak dihapus**. Yang ketiga paling sering salah paham — orang yang mengharapkan
+barisnya hilang lalu melihatnya masih ada akan mengira kliknya gagal dan
+mengulanginya.
+
+**Nomor fakturnya dieja di judul dialog**, bukan "faktur ini". Orang dengan tiga
+tab terbuka sedang akan membatalkan dokumen yang sudah memindahkan stok dan
+memposting dua jurnal; melihat nomornya sebelum mengetik adalah satu-satunya yang
+mencegahnya membatalkan yang salah.
+
+**Tombolnya tidak muncul selama masih ada pembayaran aktif** — diganti penjelasan
+cara membukanya. Dialog yang terbuka hanya untuk bilang "Anda tidak boleh" adalah
+dialog yang seharusnya tidak terbuka. **Pembayaran yang sudah dibatalkan tidak
+menghalangi**: uangnya sudah ditarik keluar lewat jurnal pembaliknya sendiri, dan
+menghitungnya akan mengunci faktur selamanya setelah satu pembayaran salah ketik
+dikoreksi.
+
+**Alasan wajib**, diperiksa di layar sebelum round trip dan lagi di server.
+
+Digating `customerInvoices:void`, grant tersendiri dari `create` dan `pay`.
+
+---
+
+## [Unreleased] — Detail faktur tidak lagi jatuh oleh faktur lama
+
+`InvoiceItemsTable` melempar `Cannot read properties of undefined (reading
+'length')` untuk setiap faktur yang lahir dari kasir **sebelum** PCR-030. Dokumen
+itu tidak punya kunci `items` sama sekali — bukan array kosong — karena pembacaan
+memakai `.lean()`, yang melewati default skema.
+
+Server sekarang menormalkan bentuknya, dan itu perbaikan yang sebenarnya.
+Komponennya **tetap** defensif terhadap tipenya sendiri, karena **tipe adalah
+janji tentang data yang datang lewat kabel**: TypeScript memeriksa bahwa berkas
+ini sepakat dengan deklarasinya, tidak pernah bahwa deklarasinya sepakat dengan
+isi database. Satu baris lama tidak boleh bisa menjatuhkan halaman.
+
+---
+
 ## [Unreleased] — Rekap form faktur akhirnya berjumlah
 
 Baris **PPN** ditambahkan ke rekap, untuk tenant yang harga katalognya belum

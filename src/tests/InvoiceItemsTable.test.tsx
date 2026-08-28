@@ -195,6 +195,25 @@ describe("an invoice with no lines", () => {
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
+  /*
+    THE CRASH THIS REPLACES. `CustomerInvoiceDetail` declares `items` as an
+    array, but an invoice written before PCR-030 has no such key at all — reads
+    use `.lean()`, which skips schema defaults. The page died on `.length`.
+
+    TypeScript could not catch it: it checks that this file agrees with the type
+    declaration, never that the declaration agrees with the database.
+  */
+  it("survives an invoice whose fields predate the schema", () => {
+    const legacy = {
+      _id: "inv-old",
+      posTransactionId: "pos-old",
+      // No items, no totals, no invoiceDiscount — as `.lean()` returns them.
+    } as unknown as CustomerInvoiceDetail;
+
+    expect(() => render(<InvoiceItemsTable invoice={legacy} />)).not.toThrow();
+    expect(screen.getByText(/lahir dari penjualan kasir/i)).toBeInTheDocument();
+  });
+
   it("says so plainly when there is no sale behind it either", () => {
     render(<InvoiceItemsTable invoice={invoice({ items: [], totals: null })} />);
 

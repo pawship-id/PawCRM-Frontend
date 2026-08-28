@@ -3744,6 +3744,15 @@ export interface CustomerInvoiceDetail
   /** Where the goods left from. Null when nothing shipped. */
   warehouseId: string | null;
   channel: InvoiceChannel;
+  /**
+   * When the invoice itself was unwound, and why.
+   *
+   * DISTINCT FROM `payments[].voidedAt`, which cancels one RECEIPT. These mean
+   * the whole document was cancelled: goods back on the shelf, both journal
+   * entries reversed. Null on every invoice that still stands.
+   */
+  voidedAt: string | null;
+  voidReason: string | null;
 }
 
 /** What an invoice line sells. */

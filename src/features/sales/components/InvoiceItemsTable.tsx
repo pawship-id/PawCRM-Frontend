@@ -31,7 +31,20 @@ export function InvoiceItemsTable({
 }: {
   invoice: CustomerInvoiceDetail;
 }) {
-  const { items, totals, invoiceDiscount } = invoice;
+  /*
+    DEFENSIVE AGAINST ITS OWN TYPE, and it was paid for. `CustomerInvoiceDetail`
+    declares `items: CustomerInvoiceItem[]`, but a document written before
+    PCR-030 has no such key: reads use `.lean()`, which skips schema defaults, so
+    the field arrives `undefined` and `.length` threw.
+
+    The server normalises this now, which is the real fix. This stays because a
+    TYPE IS A PROMISE ABOUT DATA THAT ARRIVES OVER A WIRE — TypeScript checks
+    that this file agrees with the declaration, never that the declaration agrees
+    with the database. One old row must not be able to take down a page.
+  */
+  const items = invoice.items ?? [];
+  const totals = invoice.totals ?? null;
+  const invoiceDiscount = invoice.invoiceDiscount ?? null;
 
   if (items.length === 0) {
     return (

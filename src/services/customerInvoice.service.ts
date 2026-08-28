@@ -95,6 +95,29 @@ export const customerInvoiceService = {
     apiClient.post<CustomerInvoiceDetail>("/customer-invoices", input),
 
   /**
+   * POST /customer-invoices/:id/void — unwind an issued invoice (PCR-031).
+   *
+   * NOT A DELETE, and the shape says so. The document stays, marked `void`, and
+   * its number is never reused: it was allocated, it may have been quoted to a
+   * customer, and an auditor asking what it was must get an answer.
+   *
+   * WHAT IT DOES SERVER-SIDE: puts the goods back on the shelf and REVERSES both
+   * journal entries — the issuance and the cost. Two reversals rather than one
+   * fresh correcting entry, because a reversal names what it undoes.
+   *
+   * REFUSED WHILE ANY PAYMENT STILL COUNTS (`409`). Money that arrived did
+   * arrive; cancel the payments first — each posts its own reversal — and the
+   * void becomes available once nothing is left paid.
+   *
+   * Requires `customerInvoices:void`, its own grant: raising a bill, taking money
+   * against it and cancelling it outright are three different authorities.
+   */
+  voidInvoice: (id: string, reason: string) =>
+    apiClient.post<CustomerInvoiceDetail>(`/customer-invoices/${id}/void`, {
+      reason,
+    }),
+
+  /**
    * GET /customer-invoices/:id — one receivable, with its payments and labels.
    *
    * 404s for another tenant's invoice exactly as for an unknown id, which is the

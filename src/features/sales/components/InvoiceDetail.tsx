@@ -18,6 +18,7 @@ import { SALES_CRUMBS } from "../crumbs";
 import { useCustomerInvoice } from "../hooks/useCustomerInvoice";
 import { InvoiceSourceBadge, InvoiceStatusBadge } from "./InvoiceStatusBadge";
 import { InvoiceItemsTable } from "./InvoiceItemsTable";
+import { VoidInvoiceDialog } from "./VoidInvoiceDialog";
 import { PaymentHistory } from "./PaymentHistory";
 import { PaymentReceiptDialog } from "./PaymentReceiptDialog";
 import { RecordPaymentForm } from "./RecordPaymentForm";
@@ -63,6 +64,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
   */
   const [receiptFor, setReceiptFor] = useState<string | null>(null);
   const [voidingId, setVoidingId] = useState<string | null>(null);
+  const [voidOpen, setVoidOpen] = useState(false);
 
   if (loading) {
     return (
@@ -103,6 +105,15 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
 
   const settled = invoice.status === "paid";
   const voided = invoice.status === "void";
+  /*
+    ACTIVE ONLY. A cancelled payment has already posted its own reversal and taken
+    its money back out, so it must not block a void — counting it would strand an
+    invoice permanently after one mistyped payment was corrected. The same
+    definition the server uses.
+  */
+  const hasActivePayment = (invoice.payments ?? []).some(
+    (payment) => !payment.isVoided,
+  );
   const lateBy = Math.abs(daysUntil(invoice.dueDate));
 
   return (
@@ -203,6 +214,11 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
             <div className="rounded-lg border border-border bg-surface-hover px-4 py-3 text-sm">
               Faktur ini sudah di-void — tidak ada yang bisa ditagih. Nomornya
               tetap tercatat dan tidak akan dipakai ulang.
+              {invoice.voidReason && (
+                <p className="mt-2 text-muted">
+                  Alasan: <span className="italic">{invoice.voidReason}</span>
+                </p>
+              )}
             </div>
           ) : settled ? (
             <div className="rounded-lg border border-success/40 bg-success/5 px-4 py-3 text-sm text-success">
@@ -227,8 +243,45 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
               </Card>
             </Can>
           )}
+          {/*
+            VOID SITS BELOW THE PAYMENT FORM, not beside it, and it is the last
+            thing on the column on purpose: taking money is what this screen is
+            usually opened to do, and unwinding the whole document is what it is
+            opened to do rarely and deliberately.
+
+            OFFERED ONLY WHILE NOTHING IS PAID. The server refuses otherwise
+            (409), and a dialog that opens only to say "you cannot do this" is a
+            dialog that should not have opened — so the reason is explained HERE,
+            where somebody can act on it.
+          */}
+          {!voided && (
+            <Can feature="customerInvoices" action="void">
+              {hasActivePayment ? (
+                <p className="rounded-lg border border-border bg-surface-hover px-4 py-3 text-xs text-muted">
+                  Faktur ini tidak bisa di-void selama masih ada pembayaran
+                  aktif. Batalkan pembayarannya dulu — masing-masing memposting
+                  jurnal pembaliknya sendiri — lalu void jadi tersedia.
+                </p>
+              ) : (
+                <Button
+                  variant="destructive"
+                  size="lg"
+                  onClick={() => setVoidOpen(true)}
+                >
+                  Void faktur
+                </Button>
+              )}
+            </Can>
+          )}
         </div>
       </div>
+
+      <VoidInvoiceDialog
+        invoice={invoice}
+        open={voidOpen}
+        onOpenChange={setVoidOpen}
+        onVoided={applyInvoice}
+      />
 
       <PaymentHistory
         payments={invoice.payments}

@@ -50,6 +50,10 @@ const REFERENCE_LABELS: Record<ReferenceType, string> = {
   // row raised by an invoice would send somebody looking through the till's
   // history for a sale that was never rung up.
   customer_invoice: "Faktur penjualan",
+  // Separately findable from the invoice itself, like `pos_void`: a stock card
+  // shows the issue and the row unwinding it as two events, not one document
+  // appearing twice.
+  customer_invoice_void: "Pembatalan faktur",
   // "Pembatalan", not "Transaksi POS": the two are separately findable on
   // purpose, so a stock card shows the sale and the row unwinding it as two
   // events rather than one document appearing twice.

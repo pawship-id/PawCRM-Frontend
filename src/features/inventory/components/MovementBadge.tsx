@@ -25,6 +25,11 @@ const LABELS: Record<MovementType, { label: string; tone: string }> = {
   invoice_sale: { label: "Faktur penjualan", tone: "bg-danger/10 text-danger" },
   // Green, because the goods come back in — but its own label rather than
   // "Retur customer", which means a customer brought something back. Nothing
+  // came back here: the invoice is being unwound because it should not have been
+  // issued. The same distinction `pos_void` draws.
+  invoice_void: { label: "Batal faktur", tone: "bg-success/12 text-success" },
+  // Green, because the goods come back in — but its own label rather than
+  // "Retur customer", which means a customer brought something back. Nothing
   // came back here: the sale is being unwound because it should not have
   // happened, and a stock card that conflated the two would make "what do
   // customers actually return" unanswerable.

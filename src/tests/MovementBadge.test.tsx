@@ -21,6 +21,7 @@ const KNOWN: MovementType[] = [
   "receipt",
   "pos_sale",
   "invoice_sale",
+  "invoice_void",
   "pos_void",
   "opname_diff",
   "purchase_return",
