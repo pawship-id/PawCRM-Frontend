@@ -3753,6 +3753,37 @@ export interface CustomerInvoiceDetail
    */
   voidedAt: string | null;
   voidReason: string | null;
+  /**
+   * EVERY ledger entry this invoice raised — its issuance, its cost half, and a
+   * reversal of each if it was voided.
+   *
+   * THE INVOICE NAMES THEM, rather than the entries naming the invoice, and that
+   * asymmetry is forced: an invoice's number is allocated AFTER its entries are
+   * posted — deliberately, so a failed issue burns none — so the number cannot
+   * appear in their descriptions and the ledger's search box cannot answer
+   * "which entries belong to this invoice".
+   */
+  journalEntries: InvoiceJournalEntry[];
+}
+
+/** One ledger entry an invoice raised, as the detail screen lists it. */
+export interface InvoiceJournalEntry {
+  _id: string;
+  entryNumber: string;
+  /** `invoice` for the issuance half, `invoice_cogs` for the cost half. */
+  sourceType: string | null;
+  /** True when this entry UNDOES another — set only on a reversal. */
+  isReversal: boolean;
+  /**
+   * True when the entry belongs to the SALE that raised this receivable rather
+   * than to the invoice itself.
+   *
+   * A till-born invoice posts no entries of its own: the sale posted them, and
+   * they cover the WHOLE sale — cash part included — not just the amount left on
+   * account. Presenting them as the invoice's own would invite somebody to read
+   * a Rp 500.000 entry as the total of a Rp 181.000 bill.
+   */
+  belongsToSale: boolean;
 }
 
 /** What an invoice line sells. */

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { Printer, Undo2 } from "lucide-react";
 
 import { Card } from "@/components";
@@ -10,6 +9,8 @@ import { Can, usePermissions } from "@/features/permissions";
 import { cn } from "@/lib/utils";
 import { formatMoney } from "@/utils/decimal";
 import type { CustomerInvoicePayment } from "@/types/api";
+
+import { JournalLink } from "./JournalLink";
 
 const METHOD_LABEL: Record<CustomerInvoicePayment["method"], string> = {
   transfer: "transfer",
@@ -202,27 +203,4 @@ export function PaymentHistory({
  * ledger reference belongs is worse: the link still works, so the reference is
  * still followable.
  */
-function JournalLink({
-  id,
-  number,
-  linked,
-}: {
-  id: string;
-  number: string | null;
-  linked: boolean;
-}) {
-  const label = number ?? id;
 
-  if (!linked) {
-    return <span className="tabular-nums">{label}</span>;
-  }
-
-  return (
-    <Link
-      href={`/dashboard/keuangan/journal-entries/${id}`}
-      className="tabular-nums text-primary-hover underline-offset-2 hover:underline"
-    >
-      {label}
-    </Link>
-  );
-}

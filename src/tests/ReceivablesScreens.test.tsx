@@ -137,6 +137,7 @@ function detail(
     channel: "manual",
     voidedAt: null,
     voidReason: null,
+    journalEntries: [],
     ...overrides,
   };
 }

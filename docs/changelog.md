@@ -7,6 +7,36 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Halaman faktur menyebut jurnalnya sendiri
+
+Kartu **Jurnal** di halaman detail faktur: Penerbitan, HPP, dan kedua pembaliknya
+kalau faktur itu di-void — semuanya bisa diklik ke halaman jurnalnya.
+
+**Kenapa fakturnya yang menyebut entrinya, bukan sebaliknya.** Nomor faktur
+dialokasikan **setelah** jurnalnya diposting — sengaja, supaya penerbitan yang
+gagal tidak menghanguskan nomor — jadi nomornya tidak ada di deskripsi entri, dan
+kolom cari Jurnal Umum tidak bisa menjawab "entri mana milik faktur ini".
+
+Muncul dari kejadian nyata: satu faktur di-void, yang dicari di jurnal faktur
+lain (kode cabang **BCS** dan **CBS** tertukar), dan kesimpulannya pembaliknya
+hilang. Sekarang cukup buka fakturnya.
+
+**Faktur dari kasir ikut terlayani.** Versi pertama cuma mencari entri lewat id
+faktur — benar untuk faktur manual, salah untuk semua yang lain: penjualan kasir
+memposting jurnalnya atas nama **transaksi kasir**, bukan atas nama faktur.
+Kartunya kosong di **23 dari 27** faktur. Sekarang jatuh ke `posTransactionId`.
+
+**Untuk faktur dari kasir, kartunya memperingatkan bahwa nilainya mencakup
+seluruh penjualan** — termasuk bagian yang dibayar tunai, bukan hanya sisa yang
+jadi piutang. Faktur Rp 181.000 yang menunjuk jurnal Rp 500.000 terbaca seperti
+angka yang tidak cocok tanpa kalimat itu. Labelnya juga dibedakan: "Penjualan
+kasir", bukan "Penerbitan" — fakturnya memang tidak menerbitkan apa pun.
+
+**`JournalLink` dipromosikan ke berkasnya sendiri** — §14: komponen pindah begitu
+ada pemanggil kedua, dan salin-tempel justru yang aturan itu cegah.
+
+---
+
 ## [Unreleased] — Faktur bisa di-void
 
 PCR-031. Tombol **Void faktur** di halaman detail, dengan dialog konfirmasi.

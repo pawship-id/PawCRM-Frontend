@@ -8,7 +8,7 @@ import { Alert, Card, Spinner } from "@/components";
 // is a link (`asChild`) or uses a shadcn-only variant, neither of which the
 // wrapper's three-variant API exposes.
 import { Button } from "@/components/ui/button";
-import { Can } from "@/features/permissions";
+import { Can, usePermissions } from "@/features/permissions";
 import { PageHeading } from "@/features/purchasing";
 import { formatMoney } from "@/utils/decimal";
 import { daysUntil } from "@/utils/date";
@@ -18,6 +18,7 @@ import { SALES_CRUMBS } from "../crumbs";
 import { useCustomerInvoice } from "../hooks/useCustomerInvoice";
 import { InvoiceSourceBadge, InvoiceStatusBadge } from "./InvoiceStatusBadge";
 import { InvoiceItemsTable } from "./InvoiceItemsTable";
+import { JournalLink } from "./JournalLink";
 import { VoidInvoiceDialog } from "./VoidInvoiceDialog";
 import { PaymentHistory } from "./PaymentHistory";
 import { PaymentReceiptDialog } from "./PaymentReceiptDialog";
@@ -52,6 +53,26 @@ function formatDate(iso: string): string {
  * no way to move any — the separation of duties the backend enforces, made
  * visible rather than discovered through a 403.
  */
+/**
+ * What each entry IS, in the words a shopkeeper reads.
+ *
+ * Keyed on source type AND whether it reverses something, because those two
+ * together are the whole taxonomy an invoice can produce — and a list of four
+ * numbers with no labels would make somebody open all four to find the one they
+ * want.
+ */
+const JOURNAL_ROLE: Record<string, string> = {
+  "invoice:false": "Penerbitan",
+  "invoice_cogs:false": "HPP",
+  "invoice:true": "Pembalik penerbitan",
+  "invoice_cogs:true": "Pembalik HPP",
+  // A till-born invoice's entries belong to the SALE — see `belongsToSale`.
+  "pos:false": "Penjualan kasir",
+  "pos_cogs:false": "HPP kasir",
+  "pos:true": "Pembalik penjualan",
+  "pos_cogs:true": "Pembalik HPP kasir",
+};
+
 export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
   const { invoice, loading, error, notFound, applyInvoice, refetch } =
     useCustomerInvoice(invoiceId);
@@ -65,6 +86,12 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
   const [receiptFor, setReceiptFor] = useState<string | null>(null);
   const [voidingId, setVoidingId] = useState<string | null>(null);
   const [voidOpen, setVoidOpen] = useState(false);
+  /*
+    READING THE LEDGER IS ITS OWN GRANT. A link that 403s on click is worse than
+    plain text: it promises somewhere to go.
+  */
+  const { can } = usePermissions();
+  const mayReadLedger = can("journalEntries", "read");
 
   if (loading) {
     return (
@@ -208,6 +235,55 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
         <Card title="Barang & jasa">
           <InvoiceItemsTable invoice={invoice} />
         </Card>
+
+        {/*
+          THE ENTRIES THIS INVOICE RAISED, named here because they cannot name
+          themselves. An invoice's number is allocated AFTER its entries are
+          posted — so a failed issue burns none — which means the number is not in
+          their descriptions and the ledger's search box cannot find them by it.
+          Without this card, "which journal entries belong to this invoice" is a
+          question only the database can answer.
+        */}
+        {invoice.journalEntries.length > 0 && (
+          <Card
+            title="Jurnal"
+            description={
+              invoice.posTransactionId
+                ? "Entri buku besar dari penjualan kasir yang menerbitkan faktur ini."
+                : "Entri buku besar yang lahir dari faktur ini."
+            }
+          >
+            {/*
+              SAID PLAINLY FOR A TILL-BORN INVOICE. Those entries cover the WHOLE
+              sale — the cash part too — not just the amount left on account, so a
+              reader comparing their totals against this bill would find them
+              larger and reasonably conclude something was wrong.
+            */}
+            {invoice.posTransactionId && (
+              <p className="mb-3 text-xs text-muted">
+                Nilainya mencakup <strong>seluruh penjualan</strong>, termasuk
+                bagian yang dibayar tunai — bukan hanya sisa yang jadi piutang
+                ini.
+              </p>
+            )}
+            <ul className="flex flex-col gap-2 text-sm">
+              {invoice.journalEntries.map((entry) => (
+                <li key={entry._id} className="flex justify-between gap-4">
+                  <span className="text-muted">
+                    {JOURNAL_ROLE[
+                      `${entry.sourceType}:${entry.isReversal}`
+                    ] ?? "Entri"}
+                  </span>
+                  <JournalLink
+                    id={entry._id}
+                    number={entry.entryNumber}
+                    linked={mayReadLedger}
+                  />
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
 
         <div className="flex flex-col gap-4">
           {voided ? (
