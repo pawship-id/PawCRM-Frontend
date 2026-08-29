@@ -44,17 +44,28 @@ export const bookingService = {
     }),
 
   /**
-   * GET /bookings/bridge — what this customer has confirmed for TODAY that is
-   * not already in a cart.
+   * GET /bookings/bridge — what this customer has confirmed and not yet billed.
    *
    * Returns a BARE ARRAY, not a page: the answer is a handful of rows a modal
-   * renders whole. "Today", "confirmed" and "not already pulled" are the
-   * definition of the endpoint rather than parameters — "today" in particular is
-   * resolved in the tenant's timezone by the server, which is the part a caller
-   * would get wrong.
+   * renders whole. "Confirmed" and "not already billed" are the definition of
+   * the endpoint rather than parameters — and "not already billed" means neither
+   * in a cashier's basket NOR on another invoice, which is one question the
+   * server answers in one place.
+   *
+   * `days` WIDENS THE WINDOW BACKWARDS, and defaults to today alone. That
+   * default is the TILL's answer: a cashier bills what is happening in front of
+   * them. An invoice bills what has HAPPENED — a month of boarding, last week's
+   * grooming — so it passes a wider window. Never forwards: offering an
+   * appointment booked for next Friday would let somebody bill work not yet
+   * done.
+   *
+   * The day boundary is resolved in the tenant's timezone by the server, which
+   * is the part a caller would get wrong.
    */
-  bridge: (customerId: string) =>
-    apiClient.get<Booking[]>("/bookings/bridge", { query: { customerId } }),
+  bridge: (customerId: string, days?: number) =>
+    apiClient.get<Booking[]>("/bookings/bridge", {
+      query: { customerId, days },
+    }),
 
   /** GET /bookings/:id — a single booking. */
   getById: (id: string) => apiClient.get<Booking>(`/bookings/${id}`),

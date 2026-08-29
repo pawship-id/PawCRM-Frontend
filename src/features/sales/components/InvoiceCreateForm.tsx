@@ -29,6 +29,7 @@ import { ApiError } from "@/services/api-error";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
 import { formatMoney } from "@/utils/decimal";
 import type {
+  Booking,
   CreateInvoiceItemInput,
   InvoiceChannel,
   InvoiceDiscountMode,
@@ -36,6 +37,7 @@ import type {
 
 import { useInvoiceLookups } from "../hooks/useInvoiceLookups";
 import { previewInvoice } from "../invoicePreview";
+import { InvoiceBookingPanel } from "./InvoiceBookingPanel";
 
 /**
  * RAISE AN INVOICE — PCR-030's form.
@@ -106,6 +108,30 @@ export function InvoiceCreateForm() {
 
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [picked, setPicked] = useState("");
+  /*
+    BOOKINGS ARE SENT AS IDS, not as lines. The server reads each booking's own
+    frozen prices, its animal and its groomer — a client that could send those
+    could bill a grooming at a price nobody quoted, against somebody else's pet.
+    Which means the form cannot preview their total either; see the note by the
+    recap.
+  */
+  const [pulledBookings, setPulledBookings] = useState<Booking[]>([]);
+  const bookingIds = pulledBookings.map((booking) => booking._id);
+
+  /*
+    BOOKING LINES JOIN THE PREVIEW, even though they are SENT as ids.
+
+    The server prices them identically to typed lines — the invoice discount
+    applies across both — so leaving them out of the preview made the recap read
+    Rp 0 with two groomings ticked, and would have understated every invoice
+    discount that touched them.
+
+    The prices here are the bridge's, which are the same frozen figures the
+    server will read from the bookings themselves.
+  */
+  const bookingLines = pulledBookings.flatMap((booking) =>
+    booking.items.map((item) => ({ qty: "1", unitPrice: item.price })),
+  );
   const [invoiceDiscountMode, setInvoiceDiscountMode] =
     useState<InvoiceDiscountMode>("percent");
   const [invoiceDiscountValue, setInvoiceDiscountValue] = useState("");
@@ -155,19 +181,23 @@ export function InvoiceCreateForm() {
   const preview = useMemo(
     () =>
       previewInvoice(
-        lines.map((line) => ({
-          qty: line.qty,
-          unitPrice: line.unitPrice,
-          discount: line.discountValue
-            ? { mode: line.discountMode, value: line.discountValue }
-            : null,
-        })),
+        [
+          // Bookings first, matching the order the server assembles them in.
+          ...bookingLines,
+          ...lines.map((line) => ({
+            qty: line.qty,
+            unitPrice: line.unitPrice,
+            discount: line.discountValue
+              ? { mode: line.discountMode, value: line.discountValue }
+              : null,
+          })),
+        ],
         invoiceDiscountValue
           ? { mode: invoiceDiscountMode, value: invoiceDiscountValue }
           : null,
         lookups.tax,
       ),
-    [lines, invoiceDiscountMode, invoiceDiscountValue, lookups.tax],
+    [lines, bookingLines, invoiceDiscountMode, invoiceDiscountValue, lookups.tax],
   );
 
   /**
@@ -181,7 +211,8 @@ export function InvoiceCreateForm() {
     if (lookups.loading) return "Sedang memuat data.";
     if (!customerId) return "Pilih pelanggan dulu.";
     if (!branchId) return "Pilih cabang dulu.";
-    if (lines.length === 0) return "Tambah minimal satu baris.";
+    if (lines.length === 0 && bookingIds.length === 0)
+      return "Tambah minimal satu baris atau pilih booking.";
     if (hasProductLine && !warehouseId)
       return "Pilih gudang — ada barang yang harus dikeluarkan.";
     if (lines.some((line) => !line.qty || Number(line.qty) <= 0))
@@ -251,6 +282,7 @@ export function InvoiceCreateForm() {
         // claim goods left a shelf that nothing came off.
         ...(hasProductLine ? { warehouseId } : {}),
         items,
+        ...(bookingIds.length > 0 ? { bookingIds } : {}),
         ...(invoiceDiscountValue
           ? {
               invoiceDiscount: {
@@ -361,7 +393,15 @@ export function InvoiceCreateForm() {
             required
             placeholder="Pilih pelanggan"
             disabled={saving}
-            onChange={setCustomerId}
+            onChange={(value) => {
+              if (value === customerId) return;
+              setCustomerId(value);
+              // Every booking on offer belonged to the previous customer.
+              // Keeping one would bill this person for somebody else's grooming
+              // — which the server refuses, but only after the form was filled
+              // in.
+              setPulledBookings([]);
+            }}
           />
 
           <div className="grid gap-4 sm:grid-cols-3">
@@ -422,6 +462,28 @@ export function InvoiceCreateForm() {
           />
         </div>
       </Card>
+
+      {/*
+        BOOKINGS BEFORE THE TYPED LINES, which is the order somebody fills this
+        in: pull what has already happened, then add anything else onto the same
+        bill. Hidden entirely until a customer is chosen — "which bookings" has
+        no meaning until "whose" is answered.
+      */}
+      {customerId && (
+        <Card
+          title="Hewan & booking pelanggan ini"
+          description="Booking yang sudah dikonfirmasi dan belum ditagih. Harganya mengikuti yang dikutip saat booking dibuat."
+        >
+          <InvoiceBookingPanel
+            /* A different customer is a different panel — see its own note. */
+            key={customerId}
+            customerId={customerId}
+            selected={bookingIds}
+            onChange={setPulledBookings}
+            disabled={saving}
+          />
+        </Card>
+      )}
 
       <Card
         title="Baris faktur"

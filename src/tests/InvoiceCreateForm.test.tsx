@@ -10,6 +10,7 @@ import { warehouseService } from "@/services/warehouse.service";
 import { productService } from "@/services/product.service";
 import { serviceService } from "@/services/service.service";
 import { tenantService } from "@/services/tenant.service";
+import { bookingService } from "@/services/booking.service";
 import { ApiError } from "@/services/api-error";
 
 const push = jest.fn();
@@ -52,6 +53,9 @@ function mockLookups(overrides: { warehouses?: unknown[] } = {}) {
     .mockResolvedValue(page(overrides.warehouses ?? [WAREHOUSE]) as never);
   jest.spyOn(productService, "list").mockResolvedValue(page([PRODUCT]) as never);
   jest.spyOn(serviceService, "list").mockResolvedValue(page([SERVICE]) as never);
+  // The booking panel mounts as soon as a customer is chosen. Stubbed empty so
+  // these cases stay about the form rather than about the bridge.
+  jest.spyOn(bookingService, "bridge").mockResolvedValue([] as never);
   jest
     .spyOn(tenantService, "me")
     .mockResolvedValue({ settings: { taxRate: 11, priceIncludesTax: true } } as never);
@@ -138,6 +142,44 @@ describe("what the form sends", () => {
     this form was typed by somebody. `marketplace` is for orders that sync in
     once that module exists.
   */
+  /*
+    BOOKINGS GO AS IDS, never as lines. The server reads each booking's own
+    frozen prices, its animal and its groomer — a client that could send those
+    could bill a grooming at a price nobody quoted, against somebody else's pet.
+  */
+  it("sends chosen bookings as ids", async () => {
+    jest.spyOn(bookingService, "bridge").mockResolvedValue([
+      {
+        _id: "bk1",
+        bookingNumber: "BK-260828-001",
+        petName: "Miko",
+        items: [
+          { serviceId: "svc1", name: "Grooming", price: "150000", groomerName: "Rina" },
+        ],
+      },
+    ] as never);
+
+    render(<InvoiceCreateForm />);
+    await pick(/^Pelanggan$/i, /Bu Sari/);
+    await pick(/^Cabang$/i, /Cabang Pusat/);
+    await userEvent.click(await screen.findByRole("checkbox"));
+    await submit();
+
+    await waitFor(() => expect(customerInvoiceService.create).toHaveBeenCalled());
+    expect(sent().bookingIds).toEqual(["bk1"]);
+    // No prices, no names, no pet ids — only which bookings.
+    expect(sent().items).toEqual([]);
+  });
+
+  it("leaves bookingIds out entirely when none was chosen", async () => {
+    render(<InvoiceCreateForm />);
+    await fillMinimal();
+    await submit();
+
+    await waitFor(() => expect(customerInvoiceService.create).toHaveBeenCalled());
+    expect(sent()).not.toHaveProperty("bookingIds");
+  });
+
   it("sends the channel, defaulting to manual", async () => {
     render(<InvoiceCreateForm />);
     await fillMinimal();
@@ -202,6 +244,66 @@ describe("what the form shows", () => {
     // 100.000 − 10% = 90.000; then 10% of 90.000 = 9.000; total 81.000.
     const recap = screen.getByText(/^Total tagihan$/i).closest("div")!;
     expect(within(recap).getByText("Rp 81.000")).toBeInTheDocument();
+  });
+
+  /*
+    THE RECAP COUNTS BOOKINGS. They are SENT as ids, but the server prices them
+    identically to typed lines — so leaving them out of the preview left the
+    recap reading Rp 0 with two groomings ticked, and would have understated
+    every invoice discount that touched them.
+  */
+  it("adds pulled bookings into the recap", async () => {
+    jest.spyOn(bookingService, "bridge").mockResolvedValue([
+      {
+        _id: "bk1",
+        bookingNumber: "BK-260828-001",
+        petName: "Cici",
+        items: [{ serviceId: "svc1", name: "Grooming", price: "120000.0000", groomerName: "Rina" }],
+      },
+      {
+        _id: "bk2",
+        bookingNumber: "BK-260828-002",
+        petName: "Cilang",
+        items: [{ serviceId: "svc1", name: "Grooming", price: "120000.0000", groomerName: "Rina" }],
+      },
+    ] as never);
+
+    render(<InvoiceCreateForm />);
+    await pick(/^Pelanggan$/i, /Bu Sari/);
+    await pick(/^Cabang$/i, /Cabang Pusat/);
+
+    const boxes = await screen.findAllByRole("checkbox");
+    await userEvent.click(boxes[0]);
+    await userEvent.click(boxes[1]);
+
+    // Scoped to the Total row: with no discount the subtotal carries the same
+    // figure, and a list-wide query would pass on whichever rendered first.
+    const totalRow = screen.getByText(/^Total tagihan$/i).closest("div")!;
+    expect(within(totalRow).getByText("Rp 240.000")).toBeInTheDocument();
+  });
+
+  /*
+    AND THE INVOICE DISCOUNT REACHES THEM. A discount that applied only to typed
+    lines would show one number on screen and bill another.
+  */
+  it("discounts booking lines like any other", async () => {
+    jest.spyOn(bookingService, "bridge").mockResolvedValue([
+      {
+        _id: "bk1",
+        bookingNumber: "BK-260828-001",
+        petName: "Cici",
+        items: [{ serviceId: "svc1", name: "Grooming", price: "100000.0000", groomerName: "Rina" }],
+      },
+    ] as never);
+
+    render(<InvoiceCreateForm />);
+    await pick(/^Pelanggan$/i, /Bu Sari/);
+    await pick(/^Cabang$/i, /Cabang Pusat/);
+    await userEvent.click(await screen.findByRole("checkbox"));
+    await userEvent.type(screen.getByLabelText(/^Diskon faktur$/i), "10");
+
+    const totalRow = screen.getByText(/^Total tagihan$/i).closest("div")!;
+    expect(within(totalRow).getByText("Rp 90.000")).toBeInTheDocument();
   });
 
   it("says the price already includes tax when the tenant prices that way", async () => {
@@ -270,6 +372,31 @@ describe("what the form refuses to submit", () => {
     expect(screen.getByText(/belum bisa disimpan/i)).not.toHaveTextContent(
       /cabang/i,
     );
+  });
+
+  /*
+    A BOOKING IS A LINE. An invoice may be nothing but pulled groomings, and
+    demanding a typed item as well would make the panel useless for the case it
+    exists to serve.
+  */
+  it("lets a booking alone satisfy the form", async () => {
+    jest.spyOn(bookingService, "bridge").mockResolvedValue([
+      {
+        _id: "bk1",
+        bookingNumber: "BK-260828-001",
+        petName: "Miko",
+        items: [{ serviceId: "svc1", name: "Grooming", price: "150000", groomerName: "Rina" }],
+      },
+    ] as never);
+
+    render(<InvoiceCreateForm />);
+    await pick(/^Pelanggan$/i, /Bu Sari/);
+    await pick(/^Cabang$/i, /Cabang Pusat/);
+    await userEvent.click(await screen.findByRole("checkbox"));
+
+    expect(
+      screen.getByRole("button", { name: /terbitkan faktur/i }),
+    ).toBeEnabled();
   });
 
   it("asks for a warehouse once a product line exists", async () => {
