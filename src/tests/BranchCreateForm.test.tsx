@@ -1,5 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+
+import Swal from "sweetalert2";
 
 import { BranchCreateForm } from "@/features/branches";
 import { branchService } from "@/services/branch.service";
@@ -18,9 +20,14 @@ jest.mock("sweetalert2", () => ({
   default: { fire: jest.fn().mockResolvedValue({ isConfirmed: true }) },
 }));
 
+/** The options of the most recent toast. */
+const fired = () =>
+  (Swal.fire as jest.Mock).mock.calls.at(-1)?.[0] as Record<string, unknown>;
+
 describe("BranchCreateForm", () => {
   beforeEach(() => {
     push.mockClear();
+    (Swal.fire as jest.Mock).mockClear();
   });
   afterEach(() => jest.restoreAllMocks());
 
@@ -33,7 +40,7 @@ describe("BranchCreateForm", () => {
     );
 
     expect(create).not.toHaveBeenCalled();
-    expect(screen.getByText(/branch name is required/i)).toBeInTheDocument();
+    expect(screen.getByText(/nama cabang wajib diisi/i)).toBeInTheDocument();
   });
 
   it("creates the branch and redirects on success", async () => {
@@ -125,9 +132,113 @@ describe("BranchCreateForm", () => {
       screen.getByRole("button", { name: /create branch/i }),
     );
 
-    expect(
-      await screen.findByText(/branch name already in use/i),
-    ).toBeInTheDocument();
+    /*
+      A TOAST, NOT AN INLINE ALERT — a deliberate departure from ui-rules §9,
+      asked for directly. This form scrolls: a 409 fires while the cursor is in a
+      field halfway down the page, and an Alert pinned to the top of the form is
+      a message the person who caused it never sees.
+    */
+    await waitFor(() => expect(Swal.fire).toHaveBeenCalled());
+    expect(fired()).toMatchObject({
+      icon: "error",
+      title: "Branch name already in use",
+      position: "top-end",
+      // 8s rather than the 3s default: a server refusal carries an instruction,
+      // and three seconds is not long enough to read one and act on it.
+      timer: 8000,
+    });
     expect(push).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The branch CODE — the segment that goes inside every invoice number this
+   * branch issues, `INV/CBS/2608/0001`.
+   *
+   * It is optional here and refused later, deliberately: a branch registered
+   * before anybody has decided on codes must still be savable, and the INVOICE
+   * is what refuses to be issued against a branch with none — a refusal that
+   * names the branch and the screen to fix it, rather than a validation error on
+   * a form nobody has open.
+   */
+  describe("kode cabang", () => {
+    it("sends the code with the branch", async () => {
+      const create = jest
+        .spyOn(branchService, "create")
+        .mockResolvedValue({} as never);
+      render(<BranchCreateForm />);
+
+      await userEvent.type(screen.getByLabelText(/branch name/i), "Selatan");
+      await userEvent.type(screen.getByLabelText(/kode cabang/i), "CBS");
+      await userEvent.click(
+        screen.getByRole("button", { name: /create branch/i }),
+      );
+
+      expect(create.mock.calls[0][0]).toMatchObject({ code: "CBS" });
+    });
+
+    /*
+      UPPERCASED AS IT IS TYPED, not silently on save. The server uppercases too,
+      so both spellings would be stored identically either way — but a field that
+      changes its own value after the user has looked away reads as a bug, and
+      the person checking their invoice numbers should see the exact string that
+      will be printed.
+    */
+    it("uppercases while typing", async () => {
+      jest.spyOn(branchService, "create").mockResolvedValue({} as never);
+      render(<BranchCreateForm />);
+
+      const field = screen.getByLabelText(/kode cabang/i);
+      await userEvent.type(field, "cbs");
+
+      expect(field).toHaveValue("CBS");
+    });
+
+    it("sends null rather than an empty string when left blank", async () => {
+      // `""` and `null` both clear it server-side, but null is what the API
+      // documents as the clearing value, and sending "" would make a create with
+      // no code look like a create that cleared one.
+      const create = jest
+        .spyOn(branchService, "create")
+        .mockResolvedValue({} as never);
+      render(<BranchCreateForm />);
+
+      await userEvent.type(screen.getByLabelText(/branch name/i), "Selatan");
+      await userEvent.click(
+        screen.getByRole("button", { name: /create branch/i }),
+      );
+
+      expect(create.mock.calls[0][0]).toMatchObject({ code: null });
+    });
+
+    it("refuses a code with a character that cannot go in a number", async () => {
+      const create = jest.spyOn(branchService, "create");
+      render(<BranchCreateForm />);
+
+      await userEvent.type(screen.getByLabelText(/branch name/i), "Selatan");
+      // The slash is what separates the segments of an invoice number, so a code
+      // containing one would produce `INV/CB/S/2608/0001` — five segments for a
+      // format that has four.
+      await userEvent.type(screen.getByLabelText(/kode cabang/i), "CB/S");
+      await userEvent.click(
+        screen.getByRole("button", { name: /create branch/i }),
+      );
+
+      expect(create).not.toHaveBeenCalled();
+      expect(screen.getByText(/hanya boleh huruf A-Z/i)).toBeInTheDocument();
+    });
+
+    it("refuses a one-character code", async () => {
+      const create = jest.spyOn(branchService, "create");
+      render(<BranchCreateForm />);
+
+      await userEvent.type(screen.getByLabelText(/branch name/i), "Selatan");
+      await userEvent.type(screen.getByLabelText(/kode cabang/i), "C");
+      await userEvent.click(
+        screen.getByRole("button", { name: /create branch/i }),
+      );
+
+      expect(create).not.toHaveBeenCalled();
+      expect(screen.getByText(/minimal 2 karakter/i)).toBeInTheDocument();
+    });
   });
 });

@@ -161,6 +161,16 @@ export function PosScreen() {
   const [salesVersion, setSalesVersion] = useState(0);
   const [xReportFor, setXReportFor] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
+  /*
+    SET WHEN A SHIFT IS CLOSED, and it sends the screen back to the branch
+    picker rather than straight to Buka Kasir. Tutup Kasir is the end of a
+    stint, not a pause in one: the next person at this till is as likely to be
+    somebody else, in another shop, as the same cashier starting a second
+    shift — so the branch is asked again rather than inherited from whoever was
+    standing here last. The session still names a branch, which is why this
+    needs its own flag: `branchChosen` stays true across the close.
+  */
+  const [rechooseBranch, setRechooseBranch] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -435,8 +445,8 @@ export function PosScreen() {
     reaches every branch signs in pointed at none, so this is the ordinary first
     screen for an owner, not an error path.
   */
-  if (!branchChosen) {
-    return <PosBranchGate />;
+  if (!branchChosen || rechooseBranch) {
+    return <PosBranchGate onChosen={() => setRechooseBranch(false)} />;
   }
 
   if (shiftLoading) {
@@ -812,6 +822,7 @@ export function PosScreen() {
           setClosing(false);
           cart.clear();
           refetch();
+          setRechooseBranch(true);
         }}
         onOpenChange={setClosing}
       />

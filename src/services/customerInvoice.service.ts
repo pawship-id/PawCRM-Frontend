@@ -1,0 +1,199 @@
+import { apiClient } from "./api-client";
+import type {
+  CustomerInvoiceDetail,
+  CustomerInvoiceListQuery,
+  CustomerInvoiceListRow,
+  CustomerOutstandingSummary,
+  PageResult,
+  RecordCustomerPaymentInput,
+  VoidCustomerPaymentInput,
+  CreateCustomerInvoiceInput,
+} from "@/types/api";
+
+/**
+ * Customer invoices (piutang pelanggan), against /api/customer-invoices.
+ *
+ * FIVE METHODS, AND THE ABSENCES ARE THE BACKEND'S DESIGN rather than this
+ * file's caution:
+ *
+ *   NO `create`. Raising an invoice by hand cuts stock, posts two journal
+ *   entries and allocates a number — that is PCR-030, and it lands with its own
+ *   route. Every receivable in the system today was raised by the till: settling
+ *   a sale with the Piutang method issues one automatically, inside the sale's
+ *   own transaction. `source` tells the two apart.
+ *
+ *   NO `update`, NO `remove`, and NO way to EDIT a payment. Every payment posts
+ *   an immutable journal entry, so changing an amount would restate cash already
+ *   reported and deleting a row would leave the ledger pointing at a document
+ *   nobody can look up.
+ *
+ *   `voidPayment` IS THE CORRECTION, and it is not an exception to that rule —
+ *   it posts a REVERSING entry and marks the row, so both the mistake and its
+ *   undoing stay visible. Correcting an amount is cancel-then-record-again,
+ *   which is also what actually happened.
+ *
+ * Mirrors purchaseInvoiceService, pointed the other way: each method maps one
+ * typed domain operation onto a single apiClient request — no React, no state.
+ * The tenant scope is derived from the session cookie by the backend, so it is
+ * never passed here.
+ */
+export const customerInvoiceService = {
+  /**
+   * GET /customer-invoices — receivables, soonest due first, filterable.
+   *
+   * THE DEFAULT ORDER IS `dueSoonest`, and deliberately not the payable's
+   * `newest`: a payables list is read to decide what to pay, a receivables list
+   * to decide who to chase.
+   *
+   * `payments` IS PROJECTED AWAY by the server and replaced with `paymentCount`;
+   * read one invoice to get them. `outstandingAmount` and `isOverdue` arrive
+   * computed, against one instant for the whole page.
+   *
+   * THE AR FILTERS GO OVER THE WIRE. `outstanding`, `overdue` and `dueSoon` are
+   * booleans the server understands — asking for everything and filtering here
+   * would make the screen's list and the pager's total disagree the moment there
+   * is a second page.
+   */
+  list: (query: CustomerInvoiceListQuery = {}) =>
+    apiClient.get<PageResult<CustomerInvoiceListRow>>("/customer-invoices", {
+      query: {
+        page: query.page,
+        limit: query.limit,
+        search: query.search,
+        customerId: query.customerId,
+        branchId: query.branchId,
+        status: query.status,
+        source: query.source,
+        outstanding: query.outstanding,
+        overdue: query.overdue,
+        dueSoon: query.dueSoon,
+        horizonDays: query.horizonDays,
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+        sort: query.sort,
+      },
+    }),
+
+  /**
+   * POST /customer-invoices — raise one by hand (PCR-030).
+   *
+   * IRREVERSIBLE. It cuts stock, posts two journal entries and consumes a number
+   * from the branch's series — there is no PATCH beside it and there will not be
+   * one. An issued invoice is corrected by voiding it and raising another, which
+   * is what an immutable ledger means.
+   *
+   * SENDS NO PRICES AND NO NAMES. Both are read from the catalogue server-side;
+   * anything extra this sends is stripped by the validation layer. The only
+   * things a client decides are which item, how many, and what discount.
+   *
+   * THE REFUSALS ARE THE INTERESTING PART, and all of them are 400s a person can
+   * act on: the branch has no code yet (naming the branch and the screen), the
+   * shelf is short (naming every product that is), a bundle was named, or a
+   * product line arrived with no warehouse.
+   */
+  create: (input: CreateCustomerInvoiceInput) =>
+    apiClient.post<CustomerInvoiceDetail>("/customer-invoices", input),
+
+  /**
+   * POST /customer-invoices/:id/void — unwind an issued invoice (PCR-031).
+   *
+   * NOT A DELETE, and the shape says so. The document stays, marked `void`, and
+   * its number is never reused: it was allocated, it may have been quoted to a
+   * customer, and an auditor asking what it was must get an answer.
+   *
+   * WHAT IT DOES SERVER-SIDE: puts the goods back on the shelf and REVERSES both
+   * journal entries — the issuance and the cost. Two reversals rather than one
+   * fresh correcting entry, because a reversal names what it undoes.
+   *
+   * REFUSED WHILE ANY PAYMENT STILL COUNTS (`409`). Money that arrived did
+   * arrive; cancel the payments first — each posts its own reversal — and the
+   * void becomes available once nothing is left paid.
+   *
+   * Requires `customerInvoices:void`, its own grant: raising a bill, taking money
+   * against it and cancelling it outright are three different authorities.
+   */
+  voidInvoice: (id: string, reason: string) =>
+    apiClient.post<CustomerInvoiceDetail>(`/customer-invoices/${id}/void`, {
+      reason,
+    }),
+
+  /**
+   * GET /customer-invoices/:id — one receivable, with its payments and labels.
+   *
+   * 404s for another tenant's invoice exactly as for an unknown id, which is the
+   * intended answer: a 403 would confirm the id exists, and who owes a shop money
+   * is among the most commercially sensitive material here.
+   */
+  getById: (id: string) =>
+    apiClient.get<CustomerInvoiceDetail>(`/customer-invoices/${id}`),
+
+  /**
+   * GET /customer-invoices/outstanding — what is owed, per customer, how much of
+   * it is already late, and how much falls due inside the window.
+   *
+   * SUMMED SERVER-SIDE over the whole book. The screen must not add up its own
+   * rows: with two pages that total is a lower bound wearing a total's clothes.
+   *
+   * All three buckets are cut at one instant, so "already late" and "due this
+   * week" cannot overlap and cannot leave a gap between them.
+   */
+  outstanding: (query: { customerId?: string; branchId?: string; horizonDays?: number } = {}) =>
+    apiClient.get<CustomerOutstandingSummary>("/customer-invoices/outstanding", {
+      query: {
+        customerId: query.customerId,
+        branchId: query.branchId,
+        horizonDays: query.horizonDays,
+      },
+    }),
+
+  /**
+   * POST /customer-invoices/:id/payments — record money arriving (201). THE ONE
+   * THAT MOVES MONEY.
+   *
+   * Posts `Dr <channel account> / Cr 1103 Piutang Usaha` in the same transaction
+   * as the payment itself, and the entry is immutable.
+   *
+   * ONE CALL FOR DP, CICILAN AND PELUNASAN — there is no separate "settle" verb.
+   * The status is derived from what has been paid, so a caller settling an
+   * invoice sends `outstandingAmount`.
+   *
+   * NOT IDEMPOTENT, and callers must handle that themselves: a double-submitted
+   * form records the money arriving twice on two irreversible entries.
+   * RecordPaymentDialog locks its button for the whole flight.
+   *
+   * RETURNS THE UPDATED INVOICE, not the payment — what a screen needs afterwards
+   * is the new balance and status. Overpayment is refused (400) and a concurrent
+   * payment loses the compare-and-swap (409); both are worth showing verbatim.
+   */
+  recordPayment: (id: string, input: RecordCustomerPaymentInput) =>
+    apiClient.post<CustomerInvoiceDetail>(
+      `/customer-invoices/${id}/payments`,
+      input,
+    ),
+
+  /**
+   * POST /customer-invoices/:id/payments/:paymentId/void — undo one receipt
+   * (200). THE OTHER ONE THAT MOVES MONEY.
+   *
+   * Posts a REVERSING journal entry against the one the payment made, marks the
+   * row `voidedAt`, and takes the amount back off `paidAmount` — which can move
+   * an invoice from `paid` to `partial` or `unpaid`.
+   *
+   * A POST, NOT A DELETE, because nothing is deleted: the payment stays in the
+   * timeline struck through. The immutable entry it posted still needs a
+   * document behind it.
+   *
+   * REQUIRES `customerInvoices:void`, not `pay`. And it answers with the
+   * UPDATED INVOICE, so the caller hands the response straight back to the
+   * screen rather than refetching.
+   */
+  voidPayment: (
+    id: string,
+    paymentId: string,
+    input: VoidCustomerPaymentInput,
+  ) =>
+    apiClient.post<CustomerInvoiceDetail>(
+      `/customer-invoices/${id}/payments/${paymentId}/void`,
+      input,
+    ),
+};

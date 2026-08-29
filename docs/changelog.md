@@ -7,6 +7,432 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Halaman faktur menyebut jurnalnya sendiri
+
+Kartu **Jurnal** di halaman detail faktur: Penerbitan, HPP, dan kedua pembaliknya
+kalau faktur itu di-void — semuanya bisa diklik ke halaman jurnalnya.
+
+**Kenapa fakturnya yang menyebut entrinya, bukan sebaliknya.** Nomor faktur
+dialokasikan **setelah** jurnalnya diposting — sengaja, supaya penerbitan yang
+gagal tidak menghanguskan nomor — jadi nomornya tidak ada di deskripsi entri, dan
+kolom cari Jurnal Umum tidak bisa menjawab "entri mana milik faktur ini".
+
+Muncul dari kejadian nyata: satu faktur di-void, yang dicari di jurnal faktur
+lain (kode cabang **BCS** dan **CBS** tertukar), dan kesimpulannya pembaliknya
+hilang. Sekarang cukup buka fakturnya.
+
+**Faktur dari kasir ikut terlayani.** Versi pertama cuma mencari entri lewat id
+faktur — benar untuk faktur manual, salah untuk semua yang lain: penjualan kasir
+memposting jurnalnya atas nama **transaksi kasir**, bukan atas nama faktur.
+Kartunya kosong di **23 dari 27** faktur. Sekarang jatuh ke `posTransactionId`.
+
+**Untuk faktur dari kasir, kartunya memperingatkan bahwa nilainya mencakup
+seluruh penjualan** — termasuk bagian yang dibayar tunai, bukan hanya sisa yang
+jadi piutang. Faktur Rp 181.000 yang menunjuk jurnal Rp 500.000 terbaca seperti
+angka yang tidak cocok tanpa kalimat itu. Labelnya juga dibedakan: "Penjualan
+kasir", bukan "Penerbitan" — fakturnya memang tidak menerbitkan apa pun.
+
+**`JournalLink` dipromosikan ke berkasnya sendiri** — §14: komponen pindah begitu
+ada pemanggil kedua, dan salin-tempel justru yang aturan itu cegah.
+
+---
+
+## [Unreleased] — Faktur bisa di-void
+
+PCR-031. Tombol **Void faktur** di halaman detail, dengan dialog konfirmasi.
+
+**Dialognya menyebutkan apa yang akan terjadi**, bukan cuma bertanya yakin atau
+tidak: barang kembali ke stok, dua jurnal pembalik diposting, dan **fakturnya
+tidak dihapus**. Yang ketiga paling sering salah paham — orang yang mengharapkan
+barisnya hilang lalu melihatnya masih ada akan mengira kliknya gagal dan
+mengulanginya.
+
+**Nomor fakturnya dieja di judul dialog**, bukan "faktur ini". Orang dengan tiga
+tab terbuka sedang akan membatalkan dokumen yang sudah memindahkan stok dan
+memposting dua jurnal; melihat nomornya sebelum mengetik adalah satu-satunya yang
+mencegahnya membatalkan yang salah.
+
+**Tombolnya tidak muncul selama masih ada pembayaran aktif** — diganti penjelasan
+cara membukanya. Dialog yang terbuka hanya untuk bilang "Anda tidak boleh" adalah
+dialog yang seharusnya tidak terbuka. **Pembayaran yang sudah dibatalkan tidak
+menghalangi**: uangnya sudah ditarik keluar lewat jurnal pembaliknya sendiri, dan
+menghitungnya akan mengunci faktur selamanya setelah satu pembayaran salah ketik
+dikoreksi.
+
+**Alasan wajib**, diperiksa di layar sebelum round trip dan lagi di server.
+
+Digating `customerInvoices:void`, grant tersendiri dari `create` dan `pay`.
+
+---
+
+## [Unreleased] — Detail faktur tidak lagi jatuh oleh faktur lama
+
+`InvoiceItemsTable` melempar `Cannot read properties of undefined (reading
+'length')` untuk setiap faktur yang lahir dari kasir **sebelum** PCR-030. Dokumen
+itu tidak punya kunci `items` sama sekali — bukan array kosong — karena pembacaan
+memakai `.lean()`, yang melewati default skema.
+
+Server sekarang menormalkan bentuknya, dan itu perbaikan yang sebenarnya.
+Komponennya **tetap** defensif terhadap tipenya sendiri, karena **tipe adalah
+janji tentang data yang datang lewat kabel**: TypeScript memeriksa bahwa berkas
+ini sepakat dengan deklarasinya, tidak pernah bahwa deklarasinya sepakat dengan
+isi database. Satu baris lama tidak boleh bisa menjatuhkan halaman.
+
+---
+
+## [Unreleased] — Rekap form faktur akhirnya berjumlah
+
+Baris **PPN** ditambahkan ke rekap, untuk tenant yang harga katalognya belum
+termasuk pajak. Sebelumnya daftarnya berbunyi Subtotal Rp 100.000 → Total
+Rp 111.000 tanpa satu baris pun di antaranya, dan satu-satunya petunjuk asal
+selisihnya adalah kalimat di bawah kartu.
+
+**Caption bukan penjelasan untuk aritmatika yang sedang diperiksa orang baris per
+baris** — dan yang menandatangani tagihan Rp 111.000 memang memeriksanya begitu.
+
+**Tidak muncul kalau harga sudah termasuk PPN**, dan itu bukan kelalaian: pajaknya
+ada dan tetap disetor, hanya sudah berada **di dalam** subtotalnya. Baris "PPN
+Rp 0" di situ akan menyangkal pajak yang justru dipungut. Rincian DPP-nya muncul
+di faktur setelah terbit, tempat server sudah menguraikannya.
+
+Label ditulis sebagai satu string, bukan `PPN {rate}%` — interpolasi JSX
+memecahnya jadi tiga simpul teks, yang diumumkan pembaca layar terpotong-potong.
+
+---
+
+## [Unreleased] — Detail faktur menampilkan barisnya, dan tiga daftar berhenti melenceng
+
+**Kartu "Barang & jasa"** di halaman detail faktur: baris item, diskon per baris,
+diskon faktur, DPP/PPN, dan total. Sebelumnya faktur yang dibuat manual hanya
+menampilkan totalnya — rinciannya tersimpan tapi tidak pernah ditampilkan.
+
+**Faktur dari kasir tetap tidak punya baris**, dan itu fakta, bukan kekurangan:
+barisnya ada di transaksi kasirnya, dan menyalinnya ke faktur berarti dua catatan
+untuk satu keranjang yang bebas berbeda isi. Jadi kartunya menyebutkan itu, bukan
+menampilkan tabel kosong yang terbaca seperti "faktur ini tidak berisi apa-apa".
+
+**Baris yang nilainya nol tidak ditampilkan.** Faktur tanpa diskon yang
+menampilkan "Diskon baris — Rp 0" mengundang pertanyaan untuk apa baris itu.
+
+### Perbaikan yang menyertainya
+
+**`invoice_sale`, `customer_invoice` dan `invoice_cogs` ditambahkan ke union
+frontend.** Sebelumnya hanya ada di backend — dan akibatnya nyata: kartu stok
+**jatuh total** (destructuring `undefined`), lalu kolom Sumber di Jurnal Umum
+**kosong diam-diam**, yang lebih senyap dan lebih buruk karena tidak bisa
+dibedakan dari entri yang memang tanpa sumber.
+
+**Ketiga pencarian label sekarang punya cadangan** ke nilai mentahnya. Baris di
+buku besar dan di kartu stok adalah **fakta yang sudah terjadi** — menolak
+menggambar seluruh halaman karena satu baris asing membuat pembacanya kehilangan
+semua baris yang justru dipahami build ini.
+
+---
+
+## [Unreleased] — Setelan pajak akhirnya bisa dilihat dan diubah
+
+`/dashboard/business` dapat kartu **Pajak**: tarif PPN dan saklar "harga katalog
+sudah termasuk PPN".
+
+**Kenapa baru sekarang.** Kedua nilai ini dibaca di setiap penjualan sejak kasir
+dibangun, dan tidak bisa dilihat maupun diubah dari mana pun di aplikasi. Aman
+selama `true` — bawaannya, dan norma harga rak di Indonesia — jadi satu-satunya
+nilai yang dipakai. Berhenti aman begitu faktur bisa dibuat sendiri: toko yang
+salah setel menagih 11% meleset di setiap faktur, tanpa ada layar yang bisa
+menjelaskan kenapa.
+
+**Copy-nya menyebutkan akibatnya, bukan setelannya.** "Inklusif" dan "eksklusif"
+adalah kata akuntan; yang perlu diketahui pemilik toko adalah apakah angka di
+label rak itu yang dibayar pelanggan. Teksnya berubah saat saklarnya digeser.
+
+**Dan menyebutkan apa yang TIDAK terjadi.** Mengubahnya tidak menyentuh transaksi
+yang sudah diposting — masing-masing menyimpan DPP dan PPN-nya sendiri. Tanpa
+kalimat itu, ada yang akan menggeser saklarnya untuk "memperbaiki" bulan lalu dan
+mendapati tidak ada yang berubah.
+
+**Digating `tenants:update`**, terpisah dari `read` yang membuka halamannya. Peran
+yang hanya boleh membaca melihat kedua nilainya sebagai teks, tanpa tombol simpan.
+
+---
+
+## [Unreleased] — Faktur bisa dibuat sendiri, tidak lagi cuma dari kasir
+
+PCR-030 sisi UI. `/dashboard/sales` dapat tombol **Buat faktur**, dan rute baru
+`/dashboard/sales/new`.
+
+**Form Transaksi**, bukan Form Entitas — §16's satu-satunya penentu: ada tabel
+baris di bawahnya. Jadi header dua kolom, baris di bawah, dan Keterangan menutup
+header, bukan halaman.
+
+**Harga tidak bisa diubah di form.** Diambil dari katalog dan ditampilkan sebagai
+teks, bukan input — harga yang bisa diketik klien adalah diskon yang tidak
+disetujui siapa pun. Yang diputuskan form ini cuma: barang apa, berapa, diskon
+berapa.
+
+**Totalnya dihitung di layar** oleh `invoicePreview.ts`, meniru urutan operasi
+server. Risikonya disebutkan terus terang di berkasnya: dua implementasi satu
+aturan bisa menyimpang, dan kegagalannya tidak terlihat seperti bug — layar
+menampilkan satu angka, faktur terbit dengan angka lain. Yang menahannya: aritmatika
+bilangan bulat yang sama (`divideRound` setengah ke atas), urutan yang ditulis di
+kedua berkas, dan **klien tidak pernah mengirim total** — server menghitung ulang
+semuanya.
+
+**Tarif pajak tenant kini dideklarasikan di tipe klien.** `taxRate` dan
+`priceIncludesTax` sebenarnya sudah ikut terkirim di `GET /api/tenants/me`; hanya
+tipenya yang belum menyebutkannya. Tanpa itu form tidak bisa menampilkan total
+yang benar sama sekali: dengan harga sudah termasuk PPN, total = subtotal dikurangi
+diskon; dengan harga belum termasuk, pajaknya ditambahkan di atas — salah cabang
+berarti menaksir tagihan 11% terlalu rendah.
+
+**Pilihan Channel: `Diinput manual` atau `Marketplace`** — kosakata PRD, yaitu
+**dari mana pesanannya masuk**. Sempat saya isi `offline`/`whatsapp`/`instagram`,
+yang menjawab "pelanggan menghubungi lewat mana" — pertanyaan yang berbeda.
+Ketahuan sebelum ada faktur yang terbit, jadi tidak ada data yang perlu diubah.
+
+**Tombolnya digating terpisah dari halamannya.** `read` membuka daftar;
+menerbitkan faktur memotong stok dan mencatat dua jurnal, jadi pengguna penagihan
+melihat semua tagihan dan tidak punya cara membuatnya. Rute di baliknya membawa
+gate yang sama — tombol yang disembunyikan adalah kesopanan, bukan kontrol.
+
+**Error jadi toast**, seperti form cabang — penyimpangan sengaja dari §9, dicatat
+di header komponen: form ini panjang, dan penolakan yang paling penting di sini
+(cabang belum punya kode, stok kurang) muncul saat kursor ada di tabel tengah
+halaman.
+
+---
+
+## [Unreleased] — Badge diskon kasir menyebut angka yang salah
+
+**Perbaikan bug, ditemukan saat uji regresi diskon.** Badge di tombol diskon
+merender `Rp${value.value}` — dua kesalahan sekaligus:
+
+- **angka yang diketik, bukan yang dipotong.** Diskon nominal Rp 110.000 pada
+  baris Rp 100.000 dibatasi jadi Rp 100.000, tapi badge tetap menyebut 110.000.
+  Barisnya bilang "−Rp 100.000", badge di sebelahnya bilang 110000 — dua angka
+  untuk satu diskon, dan yang lebih besar justru di tempat yang menarik mata.
+- **tanpa format.** `110000.0000` — skala Decimal128 mentah. Itu bentuk
+  penyimpanan, bukan sesuatu yang dibaca kasir.
+
+Sekarang mode nominal menampilkan `formatMoney(resolvedAmount)`, dan mode persen
+tetap persen — "10%" yang disepakati dengan pelanggan, rupiahnya sudah ada di
+baris atasnya.
+
+**Satu jebakan di perbaikannya sendiri:** trim nol-di-belakang yang naif
+(`/\.?0+$/`) ikut memakan nol pada "100.0000" dan mengubah **100% jadi 1%**. 100%
+adalah diskon yang nyata — barang pengganti, kompensasi. Sekarang hanya nol di
+bagian desimal yang dibuang, dan ada tesnya khusus untuk itu.
+
+`PosDiscountPopover` sebelumnya tidak punya tes sama sekali; sekarang 6.
+
+## [Unreleased] — Error di form cabang jadi toast
+
+Diminta langsung. **Penyimpangan sengaja dari `docs/ui-rules.md` §9**, dicatat di
+header kedua komponen: form cabang panjang dan bisa di-scroll, jadi `409` kode
+cabang muncul saat kursor ada di tengah halaman — dan Alert yang menempel di atas
+form adalah pesan yang tidak akan dilihat oleh orang yang menyebabkannya.
+
+**Error per-field tetap di bawah field-nya.** Itu memberitahu kotak mana yang
+salah, dan toast tidak bisa menunjuk kotak. Yang dipindah hanya penolakan tingkat
+form yang memang tidak punya field untuk ditempeli.
+
+Penolakan server dapat timer **8 detik**, bukan 3 — ia membawa instruksi, dan tiga
+detik tidak cukup untuk membacanya lalu bertindak.
+
+Pesan validasi cabang diterjemahkan ke Bahasa (§12 mengikat; §15 sudah mencatat
+layar cabang sebagai utang terjemahan). Hint kode cabang sekarang menyebut batas
+8 karakternya di depan.
+
+---
+
+## [Unreleased] — Cabang punya Kode, dan kode itu masuk ke nomor faktur
+
+Pondasi PCR-030. Belum ada layar faktur baru; yang berubah satu isian di Master
+Data.
+
+**Master Data → Branch dapat isian "Kode cabang"** di form tambah dan ubah.
+Isinya masuk ke nomor faktur cabang itu — `INV/CBS/2608/0001` — dan sengaja
+**tidak** diturunkan dari namanya: cabang bisa diganti nama, dan faktur yang sudah
+terbit harus tetap memakai nomor yang sudah terlanjur disebut ke pelanggan.
+
+**Dijadikan huruf besar sambil diketik**, bukan diam-diam saat disimpan. Server
+juga menjadikannya huruf besar, jadi keduanya tersimpan sama saja — tapi kolom
+yang mengubah isinya sendiri setelah orang berpaling terbaca seperti bug, dan yang
+sedang mengecek nomor fakturnya harus melihat persis string yang akan tercetak.
+
+**Boleh dikosongkan.** Setiap cabang yang sudah ada belum punya kode, dan kolom
+wajib akan membuat semuanya tidak bisa disimpan. Cabang tanpa kode tetap bisa
+menjual piutang — nomornya jadi tiga segmen, `INV/2608/0001`.
+
+**Labelnya Bahasa** meskipun form cabang di sekitarnya masih Inggris. Itu
+mengikuti `docs/ui-rules.md` §12 yang mengikat, dan §15 sudah mencatat form cabang
+sebagai utang terjemahan — aturannya menang atas berkas tetangganya.
+
+---
+
+## [Unreleased] — Akun jurnal per kategori, dan jalan pulang ke "kosong"
+
+Amandemen PCR-009 dari sisi UI. Aturan lengkapnya di
+[`docs/features/posting-accounts.md`](./features/posting-accounts.md).
+
+**Kategori sekarang punya kartu "Akun jurnal"** — Akun penjualan, Akun persediaan,
+Akun HPP — tingkat kedua dari tiga. Alasannya: mengatur akun per produk itu benar
+tapi tak terpakai; toko dengan empat ratus SKU di Makanan, Treats dan Perlengkapan
+ingin tiga jawaban, bukan empat ratus. Produk tetap bisa menimpanya satu per satu.
+
+**Copy-nya berubah begitu kategori punya induk**: "Dikosongkan berarti pakai 4101
+Penjualan Barang" menjadi "ikut kategori induknya". Satu tingkat pewarisan, karena
+pohonnya dibatasi dua level. Tanpa perbedaan itu, orang yang mengisi akun di
+"Makanan" akan membaca "pakai 4101" di bawah "Makanan Kering" dan menyimpulkan
+setelannya diabaikan.
+
+**Produk dapat "Akun penjualan"**, dan ketiganya kini punya opsi **"Ikut
+kategori"**. Itu perbaikan bug, bukan kosmetik: Radix Select melarang `value=""`,
+jadi sebelum ini akun yang terlanjur dipilih tidak bisa dikosongkan lagi — padahal
+hint di bawah setiap picker menyuruh mengosongkannya, dan kosong adalah yang
+membuat tingkat kategori berlaku.
+
+**Mock yang berbohong, diperbaiki.** `chartOfAccountsService.list` di
+`ProductForm.test.tsx` menjawab lewat cabang `else`, sehingga permintaan
+`accountType: "income"` dilayani dengan akun **aset** — bentuk yang akan ditolak
+API. Sekarang dijawab dari tipe yang diminta.
+
+---
+
+## [Unreleased] — Faktur Penjualan: tiga stat card + urut berdasarkan tagihan
+
+Dua acceptance criteria PCR-033 yang terlewat di potongan pertama.
+
+**Tiga kartu, dibaca sebagai satu kalimat**: Total piutang · Lewat jatuh tempo ·
+Tertagih <bulan> — berutang, telat, tertagih. Selalu tampil, termasuk saat nol;
+kartu yang hilang saat nol mengajari orang bahwa ketiadaannya berarti "belum
+termuat". Nilai `null` dirender sebagai em dash, bukan "Rp 0" — yang pertama
+berarti bacaannya gagal, yang kedua berarti tidak ada yang berutang.
+
+**Caption bulannya dari rentang milik server**, bukan jam browser. Bulannya
+dipotong di zona waktu tenant; menurunkannya di klien akan memberi caption satu
+bulan di atas angka yang dihitung untuk bulan lain, beberapa jam di kedua sisi
+setiap pergantian.
+
+**Urut "Tagihan terbesar/terkecil"** — berdasarkan `total` yang tersimpan, bukan
+sisa tagihan yang diturunkan per baris dan tak terjangkau indeks. Karena itu tidak
+ada opsi "Sisa terbesar": ia akan jadi kontrol yang diam-diam mengurutkan angka
+lain dari yang disebutnya.
+
+---
+
+## [Unreleased] — Faktur Penjualan: perbaikan dari verifikasi UI
+
+**Id jurnal di riwayat pembayaran diganti nomor jurnal, dan bisa diklik.**
+Barisnya dulu berbunyi "jurnal 6a903c1a3d3de99c0994134a" — bukan sesuatu yang
+bisa dicari, dikutip, atau dicocokkan. Sekarang `JE-2026-08-0412`, menaut ke
+`/dashboard/keuangan/journal-entries/:id`; pembayaran yang dibatalkan menaut
+keduanya, entri aslinya dan pembaliknya. Tautannya digating `journalEntries:read`
+— tanpa grant itu nomornya tetap tampil sebagai teks biasa, karena itulah yang
+dikutip ke orang yang bisa membuka buku besarnya.
+
+**Tombol Simpan pembayaran tidak lagi terkunci selamanya setelah DP.** Kuncinya
+dulu hanya dilepas saat gagal, dengan asumsi pembayaran yang berhasil selalu
+meng-unmount form-nya — benar hanya untuk **pelunasan**. Setelah pembayaran
+sebagian, induknya merender elemen yang sama di posisi yang sama, React menyimpan
+state-nya, dan tombolnya berputar sampai halaman di-reload. Terjadi setiap
+cicilan. `purchasing/RecordPaymentForm` ditulis lebih dulu dan punya cacat yang
+persis sama — ikut diperbaiki.
+
+**Penolakan jadi toast merah di kanan atas**, bukan `<Alert>` di dalam form —
+penyimpangan dari [ui-rules §9](./ui-rules.md) yang disengaja dan diminta. Satu
+mitigasi untuk harga yang dibayarnya: toast hilang sendiri, jadi penolakan
+**server** — yang isinya instruksi seperti "reload dulu" — diberi **8 detik**
+alih-alih 3. `swalToast` dapat parameter `timer` opsional; 49 call site lain
+tidak berubah.
+
+**Kwitansi tidak lagi mencantumkan id jurnal.** Barisnya berbunyi "dicetak dari …
+· jurnal `6a903f15…`" — tidak diminta PRD maupun sheet PCR, dan id database di
+dokumen yang dipegang pelanggan hanyalah derau. Id-nya tetap ada di riwayat
+pembayaran, yang memang layar staf.
+
+---
+
+## [Unreleased] — Faktur Penjualan: pembayaran bisa dibatalkan, dan ada kwitansinya
+
+`Batalkan` dan `Kwitansi` per baris di riwayat pembayaran. Details in
+[`features/customer-receivables.md`](./features/customer-receivables.md).
+
+**Membatalkan bukan menghapus.** Barisnya tetap di timeline, dicoret, lengkap
+dengan alasan dan id jurnal pembaliknya. Dialognya mengatakan itu **sebelum**
+diklik, bukan setelahnya: pengguna yang mengira barisnya akan hilang lalu
+menemukannya masih ada akan menyangka kliknya gagal dan mengulanginya.
+
+**`isVoided` datang dari server.** Layar tidak pernah memutuskan sendiri apa arti
+"aktif" — definisinya sama dengan yang dipakai menghitung `paidAmount`.
+
+**Digating `customerInvoices:void`, bukan `pay`.** Peran yang boleh menerima uang
+melihat timeline dan tombol kwitansi, tanpa `Batalkan` sama sekali.
+
+**Kwitansi mencetak SATU pembayaran, bukan fakturnya.** Total faktur hanya muncul
+sebagai konteks sisa tagihan — mencetak fakturnya akan memberi pelanggan yang
+baru bayar sepertiga sebuah dokumen yang angka utamanya justru keseluruhan.
+Kop toko diambil dari `useTenant()`, bukan endpoint struk baru. Pembayaran yang
+sudah dibatalkan tetap bisa dicetak, dengan tanda — orang mencetak ulang justru
+biasanya karena itu.
+
+Mekanik cetaknya memakai ulang `features/pos/print/receipt.css` dan pola
+portal-ke-`body` milik struk kasir; stylesheet itu menyimpan dua cara mencetak
+dari dalam dialog yang pernah gagal.
+
+---
+
+## [Unreleased] — Sales & Invoice: faktur penjualan bisa dibaca dan ditagih
+
+`/dashboard/sales` stops being a `SectionPlaceholder`. Two screens against
+`/api/customer-invoices`: the receivables list with its urgency lens and headline
+figures, and one invoice with its payment history and the form that records money
+arriving. Details in [`features/customer-receivables.md`](./features/customer-receivables.md).
+
+**This closed a live hole, not a missing feature.** The till has been able to sell
+on Piutang since UT-3 — the sale posts `Dr 1103`, raises a receivable and stores
+it — and nothing in the product could read that document or record a rupiah
+against it. A shop giving credit at the counter tracked the settlement on paper.
+
+**No "Buat faktur" button, deliberately.** There is no `POST /api/customer-invoices`
+yet: raising one by hand cuts stock, posts two journal entries and allocates a
+number, which is PCR-030. Rendering a button onto a route that does not exist
+would be worse than the gap it papers over. Every invoice on the screen today
+carries a **dari kasir** chip, and `source` is what will tell them apart from the
+manual ones when that form lands.
+
+**Nothing is recomputed in the browser.** `outstandingAmount` and `isOverdue`
+arrive computed against one instant for the whole page, and the headline totals
+come from `/customer-invoices/outstanding` — the whole book, not the twenty rows
+on screen. `isOverdue` in particular folds in "not settled and not void", which a
+calendar-only test here would miss: `dueDate` keeps its value after payment, so
+every invoice ever paid late would flag.
+
+**One form for DP, cicilan and pelunasan.** No "settle in full" control anywhere —
+the status is derived from what has been paid, so `Lunasi` fills the amount box
+rather than sending a different request. The submit locks for the whole flight,
+because `POST /:id/payments` has no idempotency key and a double-click would book
+the money twice on two irreversible entries.
+
+**The channel picker asks for `usableFor: "in"`** — one letter from the payables
+form's `"out"`, and the whole difference between where money lands and where it
+leaves from.
+
+**The page is named for the DOCUMENT, not for its balance.** It shipped as
+"Piutang Pelanggan" and was renamed the same day: every row is a receivable today,
+but an invoice is born unpaid and settles later, so that title would contradict
+its own **Lunas** pill as soon as settled invoices accumulated — which PCR-030
+guarantees. Piutang stays as the default lens (the **Belum lunas** pill) and the
+headline figure (**Total piutang berjalan**), which is where it is true. The
+component identifiers did not follow the copy — ui-rules §12 splits the two.
+
+**`customerInvoices` joined the frontend permission catalogue**, and the Sales nav
+entry is gated on `customerInvoices:read` — it was ungated before, when there was
+nothing behind the link to protect. `pay` is separate from `read`: a read-only
+role sees the whole invoice and, where the payment form would be, a line naming
+the grant it is missing.
+
+---
+
 ## [Unreleased] — Booking: bikin, jalankan, dan riwayat statusnya
 
 `/dashboard/booking` stops being a list you can only read. `BookingCreateDialog` takes a

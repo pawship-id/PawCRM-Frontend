@@ -20,6 +20,7 @@ function makeBranch(overrides: Partial<Branch> = {}): Branch {
     _id: "b1",
     tenantId: "t1",
     name: "Jakarta",
+    code: null,
     address: "Jl. Sudirman 1",
     phone: "021-555-1234",
     receiptFooter: null,

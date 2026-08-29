@@ -21,6 +21,11 @@ import type { MediaAsset } from "@/types/inventory";
 
 import { CategoryImageField } from "./CategoryImageField";
 import { CategoryParentField } from "./CategoryParentField";
+import {
+  CategoryPostingAccounts,
+  NO_POSTING_ACCOUNTS,
+  type PostingAccounts,
+} from "./CategoryPostingAccounts";
 
 /** Backend caps — NAME_MAX_LENGTH and DESCRIPTION_MAX_LENGTH in category.model.js. */
 const NAME_MAX_LENGTH = 120;
@@ -162,6 +167,21 @@ function CategoryFields({
   const [description, setDescription] = useState(category?.description ?? "");
   const [image, setImage] = useState<MediaAsset | null>(category?.image ?? null);
   const [isActive, setIsActive] = useState(category?.isActive ?? true);
+  /**
+   * The three posting overrides, held as one object because they are one
+   * decision — "where does this grouping post" — and because the card that
+   * renders them reads them as a triple. `""` is "not set", which is what the
+   * server stores as null.
+   */
+  const [accounts, setAccounts] = useState<PostingAccounts>(
+    category
+      ? {
+          salesAccountId: category.salesAccountId ?? "",
+          cogsAccountId: category.cogsAccountId ?? "",
+          inventoryAccountId: category.inventoryAccountId ?? "",
+        }
+      : NO_POSTING_ACCOUNTS,
+  );
 
   const [nameError, setNameError] = useState<string | null>(null);
   const [descriptionError, setDescriptionError] = useState<string | null>(null);
@@ -208,6 +228,16 @@ function CategoryFields({
       editing &&
       (image?.storageKey ?? null) !== (category.image?.storageKey ?? null);
     const removed = editing && parentId !== (category.parentId ?? null);
+    /**
+     * `""` here against `null` there — the same "" vs null care the description
+     * needs, for the same reason: a picker nobody touched must not read as a
+     * change, or every save of a category with no accounts set would send three
+     * nulls that were already null.
+     */
+    const reposted = editing
+      ? (["salesAccountId", "cogsAccountId", "inventoryAccountId"] as const)
+          .filter((field) => accounts[field] !== (category[field] ?? ""))
+      : [];
 
     if (
       editing &&
@@ -215,7 +245,8 @@ function CategoryFields({
       !retired &&
       !rewritten &&
       !repictured &&
-      !removed
+      !removed &&
+      reposted.length === 0
     ) {
       // Nothing moved. Leaving is the honest outcome — a "save" that sends an
       // empty body would come back a 400 and read as a failure.
@@ -245,6 +276,11 @@ function CategoryFields({
           ...(rewritten ? { description: blurb } : {}),
           ...(repictured ? { image } : {}),
           ...(retired ? { isActive } : {}),
+          // `null`, not an omission: omitting the key leaves the account in
+          // place, so clearing one has to say so explicitly.
+          ...Object.fromEntries(
+            reposted.map((field) => [field, accounts[field] || null]),
+          ),
         });
       } else {
         await categoryService.create({
@@ -255,6 +291,15 @@ function CategoryFields({
           // though it did.
           ...(blurb ? { description: blurb } : {}),
           ...(image ? { image } : {}),
+          ...(accounts.salesAccountId
+            ? { salesAccountId: accounts.salesAccountId }
+            : {}),
+          ...(accounts.cogsAccountId
+            ? { cogsAccountId: accounts.cogsAccountId }
+            : {}),
+          ...(accounts.inventoryAccountId
+            ? { inventoryAccountId: accounts.inventoryAccountId }
+            : {}),
         });
       }
 
@@ -359,6 +404,26 @@ function CategoryFields({
           value={image}
           onChange={setImage}
           disabled={saving}
+        />
+      </Card>
+
+      {/*
+        AFTER the picture and BEFORE availability, which is §16's entity order
+        read literally: identity, then optional attributes, then the switch that
+        retires the thing. Its own card rather than three more fields under
+        Identitas — most people editing a category never touch these, and three
+        account pickers wedged between the name and the description would make
+        the common case read as the complicated one.
+      */}
+      <Card
+        title="Akun jurnal"
+        description="Ke mana produk di kategori ini diposting. Boleh dikosongkan — produk bisa menimpanya satu per satu."
+      >
+        <CategoryPostingAccounts
+          value={accounts}
+          onChange={setAccounts}
+          disabled={saving}
+          inherited={parentId !== null}
         />
       </Card>
 

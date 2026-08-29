@@ -93,6 +93,32 @@ export const PERMISSION_CATALOG = {
    * immutable. No `restore`, for the same reason a discarded opname has none.
    */
   purchaseReturns: ["create", "read", "update", "delete", "submit"],
+  /**
+   * What CUSTOMERS owe — the mirror of `purchaseInvoices`, pointed the other way.
+   *
+   * `create` IS IN THE CATALOGUE BUT GATES NOTHING YET. The backend carries it
+   * and there is no `POST /api/customer-invoices` to protect: raising a
+   * receivable by hand cuts stock, posts two journal entries and allocates a
+   * number, which is PCR-030. Listed here anyway so the Role screen can grant it
+   * before the screen exists, rather than shipping a role that has to be edited
+   * the day it does — and because the catalogue is the backend's, not this
+   * file's, to shorten.
+   *
+   * `pay` IS ITS OWN ACTION. Looking at what a customer owes is something counter
+   * staff do; recording that the money arrived credits `1103 Piutang Usaha` on an
+   * entry nobody can take back. Same separation of duties as `pay` on
+   * `purchaseInvoices`.
+   *
+   * `void` COVERS BOTH CANCELLATIONS in this module — a whole invoice, and one
+   * payment against it. Separate from `pay` on purpose: taking money in is daily
+   * counter work, while undoing a receipt reverses an entry already reported and
+   * can move an invoice from settled back to owing.
+   *
+   * No `delete`: a receivable is voided, never removed — and the same holds for
+   * a payment, which is marked cancelled rather than dropped so the ledger entry
+   * it posted still has a document behind it.
+   */
+  customerInvoices: ["create", "read", "update", "pay", "void"],
   chartOfAccounts: ["create", "read", "update", "delete", "restore"],
   // A posted journal entry is immutable: no delete, no restore. `reverse` is
   // its own action because correcting the ledger is a different privilege from

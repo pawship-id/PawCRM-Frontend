@@ -32,6 +32,7 @@ function branch(_id: string, name: string): Branch {
     _id,
     tenantId: "t1",
     name,
+    code: null,
     address: null,
     phone: null,
     receiptFooter: null,

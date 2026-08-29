@@ -262,10 +262,19 @@ user cannot reconcile against the scale is worse than no total.
 
 ### Akuntansi
 
+**Three pickers now** — Akun penjualan, Akun persediaan, Akun HPP — and each is the FIRST of three
+tiers, not the only answer: an empty picker falls through to the product's category, then to the
+seeded account. [`posting-accounts.md`](./posting-accounts.md) has the order and what each hint
+means; do not restate the rule here, and do not re-derive it in a component.
+
+Every picker carries an **"Ikut kategori"** option, which is how a chosen account is put back to
+empty — Radix Select forbids `value=""`, so without it there is no way back, while every hint on the
+section tells people to leave it empty for the ordinary case.
+
 `chartOfAccounts:read` and `businessLines:read` are separate permissions from `products:read`. When
-either list cannot be loaded the two selects are replaced by an explanation and **the form still
-saves** — both fields are optional, and taking down the whole form over an optional section would
-be the wrong trade.
+either list cannot be loaded the selects are replaced by an explanation and **the form still
+saves** — all three fields are optional, and taking down the whole form over an optional section
+would be the wrong trade.
 
 ## Routes
 

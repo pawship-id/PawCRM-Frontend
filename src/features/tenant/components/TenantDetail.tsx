@@ -8,6 +8,7 @@ import { useAuth } from "@/features/auth";
 import type { Tenant } from "@/types/api";
 
 import { useTenant } from "../hooks/useTenant";
+import { TaxSettingsForm } from "./TaxSettingsForm";
 import { TenantSubscriptionBadge } from "./TenantSubscriptionBadge";
 
 const PLAN_LABELS: Record<Tenant["subscription"]["plan"], string> = {
@@ -185,6 +186,13 @@ export function TenantDetail() {
           ]}
         />
       </Card>
+
+      {/*
+        ITS OWN CARD, above the read-only switches, because it is the only thing
+        on this page that changes what a CUSTOMER pays. Everything below is how a
+        module behaves; this is how the business bills.
+      */}
+      <TaxSettingsForm tenant={tenant} onSaved={refetch} />
 
       <Card
         title="Settings"

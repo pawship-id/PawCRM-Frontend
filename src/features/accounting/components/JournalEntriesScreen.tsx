@@ -20,7 +20,7 @@ import { formatMoney, sumDecimals } from "@/utils/decimal";
 
 import { ACCOUNTING_CRUMBS } from "../crumbs";
 import { useJournalEntries } from "../hooks/useJournalEntries";
-import { formatDate, formatMonth, SOURCE_LABEL, SOURCE_TONE } from "../labels";
+import { formatDate, formatMonth, sourceLabel, SOURCE_TONE } from "../labels";
 import { JournalEntriesToolbar } from "./JournalEntriesToolbar";
 
 /** Tanggal, No. jurnal, Keterangan, Sumber, Cabang, Total debit, Status. */
@@ -238,7 +238,7 @@ export function JournalEntriesScreen() {
                               SOURCE_TONE[entry.source.type],
                             )}
                           >
-                            {SOURCE_LABEL[entry.source.type]}
+                            {sourceLabel(entry.source.type)}
                           </span>
                         </TableCell>
                         <TableCell className="px-4 py-2.5 text-sm whitespace-nowrap text-muted">

@@ -28,9 +28,32 @@ import { MovementBadge } from "./MovementBadge";
  * adjustment has no document at all. The fallback is the TYPE, never
  * `reference.id` — an ObjectId names nothing a human can look up.
  */
+/**
+ * The label for a reference type, falling back to the raw value.
+ *
+ * Unlike `MovementBadge`, an unknown type here renders as NOTHING rather than
+ * throwing — React drops `undefined` silently. That is quieter and worse: the
+ * cell that says which document took the goods simply goes blank, and a reader
+ * has no way to tell an unfamiliar type from a row that genuinely has no
+ * reference. The backend's `REFERENCE_TYPES` and this file's list are two lists
+ * nothing checks, so this WILL happen again the next module that ships one.
+ */
+function referenceLabel(type: ReferenceType): string {
+  return REFERENCE_LABELS[type] ?? type;
+}
+
 const REFERENCE_LABELS: Record<ReferenceType, string> = {
   goods_receipt: "Penerimaan barang",
   pos_transaction: "Transaksi POS",
+  // Named apart from the till's sale for the same reason `pos_void` is: a stock
+  // card is read to find WHICH document took the goods, and "Transaksi POS" on a
+  // row raised by an invoice would send somebody looking through the till's
+  // history for a sale that was never rung up.
+  customer_invoice: "Faktur penjualan",
+  // Separately findable from the invoice itself, like `pos_void`: a stock card
+  // shows the issue and the row unwinding it as two events, not one document
+  // appearing twice.
+  customer_invoice_void: "Pembatalan faktur",
   // "Pembatalan", not "Transaksi POS": the two are separately findable on
   // purpose, so a stock card shows the sale and the row unwinding it as two
   // events rather than one document appearing twice.
@@ -156,11 +179,11 @@ export function StockLedgerTable({
                           {movement.referenceNo}
                         </span>
                         <span className="block text-[11px]">
-                          {REFERENCE_LABELS[movement.reference.type]}
+                          {referenceLabel(movement.reference.type)}
                         </span>
                       </>
                     ) : (
-                      REFERENCE_LABELS[movement.reference.type]
+                      referenceLabel(movement.reference.type)
                     )}
 
                     {/* WHY it happened, which no other column can say — and the

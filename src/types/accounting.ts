@@ -98,11 +98,27 @@ export type JournalSourceType =
    */
   | "pos_cogs"
   | "invoice"
+  /**
+   * The COST side of an issued invoice — `Dr 5101 HPP / Cr 1201 Persediaan`.
+   *
+   * Separate from `invoice` for the reason `pos_cogs` is separate from `pos`:
+   * one invoice posts TWO entries naming the same document, and the ledger is
+   * idempotent on `(source.type, source.id)` — one shared type would make the
+   * guard reject the invoice's own second half.
+   */
+  | "invoice_cogs"
   | "receipt"
   | "goods_receipt"
   | "purchase_payment"
   | "opname"
   | "return"
+  /**
+   * The cost-of-goods half of a SALES return — the goods put back on the shelf,
+   * posted separately from the refund. A SECOND SOURCE TYPE for the same reason
+   * `pos_cogs` is one: both halves name the same return document, and the ledger
+   * is idempotent on `(source.type, source.id)`.
+   */
+  | "return_cogs"
   | "commission"
   | "manual";
 

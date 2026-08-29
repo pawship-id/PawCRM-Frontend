@@ -16,6 +16,17 @@ export const FULL_NAME_MAX_LENGTH = 120;
 export const RESET_TOKEN_LENGTH = 64;
 export const BRANCH_NAME_MAX_LENGTH = 120;
 export const BRANCH_ADDRESS_MAX_LENGTH = 255;
+
+/**
+ * The branch code's shape, mirroring `branch.model.js`.
+ *
+ * Kept tight because it is printed inside every invoice number the branch
+ * issues — `INV/CBS/2608/0001` — so it has to survive being read aloud, typed
+ * into a search box, and sorted in a spreadsheet.
+ */
+export const BRANCH_CODE_MIN_LENGTH = 2;
+export const BRANCH_CODE_MAX_LENGTH = 8;
+export const BRANCH_CODE_PATTERN = /^[A-Z0-9]+$/;
 export const WAREHOUSE_NAME_MAX_LENGTH = 120;
 export const WAREHOUSE_ADDRESS_MAX_LENGTH = 255;
 export const WAREHOUSE_PIC_NAME_MAX_LENGTH = 120;
@@ -179,16 +190,43 @@ export function validatePhone(value: string): string | undefined {
 
 export function validateBranchName(value: string): string | undefined {
   const name = value.trim();
-  if (!name) return "Branch name is required";
-  if (name.length > BRANCH_NAME_MAX_LENGTH) return "Branch name is too long";
+  if (!name) return "Nama cabang wajib diisi";
+  if (name.length > BRANCH_NAME_MAX_LENGTH)
+    return `Nama cabang maksimal ${BRANCH_NAME_MAX_LENGTH} karakter`;
   return undefined;
 }
 
-/** Address is optional and clearable. */
+/**
+ * The branch code — optional, but constrained the moment it is filled in.
+ *
+ * VALIDATED AGAINST THE UPPERCASED VALUE, because that is what the server
+ * stores: refusing "cbs" for containing lowercase would reject input the API
+ * accepts perfectly well, which is a client inventing a rule of its own.
+ */
+export function validateBranchCode(value: string): string | undefined {
+  const code = value.trim().toUpperCase();
+  if (!code) return undefined;
+  if (code.length < BRANCH_CODE_MIN_LENGTH)
+    return `Kode minimal ${BRANCH_CODE_MIN_LENGTH} karakter`;
+  if (code.length > BRANCH_CODE_MAX_LENGTH)
+    return `Kode maksimal ${BRANCH_CODE_MAX_LENGTH} karakter`;
+  if (!BRANCH_CODE_PATTERN.test(code))
+    return "Kode hanya boleh huruf A-Z dan angka 0-9";
+  return undefined;
+}
+
+/**
+ * Address is optional and clearable.
+ *
+ * Bahasa, like the branch validators around it — `docs/ui-rules.md` §12 is
+ * binding, and §15 already lists the branch screens as owing a translation. The
+ * rule wins over the neighbouring English, not the other way round.
+ */
 export function validateAddress(value: string): string | undefined {
   const address = value.trim();
   if (!address) return undefined;
-  if (address.length > BRANCH_ADDRESS_MAX_LENGTH) return "Address is too long";
+  if (address.length > BRANCH_ADDRESS_MAX_LENGTH)
+    return `Alamat maksimal ${BRANCH_ADDRESS_MAX_LENGTH} karakter`;
   return undefined;
 }
 

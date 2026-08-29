@@ -24,6 +24,25 @@ export type MovementType =
   | "receipt"
   | "pos_sale"
   /**
+   * Goods leaving against an issued invoice (PCR-030).
+   *
+   * ITS OWN TYPE RATHER THAN `pos_sale`, for the same reason `pos_void` has one:
+   * a stock card is read to answer "where did this go", and an invoice is not a
+   * till sale. One shop sells across a counter and bills a kennel monthly;
+   * folding both under `pos_sale` would make "how much went out over the
+   * counter" unanswerable.
+   */
+  | "invoice_sale"
+  /**
+   * A voided invoice's goods coming back.
+   *
+   * ITS OWN TYPE RATHER THAN `customer_return`, exactly as `pos_void` has one:
+   * nothing came back — the invoice is being unwound because it should not have
+   * been issued. Folding the two would make "what did customers actually bring
+   * back" unanswerable.
+   */
+  | "invoice_void"
+  /**
    * A voided sale's goods coming back.
    *
    * ITS OWN TYPE RATHER THAN `customer_return`, for the reason
@@ -52,6 +71,10 @@ export type MovementType =
 export type ReferenceType =
   | "goods_receipt"
   | "pos_transaction"
+  /** The invoice the goods left against. See `invoice_sale`. */
+  | "customer_invoice"
+  /** The void that returned an invoice's goods. See `invoice_void`. */
+  | "customer_invoice_void"
   /**
    * A void's stock reversal. Distinct from `pos_transaction` so the movements a
    * sale made and the movements unwinding it are separately findable — and so
@@ -615,13 +638,22 @@ export interface Product {
   isPreorder: boolean;
   shipping?: ProductShipping;
   /**
-   * Where this product's stock and its cost of sale land in the ledger.
+   * Where this product's revenue, stock and cost of sale land in the ledger.
    *
-   * `inventoryAccountId` is an `asset` account — null means the seeded 1201
-   * Persediaan. `cogsAccountId` is an `expense` account — null means 5101 HPP.
-   * Unlike the `salesAccountId` they replaced, these ARE posted against: every
-   * receipt, opname, adjustment and sale resolves them per product.
+   * `salesAccountId` is an `income` account — null means the category's default,
+   * then the seeded 4101. `inventoryAccountId` is an `asset` account — null
+   * means the category's, then 1201. `cogsAccountId` is an `expense` account —
+   * null means the category's, then 5101.
+   *
+   * ALL THREE ARE THE FIRST TIER of PCR-009's three-level resolution: the item,
+   * then its CATEGORY, then the seeded code. Setting one here overrides the
+   * category for that field alone.
+   *
+   * `salesAccountId` WAS REMOVED ONCE and is back — see product.model.js. It
+   * does not replace `businessLineId` and never could: the account decides which
+   * LINE of the P&L, the business line decides which COLUMN.
    */
+  salesAccountId?: string | null;
   inventoryAccountId?: string | null;
   cogsAccountId?: string | null;
   businessLineId?: string | null;
@@ -770,6 +802,7 @@ export type ProductMedia = MediaAsset;
 export interface ResolvedProductFields {
   brand: string | null;
   description: string | null;
+  salesAccountId: string | null;
   inventoryAccountId: string | null;
   cogsAccountId: string | null;
   businessLineId: string | null;
@@ -1032,6 +1065,8 @@ export interface CreateStandaloneInput extends CreateProductBase {
   isPreorder?: boolean;
   /** Partial objects are the normal case — send only the leaves you mean. */
   shipping?: Partial<ProductShipping>;
+  /** Must be an `income` account of this tenant, or the API answers 400. */
+  salesAccountId?: string | null;
   /** Must be an `asset` account of this tenant, or the API answers 400. */
   inventoryAccountId?: string | null;
   /** Must be an `expense` account of this tenant, or the API answers 400. */
@@ -1067,6 +1102,8 @@ export interface CreateParentInput extends Omit<CreateProductBase, "sku"> {
   isPreorder?: boolean;
   /** Partial objects are the normal case — send only the leaves you mean. */
   shipping?: Partial<ProductShipping>;
+  /** Must be an `income` account of this tenant, or the API answers 400. */
+  salesAccountId?: string | null;
   /** Must be an `asset` account of this tenant, or the API answers 400. */
   inventoryAccountId?: string | null;
   /** Must be an `expense` account of this tenant, or the API answers 400. */
@@ -1112,6 +1149,8 @@ export interface CreateVariantInput {
   isPreorder?: boolean;
   /** Partial objects are the normal case — send only the leaves you mean. */
   shipping?: Partial<ProductShipping>;
+  /** Must be an `income` account of this tenant, or the API answers 400. */
+  salesAccountId?: string | null;
   /** Must be an `asset` account of this tenant, or the API answers 400. */
   inventoryAccountId?: string | null;
   /** Must be an `expense` account of this tenant, or the API answers 400. */
@@ -1153,6 +1192,8 @@ export interface CreateBundleInput extends CreateProductBase {
   isPreorder?: boolean;
   /** Partial objects are the normal case — send only the leaves you mean. */
   shipping?: Partial<ProductShipping>;
+  /** Must be an `income` account of this tenant, or the API answers 400. */
+  salesAccountId?: string | null;
   /** Must be an `asset` account of this tenant, or the API answers 400. */
   inventoryAccountId?: string | null;
   /** Must be an `expense` account of this tenant, or the API answers 400. */
@@ -1216,6 +1257,8 @@ export interface UpdateProductInput {
   description?: string | null;
   isPreorder?: boolean;
   shipping?: Partial<ProductShipping>;
+  /** Must be an `income` account of this tenant, or the API answers 400. */
+  salesAccountId?: string | null;
   inventoryAccountId?: string | null;
   cogsAccountId?: string | null;
   businessLineId?: string | null;

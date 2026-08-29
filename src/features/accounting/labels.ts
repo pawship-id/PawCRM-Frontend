@@ -51,12 +51,16 @@ export const SOURCE_LABEL: Record<JournalSourceType, string> = {
   // does not use. The route and the source type keep their identifiers.
   pos: "Kasir",
   pos_cogs: "HPP kasir",
+  // "HPP faktur", paired with "Faktur" the way "HPP kasir" pairs with "Kasir":
+  // a reader scanning the ledger sees the two halves of one invoice as one act.
+  invoice_cogs: "HPP faktur",
   invoice: "Faktur",
   receipt: "Penerimaan kas",
   goods_receipt: "Penerimaan barang",
   purchase_payment: "Bayar supplier",
   opname: "Stok opname",
   return: "Retur",
+  return_cogs: "HPP retur",
   commission: "Komisi",
   manual: "Manual",
 };
@@ -67,17 +71,38 @@ export const SOURCE_LABEL: Record<JournalSourceType, string> = {
  * a hovered or selected row went muddy, which is exactly the case a status badge
  * has to survive. The `bg-tint-*` tokens are opaque.
  */
+/**
+ * The label for a source type, falling back to the raw value.
+ *
+ * WHY THIS EXISTS. `SOURCE_TYPES` on the server and `JournalSourceType` here are
+ * two lists, and NOTHING checks that they agree. When `invoice_cogs` shipped on
+ * the server the union here still had ten types, so the ledger rendered those
+ * rows with an EMPTY Sumber column — quieter than a crash and worse: a reader
+ * cannot tell an unfamiliar source from an entry that genuinely has none.
+ *
+ * A ledger row is a fact that already happened; the list has to draw it whether
+ * or not this build recognises where it came from.
+ */
+export function sourceLabel(type: JournalSourceType): string {
+  return SOURCE_LABEL[type] ?? type;
+}
+
 export const SOURCE_TONE: Record<JournalSourceType, string> = {
   pos: "bg-tint-brand text-primary",
   // The same tone as its revenue half, deliberately: the two entries are one
   // sale, and tinting the cost side differently would suggest another event.
   pos_cogs: "bg-tint-brand text-primary",
   invoice: "bg-tint-brand text-primary",
+  // The same tone as its revenue half — one invoice, two entries.
+  invoice_cogs: "bg-tint-brand text-primary",
   receipt: "bg-tint-success text-success",
   goods_receipt: "bg-tint-warning text-secondary-foreground",
   purchase_payment: "bg-tint-danger text-danger",
   opname: "bg-tint-neutral text-muted",
   return: "bg-tint-neutral text-muted",
+  // The same tone as its refund half, the way `pos_cogs` shares `pos`: the two
+  // entries are one return, and a second tint would read as another event.
+  return_cogs: "bg-tint-neutral text-muted",
   commission: "bg-tint-neutral text-muted",
   // Manual entries are the ones an auditor looks at first — a human chose both
   // sides — so they are the only source that carries an outline instead of a

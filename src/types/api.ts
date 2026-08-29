@@ -365,6 +365,26 @@ export interface TenantSettings {
    * switch rather than a per-request option.
    */
   hotelMode: "numbered" | "zone";
+
+  /**
+   * PPN, as a plain percentage — `11` means 11%.
+   *
+   * Reaches the client because `GET /api/tenants/me` returns the settings object
+   * whole. The invoice form needs it to show a total that will match what the
+   * server issues.
+   */
+  taxRate?: number;
+
+  /**
+   * Whether catalogue prices already include PPN. **Defaults to true** — that is
+   * the Indonesian shelf-price norm and the server's own default (`!== false`).
+   *
+   * It changes what a total MEANS, not merely how it is displayed: with inclusive
+   * prices the grand total is simply subtotal minus discounts, and the tax is
+   * unwound out of it; with exclusive prices the tax is added on top. A preview
+   * that assumed the wrong one would understate a bill by 11%.
+   */
+  priceIncludesTax?: boolean;
 }
 
 /**
@@ -440,6 +460,15 @@ export interface Branch {
   _id: string;
   tenantId: string;
   name: string;
+  /**
+   * The short identifier that goes INSIDE this branch's invoice numbers —
+   * `INV/CBS/2608/0001`.
+   *
+   * Null on every branch created before invoices needed one, and on any branch
+   * whose owner has not filled it in. A branch with no code cannot issue an
+   * invoice; the API refuses with a message naming the branch.
+   */
+  code: string | null;
   address: string | null;
   phone: string | null;
   /** The line printed at the foot of this branch's receipts (FR-8). */
@@ -475,6 +504,8 @@ export interface BranchListQuery {
  */
 export interface CreateBranchInput {
   name: string;
+  /** A-Z and 0-9 only, 2–8 characters. Uppercased server-side. */
+  code?: string | null;
   address?: string | null;
   phone?: string | null;
   /** The line printed at the foot of this branch's receipts (FR-8). */
@@ -490,6 +521,8 @@ export interface CreateBranchInput {
  */
 export interface UpdateBranchInput {
   name?: string;
+  /** `""` or `null` clears it. Uppercased server-side. */
+  code?: string | null;
   address?: string | null;
   phone?: string | null;
   /** The line printed at the foot of this branch's receipts (FR-8). */
@@ -637,6 +670,19 @@ export interface Category {
   kind: "product";
   name: string;
   /**
+   * WHERE THIS CATEGORY'S PRODUCTS POST BY DEFAULT — the middle tier of
+   * PCR-009's three-level resolution: the item's own account, then this, then
+   * the seeded code.
+   *
+   * Setting an account per product is correct and unusable at four hundred SKUs;
+   * the category is the grouping a shop already maintains, so it is the grouping
+   * the ledger reads. All three null is the ordinary case and posts exactly
+   * where the system did before the tier existed.
+   */
+  salesAccountId: string | null;
+  cogsAccountId: string | null;
+  inventoryAccountId: string | null;
+  /**
    * The category this one sits under, or `null` for a top-level category.
    *
    * THE TREE IS EXACTLY TWO DEEP. A category with a `parentId` cannot itself
@@ -742,6 +788,14 @@ export interface CreateCategoryInput {
    * the API refuses a three-level tree with a 400 naming the field.
    */
   parentId?: string | null;
+  /**
+   * The posting defaults for everything filed under this category. Each must be
+   * of its own type — income / expense / asset — or the API answers 400 naming
+   * the field. Null clears one back to the seeded default.
+   */
+  salesAccountId?: string | null;
+  cogsAccountId?: string | null;
+  inventoryAccountId?: string | null;
   /** `""` is accepted and stored as null. */
   description?: string | null;
   /**
@@ -766,6 +820,10 @@ export interface UpdateCategoryInput {
   name?: string;
   /** A new id moves it; `null` promotes it back to the top level. */
   parentId?: string | null;
+  /** Posting defaults — see CreateCategoryInput. `null` clears one. */
+  salesAccountId?: string | null;
+  cogsAccountId?: string | null;
+  inventoryAccountId?: string | null;
   /** `""` and `null` both clear it. */
   description?: string | null;
   /** A new asset replaces the picture; `null` removes it. */
@@ -3543,4 +3601,435 @@ export interface ConsignmentProductsResult {
   items: ConsignmentProductRow[];
   totalValue: string;
   totalLots: number;
+}
+
+/* ============================================================================
+   Customer invoices — receivables (AR)
+   ========================================================================== */
+
+/**
+ * Where a receivable stands. AUTO-COMPUTED server-side from `paidAmount` against
+ * `total` and never accepted from a client.
+ *
+ * `void` IS THE ONE VALUE THE PAYABLE DOES NOT HAVE, and its absence there is
+ * not an oversight: a supplier's bill is their document, so we never cancel one.
+ * A sale can be voided, and the debt it raised has to go with it — which is why
+ * "outstanding AR" is `unpaid | partial` rather than the payable's `!== "paid"`.
+ */
+export type CustomerInvoiceStatus = "unpaid" | "partial" | "paid" | "void";
+
+/**
+ * How a customer paid. `edc` where the payable has `giro`, and the difference is
+ * real rather than cosmetic: a shop is handed a card at the counter and hands a
+ * post-dated cheque to a vendor. The value decides which channel types may be
+ * offered — the server checks `method` against the channel's own `type`.
+ */
+export type CustomerPaymentMethod = "cash" | "transfer" | "qris" | "edc";
+
+/**
+ * WHO RAISED THE DEBT. Read-only on every endpoint — who created a document is
+ * not a client's to declare.
+ *
+ * `pos_bridge` is every receivable in the system today: the till issues one
+ * automatically when a cashier settles with the Piutang method, inside the sale's
+ * own transaction. `manual` is what PCR-030's create form will write.
+ */
+export type CustomerInvoiceSource = "manual" | "pos_bridge";
+
+/** One payment against one receivable, as the detail read returns it. */
+export interface CustomerInvoicePayment {
+  /**
+   * This payment's own identity, and THE LEDGER'S IDEMPOTENCY KEY — its journal
+   * entry carries it as `source.id`. Keyed on the invoice instead, the ledger
+   * would reject the second instalment as a duplicate of the first.
+   */
+  paymentId: string;
+  /** The day the money MOVED, which is what dates the journal entry. */
+  at: string;
+  amount: string;
+  method: CustomerPaymentMethod;
+  channelId: string;
+  /** Null when the channel was retired since; the payment still arrived there. */
+  channelName: string | null;
+  ref: string | null;
+  byUserId: string | null;
+  byUserName: string | null;
+  journalEntryId: string;
+  /**
+   * `JE-2026-08-0412` — what the ledger is actually filed under, and what a
+   * person can quote.
+   *
+   * BESIDE THE ID, NEVER INSTEAD OF IT. The number is the LABEL;
+   * `/dashboard/keuangan/journal-entries/:id` is addressed by ID, so a link
+   * needs both. Null only when the entry could not be resolved (hard-deleted by
+   * a repair script) — the link still works, the label degrades.
+   */
+  journalEntryNumber: string | null;
+
+  /**
+   * WHETHER THIS PAYMENT STILL COUNTS. Derived server-side from `voidedAt` so
+   * every consumer reads one definition of "active" — the same one `paidAmount`
+   * was computed against.
+   *
+   * A cancelled payment is MARKED, NEVER REMOVED: it posted an immutable ledger
+   * entry, and deleting the row would leave that entry pointing at a document
+   * nobody can look up. Render it struck through, not hidden.
+   */
+  isVoided: boolean;
+  voidedAt: string | null;
+  voidedBy: string | null;
+  /** Why it was cancelled. The only record of it — required when cancelling. */
+  voidReason: string | null;
+  /** The entry that UNDID it, beside the one that made it. */
+  reversalJournalEntryId: string | null;
+  reversalJournalEntryNumber: string | null;
+}
+
+/**
+ * One row of GET /api/customer-invoices — a receivable, without its payments.
+ *
+ * `outstandingAmount` AND `isOverdue` ARE DERIVED SERVER-SIDE and must not be
+ * recomputed here. `outstandingAmount` is `total - paidAmount` in exact minor
+ * units; `isOverdue` folds in "not settled and not void", which a bare date
+ * comparison would miss — `dueDate` keeps its value after payment, so a
+ * calendar-only test would report every invoice ever paid late as still
+ * outstanding. Both are evaluated against ONE instant for the whole page.
+ *
+ * The list projects `payments` away; `paymentCount` stands in for them.
+ */
+export interface CustomerInvoiceListRow {
+  _id: string;
+  /** Allocated by us, unlike the payable's — this is our document. */
+  invoiceNumber: string;
+  customerId: string;
+  /** Null when the customer was soft-deleted since; the debt still stands. */
+  customerName: string | null;
+  /**
+   * WHOSE BOOKS carry this debt — the SALE's branch, not the session's. A
+   * receivable belongs where the revenue was recognised.
+   */
+  branchId: string;
+  branchName: string | null;
+  /** The sale that created it, when one did. Null for a manual invoice. */
+  posTransactionId: string | null;
+  source: CustomerInvoiceSource;
+  invoiceDate: string;
+  dueDate: string;
+  total: string;
+  paidAmount: string;
+  outstandingAmount: string;
+  status: CustomerInvoiceStatus;
+  isOverdue: boolean;
+  paymentCount: number;
+  notes: string | null;
+}
+
+/** GET /api/customer-invoices/:id — the row, plus its payments and labels. */
+export interface CustomerInvoiceDetail
+  extends Omit<CustomerInvoiceListRow, "paymentCount"> {
+  /** Who raised it. Null for a till-born invoice, or a user deleted since. */
+  createdByName: string | null;
+  payments: CustomerInvoicePayment[];
+  /** The entry that RECOGNISED the debt — the sale's revenue entry. */
+  journalEntryId: string | null;
+  /**
+   * The lines a HUMAN typed. **Empty on every till-born invoice** — those lines
+   * live on the POS transaction, and copying them would be two records of one
+   * basket free to disagree. Read `posTransactionId` for the other kind.
+   */
+  items: CustomerInvoiceItem[];
+  invoiceDiscount: InvoiceDiscount | null;
+  /** The breakdown behind `total`. Null on a till-born invoice. */
+  totals: CustomerInvoiceTotals | null;
+  /** Where the goods left from. Null when nothing shipped. */
+  warehouseId: string | null;
+  channel: InvoiceChannel;
+  /**
+   * When the invoice itself was unwound, and why.
+   *
+   * DISTINCT FROM `payments[].voidedAt`, which cancels one RECEIPT. These mean
+   * the whole document was cancelled: goods back on the shelf, both journal
+   * entries reversed. Null on every invoice that still stands.
+   */
+  voidedAt: string | null;
+  voidReason: string | null;
+  /**
+   * EVERY ledger entry this invoice raised — its issuance, its cost half, and a
+   * reversal of each if it was voided.
+   *
+   * THE INVOICE NAMES THEM, rather than the entries naming the invoice, and that
+   * asymmetry is forced: an invoice's number is allocated AFTER its entries are
+   * posted — deliberately, so a failed issue burns none — so the number cannot
+   * appear in their descriptions and the ledger's search box cannot answer
+   * "which entries belong to this invoice".
+   */
+  journalEntries: InvoiceJournalEntry[];
+}
+
+/** One ledger entry an invoice raised, as the detail screen lists it. */
+export interface InvoiceJournalEntry {
+  _id: string;
+  entryNumber: string;
+  /** `invoice` for the issuance half, `invoice_cogs` for the cost half. */
+  sourceType: string | null;
+  /** True when this entry UNDOES another — set only on a reversal. */
+  isReversal: boolean;
+  /**
+   * True when the entry belongs to the SALE that raised this receivable rather
+   * than to the invoice itself.
+   *
+   * A till-born invoice posts no entries of its own: the sale posted them, and
+   * they cover the WHOLE sale — cash part included — not just the amount left on
+   * account. Presenting them as the invoice's own would invite somebody to read
+   * a Rp 500.000 entry as the total of a Rp 181.000 bill.
+   */
+  belongsToSale: boolean;
+}
+
+/** What an invoice line sells. */
+export type InvoiceItemKind = "product" | "service";
+
+/** How a discount was typed. `amount` is a rupiah figure, not a percentage. */
+export type InvoiceDiscountMode = "percent" | "amount";
+
+/**
+ * Where the ORDER came from — did a human type this invoice, or did it sync in
+ * from a marketplace.
+ *
+ * NOT "how did the customer reach us". A first pass filled this with
+ * `offline`/`whatsapp`/`instagram`, which answers a different question than the
+ * PRD asks — the split a shop selling across Tokopedia and Shopee needs is
+ * typed-vs-synced, not phoned-vs-messaged.
+ *
+ * Named marketplaces are deliberately absent until the sync module that would
+ * write them exists.
+ */
+export type InvoiceChannel = "manual" | "marketplace";
+
+/**
+ * A discount as STORED: what was typed, and what it actually took off.
+ *
+ * `resolvedAmount` IS THE AUTHORITY. `mode` and `value` only record the intent —
+ * changing a quantity after a nominal discount must not rescale it, which is why
+ * the amount is stored rather than re-derived.
+ */
+export interface InvoiceDiscount {
+  mode: InvoiceDiscountMode;
+  value: string;
+  resolvedAmount: string;
+}
+
+/** One line of an invoice, as stored. Prices are snapshots. */
+export interface CustomerInvoiceItem {
+  kind: InvoiceItemKind;
+  refId: string;
+  name: string;
+  sku: string | null;
+  qty: string;
+  unitPrice: string;
+  discount: InvoiceDiscount | null;
+  /** `qty × unitPrice`, BEFORE this line's own discount. */
+  lineTotal: string;
+  /** The cost the consumed lots carried. Null on a service. */
+  hppAtTime: string | null;
+}
+
+/** The money, frozen when the invoice was issued. */
+export interface CustomerInvoiceTotals {
+  subtotal: string;
+  itemDiscount: string;
+  invoiceDiscount: string;
+  /** The taxable base, after both discounts. */
+  dpp: string;
+  tax: string;
+  grandTotal: string;
+}
+
+/**
+ * A discount as TYPED — what a client sends.
+ *
+ * There is deliberately no `resolvedAmount` here: it is computed server-side from
+ * the basis, and a client able to send it could type "10%" while claiming it came
+ * to Rp 900.000.
+ */
+export interface TypedDiscountInput {
+  mode: InvoiceDiscountMode;
+  value: string;
+}
+
+/**
+ * One line a client asks for.
+ *
+ * NO PRICE AND NO NAME. Both are read from the catalogue server-side: a price a
+ * client can set is a discount nobody approved, and a name a client can set is an
+ * invoice saying something the catalogue never did.
+ */
+export interface CreateInvoiceItemInput {
+  kind: InvoiceItemKind;
+  refId: string;
+  qty: string;
+  discount?: TypedDiscountInput | null;
+}
+
+/**
+ * POST /api/customer-invoices — raise one by hand.
+ *
+ * `warehouseId` is required only when the invoice carries a PRODUCT line; a bill
+ * for grooming moves no stock. The server refuses if one is missing.
+ *
+ * `dueDate` and `termDays` are two ways of saying the same thing — send one, and
+ * the server refuses a payload carrying both.
+ */
+export interface CreateCustomerInvoiceInput {
+  customerId: string;
+  branchId: string;
+  warehouseId?: string;
+  items: CreateInvoiceItemInput[];
+  invoiceDiscount?: TypedDiscountInput | null;
+  invoiceDate?: string;
+  dueDate?: string;
+  termDays?: number;
+  channel?: InvoiceChannel;
+  notes?: string | null;
+}
+
+/**
+ * Query parameters accepted by GET /api/customer-invoices. All optional.
+ *
+ * `outstanding`, `overdue` and `dueSoon` ARE THE AR TRIAGE and are expressed
+ * server-side so every consumer asks the question identically. Recomputing any of
+ * them from a page of rows would make the screen's filter and the server's count
+ * disagree the moment there is a second page — the failure mode that looks like
+ * working software.
+ *
+ * `overdue` and `dueSoon` are cut at the same instant, so nothing falls into
+ * both and nothing falls between them.
+ */
+export interface CustomerInvoiceListQuery {
+  page?: number;
+  limit?: number;
+  /** Free-text over invoice number / notes. NOT the customer's name — that
+   *  lives in another collection; filter by `customerId` instead. */
+  search?: string;
+  customerId?: string;
+  branchId?: string;
+  status?: CustomerInvoiceStatus;
+  source?: CustomerInvoiceSource;
+  /** `status ∈ {unpaid, partial}` — excludes `void`, which owes nothing. */
+  outstanding?: boolean;
+  overdue?: boolean;
+  /** Outstanding, NOT yet late, due within `horizonDays`. */
+  dueSoon?: boolean;
+  /** The due-soon window, in days. No effect without `dueSoon`. */
+  horizonDays?: number;
+  /** ISO dates bounding `invoiceDate`. `dateTo` covers the whole day it names. */
+  dateFrom?: string;
+  dateTo?: string;
+  /**
+   * `totalHighest` / `totalLowest` order by what was BILLED, not by what is
+   * still owed: `total` is stored, the outstanding amount is derived per row and
+   * no index can serve it.
+   */
+  sort?:
+    | "dueSoonest"
+    | "dueLatest"
+    | "newest"
+    | "oldest"
+    | "totalHighest"
+    | "totalLowest";
+}
+
+/** One customer's debt, from GET /api/customer-invoices/outstanding. */
+export interface CustomerOutstandingRow {
+  customerId: string;
+  customerName: string | null;
+  invoiceCount: number;
+  outstanding: string;
+  overdueInvoiceCount: number;
+  overdueOutstanding: string;
+  dueSoonInvoiceCount: number;
+  dueSoonOutstanding: string;
+}
+
+/**
+ * GET /api/customer-invoices/outstanding — the AR summary.
+ *
+ * SUMMED IN THE DATABASE, so it covers the whole book rather than the page on
+ * screen. A client adding up its own rows would show a lower bound presented as a
+ * total the moment there were two pages.
+ *
+ * `horizonDays` IS ECHOED BACK: a panel captioned "7 hari ke depan" reads the
+ * number its figures were computed with rather than repeating a constant that
+ * could drift from the server's.
+ */
+export interface CustomerOutstandingSummary {
+  items: CustomerOutstandingRow[];
+  totalOutstanding: string;
+  totalInvoices: number;
+  totalOverdueOutstanding: string;
+  totalOverdueInvoices: number;
+  totalDueSoonOutstanding: string;
+  totalDueSoonInvoices: number;
+  horizonDays: number;
+  /**
+   * WHAT CAME IN THIS MONTH — the third stat card (PCR-033).
+   *
+   * COLLECTIONS, NOT ORIGINATIONS. Beside "Total piutang" and "Lewat jatuh
+   * tempo" it completes one sentence: owed, late, collected. Read as invoices
+   * RAISED this month it would answer a sales question on a collection screen.
+   *
+   * `from`/`to` are the SERVER's month, cut in the TENANT's timezone. Caption
+   * the card from them rather than from the browser's clock, which sits in a
+   * different zone from the tenant's more often than not.
+   */
+  collectedThisMonth: {
+    amount: string;
+    paymentCount: number;
+    from: string;
+    to: string;
+  };
+}
+
+/**
+ * POST /api/customer-invoices/:id/payments — money arriving.
+ *
+ * ONE SHAPE FOR DP, CICILAN AND PELUNASAN. There is deliberately no `kind` and no
+ * "settle in full" flag: the status is derived from what has been paid, so a
+ * caller settling an invoice sends `outstandingAmount` and the server works out
+ * what that means.
+ *
+ * NOT IDEMPOTENT. There is no idempotency key, so a double-submitted form records
+ * the money arriving twice on two irreversible entries — callers lock their
+ * submit control for the whole flight. Overpayment is REFUSED rather than
+ * absorbed (400), and a concurrent payment loses a compare-and-swap (409); both
+ * are worth showing verbatim, because both tell the user what to do next.
+ */
+/**
+ * POST /api/customer-invoices/:id/payments/:paymentId/void — undo a receipt.
+ *
+ * THE REASON IS THE WHOLE BODY, and it is required: six months later it is the
+ * only thing that explains a reversing entry in the ledger.
+ *
+ * THERE IS NO AMOUNT. A cancellation undoes the payment as recorded, in full — a
+ * partial undo is a different, smaller payment, which is cancel-then-record.
+ * There is no edit-in-place either, for the same reason: changing an amount
+ * would restate cash that has already been reported.
+ */
+export interface VoidCustomerPaymentInput {
+  reason: string;
+}
+
+export interface RecordCustomerPaymentInput {
+  /** Strictly positive, and never more than `outstandingAmount`. */
+  amount: string;
+  /**
+   * What KIND of payment this is. Distinct from `channelId`, which says which
+   * ACCOUNT it landed in; the server checks the two agree.
+   */
+  method: CustomerPaymentMethod;
+  /** The account the money arrived in — must be usable `in`. */
+  channelId: string;
+  /** Defaults to now. The day the money MOVED, which dates the ledger entry. */
+  at?: string;
+  ref?: string;
 }
