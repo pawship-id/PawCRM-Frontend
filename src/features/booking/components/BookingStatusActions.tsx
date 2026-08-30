@@ -48,6 +48,12 @@ const REASON_MAX_LENGTH = 500;
  * receptionist watching the door is the person who knows, and this is the screen
  * they have open.
  *
+ * SINCE AMANDEMEN PCR-021/022/023 IT IS ALSO THE ONLY WAY WORK GETS CLOSED. The
+ * till now leaves a paid booking `confirmed` rather than `completed`, because
+ * paying is not being groomed — so "Tandai selesai" here is no longer a tidy-up
+ * for the rare case, it is the click that makes "sudah dikerjakan" mean
+ * anything at all.
+ *
  * EVERY MOVE CONFIRMS, including the ordinary ones, because NO MOVE CAN BE
  * UNDONE: the state machine only runs forward, so a mis-tapped "Selesai" is not
  * a click somebody takes back. The dialog is also where the two things worth

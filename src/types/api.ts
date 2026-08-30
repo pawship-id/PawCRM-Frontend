@@ -1161,7 +1161,36 @@ export interface PosRunningTotals {
   itemDiscount: string;
   cartDiscount: string;
   otherCharges: string;
+  /** What is owed BEFORE tax is separated out. Not what a payment must cover. */
   net: string;
+  /**
+   * The tax on this basket — inside `net` when prices include it, on top of it
+   * when they do not. `taxAdded` is which.
+   *
+   * OPTIONAL because the server omits the whole group rather than guessing when
+   * it cannot read the shop's tax rule. Absent means "fall back to `net`", which
+   * is exact for the inclusive default and merely incomplete for the other.
+   */
+  tax?: string;
+  /**
+   * WHAT A PAYMENT HAS TO COVER, and the field the till must total against.
+   *
+   * Equal to `net` for a tax-inclusive shop, which is why nothing noticed its
+   * absence for so long. For an exclusive-tax shop it is `net` PLUS the tax, and
+   * a screen totalling against `net` there refuses every payment the cashier can
+   * possibly enter.
+   */
+  payable?: string;
+  /** The rate as a percentage, for the "PPN 11%" label. */
+  taxRate?: number;
+  /**
+   * True when the tax is charged ON TOP of the prices.
+   *
+   * THE FLAG A SCREEN NEEDS, not `tax > 0`. An inclusive shop has real tax that
+   * is already inside every price shown; adding it again overstates the bill by
+   * the whole tax.
+   */
+  taxAdded?: boolean;
 }
 
 /**

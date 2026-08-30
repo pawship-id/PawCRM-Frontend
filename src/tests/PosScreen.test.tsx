@@ -375,8 +375,17 @@ describe("PosScreen — a discount above the cashier's limit (FR-4)", () => {
     mockedPos.updateCart
       .mockResolvedValueOnce(cartWithItem)
       .mockRejectedValueOnce(
+        /*
+          THE REFUSAL AS THE SERVER ACTUALLY SENDS IT, `details` included. The
+          till recognises this one 409 by the field it NAMES rather than by
+          guessing from the patch's shape — see usePosCartApproval.test.tsx for
+          the duplicate-key error that used to match that guess.
+        */
         new ApiError("Conflict", 409, {
           reason: "A discount above 10% needs an approver",
+          details: [
+            { field: "approvedBy", message: "Above 10% needs an approver" },
+          ],
         }),
       )
       .mockResolvedValue(cartWithItem);

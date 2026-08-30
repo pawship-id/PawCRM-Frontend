@@ -246,3 +246,86 @@ describe("BookingsScreen — drafts and the number they have not earned", () => 
     ).toBeInTheDocument();
   });
 });
+
+/**
+ * WHAT THE STATUS BADGE ALONE CANNOT SAY — and since Amandemen PCR-021/022/023
+ * there are two such things rather than one.
+ *
+ * A paid booking used to read "Selesai", so "Dikonfirmasi" could only mean
+ * waiting. Now paying leaves it CONFIRMED — paying is not being groomed — and
+ * one badge covers three situations: untouched, in a basket right now, or paid
+ * for and still to be done. Reading the wrong one rings a grooming up twice.
+ */
+describe("BookingsScreen — what the badge cannot say on its own", () => {
+  beforeEach(() => {
+    mocked.list.mockReset();
+  });
+
+  it("says when a confirmed booking has already been paid for", async () => {
+    mocked.list.mockResolvedValue(page([booking({ posTransactionId: "sale-1" })]));
+
+    renderWithAuth(<BookingsScreen />);
+
+    expect(
+      await screen.findByText(/sudah dibayar — belum dikerjakan/i),
+    ).toBeInTheDocument();
+  });
+
+  it("says when one is sitting in a basket", async () => {
+    mocked.list.mockResolvedValue(
+      page([booking({ pulledToCartAt: "2026-08-26T02:00:00.000Z" })]),
+    );
+
+    renderWithAuth(<BookingsScreen />);
+
+    expect(await screen.findByText(/ada di keranjang/i)).toBeInTheDocument();
+  });
+
+  /*
+    BOTH ARE TRUE AT ONCE AFTER A SALE — the basket that claimed it is the one
+    that paid. "Ada di keranjang" would send a cashier looking for an open basket
+    that has already been settled.
+  */
+  it("prefers 'paid' over 'in a basket' when both are true", async () => {
+    mocked.list.mockResolvedValue(
+      page([
+        booking({
+          posTransactionId: "sale-1",
+          pulledToCartAt: "2026-08-26T02:00:00.000Z",
+        }),
+      ]),
+    );
+
+    renderWithAuth(<BookingsScreen />);
+
+    expect(
+      await screen.findByText(/sudah dibayar — belum dikerjakan/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/ada di keranjang/i)).not.toBeInTheDocument();
+  });
+
+  /* A finished booking says so in the badge; a second line would be noise. */
+  it("says neither once the work is done", async () => {
+    mocked.list.mockResolvedValue(
+      page([booking({ status: "completed", posTransactionId: "sale-1" })]),
+    );
+
+    renderWithAuth(<BookingsScreen />);
+
+    await screen.findByText("BK-260826-001");
+    expect(
+      screen.queryByText(/sudah dibayar — belum dikerjakan/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("says neither when nothing has touched it", async () => {
+    mocked.list.mockResolvedValue(page([booking()]));
+
+    renderWithAuth(<BookingsScreen />);
+
+    await screen.findByText("BK-260826-001");
+    expect(
+      screen.queryByText(/sudah dibayar|ada di keranjang/i),
+    ).not.toBeInTheDocument();
+  });
+});

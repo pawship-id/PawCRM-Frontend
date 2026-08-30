@@ -108,7 +108,27 @@ export function PosPaymentDialog({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const total = serverRupiah(cart.runningTotals.net);
+  /*
+    WHAT THE PAYMENT MUST COVER, which is NOT `net` for every shop.
+    
+    `net` is what is owed before tax is separated out. For a tax-inclusive shop
+    the tax is already inside it and the two are equal — which is why this screen
+    read `net` for a year without anybody noticing. For a shop whose prices
+    EXCLUDE tax, the server charges `net` plus the tax, and this dialog totalled
+    against `net`: it showed Rp 120.000, reported "Sisa Rp 0", and the server
+    refused every payment for a remainder of Rp 13.200 that appeared nowhere on
+    the screen. The till was unusable and said nothing about why.
+    
+    THE SERVER COMPUTES IT, with the same function the payment itself uses.
+    Adding the tax here would be a second copy of a rule that allocates per line
+    with largest-remainder rounding — the two would agree on every basket anybody
+    tested and differ by a rupiah on some real one.
+    
+    FALLS BACK TO `net` when the server sends no `payable`, which is exact for
+    the inclusive default and no worse than what this screen did before.
+  */
+  const payable = cart.runningTotals.payable ?? cart.runningTotals.net;
+  const total = serverRupiah(payable);
 
   useEffect(() => {
     if (!open) return;
@@ -255,6 +275,35 @@ export function PosPaymentDialog({
     ]);
   }
 
+  /**
+   * WHAT THE SERVER ACTUALLY SAID, in the order it is most useful.
+   *
+   * THIS USED TO SHOW `reason` OR NOTHING, and "nothing" was every refusal that
+   * does not carry one: a validation 400 puts its answer in `details`, and an
+   * unexpected 500 has only `message`. Both collapsed to "Pembayaran gagal. Coba
+   * lagi." — a sentence that is true of every failure and useful for none, and
+   * which left a cashier and whoever they call with nothing to go on.
+   *
+   * `reason` FIRST because it is written for the person reading it ("Reload the
+   * sale and try again"); `details` next because a validation failure names the
+   * field; `message` last because it is the server's own words and may be
+   * English, but English that says something beats Indonesian that does not.
+   */
+  function refusalText(err: unknown): string {
+    if (!(err instanceof ApiError)) return "Pembayaran gagal. Coba lagi.";
+
+    if (err.reason) return err.reason;
+
+    const detail = err.details?.[0];
+    if (detail?.message) {
+      return detail.field
+        ? `${detail.message} (${detail.field})`
+        : detail.message;
+    }
+
+    return err.message || "Pembayaran gagal. Coba lagi.";
+  }
+
   async function submit() {
     if (!canSubmit) return;
 
@@ -280,11 +329,7 @@ export function PosPaymentDialog({
 
       onPaid(sale);
     } catch (err) {
-      setError(
-        err instanceof ApiError
-          ? (err.reason ?? "Pembayaran gagal. Coba lagi.")
-          : "Pembayaran gagal. Coba lagi.",
-      );
+      setError(refusalText(err));
     } finally {
       setSubmitting(false);
     }
@@ -296,7 +341,22 @@ export function PosPaymentDialog({
         <DialogHeader>
           <DialogTitle>Pembayaran</DialogTitle>
           <DialogDescription>
-            Total {formatMoney(cart.runningTotals.net)}
+            Total {formatMoney(payable)}
+            {/*
+              SPELLED OUT WHEN THE TAX IS ON TOP, because the total then differs
+              from every price the cashier just read off the catalogue — and a
+              figure that is bigger than expected with no explanation is one
+              somebody argues with the customer about.
+              
+              ONE TEMPLATE STRING, not JSX interpolation: the latter splits this
+              into three text nodes and a test looking for the sentence finds
+              nothing.
+            */}
+            {cart.runningTotals.taxAdded && cart.runningTotals.tax && (
+              <span className="mt-1 block text-xs text-muted">
+                {`Termasuk PPN ${cart.runningTotals.taxRate ?? 0}% sebesar ${formatMoney(cart.runningTotals.tax)}`}
+              </span>
+            )}
           </DialogDescription>
         </DialogHeader>
 

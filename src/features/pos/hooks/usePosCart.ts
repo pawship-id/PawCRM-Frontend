@@ -155,14 +155,25 @@ export function usePosCart(): UsePosCartResult {
         setPendingApproval(null);
       } catch (err) {
         /*
-          A 409 ON A DISCOUNT IS NOT A FAILURE, it is a request for approval. The
+          A DISCOUNT AWAITING APPROVAL IS NOT A FAILURE, it is a request. The
           patch is kept so the dialog can retry the identical one with an
           approver — see PendingApproval.
+
+          RECOGNISED BY THE FIELD THE SERVER NAMES, not inferred from the status
+          and the shape of the patch. The old test was "409 AND the patch touches
+          cartDiscount or items" — and `items` is present on nearly every cart
+          write, so it claimed almost any conflict. A duplicate-key error while
+          raising a booking draft came back 409 on an items patch, matched, and
+          put "Duplicate value for 'tenantId, bookingNumber'" inside a dialog
+          headed "Diskon perlu persetujuan", on a basket with no discount on it.
+
+          `approvedBy` is the field a caller has to fill in to get past this
+          refusal, so naming it is both the marker and the truth.
         */
         if (
           err instanceof ApiError &&
           err.status === 409 &&
-          (input.cartDiscount !== undefined || input.items !== undefined)
+          err.details?.some((detail) => detail.field === "approvedBy")
         ) {
           setPendingApproval({
             patch: input,

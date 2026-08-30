@@ -588,3 +588,83 @@ describe("PosPaymentDialog — Piutang", () => {
     expect(await screen.findByText(/sudah punya piutang/i)).toBeInTheDocument();
   });
 });
+
+/**
+ * WHAT THE DIALOG SAYS WHEN THE SERVER REFUSES.
+ *
+ * It used to show `reason` or nothing, and "nothing" was every refusal that does
+ * not carry one — a validation 400 puts its answer in `details`, an unexpected
+ * 500 has only `message`. Both collapsed to "Pembayaran gagal. Coba lagi.", a
+ * sentence true of every failure and useful for none.
+ *
+ * THE COST WAS REAL: a till refusing every payment for an exclusive-tax tenant
+ * ("Remaining: 13200.0000") looked identical to a network blip, and finding out
+ * why took a database session rather than a glance at the screen.
+ */
+describe("PosPaymentDialog — what a refusal says", () => {
+  /**
+   * Cash for the whole basket, then Selesaikan — the shortest failing path.
+   *
+   * The channel button adds a line pre-filled with the remainder, which is what
+   * enables Selesaikan; opening the dialog alone leaves it disabled.
+   */
+  async function payCash(user: ReturnType<typeof userEvent.setup>) {
+    open();
+    await user.click(await screen.findByRole("button", { name: "Kas Toko" }));
+    await user.click(screen.getByRole("button", { name: /selesaikan/i }));
+  }
+
+  it("prefers the server's reason, which is written for the reader", async () => {
+    const user = userEvent.setup();
+    (posService.pay as jest.Mock).mockRejectedValue(
+      new ApiError("Conflict", 409, { reason: "Muat ulang penjualannya" }),
+    );
+
+    await payCash(user);
+
+    expect(
+      await screen.findByText("Muat ulang penjualannya"),
+    ).toBeInTheDocument();
+  });
+
+  /* A validation failure names the field; that is the whole of its answer. */
+  it("falls back to the validation detail", async () => {
+    const user = userEvent.setup();
+    (posService.pay as jest.Mock).mockRejectedValue(
+      new ApiError("Bad Request", 400, {
+        details: [{ field: "payments", message: "Remaining: 13200.0000" }],
+      }),
+    );
+
+    await payCash(user);
+
+    expect(
+      await screen.findByText(/Remaining: 13200\.0000 \(payments\)/),
+    ).toBeInTheDocument();
+  });
+
+  /* English that says something beats Indonesian that does not. */
+  it("falls back to the server's own message", async () => {
+    const user = userEvent.setup();
+    (posService.pay as jest.Mock).mockRejectedValue(
+      new ApiError("The payment does not cover the sale", 400),
+    );
+
+    await payCash(user);
+
+    expect(
+      await screen.findByText("The payment does not cover the sale"),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the generic line for a failure that is not the API's", async () => {
+    const user = userEvent.setup();
+    (posService.pay as jest.Mock).mockRejectedValue(new Error("boom"));
+
+    await payCash(user);
+
+    expect(
+      await screen.findByText("Pembayaran gagal. Coba lagi."),
+    ).toBeInTheDocument();
+  });
+});

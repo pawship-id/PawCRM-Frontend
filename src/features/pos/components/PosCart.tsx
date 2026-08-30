@@ -272,22 +272,49 @@ export function PosCart({
                 </dd>
               </div>
             )}
+
+            {/*
+              A ROW OF ITS OWN ONLY WHEN THE TAX IS ON TOP. For a shop whose
+              prices already include it, a PPN row above the total is a figure
+              that does not add up: subtotal and tax would sum past the total by
+              the whole tax, and somebody checking the arithmetic would be right
+              to say the screen is wrong.
+
+              ONE TEMPLATE STRING for the label — JSX interpolation splits it
+              into three text nodes.
+            */}
+            {totals.taxAdded && totals.tax && (
+              <div className="flex justify-between">
+                <dt className="text-muted">{`PPN ${totals.taxRate ?? 0}%`}</dt>
+                <dd className="tabular-nums text-foreground">
+                  {formatMoney(totals.tax)}
+                </dd>
+              </div>
+            )}
           </dl>
 
           <div className="flex items-baseline justify-between border-t border-border pt-3">
             <span className="text-sm font-semibold text-foreground">Total</span>
             <span className="text-xl font-semibold tabular-nums text-foreground">
-              {formatMoney(totals.net)}
+              {/*
+                WHAT THE CUSTOMER PAYS, which is `net` plus the tax for a shop
+                that charges it on top. This read `net` unconditionally, so such
+                a till showed a total the payment screen would then refuse — and
+                the cashier had no way to see the difference.
+              */}
+              {formatMoney(totals.payable ?? totals.net)}
             </span>
           </div>
 
           {/*
-            PPN is separated at payment, where the tenant's rate and its
-            inclusive/exclusive rule are read and frozen onto the receipt. Said
-            here rather than left implicit, because a cashier reading a total
-            aloud should know whether tax is in it.
+            SAID ONLY WHERE IT IS STILL TRUE. Once the running total carries the
+            tax, "PPN dihitung saat pembayaran" is a promise the screen has
+            already kept — and on an exclusive-tax basket it would contradict the
+            PPN row directly above it.
           */}
-          <p className="text-xs text-muted">PPN dihitung saat pembayaran.</p>
+          {!totals.tax && (
+            <p className="text-xs text-muted">PPN dihitung saat pembayaran.</p>
+          )}
 
           <div className="flex gap-2">
             <Button
