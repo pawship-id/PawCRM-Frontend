@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { Printer } from "lucide-react";
 
 import { Alert, Card, Spinner } from "@/components";
 // The shadcn button rather than the project wrapper: every button on this screen
@@ -19,6 +20,7 @@ import { useCustomerInvoice } from "../hooks/useCustomerInvoice";
 import { InvoiceSourceBadge, InvoiceStatusBadge } from "./InvoiceStatusBadge";
 import { InvoiceExecutionPanel } from "./InvoiceExecutionPanel";
 import { InvoiceItemsTable } from "./InvoiceItemsTable";
+import { InvoicePrintDialog } from "./InvoicePrintDialog";
 import { JournalLink } from "./JournalLink";
 import { VoidInvoiceDialog } from "./VoidInvoiceDialog";
 import { PaymentHistory } from "./PaymentHistory";
@@ -87,6 +89,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
   const [receiptFor, setReceiptFor] = useState<string | null>(null);
   const [voidingId, setVoidingId] = useState<string | null>(null);
   const [voidOpen, setVoidOpen] = useState(false);
+  const [printing, setPrinting] = useState(false);
   /*
     READING THE LEDGER IS ITS OWN GRANT. A link that 403s on click is worse than
     plain text: it promises somewhere to go.
@@ -157,6 +160,27 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
         <div className="flex items-center gap-2">
           <InvoiceSourceBadge source={invoice.source} />
           <InvoiceStatusBadge status={invoice.status} />
+          {/*
+            BESIDE THE STATUS, not down with the payment form. Printing is
+            something somebody does to the whole document, and it is asked for at
+            the counter with a customer waiting — not after reading the page.
+
+            GATED ON `read`, WHICH IT ALREADY HAS: printing shows nothing the
+            screen does not. A separate grant would be a permission that protects
+            a screenshot.
+
+            A VOIDED INVOICE STILL PRINTS, and the sheet says so in a red banner.
+            Somebody re-printing one is usually doing it precisely because it was
+            cancelled — the same rule the kwitansi follows.
+          */}
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setPrinting(true)}
+          >
+            <Printer className="size-4" />
+            Cetak
+          </Button>
         </div>
       </div>
 
@@ -401,6 +425,12 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
         payments={invoice.payments}
         onPrint={(payment) => setReceiptFor(payment.paymentId)}
         onVoid={(payment) => setVoidingId(payment.paymentId)}
+      />
+
+      <InvoicePrintDialog
+        invoice={invoice}
+        open={printing}
+        onClose={() => setPrinting(false)}
       />
 
       <PaymentReceiptDialog

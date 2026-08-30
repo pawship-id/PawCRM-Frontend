@@ -385,6 +385,23 @@ export interface TenantSettings {
    * that assumed the wrong one would understate a bill by 11%.
    */
   priceIncludesTax?: boolean;
+
+  /**
+   * FREE TEXT PRINTED AT THE FOOT OF EVERY INVOICE — usually where to send the
+   * money.
+   *
+   * ONE BLOCK RATHER THAN bank-name / number / holder. A shop with two accounts,
+   * or one that wants payment terms or a returns line, would need a second field
+   * and then a third; a paragraph the shop writes for itself covers all of them.
+   * The cost, stated plainly: nothing can validate an account number in here.
+   *
+   * EMPTY PRINTS NOTHING — no heading, no blank block. A default sentence would
+   * be a claim the shop never made appearing on every bill it sends.
+   *
+   * NEWLINES ARE MEANINGFUL. Bank details run to two or three lines, so whatever
+   * renders this must preserve them.
+   */
+  invoiceFooterNote?: string;
 }
 
 /**
