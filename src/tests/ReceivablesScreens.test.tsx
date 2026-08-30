@@ -138,6 +138,7 @@ function detail(
     voidedAt: null,
     voidReason: null,
     journalEntries: [],
+    bookings: [],
     ...overrides,
   };
 }

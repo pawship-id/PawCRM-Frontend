@@ -11,6 +11,7 @@ import { productService } from "@/services/product.service";
 import { serviceService } from "@/services/service.service";
 import { tenantService } from "@/services/tenant.service";
 import { bookingService } from "@/services/booking.service";
+import { petService } from "@/services/pet.service";
 import { ApiError } from "@/services/api-error";
 
 const push = jest.fn();
@@ -56,6 +57,10 @@ function mockLookups(overrides: { warehouses?: unknown[] } = {}) {
   // The booking panel mounts as soon as a customer is chosen. Stubbed empty so
   // these cases stay about the form rather than about the bridge.
   jest.spyOn(bookingService, "bridge").mockResolvedValue([] as never);
+  // PCR-035 — the animals a service line can be billed against.
+  jest
+    .spyOn(petService, "list")
+    .mockResolvedValue(page([{ _id: "pet1", name: "Miko" }]) as never);
   jest
     .spyOn(tenantService, "me")
     .mockResolvedValue({ settings: { taxRate: 11, priceIncludesTax: true } } as never);
@@ -98,6 +103,171 @@ beforeEach(() => {
 });
 
 afterEach(() => jest.restoreAllMocks());
+
+/**
+ * PCR-035 — a service line can name the animal it is for.
+ *
+ * WHAT THIS IS ACTUALLY FOR is not the label on the invoice. Naming the animal
+ * is what lets the SERVER raise a booking for the work: a grooming billed with
+ * no pet reaches no day sheet, nobody is assigned, and the only record that the
+ * work is owed is a line on a bill the customer takes home.
+ */
+describe("the animal a service is for", () => {
+  /** Header, then one SERVICE line — the shortest bill that can carry a pet. */
+  async function fillService() {
+    await pick(/^Pelanggan$/i, /Bu Sari/);
+    await pick(/^Cabang$/i, /Cabang Pusat/);
+    await pick(/tambah barang atau jasa/i, /Grooming/);
+    await userEvent.click(screen.getByRole("button", { name: /tambah baris/i }));
+  }
+
+  it("sends the pet on the service line", async () => {
+    render(<InvoiceCreateForm />);
+    await fillService();
+    await pick(/^Hewan untuk Grooming$/i, /Miko/);
+    await submit();
+
+    await waitFor(() =>
+      expect(customerInvoiceService.create).toHaveBeenCalled(),
+    );
+    expect(sent().items[0]).toMatchObject({ kind: "service", petId: "pet1" });
+  });
+
+  /*
+    REQUIRED, AND THE FORM SAYS SO BEFORE THE SERVER HAS TO. A grooming billed
+    with no animal reaches no day sheet: nobody is assigned, and the only record
+    that the work is owed is a line on a bill the customer took home. The server
+    refuses it too — this is a courtesy over that refusal, not the rule itself.
+  */
+  it("will not issue a service line with no animal", async () => {
+    render(<InvoiceCreateForm />);
+    await fillService();
+
+    expect(
+      screen.getByRole("button", { name: /terbitkan faktur/i }),
+    ).toBeDisabled();
+    expect(
+      screen.getByText(/belum dipilih hewannya/i),
+    ).toBeInTheDocument();
+    expect(customerInvoiceService.create).not.toHaveBeenCalled();
+  });
+
+  it("unblocks once the animal is chosen", async () => {
+    render(<InvoiceCreateForm />);
+    await fillService();
+    await pick(/^Hewan untuk Grooming$/i, /Miko/);
+
+    expect(
+      screen.getByRole("button", { name: /terbitkan faktur/i }),
+    ).toBeEnabled();
+  });
+
+  /*
+    A DIFFERENT JOB, SAID DIFFERENTLY. "Ada baris jasa yang belum dipilih
+    hewannya" in front of an empty dropdown is an instruction nobody can follow —
+    the pet has to be registered first, which is a different screen.
+  */
+  it("says to register a pet when the customer has none", async () => {
+    jest.spyOn(petService, "list").mockResolvedValue(page([]) as never);
+
+    render(<InvoiceCreateForm />);
+    await fillService();
+
+    expect(
+      await screen.findByText(/belum punya hewan/i),
+    ).toBeInTheDocument();
+  });
+
+  /*
+    THE RULE IS ABOUT SERVICES ONLY. A bill for goods must not be held up by a
+    field it does not have — the server refuses a pet on a product line anyway.
+  */
+  it("does not block an invoice of only products", async () => {
+    render(<InvoiceCreateForm />);
+    await fillMinimal();
+
+    expect(
+      screen.getByRole("button", { name: /terbitkan faktur/i }),
+    ).toBeEnabled();
+  });
+
+  it("asks only for that customer's animals", async () => {
+    render(<InvoiceCreateForm />);
+    await fillService();
+
+    await waitFor(() => expect(petService.list).toHaveBeenCalled());
+    expect(petService.list).toHaveBeenCalledWith(
+      expect.objectContaining({ customerId: "c1" }),
+    );
+  });
+
+  /*
+    NO COLUMN AT ALL on a bill for goods. A column of dashes on an invoice for
+    two bags of food is a question the reader never asked — and a product line
+    cannot carry a pet anyway: the server refuses one, because a collar has no
+    grooming.
+  */
+  it("shows no animal column on an invoice of only products", async () => {
+    render(<InvoiceCreateForm />);
+    await fillMinimal();
+
+    expect(
+      screen.queryByRole("columnheader", { name: /^Hewan$/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  /*
+    THE CHECK booking.service.js CALLS THE ONE THAT MATTERS MOST, met here before
+    the server has to. A pet picked under the previous customer would raise a
+    booking against somebody else's animal — refused, but only after the whole
+    form was filled in.
+  */
+  it("drops the animal when the customer changes", async () => {
+    jest
+      .spyOn(customerService, "list")
+      .mockResolvedValue(
+        page([
+          { _id: "c1", name: "Bu Sari" },
+          { _id: "c2", name: "Pak Budi" },
+        ]) as never,
+      );
+
+    render(<InvoiceCreateForm />);
+    await fillService();
+    await pick(/^Hewan untuk Grooming$/i, /Miko/);
+
+    await pick(/^Pelanggan$/i, /Pak Budi/);
+
+    /*
+      AND THE FORM IS BLOCKED AGAIN, which is the half that matters. Clearing the
+      field on its own would just move the problem: a service line silently
+      reverting to "no animal" and issuing anyway is the exact case the required
+      rule exists to stop.
+    */
+    expect(
+      screen.getByRole("button", { name: /terbitkan faktur/i }),
+    ).toBeDisabled();
+    expect(screen.getByText(/belum dipilih hewannya/i)).toBeInTheDocument();
+  });
+
+  /*
+    AND ONLY WHEN IT ACTUALLY CHANGES. Re-picking the same customer must not
+    throw the choice away — the handler returns early, and this is what keeps
+    that early return from being deleted as redundant.
+  */
+  it("keeps the animal when the same customer is re-picked", async () => {
+    render(<InvoiceCreateForm />);
+    await fillService();
+    await pick(/^Hewan untuk Grooming$/i, /Miko/);
+    await pick(/^Pelanggan$/i, /Bu Sari/);
+    await submit();
+
+    await waitFor(() =>
+      expect(customerInvoiceService.create).toHaveBeenCalled(),
+    );
+    expect(sent().items[0].petId).toBe("pet1");
+  });
+});
 
 describe("what the form sends", () => {
   it("sends the line, and no price with it", async () => {
@@ -195,6 +365,8 @@ describe("what the form sends", () => {
     await pick(/^Cabang$/i, /Cabang Pusat/);
     await pick(/tambah barang atau jasa/i, /Grooming/);
     await userEvent.click(screen.getByRole("button", { name: /tambah baris/i }));
+    // A service names its animal (PCR-035), or the form will not submit at all.
+    await pick(/^Hewan untuk Grooming$/i, /Miko/);
     await submit();
 
     await waitFor(() => expect(customerInvoiceService.create).toHaveBeenCalled());

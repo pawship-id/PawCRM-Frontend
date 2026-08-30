@@ -1654,8 +1654,12 @@ export type BookingStatus =
  * the POS creates one to hang the attribution on. A field rather than an
  * inference from `posTransactionId`, because a booked appointment paid at the
  * till also ends up with one.
+ *
+ * `invoice_adhoc` is the same idea one document over (PCR-035): a grooming typed
+ * straight onto an invoice, for which the invoice raises a booking so the work
+ * reaches a day sheet instead of existing only as a line on a bill.
  */
-export type BookingOrigin = "booking" | "pos_adhoc";
+export type BookingOrigin = "booking" | "pos_adhoc" | "invoice_adhoc";
 
 /**
  * One service on a booking.
@@ -3764,6 +3768,50 @@ export interface CustomerInvoiceDetail
    * "which entries belong to this invoice".
    */
   journalEntries: InvoiceJournalEntry[];
+  /**
+   * THE APPOINTMENTS THIS BILL COVERS — PCR-035.
+   *
+   * BOTH KINDS TOGETHER: an appointment pulled in by PCR-034 and a shadow one
+   * raised because a service was typed with an animal on it are the same fact to
+   * whoever is reading the bill — work that has to happen. `origin` says which
+   * is which.
+   *
+   * Empty on an invoice that bills only goods.
+   */
+  bookings: InvoiceBooking[];
+}
+
+/** One appointment an invoice covers, as the execution panel draws it. */
+export interface InvoiceBooking {
+  _id: string;
+  bookingNumber: string | null;
+  status: BookingStatus;
+  /**
+   * `invoice_adhoc` means the invoice RAISED it — the service was typed in and
+   * nobody had booked it. `booking` means it existed first and was billed here.
+   * Inferring this from anything else would be wrong the moment somebody bills a
+   * real appointment.
+   */
+  origin: BookingOrigin;
+  scheduledAt: string | null;
+  petId: string | null;
+  /**
+   * RESOLVED ON READ, unlike `items[].petName` on the invoice line. This panel
+   * is a day sheet — it should show the animal's current name — while the line
+   * is a record of what was agreed.
+   */
+  petName: string | null;
+  items: InvoiceBookingItem[];
+}
+
+/** One service on an invoice's booking. */
+export interface InvoiceBookingItem {
+  serviceId: string | null;
+  name: string;
+  price: string;
+  groomerUserId: string | null;
+  /** Never null — an unfilled slot resolves to "Belum ditentukan" server-side. */
+  groomerName: string;
 }
 
 /** One ledger entry an invoice raised, as the detail screen lists it. */
@@ -3832,6 +3880,25 @@ export interface CustomerInvoiceItem {
   lineTotal: string;
   /** The cost the consumed lots carried. Null on a service. */
   hppAtTime: string | null;
+  /**
+   * THE APPOINTMENT BEHIND THIS LINE. Set two ways and there is no way to tell
+   * them apart from here: an appointment pulled in by PCR-034, or a shadow one
+   * PCR-035 raised because the line was typed with an animal on it. `bookings[]`
+   * on the invoice carries `origin`, which is where that question is answered.
+   *
+   * Null on every product line, and on a service nobody attached an animal to.
+   */
+  bookingId: string | null;
+  /** Whose animal the service is for. Null on a product line. */
+  petId: string | null;
+  /**
+   * Its name AS AT ISSUE, snapshotted onto the line rather than resolved on
+   * read — unlike `bookings[].petName`. A bill is a record of what was agreed,
+   * and an animal renamed afterwards must not silently restate it.
+   */
+  petName: string | null;
+  /** Who did the work, as at issue. Null when the slot was never filled. */
+  groomerName: string | null;
 }
 
 /** The money, frozen when the invoice was issued. */
@@ -3869,6 +3936,15 @@ export interface CreateInvoiceItemInput {
   refId: string;
   qty: string;
   discount?: TypedDiscountInput | null;
+  /**
+   * WHOSE ANIMAL, on a service line — PCR-035, and the prerequisite for the rest
+   * of it. A booking needs a pet, and a grooming typed straight onto an invoice
+   * has none, so without this the service is billed and appears on no day sheet.
+   *
+   * REFUSED ON A PRODUCT LINE by the server: a collar has no grooming, and
+   * accepting one would raise an appointment for a bag of food.
+   */
+  petId?: string;
 }
 
 /**

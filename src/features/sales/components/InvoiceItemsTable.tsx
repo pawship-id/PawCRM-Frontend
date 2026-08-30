@@ -77,8 +77,16 @@ export function InvoiceItemsTable({
               <TableRow key={`${item.refId}-${index}`}>
                 <TableCell>
                   <span className="font-medium">{item.name}</span>
+                  {/*
+                    THE ANIMAL, on a service line that names one — PCR-035. A
+                    bill for three cats has to say which three: the customer
+                    checking it and the groomer reading it both need the names,
+                    and "Grooming ×3" tells neither of them whose bath was
+                    missed. Falls back to the SKU, which is a product's own
+                    identifier, and to "Jasa" for a service with no animal.
+                  */}
                   <span className="block text-xs text-muted">
-                    {item.sku ?? "Jasa"}
+                    {item.petName ?? item.sku ?? "Jasa"}
                   </span>
                 </TableCell>
                 <TableCell className="text-right tabular-nums">

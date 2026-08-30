@@ -91,4 +91,26 @@ export const bookingService = {
    */
   changeStatus: (id: string, status: BookingStatus, reason?: string | null) =>
     apiClient.patch<Booking>(`/bookings/${id}/status`, { status, reason }),
+
+  /**
+   * PATCH /bookings/:id/groomer — PCR-035. Puts a name on a slot, nothing else.
+   *
+   * NOT `update({items})`, which re-snapshots every price at today's rates. A
+   * booking raised beside an invoice was billed at the price on that bill, so
+   * re-quoting it to write a groomer's name in would leave the appointment and
+   * the invoice disagreeing about what the customer owes.
+   *
+   * `null` UNASSIGNS — somebody rostered off goes back to "Belum ditentukan",
+   * the state the booking was born in. `serviceId` narrows it to one service;
+   * omitted, it covers the whole visit, which is the usual case.
+   */
+  assignGroomer: (
+    id: string,
+    groomerUserId: string | null,
+    serviceId?: string,
+  ) =>
+    apiClient.patch<Booking>(`/bookings/${id}/groomer`, {
+      groomerUserId,
+      serviceId,
+    }),
 };

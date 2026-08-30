@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { SALES_CRUMBS } from "../crumbs";
 import { useCustomerInvoice } from "../hooks/useCustomerInvoice";
 import { InvoiceSourceBadge, InvoiceStatusBadge } from "./InvoiceStatusBadge";
+import { InvoiceExecutionPanel } from "./InvoiceExecutionPanel";
 import { InvoiceItemsTable } from "./InvoiceItemsTable";
 import { JournalLink } from "./JournalLink";
 import { VoidInvoiceDialog } from "./VoidInvoiceDialog";
@@ -235,6 +236,43 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
         <Card title="Barang & jasa">
           <InvoiceItemsTable invoice={invoice} />
         </Card>
+
+        {/*
+          WHAT STILL HAS TO HAPPEN — PCR-035. Between the lines and the ledger
+          deliberately: it answers "for what" the same way the card above does,
+          but about work rather than money, and somebody scanning the page for
+          "has the grooming been done" should not have to pass the journal to
+          reach it.
+
+          IT DRAWS NOTHING when the bill carries no services, which is most of
+          them — an empty "Jadwal" card on an invoice for two bags of food is a
+          question the reader never asked.
+        */}
+        {invoice.bookings.length > 0 && (
+          <Card
+            title="Jadwal & pengerjaan"
+            description="Jasa di faktur ini dan siapa yang mengerjakannya."
+          >
+            <InvoiceExecutionPanel
+              invoice={invoice}
+              onChanged={(id, patch) =>
+                applyInvoice({
+                  ...invoice,
+                  /*
+                    PATCHED IN PLACE rather than refetched. The two endpoints
+                    answer with a Booking document, not with this invoice's view
+                    of one, so only the fields that actually moved are taken —
+                    spreading the whole answer over the row would drop the
+                    fields the invoice read assembled and the panel draws.
+                  */
+                  bookings: invoice.bookings.map((booking) =>
+                    booking._id === id ? { ...booking, ...patch } : booking,
+                  ),
+                })
+              }
+            />
+          </Card>
+        )}
 
         {/*
           THE ENTRIES THIS INVOICE RAISED, named here because they cannot name
