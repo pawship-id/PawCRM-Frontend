@@ -181,6 +181,37 @@ describe("BookingBridgeDialog — pulling", () => {
     expect(mockedBookings.update).not.toHaveBeenCalled();
   });
 
+  /*
+    THE LIST IS NO LONGER ALL ONE THING. Since the bridge started offering every
+    status but `cancelled`, a row can be a grooming already finished or a draft
+    nobody confirmed — and "Selesai" and "Draf" are different conversations
+    across a counter, so the row says which it is.
+  */
+  it("says what state each booking is in", async () => {
+    mockedBookings.bridge.mockResolvedValue([
+      booking({ status: "in_progress" }),
+    ]);
+    open();
+
+    expect(await screen.findByText("Sedang dikerjakan")).toBeVisible();
+  });
+
+  /*
+    A DRAFT HAS NO NUMBER — it earns one when it is paid for. The row read the
+    literal word "null" until this was handled.
+  */
+  it("names a draft that has no number yet", async () => {
+    mockedBookings.bridge.mockResolvedValue([
+      booking({ status: "draft", bookingNumber: null }),
+    ]);
+    open();
+
+    expect(await screen.findByText("Belum bernomor")).toBeVisible();
+    expect(
+      screen.getByRole("checkbox", { name: /tarik booking tanpa nomor/i }),
+    ).toBeVisible();
+  });
+
   it("points at the other tab when the customer has no booking today", async () => {
     /*
       Reached by TAPPING BACK to the pull tab, because with nothing to pull the
@@ -197,7 +228,7 @@ describe("BookingBridgeDialog — pulling", () => {
     );
 
     expect(
-      await screen.findByText(/tidak ada booking terkonfirmasi/i),
+      await screen.findByText(/tidak ada booking yang bisa ditarik/i),
     ).toBeVisible();
   });
 });

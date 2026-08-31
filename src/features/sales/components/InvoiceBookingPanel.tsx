@@ -25,8 +25,11 @@ import type { Booking } from "@/types/api";
  * it both need the names, and "Grooming ×3" tells neither of them whose bath was
  * missed.
  *
- * THE LIST IS ALREADY FILTERED BY THE SERVER to confirmed bookings this customer
- * has not been billed for — in a basket OR on another invoice. Filtering here
+ * THE LIST IS ALREADY FILTERED BY THE SERVER to bookings this customer has not
+ * been billed for — in a basket OR on another invoice — in any status but
+ * `cancelled`. That is wider than it was: an invoice bills what has HAPPENED, so
+ * a grooming that is finished or under way is the most ordinary row on it, and
+ * requiring `confirmed` refused exactly those. Filtering here
  * would be a second definition of "already billed", and the two would eventually
  * disagree about whether a grooming had been paid for.
  *

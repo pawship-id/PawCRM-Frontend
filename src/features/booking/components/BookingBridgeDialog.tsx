@@ -19,6 +19,7 @@ import type { Booking } from "@/types/api";
 
 import { useBookingBridge } from "../hooks/useBookingBridge";
 import { AddServiceTab } from "./AddServiceTab";
+import { BookingStatusBadge } from "./BookingStatusBadge";
 
 /** The two halves of the modal. FR-3 requires both to be reachable every time. */
 type Tab = "pull" | "adhoc";
@@ -79,8 +80,8 @@ function bookingTotal(booking: Booking): string {
  * would otherwise have to make an appointment retrospectively before it could
  * take the money, which is the flow the shortcut exists to remove.
  *
- * THE FIRST TAB IS "TARIK" ONLY WHEN THERE IS SOMETHING TO PULL. With no
- * confirmed booking today, opening on an empty list and asking somebody to notice
+ * THE FIRST TAB IS "TARIK" ONLY WHEN THERE IS SOMETHING TO PULL. With nothing
+ * on today, opening on an empty list and asking somebody to notice
  * a second tab is a worse first frame than opening on the tab that can actually
  * do something — so the default follows the data. The empty state still says
  * where to go, per the PRD's edge case.
@@ -227,7 +228,7 @@ export function BookingBridgeDialog({
                at the other tab rather than left on an empty list. */
             <div className="flex flex-col items-start gap-3 py-8">
               <p className="text-sm text-muted">
-                Tidak ada booking terkonfirmasi untuk hari ini.
+                Tidak ada booking yang bisa ditarik hari ini.
               </p>
               <Button type="button" onClick={() => setTab("adhoc")}>
                 <Plus className="size-4" />
@@ -253,12 +254,32 @@ export function BookingBridgeDialog({
                               onCheckedChange={() => toggle(booking._id)}
                               /* Named by its own row: every checkbox here is
                                  otherwise announced identically. */
-                              aria-label={`Tarik ${booking.bookingNumber} untuk ${group.petName}`}
+                              aria-label={`Tarik ${booking.bookingNumber ?? "booking tanpa nomor"} untuk ${group.petName}`}
                               className="mt-0.5"
                             />
                             <span className="min-w-0 flex-1">
-                              <span className="block text-xs tabular-nums text-warning">
-                                {booking.bookingNumber}
+                              {/*
+                                THE NUMBER AND THE STATUS, side by side, and both
+                                are new answers to one question: the list is no
+                                longer all one thing.
+
+                                Since the bridge started offering every status but
+                                `cancelled`, a row can be a grooming already on the
+                                table, one finished an hour ago, or an appointment
+                                nobody confirmed. The cashier is about to charge
+                                for it either way, but "Selesai" and "Draf" are
+                                different conversations across a counter.
+
+                                A DRAFT HAS NO NUMBER — it earns one when it is
+                                paid for (see the model) — so the number is not
+                                assumed to be there. It read `null` on screen for
+                                exactly as long as it took to look.
+                              */}
+                              <span className="flex items-center gap-2">
+                                <span className="text-xs tabular-nums text-warning">
+                                  {booking.bookingNumber ?? "Belum bernomor"}
+                                </span>
+                                <BookingStatusBadge status={booking.status} />
                               </span>
                               <span className="mt-1 block">
                                 {booking.items.map((item) => (

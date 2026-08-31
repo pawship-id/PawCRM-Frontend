@@ -15,13 +15,17 @@ interface UseBookingBridgeResult {
 }
 
 /**
- * What this customer has confirmed for today that is not already in a cart.
+ * What this customer has on today that is billable and not already in a cart.
  *
  * ONE ARGUMENT, and everything else is the endpoint's definition rather than
- * this hook's business: "today", "confirmed" and "not already pulled" are
+ * this hook's business: "today", "not cancelled" and "not already pulled" are
  * resolved by the server, and "today" in particular is resolved in the TENANT'S
  * timezone. A cashier in Jakarta opening the till at 06:00 would otherwise be
  * shown yesterday's list.
+ *
+ * THE LIST IS NO LONGER ALL `confirmed`. Every status but `cancelled` comes back
+ * — a grooming under way, one already finished, a draft nobody confirmed — so
+ * anything rendering these rows says which is which.
  *
  * `null` means no customer is selected, and the hook asks nothing — the POS
  * banner only exists once somebody has been chosen.

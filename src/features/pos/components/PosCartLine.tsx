@@ -55,9 +55,9 @@ export function PosCartLine({
    * That is also how a mis-pull is undone, so locking it would trap the cashier.
    *
    * The first version left `bookingOwned` out and locked every pulled line the
-   * moment it landed — the bridge only ever offers `confirmed` appointments, and
-   * `confirmed` is not `draft` — so a pulled grooming could be neither
-   * discounted nor taken back out.
+   * moment it landed — the bridge offers appointments in any status but
+   * `cancelled`, and almost none of those is `draft` — so a pulled grooming
+   * could be neither discounted nor taken back out.
    */
   const locked =
     item.bookingOwned &&
