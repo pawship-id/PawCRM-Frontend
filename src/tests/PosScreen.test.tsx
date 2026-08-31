@@ -121,12 +121,20 @@ const cartWithItem: PosTransaction = {
   },
 };
 
-/** One variant, as the catalogue returns it — with the shift's own stock. */
+/**
+ * One variant, as the catalogue returns it — with the shift's own stock.
+ *
+ * `sellable` IS THE SERVER'S SEPARATE ANSWER to "may the till add this", which
+ * an empty shelf does not decide: most shops let one sell and the balance goes
+ * negative. Defaulted here to what the badge implies, so the cases that are not
+ * about the setting read the way they always did; the ones that are pass it.
+ */
 const variantTile = (
   id: string,
   name: string,
   code: string,
   stock: { qty: string; state: "ok" | "low" | "out" },
+  sellable = stock.state !== "out",
 ) => ({
   kind: "product" as const,
   _id: id,
@@ -140,6 +148,7 @@ const variantTile = (
   image: null,
   variantCount: null,
   stock,
+  sellable,
 });
 
 const catalogPage = {
@@ -1262,14 +1271,57 @@ describe("PosVariantDialog — stock per variant", () => {
     expect(screen.getByText("Habis")).toBeInTheDocument();
   });
 
-  it("will not let an empty size be added", async () => {
+  /*
+    THE ROW STAYS VISIBLE EITHER WAY: a cashier looking for a size needs to see
+    that the shop stocks it and has run out, not that it does not exist. Whether
+    the button works is the SERVER's answer — `sellable`, which the fixture above
+    derives from the badge only because most of these cases are not about it.
+  */
+  /*
+    AND THE DEFAULT IS THE OTHER WAY. A shop that allows overselling gets a size
+    it can still ring up with an empty shelf — the goods are usually there and
+    the delivery note is not — while the badge goes on saying "Habis".
+  */
+  it("still sells an empty size where the shop allows negative stock", async () => {
+    mockedPos.catalog.mockImplementation(async (query) =>
+      query?.parentId
+        ? {
+            items: [
+              variantTile(
+                VARIANT_L,
+                "Kalung — L",
+                "KA-L",
+                { qty: "0.0000", state: "out" },
+                true,
+              ),
+            ],
+            pagination: { page: 1, limit: 48, total: 1, totalPages: 1 },
+          }
+        : catalogPage,
+    );
+
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /pilih varian kalung anjing/i,
+      }),
+    );
+    await screen.findByText("Kalung — L");
+
+    expect(screen.getByText("Habis")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /tambah kalung — l/i }),
+    ).toBeEnabled();
+  });
+
+  it("will not let an empty size be added where the shop refuses negative stock", async () => {
     const user = userEvent.setup();
     renderWithAuth(<PosScreen />);
 
     await openPicker(user);
 
-    // The row stays visible: a cashier looking for a size needs to see that the
-    // shop stocks it and has run out, not that it does not exist.
     expect(
       screen.getByRole("button", { name: /tambah kalung — l/i }),
     ).toBeDisabled();

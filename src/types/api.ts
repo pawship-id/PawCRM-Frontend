@@ -402,6 +402,24 @@ export interface TenantSettings {
    * renders this must preserve them.
    */
   invoiceFooterNote?: string;
+
+  /**
+   * MAY A SALE DRIVE STOCK BELOW ZERO? **Defaults to true** — the server's own
+   * default, read as `!== false` everywhere for the tenants written before the
+   * field existed.
+   *
+   * TRUE is the honest setting for a shop: the goods left the shelf, the
+   * customer is holding them, and the usual cause of an empty balance is a
+   * delivery nobody has keyed in yet. Recording the sale and letting the number
+   * go negative is what puts the gap on the Inventory hub instead of behind a
+   * cashier's workaround.
+   *
+   * FALSE makes the till the control — the server refuses any sale that would
+   * take a shelf below zero, whether it comes from the counter or an invoice.
+   * It does NOT restate history: balances already negative stay where they are
+   * until a receipt or an opname puts them right.
+   */
+  allowNegativeStock?: boolean;
 }
 
 /**
@@ -1346,6 +1364,28 @@ export interface PosCatalogItem {
   /** Null unless this is a parent. */
   variantCount: number | null;
   stock: { qty: string; state: PosStockState } | null;
+  /**
+   * WHETHER THE TILL MAY ADD THIS RIGHT NOW — which is NOT `stock.state !==
+   * "out"`.
+   *
+   * An empty shelf is sellable wherever the shop allows the balance to go
+   * negative (`settings.allowNegativeStock`, true by default), so the badge and
+   * the button answer different questions: "Habis" is a fact about the shelf,
+   * this is a permission.
+   *
+   * DECIDED BY THE SERVER, because the same rule is enforced at the posting
+   * gateway. A till that worked it out for itself would either grey out a tile
+   * the server would have accepted, or offer one it is about to refuse — and the
+   * second is a cashier who builds a basket and is told no at the payment screen.
+   *
+   * Always true on a service, a parent and a bundle: a grooming does not run
+   * out, a parent opens a picker rather than adding anything, and a bundle's
+   * components are checked when the sale posts.
+   *
+   * OPTIONAL for the tenants of an older server: absent is read as sellable,
+   * which is the behaviour the till had before this existed.
+   */
+  sellable?: boolean;
 }
 
 /** Query parameters accepted by GET /api/pos/catalog. */

@@ -85,9 +85,20 @@ function PosProductThumbnail({ item }: { item: PosCatalogItem }) {
  * SERVICE shows a price and no badge at all — a badge saying "in stock" on a
  * grooming invites the question of how many are left.
  *
- * AN EMPTY SHELF DISABLES THE BUTTON rather than hiding the tile. FR-1 is
- * explicit, and it is the right call: a cashier looking for something needs to
- * see that the shop stocks it and has run out, not that it does not exist.
+ * AN EMPTY SHELF NEVER HIDES THE TILE. FR-1 is explicit, and it is the right
+ * call: a cashier looking for something needs to see that the shop stocks it and
+ * has run out, not that it does not exist.
+ *
+ * WHETHER IT ALSO DISABLES THE BUTTON IS THE SERVER'S CALL — `item.sellable`,
+ * not `stock.state`. Most shops let an empty shelf sell (the goods are usually
+ * there and the delivery note is not, so the balance goes negative and the
+ * Inventory hub says so); a shop that wants the till to be the control turns
+ * `settings.allowNegativeStock` off, and then the same rule refuses the sale at
+ * the posting gateway. Deciding it here would either grey out a tile the server
+ * would have accepted, or offer one it is about to refuse at the payment screen.
+ *
+ * ABSENT MEANS SELLABLE, so a till pointed at an older server keeps the
+ * behaviour it had.
  *
  * Hand-rolled rather than `<Card>` — not an oversight of ui-rules §2. Card's
  * `px-6` is drawn for a page panel; on a tile two-to-a-row on a narrow till it
@@ -114,7 +125,7 @@ export function PosProductCard({
   disabled?: boolean;
 }) {
   const isParent = item.variantCount !== null;
-  const soldOut = item.stock?.state === "out";
+  const unsellable = item.sellable === false;
 
   return (
     <div className="flex flex-col justify-between gap-3 rounded-xl border border-border bg-surface p-3">
@@ -196,7 +207,7 @@ export function PosProductCard({
             type="button"
             size="sm"
             onClick={() => onAdd(item)}
-            disabled={disabled || soldOut}
+            disabled={disabled || unsellable}
             aria-label={`Tambah ${item.name}`}
           >
             <Plus className="size-4" />

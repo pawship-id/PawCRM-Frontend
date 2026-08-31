@@ -12,11 +12,13 @@ import {
 } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { usePermissions } from "@/features/permissions";
+import { useTenant } from "@/features/tenant";
 import type { Action, Feature } from "@/features/permissions";
 import { formatMoney, formatQty, multiplyDecimals } from "@/utils/decimal";
 
 import { useExpiringAlert } from "../hooks/useExpiringAlert";
 import { useLowStockAlert } from "../hooks/useLowStockAlert";
+import { useNegativeStockAlert } from "../hooks/useNegativeStockAlert";
 import { useWarehouseOptions } from "../hooks/useWarehouseOptions";
 import { ExpiryBadge } from "./ExpiryBadge";
 
@@ -24,11 +26,26 @@ import { ExpiryBadge } from "./ExpiryBadge";
  * The Inventory landing screen: what needs attention, and the way in to every
  * screen in the module.
  *
- * THE TWO ALERT LISTS ARE CHOSEN RATHER THAN EXHAUSTIVE. A shop owner opening
- * this page is asking one of exactly two questions — "what do I need to reorder"
- * and "what is about to go bad" — and both are answers you act on the same day.
- * Everything else (full stock value, movement history) is a click away on the
- * stock card and the batch report, where there is room to read it properly.
+ * THE ALERT LISTS ARE CHOSEN RATHER THAN EXHAUSTIVE. A shop owner opening this
+ * page is asking one of three questions — "what is the book wrong about", "what
+ * do I need to reorder" and "what is about to go bad" — and all three are
+ * answers you act on the same day. Everything else (full stock value, movement
+ * history) is a click away on the stock card and the batch report, where there is
+ * room to read it properly.
+ *
+ * STOK MINUS LEADS, ACROSS THE FULL WIDTH, and it is the only list here that is
+ * about the BOOKS rather than about the shelves. The other two say the shop is
+ * running out of something real; this one says a number on this screen is
+ * already wrong — goods were sold that the system never recorded arriving — and
+ * every figure derived from it, the stock value on a report included, is wrong
+ * with it. It earns the top because nothing below it can be trusted until it is
+ * cleared.
+ *
+ * IT IS THE PRICE OF LETTING A TILL OVERSELL. `settings.allowNegativeStock` is
+ * true by default, so a cashier can sell an empty shelf and the balance goes
+ * negative rather than the sale being refused — which is the honest trade, but
+ * only while somebody can SEE what it produced. Without this section the setting
+ * would quietly accumulate discrepancies nobody is shown.
  *
  * BOTH LISTS ARE THE SERVER'S ANSWER, not a client-side scan. This screen used
  * to be a prototype over an in-memory store and computed both itself; each was
@@ -153,7 +170,39 @@ export function InventoryHub() {
   // Only fetched where there is a list for it to narrow — see the hook.
   const warehouses = useWarehouseOptions(mayReadProducts || mayReadBatches);
   const lowStock = useLowStockAlert(mayReadProducts, warehouseId);
+  const negative = useNegativeStockAlert(mayReadProducts, warehouseId);
   const expiring = useExpiringAlert(mayReadBatches, warehouseId);
+
+  /*
+    WHETHER THE SHOP LETS A TILL OVERSELL — asked only where the account may ask
+    it. `tenants:read` is a different grant from `products:read`, and a
+    storekeeper need not hold it; firing the request anyway would paint a 403
+    across a page that wanted a yes/no answer. Off, `tenant` stays null, which
+    the rule below reads as "unknown".
+  */
+  const { tenant } = useTenant(can("tenants", "read"));
+  const oversellAllowed =
+    tenant === null ? null : tenant.settings.allowNegativeStock !== false;
+
+  /**
+   * WHEN THE NEGATIVE-STOCK SECTION IS ON SCREEN AT ALL.
+   *
+   * ALWAYS, WHERE THE SHOP ALLOWS OVERSELLING — including with nothing to show.
+   * The empty state is the point there: a setting that produces discrepancies
+   * silently needs a place that says "none right now", or nobody learns the
+   * place exists until the day it matters.
+   *
+   * AND WHENEVER THERE IS ONE ANYWAY. Turning the setting off does not restate
+   * history — balances already below zero stay there until a receipt or an
+   * opname puts them right — so a shop that has just tightened the rule is
+   * exactly the one that still has holes to clear. Hiding them with the setting
+   * would hide the work.
+   *
+   * The `null` case (an account that may not read the tenant) therefore falls
+   * back to "show it if there is something to show", which is the honest answer
+   * without the setting in hand.
+   */
+  const showNegative = oversellAllowed === true || negative.total > 0;
 
   const actions = ACTIONS.filter((action) =>
     can(action.feature, action.action),
@@ -226,6 +275,95 @@ export function InventoryHub() {
           </Link>
         ))}
       </div>
+
+      {showNegative && (
+        <AlertSection
+          title="Stok minus"
+          caption={warehouseName}
+          total={negative.total}
+          shown={negative.items.length}
+          loading={negative.loading}
+          error={negative.error}
+          allowed={mayReadProducts}
+          /*
+            WHAT A NEGATIVE BALANCE IS, said once above the rows. Nobody reads
+            "−3" as "a sale was recorded for goods the book did not have" on
+            their own, and the wrong reading — "the system is broken" — sends
+            somebody looking for a bug instead of for a delivery note.
+
+            THE MONEY IS SAID HERE TOO, because it is the whole hole and the rows
+            only carry five of them.
+          */
+          note={
+            <>
+              Barang terjual saat stok tercatat habis, jadi saldonya jadi minus.
+              Biasanya karena penerimaan barang belum dicatat — catat
+              penerimaannya, atau perbaiki lewat{" "}
+              <Link
+                href="/dashboard/inventory/opname"
+                className="font-medium text-primary hover:text-primary-hover"
+              >
+                opname
+              </Link>
+              .
+              {negative.total > 0 && negative.shortfall && (
+                <>
+                  {" "}
+                  Total nilai minus{scope}:{" "}
+                  <strong className="tabular-nums text-danger">
+                    {formatMoney(negative.shortfall)}
+                  </strong>
+                  .
+                </>
+              )}
+            </>
+          }
+          empty={`Tidak ada stok minus${scope}.`}
+          moreLabel="baris lain juga minus"
+          /*
+            NO "LIHAT SEMUA", deliberately: nothing lists every negative row yet.
+            A link to the stock card would land somebody on a screen that asks
+            WHICH product before it can show anything — which is the question
+            they came here to have answered.
+          */
+        >
+          {negative.items.map((row) => (
+            <li
+              key={`${row.productId}-${row.warehouseId}`}
+              className="flex items-center gap-3 px-5 py-3"
+            >
+              <div className="min-w-0 flex-1">
+                <Link
+                  href={`/dashboard/inventory/products/${row.productId}`}
+                  className="truncate text-sm font-medium hover:text-primary-hover"
+                >
+                  {row.name}
+                </Link>
+                {/* THE PLACE, not just the product: a shortfall is at a shelf,
+                    and the same product can be fine in the next building. */}
+                <p className="truncate tabular-nums text-xs text-muted">
+                  {row.sku ?? "—"}
+                  {row.warehouseName && ` · ${row.warehouseName}`}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="tabular-nums text-sm font-semibold text-danger">
+                  {formatQty(row.qty)} {row.unit ?? ""}
+                </p>
+                {/*
+                  WHAT THE HOLE IS WORTH, at the average the goods were sold at —
+                  which selling into the negative leaves exactly where it was.
+                  Negative, and shown as such: this is cost the shop has already
+                  expensed for goods it does not hold.
+                */}
+                <p className="tabular-nums text-[11px] text-muted">
+                  {formatMoney(row.value)}
+                </p>
+              </div>
+            </li>
+          ))}
+        </AlertSection>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <AlertSection

@@ -141,12 +141,36 @@ describe("the stock badge", () => {
     expect(screen.getByText("12 tersisa")).toBeInTheDocument();
   });
 
-  it("disables the add button on an empty shelf rather than hiding the tile", () => {
-    renderCard({ stock: { qty: "0.0000", state: "out" } });
+  /*
+    THE BADGE AND THE BUTTON ANSWER DIFFERENT QUESTIONS. "Habis" is a fact about
+    the shelf; whether the tile can still be added is a PERMISSION, and most
+    shops give it — the goods are usually there and the delivery note is not, so
+    the sale is recorded and the balance goes negative.
+  */
+  it("still sells an empty shelf, and says it is empty", () => {
+    renderCard({ stock: { qty: "0.0000", state: "out" }, sellable: true });
 
     expect(screen.getByText("Habis")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /Tambah/ }),
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Tambah/ })).toBeEnabled();
+  });
+
+  /*
+    THE SERVER'S CALL, not the badge's. A shop that turns
+    `settings.allowNegativeStock` off makes the till the control, and the same
+    rule refuses the sale at the posting gateway — so a tile that decided for
+    itself would offer something the payment screen is about to refuse.
+  */
+  it("disables the add button when the server says it cannot be sold", () => {
+    renderCard({ stock: { qty: "0.0000", state: "out" }, sellable: false });
+
+    expect(screen.getByText("Habis")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Tambah/ })).toBeDisabled();
+  });
+
+  /* An older server sends no flag at all, and the till keeps its behaviour. */
+  it("treats a missing flag as sellable", () => {
+    renderCard({ stock: { qty: "0.0000", state: "out" } });
+
+    expect(screen.getByRole("button", { name: /Tambah/ })).toBeEnabled();
   });
 });

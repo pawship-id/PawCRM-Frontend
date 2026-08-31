@@ -9,6 +9,7 @@ import type { Tenant } from "@/types/api";
 
 import { useTenant } from "../hooks/useTenant";
 import { InvoiceFooterForm } from "./InvoiceFooterForm";
+import { StockSettingsForm } from "./StockSettingsForm";
 import { TaxSettingsForm } from "./TaxSettingsForm";
 import { TenantSubscriptionBadge } from "./TenantSubscriptionBadge";
 
@@ -194,6 +195,14 @@ export function TenantDetail() {
         module behaves; this is how the business bills.
       */}
       <TaxSettingsForm tenant={tenant} onSaved={refetch} />
+
+      {/*
+        BESIDE THE TAX CARD rather than under "Settings" below, because it is the
+        other switch on this page a cashier feels immediately: it decides whether
+        an empty shelf can still be rung up. The read-only list underneath is for
+        switches that change how a module behaves.
+      */}
+      <StockSettingsForm tenant={tenant} onSaved={refetch} />
 
       <InvoiceFooterForm tenant={tenant} onSaved={refetch} />
 

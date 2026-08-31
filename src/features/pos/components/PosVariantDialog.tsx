@@ -215,12 +215,16 @@ export function PosVariantDialog({
                       not yet updated, and would silently undo it.
                     */
                     /*
-                      An empty shelf disables the button here for the same reason
-                      it does on a tile: a cashier looking for a size needs to see
-                      that the shop stocks it and has run out, not that it does
-                      not exist.
+                      AN EMPTY SHELF IS STILL LISTED, for the same reason it is on
+                      a tile: a cashier looking for a size needs to see that the
+                      shop stocks it and has run out, not that it does not exist.
+
+                      THE SERVER'S CALL, not the badge's — see PosProductCard.
+                      An empty shelf still sells wherever the shop allows the
+                      balance to go negative, which is the default; absent means
+                      sellable, for an older server.
                     */
-                    disabled={busy || variant.stock?.state === "out"}
+                    disabled={busy || variant.sellable === false}
                     /*
                       NAMED BY ITS ROW. Every button here reads "Tambah", so
                       without this a screen reader announces the same word once
