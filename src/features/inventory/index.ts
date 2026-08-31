@@ -40,6 +40,7 @@ export { StockEntryDetail } from "./components/StockEntryDetail";
  * ledger rows sharing a correlation id, with counts and a value that no stock
  * entry carries.
  */
+export { NegativeStockScreen } from "./components/NegativeStockScreen";
 export { StockTransfersScreen } from "./components/StockTransfersScreen";
 /**
  * One transfer, read by its correlation id — what moved, from which lot, and at

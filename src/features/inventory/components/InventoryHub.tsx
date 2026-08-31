@@ -321,11 +321,14 @@ export function InventoryHub() {
           empty={`Tidak ada stok minus${scope}.`}
           moreLabel="baris lain juga minus"
           /*
-            NO "LIHAT SEMUA", deliberately: nothing lists every negative row yet.
-            A link to the stock card would land somebody on a screen that asks
-            WHICH product before it can show anything — which is the question
-            they came here to have answered.
+            THE WAY OUT OF THE CARD. Five rows answer "is something wrong"; a
+            shop clearing a backlog works down a list, and guessing at the rest
+            is not something a landing page should ask of anybody.
           */
+          seeAll={{
+            href: "/dashboard/inventory/negative-stock",
+            label: "Lihat semua stok minus",
+          }}
         >
           {negative.items.map((row) => (
             <li

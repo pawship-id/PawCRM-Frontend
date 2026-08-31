@@ -7,6 +7,48 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Stok minus punya halamannya sendiri
+
+`/dashboard/inventory/negative-stock` — semua baris `(produk, gudang)` yang
+saldonya di bawah nol, terburuk dulu berdasarkan **nilainya**, dengan paging dan
+filter gudang.
+
+**Kenapa perlu halaman sendiri.** Kartu di hub menjawab "ada yang salah nggak";
+ini menjawab "yang mana, persisnya". Toko yang sedang membereskan tunggakan
+bekerja menyusuri daftar, dan daftar yang berhenti di lima baris adalah daftar
+yang sisanya harus ditebak.
+
+**Layar ini bicara soal PEMBUKUAN, bukan soal rak** — dan itu yang membedakannya
+dari daftar stok lain. Barang keluar padahal penerimaannya tidak pernah tercatat,
+jadi setiap angka yang dihitung dari saldo itu — termasuk nilai persediaan di
+laporan — ikut salah. Karena itu daftar kosong di sini dibingkai sebagai kabar
+**baik** ("catatan dan barang di rak sedang cocok"), bukan sebagai "belum ada
+data".
+
+**Nilainya membawa tandanya.** `qty × hppAvg`, negatif: itu biaya yang sudah
+terlanjur dibebankan untuk barang yang tidak ada. HPP-nya sendiri tidak berubah
+oleh penjualan minus — barang keluar *pada* rata-rata itu — dan ditampilkan dua
+desimal karena penerimaan berikutnya menimbang saldo minus terhadap angka itu.
+
+**Totalnya adalah seluruh lubang**, bukan jumlah dua puluh baris di layar; dan
+disembunyikan sama sekali kalau tidak ada yang minus, karena "Rp 0" yang berdiri
+permanen adalah angka yang mengajari orang mengabaikan barisnya.
+
+**Satu filter, di atas bar.** Gudang, berlaku saat diklik — ui-rules §8: satu
+field di balik tombol `Filter (1)` adalah tombol yang menyembunyikan satu hal.
+Gudang nonaktif tetap ditawarkan: gudang yang ditutup bulan lalu masih bisa
+memegang saldo minus. Tidak ada pencarian dan tidak ada kontrol urutan — API-nya
+hanya menyaring per gudang, dan urutan "terburuk dulu" adalah satu-satunya urutan
+daftar ini dibaca.
+
+**Tidak masuk sidebar.** Toko yang sehat tidak punya isi di sini, dan baris nav
+permanen untuk layar yang biasanya kosong adalah baris yang orang belajar
+lewati. Jalan masuknya lewat kartu **Stok minus** di hub — yang muncul persis
+saat ada yang perlu dilihat, atau kapan pun toko mengizinkan oversell — lewat
+"Lihat semua stok minus".
+
+---
+
 ## [Unreleased] — Booking bisa ditagih lewat faktur
 
 PCR-034. Form faktur dapat kartu **"Hewan & booking pelanggan ini"**, muncul

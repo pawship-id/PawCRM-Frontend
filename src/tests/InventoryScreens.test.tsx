@@ -357,6 +357,23 @@ describe("InventoryHub", () => {
     });
 
     /*
+      THE WAY OUT OF THE CARD. Five rows answer "is something wrong"; a shop
+      clearing a backlog works down a list, and guessing at the rest is not
+      something a landing page should ask of anybody.
+    */
+    it("links to the full list", async () => {
+      mockedProducts.negativeStock.mockResolvedValue(
+        negativePage([negativeRow()], 43),
+      );
+
+      renderWithAuth(<InventoryHub />);
+
+      expect(
+        await screen.findByRole("link", { name: /lihat semua stok minus/i }),
+      ).toHaveAttribute("href", "/dashboard/inventory/negative-stock");
+    });
+
+    /*
       ON SCREEN EVEN WITH NOTHING TO SHOW, where the shop allows overselling. A
       setting that produces discrepancies silently needs a place that says "none
       right now", or nobody learns the place exists until the day it matters.
