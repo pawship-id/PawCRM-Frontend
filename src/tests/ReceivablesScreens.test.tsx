@@ -465,6 +465,21 @@ describe("InvoiceDetail", () => {
     expect(await screen.findByText("Otomatis dari kasir")).toBeInTheDocument();
   });
 
+  /*
+    THE WAY BACK BELONGS TO THE DEAD END, not to the working page. A loaded
+    invoice already has the breadcrumb above it; a second "Semua faktur
+    penjualan" at the foot was a duplicate of a control that never left the
+    screen. It stays in the not-found state below, which has nothing else on it.
+  */
+  it("carries no back link on an invoice that loaded", async () => {
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await screen.findByText("Otomatis dari kasir");
+    expect(
+      screen.queryByRole("link", { name: /Semua faktur penjualan/ }),
+    ).not.toBeInTheDocument();
+  });
+
   it("offers a way back rather than a retry when the id does not resolve", async () => {
     asMock(customerInvoiceService.getById).mockRejectedValue(
       new ApiError("Invoice not found", 404),

@@ -772,12 +772,6 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
         diposting. Tiap pembayaran memposting jurnalnya sendiri —{" "}
         <b>Dr rekening penerima / Cr 1103</b> — dan jurnal itu permanen.
       </p>
-
-      <div>
-        <Button variant="secondary" asChild>
-          <Link href="/dashboard/sales">← Semua faktur penjualan</Link>
-        </Button>
-      </div>
     </div>
   );
 }
