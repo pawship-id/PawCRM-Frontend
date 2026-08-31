@@ -108,7 +108,7 @@ export function PosHeldCartsDialog({
         <DialogHeader>
           <DialogTitle>Keranjang tersimpan</DialogTitle>
           <DialogDescription>
-            Keranjang yang dititipkan di shift ini.
+            Keranjang yang disimpan di shift ini.
           </DialogDescription>
         </DialogHeader>
 
@@ -131,7 +131,7 @@ export function PosHeldCartsDialog({
           </div>
         ) : carts.length === 0 ? (
           <p className="py-10 text-center text-sm text-muted">
-            Belum ada keranjang yang dititipkan.
+            Belum ada keranjang yang disimpan.
           </p>
         ) : (
           <ul className="divide-y divide-border">

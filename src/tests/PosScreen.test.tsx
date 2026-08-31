@@ -1690,7 +1690,7 @@ describe("PosScreen — parking is a decision, not a default", () => {
     await waitFor(() => expect(mockedPos.updateCart).toHaveBeenCalled());
 
     mockedPos.updateCart.mockClear();
-    await user.click(screen.getByRole("button", { name: /titipkan/i }));
+    await user.click(screen.getByRole("button", { name: /^simpan$/i }));
 
     await waitFor(() =>
       expect(mockedPos.updateCart).toHaveBeenCalledWith(CART_ID, {
@@ -1776,7 +1776,7 @@ describe("PosScreen — parking is a decision, not a default", () => {
     );
 
     expect(
-      await screen.findByText(/titipkan atau selesaikan dulu/i),
+      await screen.findByText(/simpan atau selesaikan dulu/i),
     ).toBeInTheDocument();
   });
 
@@ -1841,7 +1841,7 @@ describe("PosScreen — parking is a decision, not a default", () => {
     );
 
     expect(
-      screen.queryByText(/titipkan atau selesaikan dulu/i),
+      screen.queryByText(/simpan atau selesaikan dulu/i),
     ).not.toBeInTheDocument();
     expect(
       await screen.findByRole("button", { name: /lanjutkan/i }),
@@ -1864,7 +1864,7 @@ describe("PosScreen — parking is a decision, not a default", () => {
     ]);
 
     renderWithAuth(<PosScreen />);
-    await screen.findByRole("button", { name: /titipkan/i });
+    await screen.findByRole("button", { name: /^simpan$/i });
 
     // Blocked while it is open…
     await user.click(
@@ -1876,7 +1876,7 @@ describe("PosScreen — parking is a decision, not a default", () => {
 
     // …and free once it is put back.
     await user.keyboard("{Escape}");
-    await user.click(screen.getByRole("button", { name: /titipkan/i }));
+    await user.click(screen.getByRole("button", { name: /^simpan$/i }));
 
     await user.click(
       screen.getByRole("button", { name: /keranjang tersimpan/i }),
@@ -1902,7 +1902,7 @@ describe("PosScreen — parking is a decision, not a default", () => {
       something in it, so their presence IS the recovery.
     */
     expect(
-      await screen.findByRole("button", { name: /titipkan/i }),
+      await screen.findByRole("button", { name: /^simpan$/i }),
     ).toBeInTheDocument();
   });
 

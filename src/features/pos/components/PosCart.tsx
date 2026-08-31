@@ -325,7 +325,7 @@ export function PosCart({
               disabled={busy}
             >
               <Bookmark className="size-4" />
-              Titipkan
+              Simpan
             </Button>
             <Button
               type="button"
