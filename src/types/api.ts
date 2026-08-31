@@ -3842,6 +3842,30 @@ export interface CustomerInvoiceDetail
    */
   journalEntries: InvoiceJournalEntry[];
   /**
+   * WHAT THIS INVOICE DID TO THE SHELF.
+   *
+   * Stock leaves when the invoice is ISSUED, not when it is paid — which
+   * surprises people, and until this nothing on the screen said so.
+   *
+   * EMPTY for an invoice that shipped nothing, and the card does not appear: a
+   * "Dampak stok" heading over nothing invites the reader to wonder what broke.
+   */
+  stockImpact: InvoiceStockImpact[];
+  /**
+   * WHAT THIS CUSTOMER OWES ALTOGETHER, and how much room is left on their
+   * ceiling — every live receivable, not just this invoice.
+   *
+   * ON THIS PAYLOAD rather than fetched from `GET /pos/customers/:id/credit`,
+   * which is gated on a CASHIER's grant. The people who read this screen hold
+   * `customerInvoices:read` and usually not that one, so fetching it there would
+   * 403 for exactly the readers it is for.
+   *
+   * NULL when the customer has since been deleted — a receivable against
+   * somebody removed is still a receivable, so the card goes rather than the
+   * page.
+   */
+  credit: CustomerCreditStatus | null;
+  /**
    * THE APPOINTMENTS THIS BILL COVERS — PCR-035.
    *
    * BOTH KINDS TOGETHER: an appointment pulled in by PCR-034 and a shadow one
@@ -3887,10 +3911,42 @@ export interface InvoiceBookingItem {
   groomerName: string;
 }
 
+/** One product this invoice moved off the shelf. */
+export interface InvoiceStockImpact {
+  productId: string;
+  /** Null when the product has since been deleted — the figures still print. */
+  name: string | null;
+  /** Negative for goods leaving. */
+  qty: string;
+  /**
+   * The shelf before and after, over the WHOLE ledger rather than this page.
+   *
+   * Both null when the balance could not be computed — a guess there would be a
+   * confident pair of numbers nobody can reconcile.
+   */
+  before: string | null;
+  after: string | null;
+}
+
+/** One posting inside a ledger entry, with its account named. */
+export interface InvoiceJournalLine {
+  accountId: string;
+  /** Null when the account has since been deleted. The figures still print. */
+  code: string | null;
+  name: string | null;
+  debit: string;
+  credit: string;
+  memo: string | null;
+}
+
 /** One ledger entry an invoice raised, as the detail screen lists it. */
 export interface InvoiceJournalEntry {
   _id: string;
   entryNumber: string;
+  date: string | null;
+  description: string | null;
+  /** What it actually debited and credited. */
+  lines: InvoiceJournalLine[];
   /** `invoice` for the issuance half, `invoice_cogs` for the cost half. */
   sourceType: string | null;
   /** True when this entry UNDOES another — set only on a reversal. */
@@ -3953,6 +4009,17 @@ export interface CustomerInvoiceItem {
   lineTotal: string;
   /** The cost the consumed lots carried. Null on a service. */
   hppAtTime: string | null;
+  /**
+   * THIS LINE'S SLICE OF THE TAXABLE BASE AND OF THE TAX, frozen at issue.
+   *
+   * NULL ON EVERY INVOICE RAISED BEFORE THEY WERE STORED, and a screen shows
+   * nothing there rather than a number it worked out itself. Re-deriving would
+   * apply TODAY's tax rule to an invoice issued under the one in force at the
+   * time — and could not be done per line anyway, because the allocation is
+   * decided across every line at once with largest-remainder rounding.
+   */
+  dpp: string | null;
+  tax: string | null;
   /**
    * THE APPOINTMENT BEHIND THIS LINE. Set two ways and there is no way to tell
    * them apart from here: an appointment pulled in by PCR-034, or a shadow one

@@ -139,6 +139,8 @@ function detail(
     voidReason: null,
     journalEntries: [],
     bookings: [],
+    stockImpact: [],
+    credit: null,
     ...overrides,
   };
 }
@@ -445,9 +447,14 @@ describe("InvoiceDetail", () => {
 
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
 
-    // Scoped to its own row: the payment form's "Maksimal …" hint carries the
-    // same figure, which is the point — but this assertion is about the summary.
-    const label = await screen.findByText("Sisa tagihan");
+    /*
+      Scoped to its own row: the payment form's "Maksimal …" hint carries the
+      same figure, which is the point — but this assertion is about the summary.
+
+      "Sisa", not "Sisa tagihan": the figure moved into the status panel in the
+      side column, where the three rows above it already say what they are.
+    */
+    const label = await screen.findByText("Sisa");
     const row = label.parentElement as HTMLElement;
     expect(within(row).getByText(/Rp\s?200\.000/)).toBeInTheDocument();
   });
@@ -519,7 +526,9 @@ describe("InvoiceDetail", () => {
   /* --- the payment --- */
 
   it("asks for channels that can RECEIVE, not pay out", async () => {
+    const user = userEvent.setup();
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+    await openPaymentDialog(user);
 
     await waitFor(() =>
       expect(paymentChannelService.list).toHaveBeenCalledWith(
@@ -560,6 +569,7 @@ describe("InvoiceDetail", () => {
     );
 
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+    await openPaymentDialog(user);
 
     await user.type(
       await screen.findByLabelText("Jumlah diterima"),
@@ -587,17 +597,68 @@ describe("InvoiceDetail", () => {
   it("fills the amount with what is outstanding when Lunasi is pressed", async () => {
     const user = userEvent.setup();
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+    await openPaymentDialog(user);
 
     await user.click(await screen.findByRole("button", { name: "Lunasi" }));
 
+    /*
+      TRIMMED, not "300000.0000". `toDecimalString` always writes four decimal
+      places — the scale the ledger stores — and a box pre-filled with them reads
+      at a glance as a far larger number than it is.
+
+      A REAL FRACTION WOULD SURVIVE: only trailing zeros go. The case below
+      proves it, because rounding to whole rupiah here would quietly change what
+      is about to be paid.
+    */
     expect(await screen.findByLabelText("Jumlah diterima")).toHaveValue(
-      "300000.0000",
+      "300000",
     );
+  });
+
+  it("keeps a fraction the outstanding actually has", async () => {
+    const user = userEvent.setup();
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      detail({ outstandingAmount: "155400.5000" }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+    await openPaymentDialog(user);
+
+    await user.click(await screen.findByRole("button", { name: "Lunasi" }));
+
+    expect(screen.getByLabelText("Jumlah diterima")).toHaveValue("155400.5");
+  });
+
+  /*
+    THE FIGURE ECHOED BACK IN RUPIAH. The box stays a plain number — grouping it
+    as the caret moves fights the caret — so the formatting happens underneath,
+    where it can be checked without being edited.
+  */
+  it("echoes what was typed as rupiah, beside the ceiling", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+    await openPaymentDialog(user);
+
+    await user.type(await screen.findByLabelText("Jumlah diterima"), "38850");
+
+    expect(
+      screen.getByText(/Rp 38\.850 · maksimal Rp 300\.000/),
+    ).toBeInTheDocument();
+  });
+
+  it("shows only the ceiling while the box is empty", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+    await openPaymentDialog(user);
+
+    // "Rp 0" under an empty field is a figure nobody entered.
+    expect(await screen.findByText("Maksimal Rp 300.000")).toBeInTheDocument();
   });
 
   it("refuses more than what is outstanding before spending a round trip", async () => {
     const user = userEvent.setup();
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+    await openPaymentDialog(user);
 
     await user.type(await screen.findByLabelText("Jumlah diterima"), "400000");
     await user.click(screen.getByRole("button", { name: "Simpan pembayaran" }));
@@ -614,6 +675,7 @@ describe("InvoiceDetail", () => {
   it("refuses a payment of zero", async () => {
     const user = userEvent.setup();
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+    await openPaymentDialog(user);
 
     await user.type(await screen.findByLabelText("Jumlah diterima"), "0");
     await user.click(screen.getByRole("button", { name: "Simpan pembayaran" }));
@@ -638,6 +700,7 @@ describe("InvoiceDetail", () => {
     );
 
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+    await openPaymentDialog(user);
 
     await user.type(await screen.findByLabelText("Jumlah diterima"), "100000");
     const submit = screen.getByRole("button", { name: "Simpan pembayaran" });
@@ -660,6 +723,7 @@ describe("InvoiceDetail", () => {
     );
 
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+    await openPaymentDialog(user);
 
     await user.type(await screen.findByLabelText("Jumlah diterima"), "100000");
     await user.click(screen.getByRole("button", { name: "Simpan pembayaran" }));
@@ -972,6 +1036,7 @@ describe("InvoiceDetail — the submit lock", () => {
     );
 
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+    await openPaymentDialog(user);
 
     await user.type(await screen.findByLabelText("Jumlah diterima"), "100000");
     await user.click(screen.getByRole("button", { name: "Simpan pembayaran" }));
@@ -980,11 +1045,45 @@ describe("InvoiceDetail — the submit lock", () => {
       expect(customerInvoiceService.recordPayment).toHaveBeenCalled(),
     );
 
-    // Still mounted — the invoice is not settled — and usable again.
-    const submit = await screen.findByRole("button", {
-      name: "Simpan pembayaran",
-    });
-    await waitFor(() => expect(submit).toBeEnabled());
+    /*
+      THE DIALOG CLOSES ON SUCCESS, so the original shape of this guard — "the
+      button is still there and usable" — no longer applies. What still has to
+      hold is the same fact one step later: REOPENING gives a form that works.
+      A `saving` flag never released would come back locked.
+    */
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+
+    await openPaymentDialog(user);
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Simpan pembayaran" }),
+      ).toBeEnabled(),
+    );
+  });
+
+  /*
+    AND IT COMES BACK EMPTY. A dialog closed halfway through and reopened must
+    not still hold the amount somebody typed and abandoned — the most likely next
+    action is to press Simpan.
+  */
+  it("reopens clean rather than holding an abandoned amount", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await openPaymentDialog(user);
+    await user.type(await screen.findByLabelText("Jumlah diterima"), "12345");
+    await user.click(screen.getByRole("button", { name: "Batal" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+
+    await openPaymentDialog(user);
+
+    expect(await screen.findByLabelText("Jumlah diterima")).toHaveValue("");
   });
 });
 
@@ -1024,6 +1123,419 @@ describe("PaymentReceipt — what does NOT go on a customer's sheet", () => {
     expect(
       within(dialog).getByText("Sisa tagihan saat ini"),
     ).toBeInTheDocument();
+  });
+});
+
+/**
+ * THE SIDE COLUMN — the STATE of the invoice rather than the document.
+ *
+ * The screen used to be one grid with every card dropped in sequentially, so the
+ * browser decided which column each landed in — and the answer changed with the
+ * invoice, because a card that does not render shifts everything after it. It
+ * read as a different screen for every bill.
+ */
+/**
+ * Opens the payment dialog, which is where the form now lives.
+ *
+ * IT USED TO BE A CARD sitting open on the detail screen for every unpaid
+ * invoice — a form in front of everybody who came to READ one, and most visits
+ * are reads. Behind a button it is one click away for whoever came to record a
+ * payment and out of the way for everybody else.
+ */
+async function openPaymentDialog(user: UserEvent) {
+  await user.click(
+    await screen.findByRole("button", { name: /Catat pembayaran/ }),
+  );
+  return within(await screen.findByRole("dialog"));
+}
+
+describe("InvoiceDetail — the status panel", () => {
+  it("shows how far along the bill is, as a figure not just a bar", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      detail({
+        total: "300000.0000",
+        paidAmount: "100000.0000",
+        outstandingAmount: "200000.0000",
+        status: "partial",
+      }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    // A bar alone is a shape nobody can quote.
+    expect(await screen.findByText(/33% terbayar/)).toBeInTheDocument();
+  });
+
+  /*
+    AN INVOICE FOR NOTHING would divide by zero and render `NaN%`, which paints a
+    full bar — the most misleading answer available.
+  */
+  it("does not divide by zero on an invoice worth nothing", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      detail({
+        total: "0.0000",
+        paidAmount: "0.0000",
+        outstandingAmount: "0.0000",
+      }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findByText(/0% terbayar/)).toBeInTheDocument();
+  });
+
+  it("drops the progress line on a voided invoice", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      detail({ status: "void", voidReason: "Salah pelanggan" }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await screen.findByText(/sudah di-void/);
+    // There is no progress towards paying something that was never owed.
+    expect(screen.queryByText(/terbayar ·/)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * TAKING MONEY IS BEHIND A BUTTON NOW, not a form sitting open on the page.
+ *
+ * The card used to be there for every unpaid invoice, which put a form in front
+ * of everybody who came to READ one — and most visits are reads.
+ */
+describe("InvoiceDetail — the payment dialog", () => {
+  it("shows no form until somebody asks for one", async () => {
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await screen.findByText("Rincian faktur");
+    expect(screen.queryByLabelText("Jumlah diterima")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Catat pembayaran/ }),
+    ).toBeInTheDocument();
+  });
+
+  /*
+    WHICH INVOICE, AND WHAT IS LEFT — before an amount is typed. The dialog
+    covers the screen that would otherwise have said it.
+  */
+  it("names the invoice and what is left, inside the dialog", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    const dialog = await openPaymentDialog(user);
+
+    expect(dialog.getByText("Sisa tagihan saat ini")).toBeInTheDocument();
+    expect(dialog.getByText(/INV-2026-0042/)).toBeInTheDocument();
+  });
+
+  /*
+    WHAT HAPPENS AFTER SAVE, said before it. "DP sebagian" and "Lunas" are not
+    buttons anybody presses, and somebody who does not know that goes looking for
+    the step that marks it paid.
+  */
+  it("says the status will move on its own", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    const dialog = await openPaymentDialog(user);
+
+    expect(dialog.getByText(/tidak ada aksi manual terpisah/)).toBeInTheDocument();
+  });
+
+  /*
+    THE ORDER OF THE FIELDS IS A DECISION, so it is asserted rather than left to
+    whoever edits the form next.
+
+    HOW MUCH AND WHEN COME FIRST, because that is what somebody holding a
+    transfer slip reads off it — the method and the account are chosen from what
+    they already know. Putting the pickers first makes them answer "which
+    account" before they have said what they are recording.
+  */
+  it("asks how much before it asks how", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    const dialog = await openPaymentDialog(user);
+
+    const order = dialog
+      .getAllByText(
+        /^(Jumlah diterima|Tanggal terima|Metode|Masuk ke|No\. referensi)$/,
+      )
+      .map((node) => node.textContent);
+
+    expect(order).toEqual([
+      "Jumlah diterima",
+      "Tanggal terima",
+      "Metode",
+      "Masuk ke",
+      "No. referensi",
+    ]);
+  });
+
+  it("offers no button on a settled invoice", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      detail({
+        status: "paid",
+        paidAmount: "300000.0000",
+        outstandingAmount: "0.0000",
+      }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findByText("Faktur ini sudah lunas.")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Catat pembayaran/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers no button on a voided invoice", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      detail({ status: "void", voidReason: "Salah pelanggan" }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await screen.findByText(/sudah di-void/);
+    expect(
+      screen.queryByRole("button", { name: /Catat pembayaran/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  /*
+    A ROLE WITHOUT `pay` IS TOLD, not left to wonder where the button went — the
+    separation of duties the backend enforces, made visible instead of discovered
+    through a 403.
+  */
+  it("tells a read-only role why there is no button", async () => {
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />, {
+      isSuperAdmin: false,
+      permissions: [{ feature: "customerInvoices", actions: ["read"] }],
+    });
+
+    expect(
+      await screen.findByText(/tidak punya izin mencatat pembayaran/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Catat pembayaran/ }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("InvoiceDetail — what the invoice did to the shelf", () => {
+  const withStock = () =>
+    detail({
+      stockImpact: [
+        {
+          productId: "p1",
+          name: "Royal Canin 2kg",
+          qty: "-2.0000",
+          before: "18.0000",
+          after: "16.0000",
+        },
+      ],
+    });
+
+  /*
+    BEFORE AND AFTER, not just the quantity moved. "−2" says what happened;
+    "18 → 16" says whether it left the shelf you thought it did.
+  */
+  it("shows the shelf before and after", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(withStock());
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findByText("Dampak stok")).toBeInTheDocument();
+    expect(screen.getByText(/18 → 16/)).toBeInTheDocument();
+  });
+
+  /* Stock goes when the invoice is ISSUED, which is what surprises people. */
+  it("says when the stock actually left", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(withStock());
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(
+      await screen.findByText(/Dipotong saat faktur terbit, bukan saat lunas/),
+    ).toBeInTheDocument();
+  });
+
+  /*
+    ABSENT ENTIRELY for a grooming bill. A "Dampak stok" heading over an empty
+    card invites the reader to wonder what broke.
+  */
+  it("draws no card at all when nothing shipped", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(detail());
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await screen.findByText("Rincian faktur");
+    expect(screen.queryByText("Dampak stok")).not.toBeInTheDocument();
+  });
+
+  /* A guess would be a confident pair of numbers nobody can reconcile. */
+  it("falls back to the quantity when the balance is unknown", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      detail({
+        stockImpact: [
+          {
+            productId: "p1",
+            name: "Royal Canin 2kg",
+            qty: "-2.0000",
+            before: null,
+            after: null,
+          },
+        ],
+      }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findByText("-2")).toBeInTheDocument();
+    expect(screen.queryByText(/→/)).not.toBeInTheDocument();
+  });
+});
+
+describe("InvoiceDetail — what the customer owes altogether", () => {
+  it("shows the running receivable and the ceiling", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      detail({
+        credit: {
+          customerId: "c1",
+          outstanding: "719130.0000",
+          invoiceCount: 2,
+          creditLimit: "5000000.0000",
+          remaining: "4280870.0000",
+        },
+      }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findByText("Piutang pelanggan")).toBeInTheDocument();
+    expect(screen.getByText("Sisa plafon")).toBeInTheDocument();
+  });
+
+  /*
+    NO CEILING IS NOT ZERO LEFT. "Tanpa plafon" and "Rp 0 tersisa" are opposite
+    facts, and printing the second for the first would stop a sale nobody meant
+    to stop.
+  */
+  it("says there is no ceiling rather than showing zero", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      detail({
+        credit: {
+          customerId: "c1",
+          outstanding: "719130.0000",
+          invoiceCount: 2,
+          creditLimit: null,
+          remaining: null,
+        },
+      }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findByText("Tanpa plafon")).toBeInTheDocument();
+    expect(screen.queryByText("Sisa plafon")).not.toBeInTheDocument();
+  });
+
+  /* A receivable against somebody since deleted is still a receivable. */
+  it("drops the card rather than the page when the customer is gone", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      detail({ credit: null }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await screen.findByText("Rincian faktur");
+    expect(screen.queryByText("Piutang pelanggan")).not.toBeInTheDocument();
+  });
+});
+
+describe("InvoiceDetail — the postings, not just their numbers", () => {
+  const withLines = () =>
+    detail({
+      journalEntries: [
+        {
+          _id: "je1",
+          entryNumber: "JE-2026-08-0411",
+          date: "2026-08-27T00:00:00.000Z",
+          description: "Penerbitan faktur",
+          sourceType: "invoice",
+          isReversal: false,
+          belongsToSale: false,
+          lines: [
+            {
+              accountId: "a1",
+              code: "1103",
+              name: "Piutang Usaha",
+              debit: "1119130.0000",
+              credit: "0.0000",
+              memo: null,
+            },
+            {
+              accountId: "a2",
+              code: "4101",
+              name: "Penjualan",
+              debit: "0.0000",
+              credit: "1119130.0000",
+              memo: null,
+            },
+          ],
+        },
+      ],
+    });
+
+  /*
+    THE ACCOUNTS ARE THE WHOLE REASON THE ENTRIES ARE INTERESTING. The card used
+    to list four numbers, so anybody asking "what did it actually debit" opened
+    the ledger four times.
+  */
+  it("names the accounts it debited and credited", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(withLines());
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    // Two nodes each — the code and the name sit in one cell as separate spans.
+    expect((await screen.findAllByText(/Piutang Usaha/)).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Penjualan/).length).toBeGreaterThan(0);
+    expect(screen.getByText("1103")).toBeInTheDocument();
+  });
+
+  /* The number is still what somebody quotes. */
+  it("keeps the entry number beside them", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(withLines());
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findByText("JE-2026-08-0411")).toBeInTheDocument();
+  });
+
+  /*
+    AN ACCOUNT RETIRED SINCE THE POSTING still shows its figures. Dropping the
+    row would make the entry stop balancing on screen, which reads as a broken
+    ledger rather than a retired account.
+  */
+  it("still prints a line whose account was deleted", async () => {
+    const entry = withLines().journalEntries[0];
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      detail({
+        journalEntries: [
+          {
+            ...entry,
+            lines: [
+              { ...entry.lines[0], code: null, name: null },
+              entry.lines[1],
+            ],
+          },
+        ],
+      }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findByText("Akun terhapus")).toBeInTheDocument();
   });
 });
 

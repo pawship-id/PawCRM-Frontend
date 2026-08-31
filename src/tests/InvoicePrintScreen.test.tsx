@@ -80,6 +80,8 @@ const detail = (over: Partial<CustomerInvoiceDetail> = {}) =>
     journalEntryId: null,
     journalEntries: [],
     bookings: [],
+    stockImpact: [],
+    credit: null,
     payments: [paymentRow()],
     posTransactionId: null,
     voidedAt: null,

@@ -11,6 +11,7 @@ import {
   toMinor,
   trimQty,
   weightedAverage,
+  trimDecimal,
 } from "@/utils/decimal";
 
 /**
@@ -161,5 +162,41 @@ describe("sign helpers", () => {
   it("takes the magnitude of a signed quantity", () => {
     expect(absDecimal("-3.5")).toBe("3.5000");
     expect(absDecimal("3.5")).toBe("3.5000");
+  });
+});
+
+/**
+ * `trimDecimal` — the zeros nobody typed, taken off a money INPUT.
+ *
+ * WHY IT EXISTS. `toDecimalString` always writes four decimal places, because
+ * that is the scale the ledger stores. A payment box pre-filled with
+ * `38850.0000` reads at a glance as a far larger number than it is — somebody
+ * looked at one and thought the bill had gone up.
+ *
+ * WHAT IT MUST NEVER DO is round. This is the value about to be submitted as a
+ * payment, and losing a real fraction would quietly change what somebody pays.
+ */
+describe("trimDecimal", () => {
+  it("drops the trailing zeros and the point with them", () => {
+    expect(trimDecimal("38850.0000")).toBe("38850");
+  });
+
+  it("keeps a fraction that is really there", () => {
+    expect(trimDecimal("155400.5000")).toBe("155400.5");
+    expect(trimDecimal("155400.0500")).toBe("155400.05");
+  });
+
+  it("leaves a value with no point alone", () => {
+    expect(trimDecimal("38850")).toBe("38850");
+  });
+
+  /* An empty box is not the same as zero — the field would look uninitialised. */
+  it("answers zero rather than nothing", () => {
+    expect(trimDecimal("0.0000")).toBe("0");
+    expect(trimDecimal("-0.0000")).toBe("0");
+  });
+
+  it("keeps a negative that is really there", () => {
+    expect(trimDecimal("-5000.0000")).toBe("-5000");
   });
 });
