@@ -3831,8 +3831,21 @@ export interface CustomerInvoiceListRow {
   _id: string;
   /** Allocated by us, unlike the payable's — this is our document. */
   invoiceNumber: string;
-  customerId: string;
-  /** Null when the customer was soft-deleted since; the debt still stands. */
+  /**
+   * NULL ON A WALK-IN. Since every till sale raises a faktur — not only a credit
+   * one — most of these rows are cash sales with nobody attached: a customer
+   * bought a bag of feed and left, and a record of a sale is not a claim on
+   * anybody.
+   *
+   * A DEBT ALWAYS HAS A DEBTOR, though: the server refuses a credit sale with no
+   * customer, so a row with anything outstanding always carries one.
+   */
+  customerId: string | null;
+  /**
+   * Null in TWO different situations, and the id above tells them apart: no id
+   * at all is a walk-in, an id whose lookup came back empty is a customer
+   * somebody deleted — and in the second case the debt still stands.
+   */
   customerName: string | null;
   /**
    * WHOSE BOOKS carry this debt — the SALE's branch, not the session's. A

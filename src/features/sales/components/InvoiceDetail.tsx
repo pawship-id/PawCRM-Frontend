@@ -56,6 +56,25 @@ function formatDate(iso: string): string {
  * visible rather than discovered through a 403.
  */
 /**
+ * Whose invoice this is — and the two different nulls, told apart by the ID.
+ *
+ * NO CUSTOMER AT ALL IS A WALK-IN. Since every till sale raises a faktur, not
+ * only a credit one, most cash invoices have nobody attached: somebody bought a
+ * bag of feed and left. "Pelanggan terhapus" there would accuse the shop of
+ * losing a record it never had.
+ *
+ * AN ID WITH NO NAME is a customer somebody deleted since — and that debt still
+ * stands, which is why the row says so rather than blanking.
+ */
+function customerLabel(invoice: {
+  customerId: string | null;
+  customerName: string | null;
+}): string {
+  if (invoice.customerName) return invoice.customerName;
+  return invoice.customerId ? "Pelanggan terhapus" : "Pelanggan umum";
+}
+
+/**
  * What each entry IS, in the words a shopkeeper reads.
  *
  * Keyed on source type AND whether it reverses something, because those two
@@ -171,7 +190,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
           crumbs={[...SALES_CRUMBS, { label: invoice.invoiceNumber }]}
           title={invoice.invoiceNumber}
         >
-          {invoice.customerName ?? "Pelanggan terhapus"} · {invoice.branchName ?? "—"}
+          {customerLabel(invoice)} · {invoice.branchName ?? "—"}
         </PageHeading>
 
         <div className="flex items-center gap-2">
@@ -243,9 +262,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
           }
         >
           <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
-            <Field label="Pelanggan">
-              {invoice.customerName ?? "Pelanggan terhapus"}
-            </Field>
+            <Field label="Pelanggan">{customerLabel(invoice)}</Field>
             <Field label="Cabang">{invoice.branchName ?? "—"}</Field>
             <Field label="Dibuat oleh">
               {/* Null on a till-born invoice: the sale recorded who rang it up,

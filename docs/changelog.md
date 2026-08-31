@@ -7,6 +7,33 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Penjualan kasir yang lunas ikut masuk Faktur Penjualan
+
+Keputusan Owner. Sebelumnya hanya penjualan **Piutang** yang memunculkan faktur;
+sekarang setiap penjualan kasir memunculkannya — dan harganya sudah disebut di
+muka: tiap transaksi ritel memakai satu nomor faktur, dan daftar Faktur Penjualan
+jadi didominasi baris yang tidak akan pernah ditagih. Yang didapat: satu daftar
+yang memuat seluruh penjualan toko.
+
+**Dua dokumen berbagi satu daftar**, dan bedanya menentukan arti setiap angkanya.
+Faktur dari penjualan piutang mencatat **utang** — totalnya adalah yang masuk
+piutang, bukan seluruh belanja. Faktur dari penjualan lunas mencatat
+**kwitansi** — totalnya seluruh belanja, lahir langsung berstatus Lunas, dan
+jatuh temponya hari itu juga (kalau dikarang "+30 hari", penjualan yang sudah
+dibayar akan muncul di setiap laporan jatuh tempo).
+
+**Dua "kosong" yang artinya berlawanan**, dibedakan lewat ID-nya, bukan lewat
+namanya: tanpa `customerId` sama sekali berarti pembeli umum — ditulis
+**"Pelanggan umum"**, karena "Pelanggan terhapus" di situ menuduh toko kehilangan
+catatan yang memang tidak pernah ada; sedangkan ID yang namanya tidak ketemu
+berarti pelanggan yang dihapus, dan utangnya tetap berdiri.
+
+**Riwayat pembayarannya kosong pada faktur lunas.** Uangnya diterima di kasir,
+barisnya ada di transaksi kasir, dan semuanya diposting di dalam satu jurnal
+penjualan — jadi tidak ada jurnal per cicilan untuk digantungi baris pembayaran.
+
+---
+
 ## [Unreleased] — Stok minus punya halamannya sendiri
 
 `/dashboard/inventory/negative-stock` — semua baris `(produk, gudang)` yang

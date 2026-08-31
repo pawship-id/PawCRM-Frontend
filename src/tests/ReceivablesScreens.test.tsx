@@ -838,6 +838,54 @@ const paidDetail = (payments: CustomerInvoicePayment[] = [paymentRow()]) =>
     payments,
   });
 
+/**
+ * A WALK-IN'S FAKTUR — the shape every cash till sale now produces.
+ *
+ * Since a paid sale raises an invoice too, most rows on this list have nobody
+ * attached: somebody bought a bag of feed and left. Two nulls that mean opposite
+ * things meet here, and the ID is what tells them apart — a name that is missing
+ * because there was never a customer, and one missing because somebody deleted
+ * the customer, whose debt still stands.
+ */
+describe("a faktur with no customer", () => {
+  it("names a walk-in rather than accusing the shop of losing a record", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      detail({
+        customerId: null,
+        customerName: null,
+        status: "paid",
+        paidAmount: "300000.0000",
+        outstandingAmount: "0.0000",
+      }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findAllByText("Pelanggan umum")).not.toHaveLength(0);
+    expect(screen.queryByText("Pelanggan terhapus")).not.toBeInTheDocument();
+  });
+
+  it("still says terhapus when there WAS a customer and the name is gone", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      detail({ customerId: CUSTOMER_ID, customerName: null }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findAllByText("Pelanggan terhapus")).not.toHaveLength(0);
+  });
+
+  it("lists a walk-in on the receivables table by the same rule", async () => {
+    asMock(customerInvoiceService.list).mockResolvedValue(
+      page([listRow({ customerId: null, customerName: null })]) as never,
+    );
+
+    renderWithAuth(<ReceivablesScreen />);
+
+    expect(await screen.findByText("Pelanggan umum")).toBeInTheDocument();
+  });
+});
+
 describe("InvoiceDetail — membatalkan pembayaran", () => {
   beforeEach(() => {
     asMock(customerInvoiceService.getById).mockResolvedValue(paidDetail());
