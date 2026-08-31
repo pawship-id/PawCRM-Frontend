@@ -42,7 +42,7 @@ export function PosCatalog({
         <Input
           value={state.search}
           onChange={(event) => setState({ search: event.target.value })}
-          placeholder="Cari nama produk, SKU, atau scan barcode…"
+          placeholder="Cari nama, SKU, kode batch, atau scan barcode…"
           aria-label="Cari produk atau layanan"
           className="pl-9"
           autoFocus

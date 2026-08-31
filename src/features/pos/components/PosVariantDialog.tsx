@@ -24,12 +24,6 @@ import type { PosCatalogItem } from "@/types/api";
  * price would be. Tapping it opens this instead of adding anything — a parent
  * added to a basket is a line nobody can pick off a shelf.
  *
- * IT ASKS THE PRODUCTS ENDPOINT, not the till's catalogue, because the catalogue
- * flattens products and services into a grid of sellable tiles and deliberately
- * has no parent filter. `listVariants` is unpaginated, which is right here: a
- * parent with more variants than fit in a dialog is rare, and paging inside a
- * picker opened from a picker is worse than scrolling.
- *
  * IT ASKS THE TILL'S CATALOGUE, and that is what lets it show stock.
  *
  * The first version called the products endpoint, which does not know the

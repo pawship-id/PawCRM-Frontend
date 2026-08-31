@@ -153,6 +153,24 @@ export function PosProductCard({
             Barcode <HighlightText text={item.barcode ?? ""} query={search} />
           </span>
         )}
+
+        {/*
+          THE LOT LABEL, whenever the server sent one.
+
+          No `explainsMatch` test here, and the asymmetry with the barcode above
+          is deliberate. A barcode is stored on every product, so drawing it
+          always would put thirteen grey digits on all eight tiles — hence the
+          rule about when it earns its row. `batchCode` is only ever populated
+          when a lot code MATCHED, so its presence is already the rule.
+
+          It is also the one line on the tile that says which SHELF answered:
+          the code resolved at this till's warehouse and nowhere else.
+        */}
+        {item.batchCode && (
+          <span className="mt-0.5 block truncate text-xs tabular-nums text-muted">
+            Batch <HighlightText text={item.batchCode} query={search} />
+          </span>
+        )}
       </div>
 
       <div className="flex items-center justify-between gap-2">

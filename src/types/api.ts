@@ -1302,10 +1302,23 @@ export interface PosCatalogItem {
    * What a scanner reads. Null on a service and on anything never scanned in.
    *
    * DRAWN ONLY WHEN A SEARCH MATCHED IT — see PosProductCard. A search looks at
-   * four fields while a tile shows two, so a scan used to return a result with
+   * five fields while a tile shows two, so a scan used to return a result with
    * nothing on it explaining why.
    */
   barcode: string | null;
+  /**
+   * The internal lot code that brought this tile back, and null on every tile
+   * that arrived any other way.
+   *
+   * SET BY THE SERVER ONLY FOR A BATCH MATCH AT THIS TILL'S WAREHOUSE. A lot
+   * lives at one warehouse, so a code from another branch's shelf resolves to
+   * nothing here — which is the point of it, not a limitation.
+   *
+   * The tile draws it whenever it is present: unlike `barcode`, which is stored
+   * on every product and needs a rule about when it explains a match, this field
+   * IS the explanation.
+   */
+  batchCode: string | null;
   /**
    * The one photo a tile draws, at the three sizes it may draw it at.
    *
