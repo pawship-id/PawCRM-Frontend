@@ -1,6 +1,7 @@
 "use client";
 
 import { formatMoney, formatQty } from "@/utils/decimal";
+import type { ReceiptSize } from "@/features/pos/deviceSettings";
 import type { CustomerInvoiceDetail, Tenant } from "@/types/api";
 
 function formatDate(iso: string | null): string {
@@ -64,10 +65,43 @@ function formatDateShort(iso: string | null): string {
 export function InvoiceSheet({
   invoice,
   tenant,
+  showPayments = true,
+  showSignature = true,
+  size = "a4",
 }: {
   invoice: CustomerInvoiceDetail;
   /** Null while the tenant read is in flight or failed — the header degrades. */
   tenant: Tenant | null;
+  /**
+   * The print screen's two switches, defaulted ON so every other caller — and
+   * the sheet's own tests — get the complete document without asking for it.
+   *
+   * WHAT IS DELIBERATELY NOT SWITCHABLE: the outstanding balance. Hiding what a
+   * customer owes on the document that bills them is not a formatting choice.
+   */
+  showPayments?: boolean;
+  showSignature?: boolean;
+  /**
+   * WHICH PAPER THIS IS FOR, and it changes the LAYOUT, not just a width.
+   *
+   * A4 lays the lines out as a table with five columns; 48 mm of printable roll
+   * has room for about thirty characters. Squeezing the table would clip the
+   * right-hand column, which is where every amount is — the exact failure
+   * `print/receipt.css` warns about for the till's own struk.
+   *
+   * ONE COMPONENT, TWO LAYOUTS, rather than two components. What goes ON an
+   * invoice — which payments count, what a voided one says, which totals exist —
+   * is decided once above the branch. Two components would eventually disagree
+   * about that, and the disagreement would be a customer holding a piece of
+   * paper that says something the screen does not.
+   *
+   * `ReceiptSize` IS THE TILL'S OWN TYPE, reused so the three papers are named
+   * once. The till's stored PREFERENCE is deliberately not reused — a shop often
+   * has a thermal printer at the counter and an A4 printer in the office, and
+   * changing what a receipt prints on must not silently change what an invoice
+   * prints on.
+   */
+  size?: ReceiptSize;
 }) {
   const totals = invoice.totals;
   const items = invoice.items ?? [];
@@ -79,6 +113,25 @@ export function InvoiceSheet({
     credit they do not have. The same "active only" rule `paidAmount` follows.
   */
   const paid = (invoice.payments ?? []).filter((payment) => !payment.isVoided);
+
+  /*
+    THE CONTENT RULES ARE DECIDED ABOVE THIS LINE, once, for both papers. Only
+    the LAYOUT branches below — see the `size` prop for why that split and not
+    two components.
+  */
+  if (size !== "a4") {
+    return (
+      <ThermalSheet
+        invoice={invoice}
+        tenant={tenant}
+        size={size}
+        items={items}
+        totals={totals}
+        paid={showPayments ? paid : []}
+        voided={voided}
+      />
+    );
+  }
 
   return (
     <div
@@ -200,7 +253,8 @@ export function InvoiceSheet({
           individual transfers, and a single sum sends them back to ask which
           ones it covered.
         */}
-        {paid.map((payment) => (
+        {showPayments &&
+          paid.map((payment) => (
           <div
             key={payment.paymentId}
             className="flex items-baseline justify-between gap-3 py-1"
@@ -265,16 +319,18 @@ export function InvoiceSheet({
         <p className="max-w-60 leading-relaxed">
           Dokumen ini dihasilkan sistem dan sah tanpa tanda tangan basah.
         </p>
-        <div className="w-56 text-center">
-          <div className="h-16" />
-          <div className="border-t border-border pt-2">
-            Hormat kami,
-            <br />
-            <span className="font-semibold text-foreground">
-              {tenant?.name ?? "—"}
-            </span>
+        {showSignature && (
+          <div className="w-56 text-center">
+            <div className="h-16" />
+            <div className="border-t border-border pt-2">
+              Hormat kami,
+              <br />
+              <span className="font-semibold text-foreground">
+                {tenant?.name ?? "—"}
+              </span>
+            </div>
           </div>
-        </div>
+        )}
       </footer>
     </div>
   );
@@ -294,6 +350,183 @@ function Line({ label, children }: { label: string; children: React.ReactNode })
     <div className="flex items-baseline justify-between gap-3 py-1">
       <span className="min-w-0">{label}</span>
       {/* Never breaks mid-figure — see the payment rows for what that looked like. */}
+      <span className="shrink-0 whitespace-nowrap">{children}</span>
+    </div>
+  );
+}
+
+/**
+ * THE SAME INVOICE ON A THERMAL ROLL — 48 mm or 72 mm of printable width.
+ *
+ * WHY A DIFFERENT LAYOUT AND NOT A NARROWER TABLE. Thirty-odd characters is not
+ * a table. Every line here stacks: the item's name on its own row, then
+ * `qty × price` and the line total beneath it — which is how the till's struk
+ * already reads, and how the mockup draws it.
+ *
+ * IT CARRIES THE SAME FACTS, in the same order, decided by the caller above. The
+ * two papers must never disagree about what is owed; only about how much room
+ * there is to say it.
+ *
+ * NO SIGNATURE BLOCK, and the print screen disables that switch here rather than
+ * letting it do nothing: nobody signs a thermal slip, and a ruled line across
+ * 48 mm is wasted roll.
+ *
+ * DASHED SEPARATORS, not borders on every row. A thermal head prints a solid
+ * rule as a heavy black band that eats through the roll; a dashed line is what
+ * every receipt in the trade uses, and the till's own struk already does.
+ */
+function ThermalSheet({
+  invoice,
+  tenant,
+  size,
+  items,
+  totals,
+  paid,
+  voided,
+}: {
+  invoice: CustomerInvoiceDetail;
+  tenant: Tenant | null;
+  size: "58" | "80";
+  items: CustomerInvoiceDetail["items"];
+  totals: CustomerInvoiceDetail["totals"];
+  paid: NonNullable<CustomerInvoiceDetail["payments"]>;
+  voided: boolean;
+}) {
+  return (
+    <div
+      data-receipt-sheet={size}
+      className="mx-auto w-full bg-surface p-4 text-sm text-foreground"
+    >
+      <div className="text-center">
+        <p className="font-semibold">{tenant?.name ?? "—"}</p>
+        {invoice.branchName && <p className="text-xs">{invoice.branchName}</p>}
+      </div>
+
+      <Rule />
+
+      <p className="text-center font-semibold">FAKTUR</p>
+
+      {/*
+        SAID FIRST AND UNMISSABLY, exactly as on A4. A voided invoice that looks
+        like a valid one is a document somebody can be asked to pay against — the
+        single worst thing either paper could produce.
+      */}
+      {voided && (
+        <p className="mt-2 text-center text-xs font-bold">
+          *** FAKTUR INI DIBATALKAN ***
+          {invoice.voidReason ? ` ${invoice.voidReason}` : ""}
+        </p>
+      )}
+
+      <div className="mt-2 text-xs tabular-nums">
+        <TRow label="No.">
+          <span className="font-semibold">{invoice.invoiceNumber}</span>
+        </TRow>
+        <TRow label="Tanggal">{formatDateShort(invoice.invoiceDate)}</TRow>
+        <TRow label="Jatuh tempo">{formatDateShort(invoice.dueDate)}</TRow>
+        <TRow label="Pelanggan">
+          {invoice.customerName ?? "Pelanggan terhapus"}
+        </TRow>
+      </div>
+
+      {items.length > 0 && (
+        <>
+          <Rule />
+          <div className="text-xs tabular-nums">
+            {items.map((item, index) => (
+              <div key={`${item.refId}-${index}`} className="mt-1 first:mt-0">
+                <p>{item.name}</p>
+                {/* The animal on a service line — a bill for three cats has to
+                    say which three, on any paper. */}
+                {item.petName && (
+                  <p className="text-muted">{item.petName}</p>
+                )}
+                <TRow
+                  label={`  ${formatQty(item.qty)} × ${formatMoney(item.unitPrice)}`}
+                >
+                  {formatMoney(item.lineTotal)}
+                </TRow>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      <Rule />
+
+      <div className="text-xs tabular-nums">
+        {totals && (
+          <>
+            <TRow label="Subtotal">{formatMoney(totals.subtotal)}</TRow>
+            {totals.itemDiscount !== "0.0000" && (
+              <TRow label="Diskon baris">
+                −{formatMoney(totals.itemDiscount)}
+              </TRow>
+            )}
+            {totals.invoiceDiscount !== "0.0000" && (
+              <TRow label="Diskon faktur">
+                −{formatMoney(totals.invoiceDiscount)}
+              </TRow>
+            )}
+            <TRow label="PPN">{formatMoney(totals.tax)}</TRow>
+          </>
+        )}
+
+        <div className="mt-1 font-bold">
+          <TRow label="TOTAL">{formatMoney(invoice.total)}</TRow>
+        </div>
+
+        {paid.map((payment) => (
+          <TRow
+            key={payment.paymentId}
+            label={`Dibayar ${formatDateShort(payment.at)}`}
+          >
+            −{formatMoney(payment.amount)}
+          </TRow>
+        ))}
+
+        {!voided && (
+          <div className="font-bold">
+            <TRow label="SISA">{formatMoney(invoice.outstandingAmount)}</TRow>
+          </div>
+        )}
+      </div>
+
+      {!voided && tenant?.settings?.invoiceFooterNote && (
+        <>
+          <Rule />
+          {/* Newlines survive here for the same reason they do on A4: bank
+              details run to two or three lines. */}
+          <p className="whitespace-pre-line text-center text-xs">
+            {tenant.settings.invoiceFooterNote}
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A dashed rule, the receipt trade's separator.
+ *
+ * `border-dashed` rather than a row of hyphens: a character rule depends on the
+ * font's advance width and comes out short or wrapped on a narrower roll.
+ */
+function Rule() {
+  return <div className="my-2 border-t border-dashed border-border" />;
+}
+
+/** One `label … value` line, the only row shape a thermal sheet has. */
+function TRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-2">
+      <span className="min-w-0 break-words">{label}</span>
       <span className="shrink-0 whitespace-nowrap">{children}</span>
     </div>
   );
