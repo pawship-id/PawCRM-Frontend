@@ -61,6 +61,37 @@ export function toDecimalString(minor: bigint): string {
   return `${negative ? "-" : ""}${whole}.${fraction}`;
 }
 
+/**
+ * The same value with the zeros nobody typed taken off — "38850.0000" → "38850".
+ *
+ * WHAT IT IS FOR: a money INPUT. `toDecimalString` always writes four decimal
+ * places because that is the scale the ledger stores, and a box pre-filled with
+ * `38850.0000` reads at a glance as a far larger number than it is — a cashier
+ * looked at one and thought the bill had gone up.
+ *
+ * IT NEVER LOSES A REAL FRACTION. Only trailing zeros go, so "155400.5000"
+ * becomes "155400.5" and "155400.0000" becomes "155400". Rounding to whole
+ * rupiah here would quietly change what somebody is about to pay.
+ *
+ * FOR INPUT VALUES ONLY. Anything being DISPLAYED goes through `formatMoney`,
+ * which groups the thousands and prefixes the currency; this is for the string
+ * that has to remain typeable and parseable.
+ */
+export function trimDecimal(value: string): string {
+  if (!value.includes(".")) return value;
+
+  const trimmed = value.replace(/0+$/, "").replace(/\.$/, "");
+
+  /*
+    THE THREE WAYS ZERO COMES OUT OF THAT: "" from ".0000", "-" from "-.0000",
+    and "-0" from "-0.0000". An empty box is not the same as zero, and "-0" is
+    not a figure anybody would type.
+  */
+  if (trimmed === "" || trimmed === "-" || trimmed === "-0") return "0";
+
+  return trimmed;
+}
+
 /** Integer division with half-up rounding — the weighted average needs it. */
 export function divideRound(numerator: bigint, denominator: bigint): bigint {
   if (denominator === 0n) return 0n;

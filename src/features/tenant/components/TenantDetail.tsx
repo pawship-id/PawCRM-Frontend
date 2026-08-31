@@ -8,6 +8,7 @@ import { useAuth } from "@/features/auth";
 import type { Tenant } from "@/types/api";
 
 import { useTenant } from "../hooks/useTenant";
+import { InvoiceFooterForm } from "./InvoiceFooterForm";
 import { TaxSettingsForm } from "./TaxSettingsForm";
 import { TenantSubscriptionBadge } from "./TenantSubscriptionBadge";
 
@@ -193,6 +194,8 @@ export function TenantDetail() {
         module behaves; this is how the business bills.
       */}
       <TaxSettingsForm tenant={tenant} onSaved={refetch} />
+
+      <InvoiceFooterForm tenant={tenant} onSaved={refetch} />
 
       <Card
         title="Settings"

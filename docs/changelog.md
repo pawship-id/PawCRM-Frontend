@@ -7,6 +7,44 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Booking bisa ditagih lewat faktur
+
+PCR-034. Form faktur dapat kartu **"Hewan & booking pelanggan ini"**, muncul
+begitu pelanggan dipilih.
+
+**Satu baris per hewan**, dengan layanan dan groomer-nya. Tagihan untuk tiga
+kucing menyebut ketiganya — pelanggan yang memeriksanya dan groomer yang
+membacanya sama-sama butuh namanya, dan "Grooming ×3" tidak memberi tahu siapa
+yang mandinya terlewat.
+
+**Booking dikirim sebagai id, bukan sebagai baris.** Server membaca harga beku,
+hewan, dan groomer-nya sendiri. Klien yang bisa mengirim itu semua bisa menagih
+grooming dengan harga yang tidak pernah dikutip, atas nama hewan orang lain.
+
+**Tapi rekapnya tetap menghitungnya.** Versi pertama membiarkan rekap membaca
+Rp 0 dengan dua grooming tercentang, dan catatan ini sempat menyebut itu "memang
+benar" — keliru. Alasannya benar (klien tidak boleh mengarang harga), kesimpulannya
+tidak: panelnya **sudah memegang** harga dari bridge, jadi tinggal ikut dihitung.
+Meminta orang menyetujui tagihan yang layarnya bilang Rp 0 bukan kebenaran, itu
+form yang belum selesai.
+
+Diskon faktur juga mengenai baris booking — kalau tidak, layar menampilkan satu
+angka dan yang ditagih angka lain.
+
+**Panelnya tidak menyaring apa pun.** Server yang memutuskan mana yang bisa
+ditagih — sudah dikonfirmasi, milik pelanggan ini, belum masuk keranjang kasir
+maupun faktur lain. Menyaring lagi di layar berarti dua definisi "sudah ditagih",
+dan keduanya akan berbeda pendapat suatu saat.
+
+**Hilang total tanpa pelanggan**, bukan daftar kosong: "booking yang mana" tidak
+punya makna sebelum "milik siapa" terjawab.
+
+**Panelnya remount saat pelanggan berganti** (`key={customerId}`) alih-alih
+mengosongkan state di dalam effect — bentuk yang kedua meninggalkan booking satu
+pelanggan sesaat di bawah nama pelanggan lain.
+
+---
+
 ## [Unreleased] — Halaman faktur menyebut jurnalnya sendiri
 
 Kartu **Jurnal** di halaman detail faktur: Penerbitan, HPP, dan kedua pembaliknya

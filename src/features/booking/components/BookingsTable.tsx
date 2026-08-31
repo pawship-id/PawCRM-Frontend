@@ -133,16 +133,33 @@ export function BookingsTable({
               <TableCell className="align-top">
                 <BookingStatusBadge status={booking.status} />
                 {/*
-                  A booking sitting in somebody's basket right now is neither
-                  confirmed-and-waiting nor sold, and the status alone cannot
-                  say so. Without this a cashier at the second till reads
-                  "Dikonfirmasi" and rings it up again.
+                  WHAT THE STATUS ALONE CANNOT SAY, and since Amandemen
+                  PCR-021/022/023 there are TWO such things rather than one.
+
+                  A paid booking used to read "Selesai", so "Dikonfirmasi" could
+                  only mean waiting. Now paying leaves it CONFIRMED — because
+                  paying is not being groomed — and one badge covers three
+                  different situations: nobody has touched it, it is in a basket
+                  right now, or it has been paid for and still has to be done.
+                  Reading the wrong one rings a grooming up twice.
+
+                  PAID WINS over "in a basket", because both are true at once
+                  after a sale: the basket that claimed it is the one that paid.
+                  Showing "Ada di keranjang" there would send a cashier looking
+                  for an open basket that has already been settled.
                 */}
-                {booking.pulledToCartAt && booking.status === "confirmed" && (
-                  <span className="mt-1 block text-xs text-muted">
-                    Ada di keranjang
-                  </span>
-                )}
+                {booking.status === "confirmed" &&
+                  (booking.posTransactionId ? (
+                    <span className="mt-1 block text-xs text-muted">
+                      Sudah dibayar — belum dikerjakan
+                    </span>
+                  ) : (
+                    booking.pulledToCartAt && (
+                      <span className="mt-1 block text-xs text-muted">
+                        Ada di keranjang
+                      </span>
+                    )
+                  ))}
               </TableCell>
 
               <TableCell className="align-top">

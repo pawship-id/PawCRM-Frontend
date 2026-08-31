@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 
@@ -27,15 +27,19 @@ import {
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
+import { petService } from "@/services/pet.service";
 import { formatMoney } from "@/utils/decimal";
 import type {
+  Booking,
   CreateInvoiceItemInput,
   InvoiceChannel,
   InvoiceDiscountMode,
+  Pet,
 } from "@/types/api";
 
 import { useInvoiceLookups } from "../hooks/useInvoiceLookups";
 import { previewInvoice } from "../invoicePreview";
+import { InvoiceBookingPanel } from "./InvoiceBookingPanel";
 
 /**
  * RAISE AN INVOICE — PCR-030's form.
@@ -88,9 +92,25 @@ interface DraftLine {
   qty: string;
   discountMode: InvoiceDiscountMode;
   discountValue: string;
+  /**
+   * WHOSE ANIMAL, on a service line — PCR-035. REQUIRED on one.
+   *
+   * Empty blocks the submit rather than billing a grooming nobody can schedule:
+   * a service with no pet reaches no day sheet, nobody is assigned, and the only
+   * record that the work is owed is a line on a bill the customer takes home.
+   * The server refuses it too, so this is a courtesy over the refusal rather
+   * than the rule itself.
+   *
+   * Never set on a product line — the server refuses one there, because a collar
+   * has no grooming.
+   */
+  petId: string;
 }
 
 const todayValue = () => new Date().toISOString().slice(0, 10);
+
+/** Nobody has a hundred animals; this is a ceiling, not a page size. */
+const MAX_PETS = 100;
 
 export function InvoiceCreateForm() {
   const router = useRouter();
@@ -106,6 +126,81 @@ export function InvoiceCreateForm() {
 
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [picked, setPicked] = useState("");
+  /*
+    BOOKINGS ARE SENT AS IDS, not as lines. The server reads each booking's own
+    frozen prices, its animal and its groomer — a client that could send those
+    could bill a grooming at a price nobody quoted, against somebody else's pet.
+    Which means the form cannot preview their total either; see the note by the
+    recap.
+  */
+  const [pulledBookings, setPulledBookings] = useState<Booking[]>([]);
+  const bookingIds = pulledBookings.map((booking) => booking._id);
+
+  /*
+    BOOKING LINES JOIN THE PREVIEW, even though they are SENT as ids.
+
+    The server prices them identically to typed lines — the invoice discount
+    applies across both — so leaving them out of the preview made the recap read
+    Rp 0 with two groomings ticked, and would have understated every invoice
+    discount that touched them.
+
+    The prices here are the bridge's, which are the same frozen figures the
+    server will read from the bookings themselves.
+  */
+  const bookingLines = pulledBookings.flatMap((booking) =>
+    booking.items.map((item) => ({ qty: "1", unitPrice: item.price })),
+  );
+  /*
+    THE CUSTOMER'S ANIMALS — PCR-035, and refetched whenever the customer
+    changes, because "which pets" has no meaning until "whose" is answered.
+
+    BEST EFFORT AND SILENT WHEN IT FAILS, the same rule the booking panel above
+    follows: reading /api/pets takes `pets:read`, and somebody who raises bills
+    all day may not hold it. The picker simply does not appear, the service is
+    still billable, and the only thing lost is the booking that would have been
+    raised for it.
+  */
+  /*
+    WHOSE ANIMALS THESE ARE IS PART OF THE STATE, not a fact the effect resets
+    on the way past. A bare `setPets([])` for an empty customer is a cascading
+    render the lint rule catches — and the same shape is what leaves one
+    customer's animals on screen for a moment under another's name. Carrying the
+    id alongside makes staleness DERIVABLE: the list counts only while it still
+    answers the question being asked.
+  */
+  const [pets, setPets] = useState<{ forCustomer: string; items: Pet[] }>({
+    forCustomer: "",
+    items: [],
+  });
+
+  useEffect(() => {
+    // No state touched — a bare return is not a cascading render.
+    if (!customerId) return;
+
+    let active = true;
+
+    petService
+      .list({ customerId, isActive: true, limit: MAX_PETS })
+      .then((result) => {
+        if (active) setPets({ forCustomer: customerId, items: result.items });
+      })
+      .catch(() => {
+        if (active) setPets({ forCustomer: customerId, items: [] });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [customerId]);
+
+  const petOptions = useMemo(
+    () =>
+      pets.forCustomer === customerId
+        ? pets.items.map((pet) => ({ value: pet._id, label: pet.name }))
+        : [],
+    [pets, customerId],
+  );
+
   const [invoiceDiscountMode, setInvoiceDiscountMode] =
     useState<InvoiceDiscountMode>("percent");
   const [invoiceDiscountValue, setInvoiceDiscountValue] = useState("");
@@ -151,23 +246,28 @@ export function InvoiceCreateForm() {
   );
 
   const hasProductLine = lines.some((line) => line.kind === "product");
+  const hasServiceLine = lines.some((line) => line.kind === "service");
 
   const preview = useMemo(
     () =>
       previewInvoice(
-        lines.map((line) => ({
-          qty: line.qty,
-          unitPrice: line.unitPrice,
-          discount: line.discountValue
-            ? { mode: line.discountMode, value: line.discountValue }
-            : null,
-        })),
+        [
+          // Bookings first, matching the order the server assembles them in.
+          ...bookingLines,
+          ...lines.map((line) => ({
+            qty: line.qty,
+            unitPrice: line.unitPrice,
+            discount: line.discountValue
+              ? { mode: line.discountMode, value: line.discountValue }
+              : null,
+          })),
+        ],
         invoiceDiscountValue
           ? { mode: invoiceDiscountMode, value: invoiceDiscountValue }
           : null,
         lookups.tax,
       ),
-    [lines, invoiceDiscountMode, invoiceDiscountValue, lookups.tax],
+    [lines, bookingLines, invoiceDiscountMode, invoiceDiscountValue, lookups.tax],
   );
 
   /**
@@ -181,11 +281,29 @@ export function InvoiceCreateForm() {
     if (lookups.loading) return "Sedang memuat data.";
     if (!customerId) return "Pilih pelanggan dulu.";
     if (!branchId) return "Pilih cabang dulu.";
-    if (lines.length === 0) return "Tambah minimal satu baris.";
+    if (lines.length === 0 && bookingIds.length === 0)
+      return "Tambah minimal satu baris atau pilih booking.";
     if (hasProductLine && !warehouseId)
       return "Pilih gudang — ada barang yang harus dikeluarkan.";
     if (lines.some((line) => !line.qty || Number(line.qty) <= 0))
       return "Ada baris yang jumlahnya belum diisi.";
+    /*
+      EVERY SERVICE NAMES ITS ANIMAL — PCR-035, and it is a refusal rather than a
+      nudge. A grooming billed with no pet reaches no day sheet: nobody is
+      assigned, and the only record that the work is owed is a line on a bill the
+      customer takes home. Letting it through means the invoice is right and the
+      work quietly disappears.
+
+      SAID SEPARATELY WHEN THE CUSTOMER HAS NO ANIMALS AT ALL, because the two
+      are different jobs: one is a field left blank, the other is a pet that has
+      to be registered first, and "Ada baris jasa yang belum dipilih hewannya"
+      in front of an empty dropdown is an instruction nobody can follow.
+    */
+    if (lines.some((line) => line.kind === "service" && !line.petId)) {
+      return petOptions.length === 0
+        ? "Pelanggan ini belum punya hewan — daftarkan dulu di Master Data."
+        : "Ada baris jasa yang belum dipilih hewannya.";
+    }
     return null;
   })();
 
@@ -216,6 +334,7 @@ export function InvoiceCreateForm() {
         qty: "1",
         discountMode: "percent",
         discountValue: "",
+        petId: "",
       },
     ]);
     setPicked("");
@@ -241,6 +360,13 @@ export function InvoiceCreateForm() {
         discount: line.discountValue
           ? { mode: line.discountMode, value: line.discountValue }
           : null,
+        /*
+          OMITTED rather than sent as an empty string, which the server's
+          objectId check would refuse with a validation error instead of the
+          readable "a service has to say whose animal it is". Only reachable on a
+          PRODUCT line — `blocking` above stops a service with no pet.
+        */
+        ...(line.petId ? { petId: line.petId } : {}),
       }));
 
       const created = await customerInvoiceService.create({
@@ -251,6 +377,7 @@ export function InvoiceCreateForm() {
         // claim goods left a shelf that nothing came off.
         ...(hasProductLine ? { warehouseId } : {}),
         items,
+        ...(bookingIds.length > 0 ? { bookingIds } : {}),
         ...(invoiceDiscountValue
           ? {
               invoiceDiscount: {
@@ -361,7 +488,25 @@ export function InvoiceCreateForm() {
             required
             placeholder="Pilih pelanggan"
             disabled={saving}
-            onChange={setCustomerId}
+            onChange={(value) => {
+              if (value === customerId) return;
+              setCustomerId(value);
+              // Every booking on offer belonged to the previous customer.
+              // Keeping one would bill this person for somebody else's grooming
+              // — which the server refuses, but only after the form was filled
+              // in.
+              setPulledBookings([]);
+              /*
+                AND EVERY ANIMAL NAMED ON A LINE, for the same reason one step
+                further in: a cat picked under the previous customer would raise
+                a booking against somebody else's pet. The server refuses that
+                — it is the check `booking.service.js` calls the one that matters
+                most — but only after the whole form has been filled in.
+              */
+              setLines((current) =>
+                current.map((line) => ({ ...line, petId: "" })),
+              );
+            }}
           />
 
           <div className="grid gap-4 sm:grid-cols-3">
@@ -423,6 +568,28 @@ export function InvoiceCreateForm() {
         </div>
       </Card>
 
+      {/*
+        BOOKINGS BEFORE THE TYPED LINES, which is the order somebody fills this
+        in: pull what has already happened, then add anything else onto the same
+        bill. Hidden entirely until a customer is chosen — "which bookings" has
+        no meaning until "whose" is answered.
+      */}
+      {customerId && (
+        <Card
+          title="Hewan & booking pelanggan ini"
+          description="Booking yang sudah dikonfirmasi dan belum ditagih. Harganya mengikuti yang dikutip saat booking dibuat."
+        >
+          <InvoiceBookingPanel
+            /* A different customer is a different panel — see its own note. */
+            key={customerId}
+            customerId={customerId}
+            selected={bookingIds}
+            onChange={setPulledBookings}
+            disabled={saving}
+          />
+        </Card>
+      )}
+
       <Card
         title="Baris faktur"
         description="Harga diambil dari katalog dan tidak bisa diubah di sini."
@@ -463,6 +630,12 @@ export function InvoiceCreateForm() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Item</TableHead>
+                    {/* ONLY WHEN THERE IS A SERVICE ON THE BILL. A column of
+                        dashes on an invoice for two bags of food is a question
+                        the reader never asked. */}
+                    {hasServiceLine && (
+                      <TableHead className="w-44">Hewan</TableHead>
+                    )}
                     <TableHead className="text-right">Harga</TableHead>
                     <TableHead className="w-28">Jumlah</TableHead>
                     <TableHead className="w-44">Diskon</TableHead>
@@ -479,6 +652,54 @@ export function InvoiceCreateForm() {
                           {line.sku ?? "Jasa"}
                         </span>
                       </TableCell>
+
+                      {hasServiceLine && (
+                        <TableCell>
+                          {line.kind === "service" ? (
+                            /*
+                              WHY IT IS HERE AT ALL — PCR-035. A grooming billed
+                              with no animal named reaches no day sheet: nobody
+                              is assigned, and the only record that the work is
+                              owed is this line on a bill the customer takes
+                              home. Naming the animal is what lets the server
+                              raise a booking for it.
+                            */
+                            <FilterSelect
+                              /*
+                                `field`, NOT `form` — §16: a control inside a row
+                                table sits among h-9 inputs, and 44px would tower
+                                over the row it belongs to. The column header is
+                                the visible label, so the control carries only an
+                                aria one, naming the line it belongs to.
+                              */
+                              layout="field"
+                              label=""
+                              ariaLabel={`Hewan untuk ${line.name}`}
+                              value={line.petId}
+                              options={petOptions}
+                              required
+                              placeholder={
+                                !customerId
+                                  ? "Pilih pelanggan dulu"
+                                  : petOptions.length === 0
+                                    ? "Belum ada hewan"
+                                    : "Pilih hewan"
+                              }
+                              // Answered fields must not go navy in a form —
+                              // that announces a filter (§16).
+                              active={false}
+                              disabled={!customerId || petOptions.length === 0}
+                              onChange={(value) =>
+                                patchLine(index, { petId: value })
+                              }
+                            />
+                          ) : (
+                            // A collar has no grooming; the server refuses a pet
+                            // on a product line rather than ignoring it.
+                            <span className="text-xs text-muted">—</span>
+                          )}
+                        </TableCell>
+                      )}
 
                       {/* READ-ONLY, and it is a rule: a price a client can set is
                           a discount nobody approved. */}

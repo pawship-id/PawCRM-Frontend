@@ -49,6 +49,16 @@ const page = (items: Booking[]): PageResult<Booking> => ({
 
 beforeEach(() => {
   mocked.list.mockResolvedValue(page([booking()]));
+  /*
+    The unbilled lens asks for its own count on every load. Stubbed to "nothing
+    outstanding" so these cases stay about the list rather than about the pill —
+    the pill has its own describe at the foot of the file.
+  */
+  mocked.unbilledSummary.mockResolvedValue({
+    bookingCount: 0,
+    serviceCount: 0,
+    total: "0.0000",
+  });
 });
 
 /**
@@ -244,5 +254,236 @@ describe("BookingsScreen — drafts and the number they have not earned", () => 
     expect(
       await screen.findByRole("option", { name: "Check-in" }),
     ).toBeInTheDocument();
+  });
+});
+
+/**
+ * WHAT THE STATUS BADGE ALONE CANNOT SAY — and since Amandemen PCR-021/022/023
+ * there are two such things rather than one.
+ *
+ * A paid booking used to read "Selesai", so "Dikonfirmasi" could only mean
+ * waiting. Now paying leaves it CONFIRMED — paying is not being groomed — and
+ * one badge covers three situations: untouched, in a basket right now, or paid
+ * for and still to be done. Reading the wrong one rings a grooming up twice.
+ */
+describe("BookingsScreen — what the badge cannot say on its own", () => {
+  beforeEach(() => {
+    mocked.list.mockReset();
+  });
+
+  it("says when a confirmed booking has already been paid for", async () => {
+    mocked.list.mockResolvedValue(page([booking({ posTransactionId: "sale-1" })]));
+
+    renderWithAuth(<BookingsScreen />);
+
+    expect(
+      await screen.findByText(/sudah dibayar — belum dikerjakan/i),
+    ).toBeInTheDocument();
+  });
+
+  it("says when one is sitting in a basket", async () => {
+    mocked.list.mockResolvedValue(
+      page([booking({ pulledToCartAt: "2026-08-26T02:00:00.000Z" })]),
+    );
+
+    renderWithAuth(<BookingsScreen />);
+
+    expect(await screen.findByText(/ada di keranjang/i)).toBeInTheDocument();
+  });
+
+  /*
+    BOTH ARE TRUE AT ONCE AFTER A SALE — the basket that claimed it is the one
+    that paid. "Ada di keranjang" would send a cashier looking for an open basket
+    that has already been settled.
+  */
+  it("prefers 'paid' over 'in a basket' when both are true", async () => {
+    mocked.list.mockResolvedValue(
+      page([
+        booking({
+          posTransactionId: "sale-1",
+          pulledToCartAt: "2026-08-26T02:00:00.000Z",
+        }),
+      ]),
+    );
+
+    renderWithAuth(<BookingsScreen />);
+
+    expect(
+      await screen.findByText(/sudah dibayar — belum dikerjakan/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/ada di keranjang/i)).not.toBeInTheDocument();
+  });
+
+  /* A finished booking says so in the badge; a second line would be noise. */
+  it("says neither once the work is done", async () => {
+    mocked.list.mockResolvedValue(
+      page([booking({ status: "completed", posTransactionId: "sale-1" })]),
+    );
+
+    renderWithAuth(<BookingsScreen />);
+
+    await screen.findByText("BK-260826-001");
+    expect(
+      screen.queryByText(/sudah dibayar — belum dikerjakan/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("says neither when nothing has touched it", async () => {
+    mocked.list.mockResolvedValue(page([booking()]));
+
+    renderWithAuth(<BookingsScreen />);
+
+    await screen.findByText("BK-260826-001");
+    expect(
+      screen.queryByText(/sudah dibayar|ada di keranjang/i),
+    ).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * "BELUM DITAGIH" — the lens for work the shop has forgotten to charge for.
+ *
+ * WHAT IT IS FOR. A grooming that was done and never billed is money simply
+ * lost, and it leaves no trace: the booking looks ordinary, the day sheet looks
+ * finished, and until this pill no screen said a bill was never raised.
+ *
+ * THE COUNT IS THE POINT. A pill that only said "Belum ditagih" would have to be
+ * clicked to find out whether anything is behind it. One that carries a number
+ * answers before anybody asks — which is the difference between a filter and a
+ * thing that gets work done.
+ */
+describe("BookingsScreen — the unbilled lens", () => {
+  const summary = (over = {}) => ({
+    bookingCount: 3,
+    serviceCount: 4,
+    total: "390000.0000",
+    ...over,
+  });
+
+  it("carries the count before anybody filters", async () => {
+    mocked.unbilledSummary.mockResolvedValue(summary());
+
+    renderWithAuth(<BookingsScreen />);
+
+    /*
+      `waitFor` ON THE COUNT, not `findByRole` on the pill: the pill renders
+      immediately WITHOUT a number and the number arrives with the summary, so
+      finding the button proves nothing about the count.
+    */
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /belum ditagih/i }),
+      ).toHaveTextContent("3"),
+    );
+  });
+
+  /*
+    THE COUNT COMES FROM THE SERVER OVER THE WHOLE BOOK, not from the page below.
+    One derived from a paged list would say "1" on a page of one and change as
+    somebody paged through — a number nobody could act on.
+  */
+  it("asks the server for it rather than counting the rows", async () => {
+    mocked.unbilledSummary.mockResolvedValue(summary());
+
+    renderWithAuth(<BookingsScreen />);
+
+    await waitFor(() => expect(mocked.unbilledSummary).toHaveBeenCalled());
+    // One row on the page, three outstanding in the book.
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /belum ditagih/i }),
+      ).toHaveTextContent("3"),
+    );
+  });
+
+  it("filters the list when clicked", async () => {
+    const user = userEvent.setup();
+    mocked.unbilledSummary.mockResolvedValue(summary());
+
+    renderWithAuth(<BookingsScreen />);
+    await screen.findByText("BK-260826-001");
+
+    await user.click(screen.getByRole("button", { name: /belum ditagih/i }));
+
+    await waitFor(() =>
+      expect(
+        mocked.list.mock.calls[mocked.list.mock.calls.length - 1][0]?.unbilled,
+      ).toBe(true),
+    );
+  });
+
+  /*
+    SENT ONLY WHEN ON. `unbilled: false` is not the opposite question — the server
+    does not support it — and sending it would be a filter nobody asked for.
+  */
+  it("sends nothing at all while the lens is off", async () => {
+    mocked.unbilledSummary.mockResolvedValue(summary());
+
+    renderWithAuth(<BookingsScreen />);
+
+    await waitFor(() => expect(mocked.list).toHaveBeenCalled());
+    expect(mocked.list.mock.calls[0][0]?.unbilled).toBeUndefined();
+  });
+
+  /*
+    SAID IN MONEY, not only in rows. "3 booking" is a queue; "Rp 390.000 belum
+    ditagih" is what it costs to leave it alone.
+  */
+  it("says what it costs, once the lens is on", async () => {
+    const user = userEvent.setup();
+    mocked.unbilledSummary.mockResolvedValue(summary());
+
+    renderWithAuth(<BookingsScreen />);
+    await screen.findByText("BK-260826-001");
+
+    await user.click(screen.getByRole("button", { name: /belum ditagih/i }));
+
+    expect(await screen.findByText(/Rp 390.000/)).toBeInTheDocument();
+    expect(screen.getByText(/4 layanan/)).toBeInTheDocument();
+  });
+
+  /* On the ordinary day sheet it would be a standing reproach nobody asked for. */
+  it("keeps the money line off the unfiltered list", async () => {
+    mocked.unbilledSummary.mockResolvedValue(summary());
+
+    renderWithAuth(<BookingsScreen />);
+    await screen.findByText("BK-260826-001");
+
+    expect(screen.queryByText(/belum ditagih dari/i)).not.toBeInTheDocument();
+  });
+
+  /*
+    NOTHING OUTSTANDING IS GOOD NEWS, and "Belum ada booking" under this lens
+    would read as "this shop has no bookings" — the wrong news entirely.
+  */
+  it("says so plainly when there is nothing left to bill", async () => {
+    const user = userEvent.setup();
+    mocked.unbilledSummary.mockResolvedValue(
+      summary({ bookingCount: 0, serviceCount: 0, total: "0.0000" }),
+    );
+
+    renderWithAuth(<BookingsScreen />);
+    await screen.findByText("BK-260826-001");
+
+    mocked.list.mockResolvedValue(page([]));
+    await user.click(screen.getByRole("button", { name: /belum ditagih/i }));
+
+    expect(
+      await screen.findByText(/semua layanan sudah ditagih/i),
+    ).toBeInTheDocument();
+  });
+
+  /*
+    THE LIST IS WHAT THE SCREEN IS FOR. A summary that fails must not take the
+    page down with it — the pill simply carries no number.
+  */
+  it("still draws the list when the count cannot be read", async () => {
+    mocked.unbilledSummary.mockRejectedValue(new Error("offline"));
+
+    renderWithAuth(<BookingsScreen />);
+
+    expect(await screen.findByText("BK-260826-001")).toBeInTheDocument();
+    const pill = await screen.findByRole("button", { name: /belum ditagih/i });
+    expect(pill).not.toHaveTextContent("3");
   });
 });

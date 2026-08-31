@@ -9,6 +9,7 @@ import type {
   BookingListQuery,
   BookingOrigin,
   BookingStatus,
+  BookingUnbilledSummary,
   PageResult,
 } from "@/types/api";
 
@@ -22,6 +23,15 @@ export interface BookingsQuery {
   /** Calendar dates; the server expands them in the TENANT'S timezone. */
   scheduledFrom: string;
   scheduledTo: string;
+  /**
+   * Only work somebody owes for that nobody has billed.
+   *
+   * A LENS RATHER THAN A FILTER, which is why it sits on a pill outside the bar
+   * and not inside it: it is what the screen is opened to use when the question
+   * is "what have we forgotten to charge for", and burying it behind a Filter
+   * button would hide the one control that earns its place on the row.
+   */
+  unbilled: boolean;
 }
 
 const PAGE_SIZE = 20;
@@ -32,6 +42,7 @@ const DEFAULT_QUERY: BookingsQuery = {
   origin: "",
   scheduledFrom: "",
   scheduledTo: "",
+  unbilled: false,
 };
 
 const EMPTY_PAGE: PageResult<Booking>["pagination"] = {
@@ -43,6 +54,18 @@ const EMPTY_PAGE: PageResult<Booking>["pagination"] = {
 
 interface UseBookingsResult {
   bookings: Booking[];
+  /**
+   * How much work is unbilled RIGHT NOW, regardless of the current filter.
+   *
+   * NOT DERIVED FROM `bookings`. The list is paged and filtered; a count taken
+   * from it would say "3" on a page of three and change as somebody paged
+   * through — which is a number nobody could act on. The server answers it over
+   * the whole book.
+   *
+   * Null while it is in flight or if it failed: the pill then shows no count
+   * rather than a wrong one, and the list still works.
+   */
+  unbilled: BookingUnbilledSummary | null;
   pagination: PageResult<Booking>["pagination"];
   query: BookingsQuery;
   loading: boolean;
@@ -71,6 +94,7 @@ export function useBookings(): UseBookingsResult {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
+  const [unbilled, setUnbilled] = useState<BookingUnbilledSummary | null>(null);
 
   const setQuery = useCallback((patch: Partial<BookingsQuery>) => {
     setQueryState((prev) => {
@@ -81,6 +105,36 @@ export function useBookings(): UseBookingsResult {
   }, []);
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
+
+  /*
+    THE SUMMARY IS ITS OWN FETCH, keyed only on `nonce`.
+
+    It deliberately does NOT re-run when the filter changes: it answers "how much
+    is unbilled in the whole book", and a figure that moved every time somebody
+    picked a date would be answering a different question each time — and the
+    pill's count would drop to zero the moment you filtered to a day with none.
+
+    IT IS BEST EFFORT AND SILENT. `bookings:read` already covers it, so a failure
+    here means the server is unwell rather than the role being wrong — and the
+    list itself is what the screen is for. The pill shows no count and the page
+    still works.
+  */
+  useEffect(() => {
+    let active = true;
+
+    bookingService
+      .unbilledSummary()
+      .then((summary) => {
+        if (active) setUnbilled(summary);
+      })
+      .catch(() => {
+        if (active) setUnbilled(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [nonce]);
 
   useEffect(() => {
     let active = true;
@@ -97,6 +151,10 @@ export function useBookings(): UseBookingsResult {
       origin: query.origin === "" ? undefined : query.origin,
       scheduledFrom: query.scheduledFrom || undefined,
       scheduledTo: query.scheduledTo || undefined,
+      // Sent only when ON. `unbilled: false` is not the opposite question — the
+      // server does not support it — and sending it would be a filter nobody
+      // asked for.
+      unbilled: query.unbilled || undefined,
     };
 
     bookingService
@@ -127,6 +185,7 @@ export function useBookings(): UseBookingsResult {
 
   return {
     bookings,
+    unbilled,
     pagination,
     query,
     loading,

@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 
-import { Button, TextField } from "@/components";
+import { Alert, Button, FIELD_HEIGHT, TextField } from "@/components";
+import { cn } from "@/lib/utils";
 import { Button as UIButton } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -22,6 +23,7 @@ import {
   isDecimal,
   toDecimalString,
   toMinor,
+  trimDecimal,
 } from "@/utils/decimal";
 import type {
   CustomerInvoiceDetail,
@@ -93,10 +95,19 @@ function today(): string {
 export function RecordPaymentForm({
   invoice,
   onPaid,
+  onCancel,
 }: {
   invoice: CustomerInvoiceDetail;
   /** Handed the UPDATED invoice the write returned — no refetch needed. */
   onPaid: (updated: CustomerInvoiceDetail) => void;
+  /**
+   * Offered when the form is in a dialog, absent when it is not.
+   *
+   * A CANCEL BUTTON ON A PAGE IS A BUTTON THAT DOES NOTHING — there is nothing
+   * to back out of. In a dialog it is the way out that does not save, and ui-rules
+   * §16 puts it to the left of the primary action.
+   */
+  onCancel?: () => void;
 }) {
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState<CustomerPaymentMethod>("transfer");
@@ -141,8 +152,20 @@ export function RecordPaymentForm({
 
   /** A fraction of what is left, rounded to a whole minor unit. */
   function quickAmount(percentage: bigint) {
+    /*
+      TRIMMED, because `toDecimalString` always writes four decimal places — the
+      scale the ledger stores. A box pre-filled with `38850.0000` reads at a
+      glance as a far larger number than it is, and somebody looked at one and
+      thought the bill had gone up.
+
+      A REAL FRACTION SURVIVES: only trailing zeros go, so an outstanding of
+      155400.5000 still fills as "155400.5". Rounding to whole rupiah here would
+      quietly change what is about to be paid.
+    */
     setAmount(
-      toDecimalString(divideRound(outstandingMinor * percentage, 100n)),
+      trimDecimal(
+        toDecimalString(divideRound(outstandingMinor * percentage, 100n)),
+      ),
     );
   }
 
@@ -234,15 +257,51 @@ export function RecordPaymentForm({
         ))}
       </div>
 
-      <TextField
-        label="Jumlah diterima"
-        name="amount"
-        inputMode="decimal"
-        value={amount}
-        disabled={saving}
-        onChange={(event) => setAmount(event.target.value)}
-        hint={`Maksimal ${formatMoney(invoice.outstandingAmount)}`}
-      />
+
+      {/*
+        SIDE BY SIDE, the way the mockup lays them out: how much and when are one
+        thought, and a full-width box each pushes the reference field below the
+        fold of a dialog. Stacks on a phone.
+      */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <TextField
+          label="Jumlah diterima"
+          name="amount"
+          inputMode="decimal"
+          value={amount}
+          disabled={saving}
+          onChange={(event) => setAmount(event.target.value)}
+          /*
+            THE FIGURE ECHOED BACK IN RUPIAH, beside the ceiling it must not pass.
+
+            The box itself stays a plain number — grouping it as the caret moves
+            fights the caret, and a payment field that jumps the cursor mid-typing
+            is worse than one that reads plainly. So the formatting happens
+            underneath, where it can be checked without being edited.
+
+            Only once something valid is in the box: "Rp 0" under an empty field
+            is a figure nobody entered.
+          */
+          hint={
+            isDecimal(amount) && (toMinor(amount) ?? 0n) > 0n
+              ? `${formatMoney(amount)} · maksimal ${formatMoney(invoice.outstandingAmount)}`
+              : `Maksimal ${formatMoney(invoice.outstandingAmount)}`
+          }
+        />
+
+        {/* The day the money MOVED, not the day this row was typed. A transfer
+            received on the 31st and recorded on the 2nd is the previous month's
+            cash inflow, and the journal entry is dated from this field. */}
+        <TextField
+          label="Tanggal terima"
+          name="at"
+          type="date"
+          value={at}
+          disabled={saving}
+          onChange={(event) => setAt(event.target.value)}
+          hint="Tanggal uang benar-benar masuk — ini yang dipakai jurnalnya."
+        />
+      </div>
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="payment-method">Metode</Label>
@@ -253,7 +312,22 @@ export function RecordPaymentForm({
             setMethod(value as CustomerPaymentMethod)
           }
         >
-          <SelectTrigger id="payment-method" aria-label="Metode">
+          {/*
+            FULL WIDTH AND 44px. `SelectTrigger` is vendored shadcn and defaults
+            to `w-fit`, which sizes it to the longest option — so "Kas" and
+            "Transfer" produced two different boxes in one column. The default is
+            right for a filter on a toolbar and wrong for a field in a form.
+
+            `FIELD_HEIGHT` because ui-rules §16 sets form controls at 44px, not
+            the 36 the vendored default carries: filling in a form is a considered
+            act where a mistake is expensive. Applied HERE rather than in
+            `ui/select.tsx`, which is also the control behind every filter.
+          */}
+          <SelectTrigger
+            id="payment-method"
+            aria-label="Metode"
+            className={cn("w-full", FIELD_HEIGHT)}
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -287,7 +361,11 @@ export function RecordPaymentForm({
             disabled={saving}
             onValueChange={setChannelId}
           >
-            <SelectTrigger id="payment-channel" aria-label="Masuk ke">
+            <SelectTrigger
+              id="payment-channel"
+              aria-label="Masuk ke"
+              className={cn("w-full", FIELD_HEIGHT)}
+            >
               <SelectValue placeholder="Pilih rekening" />
             </SelectTrigger>
             <SelectContent>
@@ -305,19 +383,6 @@ export function RecordPaymentForm({
         </p>
       </div>
 
-      {/* The day the money MOVED, not the day this row was typed. A transfer
-          received on the 31st and recorded on the 2nd is the previous month's
-          cash inflow, and the journal entry is dated from this field. */}
-      <TextField
-        label="Tanggal terima"
-        name="at"
-        type="date"
-        value={at}
-        disabled={saving}
-        onChange={(event) => setAt(event.target.value)}
-        hint="Tanggal uang benar-benar masuk — ini yang dipakai jurnalnya."
-      />
-
       <TextField
         label="No. referensi"
         name="ref"
@@ -327,9 +392,38 @@ export function RecordPaymentForm({
         hint="Opsional. Nomor mutasi bank atau trace QRIS/EDC untuk rekonsiliasi."
       />
 
-      <Button type="submit" loading={saving} disabled={saving}>
-        Simpan pembayaran
-      </Button>
+      {/*
+        WHAT HAPPENS AFTER SAVE, said before it. "DP sebagian" and "Lunas" are
+        not buttons anybody presses — the status follows the arithmetic — and
+        somebody who does not know that goes looking for the step that marks it
+        paid.
+      */}
+      <Alert variant="info">
+        Jumlah tidak boleh melebihi sisa tagihan. Setelah disimpan, status faktur
+        naik sendiri ke <strong>DP sebagian</strong> atau <strong>Lunas</strong>{" "}
+        — tidak ada aksi manual terpisah.
+      </Alert>
+
+      {/*
+        BATAL LEFT, SIMPAN RIGHT — ui-rules §16, and the same order every other
+        form in this product uses. Batal only exists inside a dialog; on a page
+        there is nothing to back out of.
+      */}
+      <div className="flex items-center justify-end gap-2">
+        {onCancel && (
+          <UIButton
+            type="button"
+            variant="secondary"
+            disabled={saving}
+            onClick={onCancel}
+          >
+            Batal
+          </UIButton>
+        )}
+        <Button type="submit" loading={saving} disabled={saving}>
+          Simpan pembayaran
+        </Button>
+      </div>
     </form>
   );
 }

@@ -3,6 +3,7 @@ import type {
   Booking,
   BookingListQuery,
   BookingStatus,
+  BookingUnbilledSummary,
   CreateBookingInput,
   UpdateBookingInput,
   PageResult,
@@ -40,21 +41,45 @@ export const bookingService = {
         scheduledFrom: query.scheduledFrom,
         scheduledTo: query.scheduledTo,
         notPulled: query.notPulled,
+        unbilled: query.unbilled,
       },
     }),
 
   /**
-   * GET /bookings/bridge — what this customer has confirmed for TODAY that is
-   * not already in a cart.
+   * GET /bookings/bridge — what this customer has confirmed and not yet billed.
    *
    * Returns a BARE ARRAY, not a page: the answer is a handful of rows a modal
-   * renders whole. "Today", "confirmed" and "not already pulled" are the
-   * definition of the endpoint rather than parameters — "today" in particular is
-   * resolved in the tenant's timezone by the server, which is the part a caller
-   * would get wrong.
+   * renders whole. "Confirmed" and "not already billed" are the definition of
+   * the endpoint rather than parameters — and "not already billed" means neither
+   * in a cashier's basket NOR on another invoice, which is one question the
+   * server answers in one place.
+   *
+   * `days` WIDENS THE WINDOW BACKWARDS, and defaults to today alone. That
+   * default is the TILL's answer: a cashier bills what is happening in front of
+   * them. An invoice bills what has HAPPENED — a month of boarding, last week's
+   * grooming — so it passes a wider window. Never forwards: offering an
+   * appointment booked for next Friday would let somebody bill work not yet
+   * done.
+   *
+   * The day boundary is resolved in the tenant's timezone by the server, which
+   * is the part a caller would get wrong.
    */
-  bridge: (customerId: string) =>
-    apiClient.get<Booking[]>("/bookings/bridge", { query: { customerId } }),
+  bridge: (customerId: string, days?: number) =>
+    apiClient.get<Booking[]>("/bookings/bridge", {
+      query: { customerId, days },
+    }),
+
+  /**
+   * GET /bookings/unbilled-summary — how much work is owed for and unbilled.
+   *
+   * A SUMMARY, NOT A LIST. The rows come from `list({ unbilled: true })`, so
+   * there is one list and one filter rather than a second endpoint returning the
+   * same documents in a different shape. This answers only the part a list
+   * cannot: how many there are BEFORE anybody filters, which is what lets the
+   * screen say there is billing to do without being asked.
+   */
+  unbilledSummary: () =>
+    apiClient.get<BookingUnbilledSummary>("/bookings/unbilled-summary"),
 
   /** GET /bookings/:id — a single booking. */
   getById: (id: string) => apiClient.get<Booking>(`/bookings/${id}`),
@@ -80,4 +105,26 @@ export const bookingService = {
    */
   changeStatus: (id: string, status: BookingStatus, reason?: string | null) =>
     apiClient.patch<Booking>(`/bookings/${id}/status`, { status, reason }),
+
+  /**
+   * PATCH /bookings/:id/groomer — PCR-035. Puts a name on a slot, nothing else.
+   *
+   * NOT `update({items})`, which re-snapshots every price at today's rates. A
+   * booking raised beside an invoice was billed at the price on that bill, so
+   * re-quoting it to write a groomer's name in would leave the appointment and
+   * the invoice disagreeing about what the customer owes.
+   *
+   * `null` UNASSIGNS — somebody rostered off goes back to "Belum ditentukan",
+   * the state the booking was born in. `serviceId` narrows it to one service;
+   * omitted, it covers the whole visit, which is the usual case.
+   */
+  assignGroomer: (
+    id: string,
+    groomerUserId: string | null,
+    serviceId?: string,
+  ) =>
+    apiClient.patch<Booking>(`/bookings/${id}/groomer`, {
+      groomerUserId,
+      serviceId,
+    }),
 };

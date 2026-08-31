@@ -385,6 +385,23 @@ export interface TenantSettings {
    * that assumed the wrong one would understate a bill by 11%.
    */
   priceIncludesTax?: boolean;
+
+  /**
+   * FREE TEXT PRINTED AT THE FOOT OF EVERY INVOICE — usually where to send the
+   * money.
+   *
+   * ONE BLOCK RATHER THAN bank-name / number / holder. A shop with two accounts,
+   * or one that wants payment terms or a returns line, would need a second field
+   * and then a third; a paragraph the shop writes for itself covers all of them.
+   * The cost, stated plainly: nothing can validate an account number in here.
+   *
+   * EMPTY PRINTS NOTHING — no heading, no blank block. A default sentence would
+   * be a claim the shop never made appearing on every bill it sends.
+   *
+   * NEWLINES ARE MEANINGFUL. Bank details run to two or three lines, so whatever
+   * renders this must preserve them.
+   */
+  invoiceFooterNote?: string;
 }
 
 /**
@@ -1161,7 +1178,36 @@ export interface PosRunningTotals {
   itemDiscount: string;
   cartDiscount: string;
   otherCharges: string;
+  /** What is owed BEFORE tax is separated out. Not what a payment must cover. */
   net: string;
+  /**
+   * The tax on this basket — inside `net` when prices include it, on top of it
+   * when they do not. `taxAdded` is which.
+   *
+   * OPTIONAL because the server omits the whole group rather than guessing when
+   * it cannot read the shop's tax rule. Absent means "fall back to `net`", which
+   * is exact for the inclusive default and merely incomplete for the other.
+   */
+  tax?: string;
+  /**
+   * WHAT A PAYMENT HAS TO COVER, and the field the till must total against.
+   *
+   * Equal to `net` for a tax-inclusive shop, which is why nothing noticed its
+   * absence for so long. For an exclusive-tax shop it is `net` PLUS the tax, and
+   * a screen totalling against `net` there refuses every payment the cashier can
+   * possibly enter.
+   */
+  payable?: string;
+  /** The rate as a percentage, for the "PPN 11%" label. */
+  taxRate?: number;
+  /**
+   * True when the tax is charged ON TOP of the prices.
+   *
+   * THE FLAG A SCREEN NEEDS, not `tax > 0`. An inclusive shop has real tax that
+   * is already inside every price shown; adding it again overstates the bill by
+   * the whole tax.
+   */
+  taxAdded?: boolean;
 }
 
 /**
@@ -1654,8 +1700,12 @@ export type BookingStatus =
  * the POS creates one to hang the attribution on. A field rather than an
  * inference from `posTransactionId`, because a booked appointment paid at the
  * till also ends up with one.
+ *
+ * `invoice_adhoc` is the same idea one document over (PCR-035): a grooming typed
+ * straight onto an invoice, for which the invoice raises a booking so the work
+ * reaches a day sheet instead of existing only as a line on a bill.
  */
-export type BookingOrigin = "booking" | "pos_adhoc";
+export type BookingOrigin = "booking" | "pos_adhoc" | "invoice_adhoc";
 
 /**
  * One service on a booking.
@@ -1795,6 +1845,33 @@ export interface BookingListQuery {
   scheduledTo?: string;
   /** Only bookings not already sitting in a POS cart. */
   notPulled?: boolean;
+  /**
+   * Only work somebody owes for that nobody has billed.
+   *
+   * NOT THE SAME AS `notPulled`, which looks close enough to be dangerous. That
+   * one answers "may the till offer this" and says yes to a DRAFT sitting in an
+   * open basket and to a CANCELLED booking — neither of which anybody can bill.
+   * This one excludes both, because the screen it feeds says "go and bill these".
+   */
+  unbilled?: boolean;
+}
+
+/**
+ * How much work is owed for and unbilled — GET /api/bookings/unbilled-summary.
+ *
+ * IT EXISTS SO THE PILL CAN CARRY A COUNT before anybody filters. A number that
+ * only appeared after you filtered would answer a question you had already
+ * asked.
+ *
+ * TWO COUNTS, because they answer different things: `bookingCount` is how many
+ * visits somebody has to raise a bill for, `serviceCount` how many lines those
+ * bills will carry.
+ */
+export interface BookingUnbilledSummary {
+  bookingCount: number;
+  serviceCount: number;
+  /** Decimal string, "0.0000" when there is nothing — never null. */
+  total: string;
 }
 
 /**
@@ -3764,12 +3841,112 @@ export interface CustomerInvoiceDetail
    * "which entries belong to this invoice".
    */
   journalEntries: InvoiceJournalEntry[];
+  /**
+   * WHAT THIS INVOICE DID TO THE SHELF.
+   *
+   * Stock leaves when the invoice is ISSUED, not when it is paid — which
+   * surprises people, and until this nothing on the screen said so.
+   *
+   * EMPTY for an invoice that shipped nothing, and the card does not appear: a
+   * "Dampak stok" heading over nothing invites the reader to wonder what broke.
+   */
+  stockImpact: InvoiceStockImpact[];
+  /**
+   * WHAT THIS CUSTOMER OWES ALTOGETHER, and how much room is left on their
+   * ceiling — every live receivable, not just this invoice.
+   *
+   * ON THIS PAYLOAD rather than fetched from `GET /pos/customers/:id/credit`,
+   * which is gated on a CASHIER's grant. The people who read this screen hold
+   * `customerInvoices:read` and usually not that one, so fetching it there would
+   * 403 for exactly the readers it is for.
+   *
+   * NULL when the customer has since been deleted — a receivable against
+   * somebody removed is still a receivable, so the card goes rather than the
+   * page.
+   */
+  credit: CustomerCreditStatus | null;
+  /**
+   * THE APPOINTMENTS THIS BILL COVERS — PCR-035.
+   *
+   * BOTH KINDS TOGETHER: an appointment pulled in by PCR-034 and a shadow one
+   * raised because a service was typed with an animal on it are the same fact to
+   * whoever is reading the bill — work that has to happen. `origin` says which
+   * is which.
+   *
+   * Empty on an invoice that bills only goods.
+   */
+  bookings: InvoiceBooking[];
+}
+
+/** One appointment an invoice covers, as the execution panel draws it. */
+export interface InvoiceBooking {
+  _id: string;
+  bookingNumber: string | null;
+  status: BookingStatus;
+  /**
+   * `invoice_adhoc` means the invoice RAISED it — the service was typed in and
+   * nobody had booked it. `booking` means it existed first and was billed here.
+   * Inferring this from anything else would be wrong the moment somebody bills a
+   * real appointment.
+   */
+  origin: BookingOrigin;
+  scheduledAt: string | null;
+  petId: string | null;
+  /**
+   * RESOLVED ON READ, unlike `items[].petName` on the invoice line. This panel
+   * is a day sheet — it should show the animal's current name — while the line
+   * is a record of what was agreed.
+   */
+  petName: string | null;
+  items: InvoiceBookingItem[];
+}
+
+/** One service on an invoice's booking. */
+export interface InvoiceBookingItem {
+  serviceId: string | null;
+  name: string;
+  price: string;
+  groomerUserId: string | null;
+  /** Never null — an unfilled slot resolves to "Belum ditentukan" server-side. */
+  groomerName: string;
+}
+
+/** One product this invoice moved off the shelf. */
+export interface InvoiceStockImpact {
+  productId: string;
+  /** Null when the product has since been deleted — the figures still print. */
+  name: string | null;
+  /** Negative for goods leaving. */
+  qty: string;
+  /**
+   * The shelf before and after, over the WHOLE ledger rather than this page.
+   *
+   * Both null when the balance could not be computed — a guess there would be a
+   * confident pair of numbers nobody can reconcile.
+   */
+  before: string | null;
+  after: string | null;
+}
+
+/** One posting inside a ledger entry, with its account named. */
+export interface InvoiceJournalLine {
+  accountId: string;
+  /** Null when the account has since been deleted. The figures still print. */
+  code: string | null;
+  name: string | null;
+  debit: string;
+  credit: string;
+  memo: string | null;
 }
 
 /** One ledger entry an invoice raised, as the detail screen lists it. */
 export interface InvoiceJournalEntry {
   _id: string;
   entryNumber: string;
+  date: string | null;
+  description: string | null;
+  /** What it actually debited and credited. */
+  lines: InvoiceJournalLine[];
   /** `invoice` for the issuance half, `invoice_cogs` for the cost half. */
   sourceType: string | null;
   /** True when this entry UNDOES another — set only on a reversal. */
@@ -3832,6 +4009,36 @@ export interface CustomerInvoiceItem {
   lineTotal: string;
   /** The cost the consumed lots carried. Null on a service. */
   hppAtTime: string | null;
+  /**
+   * THIS LINE'S SLICE OF THE TAXABLE BASE AND OF THE TAX, frozen at issue.
+   *
+   * NULL ON EVERY INVOICE RAISED BEFORE THEY WERE STORED, and a screen shows
+   * nothing there rather than a number it worked out itself. Re-deriving would
+   * apply TODAY's tax rule to an invoice issued under the one in force at the
+   * time — and could not be done per line anyway, because the allocation is
+   * decided across every line at once with largest-remainder rounding.
+   */
+  dpp: string | null;
+  tax: string | null;
+  /**
+   * THE APPOINTMENT BEHIND THIS LINE. Set two ways and there is no way to tell
+   * them apart from here: an appointment pulled in by PCR-034, or a shadow one
+   * PCR-035 raised because the line was typed with an animal on it. `bookings[]`
+   * on the invoice carries `origin`, which is where that question is answered.
+   *
+   * Null on every product line, and on a service nobody attached an animal to.
+   */
+  bookingId: string | null;
+  /** Whose animal the service is for. Null on a product line. */
+  petId: string | null;
+  /**
+   * Its name AS AT ISSUE, snapshotted onto the line rather than resolved on
+   * read — unlike `bookings[].petName`. A bill is a record of what was agreed,
+   * and an animal renamed afterwards must not silently restate it.
+   */
+  petName: string | null;
+  /** Who did the work, as at issue. Null when the slot was never filled. */
+  groomerName: string | null;
 }
 
 /** The money, frozen when the invoice was issued. */
@@ -3869,6 +4076,15 @@ export interface CreateInvoiceItemInput {
   refId: string;
   qty: string;
   discount?: TypedDiscountInput | null;
+  /**
+   * WHOSE ANIMAL, on a service line — PCR-035, and the prerequisite for the rest
+   * of it. A booking needs a pet, and a grooming typed straight onto an invoice
+   * has none, so without this the service is billed and appears on no day sheet.
+   *
+   * REFUSED ON A PRODUCT LINE by the server: a collar has no grooming, and
+   * accepting one would raise an appointment for a bag of food.
+   */
+  petId?: string;
 }
 
 /**

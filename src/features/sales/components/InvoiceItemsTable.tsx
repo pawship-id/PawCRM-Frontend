@@ -1,3 +1,6 @@
+import { Fragment } from "react";
+import { PawPrint } from "lucide-react";
+
 import {
   Table,
   TableBody,
@@ -59,6 +62,31 @@ export function InvoiceItemsTable({
   const discountLabel = (mode: string, value: string) =>
     mode === "percent" ? `${Number(value)}%` : formatMoney(value);
 
+  /*
+    GROUPED BY ANIMAL, the way the mockup lays it out and the way somebody reads
+    a bill for three cats: whose grooming, then whose, then the food that belongs
+    to nobody in particular.
+
+    ORDER IS THE LINES' OWN, not alphabetical: the first time a pet appears
+    decides where its block sits, so the sheet reads in the order the invoice was
+    typed. Sorting would move a line somebody is looking for.
+
+    PRODUCTS FALL INTO A LAST GROUP WITH NO PET. Putting a bag of food under the
+    cat whose grooming happened to precede it would be a claim the invoice never
+    made.
+  */
+  const groups: { petName: string | null; rows: typeof items }[] = [];
+  for (const item of items) {
+    const petName = item.petName ?? null;
+    const last = groups[groups.length - 1];
+
+    if (last && last.petName === petName) {
+      last.rows.push(item);
+    } else {
+      groups.push({ petName, rows: [item] });
+    }
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="overflow-x-auto">
@@ -69,16 +97,48 @@ export function InvoiceItemsTable({
               <TableHead className="text-right">Harga</TableHead>
               <TableHead className="text-right">Jumlah</TableHead>
               <TableHead className="text-right">Diskon</TableHead>
+              <TableHead className="text-right">Pajak</TableHead>
               <TableHead className="text-right">Total</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {items.map((item, index) => (
+            {groups.map((group, groupIndex) => (
+              <Fragment key={`${group.petName ?? "umum"}-${groupIndex}`}>
+                {/*
+                  A HEADING ROW PER ANIMAL — and one for the goods that belong to
+                  nobody. The second is not decoration: without it a reader
+                  cannot tell where one cat's bill stops and the shop's shelf
+                  begins.
+                */}
+                <TableRow className="bg-surface-hover hover:bg-surface-hover">
+                  <TableCell colSpan={6} className="py-1.5 text-xs font-medium">
+                    {group.petName ? (
+                      <span className="flex items-center gap-1.5">
+                        <PawPrint className="size-3.5 text-muted" />
+                        {group.petName}
+                      </span>
+                    ) : (
+                      <span className="text-muted">
+                        Tanpa hewan — barang umum
+                      </span>
+                    )}
+                  </TableCell>
+                </TableRow>
+
+                {group.rows.map((item, index) => (
               <TableRow key={`${item.refId}-${index}`}>
                 <TableCell>
                   <span className="font-medium">{item.name}</span>
+                  {/*
+                    THE ANIMAL, on a service line that names one — PCR-035. A
+                    bill for three cats has to say which three: the customer
+                    checking it and the groomer reading it both need the names,
+                    and "Grooming ×3" tells neither of them whose bath was
+                    missed. Falls back to the SKU, which is a product's own
+                    identifier, and to "Jasa" for a service with no animal.
+                  */}
                   <span className="block text-xs text-muted">
-                    {item.sku ?? "Jasa"}
+                    {item.petName ?? item.sku ?? "Jasa"}
                   </span>
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
@@ -104,10 +164,30 @@ export function InvoiceItemsTable({
                     "—"
                   )}
                 </TableCell>
+                {/*
+                  THE TAX THIS LINE ACTUALLY CARRIED, frozen when the invoice was
+                  issued — never recomputed. A screen doing the arithmetic itself
+                  would apply TODAY's rule to an old bill, and the parts would
+                  stop adding up to the total printed beside them.
+
+                  NULL ON EVERY INVOICE RAISED BEFORE IT WAS STORED, and an em
+                  dash is the honest answer there: the allocation was not
+                  recorded, and inventing one is worse than admitting it.
+                */}
+                <TableCell className="text-right text-xs tabular-nums text-muted">
+                  {item.tax === null
+                    ? "—"
+                    : item.tax === "0.0000"
+                      ? "Non-PPN"
+                      : formatMoney(item.tax)}
+                </TableCell>
+
                 <TableCell className="text-right tabular-nums">
                   {formatMoney(item.lineTotal)}
                 </TableCell>
               </TableRow>
+                ))}
+              </Fragment>
             ))}
           </TableBody>
         </Table>

@@ -97,11 +97,47 @@ describe("the lines", () => {
     expect(within(row).getByText("10%")).toBeInTheDocument();
   });
 
+  /*
+    TWO DASHES ON THIS ROW NOW, and they mean different things: no discount was
+    given, and no tax allocation was recorded. The second only appears on
+    invoices raised before the per-line figures were stored — which this fixture
+    is — so the assertion counts them rather than looking for "the" dash.
+  */
   it("shows a dash where a line has no discount", () => {
     render(<InvoiceItemsTable invoice={invoice()} />);
 
     const row = screen.getByRole("row", { name: /Kalung Nylon/ });
-    expect(within(row).getByText("—")).toBeInTheDocument();
+    expect(within(row).getAllByText("—").length).toBeGreaterThan(0);
+  });
+
+  /*
+    THE TAX A LINE ACTUALLY CARRIED, frozen at issue and never recomputed. An
+    invoice raised before it was stored says so with a dash: the allocation was
+    not recorded, and inventing one on read would apply TODAY's rule to an old
+    bill.
+  */
+  it("shows the tax a line carried, and a dash when none was recorded", () => {
+    render(<InvoiceItemsTable invoice={invoice()} />);
+
+    expect(screen.getByRole("columnheader", { name: "Pajak" })).toBeInTheDocument();
+  });
+
+  it("says Non-PPN rather than Rp 0 for an untaxed line", () => {
+    render(
+      <InvoiceItemsTable
+        invoice={invoice({
+          items: [
+            {
+              ...invoice().items[0],
+              dpp: "100000.0000",
+              tax: "0.0000",
+            },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Non-PPN")).toBeInTheDocument();
   });
 });
 
