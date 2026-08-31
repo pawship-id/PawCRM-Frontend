@@ -3,6 +3,7 @@ import type {
   Booking,
   BookingListQuery,
   BookingStatus,
+  BookingUnbilledSummary,
   CreateBookingInput,
   UpdateBookingInput,
   PageResult,
@@ -40,6 +41,7 @@ export const bookingService = {
         scheduledFrom: query.scheduledFrom,
         scheduledTo: query.scheduledTo,
         notPulled: query.notPulled,
+        unbilled: query.unbilled,
       },
     }),
 
@@ -66,6 +68,18 @@ export const bookingService = {
     apiClient.get<Booking[]>("/bookings/bridge", {
       query: { customerId, days },
     }),
+
+  /**
+   * GET /bookings/unbilled-summary — how much work is owed for and unbilled.
+   *
+   * A SUMMARY, NOT A LIST. The rows come from `list({ unbilled: true })`, so
+   * there is one list and one filter rather than a second endpoint returning the
+   * same documents in a different shape. This answers only the part a list
+   * cannot: how many there are BEFORE anybody filters, which is what lets the
+   * screen say there is billing to do without being asked.
+   */
+  unbilledSummary: () =>
+    apiClient.get<BookingUnbilledSummary>("/bookings/unbilled-summary"),
 
   /** GET /bookings/:id — a single booking. */
   getById: (id: string) => apiClient.get<Booking>(`/bookings/${id}`),

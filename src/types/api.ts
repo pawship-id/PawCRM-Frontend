@@ -1845,6 +1845,33 @@ export interface BookingListQuery {
   scheduledTo?: string;
   /** Only bookings not already sitting in a POS cart. */
   notPulled?: boolean;
+  /**
+   * Only work somebody owes for that nobody has billed.
+   *
+   * NOT THE SAME AS `notPulled`, which looks close enough to be dangerous. That
+   * one answers "may the till offer this" and says yes to a DRAFT sitting in an
+   * open basket and to a CANCELLED booking — neither of which anybody can bill.
+   * This one excludes both, because the screen it feeds says "go and bill these".
+   */
+  unbilled?: boolean;
+}
+
+/**
+ * How much work is owed for and unbilled — GET /api/bookings/unbilled-summary.
+ *
+ * IT EXISTS SO THE PILL CAN CARRY A COUNT before anybody filters. A number that
+ * only appeared after you filtered would answer a question you had already
+ * asked.
+ *
+ * TWO COUNTS, because they answer different things: `bookingCount` is how many
+ * visits somebody has to raise a bill for, `serviceCount` how many lines those
+ * bills will carry.
+ */
+export interface BookingUnbilledSummary {
+  bookingCount: number;
+  serviceCount: number;
+  /** Decimal string, "0.0000" when there is nothing — never null. */
+  total: string;
 }
 
 /**
