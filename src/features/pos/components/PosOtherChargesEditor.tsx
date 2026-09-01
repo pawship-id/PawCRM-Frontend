@@ -25,6 +25,18 @@ const WHOLE_RUPIAH = /^\d+$/;
  * 40 px, NOT the form layer's 44. ui-rules §16 sets 44 for a document's header;
  * this is a two-field add-row inside a panel, which is the bar geometry the same
  * section exempts — 44 here would tower over the cart lines it sits under.
+ *
+ * IT SAYS WHAT IT IS, above the fields. The placeholders were doing that job and
+ * a placeholder cannot: it vanishes the moment somebody types, so a cashier who
+ * has keyed in half a line has nothing on screen saying what the two boxes are
+ * for — and "Ongkos kirim" greyed out in the first one reads as a value already
+ * entered rather than as an example of one.
+ *
+ * A HEADING, NOT A `<label>`, and the two fields keep their own `aria-label`s.
+ * One label can only point at one control; pointing it at the name field would
+ * rename that field "Biaya lainnya" and leave the amount beside it named
+ * something narrower than its neighbour. The heading names the GROUP, the
+ * aria-labels name the boxes, and a screen reader gets both.
  */
 export function PosOtherChargesEditor({
   charges,
@@ -54,6 +66,11 @@ export function PosOtherChargesEditor({
 
   return (
     <div className="space-y-2">
+      {/* Same weight and colour as the note's own header directly above it —
+          two section titles in one panel that did not match would read as two
+          different kinds of thing. */}
+      <span className="block text-xs text-muted">Biaya lainnya</span>
+
       {charges.map((charge, index) => (
         <div
           key={`${charge.label}-${index}`}

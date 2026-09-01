@@ -112,9 +112,16 @@ export function ReceivablesTable({
                 <TableCell
                   className={cn("text-sm font-medium", voided && "text-muted")}
                 >
-                  {/* A label may be null — the customer was removed since. The
-                      debt still stands, so the row says so rather than blanking. */}
-                  {invoice.customerName ?? "—"}
+                  {/*
+                    TWO DIFFERENT NULLS, told apart by the ID rather than by the
+                    name. No customer at all is a WALK-IN — since every till sale
+                    raises a faktur, most cash rows have nobody attached, and a
+                    dash there reads as missing data on a document that is
+                    complete. An id whose lookup came back empty is a customer
+                    somebody deleted, and that debt still stands.
+                  */}
+                  {invoice.customerName ??
+                    (invoice.customerId ? "—" : "Pelanggan umum")}
                 </TableCell>
 
                 <TableCell className="text-sm text-muted">

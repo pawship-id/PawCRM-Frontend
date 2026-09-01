@@ -7,23 +7,96 @@ Two screens: the list, and one invoice with its payment form. Both run against
 `/api/customer-invoices`. This is Sprint 1 of the Sales & Invoice module
 (PCR-032 + PCR-033); `/dashboard/sales` was a `SectionPlaceholder` before it.
 
-## Read this first: nobody can create one of these yet
+## Read this first: where these come from
 
-**Every receivable in the system was raised by the till.** When a cashier settles
-a sale with the **Piutang** method the POS issues one automatically, inside the
-sale's own transaction — it never passes through a create form, and there is no
-`POST /api/customer-invoices` for one to post to.
+**Two places.** The till raises one on **every** sale it settles, inside the
+sale's own transaction, never passing through a form — see the next section, and
+note that this is wider than it was: it used to be only a sale settled with the
+Piutang method. Everything else is raised by hand through
+`POST /api/customer-invoices` (PCR-030), which cuts stock, posts two journal
+entries and allocates a number.
 
-That is why this module has **no "Buat faktur" button**. Raising an invoice by
-hand cuts stock, posts two journal entries and allocates a number; that is
-PCR-030, and it lands with its own route and its own screen.
+*(This section used to say nobody could create one at all, and that the "Buat
+faktur" button did not exist. Both were true when it was written and stopped
+being so when PCR-030 landed.)*
 
 `source` tells the two apart and is read-only everywhere:
 
 | `source`     | Means                                             | Chip        |
 | ------------ | ------------------------------------------------- | ----------- |
-| `pos_bridge` | Issued by the till on a credit sale               | dari kasir  |
+| `pos_bridge` | Issued by the till — see below                    | dari kasir  |
 | `manual`     | What PCR-030's form will write                    | manual      |
+
+## A till invoice's detail reads like a hand-typed one
+
+The document stores no lines and no breakdown for a till sale — two records of
+one basket are free to disagree, and the one a cashier can still void is not the
+one the invoice would be holding. **The detail read joins them from the sale**,
+under the invoice's own field names, so `InvoiceItemsTable` renders both kinds
+without knowing which it has. (The list read carries lines for neither.)
+
+Three things come back beside the joined pair, and each is separate for a reason:
+
+| | What | Why not folded in |
+| --- | --- | --- |
+| `otherCharges[]` | ongkir, packaging | The invoice shape has no field for them, and dropping them leaves a total the rows above do not add up to. **Itemised** — "biaya lain Rp 25.000" explains nothing to the customer who paid it |
+| `posSettlement` | how the counter settled it | Rendered in its own **"Pembayaran di kasir"** card, read-only |
+| `items[].dpp` / `.tax` | null on every till line | The tax allocation is decided across every line at once, so `Σ round(part) ≠ round(Σ)` and one line cannot reproduce its own share. The table shows nothing rather than a number it made up |
+
+**Why the settlement is not in "Riwayat pembayaran".** That list means "money
+collected against this debt, each with its own reversible journal entry", and
+every row carries a Batalkan button. A till sale's settlement was posted inside
+the sale's SINGLE revenue entry — there is nothing per-line to reverse, and such
+a row would also make the sale unvoidable. The card says where the money can
+actually be undone: Void or Retur at the till.
+
+The collection history is **hidden entirely on a settled cash sale** ("Belum ada
+pembayaran untuk faktur ini" under a card that has just shown the money arriving
+is a contradiction) and **kept on a credit one**, where instalments against the
+remainder are what it is for.
+
+**Two rows in the recap only a till sale has.** The charges above, and — on a
+sale part-paid at the counter — the split: *Total belanja*, *Dibayar di kasir*,
+*Sisa jadi piutang*. The invoice's own total is that last figure, so without the
+split the table would contradict the header of the page by exactly what the
+customer already handed over.
+
+**One recap, not two.** The block that used to print a second breakdown under
+the table is skipped for till invoices; it has no field for the charges or the
+split, so it would disagree with the table above it.
+
+## Every till sale lands here now, not only a credit one
+
+The Owner's call, and its price was stated first: every retail sale burns an
+invoice number and this list is now mostly rows nobody will ever chase. What it
+buys is one list holding every sale the shop made.
+
+**A till-born invoice is one of two documents**, and the difference decides what
+every figure on it means:
+
+| | Raised when | Total | Status | Jatuh tempo | Pelanggan |
+| --- | --- | --- | --- | --- | --- |
+| **Utang** | cashier chose **Piutang** | what went **on account**, not the whole sale | Belum bayar | from the term | **always** |
+| **Kwitansi** | sale **paid in full** | the whole sale | Lunas | the invoice date | **may be none** |
+
+The paid one owes nobody anything: it contributes zero to every outstanding
+figure, never appears in an overdue list, and falls due the day it is raised —
+an invented "+30 days" would put a settled sale in every jatuh-tempo report.
+
+**Two nulls that mean opposite things**, told apart by the ID rather than by the
+name:
+
+- **no `customerId` at all** → a walk-in. Most cash sales: somebody bought a bag
+  of feed and left. Rendered **"Pelanggan umum"**, because "Pelanggan terhapus"
+  there accuses the shop of losing a record it never had;
+- **an id whose name came back null** → a customer somebody deleted, and that
+  debt still stands. Rendered "Pelanggan terhapus".
+
+**Neither kind carries payment rows.** For the paid one the money was taken at
+the counter, in settlement lines that live on the POS transaction and were posted
+inside the sale's single revenue entry — so the payment timeline is empty and
+`paidAmount` was set at creation. The backend's changelog says why inventing rows
+there would break both the payment-void path and `posVoid`.
 
 **What this sprint actually closed was a live hole, not a missing feature.** The
 till has been able to sell on credit since UT-3 — the sale posts `Dr 1103`,

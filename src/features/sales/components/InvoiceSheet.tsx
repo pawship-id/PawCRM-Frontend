@@ -236,6 +236,18 @@ export function InvoiceSheet({
                 −{formatMoney(totals.invoiceDiscount)}
               </Line>
             )}
+            {/*
+              ONGKIR AND THE LIKE — a till sale can carry them and a hand-raised
+              invoice has no such field, so the line appears only where there is
+              one. It cannot be left off the paper: it is part of what the
+              customer paid, and without it the figure below is one the lines
+              above do not add up to.
+            */}
+            {(invoice.otherCharges ?? []).map((charge, index) => (
+              <Line key={`${charge.label}-${index}`} label={charge.label}>
+                {formatMoney(charge.amount)}
+              </Line>
+            ))}
             <Line label="PPN">{formatMoney(totals.tax)}</Line>
           </>
         )}

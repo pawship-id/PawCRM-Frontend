@@ -3,6 +3,7 @@ import type { PageResult } from "@/types/api";
 import type {
   CreatedProduct,
   CreateProductInput,
+  NegativeStockResult,
   Product,
   ProductListQuery,
   ProductVariantsResult,
@@ -105,6 +106,27 @@ export const productService = {
       "/products/low-stock",
       { query: { ...query } },
     ),
+
+  /**
+   * GET /products/negative-stock — the shelves that owe what they have already
+   * sold.
+   *
+   * A DIFFERENT LIST FROM `lowStock`, not the same one with another threshold.
+   * That one is one row per PRODUCT (the restock threshold is a property of the
+   * product, so quantities sum across warehouses); this is one row per product
+   * AT ONE WAREHOUSE, because a shortfall is a discrepancy at a place and
+   * "you are three short somewhere" is not something anybody can act on.
+   *
+   * `shortfall` is the whole hole across every shelf in scope, NOT the page's
+   * worth of it — a card that summed its five rows would read as the answer
+   * while being a fraction of it. Negative, like every `value` here.
+   */
+  negativeStock: (
+    query: { page?: number; limit?: number; warehouseId?: string } = {},
+  ) =>
+    apiClient.get<NegativeStockResult>("/products/negative-stock", {
+      query: { ...query },
+    }),
 
   /**
    * POST /products/opening-stock — the opening balance of products that were

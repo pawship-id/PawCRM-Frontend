@@ -23,6 +23,7 @@ import { InvoiceItemsTable } from "./InvoiceItemsTable";
 import { JournalLink } from "./JournalLink";
 import { VoidInvoiceDialog } from "./VoidInvoiceDialog";
 import { PaymentHistory } from "./PaymentHistory";
+import { PosSettlementCard } from "./PosSettlementCard";
 import { PaymentReceiptDialog } from "./PaymentReceiptDialog";
 import { RecordPaymentDialog } from "./RecordPaymentDialog";
 import { VoidPaymentDialog } from "./VoidPaymentDialog";
@@ -55,6 +56,25 @@ function formatDate(iso: string): string {
  * no way to move any — the separation of duties the backend enforces, made
  * visible rather than discovered through a 403.
  */
+/**
+ * Whose invoice this is — and the two different nulls, told apart by the ID.
+ *
+ * NO CUSTOMER AT ALL IS A WALK-IN. Since every till sale raises a faktur, not
+ * only a credit one, most cash invoices have nobody attached: somebody bought a
+ * bag of feed and left. "Pelanggan terhapus" there would accuse the shop of
+ * losing a record it never had.
+ *
+ * AN ID WITH NO NAME is a customer somebody deleted since — and that debt still
+ * stands, which is why the row says so rather than blanking.
+ */
+function customerLabel(invoice: {
+  customerId: string | null;
+  customerName: string | null;
+}): string {
+  if (invoice.customerName) return invoice.customerName;
+  return invoice.customerId ? "Pelanggan terhapus" : "Pelanggan umum";
+}
+
 /**
  * What each entry IS, in the words a shopkeeper reads.
  *
@@ -171,7 +191,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
           crumbs={[...SALES_CRUMBS, { label: invoice.invoiceNumber }]}
           title={invoice.invoiceNumber}
         >
-          {invoice.customerName ?? "Pelanggan terhapus"} · {invoice.branchName ?? "—"}
+          {customerLabel(invoice)} · {invoice.branchName ?? "—"}
         </PageHeading>
 
         <div className="flex items-center gap-2">
@@ -243,9 +263,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
           }
         >
           <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
-            <Field label="Pelanggan">
-              {invoice.customerName ?? "Pelanggan terhapus"}
-            </Field>
+            <Field label="Pelanggan">{customerLabel(invoice)}</Field>
             <Field label="Cabang">{invoice.branchName ?? "—"}</Field>
             <Field label="Dibuat oleh">
               {/* Null on a till-born invoice: the sale recorded who rang it up,
@@ -291,11 +309,17 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
             THE FULL BREAKDOWN, not just the three headline figures.
 
             `totals` is what the server FROZE at issue, so every line here is
-            read rather than computed. It is null on a till-born invoice, which
-            stores a total and nothing else — those fall back to the three-row
-            summary below, which is all that document has.
+            read rather than computed.
+
+            NOT FOR A TILL SALE, even though its `totals` now arrive too — joined
+            from the sale rather than stored. The table above already lays that
+            breakdown out with the rows this block has no field for (the other
+            charges, and the part paid at the counter), so repeating a shorter
+            version underneath would be two recaps of one basket that disagree
+            about what the customer paid. Till invoices keep the two-row summary,
+            which is the pair that answers "what is this document for".
           */}
-          {invoice.totals ? (
+          {invoice.totals && !invoice.posSettlement ? (
             <div className="mt-4 ml-auto flex w-full max-w-sm flex-col gap-1.5 border-t border-border pt-4 text-sm tabular-nums">
               <Row label="Subtotal" value={formatMoney(invoice.totals.subtotal)} muted />
               {invoice.totals.itemDiscount !== "0.0000" && (
@@ -487,11 +511,30 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
           foot of the page where it used to render — outside the grid entirely,
           so it sat under both columns and read as an afterthought.
         */}
-        <PaymentHistory
-          payments={invoice.payments}
-          onPrint={(payment) => setReceiptFor(payment.paymentId)}
-          onVoid={(payment) => setVoidingId(payment.paymentId)}
-        />
+        {/*
+          THE COUNTER'S OWN SETTLEMENT, above the collection history and separate
+          from it. The two answer different questions — "how was this sale paid
+          for" and "what has been collected against this debt since" — and a cash
+          sale only ever has the first.
+        */}
+        {invoice.posSettlement && (
+          <PosSettlementCard settlement={invoice.posSettlement} />
+        )}
+
+        {/*
+          HIDDEN ENTIRELY ON A SETTLED TILL SALE. "Belum ada pembayaran untuk
+          faktur ini" under a card that has just shown the money arriving is a
+          contradiction, and there is nothing to collect: the sale was paid in
+          full at the counter. It stays for a credit sale, where instalments
+          against the remainder are exactly what this list is for.
+        */}
+        {!(invoice.posSettlement && invoice.payments.length === 0 && invoice.status === "paid") && (
+          <PaymentHistory
+            payments={invoice.payments}
+            onPrint={(payment) => setReceiptFor(payment.paymentId)}
+            onVoid={(payment) => setVoidingId(payment.paymentId)}
+          />
+        )}
 
         <div className="flex flex-col gap-4">
           {/*
@@ -772,12 +815,6 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
         diposting. Tiap pembayaran memposting jurnalnya sendiri —{" "}
         <b>Dr rekening penerima / Cr 1103</b> — dan jurnal itu permanen.
       </p>
-
-      <div>
-        <Button variant="secondary" asChild>
-          <Link href="/dashboard/sales">← Semua faktur penjualan</Link>
-        </Button>
-      </div>
     </div>
   );
 }

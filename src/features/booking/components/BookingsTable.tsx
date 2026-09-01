@@ -148,10 +148,24 @@ export function BookingsTable({
                   Showing "Ada di keranjang" there would send a cashier looking
                   for an open basket that has already been settled.
                 */}
-                {booking.status === "confirmed" &&
+                {/*
+                  NOT ONLY ON `confirmed` ANY MORE. The till used to be able to
+                  pull a confirmed booking and nothing else, so this line only
+                  ever had one status to explain. Now a grooming can be paid for
+                  while it is at check-in or on the table — payment leaves those
+                  where they are — and the row would go on reading as though
+                  nobody had touched it.
+
+                  `completed` and `cancelled` are left out: one is finished and
+                  the other is not owed, so neither is about to be rung up twice.
+                */}
+                {booking.status !== "completed" &&
+                  booking.status !== "cancelled" &&
                   (booking.posTransactionId ? (
                     <span className="mt-1 block text-xs text-muted">
-                      Sudah dibayar — belum dikerjakan
+                      {booking.status === "confirmed"
+                        ? "Sudah dibayar — belum dikerjakan"
+                        : "Sudah dibayar"}
                     </span>
                   ) : (
                     booking.pulledToCartAt && (

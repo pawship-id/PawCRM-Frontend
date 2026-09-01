@@ -46,7 +46,9 @@ export const bookingService = {
     }),
 
   /**
-   * GET /bookings/bridge — what this customer has confirmed and not yet billed.
+   * GET /bookings/bridge — what this customer has that is billable and not yet
+   * billed: every status but `cancelled`, nothing already in a basket or on an
+   * invoice.
    *
    * Returns a BARE ARRAY, not a page: the answer is a handful of rows a modal
    * renders whole. "Confirmed" and "not already billed" are the definition of

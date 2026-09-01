@@ -26,10 +26,17 @@ interface UseTenantResult {
  * There is no id parameter, here or in the service: the backend derives the
  * tenant from the session, which is what makes the whole screen safe to reach
  * without a permission check on WHICH tenant is being read.
+ *
+ * `enabled` IS FOR THE SCREENS THAT MERELY CONSULT A SETTING — the Inventory hub
+ * reads `allowNegativeStock` to decide whether to show its negative-stock
+ * section. Reading the business profile needs `tenants:read`, which a storekeeper
+ * need not hold, and firing the request anyway would paint a 403 error across a
+ * page that was only asking a yes/no question. Off, the hook answers with a null
+ * tenant and no error, which those callers read as "unknown" and fall back from.
  */
-export function useTenant(): UseTenantResult {
+export function useTenant(enabled = true): UseTenantResult {
   const [tenant, setTenant] = useState<Tenant | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
   // Bumped by refetch() to re-run the effect without any query state to change.
   const [nonce, setNonce] = useState(0);
@@ -37,6 +44,10 @@ export function useTenant(): UseTenantResult {
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 
   useEffect(() => {
+    // Not asked for. The caller reads a null tenant as "unknown" — see the
+    // header — and no request is made at all.
+    if (!enabled) return;
+
     let active = true;
     // Show the loading state, then synchronize with the server. The stale-
     // response guard (`active`) makes the late setStates safe. Same sanctioned
@@ -65,7 +76,7 @@ export function useTenant(): UseTenantResult {
     return () => {
       active = false;
     };
-  }, [nonce]);
+  }, [nonce, enabled]);
 
   return { tenant, loading, error, refetch };
 }

@@ -402,6 +402,24 @@ export interface TenantSettings {
    * renders this must preserve them.
    */
   invoiceFooterNote?: string;
+
+  /**
+   * MAY A SALE DRIVE STOCK BELOW ZERO? **Defaults to true** — the server's own
+   * default, read as `!== false` everywhere for the tenants written before the
+   * field existed.
+   *
+   * TRUE is the honest setting for a shop: the goods left the shelf, the
+   * customer is holding them, and the usual cause of an empty balance is a
+   * delivery nobody has keyed in yet. Recording the sale and letting the number
+   * go negative is what puts the gap on the Inventory hub instead of behind a
+   * cashier's workaround.
+   *
+   * FALSE makes the till the control — the server refuses any sale that would
+   * take a shelf below zero, whether it comes from the counter or an invoice.
+   * It does NOT restate history: balances already negative stay where they are
+   * until a receipt or an opname puts them right.
+   */
+  allowNegativeStock?: boolean;
 }
 
 /**
@@ -1302,10 +1320,23 @@ export interface PosCatalogItem {
    * What a scanner reads. Null on a service and on anything never scanned in.
    *
    * DRAWN ONLY WHEN A SEARCH MATCHED IT — see PosProductCard. A search looks at
-   * four fields while a tile shows two, so a scan used to return a result with
+   * five fields while a tile shows two, so a scan used to return a result with
    * nothing on it explaining why.
    */
   barcode: string | null;
+  /**
+   * The internal lot code that brought this tile back, and null on every tile
+   * that arrived any other way.
+   *
+   * SET BY THE SERVER ONLY FOR A BATCH MATCH AT THIS TILL'S WAREHOUSE. A lot
+   * lives at one warehouse, so a code from another branch's shelf resolves to
+   * nothing here — which is the point of it, not a limitation.
+   *
+   * The tile draws it whenever it is present: unlike `barcode`, which is stored
+   * on every product and needs a rule about when it explains a match, this field
+   * IS the explanation.
+   */
+  batchCode: string | null;
   /**
    * The one photo a tile draws, at the three sizes it may draw it at.
    *
@@ -1333,6 +1364,28 @@ export interface PosCatalogItem {
   /** Null unless this is a parent. */
   variantCount: number | null;
   stock: { qty: string; state: PosStockState } | null;
+  /**
+   * WHETHER THE TILL MAY ADD THIS RIGHT NOW — which is NOT `stock.state !==
+   * "out"`.
+   *
+   * An empty shelf is sellable wherever the shop allows the balance to go
+   * negative (`settings.allowNegativeStock`, true by default), so the badge and
+   * the button answer different questions: "Habis" is a fact about the shelf,
+   * this is a permission.
+   *
+   * DECIDED BY THE SERVER, because the same rule is enforced at the posting
+   * gateway. A till that worked it out for itself would either grey out a tile
+   * the server would have accepted, or offer one it is about to refuse — and the
+   * second is a cashier who builds a basket and is told no at the payment screen.
+   *
+   * Always true on a service, a parent and a bundle: a grooming does not run
+   * out, a parent opens a picker rather than adding anything, and a bundle's
+   * components are checked when the sale posts.
+   *
+   * OPTIONAL for the tenants of an older server: absent is read as sellable,
+   * which is the behaviour the till had before this existed.
+   */
+  sellable?: boolean;
 }
 
 /** Query parameters accepted by GET /api/pos/catalog. */
@@ -3778,8 +3831,21 @@ export interface CustomerInvoiceListRow {
   _id: string;
   /** Allocated by us, unlike the payable's — this is our document. */
   invoiceNumber: string;
-  customerId: string;
-  /** Null when the customer was soft-deleted since; the debt still stands. */
+  /**
+   * NULL ON A WALK-IN. Since every till sale raises a faktur — not only a credit
+   * one — most of these rows are cash sales with nobody attached: a customer
+   * bought a bag of feed and left, and a record of a sale is not a claim on
+   * anybody.
+   *
+   * A DEBT ALWAYS HAS A DEBTOR, though: the server refuses a credit sale with no
+   * customer, so a row with anything outstanding always carries one.
+   */
+  customerId: string | null;
+  /**
+   * Null in TWO different situations, and the id above tells them apart: no id
+   * at all is a walk-in, an id whose lookup came back empty is a customer
+   * somebody deleted — and in the second case the debt still stands.
+   */
   customerName: string | null;
   /**
    * WHOSE BOOKS carry this debt — the SALE's branch, not the session's. A
@@ -3810,14 +3876,61 @@ export interface CustomerInvoiceDetail
   /** The entry that RECOGNISED the debt — the sale's revenue entry. */
   journalEntryId: string | null;
   /**
-   * The lines a HUMAN typed. **Empty on every till-born invoice** — those lines
-   * live on the POS transaction, and copying them would be two records of one
-   * basket free to disagree. Read `posTransactionId` for the other kind.
+   * WHAT WAS BILLED — and where it comes from depends on who raised the invoice.
+   *
+   * A HAND-RAISED invoice STORES these. A TILL-BORN one does not: two records of
+   * one basket are free to disagree, and the one a cashier can still void is not
+   * the one the invoice would be holding. The detail read JOINS them from the
+   * sale instead — the same way it resolves `customerName` — so this arrives
+   * populated either way and one table renders both.
+   *
+   * The join is detail-only: the LIST read never carries lines, for either kind.
    */
   items: CustomerInvoiceItem[];
   invoiceDiscount: InvoiceDiscount | null;
-  /** The breakdown behind `total`. Null on a till-born invoice. */
+  /**
+   * The breakdown behind `total`, stored on a hand-raised invoice and joined from
+   * the sale on a till-born one. Null only where neither exists — an invoice
+   * written before the field, or one whose sale has gone.
+   */
   totals: CustomerInvoiceTotals | null;
+  /**
+   * ONGKIR, PACKAGING — the additive charges a till sale can carry and a
+   * hand-raised invoice has no concept of. Absent on a manual invoice.
+   *
+   * ITEMISED rather than one lump: "biaya lain Rp 25.000" on a bill explains
+   * nothing, and the customer who paid it asked what it was for.
+   */
+  otherCharges?: Array<{ label: string; amount: string }>;
+  /**
+   * HOW THE COUNTER SETTLED THE SALE — present only on a till-born invoice.
+   *
+   * DELIBERATELY NOT `payments[]`, and the distinction is load-bearing. Those
+   * rows mean "money collected against this debt, each with its own reversible
+   * entry", and the screen offers a Batalkan button over them. A till sale's
+   * settlement lines were posted inside the sale's SINGLE revenue entry, so a row
+   * there would offer to reverse an entry that does not exist — and would make
+   * every cash sale unvoidable, since a sale whose invoice has taken a payment
+   * cannot be voided.
+   *
+   * The channel's name and type are the SALE's snapshot, not a lookup: a retired
+   * channel's history stays readable as it was.
+   */
+  posSettlement?: {
+    transactionNumber: string | null;
+    paidAt: string | null;
+    payments: Array<{
+      channelId: string | null;
+      channelName: string;
+      channelType: string;
+      amount: string;
+      /** Cash only, and only when more was tendered than the bill. */
+      change: string | null;
+      reference: string | null;
+    }>;
+    /** What walked out unpaid and became this invoice. "0.0000" on a paid sale. */
+    credit: string | null;
+  };
   /** Where the goods left from. Null when nothing shipped. */
   warehouseId: string | null;
   channel: InvoiceChannel;
@@ -4041,15 +4154,22 @@ export interface CustomerInvoiceItem {
   groomerName: string | null;
 }
 
-/** The money, frozen when the invoice was issued. */
+/** The money, frozen when the invoice was issued — or when the sale settled. */
 export interface CustomerInvoiceTotals {
   subtotal: string;
   itemDiscount: string;
+  /** The basket-level discount. `cartDiscount` at the till, same figure. */
   invoiceDiscount: string;
   /** The taxable base, after both discounts. */
   dpp: string;
   tax: string;
   grandTotal: string;
+  /**
+   * Σ of the additive charges — till sales only, absent on a hand-raised
+   * invoice. It cannot be left out of the recap: ongkir is part of what the
+   * customer paid, so a total without it is one the rows above do not add up to.
+   */
+  otherCharges?: string | null;
 }
 
 /**

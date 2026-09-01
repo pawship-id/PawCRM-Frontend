@@ -121,24 +121,34 @@ const cartWithItem: PosTransaction = {
   },
 };
 
-/** One variant, as the catalogue returns it — with the shift's own stock. */
+/**
+ * One variant, as the catalogue returns it — with the shift's own stock.
+ *
+ * `sellable` IS THE SERVER'S SEPARATE ANSWER to "may the till add this", which
+ * an empty shelf does not decide: most shops let one sell and the balance goes
+ * negative. Defaulted here to what the badge implies, so the cases that are not
+ * about the setting read the way they always did; the ones that are pass it.
+ */
 const variantTile = (
   id: string,
   name: string,
   code: string,
   stock: { qty: string; state: "ok" | "low" | "out" },
+  sellable = stock.state !== "out",
 ) => ({
   kind: "product" as const,
   _id: id,
   name,
   code,
   barcode: null,
+  batchCode: null,
   price: "45000.0000",
   categoryId: "c1",
   unit: "pcs",
   image: null,
   variantCount: null,
   stock,
+  sellable,
 });
 
 const catalogPage = {
@@ -149,6 +159,7 @@ const catalogPage = {
       name: "Royal Canin Adult 2kg",
       code: "RC-ADULT-2KG",
       barcode: "8991234567890",
+      batchCode: null,
       price: "100000.0000",
       categoryId: "c1",
       unit: "pcs",
@@ -167,6 +178,7 @@ const catalogPage = {
       name: "Kalung Anjing",
       code: null,
       barcode: null,
+      batchCode: null,
       price: null,
       categoryId: "c1",
       unit: "pcs",
@@ -1259,14 +1271,57 @@ describe("PosVariantDialog — stock per variant", () => {
     expect(screen.getByText("Habis")).toBeInTheDocument();
   });
 
-  it("will not let an empty size be added", async () => {
+  /*
+    THE ROW STAYS VISIBLE EITHER WAY: a cashier looking for a size needs to see
+    that the shop stocks it and has run out, not that it does not exist. Whether
+    the button works is the SERVER's answer — `sellable`, which the fixture above
+    derives from the badge only because most of these cases are not about it.
+  */
+  /*
+    AND THE DEFAULT IS THE OTHER WAY. A shop that allows overselling gets a size
+    it can still ring up with an empty shelf — the goods are usually there and
+    the delivery note is not — while the badge goes on saying "Habis".
+  */
+  it("still sells an empty size where the shop allows negative stock", async () => {
+    mockedPos.catalog.mockImplementation(async (query) =>
+      query?.parentId
+        ? {
+            items: [
+              variantTile(
+                VARIANT_L,
+                "Kalung — L",
+                "KA-L",
+                { qty: "0.0000", state: "out" },
+                true,
+              ),
+            ],
+            pagination: { page: 1, limit: 48, total: 1, totalPages: 1 },
+          }
+        : catalogPage,
+    );
+
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /pilih varian kalung anjing/i,
+      }),
+    );
+    await screen.findByText("Kalung — L");
+
+    expect(screen.getByText("Habis")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /tambah kalung — l/i }),
+    ).toBeEnabled();
+  });
+
+  it("will not let an empty size be added where the shop refuses negative stock", async () => {
     const user = userEvent.setup();
     renderWithAuth(<PosScreen />);
 
     await openPicker(user);
 
-    // The row stays visible: a cashier looking for a size needs to see that the
-    // shop stocks it and has run out, not that it does not exist.
     expect(
       screen.getByRole("button", { name: /tambah kalung — l/i }),
     ).toBeDisabled();
@@ -1687,7 +1742,7 @@ describe("PosScreen — parking is a decision, not a default", () => {
     await waitFor(() => expect(mockedPos.updateCart).toHaveBeenCalled());
 
     mockedPos.updateCart.mockClear();
-    await user.click(screen.getByRole("button", { name: /titipkan/i }));
+    await user.click(screen.getByRole("button", { name: /^simpan$/i }));
 
     await waitFor(() =>
       expect(mockedPos.updateCart).toHaveBeenCalledWith(CART_ID, {
@@ -1773,7 +1828,7 @@ describe("PosScreen — parking is a decision, not a default", () => {
     );
 
     expect(
-      await screen.findByText(/titipkan atau selesaikan dulu/i),
+      await screen.findByText(/simpan atau selesaikan dulu/i),
     ).toBeInTheDocument();
   });
 
@@ -1838,7 +1893,7 @@ describe("PosScreen — parking is a decision, not a default", () => {
     );
 
     expect(
-      screen.queryByText(/titipkan atau selesaikan dulu/i),
+      screen.queryByText(/simpan atau selesaikan dulu/i),
     ).not.toBeInTheDocument();
     expect(
       await screen.findByRole("button", { name: /lanjutkan/i }),
@@ -1861,7 +1916,7 @@ describe("PosScreen — parking is a decision, not a default", () => {
     ]);
 
     renderWithAuth(<PosScreen />);
-    await screen.findByRole("button", { name: /titipkan/i });
+    await screen.findByRole("button", { name: /^simpan$/i });
 
     // Blocked while it is open…
     await user.click(
@@ -1873,7 +1928,7 @@ describe("PosScreen — parking is a decision, not a default", () => {
 
     // …and free once it is put back.
     await user.keyboard("{Escape}");
-    await user.click(screen.getByRole("button", { name: /titipkan/i }));
+    await user.click(screen.getByRole("button", { name: /^simpan$/i }));
 
     await user.click(
       screen.getByRole("button", { name: /keranjang tersimpan/i }),
@@ -1899,7 +1954,7 @@ describe("PosScreen — parking is a decision, not a default", () => {
       something in it, so their presence IS the recovery.
     */
     expect(
-      await screen.findByRole("button", { name: /titipkan/i }),
+      await screen.findByRole("button", { name: /^simpan$/i }),
     ).toBeInTheDocument();
   });
 

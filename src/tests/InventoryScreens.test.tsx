@@ -3,13 +3,17 @@ import { screen, waitFor } from "@testing-library/react";
 import { InventoryHub } from "@/features/inventory";
 import { productService } from "@/services/product.service";
 import { productBatchService } from "@/services/productBatch.service";
+import { tenantService } from "@/services/tenant.service";
 import { ApiError } from "@/services/api-error";
 import type { PageResult } from "@/types/api";
 import type {
   ExpiringBatchesResult,
+  NegativeStockResult,
+  NegativeStockRow,
   Product,
   ProductBatch,
 } from "@/types/inventory";
+import type { Tenant } from "@/types/api";
 
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
@@ -30,9 +34,16 @@ import { renderWithAuth } from "./helpers/renderWithAuth";
  */
 jest.mock("@/services/product.service");
 jest.mock("@/services/productBatch.service");
+/*
+  The hub asks the tenant one yes/no question — may a till oversell — to decide
+  whether its negative-stock section is on screen at all. Unmocked, that is a
+  real fetch from jsdom.
+*/
+jest.mock("@/services/tenant.service");
 
 const mockedProducts = jest.mocked(productService);
 const mockedBatches = jest.mocked(productBatchService);
+const mockedTenant = jest.mocked(tenantService);
 
 type LowStockRow = Product & { qtyOnHand: string };
 
@@ -107,10 +118,51 @@ function expiringPage(
   };
 }
 
+/** One shelf that owes what it has already sold. */
+function negativeRow(
+  overrides: Partial<NegativeStockRow> = {},
+): NegativeStockRow {
+  return {
+    productId: "p9",
+    warehouseId: "w1",
+    warehouseName: "Gudang Pusat",
+    sku: "FD-RC-3KG",
+    name: "Royal Canin Adult 3kg",
+    unit: "pcs",
+    isActive: true,
+    qty: "-3.0000",
+    hppAvg: "10000.0000",
+    value: "-30000.0000",
+    ...overrides,
+  };
+}
+
+function negativePage(
+  items: NegativeStockRow[],
+  total = items.length,
+  shortfall = "-30000.0000",
+): NegativeStockResult {
+  return {
+    items,
+    shortfall,
+    pagination: { page: 1, limit: 5, total, totalPages: 1 },
+  };
+}
+
+/** `allowNegativeStock` absent means allowed — the server's own default. */
+const tenantWith = (allowNegativeStock?: boolean) =>
+  ({
+    _id: "t1",
+    name: "Toko Uji",
+    settings: { hotelMode: "numbered", ...(allowNegativeStock === undefined ? {} : { allowNegativeStock }) },
+  }) as unknown as Tenant;
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockedProducts.lowStock.mockResolvedValue(lowStockPage([lowStockRow()]));
+  mockedProducts.negativeStock.mockResolvedValue(negativePage([]));
   mockedBatches.expiring.mockResolvedValue(expiringPage([lot()]));
+  mockedTenant.me.mockResolvedValue(tenantWith());
 });
 
 describe("InventoryHub", () => {
@@ -171,6 +223,7 @@ describe("InventoryHub", () => {
     await waitFor(() => {
       expect(mockedProducts.lowStock).toHaveBeenCalledWith({ limit: 5 });
     });
+    expect(mockedProducts.negativeStock).toHaveBeenCalledWith({ limit: 5 });
     expect(mockedBatches.expiring).toHaveBeenCalledWith({
       limit: 5,
       withinDays: 30,
@@ -236,6 +289,150 @@ describe("InventoryHub", () => {
     expect(
       screen.getByText("Role Anda tidak punya akses ke data ini."),
     ).toBeInTheDocument();
+  });
+
+  /*
+    STOK MINUS — the one list here that is about the BOOKS rather than the
+    shelves. It says a number on this screen is already wrong: goods were sold
+    that the system never recorded arriving, so every figure derived from it —
+    the stock value on a report included — is wrong with it.
+  */
+  describe("the negative-stock section", () => {
+    it("names the shelf, the shortfall and what it is worth", async () => {
+      mockedProducts.negativeStock.mockResolvedValue(
+        negativePage([negativeRow()]),
+      );
+
+      renderWithAuth(<InventoryHub />);
+
+      expect(await screen.findByText("Stok minus")).toBeInTheDocument();
+      // The place, not just the product: the same product can be fine next door.
+      expect(
+        await screen.findByText(/FD-RC-3KG · Gudang Pusat/),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/-3 pcs/)).toBeInTheDocument();
+    });
+
+    /*
+      THE WHOLE HOLE, from the server. A card that summed its own five rows would
+      read as the answer while being a fraction of it.
+    */
+    it("states the total value of the shortfall, not the page's", async () => {
+      mockedProducts.negativeStock.mockResolvedValue(
+        negativePage([negativeRow()], 12, "-910000.0000"),
+      );
+
+      renderWithAuth(<InventoryHub />);
+
+      await waitFor(() =>
+        expect(screen.getByText(/Rp\s*-?910\.000/)).toBeInTheDocument(),
+      );
+      // The badge is the server's count of shelves below zero, not the rows on
+      // screen — "1" beside one row out of twelve reads as "nearly done".
+      expect(
+        screen.getByText("Stok minus").closest("section"),
+      ).toHaveTextContent("12");
+    });
+
+    /*
+      SAID ONCE, ABOVE THE ROWS. Nobody reads "−3" as "a sale was recorded for
+      goods the book did not have" on their own, and the wrong reading — "the
+      system is broken" — sends somebody looking for a bug instead of for a
+      delivery note.
+    */
+    it("explains what a negative balance means and how to clear it", async () => {
+      mockedProducts.negativeStock.mockResolvedValue(
+        negativePage([negativeRow()]),
+      );
+
+      renderWithAuth(<InventoryHub />);
+
+      expect(
+        await screen.findByText(/penerimaan barang belum dicatat/i),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "opname" })).toHaveAttribute(
+        "href",
+        "/dashboard/inventory/opname",
+      );
+    });
+
+    /*
+      THE WAY OUT OF THE CARD. Five rows answer "is something wrong"; a shop
+      clearing a backlog works down a list, and guessing at the rest is not
+      something a landing page should ask of anybody.
+    */
+    it("links to the full list", async () => {
+      mockedProducts.negativeStock.mockResolvedValue(
+        negativePage([negativeRow()], 43),
+      );
+
+      renderWithAuth(<InventoryHub />);
+
+      expect(
+        await screen.findByRole("link", { name: /lihat semua stok minus/i }),
+      ).toHaveAttribute("href", "/dashboard/inventory/negative-stock");
+    });
+
+    /*
+      ON SCREEN EVEN WITH NOTHING TO SHOW, where the shop allows overselling. A
+      setting that produces discrepancies silently needs a place that says "none
+      right now", or nobody learns the place exists until the day it matters.
+    */
+    it("stays on screen with an empty list while overselling is allowed", async () => {
+      renderWithAuth(<InventoryHub />);
+
+      expect(await screen.findByText("Stok minus")).toBeInTheDocument();
+      expect(screen.getByText(/tidak ada stok minus/i)).toBeInTheDocument();
+    });
+
+    /*
+      AND GOES AWAY WHEN THERE IS NOTHING TO SAY. A shop that refuses negative
+      stock cannot produce a new one, so an empty card would be a permanent
+      reassurance about something that cannot happen.
+    */
+    it("disappears when the shop refuses negative stock and has none", async () => {
+      mockedTenant.me.mockResolvedValue(tenantWith(false));
+
+      renderWithAuth(<InventoryHub />);
+
+      await waitFor(() => expect(mockedProducts.lowStock).toHaveBeenCalled());
+      expect(screen.queryByText("Stok minus")).not.toBeInTheDocument();
+    });
+
+    /*
+      BUT TURNING THE SETTING OFF DOES NOT CLEAR HISTORY. A shop that has just
+      tightened the rule is exactly the one that still has holes to fill, and
+      hiding them with the setting would hide the work.
+    */
+    it("stays for a shop that refuses it but still has rows below zero", async () => {
+      mockedTenant.me.mockResolvedValue(tenantWith(false));
+      mockedProducts.negativeStock.mockResolvedValue(
+        negativePage([negativeRow()]),
+      );
+
+      renderWithAuth(<InventoryHub />);
+
+      expect(await screen.findByText("Stok minus")).toBeInTheDocument();
+    });
+
+    /*
+      `tenants:read` IS A DIFFERENT GRANT from `products:read`, and a storekeeper
+      need not hold it. The section falls back to "show it if there is something
+      to show" rather than opening the page on a 403.
+    */
+    it("asks nothing of the tenant when the role may not read it", async () => {
+      mockedProducts.negativeStock.mockResolvedValue(
+        negativePage([negativeRow()]),
+      );
+
+      renderWithAuth(<InventoryHub />, {
+        isSuperAdmin: false,
+        permissions: [{ feature: "products", actions: ["read"] }],
+      });
+
+      expect(await screen.findByText("Stok minus")).toBeInTheDocument();
+      expect(mockedTenant.me).not.toHaveBeenCalled();
+    });
   });
 
   it("keeps one list standing when the other fails", async () => {

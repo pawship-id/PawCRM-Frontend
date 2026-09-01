@@ -465,6 +465,21 @@ describe("InvoiceDetail", () => {
     expect(await screen.findByText("Otomatis dari kasir")).toBeInTheDocument();
   });
 
+  /*
+    THE WAY BACK BELONGS TO THE DEAD END, not to the working page. A loaded
+    invoice already has the breadcrumb above it; a second "Semua faktur
+    penjualan" at the foot was a duplicate of a control that never left the
+    screen. It stays in the not-found state below, which has nothing else on it.
+  */
+  it("carries no back link on an invoice that loaded", async () => {
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await screen.findByText("Otomatis dari kasir");
+    expect(
+      screen.queryByRole("link", { name: /Semua faktur penjualan/ }),
+    ).not.toBeInTheDocument();
+  });
+
   it("offers a way back rather than a retry when the id does not resolve", async () => {
     asMock(customerInvoiceService.getById).mockRejectedValue(
       new ApiError("Invoice not found", 404),
@@ -822,6 +837,198 @@ const paidDetail = (payments: CustomerInvoicePayment[] = [paymentRow()]) =>
     outstandingAmount: "200000.0000",
     payments,
   });
+
+/**
+ * A WALK-IN'S FAKTUR — the shape every cash till sale now produces.
+ *
+ * Since a paid sale raises an invoice too, most rows on this list have nobody
+ * attached: somebody bought a bag of feed and left. Two nulls that mean opposite
+ * things meet here, and the ID is what tells them apart — a name that is missing
+ * because there was never a customer, and one missing because somebody deleted
+ * the customer, whose debt still stands.
+ */
+/**
+ * A TILL-BORN FAKTUR READS LIKE A HAND-RAISED ONE.
+ *
+ * The document stores no lines and no settlement of its own; the detail read
+ * joins both from the sale. What this pins is the WIRING — that the joined data
+ * reaches the same table and that the till's money gets its own card rather than
+ * a row in the collection history, where it would carry a Batalkan button over
+ * an entry that does not exist.
+ */
+describe("InvoiceDetail — a sale joined from the till", () => {
+  const withSale = (overrides = {}) =>
+    detail({
+      posTransactionId: "pos-1",
+      source: "pos_bridge",
+      status: "paid",
+      paidAmount: "190000.0000",
+      outstandingAmount: "0.0000",
+      total: "190000.0000",
+      payments: [],
+      items: [
+        {
+          kind: "product",
+          refId: "p1",
+          name: "Kalung Nylon",
+          sku: "KLG",
+          qty: "2.0000",
+          unitPrice: "100000.0000",
+          discount: null,
+          lineTotal: "200000.0000",
+          hppAtTime: null,
+          dpp: null,
+          tax: null,
+          bookingId: null,
+          petId: null,
+          petName: null,
+          groomerName: null,
+        },
+      ],
+      totals: {
+        subtotal: "200000.0000",
+        itemDiscount: "0.0000",
+        invoiceDiscount: "20000.0000",
+        dpp: "190000.0000",
+        tax: "0.0000",
+        grandTotal: "190000.0000",
+        otherCharges: "10000.0000",
+      },
+      otherCharges: [{ label: "Ongkos kirim", amount: "10000.0000" }],
+      posSettlement: {
+        transactionNumber: "TRX-2026-0007",
+        paidAt: "2026-09-01T03:00:00.000Z",
+        payments: [
+          {
+            channelId: "ch1",
+            channelName: "Kas Laci",
+            channelType: "cash",
+            amount: "200000.0000",
+            change: "10000.0000",
+            reference: null,
+          },
+        ],
+        credit: "0.0000",
+      },
+      ...overrides,
+    });
+
+  it("shows the basket's lines instead of pointing at another screen", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(withSale());
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findByText("Kalung Nylon")).toBeInTheDocument();
+    expect(
+      screen.queryByText(/barisnya tercatat di transaksi kasirnya/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("gives the counter's money its own card, with the transaction it settled", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(withSale());
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findByText("Pembayaran di kasir")).toBeInTheDocument();
+    expect(screen.getByText(/TRX-2026-0007/)).toBeInTheDocument();
+  });
+
+  /*
+    "Belum ada pembayaran untuk faktur ini" under a card that has just shown the
+    money arriving is a contradiction — and on a settled cash sale there is
+    nothing left to collect.
+  */
+  it("drops the collection history on a settled cash sale", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(withSale());
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await screen.findByText("Pembayaran di kasir");
+    expect(
+      screen.queryByText(/belum ada pembayaran untuk faktur ini/i),
+    ).not.toBeInTheDocument();
+  });
+
+  /*
+    BUT KEEPS IT ON A CREDIT SALE, where instalments against the remainder are
+    exactly what that list is for.
+  */
+  it("keeps the collection history on a sale part-paid at the counter", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      withSale({
+        status: "unpaid",
+        paidAmount: "0.0000",
+        total: "90000.0000",
+        outstandingAmount: "90000.0000",
+        posSettlement: {
+          transactionNumber: "TRX-2026-0008",
+          paidAt: "2026-09-01T03:00:00.000Z",
+          payments: [],
+          credit: "90000.0000",
+        },
+      }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(
+      await screen.findByText(/belum ada pembayaran untuk faktur ini/i),
+    ).toBeInTheDocument();
+  });
+
+  /*
+    ONE RECAP, NOT TWO. The table lays out the full breakdown including the rows
+    the invoice shape has no field for; the block underneath would repeat a
+    shorter version that disagrees about what the customer paid.
+  */
+  it("does not print a second breakdown underneath the table", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(withSale());
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await screen.findByText("Kalung Nylon");
+    expect(screen.queryByText("Dasar pengenaan pajak")).not.toBeInTheDocument();
+  });
+});
+
+describe("a faktur with no customer", () => {
+  it("names a walk-in rather than accusing the shop of losing a record", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      detail({
+        customerId: null,
+        customerName: null,
+        status: "paid",
+        paidAmount: "300000.0000",
+        outstandingAmount: "0.0000",
+      }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findAllByText("Pelanggan umum")).not.toHaveLength(0);
+    expect(screen.queryByText("Pelanggan terhapus")).not.toBeInTheDocument();
+  });
+
+  it("still says terhapus when there WAS a customer and the name is gone", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      detail({ customerId: CUSTOMER_ID, customerName: null }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findAllByText("Pelanggan terhapus")).not.toHaveLength(0);
+  });
+
+  it("lists a walk-in on the receivables table by the same rule", async () => {
+    asMock(customerInvoiceService.list).mockResolvedValue(
+      page([listRow({ customerId: null, customerName: null })]) as never,
+    );
+
+    renderWithAuth(<ReceivablesScreen />);
+
+    expect(await screen.findByText("Pelanggan umum")).toBeInTheDocument();
+  });
+});
 
 describe("InvoiceDetail — membatalkan pembayaran", () => {
   beforeEach(() => {

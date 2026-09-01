@@ -24,12 +24,6 @@ import type { PosCatalogItem } from "@/types/api";
  * price would be. Tapping it opens this instead of adding anything — a parent
  * added to a basket is a line nobody can pick off a shelf.
  *
- * IT ASKS THE PRODUCTS ENDPOINT, not the till's catalogue, because the catalogue
- * flattens products and services into a grid of sellable tiles and deliberately
- * has no parent filter. `listVariants` is unpaginated, which is right here: a
- * parent with more variants than fit in a dialog is rare, and paging inside a
- * picker opened from a picker is worse than scrolling.
- *
  * IT ASKS THE TILL'S CATALOGUE, and that is what lets it show stock.
  *
  * The first version called the products endpoint, which does not know the
@@ -221,12 +215,16 @@ export function PosVariantDialog({
                       not yet updated, and would silently undo it.
                     */
                     /*
-                      An empty shelf disables the button here for the same reason
-                      it does on a tile: a cashier looking for a size needs to see
-                      that the shop stocks it and has run out, not that it does
-                      not exist.
+                      AN EMPTY SHELF IS STILL LISTED, for the same reason it is on
+                      a tile: a cashier looking for a size needs to see that the
+                      shop stocks it and has run out, not that it does not exist.
+
+                      THE SERVER'S CALL, not the badge's — see PosProductCard.
+                      An empty shelf still sells wherever the shop allows the
+                      balance to go negative, which is the default; absent means
+                      sellable, for an older server.
                     */
-                    disabled={busy || variant.stock?.state === "out"}
+                    disabled={busy || variant.sellable === false}
                     /*
                       NAMED BY ITS ROW. Every button here reads "Tambah", so
                       without this a screen reader announces the same word once

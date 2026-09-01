@@ -351,12 +351,12 @@ export function PosScreen() {
       await posService.updateCart(cart.cart._id, { status: "held" });
       cart.clear();
       await loadHeld();
-      setNotice("Keranjang dititipkan.");
+      setNotice("Keranjang disimpan.");
     } catch (err) {
       setNotice(
         err instanceof ApiError
-          ? (err.reason ?? "Keranjang gagal dititipkan.")
-          : "Keranjang gagal dititipkan.",
+          ? (err.reason ?? "Keranjang gagal disimpan.")
+          : "Keranjang gagal disimpan.",
       );
     }
   }
@@ -394,7 +394,7 @@ export function PosScreen() {
    */
   const resumeBlockedReason =
     (cart.cart?.items?.length ?? 0) > 0
-      ? "Titipkan atau selesaikan dulu keranjang yang sedang dibuka."
+      ? "Simpan atau selesaikan dulu keranjang yang sedang dibuka."
       : null;
 
   /**

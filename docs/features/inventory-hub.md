@@ -1,22 +1,53 @@
 # Inventory Hub
 
-The module's landing screen, at `/dashboard/inventory`. Two alert lists and a card per
+The module's landing screen, at `/dashboard/inventory`. Three alert lists and a card per
 screen — nothing else.
 
-Backed by `GET /products/low-stock` and `GET /product-batches/expiring`. It was a prototype
-over the in-memory `demoStore` until this change; it is the last inventory screen to leave
-it.
+Backed by `GET /products/negative-stock`, `GET /products/low-stock` and
+`GET /product-batches/expiring`. It was a prototype over the in-memory `demoStore` until
+this change; it is the last inventory screen to leave it.
 
 ---
 
-## The two questions
+## The three questions
 
-A shop owner opening this page is asking one of exactly two things — **what do I need to
-reorder** and **what is about to go bad** — and both are answers you act on the same day.
-Everything else (stock value, movement history, the full lot list) is a click away on the
-stock card and the batch report, where there is room to read it properly.
+A shop owner opening this page is asking one of three things — **what is the book wrong
+about**, **what do I need to reorder** and **what is about to go bad** — and all three are
+answers you act on the same day. Everything else (stock value, movement history, the full
+lot list) is a click away on the stock card and the batch report, where there is room to
+read it properly.
 
 The lists are therefore **chosen, not exhaustive**: five rows each, most urgent first.
+
+## Stok minus leads, and it is a different kind of list
+
+The other two describe the ROOM: how much is there, what is running out. **Stok minus
+describes the books being wrong** — goods left that the system never recorded arriving — so
+every figure derived from that balance, the stock value on a report included, is wrong along
+with it. Nothing below it can be trusted until it is cleared, which is why it takes the top
+of the page at full width.
+
+It is the price of letting a till oversell. `settings.allowNegativeStock` is **true by
+default**, so a cashier sells an empty shelf and the balance goes negative rather than the
+sale being refused — the honest trade, but only while somebody can SEE what it produced.
+
+**When the section is on screen:**
+
+| Setting | Rows below zero | Shown? |
+| --- | --- | --- |
+| allows overselling | none | **yes**, with its empty state — a setting that produces discrepancies silently needs a place that says "none right now", or nobody learns the place exists until the day it matters |
+| allows overselling | some | yes |
+| refuses | some | **yes** — turning the setting off does not restate history, and a shop that has just tightened the rule is the one that still has holes to fill |
+| refuses | none | no — it cannot produce a new one, so an empty card would be a permanent reassurance about something that cannot happen |
+
+The setting is read through `useTenant(can("tenants", "read"))`. `tenants:read` is a
+different grant from `products:read` and a storekeeper need not hold it; unknown falls back
+to "show it if there is something to show", which is the honest answer without the setting
+in hand.
+
+Five rows and a count, like the others — and **"Lihat semua stok minus"** goes to
+`/dashboard/inventory/negative-stock`, the full paged list. A shop clearing a backlog works
+down a list, and guessing at the rest is not something a landing page should ask.
 
 ## Both lists are the server's answer
 
@@ -86,8 +117,9 @@ the hub is where the second one is answered.
 
 ```
 features/inventory/hooks/
-  useLowStockAlert.ts     GET /products/low-stock, limit 5
-  useExpiringAlert.ts     GET /product-batches/expiring, limit 5, 30 days
+  useNegativeStockAlert.ts  GET /products/negative-stock, limit 5
+  useLowStockAlert.ts       GET /products/low-stock, limit 5
+  useExpiringAlert.ts       GET /product-batches/expiring, limit 5, 30 days
 features/inventory/components/InventoryHub.tsx
 ```
 
@@ -96,10 +128,12 @@ section costs no request.
 
 ## Tests
 
-`InventoryScreens.test.tsx` (7) — the badge being the server's total rather than the rows
+`InventoryScreens.test.tsx` (15) — the badge being the server's total rather than the rows
 on screen, the remainder line, the request shape (five rows, thirty days), the action cards
 a role may open, a section that is not requested without its grant, and one list surviving
-the other's failure.
+the other's failure. Plus the negative-stock section: the shelf it names, the whole-hole
+total rather than the page's, the explanation and its opname link, the link to the full
+list, and all four rows of the visibility table above.
 
 ## Note on `demoStore`
 

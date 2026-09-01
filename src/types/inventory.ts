@@ -1962,3 +1962,54 @@ export interface StockEntryInput {
     notes?: string;
   }>;
 }
+
+
+/**
+ * ONE SHELF THAT OWES WHAT IT HAS ALREADY SOLD — a row of
+ * `GET /products/negative-stock`.
+ *
+ * ONE PRODUCT AT ONE WAREHOUSE, which is the grain the low-stock list does NOT
+ * have. A restock threshold is a property of the product, so that list sums
+ * across locations; a shortfall is a discrepancy at a PLACE, and "you are three
+ * short somewhere" is not something anybody can act on.
+ *
+ * EVERY NUMBER IS A DECIMAL STRING and nothing here parses them — the same rule
+ * the rest of this file follows.
+ */
+export interface NegativeStockRow {
+  productId: string;
+  warehouseId: string;
+  /** Null only if the warehouse row has gone missing — the shortfall still shows. */
+  warehouseName: string | null;
+  sku: string | null;
+  name: string;
+  unit: string | null;
+  /** A discontinued product at −3 is still somebody's to explain. */
+  isActive: boolean;
+  /** Negative, always: that is what puts the row on this list. */
+  qty: string | null;
+  /** What the goods were last costed at. Unchanged by selling into the negative. */
+  hppAvg: string | null;
+  /**
+   * `qty × hppAvg`, and NEGATIVE on purpose. The shop has expensed cost for
+   * goods it does not hold, so the sign is the meaning — a magnitude somebody
+   * has to remember to read as a debt is how a report gets misread.
+   */
+  value: string | null;
+}
+
+/** `GET /products/negative-stock`. */
+export interface NegativeStockResult {
+  items: NegativeStockRow[];
+  /**
+   * The WHOLE hole across every shelf in scope, not the page's worth of it.
+   * Negative, like every `value` above.
+   */
+  shortfall: string | null;
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}

@@ -7,6 +7,104 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Faktur dari kasir menampilkan rincian barang dan pembayarannya
+
+Halaman `/dashboard/sales/:id` untuk faktur dari kasir tidak lagi berkata
+"barisnya tercatat di transaksi kasirnya". Rinciannya **di-join dari transaksi
+kasir saat dibaca** — dokumennya tetap tidak menyimpan salinan, karena dua
+catatan atas satu keranjang bebas berbeda pendapat — lalu dirender oleh tabel
+yang sama dengan faktur manual.
+
+**Tiga hal ikut, dan masing-masing berdiri sendiri.** Biaya lain (ongkir) tidak
+punya field di bentuk faktur dan tidak bisa dibuang: tanpa itu totalnya tidak
+sama dengan penjumlahan baris di atasnya — ditampilkan **per item**, bukan satu
+gelondong "biaya lain". Pembayarannya masuk kartu sendiri, **"Pembayaran di
+kasir"**, read-only. Dan alokasi DPP/PPN per baris dibiarkan kosong: pembagiannya
+dihitung untuk semua baris sekaligus, jadi satu baris tidak bisa menghitung
+jatahnya sendiri.
+
+**Kenapa pembayarannya tidak digabung ke "Riwayat pembayaran".** Daftar itu
+berarti "uang yang ditagihkan atas utang ini, masing-masing punya jurnal yang
+bisa dibalik", dan tiap barisnya punya tombol Batalkan. Pembayaran di kasir
+diposting **di dalam satu jurnal penjualan** — tidak ada jurnal per baris untuk
+dibalik, dan baris seperti itu juga akan membuat setiap penjualan tunai tidak
+bisa di-void. Kartunya menyebut jalan yang benar: Void atau Retur di kasir.
+
+Untuk penjualan yang dibayar sebagian di kasir, rekapnya menutup dengan **Total
+belanja → Dibayar di kasir → Sisa jadi piutang**, karena total fakturnya adalah
+angka terakhir itu.
+
+---
+
+## [Unreleased] — Penjualan kasir yang lunas ikut masuk Faktur Penjualan
+
+Keputusan Owner. Sebelumnya hanya penjualan **Piutang** yang memunculkan faktur;
+sekarang setiap penjualan kasir memunculkannya — dan harganya sudah disebut di
+muka: tiap transaksi ritel memakai satu nomor faktur, dan daftar Faktur Penjualan
+jadi didominasi baris yang tidak akan pernah ditagih. Yang didapat: satu daftar
+yang memuat seluruh penjualan toko.
+
+**Dua dokumen berbagi satu daftar**, dan bedanya menentukan arti setiap angkanya.
+Faktur dari penjualan piutang mencatat **utang** — totalnya adalah yang masuk
+piutang, bukan seluruh belanja. Faktur dari penjualan lunas mencatat
+**kwitansi** — totalnya seluruh belanja, lahir langsung berstatus Lunas, dan
+jatuh temponya hari itu juga (kalau dikarang "+30 hari", penjualan yang sudah
+dibayar akan muncul di setiap laporan jatuh tempo).
+
+**Dua "kosong" yang artinya berlawanan**, dibedakan lewat ID-nya, bukan lewat
+namanya: tanpa `customerId` sama sekali berarti pembeli umum — ditulis
+**"Pelanggan umum"**, karena "Pelanggan terhapus" di situ menuduh toko kehilangan
+catatan yang memang tidak pernah ada; sedangkan ID yang namanya tidak ketemu
+berarti pelanggan yang dihapus, dan utangnya tetap berdiri.
+
+**Riwayat pembayarannya kosong pada faktur lunas.** Uangnya diterima di kasir,
+barisnya ada di transaksi kasir, dan semuanya diposting di dalam satu jurnal
+penjualan — jadi tidak ada jurnal per cicilan untuk digantungi baris pembayaran.
+
+---
+
+## [Unreleased] — Stok minus punya halamannya sendiri
+
+`/dashboard/inventory/negative-stock` — semua baris `(produk, gudang)` yang
+saldonya di bawah nol, terburuk dulu berdasarkan **nilainya**, dengan paging dan
+filter gudang.
+
+**Kenapa perlu halaman sendiri.** Kartu di hub menjawab "ada yang salah nggak";
+ini menjawab "yang mana, persisnya". Toko yang sedang membereskan tunggakan
+bekerja menyusuri daftar, dan daftar yang berhenti di lima baris adalah daftar
+yang sisanya harus ditebak.
+
+**Layar ini bicara soal PEMBUKUAN, bukan soal rak** — dan itu yang membedakannya
+dari daftar stok lain. Barang keluar padahal penerimaannya tidak pernah tercatat,
+jadi setiap angka yang dihitung dari saldo itu — termasuk nilai persediaan di
+laporan — ikut salah. Karena itu daftar kosong di sini dibingkai sebagai kabar
+**baik** ("catatan dan barang di rak sedang cocok"), bukan sebagai "belum ada
+data".
+
+**Nilainya membawa tandanya.** `qty × hppAvg`, negatif: itu biaya yang sudah
+terlanjur dibebankan untuk barang yang tidak ada. HPP-nya sendiri tidak berubah
+oleh penjualan minus — barang keluar *pada* rata-rata itu — dan ditampilkan dua
+desimal karena penerimaan berikutnya menimbang saldo minus terhadap angka itu.
+
+**Totalnya adalah seluruh lubang**, bukan jumlah dua puluh baris di layar; dan
+disembunyikan sama sekali kalau tidak ada yang minus, karena "Rp 0" yang berdiri
+permanen adalah angka yang mengajari orang mengabaikan barisnya.
+
+**Satu filter, di atas bar.** Gudang, berlaku saat diklik — ui-rules §8: satu
+field di balik tombol `Filter (1)` adalah tombol yang menyembunyikan satu hal.
+Gudang nonaktif tetap ditawarkan: gudang yang ditutup bulan lalu masih bisa
+memegang saldo minus. Tidak ada pencarian dan tidak ada kontrol urutan — API-nya
+hanya menyaring per gudang, dan urutan "terburuk dulu" adalah satu-satunya urutan
+daftar ini dibaca.
+
+**Tidak masuk sidebar.** Toko yang sehat tidak punya isi di sini, dan baris nav
+permanen untuk layar yang biasanya kosong adalah baris yang orang belajar
+lewati. Jalan masuknya lewat kartu **Stok minus** di hub — yang muncul persis
+saat ada yang perlu dilihat, atau kapan pun toko mengizinkan oversell — lewat
+"Lihat semua stok minus".
+
+---
+
 ## [Unreleased] — Booking bisa ditagih lewat faktur
 
 PCR-034. Form faktur dapat kartu **"Hewan & booking pelanggan ini"**, muncul
