@@ -2010,10 +2010,30 @@ export interface BookingUnbilledSummary {
  *
  * `branchId` is optional — the server falls back to the session's current branch.
  */
+/**
+ * One row of a booking, as the API accepts it — PCR-040.
+ *
+ * `petId` MOVED HERE from beside `customerId`. A booking is a VISIT now, and
+ * each row says whose animal it is for.
+ *
+ * NOTE WHAT IS ABSENT: a price. It is read from the catalogue by the server and
+ * never accepted from a client, because a price a client can set is a discount a
+ * client can grant. `durationMin` IS accepted, and the asymmetry is deliberate:
+ * it is a receptionist recording that this nervous dog takes longer than the
+ * catalogue thinks, which is not the same kind of fact at all.
+ */
+export interface BookingItemInput {
+  petId: string;
+  serviceId: string;
+  groomerUserId?: string | null;
+  /** Omit to follow the catalogue. 1–1440. */
+  durationMin?: number | null;
+  notes?: string | null;
+}
+
 export interface CreateBookingInput {
   customerId: string;
-  petId: string;
-  items: { serviceId: string; groomerUserId?: string | null }[];
+  items: BookingItemInput[];
   scheduledAt: string;
   branchId?: string;
   status?: BookingStatus;
@@ -2029,8 +2049,7 @@ export interface CreateBookingInput {
  */
 export interface UpdateBookingInput {
   customerId?: string;
-  petId?: string;
-  items?: { serviceId: string; groomerUserId?: string | null }[];
+  items?: BookingItemInput[];
   scheduledAt?: string;
   branchId?: string;
   notes?: string | null;

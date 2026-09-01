@@ -1,7 +1,7 @@
 # Booking
 
 `/dashboard/booking` — the day sheet, plus the two things that were missing from it: making
-a booking, and moving one along.
+a booking, and moving one along. `/dashboard/booking/new` is where a booking is taken.
 
 Backend: `/api/bookings`. Feature: `src/features/booking/`.
 The POS side of the same collection is [`booking-bridge.md`](./booking-bridge.md).
@@ -13,8 +13,7 @@ The POS side of the same collection is [`booking-bridge.md`](./booking-bridge.md
 | | |
 | --- | --- |
 | **Built** | The list — filtered by day, status and origin, sorted as a day sheet |
-| **Built** | `BookingCreateDialog` — take a booking for a customer, an animal and one or more services |
-| **Backend only (FR-1)** | A booking may hold **several animals**. The API accepts it; the dialog still asks for one — that is FR-2 |
+| **Built** | `BookingCreateForm` at `/dashboard/booking/new` — a **page**, not a dialog: a customer and **one or more animals**, each with its own service, groomer and duration |
 | **Built** | `BookingStatusActions` — move it along the ladder, or call it off |
 | **Built** | `BookingHistoryDialog` — when it reached each status, and who took it there |
 | **Not built** | A calendar, a groomer roster, capacity, clash detection |
@@ -45,9 +44,24 @@ only knew billed-or-not would report the whole visit as settled.
 list can draw something without loading every row of every booking on the page. Whether a
 particular service may be billed is a question about the ROW, and the server answers it.
 
-**Still one animal in the create dialog.** The API takes `items[].petId` and would accept
-several, but the dialog has not been rebuilt yet — that is FR-2, and it is a rebuild of a
-752-line component the POS bridge also uses, which is why it is its own phase.
+**It is a page, and it used to be a dialog.** ui-rules §9 allows a raw dialog when the body
+needs a form, and the dialog was the right size while a booking was six fields over a
+checklist — keeping the day sheet on screen behind it is genuinely useful while agreeing a
+time on the phone. Multi-pet outgrew it: three animals is three cards of five controls each,
+and a dialog holding that is a form scrolling inside a scrolling page, with the save button
+and the running total sliding out of reach of the fields they describe. A page has room, an
+address somebody can be sent to, and a back button that means the same thing every time.
+
+**The form was rebuilt in FR-2** (`BookingPetRowCard` + `BookingCreateDialog`): a header for
+what the visit shares, a card per animal for what differs. It did NOT turn out to share a
+component with the till's `AddServiceTab` — that tab feeds the cart, and the booking is raised
+server-side — so the rebuild touched nothing the cashier uses.
+
+**"Selesai sekitar" is the longest groomer's workload, never the sum.** Mochi with Sinta for
+90 minutes and Coco with Rio for 60 means the customer waits 90, not 150. Cards sharing a
+groomer ARE summed; one person cannot do two animals at once. This is a PREVIEW of the rule
+`BookingItemRepository#summarise` applies on the server — two implementations of one rule, and
+the stored answer is the server's.
 
 ---
 
@@ -159,3 +173,16 @@ before check-in. A picker that lists a booking's life out of order is one people
 `src/tests/BookingsScreen.test.tsx`, `BookingCreateDialog.test.tsx`,
 `BookingStatusActions.test.tsx`. The backend's half is `booking.service.test.js`,
 `booking.api.test.js` and `booking.model.test.js`.
+
+---
+
+## One rule the form keeps that is easy to lose in a refactor
+
+**Chrome must never be able to fail a save.** The success toast used to sit inside the same
+`try` as the request. A test caught what that costs: the toast library threw, the catch turned
+it into "Terjadi kesalahan. Coba lagi.", and a booking that had ALREADY been written was
+reported as a failure — which sends somebody to make it a second time.
+
+The order is now: write, reset, navigate, *then* announce — and the announcement has a catch
+of its own. A booking that saved and could not announce itself is still a booking that saved,
+and the list it lands on already shows it. `BookingCreateForm.test.tsx` pins it.

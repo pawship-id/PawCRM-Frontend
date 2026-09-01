@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Plus } from "lucide-react";
 
 import { FilterBar, FilterDateRange, FilterSelect, withAll } from "@/components";
@@ -69,19 +70,27 @@ const ORIGINS = withAll<BookingsQuery["origin"]>(
 export function BookingsToolbar({
   query,
   onChange,
-  onCreate,
 }: {
   query: BookingsQuery;
   onChange: (patch: Partial<BookingsQuery>) => void;
-  onCreate: () => void;
 }) {
   return (
     <FilterBar
       actions={
+        /*
+          A LINK, NOT A HANDLER — the form is a page now, so this is an address
+          somebody can bookmark, open in a new tab, or be sent to.
+
+          GATED SEPARATELY FROM THE LIST. `read` is what opens this screen;
+          taking a booking is `create`. The route behind it carries the same
+          gate — a hidden button is a courtesy, never the control.
+        */
         <Can feature="bookings" action="create">
-          <Button type="button" onClick={onCreate}>
-            <Plus className="size-4" />
-            Booking baru
+          <Button asChild>
+            <Link href="/dashboard/booking/new">
+              <Plus className="size-4" />
+              Booking baru
+            </Link>
           </Button>
         </Can>
       }

@@ -1,33 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Plus, UserRound } from "lucide-react";
 
 import {
   Alert,
+  FormActionBar,
   SelectField,
   Spinner,
   TextField,
   TextareaField,
 } from "@/components";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useAuth } from "@/features/auth";
 import { CustomerSearchDialog } from "@/features/customers";
 import { PetQuickAddDialog } from "@/features/pets";
@@ -36,7 +22,10 @@ import { bookingService } from "@/services/booking.service";
 import { petService } from "@/services/pet.service";
 import { serviceService } from "@/services/service.service";
 import { userService } from "@/services/user.service";
+import { swalToast } from "@/lib/swal";
 import { formatMoney, sumDecimals } from "@/utils/decimal";
+import { BookingPetRowCard, UNASSIGNED } from "./BookingPetRowCard";
+import type { PetRowDraft } from "./BookingPetRowCard";
 import type {
   Booking,
   BookingStatus,
@@ -48,21 +37,12 @@ import type {
 /** The API's page cap. Asking for more is a 400, not a bigger page. */
 const FETCH_LIMIT = 100;
 
-/** Mirrors MAX_ITEMS in booking.model.js — the server refuses the twenty-first. */
-const MAX_ITEMS = 20;
+/** Mirrors MAX_ITEMS in booking.model.js — the server refuses the forty-first. */
+const MAX_ITEMS = 40;
 
 /** Mirrors NOTES_MAX_LENGTH in booking.model.js. */
 const NOTES_MAX_LENGTH = 500;
 
-/**
- * The groomer select's "nobody yet" row.
- *
- * A REAL VALUE, not `""`: Radix refuses an empty `SelectItem`, and an empty root
- * value is how "nothing chosen" is spelled — which is not what this means. It is
- * a deliberate answer (FR-3's "Belum ditentukan") and is sent to the API as
- * `null`.
- */
-const UNASSIGNED = "belum-ditentukan";
 
 /**
  * The API field names this form has a box for.
@@ -71,7 +51,7 @@ const UNASSIGNED = "belum-ditentukan";
  * all — goes to the banner instead, because a field error bound to nothing is an
  * error nobody ever sees.
  */
-const PLACEABLE_FIELDS = ["customerId", "petId", "items", "scheduledAt", "notes"];
+const PLACEABLE_FIELDS = ["customerId", "items", "scheduledAt", "notes"];
 
 /**
  * The two states a booking may be CREATED in.
@@ -125,42 +105,66 @@ function toScheduledAt(date: string, time: string): string | null {
 }
 
 /**
- * Makes a booking from the Booking screen.
+ * A fresh card.
+ *
+ * The key is local and never sent — React needs a stable identity, and the row's
+ * own contents cannot supply one: two empty cards look identical, and a card
+ * whose animal changes is still the same card.
+ */
+let rowSeq = 0;
+
+function blankRow(): PetRowDraft {
+  rowSeq += 1;
+
+  return {
+    key: `row-${rowSeq}`,
+    petId: "",
+    serviceId: "",
+    groomerUserId: UNASSIGNED,
+    durationMin: "",
+    notes: "",
+  };
+}
+
+/**
+ * Makes a booking — `/dashboard/booking/new`.
+ *
+ * A PAGE, NOT A DIALOG, AND IT USED TO BE ONE. The dialog was the right size
+ * while a booking was six fields over a checklist: ui-rules §9 allows a raw
+ * dialog when the body needs a form, and keeping the day sheet on screen behind
+ * it is genuinely useful while agreeing a time on the phone.
+ *
+ * MULTI-PET IS WHAT OUTGREW IT. A visit with three animals is three cards of
+ * five controls each, and a dialog holding that is a form scrolling inside a
+ * scrolling page — with the save button and the running total sliding out of
+ * reach of the fields they describe. A page has room, an address somebody can be
+ * sent to, and a back button that means the same thing every time.
  *
  * WHY IT IS NOT THE TILL'S TAB. `AddServiceTab` creates a booking too, but for
  * somebody already standing at the counter: it has a customer handed to it, it
  * schedules for `now`, and it opens `confirmed` because there is nothing left to
  * confirm. A booking taken over the phone for Thursday needs the three things
- * that tab has no reason to ask — WHO, WHEN, and whether it is settled — so it
- * asks them here rather than growing a mode into the cashier's flow.
+ * that tab has no reason to ask — WHO, WHEN, and whether it is settled.
  *
- * A DIALOG, NOT A PAGE. ui-rules §9 allows a raw dialog when the body needs a
- * form, and this one is six fields over a short list. A route of its own would
- * take the day sheet off the screen — which is what somebody consults while
- * agreeing a time on the phone.
+ * ONE BOOKING IS ONE VISIT, AND A VISIT MAY BRING SEVERAL ANIMALS (PCR-041).
+ * Bu Lisa arrives with Mochi and Coco: one form, one booking, one number, one
+ * bill. A header for what the whole visit shares — who, when — and a card per
+ * animal for what differs: its service, its groomer, how long it takes, and
+ * anything special about it today.
  *
- * ONE BOOKING IS ONE PET, as the model requires: a customer with two dogs in on
- * Thursday gets two bookings, made one after the other. `onCreated` fires per
- * booking so the list behind is right either way.
+ * IT DOES NOT SHARE A COMPONENT WITH THE TILL'S `AddServiceTab`, and the plan
+ * expected it would. That tab never called this path: it feeds the CART, which
+ * raises the booking on the server side.
  */
-export function BookingCreateDialog({
-  open,
-  onOpenChange,
-  onCreated,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  /** Handed the created booking — the caller refetches its list from it. */
-  onCreated: (booking: Booking) => void;
-}) {
+export function BookingCreateForm() {
+  const router = useRouter();
   const { session } = useAuth();
 
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [pets, setPets] = useState<Pet[]>([]);
-  const [petId, setPetId] = useState("");
   const [services, setServices] = useState<Service[]>([]);
-  /** serviceId → groomer, in the order they were ticked. */
-  const [ticked, setTicked] = useState<Map<string, string>>(new Map());
+  /** One card per animal-and-service. The order they were added is kept. */
+  const [rows, setRows] = useState<PetRowDraft[]>([blankRow()]);
   const [groomers, setGroomers] = useState<{ value: string; label: string }[]>(
     [],
   );
@@ -184,8 +188,6 @@ export function BookingCreateDialog({
   /* The catalogue, once the dialog is open. Only what is still offered — a
      retired service is not something to promise on Thursday. */
   useEffect(() => {
-    if (!open) return;
-
     let active = true;
 
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -208,7 +210,7 @@ export function BookingCreateDialog({
     return () => {
       active = false;
     };
-  }, [open]);
+  }, []);
 
   /*
     The staff who might do the work — BEST EFFORT, and silent when it fails.
@@ -220,8 +222,6 @@ export function BookingCreateDialog({
     yet is the ordinary case anyway. So the selects simply do not appear.
   */
   useEffect(() => {
-    if (!open) return;
-
     let active = true;
 
     userService
@@ -242,13 +242,13 @@ export function BookingCreateDialog({
     return () => {
       active = false;
     };
-  }, [open]);
+  }, []);
 
   /* This customer's animals. Re-asked after a quick-add rather than spliced —
      the list is server-ordered, and a local insert would be a second ordering
      rule to keep in step. */
   useEffect(() => {
-    if (!open || !customer) {
+    if (!customer) {
       return;
     }
 
@@ -262,8 +262,20 @@ export function BookingCreateDialog({
       .then((result) => {
         if (!active) return;
         setPets(result.items);
-        // One pet is the overwhelming case; pre-selecting it removes a click.
-        if (result.items.length === 1) setPetId(result.items[0]._id);
+
+        /*
+          ONE PET IS STILL THE OVERWHELMING CASE, so the first empty card is
+          filled in for them. Only the FIRST and only while it is untouched:
+          writing an animal into a card somebody has already chosen for would
+          overwrite a decision.
+        */
+        if (result.items.length === 1) {
+          setRows((prev) =>
+            prev.length === 1 && prev[0].petId === ""
+              ? [{ ...prev[0], petId: result.items[0]._id }]
+              : prev,
+          );
+        }
       })
       .catch(() => {
         if (!active) return;
@@ -277,13 +289,12 @@ export function BookingCreateDialog({
     return () => {
       active = false;
     };
-  }, [open, customer, petsNonce]);
+  }, [customer, petsNonce]);
 
   function reset() {
     setCustomer(null);
     setPets([]);
-    setPetId("");
-    setTicked(new Map());
+    setRows([blankRow()]);
     setDate(todayValue());
     setTime(nextHalfHourValue());
     setStatus("confirmed");
@@ -293,37 +304,50 @@ export function BookingCreateDialog({
     setFieldErrors({});
   }
 
-  function handleOpenChange(next: boolean) {
-    // Never close mid-write: nobody would be told whether the booking was made.
+  /**
+   * Leaves without saving.
+   *
+   * REFUSED MID-WRITE, the same rule the dialog kept: navigating away while the
+   * request is in flight leaves nobody told whether the booking was made.
+   */
+  function cancel() {
     if (saving) return;
-    if (!next) reset();
-    onOpenChange(next);
+    reset();
+    router.push("/dashboard/booking");
   }
 
-  /** A different owner invalidates the animal AND its services' prices. */
+  /**
+   * A different owner invalidates every animal on the form (PRD 2.2).
+   *
+   * THE CARDS ARE EMPTIED, not kept. Their animals belong to the previous
+   * customer, and the server would refuse them one at a time — "Bella does not
+   * belong to Ibu Rina" — which is a correct answer to a question nobody meant
+   * to ask. The services and the times survive; only the animals were the other
+   * person's.
+   */
   function chooseCustomer(next: Customer) {
     setCustomer(next);
     setPets([]);
-    setPetId("");
+    setRows((prev) => prev.map((row) => ({ ...row, petId: "" })));
     setFieldErrors({});
   }
 
-  function toggleService(serviceId: string) {
-    setTicked((prev) => {
-      const next = new Map(prev);
-      if (next.has(serviceId)) next.delete(serviceId);
-      else next.set(serviceId, UNASSIGNED);
-      return next;
-    });
+  function updateRow(key: string, patch: Partial<PetRowDraft>) {
+    setRows((prev) =>
+      prev.map((row) => (row.key === key ? { ...row, ...patch } : row)),
+    );
     setFieldErrors({});
   }
 
-  function assignGroomer(serviceId: string, groomerId: string) {
-    setTicked((prev) => {
-      const next = new Map(prev);
-      next.set(serviceId, groomerId);
-      return next;
-    });
+  function addRow() {
+    setRows((prev) => [...prev, blankRow()]);
+    setFieldErrors({});
+  }
+
+  function removeRow(key: string) {
+    // Never the last one: a visit with no animals is not a visit (PRD 2.10).
+    setRows((prev) => (prev.length === 1 ? prev : prev.filter((r) => r.key !== key)));
+    setFieldErrors({});
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -343,20 +367,62 @@ export function BookingCreateDialog({
     try {
       const booking = await bookingService.create({
         customerId: customer._id,
-        petId,
-        items: [...ticked].map(([serviceId, groomerUserId]) => ({
-          serviceId,
+        items: rows.map((row) => ({
+          petId: row.petId,
+          serviceId: row.serviceId,
           // FR-3's "Belum ditentukan" is a real state, not a gap.
-          groomerUserId: groomerUserId === UNASSIGNED ? null : groomerUserId,
+          groomerUserId:
+            row.groomerUserId === UNASSIGNED ? null : row.groomerUserId,
+          /*
+            OMITTED WHEN NOBODY TYPED ONE, rather than sent as the catalogue's
+            number. The server snapshots from the catalogue itself, so sending
+            nothing keeps the appointment following a duration the shop may
+            still correct before Thursday.
+          */
+          durationMin:
+            row.durationMin.trim() === ""
+              ? undefined
+              : Number(row.durationMin),
+          notes: row.notes.trim() === "" ? null : row.notes.trim(),
         })),
         scheduledAt,
         status,
         notes: notes.trim() === "" ? null : notes.trim(),
       });
 
-      onCreated(booking);
+      /*
+        BACK TO THE LIST, AND THE LIST RE-ASKS THE SERVER — `router.refresh()`
+        rather than a row spliced in locally. The server sorts by `scheduledAt`
+        and pages the result, so a booking made for next month belongs on a page
+        the list is not showing; putting it at the top would be a lie about where
+        it will be after the next reload.
+      */
       reset();
-      onOpenChange(false);
+      router.push("/dashboard/booking");
+      router.refresh();
+
+      /*
+        THE TOAST GOES LAST, AND OUTSIDE ANYTHING THAT CAN FAIL THE SAVE.
+
+        It used to sit above these three lines, inside the same `try`. A test
+        caught what that costs: the toast library threw, the catch below turned
+        it into "Terjadi kesalahan. Coba lagi.", and the booking that had ALREADY
+        BEEN WRITTEN was reported as a failure — sending somebody to make it a
+        second time.
+
+        Chrome must never be able to fail a save. Its own failure is swallowed
+        here for the same reason: a booking that saved and could not announce
+        itself is still a booking that saved.
+      */
+      try {
+        swalToast(
+          booking.bookingNumber
+            ? `Booking ${booking.bookingNumber} dibuat.`
+            : "Booking dibuat sebagai draf.",
+        );
+      } catch {
+        /* The list behind already shows it. */
+      }
     } catch (error) {
       if (error instanceof ApiError) {
         /*
@@ -383,11 +449,84 @@ export function BookingCreateDialog({
     }
   }
 
+  const serviceOf = (serviceId: string) =>
+    services.find((service) => service._id === serviceId) ?? null;
+
+  /*
+    Summed as decimal STRINGS — this is a quote somebody will be charged, and
+    `0.1 + 0.2` is why utils/decimal exists.
+  */
   const total = sumDecimals(
-    services
-      .filter((service) => ticked.has(service._id))
-      .map((service) => service.price),
+    rows
+      .map((row) => serviceOf(row.serviceId)?.price)
+      .filter((price): price is string => Boolean(price)),
   );
+
+  /**
+   * WHICH CARDS REPEAT AN ANIMAL AND A SERVICE ALREADY ON THE BOOKING.
+   *
+   * The FIRST occurrence is left alone and every later one is flagged, so the
+   * message lands on the card somebody just added rather than on the one they
+   * filled in five minutes ago (PRD 2.7).
+   */
+  const duplicateKeys = new Set<string>();
+  const seenPairs = new Set<string>();
+
+  rows.forEach((row) => {
+    if (!row.petId || !row.serviceId) return;
+
+    const pair = `${row.petId}|${row.serviceId}`;
+
+    if (seenPairs.has(pair)) duplicateKeys.add(row.key);
+    else seenPairs.add(pair);
+  });
+
+  /**
+   * WHEN THE CUSTOMER GETS THEIR ANIMALS BACK — the longest groomer's workload,
+   * never the sum (PRD 2.9).
+   *
+   * Two groomers work at the same time: Mochi with Sinta for 90 minutes and Coco
+   * with Rio for 60 means the visit takes 90, not 150. Cards sharing a groomer
+   * ARE summed, because one person cannot do two animals at once, and cards with
+   * nobody assigned are grouped together — which over-estimates rather than
+   * under-, and promising an earlier finish than the shop can manage is the
+   * mistake that sends somebody home late.
+   *
+   * The same rule the server applies in `BookingItemRepository#summarise`. Two
+   * implementations of one rule is a thing to watch: this one is a preview and
+   * the stored answer is the server's.
+   */
+  const perGroomer = new Map<string, number>();
+
+  rows.forEach((row) => {
+    const typed = Number(row.durationMin);
+    const minutes =
+      row.durationMin.trim() !== "" && Number.isFinite(typed) && typed > 0
+        ? typed
+        : (serviceOf(row.serviceId)?.durationMin ?? 0);
+
+    if (minutes <= 0) return;
+
+    const key = row.groomerUserId;
+    perGroomer.set(key, (perGroomer.get(key) ?? 0) + minutes);
+  });
+
+  const longest = Math.max(0, ...perGroomer.values());
+
+  /** Distinct animals — the same number the server stores as `petCount`. */
+  const petCount = new Set(
+    rows.map((row) => row.petId).filter((petId) => petId !== ""),
+  ).size;
+
+  const finishesAt =
+    longest > 0 && date !== "" && time !== ""
+      ? (() => {
+          const at = new Date(`${date}T${time}`);
+          if (Number.isNaN(at.getTime())) return null;
+          at.setMinutes(at.getMinutes() + longest);
+          return `${String(at.getHours()).padStart(2, "0")}.${String(at.getMinutes()).padStart(2, "0")}`;
+        })()
+      : null;
 
   /*
     WHAT IS STILL MISSING, in the order the form asks for it — so the disabled
@@ -396,34 +535,47 @@ export function BookingCreateDialog({
     booking to the session's branch, and a user who reaches every branch signs in
     pointed at none of them.
   */
+  const incomplete = rows.find((row) => !row.petId || !row.serviceId);
+
   const blockedReason = !session?.currentBranchId
     ? "Pilih cabang dulu lewat menu cabang di atas."
     : !customer
       ? "Pelanggan belum dipilih."
-      : petId === ""
-        ? "Hewan belum dipilih."
-        : ticked.size === 0
-          ? "Belum ada layanan yang dipilih."
+      : incomplete
+        ? "Setiap hewan harus punya layanan."
+        : duplicateKeys.size > 0
+          ? "Ada hewan dengan layanan yang sama dua kali."
           : date === "" || time === ""
             ? "Tanggal dan jamnya belum lengkap."
             : null;
 
   return (
     <>
-      <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="sm:max-w-xl">
-          <form
-            onSubmit={handleSubmit}
-            noValidate
-            className="flex max-h-[80vh] flex-col gap-4 overflow-y-auto"
-          >
-            <DialogHeader>
-              <DialogTitle>Booking baru</DialogTitle>
-              <DialogDescription>
-                Satu hewan, satu jadwal. Pelanggan dengan dua hewan di hari yang
-                sama dibuatkan dua booking.
-              </DialogDescription>
-            </DialogHeader>
+      <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
+        {/*
+          THE BAR CARRIES THE TOTAL AND THE FINISH TIME as its `meta`, which is
+          where read-only identity belongs (§16). In the dialog they sat in the
+          footer beside the buttons and scrolled away from the cards they
+          describe; here they stay with the action they qualify.
+        */}
+        <FormActionBar
+          title="Booking baru"
+          meta={
+            <span className="flex flex-wrap gap-x-4 tabular-nums">
+              <span>Total {formatMoney(total)}</span>
+              {finishesAt && <span>Selesai sekitar {finishesAt}</span>}
+              <span>
+                {rows.length} baris
+                {petCount > 1 ? ` · ${petCount} hewan` : ""}
+              </span>
+            </span>
+          }
+          submitLabel="Simpan booking"
+          submitting={saving}
+          disabled={blockedReason !== null}
+          blockedReason={blockedReason}
+          onCancel={cancel}
+        />
 
             {loadError && <Alert variant="error">{loadError}</Alert>}
             {formError && <Alert variant="error">{formError}</Alert>}
@@ -514,74 +666,47 @@ export function BookingCreateDialog({
               )}
             </div>
 
+            {/*
+              THE ANIMALS ON THIS VISIT — one card each (FR-2).
+
+              This replaced a single pet picker over a checklist of services. The
+              old shape could only say "one animal, several services"; Bu Lisa
+              arriving with Mochi and Coco needed two whole bookings, typed one
+              after the other.
+            */}
             <div className="flex flex-col gap-2">
-              <Label>
-                Hewan<span className="text-danger"> *</span>
-              </Label>
+              <div className="flex items-center justify-between gap-3">
+                <Label>
+                  Hewan dalam booking ini<span className="text-danger"> *</span>
+                </Label>
+                <span className="text-xs tabular-nums text-muted">
+                  {rows.length} baris
+                </span>
+              </div>
 
               {!customer ? (
                 <p className="text-sm text-muted">
                   Pilih pelanggannya dulu — daftar hewan mengikuti pemiliknya.
                 </p>
-              ) : loadingPets ? (
+              ) : loadingPets || loadingServices ? (
                 <div className="flex items-center gap-2 text-sm text-muted">
-                  <Spinner /> Memuat hewan…
+                  <Spinner /> Memuat hewan dan layanan…
                 </div>
-              ) : (
-                <>
-                  {pets.length === 0 ? (
-                    <p className="text-sm text-muted">
-                      {customer.name} belum punya hewan terdaftar.
-                    </p>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {pets.map((pet) => (
-                        <Button
-                          key={pet._id}
-                          type="button"
-                          size="sm"
-                          variant={petId === pet._id ? "default" : "secondary"}
-                          aria-pressed={petId === pet._id}
-                          disabled={saving}
-                          onClick={() => {
-                            setPetId(pet._id);
-                            setFieldErrors({});
-                          }}
-                        >
-                          {pet.name}
-                        </Button>
-                      ))}
-                    </div>
-                  )}
-                  <div>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      disabled={saving}
-                      onClick={() => setAddingPet(true)}
-                    >
-                      <Plus className="size-4" />
-                      Tambah hewan
-                    </Button>
-                  </div>
-                </>
-              )}
-              {fieldErrors.petId && (
-                <p role="alert" className="text-xs font-semibold text-danger">
-                  {fieldErrors.petId}
-                </p>
-              )}
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <Label>
-                Layanan<span className="text-danger"> *</span>
-              </Label>
-
-              {loadingServices ? (
-                <div className="flex items-center gap-2 text-sm text-muted">
-                  <Spinner /> Memuat layanan…
+              ) : pets.length === 0 ? (
+                <div className="flex flex-col items-start gap-2">
+                  <p className="text-sm text-muted">
+                    {customer.name} belum punya hewan terdaftar.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={saving}
+                    onClick={() => setAddingPet(true)}
+                  >
+                    <Plus className="size-4" />
+                    Tambah hewan
+                  </Button>
                 </div>
               ) : services.length === 0 ? (
                 <p className="text-sm text-muted">
@@ -589,77 +714,54 @@ export function BookingCreateDialog({
                   Master Data → Layanan.
                 </p>
               ) : (
-                <ul className="flex max-h-64 flex-col gap-1 overflow-y-auto">
-                  {services.map((service) => {
-                    const chosen = ticked.has(service._id);
-                    /* The server refuses the twenty-first, so the tick that
-                       would be refused never becomes available. */
-                    const full = !chosen && ticked.size >= MAX_ITEMS;
+                <>
+                  <ul className="flex flex-col gap-3">
+                    {rows.map((row, index) => (
+                      <BookingPetRowCard
+                        key={row.key}
+                        row={row}
+                        index={index}
+                        pets={pets}
+                        services={services}
+                        groomers={groomers}
+                        disabled={saving}
+                        removable={rows.length > 1}
+                        duplicate={duplicateKeys.has(row.key)}
+                        onChange={(patch) => updateRow(row.key, patch)}
+                        onRemove={() => removeRow(row.key)}
+                      />
+                    ))}
+                  </ul>
 
-                    return (
-                      <li key={service._id}>
-                        <label className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-surface-hover">
-                          <Checkbox
-                            checked={chosen}
-                            onCheckedChange={() => toggleService(service._id)}
-                            disabled={saving || full}
-                            aria-label={service.name}
-                          />
-                          <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-                            {service.name}
-                          </span>
-                          <span className="shrink-0 text-sm tabular-nums text-muted">
-                            {formatMoney(service.price)}
-                          </span>
-                        </label>
-
-                        {/*
-                          WHO DOES IT, asked only once the service is on the
-                          booking — an unticked row has nobody to assign. The
-                          control sits OUTSIDE the label above, or clicking it
-                          would untick the service it belongs to.
-
-                          40px, not 44: this is a control inside a row, not a
-                          field in the document's header (§16).
-                        */}
-                        {chosen && groomers.length > 0 && (
-                          <div className="mb-1 ml-9 flex items-center gap-2">
-                            <span className="text-sm text-muted">Groomer</span>
-                            <Select
-                              value={ticked.get(service._id) ?? UNASSIGNED}
-                              onValueChange={(value) =>
-                                assignGroomer(service._id, value)
-                              }
-                              disabled={saving}
-                            >
-                              <SelectTrigger
-                                className="w-56"
-                                aria-label={`Groomer untuk ${service.name}`}
-                              >
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value={UNASSIGNED}>
-                                  Belum ditentukan
-                                </SelectItem>
-                                {groomers.map((groomer) => (
-                                  <SelectItem
-                                    key={groomer.value}
-                                    value={groomer.value}
-                                  >
-                                    {groomer.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled={saving || rows.length >= MAX_ITEMS}
+                      onClick={addRow}
+                    >
+                      <Plus className="size-4" />
+                      Tambah hewan
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={saving}
+                      onClick={() => setAddingPet(true)}
+                    >
+                      Daftarkan hewan baru
+                    </Button>
+                  </div>
+                </>
               )}
 
+              {/*
+                The server's own refusals about the rows — a pet that belongs to
+                somebody else, a service that no longer exists — land here,
+                because they are about the list rather than about one card.
+              */}
               {fieldErrors.items && (
                 <p role="alert" className="text-xs font-semibold text-danger">
                   {fieldErrors.items}
@@ -689,39 +791,7 @@ export function BookingCreateDialog({
               disabled={saving}
             />
 
-            <DialogFooter className="items-center">
-              {ticked.size > 0 && (
-                <span className="mr-auto text-sm tabular-nums text-muted">
-                  {/* Summed as decimal STRINGS — this is a quote somebody will
-                      be charged, and `0.1 + 0.2` is why utils/decimal exists. */}
-                  Total {formatMoney(total)}
-                </span>
-              )}
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => handleOpenChange(false)}
-                disabled={saving}
-              >
-                Batal
-              </Button>
-              <Button
-                type="submit"
-                disabled={saving || blockedReason !== null}
-                title={blockedReason ?? undefined}
-              >
-                {saving ? "Menyimpan…" : "Simpan booking"}
-              </Button>
-            </DialogFooter>
-
-            {/* §16's blockedReason, said out loud rather than left to a
-                disabled button nobody can interrogate. */}
-            {blockedReason && (
-              <p className="text-right text-sm text-muted">{blockedReason}</p>
-            )}
-          </form>
-        </DialogContent>
-      </Dialog>
+      </form>
 
       {/*
         ONE DIALOG, NOT TWO — `CustomerSearchDialog` hosts the quick-add itself,
@@ -743,7 +813,22 @@ export function BookingCreateDialog({
           onCreated={(pet) => {
             setAddingPet(false);
             setPetsNonce((n) => n + 1);
-            setPetId(pet._id);
+
+            /*
+              THE NEW ANIMAL GOES INTO THE FIRST EMPTY CARD, or onto one of its
+              own when every card is already spoken for. Somebody who registered
+              a second dog mid-booking meant to add it, and making them pick it
+              from a select they have just been through is a step for nothing.
+            */
+            setRows((prev) => {
+              const empty = prev.findIndex((row) => row.petId === "");
+
+              return empty === -1
+                ? [...prev, { ...blankRow(), petId: pet._id }]
+                : prev.map((row, index) =>
+                    index === empty ? { ...row, petId: pet._id } : row,
+                  );
+            });
           }}
         />
       )}
