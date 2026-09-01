@@ -847,6 +847,150 @@ const paidDetail = (payments: CustomerInvoicePayment[] = [paymentRow()]) =>
  * because there was never a customer, and one missing because somebody deleted
  * the customer, whose debt still stands.
  */
+/**
+ * A TILL-BORN FAKTUR READS LIKE A HAND-RAISED ONE.
+ *
+ * The document stores no lines and no settlement of its own; the detail read
+ * joins both from the sale. What this pins is the WIRING — that the joined data
+ * reaches the same table and that the till's money gets its own card rather than
+ * a row in the collection history, where it would carry a Batalkan button over
+ * an entry that does not exist.
+ */
+describe("InvoiceDetail — a sale joined from the till", () => {
+  const withSale = (overrides = {}) =>
+    detail({
+      posTransactionId: "pos-1",
+      source: "pos_bridge",
+      status: "paid",
+      paidAmount: "190000.0000",
+      outstandingAmount: "0.0000",
+      total: "190000.0000",
+      payments: [],
+      items: [
+        {
+          kind: "product",
+          refId: "p1",
+          name: "Kalung Nylon",
+          sku: "KLG",
+          qty: "2.0000",
+          unitPrice: "100000.0000",
+          discount: null,
+          lineTotal: "200000.0000",
+          hppAtTime: null,
+          dpp: null,
+          tax: null,
+          bookingId: null,
+          petId: null,
+          petName: null,
+          groomerName: null,
+        },
+      ],
+      totals: {
+        subtotal: "200000.0000",
+        itemDiscount: "0.0000",
+        invoiceDiscount: "20000.0000",
+        dpp: "190000.0000",
+        tax: "0.0000",
+        grandTotal: "190000.0000",
+        otherCharges: "10000.0000",
+      },
+      otherCharges: [{ label: "Ongkos kirim", amount: "10000.0000" }],
+      posSettlement: {
+        transactionNumber: "TRX-2026-0007",
+        paidAt: "2026-09-01T03:00:00.000Z",
+        payments: [
+          {
+            channelId: "ch1",
+            channelName: "Kas Laci",
+            channelType: "cash",
+            amount: "200000.0000",
+            change: "10000.0000",
+            reference: null,
+          },
+        ],
+        credit: "0.0000",
+      },
+      ...overrides,
+    });
+
+  it("shows the basket's lines instead of pointing at another screen", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(withSale());
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findByText("Kalung Nylon")).toBeInTheDocument();
+    expect(
+      screen.queryByText(/barisnya tercatat di transaksi kasirnya/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("gives the counter's money its own card, with the transaction it settled", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(withSale());
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findByText("Pembayaran di kasir")).toBeInTheDocument();
+    expect(screen.getByText(/TRX-2026-0007/)).toBeInTheDocument();
+  });
+
+  /*
+    "Belum ada pembayaran untuk faktur ini" under a card that has just shown the
+    money arriving is a contradiction — and on a settled cash sale there is
+    nothing left to collect.
+  */
+  it("drops the collection history on a settled cash sale", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(withSale());
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await screen.findByText("Pembayaran di kasir");
+    expect(
+      screen.queryByText(/belum ada pembayaran untuk faktur ini/i),
+    ).not.toBeInTheDocument();
+  });
+
+  /*
+    BUT KEEPS IT ON A CREDIT SALE, where instalments against the remainder are
+    exactly what that list is for.
+  */
+  it("keeps the collection history on a sale part-paid at the counter", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      withSale({
+        status: "unpaid",
+        paidAmount: "0.0000",
+        total: "90000.0000",
+        outstandingAmount: "90000.0000",
+        posSettlement: {
+          transactionNumber: "TRX-2026-0008",
+          paidAt: "2026-09-01T03:00:00.000Z",
+          payments: [],
+          credit: "90000.0000",
+        },
+      }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(
+      await screen.findByText(/belum ada pembayaran untuk faktur ini/i),
+    ).toBeInTheDocument();
+  });
+
+  /*
+    ONE RECAP, NOT TWO. The table lays out the full breakdown including the rows
+    the invoice shape has no field for; the block underneath would repeat a
+    shorter version that disagrees about what the customer paid.
+  */
+  it("does not print a second breakdown underneath the table", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(withSale());
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await screen.findByText("Kalung Nylon");
+    expect(screen.queryByText("Dasar pengenaan pajak")).not.toBeInTheDocument();
+  });
+});
+
 describe("a faktur with no customer", () => {
   it("names a walk-in rather than accusing the shop of losing a record", async () => {
     asMock(customerInvoiceService.getById).mockResolvedValue(

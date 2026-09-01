@@ -27,6 +27,44 @@ being so when PCR-030 landed.)*
 | `pos_bridge` | Issued by the till — see below                    | dari kasir  |
 | `manual`     | What PCR-030's form will write                    | manual      |
 
+## A till invoice's detail reads like a hand-typed one
+
+The document stores no lines and no breakdown for a till sale — two records of
+one basket are free to disagree, and the one a cashier can still void is not the
+one the invoice would be holding. **The detail read joins them from the sale**,
+under the invoice's own field names, so `InvoiceItemsTable` renders both kinds
+without knowing which it has. (The list read carries lines for neither.)
+
+Three things come back beside the joined pair, and each is separate for a reason:
+
+| | What | Why not folded in |
+| --- | --- | --- |
+| `otherCharges[]` | ongkir, packaging | The invoice shape has no field for them, and dropping them leaves a total the rows above do not add up to. **Itemised** — "biaya lain Rp 25.000" explains nothing to the customer who paid it |
+| `posSettlement` | how the counter settled it | Rendered in its own **"Pembayaran di kasir"** card, read-only |
+| `items[].dpp` / `.tax` | null on every till line | The tax allocation is decided across every line at once, so `Σ round(part) ≠ round(Σ)` and one line cannot reproduce its own share. The table shows nothing rather than a number it made up |
+
+**Why the settlement is not in "Riwayat pembayaran".** That list means "money
+collected against this debt, each with its own reversible journal entry", and
+every row carries a Batalkan button. A till sale's settlement was posted inside
+the sale's SINGLE revenue entry — there is nothing per-line to reverse, and such
+a row would also make the sale unvoidable. The card says where the money can
+actually be undone: Void or Retur at the till.
+
+The collection history is **hidden entirely on a settled cash sale** ("Belum ada
+pembayaran untuk faktur ini" under a card that has just shown the money arriving
+is a contradiction) and **kept on a credit one**, where instalments against the
+remainder are what it is for.
+
+**Two rows in the recap only a till sale has.** The charges above, and — on a
+sale part-paid at the counter — the split: *Total belanja*, *Dibayar di kasir*,
+*Sisa jadi piutang*. The invoice's own total is that last figure, so without the
+split the table would contradict the header of the page by exactly what the
+customer already handed over.
+
+**One recap, not two.** The block that used to print a second breakdown under
+the table is skipped for till invoices; it has no field for the charges or the
+split, so it would disagree with the table above it.
+
 ## Every till sale lands here now, not only a credit one
 
 The Owner's call, and its price was stated first: every retail sale burns an

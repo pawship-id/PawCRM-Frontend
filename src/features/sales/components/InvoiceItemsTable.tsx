@@ -9,17 +9,28 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatMoney, formatQty } from "@/utils/decimal";
+import {
+  formatMoney,
+  formatQty,
+  isPositive,
+  subtractDecimals,
+} from "@/utils/decimal";
 import type { CustomerInvoiceDetail } from "@/types/api";
 
 /**
  * WHAT WAS BILLED — the lines, and the arithmetic that turned them into a total.
  *
- * EMPTY ON EVERY TILL-BORN INVOICE, and that absence is a fact rather than a
- * gap. Those lines live on the POS transaction that raised the invoice; copying
- * them here would be two records of one basket, free to disagree. So this says
- * so plainly and points at the sale, instead of rendering an empty table that
- * reads as "this invoice has nothing in it".
+ * IT RENDERS A TILL SALE AND A HAND-TYPED BILL WITHOUT KNOWING WHICH IT HAS.
+ * The document still does not STORE a till sale's lines — two records of one
+ * basket are free to disagree — but the detail read joins them from the sale
+ * under the same field names, so there is one table rather than two layouts free
+ * to drift. The empty state below is now only for an invoice whose sale has gone
+ * or one written before any of this existed.
+ *
+ * A TILL SALE BRINGS TWO ROWS THE INVOICE SHAPE HAS NO FIELD FOR, and both are
+ * in the recap because without them it does not add up: the additive charges
+ * (ongkir), and — on a sale settled partly at the counter — what was handed over
+ * there. The invoice's own total is the REMAINDER in that case, not the basket.
  *
  * THE DISCOUNT IS SHOWN ON THE LINE THAT EARNED IT, not netted into its total.
  * `lineTotal` is deliberately GROSS — the same choice `posTransactions` makes —
@@ -48,6 +59,20 @@ export function InvoiceItemsTable({
   const items = invoice.items ?? [];
   const totals = invoice.totals ?? null;
   const invoiceDiscount = invoice.invoiceDiscount ?? null;
+  /* Till sales only — see the header. Absent on a hand-raised invoice. */
+  const charges = invoice.otherCharges ?? [];
+  const settlement = invoice.posSettlement ?? null;
+  /*
+    WHAT THE COUNTER TOOK, derived from the two figures the sale froze rather
+    than by adding up the settlement lines: a cash line records what was TENDERED
+    and the change beside it, so summing them would overstate what was paid by
+    exactly the change given back.
+  */
+  const paidAtTill =
+    totals && settlement?.credit
+      ? subtractDecimals(totals.grandTotal, settlement.credit)
+      : "0";
+  const partlyPaidAtTill = isPositive(settlement?.credit ?? "0");
 
   if (items.length === 0) {
     return (
@@ -209,19 +234,45 @@ export function InvoiceItemsTable({
             </div>
           )}
 
-          {invoiceDiscount && (
+          {/*
+            KEYED ON THE AMOUNT, not on the typed discount beside it. A till sale
+            carries its basket discount on the SALE, so `invoiceDiscount` — the
+            invoice's own typed field — is null there while the figure is not: the
+            row used to vanish and the recap stopped adding up. The "(10%)" label
+            still needs the typed form, so it appears only where there is one.
+          */}
+          {totals.invoiceDiscount !== "0.0000" && (
             <div className="flex justify-between">
               <dt className="text-muted">
-                Diskon faktur{" "}
-                <span className="text-xs">
-                  ({discountLabel(invoiceDiscount.mode, invoiceDiscount.value)})
-                </span>
+                Diskon faktur
+                {invoiceDiscount && (
+                  <span className="text-xs">
+                    {" "}
+                    ({discountLabel(invoiceDiscount.mode, invoiceDiscount.value)}
+                    )
+                  </span>
+                )}
               </dt>
               <dd className="tabular-nums text-success">
                 −{formatMoney(totals.invoiceDiscount)}
               </dd>
             </div>
           )}
+
+          {/*
+            ITEMISED, in the order they were added. "Biaya lain Rp 25.000" on a
+            bill explains nothing, and the customer who paid it asked what it was
+            for. Till sales only — a hand-raised invoice has no such field.
+          */}
+          {charges.map((charge, index) => (
+            <div
+              key={`${charge.label}-${index}`}
+              className="flex justify-between"
+            >
+              <dt className="text-muted">{charge.label}</dt>
+              <dd className="tabular-nums">+{formatMoney(charge.amount)}</dd>
+            </div>
+          ))}
 
           {/* Only where there is tax to break out. */}
           {totals.tax !== "0.0000" && (
@@ -238,9 +289,33 @@ export function InvoiceItemsTable({
           )}
 
           <div className="flex justify-between border-t border-border pt-2 font-bold">
-            <dt>Total tagihan</dt>
+            <dt>{partlyPaidAtTill ? "Total belanja" : "Total tagihan"}</dt>
             <dd className="tabular-nums">{formatMoney(totals.grandTotal)}</dd>
           </div>
+
+          {/*
+            THE SPLIT, ON A SALE PART-PAID AT THE COUNTER. This invoice is the
+            REMAINDER — 100.000 handed over on a 300.000 basket raises a 200.000
+            receivable — and a recap that stopped at "Total belanja" would
+            contradict the figure in the header of the page by exactly what the
+            customer already paid.
+          */}
+          {partlyPaidAtTill && (
+            <>
+              <div className="flex justify-between">
+                <dt className="text-muted">Dibayar di kasir</dt>
+                <dd className="tabular-nums text-success">
+                  −{formatMoney(paidAtTill)}
+                </dd>
+              </div>
+              <div className="flex justify-between border-t border-border pt-2 font-bold">
+                <dt>Sisa jadi piutang</dt>
+                <dd className="tabular-nums">
+                  {formatMoney(settlement?.credit ?? "0")}
+                </dd>
+              </div>
+            </>
+          )}
         </dl>
       )}
     </div>

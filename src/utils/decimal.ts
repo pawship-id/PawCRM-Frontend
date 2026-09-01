@@ -136,6 +136,18 @@ export function sumDecimals(values: Array<string | null>): string {
   return toDecimalString(total);
 }
 
+/**
+ * `a − b` on two decimal strings, exactly. Unparseable operands count as zero.
+ *
+ * IN MINOR UNITS, like everything else here: `"610000.0000" - "200000.0000"` in
+ * JavaScript numbers is a float subtraction that is right until the day it is
+ * not, and a figure a customer reads off a bill is not the place to find out.
+ * The result may be NEGATIVE — that is a real answer, not an error.
+ */
+export function subtractDecimals(a: string, b: string): string {
+  return toDecimalString((toMinor(a) ?? 0n) - (toMinor(b) ?? 0n));
+}
+
 const QTY_FORMAT = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 4 });
 const MONEY_FORMAT = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 });
 

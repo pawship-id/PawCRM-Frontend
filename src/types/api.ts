@@ -3876,14 +3876,61 @@ export interface CustomerInvoiceDetail
   /** The entry that RECOGNISED the debt — the sale's revenue entry. */
   journalEntryId: string | null;
   /**
-   * The lines a HUMAN typed. **Empty on every till-born invoice** — those lines
-   * live on the POS transaction, and copying them would be two records of one
-   * basket free to disagree. Read `posTransactionId` for the other kind.
+   * WHAT WAS BILLED — and where it comes from depends on who raised the invoice.
+   *
+   * A HAND-RAISED invoice STORES these. A TILL-BORN one does not: two records of
+   * one basket are free to disagree, and the one a cashier can still void is not
+   * the one the invoice would be holding. The detail read JOINS them from the
+   * sale instead — the same way it resolves `customerName` — so this arrives
+   * populated either way and one table renders both.
+   *
+   * The join is detail-only: the LIST read never carries lines, for either kind.
    */
   items: CustomerInvoiceItem[];
   invoiceDiscount: InvoiceDiscount | null;
-  /** The breakdown behind `total`. Null on a till-born invoice. */
+  /**
+   * The breakdown behind `total`, stored on a hand-raised invoice and joined from
+   * the sale on a till-born one. Null only where neither exists — an invoice
+   * written before the field, or one whose sale has gone.
+   */
   totals: CustomerInvoiceTotals | null;
+  /**
+   * ONGKIR, PACKAGING — the additive charges a till sale can carry and a
+   * hand-raised invoice has no concept of. Absent on a manual invoice.
+   *
+   * ITEMISED rather than one lump: "biaya lain Rp 25.000" on a bill explains
+   * nothing, and the customer who paid it asked what it was for.
+   */
+  otherCharges?: Array<{ label: string; amount: string }>;
+  /**
+   * HOW THE COUNTER SETTLED THE SALE — present only on a till-born invoice.
+   *
+   * DELIBERATELY NOT `payments[]`, and the distinction is load-bearing. Those
+   * rows mean "money collected against this debt, each with its own reversible
+   * entry", and the screen offers a Batalkan button over them. A till sale's
+   * settlement lines were posted inside the sale's SINGLE revenue entry, so a row
+   * there would offer to reverse an entry that does not exist — and would make
+   * every cash sale unvoidable, since a sale whose invoice has taken a payment
+   * cannot be voided.
+   *
+   * The channel's name and type are the SALE's snapshot, not a lookup: a retired
+   * channel's history stays readable as it was.
+   */
+  posSettlement?: {
+    transactionNumber: string | null;
+    paidAt: string | null;
+    payments: Array<{
+      channelId: string | null;
+      channelName: string;
+      channelType: string;
+      amount: string;
+      /** Cash only, and only when more was tendered than the bill. */
+      change: string | null;
+      reference: string | null;
+    }>;
+    /** What walked out unpaid and became this invoice. "0.0000" on a paid sale. */
+    credit: string | null;
+  };
   /** Where the goods left from. Null when nothing shipped. */
   warehouseId: string | null;
   channel: InvoiceChannel;
@@ -4107,15 +4154,22 @@ export interface CustomerInvoiceItem {
   groomerName: string | null;
 }
 
-/** The money, frozen when the invoice was issued. */
+/** The money, frozen when the invoice was issued — or when the sale settled. */
 export interface CustomerInvoiceTotals {
   subtotal: string;
   itemDiscount: string;
+  /** The basket-level discount. `cartDiscount` at the till, same figure. */
   invoiceDiscount: string;
   /** The taxable base, after both discounts. */
   dpp: string;
   tax: string;
   grandTotal: string;
+  /**
+   * Σ of the additive charges — till sales only, absent on a hand-raised
+   * invoice. It cannot be left out of the recap: ongkir is part of what the
+   * customer paid, so a total without it is one the rows above do not add up to.
+   */
+  otherCharges?: string | null;
 }
 
 /**

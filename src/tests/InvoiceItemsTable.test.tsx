@@ -256,3 +256,108 @@ describe("an invoice with no lines", () => {
     expect(screen.getByText(/tidak punya rincian baris/i)).toBeInTheDocument();
   });
 });
+
+/**
+ * A TILL SALE, RENDERED BY THE SAME TABLE.
+ *
+ * The document stores no lines for one — two records of one basket are free to
+ * disagree — so the detail read JOINS them from the sale under the invoice's own
+ * field names. What these pin is the two rows the invoice shape has no field for,
+ * and both are here because without them the recap does not add up:
+ *
+ *  1. the additive charges (ongkir), which a hand-raised invoice cannot have;
+ *  2. on a sale part-paid at the counter, what was handed over there — this
+ *     invoice is the REMAINDER, and a recap stopping at the basket total would
+ *     contradict the figure in the page header by exactly what was already paid.
+ */
+describe("a sale joined from the till", () => {
+  const tillInvoice = (overrides = {}) =>
+    invoice({
+      posTransactionId: "pos-1",
+      otherCharges: [{ label: "Ongkos kirim", amount: "10000.0000" }],
+      totals: {
+        subtotal: "200000.0000",
+        itemDiscount: "0.0000",
+        invoiceDiscount: "20000.0000",
+        dpp: "190000.0000",
+        tax: "0.0000",
+        grandTotal: "190000.0000",
+        otherCharges: "10000.0000",
+      },
+      posSettlement: {
+        transactionNumber: "TRX-1",
+        paidAt: "2026-09-01T03:00:00.000Z",
+        payments: [
+          {
+            channelId: "ch1",
+            channelName: "Kas Laci",
+            channelType: "cash",
+            amount: "190000.0000",
+            change: null,
+            reference: null,
+          },
+        ],
+        credit: "0.0000",
+      },
+      ...overrides,
+    });
+
+  it("itemises the other charges instead of one unexplained lump", () => {
+    render(<InvoiceItemsTable invoice={tillInvoice()} />);
+
+    expect(screen.getByText("Ongkos kirim")).toBeInTheDocument();
+    expect(screen.getByText("+Rp 10.000")).toBeInTheDocument();
+  });
+
+  /*
+    THE ROW USED TO VANISH. It was keyed on the invoice's own typed discount,
+    which is null on a till sale — the basket discount lives on the sale — so the
+    figure was real and the line was missing, and the recap stopped adding up.
+  */
+  it("shows a basket discount that has no typed form on the invoice", () => {
+    render(<InvoiceItemsTable invoice={tillInvoice()} />);
+
+    expect(screen.getByText("Diskon faktur")).toBeInTheDocument();
+    expect(screen.getByText("−Rp 20.000")).toBeInTheDocument();
+  });
+
+  it("calls the bottom line Total tagihan when nothing went on account", () => {
+    render(<InvoiceItemsTable invoice={tillInvoice()} />);
+
+    expect(screen.getByText("Total tagihan")).toBeInTheDocument();
+    expect(screen.queryByText("Dibayar di kasir")).not.toBeInTheDocument();
+  });
+
+  /*
+    100.000 HANDED OVER ON A 190.000 BASKET raises a 90.000 receivable. The split
+    is what reconciles this table with the total in the page header.
+  */
+  it("splits a part-paid sale into what was taken and what is owed", () => {
+    render(
+      <InvoiceItemsTable
+        invoice={tillInvoice({
+          posSettlement: {
+            transactionNumber: "TRX-2",
+            paidAt: "2026-09-01T03:00:00.000Z",
+            payments: [],
+            credit: "90000.0000",
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Total belanja")).toBeInTheDocument();
+    expect(screen.getByText("−Rp 100.000")).toBeInTheDocument();
+    const owed = screen.getByText("Sisa jadi piutang").parentElement as HTMLElement;
+    expect(within(owed).getByText("Rp 90.000")).toBeInTheDocument();
+  });
+
+  /* A hand-raised invoice has none of it, and nothing about it changed. */
+  it("leaves a manual invoice's recap alone", () => {
+    render(<InvoiceItemsTable invoice={invoice()} />);
+
+    expect(screen.getByText("Total tagihan")).toBeInTheDocument();
+    expect(screen.queryByText("Ongkos kirim")).not.toBeInTheDocument();
+    expect(screen.queryByText("Sisa jadi piutang")).not.toBeInTheDocument();
+  });
+});

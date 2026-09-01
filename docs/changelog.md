@@ -7,6 +7,35 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Faktur dari kasir menampilkan rincian barang dan pembayarannya
+
+Halaman `/dashboard/sales/:id` untuk faktur dari kasir tidak lagi berkata
+"barisnya tercatat di transaksi kasirnya". Rinciannya **di-join dari transaksi
+kasir saat dibaca** — dokumennya tetap tidak menyimpan salinan, karena dua
+catatan atas satu keranjang bebas berbeda pendapat — lalu dirender oleh tabel
+yang sama dengan faktur manual.
+
+**Tiga hal ikut, dan masing-masing berdiri sendiri.** Biaya lain (ongkir) tidak
+punya field di bentuk faktur dan tidak bisa dibuang: tanpa itu totalnya tidak
+sama dengan penjumlahan baris di atasnya — ditampilkan **per item**, bukan satu
+gelondong "biaya lain". Pembayarannya masuk kartu sendiri, **"Pembayaran di
+kasir"**, read-only. Dan alokasi DPP/PPN per baris dibiarkan kosong: pembagiannya
+dihitung untuk semua baris sekaligus, jadi satu baris tidak bisa menghitung
+jatahnya sendiri.
+
+**Kenapa pembayarannya tidak digabung ke "Riwayat pembayaran".** Daftar itu
+berarti "uang yang ditagihkan atas utang ini, masing-masing punya jurnal yang
+bisa dibalik", dan tiap barisnya punya tombol Batalkan. Pembayaran di kasir
+diposting **di dalam satu jurnal penjualan** — tidak ada jurnal per baris untuk
+dibalik, dan baris seperti itu juga akan membuat setiap penjualan tunai tidak
+bisa di-void. Kartunya menyebut jalan yang benar: Void atau Retur di kasir.
+
+Untuk penjualan yang dibayar sebagian di kasir, rekapnya menutup dengan **Total
+belanja → Dibayar di kasir → Sisa jadi piutang**, karena total fakturnya adalah
+angka terakhir itu.
+
+---
+
 ## [Unreleased] — Penjualan kasir yang lunas ikut masuk Faktur Penjualan
 
 Keputusan Owner. Sebelumnya hanya penjualan **Piutang** yang memunculkan faktur;

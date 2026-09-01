@@ -23,6 +23,7 @@ import { InvoiceItemsTable } from "./InvoiceItemsTable";
 import { JournalLink } from "./JournalLink";
 import { VoidInvoiceDialog } from "./VoidInvoiceDialog";
 import { PaymentHistory } from "./PaymentHistory";
+import { PosSettlementCard } from "./PosSettlementCard";
 import { PaymentReceiptDialog } from "./PaymentReceiptDialog";
 import { RecordPaymentDialog } from "./RecordPaymentDialog";
 import { VoidPaymentDialog } from "./VoidPaymentDialog";
@@ -308,11 +309,17 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
             THE FULL BREAKDOWN, not just the three headline figures.
 
             `totals` is what the server FROZE at issue, so every line here is
-            read rather than computed. It is null on a till-born invoice, which
-            stores a total and nothing else — those fall back to the three-row
-            summary below, which is all that document has.
+            read rather than computed.
+
+            NOT FOR A TILL SALE, even though its `totals` now arrive too — joined
+            from the sale rather than stored. The table above already lays that
+            breakdown out with the rows this block has no field for (the other
+            charges, and the part paid at the counter), so repeating a shorter
+            version underneath would be two recaps of one basket that disagree
+            about what the customer paid. Till invoices keep the two-row summary,
+            which is the pair that answers "what is this document for".
           */}
-          {invoice.totals ? (
+          {invoice.totals && !invoice.posSettlement ? (
             <div className="mt-4 ml-auto flex w-full max-w-sm flex-col gap-1.5 border-t border-border pt-4 text-sm tabular-nums">
               <Row label="Subtotal" value={formatMoney(invoice.totals.subtotal)} muted />
               {invoice.totals.itemDiscount !== "0.0000" && (
@@ -504,11 +511,30 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
           foot of the page where it used to render — outside the grid entirely,
           so it sat under both columns and read as an afterthought.
         */}
-        <PaymentHistory
-          payments={invoice.payments}
-          onPrint={(payment) => setReceiptFor(payment.paymentId)}
-          onVoid={(payment) => setVoidingId(payment.paymentId)}
-        />
+        {/*
+          THE COUNTER'S OWN SETTLEMENT, above the collection history and separate
+          from it. The two answer different questions — "how was this sale paid
+          for" and "what has been collected against this debt since" — and a cash
+          sale only ever has the first.
+        */}
+        {invoice.posSettlement && (
+          <PosSettlementCard settlement={invoice.posSettlement} />
+        )}
+
+        {/*
+          HIDDEN ENTIRELY ON A SETTLED TILL SALE. "Belum ada pembayaran untuk
+          faktur ini" under a card that has just shown the money arriving is a
+          contradiction, and there is nothing to collect: the sale was paid in
+          full at the counter. It stays for a credit sale, where instalments
+          against the remainder are exactly what this list is for.
+        */}
+        {!(invoice.posSettlement && invoice.payments.length === 0 && invoice.status === "paid") && (
+          <PaymentHistory
+            payments={invoice.payments}
+            onPrint={(payment) => setReceiptFor(payment.paymentId)}
+            onVoid={(payment) => setVoidingId(payment.paymentId)}
+          />
+        )}
 
         <div className="flex flex-col gap-4">
           {/*
