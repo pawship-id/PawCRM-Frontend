@@ -1120,6 +1120,15 @@ export interface PosItem {
   discount: PosDiscount | null;
   hppAtTime: string | null;
   bookingId: string | null;
+  /**
+   * The booking ROW this line came from — PCR-040.
+   *
+   * `bookingId` alone is no longer enough: a booking is a visit now, and taking
+   * Coco's line out of the basket must release Coco's row and leave Mochi's
+   * claimed. Null on lines pulled before the migration, where the server falls
+   * back to releasing the whole booking.
+   */
+  bookingItemId: string | null;
   petId: string | null;
   petName: string | null;
   groomerName: string | null;
@@ -1704,6 +1713,8 @@ export interface PosItemInput {
     approvedBy?: string;
   } | null;
   bookingId?: string | null;
+  /** The booking row this line came from — see `PosCartItem.bookingItemId`. */
+  bookingItemId?: string | null;
   petId?: string | null;
   petName?: string | null;
   groomerName?: string | null;
@@ -1770,9 +1781,37 @@ export type BookingOrigin = "booking" | "pos_adhoc" | "invoice_adhoc";
  * `price` is a decimal STRING, never a number.
  */
 export interface BookingItem {
+  /**
+   * The row's own id — new in PCR-040, and what a cart or invoice line points at
+   * so taking one line out releases THAT animal's row and leaves the others
+   * claimed.
+   */
+  _id: string;
+  /**
+   * WHOSE ROW THIS IS. The animal moved off the booking header in PCR-040: one
+   * visit may bring Mochi and Coco, and each row says which.
+   */
+  petId: string;
+  /** Resolved on read, like every other name here. Null when the pet is gone. */
+  petName: string | null;
   serviceId: string;
   name: string;
   price: string;
+  /**
+   * How long this row takes, in minutes. Snapshotted from the service and
+   * overridable — a nervous dog genuinely takes longer than the catalogue says.
+   *
+   * NULL WHEN THE CATALOGUE CARRIES NONE, and a calendar draws such a row at a
+   * default height rather than refusing to draw it: a booking nobody can see is
+   * worse than one drawn at the wrong height.
+   */
+  durationMin: number | null;
+  /** Anything special about THIS animal on THIS visit. */
+  notes: string | null;
+  /** When this row was dropped into a POS cart. Null = still billable. */
+  pulledToCartAt: string | null;
+  /** When this row was claimed by an invoice. Null = still billable. */
+  pulledToInvoiceAt: string | null;
   /** null = FR-3's "Belum ditentukan". Assignment is a scheduling question. */
   groomerUserId: string | null;
   /**
@@ -1841,16 +1880,24 @@ export interface Booking {
    */
   bookingNumber: string | null;
   customerId: string;
-  petId: string;
   /**
-   * The animal's name, RESOLVED ON READ — never snapshotted onto the booking.
+   * THE ANIMALS ON THIS VISIT — plural since PCR-040.
    *
-   * A pet renamed between the appointment and the counter appears under its new
-   * name, because this is a LABEL rather than a record of what was agreed. (The
-   * price on `items[]` is the opposite and IS frozen: a booking is a quote.)
+   * Distinct, in row order. Anything that needs them apart reads this; anything
+   * that wants one string reads `petName` below.
+   */
+  pets: BookingPet[];
+  /**
+   * The animals' names JOINED — "Mochi, Coco" — resolved on read.
    *
-   * Null only when the reference is genuinely broken — a pet deleted outright.
-   * Inventing a name for that would hide it.
+   * IT USED TO BE ONE NAME, and it is kept as a label rather than dropped
+   * because a day-sheet column wants one string. Null on a booking with no rows
+   * at all; never null merely because there are two animals, which would blank
+   * the column on exactly the bookings PCR-040 was built for.
+   *
+   * A LABEL, NOT A RECORD. A pet renamed between the appointment and the counter
+   * appears under its new name. (The price on `items[]` is the opposite and IS
+   * frozen: a booking is a quote.)
    */
   petName: string | null;
   /**
@@ -1875,13 +1922,41 @@ export interface Booking {
   origin: BookingOrigin;
   /** Set by the POS when this booking is paid for. */
   posTransactionId: string | null;
-  /** When its services were dropped into a POS cart. Cleared on cancel. */
-  pulledToCartAt: string | null;
+  /** What the whole visit comes to — the sum of its rows. */
+  totalAmount: string | null;
+  /**
+   * How long the visit takes: the LONGEST groomer's workload, not the sum.
+   *
+   * Two groomers work at the same time — Mochi with Sinta for 90 minutes and
+   * Coco with Rio for 60 means the customer waits 90, not 150.
+   */
+  totalDurationMin: number | null;
+  /** How many distinct animals, for the "2 hewan" badge. */
+  petCount: number;
+  /**
+   * HOW MUCH OF THIS VISIT HAS BEEN BILLED.
+   *
+   * `partial` IS THE VALUE PCR-040 CREATED: Coco went home ungroomed and Mochi
+   * was paid for. Before multi-pet this could not be expressed at all.
+   *
+   * A SUMMARY OF THE ROWS. Draw a badge from it; never decide from it whether
+   * something may be billed — that question belongs to the row.
+   */
+  billingState: BookingBillingState;
   notes: string | null;
   cancelReason: string | null;
   createdAt: string;
   updatedAt: string;
 }
+
+/** One animal on a booking, for the header's `pets` list. */
+export interface BookingPet {
+  petId: string;
+  petName: string | null;
+}
+
+/** How much of a visit has been billed — see `Booking.billingState`. */
+export type BookingBillingState = "unbilled" | "partial" | "billed";
 
 /** Query parameters accepted by GET /api/bookings. All optional. */
 export interface BookingListQuery {
@@ -4142,6 +4217,15 @@ export interface CustomerInvoiceItem {
    * Null on every product line, and on a service nobody attached an animal to.
    */
   bookingId: string | null;
+  /**
+   * The booking ROW this line came from — PCR-040.
+   *
+   * `bookingId` alone is no longer enough: a booking is a visit now, and taking
+   * Coco's line out of the basket must release Coco's row and leave Mochi's
+   * claimed. Null on lines pulled before the migration, where the server falls
+   * back to releasing the whole booking.
+   */
+  bookingItemId: string | null;
   /** Whose animal the service is for. Null on a product line. */
   petId: string | null;
   /**

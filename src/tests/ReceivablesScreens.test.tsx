@@ -880,6 +880,7 @@ describe("InvoiceDetail — a sale joined from the till", () => {
           dpp: null,
           tax: null,
           bookingId: null,
+    bookingItemId: null,
           petId: null,
           petName: null,
           groomerName: null,

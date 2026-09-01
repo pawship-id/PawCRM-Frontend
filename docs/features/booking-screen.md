@@ -14,6 +14,7 @@ The POS side of the same collection is [`booking-bridge.md`](./booking-bridge.md
 | --- | --- |
 | **Built** | The list — filtered by day, status and origin, sorted as a day sheet |
 | **Built** | `BookingCreateDialog` — take a booking for a customer, an animal and one or more services |
+| **Backend only (FR-1)** | A booking may hold **several animals**. The API accepts it; the dialog still asks for one — that is FR-2 |
 | **Built** | `BookingStatusActions` — move it along the ladder, or call it off |
 | **Built** | `BookingHistoryDialog` — when it reached each status, and who took it there |
 | **Not built** | A calendar, a groomer roster, capacity, clash detection |
@@ -21,6 +22,32 @@ The POS side of the same collection is [`booking-bridge.md`](./booking-bridge.md
 
 Editing goes through `PATCH /bookings/:id` and wants a form, not a row. The table moves a
 booking along and nothing else.
+
+---
+
+## What PCR-040 changed underneath (FR-1)
+
+A booking is a **visit** now: one customer, one branch, one arrival time, and one or more
+animals. The animal moved off the booking onto a row of its own (`bookingitems`), and three
+things on this screen changed with it.
+
+**`petName` is now the animals' names joined** — "Mochi, Coco". It stayed a single string on
+purpose: the day-sheet column wants one, and returning null for every multi-animal booking
+would blank the column on exactly the bookings this change was built for. `pets[]` beside it
+carries them apart, and `petCount` drives the "2 hewan" badge under the name.
+
+**The billed badge has three states, not two.** `billingState` is `unbilled`, `partial` or
+`billed`, and `partial` is the one PCR-040 created: Coco was too frightened to groom and went
+home, Mochi was finished and paid for. The row reads "Sebagian sudah ditagih". A badge that
+only knew billed-or-not would report the whole visit as settled.
+
+**Read it as a badge, never as a rule.** `billingState` is a summary of the rows, kept so the
+list can draw something without loading every row of every booking on the page. Whether a
+particular service may be billed is a question about the ROW, and the server answers it.
+
+**Still one animal in the create dialog.** The API takes `items[].petId` and would accept
+several, but the dialog has not been rebuilt yet — that is FR-2, and it is a rebuild of a
+752-line component the POS bridge also uses, which is why it is its own phase.
 
 ---
 

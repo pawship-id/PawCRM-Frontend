@@ -44,21 +44,34 @@ function groupByPet(
 ): Array<{ petId: string; petName: string; bookings: Booking[] }> {
   const groups: ReturnType<typeof groupByPet> = [];
 
+  /*
+    GROUPED BY THE ROW'S ANIMAL, NOT THE BOOKING'S — K2.
+
+    A visit may bring Mochi and Coco, so one booking appears under BOTH headings.
+    That is deliberate and it is what the decision bought: a cashier can see
+    Coco's grooming under Coco's name and bill it without touching Mochi's.
+  */
   bookings.forEach((booking) => {
-    const existing = groups.find((group) => group.petId === booking.petId);
+    const pets = booking.pets.length
+      ? booking.pets
+      : [{ petId: booking.customerId, petName: booking.petName }];
 
-    if (existing) {
-      existing.bookings.push(booking);
-      return;
-    }
+    pets.forEach((pet) => {
+      const existing = groups.find((group) => group.petId === pet.petId);
 
-    groups.push({
-      petId: booking.petId,
-      // Null only when the reference is broken — a pet deleted outright. Named
-      // rather than left blank, because a group with no title is a group nobody
-      // can act on.
-      petName: booking.petName ?? "Hewan tidak diketahui",
-      bookings: [booking],
+      if (existing) {
+        existing.bookings.push(booking);
+        return;
+      }
+
+      groups.push({
+        petId: pet.petId,
+        // Null only when the reference is broken — a pet deleted outright. Named
+        // rather than left blank, because a group with no title is a group
+        // nobody can act on.
+        petName: pet.petName ?? "Hewan tidak diketahui",
+        bookings: [booking],
+      });
     });
   });
 

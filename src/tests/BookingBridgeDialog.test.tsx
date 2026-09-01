@@ -27,12 +27,24 @@ const booking = (overrides: Partial<Booking> = {}): Booking => ({
   branchId: "5a7f1f77bcf86cd7994390b1",
   bookingNumber: "BK-260824-001",
   customerId: CUSTOMER_ID,
-  petId: PET_ID,
+  // AFTER PCR-040: the animals live on the rows, and the header lists them.
+  pets: [{ petId: PET_ID, petName: "Bruno" }],
+  petCount: 1,
+  totalAmount: "150000.0000",
+  totalDurationMin: null,
+  billingState: "unbilled",
   items: [
     {
+      _id: "5a7f1f77bcf86cd799439151",
+      petId: PET_ID,
+      petName: "Bruno",
       serviceId: SERVICE_ID,
       name: "Grooming Full Service",
       price: "150000.0000",
+      durationMin: null,
+      notes: null,
+      pulledToCartAt: null,
+      pulledToInvoiceAt: null,
       groomerUserId: null,
       // Never null — the server names an unassigned slot (FR-3's edge case).
       groomerName: "Belum ditentukan",
@@ -45,7 +57,6 @@ const booking = (overrides: Partial<Booking> = {}): Booking => ({
   statusHistory: [],
   origin: "booking",
   posTransactionId: null,
-  pulledToCartAt: null,
   notes: null,
   cancelReason: null,
   createdAt: "2026-08-24T00:00:00.000Z",

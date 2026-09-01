@@ -19,13 +19,25 @@ const booking = (overrides: Partial<Booking> = {}): Booking =>
     bookingNumber: "BK-260826-001",
     customerId: "cust-1",
     customerName: "Ibu Rina",
-    petId: "pet-1",
+    // AFTER PCR-040 the animals are on the rows; the header lists them.
+    pets: [{ petId: "pet-1", petName: "Bruno" }],
+    petCount: 1,
+    totalAmount: "150000.0000",
+    totalDurationMin: null,
+    billingState: "unbilled",
     petName: "Bruno",
     items: [
       {
+        _id: "row-1",
+        petId: "pet-1",
+        petName: "Bruno",
         serviceId: "svc-1",
         name: "Grooming Full Service",
         price: "150000.0000",
+        durationMin: null,
+        notes: null,
+        pulledToCartAt: null,
+        pulledToInvoiceAt: null,
         groomerUserId: null,
         groomerName: "Belum ditentukan",
       },
@@ -34,7 +46,6 @@ const booking = (overrides: Partial<Booking> = {}): Booking =>
     status: "confirmed",
     origin: "booking",
     posTransactionId: null,
-    pulledToCartAt: null,
     notes: null,
     cancelReason: null,
     createdAt: "2026-08-26T00:00:00.000Z",
@@ -90,7 +101,7 @@ describe("BookingsScreen", () => {
   */
   it("says when a confirmed booking is already in a basket", async () => {
     mocked.list.mockResolvedValue(
-      page([booking({ pulledToCartAt: "2026-08-26T04:00:00.000Z" })]),
+      page([booking({ billingState: "billed" })]),
     );
 
     renderWithAuth(<BookingsScreen />);
@@ -103,7 +114,7 @@ describe("BookingsScreen", () => {
       page([
         booking({
           status: "completed",
-          pulledToCartAt: "2026-08-26T04:00:00.000Z",
+          billingState: "billed",
           posTransactionId: "sale-1",
         }),
       ]),
@@ -283,7 +294,7 @@ describe("BookingsScreen — what the badge cannot say on its own", () => {
 
   it("says when one is sitting in a basket", async () => {
     mocked.list.mockResolvedValue(
-      page([booking({ pulledToCartAt: "2026-08-26T02:00:00.000Z" })]),
+      page([booking({ billingState: "billed" })]),
     );
 
     renderWithAuth(<BookingsScreen />);
@@ -301,7 +312,7 @@ describe("BookingsScreen — what the badge cannot say on its own", () => {
       page([
         booking({
           posTransactionId: "sale-1",
-          pulledToCartAt: "2026-08-26T02:00:00.000Z",
+          billingState: "billed",
         }),
       ]),
     );

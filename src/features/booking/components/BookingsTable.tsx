@@ -105,11 +105,22 @@ export function BookingsTable({
 
               <TableCell className="align-top text-sm text-foreground">
                 {booking.petName ?? "—"}
+                {/*
+                  A VISIT MAY BRING SEVERAL ANIMALS since PCR-040, and the names
+                  above are joined into one string. The count is repeated as a
+                  badge because "Mochi, Coco" reads as one long name at a glance
+                  and a number does not.
+                */}
+                {booking.petCount > 1 && (
+                  <span className="mt-1 block text-xs text-muted">
+                    {booking.petCount} hewan
+                  </span>
+                )}
               </TableCell>
 
               <TableCell className="align-top">
                 {booking.items.map((item) => (
-                  <span key={item.serviceId} className="block">
+                  <span key={item._id} className="block">
                     <span className="block text-sm text-foreground">
                       {item.name}
                     </span>
@@ -168,9 +179,17 @@ export function BookingsTable({
                         : "Sudah dibayar"}
                     </span>
                   ) : (
-                    booking.pulledToCartAt && (
+                    /*
+                      THREE STATES SINCE PCR-040, not two. A visit can be
+                      half-billed — Coco went home ungroomed and Mochi was paid
+                      for — and a badge that only knew "billed or not" would
+                      report the whole visit as settled.
+                    */
+                    booking.billingState !== "unbilled" && (
                       <span className="mt-1 block text-xs text-muted">
-                        Ada di keranjang
+                        {booking.billingState === "partial"
+                          ? "Sebagian sudah ditagih"
+                          : "Ada di keranjang"}
                       </span>
                     )
                   ))}
