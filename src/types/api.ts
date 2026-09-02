@@ -2038,6 +2038,42 @@ export interface AffectedBooking {
   name: string;
 }
 
+/**
+ * One line of Rekap Komisi — FR-6.
+ *
+ * `reversedRows` IS COUNTED SEPARATELY and never folded into `amount`. A payroll
+ * figure that quietly included work that was undone is wrong in the direction
+ * that costs money; one that pretended the reversal never happened is wrong in
+ * the direction nobody can audit.
+ */
+export interface CommissionRecapRow {
+  groomerUserId: string;
+  groomerName: string | null;
+  /** Records that count — reversals excluded. */
+  rows: number;
+  reversedRows: number;
+  amount: string;
+}
+
+/**
+ * GET /api/reports/commissions.
+ *
+ * `total` IS SUMMED FROM `rows`, not queried separately — kriteria 6.12 asks
+ * that the recap match the sum of its records to the last rupiah, and the surest
+ * way to satisfy that is to have one number, computed once.
+ */
+export interface CommissionRecap {
+  rows: CommissionRecapRow[];
+  total: string;
+}
+
+export interface CommissionRecapQuery {
+  /** `YYYY-MM`. Payroll is monthly; a range across a boundary pays nobody. */
+  period?: string;
+  branchId?: string;
+  groomerUserId?: string;
+}
+
 /** Query parameters accepted by GET /api/bookings. All optional. */
 export interface BookingListQuery {
   page?: number;

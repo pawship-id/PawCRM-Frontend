@@ -7,6 +7,41 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Rekap Komisi
+
+`/dashboard/reports/commissions` — komisi groomer per bulan, dengan unduhan
+Excel untuk payroll.
+
+**Digerbangi `users:read`, bukan grant laporan.** Ini data payroll: menyebut
+setiap groomer dan berapa yang jadi haknya. Grant "laporan" yang mencakup stok
+dan gaji sekaligus akan menyerahkan payroll ke orang yang sedang menghitung
+karung pakan.
+
+**Satu angka, dijumlahkan sekali.** Servernya menjumlahkan dari baris yang sama
+yang ia kembalikan — kriteria 6.12 meminta rekapnya cocok dengan jumlah
+catatannya sampai rupiah terakhir, dan cara paling pasti memenuhinya adalah hanya
+punya satu angka.
+
+**Pembatalan ditampilkan, tidak pernah dilebur.** Booking yang dibatalkan setelah
+selesai membatalkan komisinya; angka payroll yang diam-diam memasukkannya salah
+ke arah yang memakan uang, dan yang menyembunyikan pembatalannya salah ke arah
+yang tidak bisa diaudit siapa pun. Jadi nominalnya mengecualikan mereka dan
+hitungannya menyebut ada berapa.
+
+**Satu kalimat di atas tabel, bukan di dokumen.** "Komisi dihitung saat booking
+**selesai**, bukan saat dibayar. Pekerjaan yang selesai tapi belum dibayar
+pelanggan tetap menghasilkan komisi." Itu konsekuensi yang pemiliknya harus
+putuskan sendiri, bukan temukan sendiri.
+
+**Sebulan, bukan rentang tanggal.** Payroll bulanan, dan rentang yang melintasi
+batas bulan menghasilkan angka yang tidak bisa dibayarkan ke siapa pun.
+
+**Filenya dibuat dari yang ada di layar**, bukan dari permintaan kedua. Rekapnya
+segenggam baris — satu per groomer — jadi mengalirkannya terpisah adalah query
+kedua yang satu-satunya tugasnya berbeda pendapat dengan yang pertama.
+
+---
+
 ## [Unreleased] — Anti-bentrok dan jadwal libur di form booking
 
 Dropdown groomer sekarang **tahu siapa yang libur pada tanggal yang dipilih**.

@@ -70,6 +70,19 @@ const CARDS: ReportCard[] = [
     action: "read",
   },
   {
+    title: "Rekap Komisi",
+    description:
+      "Komisi groomer per bulan, dihitung dari booking yang selesai. Siap diunduh untuk payroll.",
+    href: "/dashboard/reports/commissions",
+    /*
+      `users:read`, NOT a report grant. This is payroll data — it names every
+      groomer and what they are owed — so whoever may read the staff register may
+      read it, and nobody else.
+    */
+    feature: "users",
+    action: "read",
+  },
+  {
     title: "Konsinyasi Outstanding",
     description:
       "Barang titipan yang masih di gudang, per supplier. Belum jadi utang — utang muncul saat barangnya laku.",

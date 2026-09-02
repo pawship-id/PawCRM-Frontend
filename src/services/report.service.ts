@@ -1,5 +1,6 @@
 import { apiClient } from "./api-client";
 import type { StockOnHandQuery, StockOnHandResult } from "@/types/report";
+import type { CommissionRecap, CommissionRecapQuery } from "@/types/api";
 
 /**
  * Report calls against `/api/reports`.
@@ -63,5 +64,21 @@ export const reportService = {
       },
       fallbackFilename: "stok-per-cabang.csv",
       timeoutMs: 60_000,
+    }),
+
+  /**
+   * GET /reports/commissions — Rekap Komisi.
+   *
+   * GATED ON `users:read` SERVER-SIDE, not on a reports grant: this IS payroll
+   * data — it names every groomer and what they are owed. Whoever may read the
+   * staff register may read it.
+   */
+  commissions: (query: CommissionRecapQuery = {}) =>
+    apiClient.get<CommissionRecap>("/reports/commissions", {
+      query: {
+        period: query.period,
+        branchId: query.branchId,
+        groomerUserId: query.groomerUserId,
+      },
     }),
 };
