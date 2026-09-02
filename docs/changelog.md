@@ -7,6 +7,69 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Booking multi-pet: satu form untuk seluruh kunjungan
+
+Bu Lisa datang membawa Mochi dan Coco, dan sekarang itu **satu form, satu
+booking, satu nomor**. Sebelumnya dialog booking hanya bisa satu hewan, jadi dia
+berarti dua putaran enam field yang sama dan dua baris di daftar yang tidak tahu
+bahwa keduanya satu kedatangan.
+
+**Bentuknya**: header untuk yang dipakai bersama seluruh kunjungan — pelanggan,
+tanggal, jam — lalu satu kartu per hewan (`BookingPetRowCard`) untuk yang
+berbeda: layanan, groomer, durasi, catatan, harga.
+
+**Dan sekarang ia halaman, bukan dialog** — `/dashboard/booking/new`. ui-rules §9
+mengizinkan dialog polos kalau isinya form, dan dialog memang ukuran yang tepat
+selagi booking itu enam field di atas checklist; daftar hari itu tetap terlihat
+di belakangnya sementara orang menyepakati jam di telepon. Multi-pet yang
+melampauinya: tiga hewan berarti tiga kartu berisi lima kontrol, dan dialog yang
+memuat itu adalah form yang menggulung di dalam halaman yang menggulung — dengan
+tombol simpan dan total berjalan meluncur menjauh dari field yang mereka
+jelaskan. Halaman punya ruang, alamat yang bisa dikirim ke orang, dan tombol
+kembali yang artinya selalu sama.
+
+Tombol "Booking baru" di daftar jadi **Link**, bukan handler. Total, "selesai
+sekitar", dan hitungan barisnya pindah ke `meta` pada `FormActionBar`, tempat
+identitas read-only memang seharusnya (§16).
+
+**"Selesai sekitar" memakai groomer terlama, bukan jumlahnya.** Mochi 90 menit
+dengan Sinta dan Coco 60 menit dengan Rio berarti pelanggan menunggu 90, bukan
+150 — dua groomer bekerja bersamaan. Baris yang berbagi groomer tetap
+dijumlahkan. Ini **pratinjau** dari aturan yang server terapkan di
+`BookingItemRepository#summarise`; yang tersimpan adalah jawaban server.
+
+**Durasi boleh ditimpa, harga tidak.** Field durasi dibiarkan kosong dengan
+angka katalog sebagai placeholder, bukan diisi angkanya: form yang tidak
+disentuh tidak mengirim durasi sama sekali, sehingga janji itu tetap mengikuti
+katalog kalau tokonya mengubahnya sebelum hari-H.
+
+**Duplikat disebut namanya.** Hewan yang sama dengan layanan yang sama dua kali
+ditolak dengan menyebut nama hewannya — dengan empat kartu di layar, "salah satu
+di antaranya salah" adalah teka-teki, bukan pesan.
+
+### Satu aturan yang mudah hilang saat refactor
+
+**Chrome tidak boleh bisa menggagalkan penyimpanan.** Toast sukses tadinya
+berada di dalam `try` yang sama dengan request-nya. Sebuah uji menemukan
+ongkosnya: library toast melempar error, `catch`-nya mengubahnya jadi "Terjadi
+kesalahan. Coba lagi.", dan booking yang **sudah tertulis** dilaporkan gagal —
+yang mengirim orang membuatnya untuk kedua kali.
+
+Urutannya sekarang: tulis, reset, pindah halaman, **baru** umumkan — dan
+pengumumannya punya `catch` sendiri. Booking yang tersimpan tapi gagal
+mengumumkan diri tetap booking yang tersimpan, dan daftar yang dituju sudah
+menampilkannya.
+
+### Daftar booking
+
+Kolom hewan menampilkan nama-nama yang digabung ("Mochi, Coco") dengan lencana
+`2 hewan` di bawahnya, dan lencana tagih punya **tiga** keadaan, bukan dua:
+`partial` — "Sebagian sudah ditagih" — adalah keadaan yang PCR-040 ciptakan.
+Bacalah sebagai lencana, jangan sebagai aturan: apakah sebuah layanan boleh
+ditagih adalah pertanyaan tentang barisnya, dan server yang menjawabnya.
+
+---
+
 ## [Unreleased] — Faktur dari kasir menampilkan rincian barang dan pembayarannya
 
 Halaman `/dashboard/sales/:id` untuk faktur dari kasir tidak lagi berkata
