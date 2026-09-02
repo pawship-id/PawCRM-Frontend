@@ -165,9 +165,11 @@ export function BookingCreateForm() {
   const [services, setServices] = useState<Service[]>([]);
   /** One card per animal-and-service. The order they were added is kept. */
   const [rows, setRows] = useState<PetRowDraft[]>([blankRow()]);
-  const [groomers, setGroomers] = useState<{ value: string; label: string }[]>(
-    [],
-  );
+  const [groomers, setGroomers] = useState<
+    { value: string; label: string; disabled?: boolean }[]
+  >([]);
+  /* The clash the server refused, kept so it can be shown and overridden. */
+  const [clash, setClash] = useState<string | null>(null);
 
   const [date, setDate] = useState(todayValue);
   const [time, setTime] = useState(nextHalfHourValue);
@@ -221,17 +223,35 @@ export function BookingCreateForm() {
     names an unassigned slot "Belum ditentukan", and a booking with nobody on it
     yet is the ordinary case anyway. So the selects simply do not appear.
   */
+  /*
+    WHO MAY BE BOOKED ON THE CHOSEN DAY — FR-4 kriteria 4.3.
+
+    RE-ASKED WHEN THE DATE CHANGES, because the answer depends on it: somebody
+    who is off every Wednesday is offerable on Thursday, and a list fetched once
+    on mount would be wrong the moment the receptionist moves the appointment.
+
+    BEST EFFORT, AND SILENT WHEN IT FAILS. Reading staff takes a permission a
+    receptionist who books all day has no other reason to hold. A red banner over
+    a working form would be the wrong answer: assignment is optional, the server
+    names an unassigned slot, and the server ALSO refuses a groomer who is off —
+    so a missing list costs a convenience, never a rule.
+  */
   useEffect(() => {
+    if (date === "") return;
+
     let active = true;
 
-    userService
-      .list({ status: "active", limit: FETCH_LIMIT })
-      .then((result) => {
+    bookingService
+      .availability(date)
+      .then((rows) => {
         if (!active) return;
         setGroomers(
-          result.items.map((user) => ({
-            value: user._id,
-            label: user.fullName,
+          rows.map((row) => ({
+            value: row._id,
+            label: row.offReason
+              ? `${row.fullName} — ${row.offReason}`
+              : row.fullName,
+            disabled: Boolean(row.offReason),
           })),
         );
       })
@@ -242,7 +262,7 @@ export function BookingCreateForm() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [date]);
 
   /* This customer's animals. Re-asked after a quick-add rather than spliced —
      the list is server-ordered, and a local insert would be a second ordering
@@ -366,6 +386,12 @@ export function BookingCreateForm() {
 
     try {
       const booking = await bookingService.create({
+        /*
+          "SAVE IT ANYWAY", and only after somebody has been shown what they are
+          overriding. The flag is never sent on a first attempt — a warning
+          nobody read is not a decision.
+        */
+        forceClash: clash !== null,
         customerId: customer._id,
         items: rows.map((row) => ({
           petId: row.petId,
@@ -434,6 +460,18 @@ export function BookingCreateForm() {
           "petId This pet belongs to a different customer" can be acted on, and
           "Validation failed" cannot. See ApiError.fullMessage.
         */
+        /*
+          A 409 HERE IS THE CLASH — the one refusal this form answers by asking
+          again rather than by correcting a field. `reason` names the booking it
+          collides with, which is what makes "simpan tetap" a decision instead of
+          a shrug.
+        */
+        if (error.status === 409) {
+          setClash(error.fullMessage);
+          setSaving(false);
+          return;
+        }
+
         const placeable = Object.fromEntries(
           Object.entries(error.fieldErrors).filter(([field]) =>
             PLACEABLE_FIELDS.includes(field),
@@ -579,6 +617,26 @@ export function BookingCreateForm() {
 
             {loadError && <Alert variant="error">{loadError}</Alert>}
             {formError && <Alert variant="error">{formError}</Alert>}
+
+            {/*
+              THE CLASH, SHOWN RATHER THAN REFUSED — FR-4 kriteria 4.5/4.6.
+
+              Two small dogs at ten really can be handled together sometimes, and
+              the shop is the only one who knows. A system that forbade it would
+              be beaten in the way that costs most: the booking gets written on
+              paper, and the day sheet stops being true.
+
+              SAVING AGAIN IS THE OVERRIDE, and it is only offered after somebody
+              has been shown what they are overriding — a warning nobody read is
+              not a decision. The SERVER still refuses it without
+              `bookings:overrideClash`, so this is a courtesy, never the gate.
+            */}
+            {clash && (
+              <Alert variant="warning">
+                {clash} — tekan Simpan lagi kalau memang mau dijadwalkan
+                bersamaan.
+              </Alert>
+            )}
 
             {/* §16 field order: kapan, lalu dengan siapa, lalu isinya. */}
             <div className="grid gap-4 sm:grid-cols-2">

@@ -7,6 +7,34 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Anti-bentrok dan jadwal libur di form booking
+
+Dropdown groomer sekarang **tahu siapa yang libur pada tanggal yang dipilih**.
+Yang libur tidak bisa dipilih, dan barisnya berkata kenapa: "Sinta — Libur setiap
+Rabu".
+
+**Alasannya bagian dari jawaban, bukan hiasan.** Baris yang di-grey tanpa
+penjelasan adalah jalan buntu paling umum di aplikasi ini: yang satu menyuruh
+resepsionis menawarkan Kamis, yang lain menyuruh mereka menelepon seseorang.
+
+**Ditanyakan ulang setiap kali tanggalnya berubah.** Orang yang libur tiap Rabu
+bisa ditawarkan hari Kamis, dan daftar yang diambil sekali saat halaman dibuka
+akan salah begitu resepsionis memindahkan janjinya.
+
+**Bentrok ditampilkan, bukan ditolak.** Kalau groomer sudah punya pekerjaan yang
+beririsan jam, formnya menampilkan peringatan yang menyebut **booking mana, jam
+berapa, dan nomornya** — lalu menekan Simpan lagi adalah override-nya. Server
+tetap menolak override tanpa `bookings:overrideClash`, jadi tombolnya kesopanan,
+bukan gerbangnya.
+
+**`forceClash` tidak pernah dikirim pada percobaan pertama.** Peringatan yang
+tidak dibaca siapa pun bukan sebuah keputusan.
+
+**Libur tidak bisa di-override dari layar mana pun.** Groomer yang libur ya
+libur, dan itu 400 dari server — bukan 409 yang bisa dikonfirmasi.
+
+---
+
 ## [Unreleased] — Kalender booking, dan dua perbaikan pada profil hewan
 
 `/dashboard/booking/kalender` — harian dan mingguan, kolom per groomer.

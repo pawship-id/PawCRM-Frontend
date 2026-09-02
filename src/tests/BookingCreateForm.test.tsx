@@ -86,6 +86,13 @@ beforeEach(() => {
   services.list.mockResolvedValue(page([service()]));
   users.list.mockResolvedValue(page([groomer]));
   bookings.create.mockResolvedValue(created);
+  /*
+    FR-4: the groomer dropdown asks who may be booked on the chosen DAY, not who
+    exists. `users.list` is no longer what fills it.
+  */
+  bookings.availability.mockResolvedValue([
+    { _id: groomer._id, fullName: groomer.fullName, offReason: null },
+  ]);
 });
 
 /** Chooses Ibu Rina through the picker the dialog opens. */
@@ -139,6 +146,8 @@ describe("BookingCreateForm", () => {
     await waitFor(() =>
       expect(bookings.create).toHaveBeenCalledWith({
         customerId: "cust-1",
+        /* Never true on a first attempt — a warning nobody read is not a decision. */
+        forceClash: false,
         /*
           THE ANIMAL IS ON THE ROW since PCR-040, and no price crosses the wire:
           the server snapshots it from the catalogue. `durationMin` is undefined
@@ -262,9 +271,11 @@ describe("BookingCreateForm", () => {
         service({ _id: "svc-2", name: "Bath & Blow", durationMin: 60 }),
       ]),
     );
-    users.list.mockResolvedValue(
-      page([groomer, { _id: "user-2", fullName: "Pak Rio" } as User]),
-    );
+    /* FR-4: the dropdown is filled from the availability call now. */
+    bookings.availability.mockResolvedValue([
+      { _id: groomer._id, fullName: groomer.fullName, offReason: null },
+      { _id: "user-2", fullName: "Pak Rio", offReason: null },
+    ]);
 
     renderWithAuth(
       <BookingCreateForm />,
@@ -340,7 +351,7 @@ describe("BookingCreateForm", () => {
     server names an unassigned slot, so a refusal costs the select, not the form.
   */
   it("still books when the staff list is refused", async () => {
-    users.list.mockRejectedValue(new ApiError("Forbidden", 403));
+    bookings.availability.mockRejectedValue(new ApiError("Forbidden", 403));
 
     renderWithAuth(
       <BookingCreateForm />,
@@ -492,5 +503,89 @@ describe("BookingCreateForm", () => {
     await screen.findByRole("combobox", { name: /layanan/i });
 
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  /* ── FR-4: the roster, finally read ─────────────────────────────────── */
+
+  /*
+    A GREYED NAME WITH NO EXPLANATION tells a receptionist to phone somebody;
+    "Libur setiap Rabu" tells them to offer Thursday. The reason is part of the
+    answer, not a nicety.
+  */
+  it("disables a groomer who is off, and says why", async () => {
+    bookings.availability.mockResolvedValue([
+      { _id: "user-1", fullName: "Mbak Sari", offReason: "Libur setiap Rabu" },
+    ]);
+
+    renderWithAuth(<BookingCreateForm />);
+
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /groomer/i });
+    await userEvent.click(screen.getByRole("combobox", { name: /groomer/i }));
+
+    const option = await screen.findByRole("option", {
+      name: /mbak sari — libur setiap rabu/i,
+    });
+    expect(option).toHaveAttribute("aria-disabled", "true");
+  });
+
+  /*
+    RE-ASKED WHEN THE DATE CHANGES. Somebody off every Wednesday is offerable on
+    Thursday, and a list fetched once on mount would be wrong the moment the
+    receptionist moves the appointment.
+  */
+  it("asks again when the date moves", async () => {
+    renderWithAuth(<BookingCreateForm />);
+
+    await pickCustomer();
+    await waitFor(() => expect(bookings.availability).toHaveBeenCalled());
+
+    const before = bookings.availability.mock.calls.length;
+
+    fireEvent.change(screen.getByLabelText(/tanggal/i), {
+      target: { value: "2026-09-09" },
+    });
+
+    await waitFor(() =>
+      expect(bookings.availability).toHaveBeenCalledWith("2026-09-09"),
+    );
+    expect(bookings.availability.mock.calls.length).toBeGreaterThan(before);
+  });
+
+  /*
+    A CLASH IS A WARNING, NOT A REFUSAL — kriteria 4.5/4.6. Two small dogs at ten
+    really can be handled together sometimes, and the shop is the only one who
+    knows. A system that forbade it would be beaten in the way that costs most:
+    the booking gets written on paper and the day sheet stops being true.
+
+    THE SECOND SAVE IS THE OVERRIDE, and it is only offered after somebody has
+    been shown what they are overriding — a warning nobody read is not a
+    decision. The SERVER still refuses it without the grant.
+  */
+  it("shows a clash, then sends the override on the second save", async () => {
+    bookings.create
+      .mockRejectedValueOnce(
+        new ApiError("Groomer itu sudah ada pekerjaan di jam yang sama", 409, {
+          reason: "Bath & Blow jam 10.00 (BK-260902-004)",
+        }),
+      )
+      .mockResolvedValueOnce(created);
+
+    renderWithAuth(<BookingCreateForm />);
+
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /layanan/i });
+    await choose(/layanan/i, /grooming full service/i);
+
+    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+    expect(await screen.findByText(/BK-260902-004/)).toBeInTheDocument();
+    expect(bookings.create.mock.calls[0][0].forceClash).toBe(false);
+
+    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+    await waitFor(() =>
+      expect(bookings.create.mock.calls[1][0].forceClash).toBe(true),
+    );
   });
 });

@@ -4,6 +4,7 @@ import type {
   BookingCalendar,
   BookingCalendarQuery,
   BookingListQuery,
+  GroomerAvailability,
   BookingStatus,
   BookingUnbilledSummary,
   CreateBookingInput,
@@ -138,6 +139,16 @@ export const bookingService = {
    * ONE OBJECT, not a page: the range bounds the answer, and the screen needs
    * the groomer columns and the blocks together to draw anything at all.
    */
+  /**
+   * GET /bookings/availability?date= — who may be booked that day, and why not.
+   *
+   * A BARE ARRAY: a handful of names a dropdown renders whole.
+   */
+  availability: (date: string) =>
+    apiClient.get<GroomerAvailability[]>("/bookings/availability", {
+      query: { date },
+    }),
+
   calendar: (query: BookingCalendarQuery = {}) =>
     apiClient.get<BookingCalendar>("/bookings/calendar", {
       query: {

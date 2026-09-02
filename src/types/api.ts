@@ -2010,6 +2010,34 @@ export interface BookingCalendarQuery {
   dateTo?: string;
 }
 
+/**
+ * One staff member, and why they cannot be booked on a given day — FR-4.
+ *
+ * `offReason` IS PART OF THE ANSWER, not a nicety. A disabled row with no
+ * explanation is the commonest dead end in this app: "Libur setiap Rabu" tells a
+ * receptionist to offer Thursday; a greyed name tells them to phone somebody.
+ *
+ * EVERYBODY IS LISTED, including the ones who are off. A list that silently
+ * omitted them would leave somebody wondering whether the name they wanted is
+ * missing or the list is broken.
+ */
+export interface GroomerAvailability {
+  _id: string;
+  fullName: string;
+  offReason: string | null;
+}
+
+/** A booking row that a proposed leave would strand — FR-4 kriteria 4.9. */
+export interface AffectedBooking {
+  _id: string;
+  bookingId: string;
+  bookingNumber: string | null;
+  scheduledAt: string;
+  durationMin: number | null;
+  petId: string;
+  name: string;
+}
+
 /** Query parameters accepted by GET /api/bookings. All optional. */
 export interface BookingListQuery {
   page?: number;
@@ -2083,9 +2111,22 @@ export interface BookingItemInput {
   notes?: string | null;
 }
 
+/**
+ * "Save it anyway" — FR-4 kriteria 4.6.
+ *
+ * A CLASH IS A WARNING, NOT A REFUSAL: two small dogs at ten really can be
+ * handled together sometimes, and the shop is the only one who knows. The server
+ * refuses this flag without `bookings:overrideClash` and writes every override
+ * to the audit log.
+ *
+ * LEAVE IS NOT OVERRIDABLE. A groomer who is off is off, and this flag does not
+ * change that.
+ */
+
 export interface CreateBookingInput {
   customerId: string;
   items: BookingItemInput[];
+  forceClash?: boolean;
   scheduledAt: string;
   branchId?: string;
   status?: BookingStatus;
@@ -2102,6 +2143,7 @@ export interface CreateBookingInput {
 export interface UpdateBookingInput {
   customerId?: string;
   items?: BookingItemInput[];
+  forceClash?: boolean;
   scheduledAt?: string;
   branchId?: string;
   notes?: string | null;

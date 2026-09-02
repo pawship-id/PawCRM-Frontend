@@ -58,7 +58,12 @@ export function BookingPetRowCard({
   index: number;
   pets: Pet[];
   services: Service[];
-  groomers: { value: string; label: string }[];
+  /**
+   * `disabled` CARRIES THE REASON — FR-4 kriteria 4.3. A greyed name with no
+   * explanation tells a receptionist to phone somebody; "Libur setiap Rabu"
+   * tells them to offer Thursday.
+   */
+  groomers: { value: string; label: string; disabled?: boolean }[];
   disabled: boolean;
   /** False on the last remaining card — a booking with no animals is not one. */
   removable: boolean;
@@ -150,6 +155,11 @@ export function BookingPetRowCard({
               { value: UNASSIGNED, label: "Belum ditentukan" },
               ...groomers,
             ]}
+            hint={
+              groomers.some((groomer) => groomer.disabled)
+                ? "Yang sedang libur tidak bisa dipilih."
+                : undefined
+            }
             disabled={disabled}
           />
         )}
