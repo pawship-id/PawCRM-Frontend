@@ -610,8 +610,10 @@ describe("BookingForm", () => {
   it("shows a clash, then sends the override on the second save", async () => {
     bookings.create
       .mockRejectedValueOnce(
-        new ApiError("Groomer itu sudah ada pekerjaan di jam yang sama", 409, {
-          reason: "Bath & Blow jam 10.00 (BK-260902-004)",
+        /* Worded as the server actually words it — see `#describeClash`. */
+        new ApiError("Mbak Sari sudah ada pekerjaan di jam yang sama", 409, {
+          reason:
+            "Bella bentrok dengan Coco (Bath & Blow) jam 10.00, BK-260902-004",
         }),
       )
       .mockResolvedValueOnce(created);
@@ -624,7 +626,15 @@ describe("BookingForm", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
 
+    /* The banner carries the whole thing: who, whose animal, and against what. */
     expect(await screen.findByText(/BK-260902-004/)).toBeInTheDocument();
+    /*
+      ONE ALERT CARRIES THE WHOLE THING — asserted on its text rather than by
+      querying each name, because both appear in the alert AND in its wrapper.
+    */
+    const banner = screen.getByRole("alert");
+    expect(banner).toHaveTextContent("Mbak Sari");
+    expect(banner).toHaveTextContent("Bella bentrok dengan Coco");
     expect(bookings.create.mock.calls[0][0].forceClash).toBe(false);
 
     await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
