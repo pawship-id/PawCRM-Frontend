@@ -7,6 +7,62 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Kalender booking, dan dua perbaikan pada profil hewan
+
+`/dashboard/booking/kalender` — harian dan mingguan, kolom per groomer.
+
+**Satu blok adalah satu hewan yang sedang dikerjakan, bukan satu booking.**
+Kunjungan yang membawa Mochi dan Coco dengan groomer berbeda muncul di dua kolom
+sekaligus; blok dari satu kunjungan membawa `bookingId` yang sama dan membuka
+kunjungan utuh dari mana saja diklik.
+
+**Warna tidak pernah jadi satu-satunya pembeda.** Setiap blok juga membawa
+statusnya sebagai **teks** — untuk yang sulit membedakan warna, dan untuk layar
+resepsionis yang tersorot matahari.
+
+**"Belum ditentukan" adalah kolom, dan ia paling kanan.** Baris tanpa groomer
+adalah keadaan biasa untuk booking lewat telepon; membuangnya dari kalender
+justru menyembunyikan pekerjaan yang masih perlu diberi orang.
+
+**Tampilan mingguan meringkas, tidak menggambar tiap slot.** Tujuh hari berisi
+slot setengah jam adalah grid yang tidak bisa dibaca di laptop. Yang sebenarnya
+ditanyakan tampilan mingguan adalah "hari mana yang penuh" — jadi ia menjawab
+dalam hitungan layanan dan jam, dan tampilan harian satu klik jauhnya.
+
+**Tanpa drag & drop.** Memindahkan blok harus memicu pengecekan bentrok,
+pemeriksaan libur, dan jejak audit; itu FR-4, dan membangunnya di sini berarti
+membangun FR-4 dua kali.
+
+### Bug tanggal yang ditemukan ujinya sendiri
+
+Tombol "berikutnya" tidak memindahkan hari sama sekali. `addDays` memakai
+`toISOString().slice(0, 10)` — yang mengonversi ke UTC lebih dulu, sehingga di
+timur Greenwich **tanggalnya mundur**. Di Jakarta, `addDays("2026-09-02", 1)`
+kembali sebagai `"2026-09-02"`.
+
+Di tempat lain di aplikasi ini, field tanggal adalah tanggal pembukuan yang orang
+baca dan koreksi. Di sini ia sumbu yang seluruh layarnya digambar di atasnya.
+
+### Profil hewan — dua perbaikan
+
+**Pemilik ditampilkan sebagai nama, bukan id.** Halaman `/master/pets/:id`
+memasang form ubah sebagai tab pertamanya, dan sebuah form menjawab dalam **nilai
+field** — jadi pemiliknya tampil sebagai select yang dinonaktifkan berisi
+`6a9797bacc28e96138ba7764`. Tab Info sekarang **tampilan baca**: pemiliknya nama,
+dan namanya tertaut ke pelanggannya.
+
+Untuk field pemilik yang terkunci di form ubah, satu pelanggan diambil **by id**
+supaya labelnya punya nama — bukan seluruh daftar. Separuh alasan yang lama
+(jangan tarik empat ratus pelanggan untuk satu baris nonaktif) memang benar; yang
+salah adalah melewatkan satu baris yang justru jadi isi field itu.
+
+**Mengubah data hewan punya route sendiri** — `/master/pets/:id/edit`. Halaman
+profil turun gerbangnya dari `update` ke `read`, karena tiga dari empat tabnya
+untuk dilihat: groomer yang tidak boleh mengubah data hewan tetap harus tahu
+hewannya alergi sesuatu.
+
+---
+
 ## [Unreleased] — Profil hewan: yang groomer perlu tahu, datang sendiri
 
 `/dashboard/master/pets/:id` bukan lagi form ubah, melainkan **profil empat

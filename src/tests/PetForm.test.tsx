@@ -52,6 +52,16 @@ const petFixture = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  /*
+    A LOCKED OWNER FIELD NOW FETCHES THE ONE CUSTOMER BY ID so it can show a
+    NAME. Without this the edit screen rendered the raw `customerId` — which is
+    what a shop owner saw where a person's name belongs.
+  */
+  mockedCustomerService.getById.mockResolvedValue({
+    _id: CUSTOMER_ID,
+    name: "Ibu Rina",
+    phone: "0812-3456-7890",
+  } as never);
   mockedCustomerService.list.mockResolvedValue({
     items: [
       {

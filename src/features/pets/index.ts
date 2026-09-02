@@ -21,3 +21,4 @@ export { PetProfileScreen } from "./components/PetProfileScreen";
 export { PetTimelineTab } from "./components/PetTimelineTab";
 export { PetPreferencesTab } from "./components/PetPreferencesTab";
 export { PetMedicalTab } from "./components/PetMedicalTab";
+export { PetInfoTab } from "./components/PetInfoTab";

@@ -6,7 +6,7 @@ import { Alert, FilterPills, Spinner } from "@/components";
 import { petService } from "@/services/pet.service";
 import type { Pet } from "@/types/api";
 
-import { PetForm } from "./PetForm";
+import { PetInfoTab } from "./PetInfoTab";
 import { PetMedicalTab } from "./PetMedicalTab";
 import { PetPreferencesTab } from "./PetPreferencesTab";
 import { PetSummaryCard } from "./PetSummaryCard";
@@ -24,9 +24,15 @@ const TABS: { value: Tab; label: string }[] = [
 /**
  * The pet profile — FR-5 / PCR-044.
  *
- * FOUR TABS, AND ONLY ONE OF THEM IS NEW WORK FOR THE SHOP. Info is the form
- * that already existed; the other three are the ones that make a groomer look
- * like they know the animal.
+ * FOUR TABS, ALL OF THEM READ-FIRST. Info shows the animal's own details;
+ * Riwayat, Preferensi and Medis are what make a groomer look like they know it.
+ *
+ * INFO USED TO MOUNT THE EDIT FORM, and that was wrong twice over. A form
+ * answers in FIELD VALUES — the owner rendered as a disabled select holding a
+ * customer id, so somebody opening a profile to see whose dog this is read
+ * `6a9797bacc28e96138ba7764`. And it asked for a permission the page does not
+ * need: three of four tabs are things to LOOK at. Editing has its own route now,
+ * behind its own gate.
  *
  * PILLS RATHER THAN A TABS PRIMITIVE, because this codebase has no tabs
  * component and `FilterPills` is what it already uses to switch a view. Inventing
@@ -110,7 +116,7 @@ export function PetProfileScreen({ petId }: { petId: string }) {
         ariaLabel="Bagian profil hewan"
       />
 
-      {tab === "info" && <PetForm petId={pet._id} />}
+      {tab === "info" && <PetInfoTab pet={pet} />}
       {tab === "riwayat" && <PetTimelineTab petId={pet._id} />}
       {tab === "preferensi" && (
         <PetPreferencesTab pet={pet} onSaved={setPet} />

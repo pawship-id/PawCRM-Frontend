@@ -1,5 +1,9 @@
 import { render, screen } from "@testing-library/react";
 
+import { renderWithAuth } from "./helpers/renderWithAuth";
+
+jest.mock("@/services/customer.service");
+
 import { PetSummaryCard } from "@/features/pets";
 import type { Pet } from "@/types/api";
 
@@ -131,5 +135,38 @@ describe("PetSummaryCard", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("#galak")).toBeInTheDocument();
     expect(screen.getByText("#trauma-vet")).toBeInTheDocument();
+  });
+});
+
+/**
+ * THE OWNER IS A NAME, NOT AN ID — and this is a regression test for something
+ * a shop owner actually saw on screen.
+ *
+ * `/dashboard/master/pets/:id` used to mount the EDIT FORM as its landing tab.
+ * A form answers in field values, so the owner rendered as a disabled select
+ * holding a customer id: somebody opening a profile to see whose dog this is
+ * read `6a9797bacc28e96138ba7764`.
+ */
+describe("PetInfoTab — the owner", () => {
+  it("shows the owner's name, never the id", async () => {
+    const { customerService } = jest.requireMock("@/services/customer.service");
+    customerService.getById.mockResolvedValue({
+      _id: "cust-1",
+      name: "Ibu Rina",
+    });
+
+    const { PetInfoTab } = jest.requireActual<
+      typeof import("@/features/pets/components/PetInfoTab")
+    >("@/features/pets/components/PetInfoTab");
+
+    /* `Can` reads the session, so this one needs the provider. */
+    renderWithAuth(
+      <PetInfoTab
+        pet={pet({ customerId: "cust-1", breed: "Pomeranian" }) as Pet}
+      />,
+    );
+
+    expect(await screen.findByText("Ibu Rina")).toBeInTheDocument();
+    expect(screen.queryByText("cust-1")).not.toBeInTheDocument();
   });
 });

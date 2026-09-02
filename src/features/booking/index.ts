@@ -18,6 +18,7 @@ export {
 export { useBookingBridge } from "./hooks/useBookingBridge";
 
 export { BookingsScreen } from "./components/BookingsScreen";
+export { BookingCalendarScreen } from "./components/BookingCalendarScreen";
 export { BookingCreateForm } from "./components/BookingCreateForm";
 export { BookingStatusActions } from "./components/BookingStatusActions";
 export { BookingHistoryDialog } from "./components/BookingHistoryDialog";

@@ -77,22 +77,29 @@ export function BookingsToolbar({
   return (
     <FilterBar
       actions={
-        /*
-          A LINK, NOT A HANDLER — the form is a page now, so this is an address
-          somebody can bookmark, open in a new tab, or be sent to.
+        <>
+          {/*
+            LINKS, NOT HANDLERS — both destinations are pages now, so these are
+            addresses somebody can bookmark, open in a new tab, or be sent to.
 
-          GATED SEPARATELY FROM THE LIST. `read` is what opens this screen;
-          taking a booking is `create`. The route behind it carries the same
-          gate — a hidden button is a courtesy, never the control.
-        */
-        <Can feature="bookings" action="create">
-          <Button asChild>
-            <Link href="/dashboard/booking/new">
-              <Plus className="size-4" />
-              Booking baru
-            </Link>
+            THE CALENDAR RIDES ON `read`, the same grant that opened this list:
+            it is something to LOOK at. Taking a booking is `create`, and the
+            route behind that button carries the same gate — a hidden button is
+            a courtesy, never the control.
+          */}
+          <Button asChild variant="secondary">
+            <Link href="/dashboard/booking/kalender">Kalender</Link>
           </Button>
-        </Can>
+
+          <Can feature="bookings" action="create">
+            <Button asChild>
+              <Link href="/dashboard/booking/new">
+                <Plus className="size-4" />
+                Booking baru
+              </Link>
+            </Button>
+          </Can>
+        </>
       }
     >
       <FilterDateRange

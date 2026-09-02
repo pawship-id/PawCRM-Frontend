@@ -1958,6 +1958,58 @@ export interface BookingPet {
 /** How much of a visit has been billed — see `Booking.billingState`. */
 export type BookingBillingState = "unbilled" | "partial" | "billed";
 
+/**
+ * One block on the calendar — FR-3.
+ *
+ * A BLOCK IS A ROW, NOT A BOOKING. Since PCR-040 a visit may bring Mochi and
+ * Coco with different groomers, so one booking appears in two columns at once.
+ * Rows of one visit share `bookingId`, which is what lets the screen tie them
+ * together and open the whole booking from either.
+ */
+export interface BookingCalendarEntry {
+  /** The ROW's id. */
+  _id: string;
+  bookingId: string;
+  bookingNumber: string | null;
+  status: BookingStatus;
+  branchId: string;
+  /** The visit's arrival time — every row of a booking shares it (K4). */
+  startAt: string;
+  /**
+   * NULL WHEN THE SERVICE CARRIES NO DURATION, rather than a guess. The screen
+   * draws such a block at a default height and says so; inventing a length would
+   * put a number on the calendar that nobody chose.
+   */
+  durationMin: number | null;
+  groomerUserId: string | null;
+  groomerName: string | null;
+  petId: string;
+  petName: string | null;
+  customerName: string | null;
+  serviceName: string;
+  notes: string | null;
+}
+
+/** GET /api/bookings/calendar. */
+export interface BookingCalendar {
+  from: string;
+  to: string;
+  /**
+   * The columns, derived from what is actually booked rather than from the staff
+   * list — a column for every user is mostly empty columns.
+   */
+  groomers: { _id: string; name: string | null }[];
+  /** True when anything at all is waiting for somebody to be put on it. */
+  hasUnassigned: boolean;
+  entries: BookingCalendarEntry[];
+}
+
+export interface BookingCalendarQuery {
+  branchId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
 /** Query parameters accepted by GET /api/bookings. All optional. */
 export interface BookingListQuery {
   page?: number;

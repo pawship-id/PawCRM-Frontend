@@ -16,7 +16,8 @@ The POS side of the same collection is [`booking-bridge.md`](./booking-bridge.md
 | **Built** | `BookingCreateForm` at `/dashboard/booking/new` — a **page**, not a dialog: a customer and **one or more animals**, each with its own service, groomer and duration |
 | **Built** | `BookingStatusActions` — move it along the ladder, or call it off |
 | **Built** | `BookingHistoryDialog` — when it reached each status, and who took it there |
-| **Not built** | A calendar, a groomer roster, capacity, clash detection |
+| **Built** | `BookingCalendarScreen` at `/dashboard/booking/kalender` — harian dan mingguan, kolom per groomer |
+| **Not built** | A groomer roster, capacity, clash detection — FR-4 |
 | **Not built** | Editing a booking — rescheduling, changing the services, swapping the animal |
 
 Editing goes through `PATCH /bookings/:id` and wants a form, not a row. The table moves a
@@ -186,3 +187,42 @@ reported as a failure — which sends somebody to make it a second time.
 The order is now: write, reset, navigate, *then* announce — and the announcement has a catch
 of its own. A booking that saved and could not announce itself is still a booking that saved,
 and the list it lands on already shows it. `BookingCreateForm.test.tsx` pins it.
+
+---
+
+## Kalender — `/dashboard/booking/kalender`
+
+**Satu blok adalah satu BARIS, bukan satu booking.** Sejak PCR-040 satu kunjungan
+bisa membawa Mochi dan Coco dengan groomer berbeda, jadi satu booking muncul di
+dua kolom sekaligus. Blok dari satu kunjungan membawa `bookingId` yang sama, dan
+mengklik mana pun membuka kunjungan utuh — orang yang membacanya sebentar lagi
+bicara dengan pemiliknya, yang datang menjemput keduanya.
+
+**Kolomnya diturunkan dari yang dibooking, bukan dari daftar staf.** Kolom untuk
+setiap pengguna adalah kolom kosong di toko dengan sepuluh staf dan dua groomer
+bekerja hari itu. FR-4 butuh rosternya — groomer yang masuk tapi belum ada
+pekerjaannya tetap harus punya kolom — dan itu alasan mengubahnya nanti dengan
+roster di tangan.
+
+**"Belum ditentukan" adalah kolom, paling kanan.** Membuangnya menyembunyikan
+pekerjaan yang masih perlu diberi orang.
+
+**Warna tidak pernah jadi satu-satunya pembeda**: setiap blok membawa statusnya
+sebagai teks, dan legendanya selalu terlihat — kunci warna yang harus di-hover
+adalah kunci yang tidak dibaca siapa pun.
+
+**Blok tanpa durasi digambar satu slot dan berkata "durasi belum diisi".**
+Mengarang panjangnya menaruh angka yang tidak dipilih siapa pun di kalender — dan
+yang nanti diperlakukan sebagai fakta oleh pengecekan bentrok FR-4.
+
+### Tanggal di layar ini adalah sumbunya, bukan field
+
+`toISOString().slice(0, 10)` — yang ditulis di tempat lain di aplikasi ini —
+salah di sini, dan sebuah uji yang menemukannya, bukan pembaca. Ia mengonversi ke
+UTC lebih dulu, jadi di timur Greenwich tanggalnya **mundur**: di Jakarta
+`addDays("2026-09-02", 1)` kembali sebagai `"2026-09-02"`, dan tombol
+"berikutnya" tidak memindahkan apa pun.
+
+Gunakan `localDate()` di berkas ini. Di tempat lain field tanggal adalah tanggal
+pembukuan yang orang baca dan koreksi; di sini ia sumbu yang seluruh layarnya
+digambar di atasnya.

@@ -1,6 +1,8 @@
 import { apiClient } from "./api-client";
 import type {
   Booking,
+  BookingCalendar,
+  BookingCalendarQuery,
   BookingListQuery,
   BookingStatus,
   BookingUnbilledSummary,
@@ -128,5 +130,20 @@ export const bookingService = {
     apiClient.patch<Booking>(`/bookings/${id}/groomer`, {
       groomerUserId,
       serviceId,
+    }),
+
+  /**
+   * GET /bookings/calendar — the day sheet, drawn.
+   *
+   * ONE OBJECT, not a page: the range bounds the answer, and the screen needs
+   * the groomer columns and the blocks together to draw anything at all.
+   */
+  calendar: (query: BookingCalendarQuery = {}) =>
+    apiClient.get<BookingCalendar>("/bookings/calendar", {
+      query: {
+        branchId: query.branchId,
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+      },
     }),
 };
