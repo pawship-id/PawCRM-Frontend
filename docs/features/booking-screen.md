@@ -17,7 +17,7 @@ The POS side of the same collection is [`booking-bridge.md`](./booking-bridge.md
 | **Built** | `BookingStatusActions` — move it along the ladder, or call it off |
 | **Built** | `BookingHistoryDialog` — when it reached each status, and who took it there |
 | **Built** | `BookingCalendarScreen` at `/dashboard/booking/kalender` — harian dan mingguan, kolom per groomer |
-| **Not built** | A groomer roster, capacity, clash detection — FR-4 |
+| **Not built** | Capacity, and a column for a groomer who is in but has nothing booked |
 | **Not built** | Editing a booking — rescheduling, changing the services, swapping the animal |
 
 Editing goes through `PATCH /bookings/:id` and wants a form, not a row. The table moves a
@@ -226,3 +226,23 @@ UTC lebih dulu, jadi di timur Greenwich tanggalnya **mundur**: di Jakarta
 Gunakan `localDate()` di berkas ini. Di tempat lain field tanggal adalah tanggal
 pembukuan yang orang baca dan koreksi; di sini ia sumbu yang seluruh layarnya
 digambar di atasnya.
+
+---
+
+## Cabang: asked, never inherited
+
+The booking form and the calendar both take their branch from a picker on the
+screen, not from `session.currentBranchId`.
+
+**That session field is the TILL's idea of a branch** and it is right there: a
+terminal stands in one shop all day. Everything else that writes a document in
+this app asks on the form — `InvoiceCreateForm`, `ReceiptForm`, the stock forms —
+and a booking taken over the phone belongs with those.
+
+Both screens use `useBranchScope`, so **one branch fills itself in** and no
+picker appears: one option is not a choice. The calendar's picker is a filter,
+where empty means every branch.
+
+The first version of both screens inherited the session branch. The cost was not
+a crash — it was a booking quietly filed to whichever branch the session happened
+to point at, invisible until somebody reconciled a branch's takings.

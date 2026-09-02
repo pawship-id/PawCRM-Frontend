@@ -4,6 +4,7 @@ import type {
   BookingCalendar,
   BookingCalendarQuery,
   BookingListQuery,
+  AffectedBooking,
   GroomerAvailability,
   BookingStatus,
   BookingUnbilledSummary,
@@ -156,5 +157,18 @@ export const bookingService = {
         dateFrom: query.dateFrom,
         dateTo: query.dateTo,
       },
+    }),
+
+  /**
+   * GET /bookings/affected-by-leave — the live bookings a proposed leave would
+   * strand (FR-4 kriteria 4.9).
+   *
+   * ASKED BEFORE SAVING, never after. Marking somebody off for next Wednesday
+   * when they already have four animals booked is a DECISION, not a typo, and it
+   * has to be made with the four animals visible.
+   */
+  affectedByLeave: (groomerUserId: string, dates: string[]) =>
+    apiClient.get<AffectedBooking[]>("/bookings/affected-by-leave", {
+      query: { groomerUserId, dates },
     }),
 };

@@ -7,6 +7,86 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Cabang ditanyakan di form, bukan diwarisi dari sesi
+
+Form booking dan kalender dulu mengikuti `session.currentBranchId` diam-diam.
+Itu **pola yang salah untuk aplikasi ini**: setiap dokumen yang diketik tangan
+menanyakan cabangnya di form — `InvoiceCreateForm`, `ReceiptForm`, form-form
+stok. `currentBranchId` adalah idenya **kasir**, dan alasannya masuk akal di
+sana: satu terminal berdiri di satu toko sepanjang hari. Booking yang diterima
+lewat telepon bukan itu.
+
+**Ongkos salahnya bukan crash.** Bookingnya diam-diam masuk ke cabang mana pun
+yang kebetulan ditunjuk sesi — tidak terlihat di layar mana pun sampai ada yang
+merekonsiliasi pemasukan sebuah cabang.
+
+**`soleBranch` menjawabnya untuk toko satu cabang.** Satu pilihan bukan pilihan,
+jadi pemilihnya tidak muncul sama sekali — sama seperti form stok yang sudah ada.
+
+**Kalender dapat filter cabang** sekaligus, yang memang diminta FR-3 kriteria 3.9
+dan tercatat sebagai belum ada. Kosong berarti semua cabang — pertanyaan yang sah
+untuk pemilik dua toko, dan default yang salah untuk yang punya satu.
+
+---
+
+## [Unreleased] — Jadwal & Komisi bisa diatur dari layar
+
+Kartu baru di **Ubah Pengguna**: hari libur mingguan, tanggal cuti, dan cara
+komisi dihitung.
+
+**Keduanya sudah bisa disimpan sejak modul pengguna dirilis dan tidak pernah
+punya layar.** Tipe `User` di frontend bahkan sengaja tidak memuatnya, dengan
+catatan "tambahkan kalau ada layar yang membutuhkannya". FR-4 membuat rosternya
+menentukan siapa yang boleh dibooking dan FR-6 membuat rate-nya menentukan berapa
+yang diperoleh — dan sampai kartu ini ada, satu-satunya cara mengaturnya adalah
+memanggil API dengan tangan.
+
+**Hari libur memakai penomoran hari JavaScript: 0 Minggu, 3 Rabu.** Itu yang
+`Date#getDay` kembalikan dan yang server bandingkan. Penomoran yang lebih ramah
+kalau diciptakan di sini adalah lapisan terjemahan dengan satu tugas: salah
+sekali, diam-diam, di hari libur seseorang.
+
+**Menambahkan hari libur memeriksa apa yang akan terdampak** — kriteria 4.9 — dan
+menampilkannya **sebelum** disimpan. Menandai seseorang libur Rabu depan padahal
+sudah ada empat hewan terjadwal adalah keputusan, bukan salah ketik.
+
+**Ditampilkan, bukan dilarang.** Toko yang tetap memutuskan orangnya libur sedang
+mengambil keputusan sungguhan — mereka akan menelepon empat pelanggan itu — dan
+layar yang menolak akan mengirim keputusan itu ke tempat yang tidak bisa dilihat
+sistem ini. Pemeriksaan yang gagal dimuat juga tidak menghalangi penyimpanan:
+peringatannya kesopanan, bukan gerbang.
+
+**Peringatan mingguan melihat empat kemunculan berikutnya.** "Setiap Rabu,
+selamanya" tidak punya ujung untuk diperiksa, dan menanyakan setiap Rabu sampai
+akhir zaman menjawab pertanyaan yang tidak ditanyakan siapa pun.
+
+**Komisi `null`, bukan nol, untuk yang tidak berkomisi.** Kebanyakan staf memang
+tidak, dan `null` mengatakannya jauh lebih jelas.
+
+### Bentuk payload komisi, dan uji yang tidak menangkapnya
+
+Versi pertama kartu ini mengirim `matrix: []` bersama setiap persentase, dan
+server **menolak setiap penyimpanan**: "commissionRate.matrix is not allowed for
+this commission type". Servernya benar — `value` di samping matriks adalah angka
+yang tidak akan dibaca baris mana pun, dan `matrix` di samping persentase adalah
+baris yang tidak akan dikonsultasikan apa pun. Mengirim keduanya adalah payload
+yang tidak bisa berarti apa-apa.
+
+**Uji yang seharusnya menangkapnya memakai `objectContaining`**, yang lolos
+dengan senang hati pada key tambahan yang tidak ditanyakannya. Assertion yang
+tidak bisa melihat field ekstra yang salah bukan menjaga payload-nya; ia menjaga
+sebagian darinya. Ujinya sekarang membandingkan payload **persis**.
+
+`CommissionRateInput` jadi **union**, bukan interface dengan komentar "kirim satu
+saja" — bentuk yang tidak bisa berarti apa-apa jadi tidak bisa ditulis juga.
+
+**Komisi matriks tidak bisa disunting di sini, dan layarnya berkata begitu**
+alih-alih diam-diam menawarkan kontrol yang akan menghapusnya. Rate per layanan
+butuh pemilih layanan dengan satu baris per layanan; menjejalkan mode ketiga di
+sini lebih buruk daripada batas yang dinyatakan.
+
+---
+
 ## [Unreleased] — Rekap Komisi
 
 `/dashboard/reports/commissions` — komisi groomer per bulan, dengan unduhan

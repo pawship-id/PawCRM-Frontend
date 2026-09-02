@@ -89,10 +89,69 @@ export interface HealthPayload {
 
 /**
  * A staff user, as returned by /api/auth/login, /api/auth/me and /api/users.
- * The backend never returns `passwordHash` — see user.model.js. Fields the
- * profile UI does not yet touch (commissionRate, availability) are omitted
- * rather than typed loosely; add them when a screen needs them.
+ * The backend never returns `passwordHash` — see user.model.js.
+ *
+ * `commissionRate` AND `availability` USED TO BE OMITTED HERE, with a note
+ * saying to add them when a screen needed one. FR-4 and FR-6 made both
+ * load-bearing — the roster decides who may be booked, the rate decides what
+ * they earn — and until the roster screen landed there was no way to set either
+ * except by calling the API by hand.
  */
+/**
+ * How a groomer's commission is worked out — FR-6.
+ *
+ *   percentage — `value` per cent of the row's price
+ *   fixed      — `value` currency units per row, whatever it was worth
+ *   matrix     — a different rate per service, keyed by `serviceId` (K6)
+ *
+ * NULLABLE AS A WHOLE, and the null is the answer for most staff: cashiers,
+ * receptionists and a vet on salary earn no commission, and `null` says that far
+ * more clearly than a rate of zero.
+ */
+export type CommissionRateType = "percentage" | "fixed" | "matrix";
+
+/** As the API RETURNS it — every key present, whichever one is meaningful. */
+export interface CommissionRate {
+  type: CommissionRateType;
+  /** Meaningful for `percentage` and `fixed`; null alongside a matrix. */
+  value: number | null;
+  /** Meaningful for `matrix` only. `key` is a serviceId since K6. */
+  matrix: { key: string; value: number }[];
+}
+
+/**
+ * As the API ACCEPTS it — a UNION, so only the meaningful key can be sent.
+ *
+ * THE SERVER FORBIDS THE OTHER ONE, and it is right to: `value` alongside a
+ * matrix is a number no row would ever read, and `matrix` alongside a percentage
+ * is rows nothing would ever consult. Sending both is a payload that cannot mean
+ * anything, so Joi answers "commissionRate.matrix is not allowed for this
+ * commission type".
+ *
+ * A UNION RATHER THAN A COMMENT SAYING "ONLY SEND ONE". The first version of the
+ * roster form sent `matrix: []` with every percentage and was refused on every
+ * save — and the test that should have caught it used `objectContaining`, which
+ * passes happily on an extra key. The type makes the mistake unrepresentable
+ * instead of merely discouraged.
+ */
+export type CommissionRateInput =
+  | { type: "percentage" | "fixed"; value: number }
+  | { type: "matrix"; matrix: { key: string; value: number }[] };
+
+/**
+ * When a staff member cannot be booked — FR-4.
+ *
+ * `weeklyOff` USES JAVASCRIPT'S DAY NUMBERING: 0 is Sunday, 3 is Wednesday. It
+ * is the numbering `Date#getDay` returns, which is what the server compares
+ * against, and inventing a friendlier one here would be a translation layer with
+ * exactly one job — to be got wrong once.
+ */
+export interface UserAvailability {
+  weeklyOff: number[];
+  /** ISO dates. One-off absences, not a recurring pattern. */
+  leaveDates: string[];
+}
+
 /**
  * One branch's worth of warehouse scope on a user.
  *
@@ -129,6 +188,9 @@ export interface User {
    * "never configured" and treats as every warehouse of those branches.
    */
   warehouseAccess: WarehouseScopeEntry[];
+  /** Null for staff who earn no commission — which is most of them. */
+  commissionRate: CommissionRate | null;
+  availability: UserAvailability;
   status: "active" | "suspended";
   emailVerifiedAt: string | null;
   lastLoginAt: string | null;
@@ -263,6 +325,18 @@ export interface UpdateUserInput {
   allBranches?: boolean;
   branchAccess?: string[];
   warehouseAccess?: WarehouseScopeEntry[];
+  /**
+   * REPLACED WHOLE, never patched key by key. `type` decides whether `value` or
+   * `matrix` is the meaningful one, so sending half of it would leave the old
+   * matrix rows behind a new percentage — a document no reader can interpret.
+   * `null` clears it: this person earns no commission.
+   */
+  commissionRate?: CommissionRateInput | null;
+  /**
+   * MERGED, unlike the rate. Its two keys are independent, so writing the weekly
+   * pattern must not wipe next month's leave.
+   */
+  availability?: Partial<UserAvailability>;
 }
 
 /**

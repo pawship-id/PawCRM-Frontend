@@ -26,6 +26,9 @@ function makeUser(overrides: Partial<User> = {}): User {
     allBranches: true,
     branchAccess: [],
     warehouseAccess: [],
+    /* FR-4 and FR-6: the roster and the rate. Most staff carry neither. */
+    commissionRate: null,
+    availability: { weeklyOff: [], leaveDates: [] },
     status: "active",
     emailVerifiedAt: null,
     lastLoginAt: null,

@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { BookingCreateForm } from "@/features/booking";
 import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
+import { branchService } from "@/services/branch.service";
 import { customerService } from "@/services/customer.service";
 import { petService } from "@/services/pet.service";
 import { serviceService } from "@/services/service.service";
@@ -19,6 +20,12 @@ jest.mock("@/services/customer.service");
 jest.mock("@/services/pet.service");
 jest.mock("@/services/service.service");
 jest.mock("@/services/user.service");
+/*
+  THE BRANCH IS PICKED ON THE FORM NOW, not inherited from the session — the
+  pattern every other hand-typed document in this app follows. One branch means
+  `soleBranch` answers it and no dropdown appears.
+*/
+jest.mock("@/services/branch.service");
 /* The house pattern: the toast is chrome, and the real Swal drags a timer into
    every test that saves. */
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
@@ -39,6 +46,9 @@ const customers = customerService as jest.Mocked<typeof customerService>;
 const pets = petService as jest.Mocked<typeof petService>;
 const services = serviceService as jest.Mocked<typeof serviceService>;
 const users = userService as jest.Mocked<typeof userService>;
+const branches = branchService as jest.Mocked<typeof branchService>;
+
+const BRANCH_ID = "branch-1";
 
 const page = <T,>(items: T[]) => ({
   items,
@@ -86,6 +96,9 @@ beforeEach(() => {
   services.list.mockResolvedValue(page([service()]));
   users.list.mockResolvedValue(page([groomer]));
   bookings.create.mockResolvedValue(created);
+  branches.list.mockResolvedValue(
+    page([{ _id: BRANCH_ID, name: "Cibubur" }]) as never,
+  );
   /*
     FR-4: the groomer dropdown asks who may be booked on the chosen DAY, not who
     exists. `users.list` is no longer what fills it.
@@ -145,6 +158,7 @@ describe("BookingCreateForm", () => {
 
     await waitFor(() =>
       expect(bookings.create).toHaveBeenCalledWith({
+        branchId: BRANCH_ID,
         customerId: "cust-1",
         /* Never true on a first attempt — a warning nobody read is not a decision. */
         forceClash: false,
@@ -314,7 +328,7 @@ describe("BookingCreateForm", () => {
     );
 
     expect(screen.getByRole("button", { name: /simpan booking/i })).toBeDisabled();
-    expect(screen.getByText(/pelanggan belum dipilih/i)).toBeInTheDocument();
+    expect(await screen.findByText(/pelanggan belum dipilih/i)).toBeInTheDocument();
 
     await pickCustomer();
 
@@ -408,16 +422,47 @@ describe("BookingCreateForm", () => {
     ).toBeInTheDocument();
   });
 
-  /* A booking is booked to the session's branch, and a user who reaches every
-     branch signs in pointed at none of them. */
-  it("says to pick a branch before anything else", () => {
-    renderWithAuth(
-      <BookingCreateForm />,
-      { session: { currentBranchId: null } },
+  /*
+    THE BRANCH IS ASKED FOR ON THE FORM — the pattern every other hand-typed
+    document follows. It used to be inherited from `session.currentBranchId`,
+    which is the TILL's idea: a terminal stands in one shop all day, and a
+    booking taken over the phone is not that.
+
+    THE COST OF THE OLD WAY was not a crash. It was a booking quietly filed to
+    whichever branch the session happened to point at — invisible on every screen
+    until somebody reconciled a branch's takings.
+  */
+  it("says which field is missing when the branch has not been chosen", async () => {
+    branches.list.mockResolvedValue(
+      page([
+        { _id: BRANCH_ID, name: "Cibubur" },
+        { _id: "branch-2", name: "Bekasi" },
+      ]) as never,
     );
 
-    expect(screen.getByText(/pilih cabang dulu/i)).toBeInTheDocument();
+    renderWithAuth(<BookingCreateForm />);
+
+    /* Two branches IS a choice, so the picker appears and nothing is guessed. */
+    expect(
+      await screen.findByRole("button", { name: /cabang/i }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText(/cabang belum dipilih/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /simpan booking/i })).toBeDisabled();
+  });
+
+  /* ONE BRANCH IS NOT A CHOICE — `soleBranch` answers it, no dropdown appears. */
+  it("does not ask when the shop has one branch", async () => {
+    renderWithAuth(<BookingCreateForm />);
+
+    /* `soleBranch` lands a tick after the fetch resolves. */
+    await waitFor(() =>
+      expect(
+        screen.queryByText(/cabang belum dipilih/i),
+      ).not.toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByRole("button", { name: /cabang/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("offers only the two states a booking can start in", async () => {

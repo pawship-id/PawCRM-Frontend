@@ -6,15 +6,17 @@ import { Plus, UserRound } from "lucide-react";
 
 import {
   Alert,
+  FilterSelect,
   FormActionBar,
   SelectField,
   Spinner,
   TextField,
   TextareaField,
+  namedOptions,
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { useAuth } from "@/features/auth";
+import { useBranchScope } from "@/features/inventory/hooks/useBranchScope";
 import { CustomerSearchDialog } from "@/features/customers";
 import { PetQuickAddDialog } from "@/features/pets";
 import { ApiError } from "@/services/api-error";
@@ -158,7 +160,28 @@ function blankRow(): PetRowDraft {
  */
 export function BookingCreateForm() {
   const router = useRouter();
-  const { session } = useAuth();
+
+  /*
+    THE BRANCH IS PICKED HERE, NOT INHERITED FROM THE SESSION.
+
+    This form used to lean on `session.currentBranchId` and let the server fall
+    back to it — which reads fine in isolation and is the wrong pattern for this
+    app. Every other hand-typed document asks for its branch on the form:
+    `InvoiceCreateForm`, `ReceiptForm`, the stock forms. `currentBranchId` is the
+    TILL's idea — a terminal stands in one shop all day — and a booking taken
+    over the phone is not that.
+
+    THE COST OF GETTING IT WRONG was not a crash. It was a booking quietly filed
+    to whichever branch the session happened to point at, which is invisible on
+    every screen until somebody reconciles a branch's takings.
+
+    `soleBranch` FILLS IT IN WHEN THERE IS ONLY ONE. One option is not a choice,
+    and a shop with a single branch should not open a dropdown to reach the field
+    below.
+  */
+  const scope = useBranchScope();
+  const [pickedBranch, setPickedBranch] = useState("");
+  const branchId = pickedBranch || scope.soleBranch;
 
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [pets, setPets] = useState<Pet[]>([]);
@@ -386,6 +409,7 @@ export function BookingCreateForm() {
 
     try {
       const booking = await bookingService.create({
+        branchId,
         /*
           "SAVE IT ANYWAY", and only after somebody has been shown what they are
           overriding. The flag is never sent on a first attempt — a warning
@@ -575,8 +599,8 @@ export function BookingCreateForm() {
   */
   const incomplete = rows.find((row) => !row.petId || !row.serviceId);
 
-  const blockedReason = !session?.currentBranchId
-    ? "Pilih cabang dulu lewat menu cabang di atas."
+  const blockedReason = !branchId
+    ? "Cabang belum dipilih."
     : !customer
       ? "Pelanggan belum dipilih."
       : incomplete
@@ -665,6 +689,29 @@ export function BookingCreateForm() {
                 disabled={saving}
                 required
               />
+
+              {/*
+                CABANG, BESIDE THE TIME. It is a scoping question like the day is
+                — where and when, then who — and it belongs above the animals
+                rather than buried under them.
+
+                HIDDEN WHEN THERE IS ONLY ONE BRANCH. A dropdown with one option
+                is not a choice, and `soleBranch` has already answered it.
+              */}
+              {scope.branches.length > 1 && (
+                <FilterSelect
+                  layout="form"
+                  label="Cabang"
+                  ariaLabel="Cabang"
+                  value={branchId}
+                  options={namedOptions(scope.branches)}
+                  active={false}
+                  required
+                  placeholder="Pilih cabang"
+                  disabled={saving}
+                  onChange={setPickedBranch}
+                />
+              )}
             </div>
 
             {/*

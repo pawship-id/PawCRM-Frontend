@@ -20,6 +20,7 @@ import type { User, WarehouseScopeEntry } from "@/types/api";
 
 import { useLookups } from "../hooks/useLookups";
 import { RoleSelect } from "./RoleSelect";
+import { RosterSection } from "./RosterSection";
 import { BranchScopeField } from "./BranchScopeField";
 import { StatusBadge } from "./StatusBadge";
 
@@ -116,6 +117,24 @@ export function UserEditForm({ id }: { id: string }) {
               warehouses={warehouses}
               onUpdated={setUser}
             />
+          </Card>
+
+          {/*
+            THE ROSTER AND THE RATE — FR-4 and FR-6.
+
+            Both have been storable since this module shipped and neither had a
+            screen. The roster decides who may be booked; the rate decides what
+            they earn. Until this Card existed the only way to set either was to
+            call the API by hand.
+
+            ABOVE Password on purpose: it is the one somebody opens this page to
+            change on an ordinary day.
+          */}
+          <Card
+            title="Jadwal & Komisi"
+            description="Hari libur, cuti, dan cara komisinya dihitung."
+          >
+            <RosterSection user={user} onUpdated={setUser} />
           </Card>
 
           <Card

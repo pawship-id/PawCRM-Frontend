@@ -39,6 +39,8 @@ export const FULL_REACH_USER = {
   allBranches: true,
   branchAccess: [],
   warehouseAccess: [],
+  commissionRate: null,
+  availability: { weeklyOff: [], leaveDates: [] },
   status: "active",
   emailVerifiedAt: null,
   lastLoginAt: null,

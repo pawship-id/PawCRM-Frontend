@@ -3,9 +3,15 @@
 import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
-import { Alert, FilterPills, Spinner } from "@/components";
+import {
+  Alert,
+  FilterPills,
+  FilterSelect,
+  Spinner,
+  namedOptions,
+} from "@/components";
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/features/auth";
+import { useBranchScope } from "@/features/inventory/hooks/useBranchScope";
 import { bookingService } from "@/services/booking.service";
 import type { BookingCalendar, BookingCalendarEntry, BookingStatus } from "@/types/api";
 
@@ -118,7 +124,21 @@ const longDay = (value: string) =>
  * FR-4 twice.
  */
 export function BookingCalendarScreen() {
-  const { session } = useAuth();
+  /*
+    THE BRANCH IS A FILTER ON THIS SCREEN — FR-3 kriteria 3.9, and the pattern
+    every other list in this app follows.
+
+    IT USED TO FOLLOW `session.currentBranchId` SILENTLY, which is the TILL's
+    idea of a branch: a terminal stands in one shop all day. A calendar is read
+    by whoever is answering the phone, and an owner with two shops looking at one
+    of them without being told which is worse than one extra control.
+
+    `soleBranch` STILL ANSWERS IT for a shop with one branch — one option is not
+    a choice.
+  */
+  const scope = useBranchScope();
+  const [pickedBranch, setPickedBranch] = useState("");
+  const branchId = pickedBranch || scope.soleBranch;
 
   const [view, setView] = useState<View>("harian");
   const [anchor, setAnchor] = useState<string>(todayValue);
@@ -138,7 +158,7 @@ export function BookingCalendarScreen() {
 
     bookingService
       .calendar({
-        branchId: session?.currentBranchId ?? undefined,
+        branchId: branchId || undefined,
         dateFrom: from,
         dateTo: to,
       })
@@ -158,7 +178,7 @@ export function BookingCalendarScreen() {
     return () => {
       active = false;
     };
-  }, [from, to, session?.currentBranchId]);
+  }, [from, to, branchId]);
 
   const columns = [
     ...(data?.groomers ?? []).map((groomer) => ({
@@ -211,12 +231,29 @@ export function BookingCalendarScreen() {
           </Button>
         </div>
 
-        <FilterPills
-          value={view}
-          options={VIEWS}
-          onChange={setView}
-          ariaLabel="Tampilan kalender"
-        />
+        <div className="flex flex-wrap items-center gap-3">
+          {/*
+            EMPTY MEANS EVERY BRANCH, which is a legitimate question for an owner
+            with two shops — and a wrong DEFAULT for one, which is why
+            `soleBranch` fills it in when there is only one.
+          */}
+          {scope.branches.length > 1 && (
+            <FilterSelect
+              label="Cabang"
+              ariaLabel="Filter cabang"
+              value={branchId}
+              options={namedOptions(scope.branches)}
+              onChange={setPickedBranch}
+            />
+          )}
+
+          <FilterPills
+            value={view}
+            options={VIEWS}
+            onChange={setView}
+            ariaLabel="Tampilan kalender"
+          />
+        </div>
       </div>
 
       {/*

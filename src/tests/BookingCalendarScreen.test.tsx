@@ -3,13 +3,17 @@ import userEvent from "@testing-library/user-event";
 
 import { BookingCalendarScreen } from "@/features/booking";
 import { bookingService } from "@/services/booking.service";
+import { branchService } from "@/services/branch.service";
 import type { BookingCalendar, BookingCalendarEntry } from "@/types/api";
 
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
 jest.mock("@/services/booking.service");
+/* The calendar filters by branch now — FR-3 kriteria 3.9. */
+jest.mock("@/services/branch.service");
 
 const bookings = bookingService as jest.Mocked<typeof bookingService>;
+const branches = branchService as jest.Mocked<typeof branchService>;
 
 const SINTA = "user-sinta";
 const RIO = "user-rio";
@@ -52,6 +56,10 @@ const calendar = (overrides: Partial<BookingCalendar> = {}): BookingCalendar => 
 beforeEach(() => {
   jest.clearAllMocks();
   bookings.calendar.mockResolvedValue(calendar());
+  branches.list.mockResolvedValue({
+    items: [{ _id: "b1", name: "Cibubur" }],
+    pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+  } as never);
 });
 
 /**
@@ -202,5 +210,48 @@ describe("BookingCalendarScreen", () => {
     expect(
       await screen.findByText(/tidak ada booking hari ini/i),
     ).toBeInTheDocument();
+  });
+
+  /*
+    THE BRANCH IS A FILTER HERE — kriteria 3.9 — and it used to follow the
+    session's branch silently. That is the TILL's idea of a branch: a terminal
+    stands in one shop all day. A calendar is read by whoever is answering the
+    phone, and an owner with two shops looking at one of them without being told
+    which is worse than one extra control.
+  */
+  it("offers a branch filter when there is more than one", async () => {
+    branches.list.mockResolvedValue({
+      items: [
+        { _id: "b1", name: "Cibubur" },
+        { _id: "b2", name: "Bekasi" },
+      ],
+      pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
+    } as never);
+
+    renderWithAuth(<BookingCalendarScreen />);
+
+    expect(
+      await screen.findByRole("button", { name: /filter cabang/i }),
+    ).toBeInTheDocument();
+  });
+
+  /* ONE BRANCH IS NOT A CHOICE — `soleBranch` answers it and asks nothing. */
+  it("does not offer one when the shop has a single branch", async () => {
+    renderWithAuth(<BookingCalendarScreen />);
+
+    await screen.findByText("Mochi");
+    expect(
+      screen.queryByRole("button", { name: /filter cabang/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("scopes the fetch to the branch it was given", async () => {
+    renderWithAuth(<BookingCalendarScreen />);
+
+    await waitFor(() =>
+      expect(bookings.calendar).toHaveBeenCalledWith(
+        expect.objectContaining({ branchId: "b1" }),
+      ),
+    );
   });
 });
