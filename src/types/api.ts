@@ -2268,6 +2268,98 @@ export type PetSex = "male" | "female" | "unknown";
  *
  * `customerId` is set at creation and never changed — see UpdatePetInput.
  */
+/** How the shop handles this animal. Tags are normalised: lowercase, hyphens. */
+export interface PetPreferences {
+  text: string | null;
+  tags: string[];
+}
+
+/**
+ * `severe` IS THE ONE THAT RAISES A RED WARNING on the booking form. That is the
+ * whole reason allergies are a list with a severity rather than a paragraph — a
+ * sentence cannot be asked which of the things in it is dangerous.
+ */
+export type PetAllergySeverity = "severe" | "mild";
+
+export interface PetAllergy {
+  name: string;
+  severity: PetAllergySeverity;
+  note: string | null;
+}
+
+export interface PetCondition {
+  name: string;
+  foundAt: string | null;
+  note: string | null;
+}
+
+/**
+ * Dose and frequency are SEPARATE, because the reader is somebody about to board
+ * the animal overnight and hand it a tablet. "1 tablet" and "twice a day" answer
+ * two different questions, and one string is where the second goes missing.
+ */
+export interface PetMedication {
+  name: string;
+  dose: string | null;
+  frequency: string | null;
+  since: string | null;
+}
+
+/** `nextDueAt` is STORED, not derived — intervals differ by vaccine and by vet. */
+export interface PetVaccination {
+  type: string;
+  givenAt: string;
+  nextDueAt: string | null;
+}
+
+export interface PetMedical {
+  allergies: PetAllergy[];
+  conditions: PetCondition[];
+  medications: PetMedication[];
+  vaccinations: PetVaccination[];
+  /** Who to ring when something goes wrong. A name with no number is unusable. */
+  vet: { clinicName: string | null; phone: string | null };
+}
+
+/**
+ * One thing that happened to an animal — FR-5's timeline.
+ *
+ * ONE FLAT SHAPE FOR EVERY SOURCE, not three named buckets, so a fourth source
+ * (hotel stays, when that module exists) appears without a new shape to render.
+ */
+export interface PetTimelineEntry {
+  kind: "booking" | "pos" | "invoice";
+  at: string;
+  /** What was done — the service name. */
+  title: string;
+  /** The document number a human reads off a note. */
+  reference: string | null;
+  amount: string | null;
+  bookingId?: string;
+  status?: BookingStatus;
+  durationMin?: number | null;
+  groomerName?: string | null;
+  notes?: string | null;
+}
+
+/**
+ * The three figures above the timeline.
+ *
+ * THEY IGNORE THE LIST'S FILTER, deliberately: "terakhir dilayani" has one
+ * answer, and a version that moved when somebody narrowed the list to
+ * grooming-only would be answering a different question from the one its label
+ * asks.
+ */
+export interface PetTimeline {
+  summary: {
+    lastServedAt: string | null;
+    /** Visits, not rows — a bath and a nail trim on one booking is one visit. */
+    visitCount: number;
+    topGroomerName: string | null;
+  };
+  entries: PetTimelineEntry[];
+}
+
 export interface Pet {
   _id: string;
   tenantId: string;
@@ -2282,6 +2374,15 @@ export interface Pet {
   color: string | null;
   microchipNo: string | null;
   notes: string | null;
+  /**
+   * How the shop handles this animal — FR-5.
+   *
+   * `text` is read; `tags` are FILTERED. "Suka dimandiin pertama" is a sentence,
+   * `galak` is a question the pet list can answer.
+   */
+  preferences: PetPreferences;
+  /** The medical file — see `PetMedical`. */
+  medical: PetMedical;
   photo: MediaAsset | null;
   /** Still in the tenant's care. See the two-axes note above. */
   isActive: boolean;
@@ -2302,8 +2403,44 @@ export interface PetListQuery {
   isActive?: boolean;
   /** Free-text over name / breed. */
   search?: string;
+  /**
+   * One tag, matched exactly — "which animals need two people on a Saturday".
+   *
+   * NOT a substring: `galak` and `galak-sama-anak` are different answers, and a
+   * shop that filtered one and got both would stop trusting the filter.
+   */
+  tag?: string;
   /** Include soft-deleted pets (default false on the backend). */
   includeDeleted?: boolean;
+}
+
+/** Body of PATCH /api/pets/:id/preferences. */
+export interface UpdatePetPreferencesInput {
+  text?: string | null;
+  /** Sent as typed; the server normalises `#Galak`, `Galak` and `galak` to one. */
+  tags?: string[];
+}
+
+/**
+ * Body of PATCH /api/pets/:id/medical.
+ *
+ * THE WHOLE FILE, EVERY TIME. A partial patch cannot express "empty this list":
+ * an absent key would mean "leave it alone", and no form can reliably tell the
+ * two apart.
+ */
+export interface UpdatePetMedicalInput {
+  allergies?: Omit<PetAllergy, "note"> & { note?: string | null }[] | PetAllergy[];
+  conditions?: PetCondition[];
+  medications?: PetMedication[];
+  vaccinations?: PetVaccination[];
+  vet?: { clinicName?: string | null; phone?: string | null };
+}
+
+/** Query for GET /api/pets/:id/timeline. */
+export interface PetTimelineQuery {
+  kind?: "all" | "booking" | "pos" | "invoice";
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 /**

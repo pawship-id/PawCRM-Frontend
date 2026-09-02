@@ -51,7 +51,18 @@ const customer = {
   phone: "0812-3456-7890",
 } as Customer;
 
-const pet = { _id: "pet-1", name: "Bruno" } as Pet;
+const pet = {
+  _id: "pet-1",
+  name: "Bruno",
+  preferences: { text: null, tags: [] },
+  medical: {
+    allergies: [],
+    conditions: [],
+    medications: [],
+    vaccinations: [],
+    vet: { clinicName: null, phone: null },
+  },
+} as unknown as Pet;
 
 const service = (overrides: Partial<Service> = {}) =>
   ({
@@ -435,5 +446,51 @@ describe("BookingCreateForm", () => {
 
     await waitFor(() => expect(push).toHaveBeenCalledWith("/dashboard/booking"));
     expect(screen.queryByText(/terjadi kesalahan/i)).not.toBeInTheDocument();
+  });
+
+  /*
+    FR-5 KRITERIA 5.13 — the reason the pet profile is worth building at all.
+
+    A groomer does not have to remember to open anything: choosing the animal is
+    what makes the shop's own notes appear. A profile that must be sought out is
+    a profile nobody opens on a Saturday morning.
+
+    IT APPEARS BEFORE THE SERVICE IS CHOSEN. A severe allergy read afterwards is
+    a warning that arrived too late to change anything.
+  */
+  it("warns about a severe allergy the moment the animal is chosen", async () => {
+    pets.list.mockResolvedValue(
+      page([
+        {
+          ...pet,
+          medical: {
+            ...pet.medical,
+            allergies: [
+              { name: "Sampo strawberry", severity: "severe", note: null },
+            ],
+          },
+          preferences: { text: "Mandi duluan", tags: ["galak"] },
+        } as unknown as Pet,
+      ]),
+    );
+
+    renderWithAuth(<BookingCreateForm />);
+
+    await pickCustomer();
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/alergi/i);
+    expect(alert).toHaveTextContent("Sampo strawberry");
+    expect(screen.getByText("Mandi duluan")).toBeInTheDocument();
+    expect(screen.getByText("#galak")).toBeInTheDocument();
+  });
+
+  it("says nothing when the shop knows nothing about the animal", async () => {
+    renderWithAuth(<BookingCreateForm />);
+
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /layanan/i });
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

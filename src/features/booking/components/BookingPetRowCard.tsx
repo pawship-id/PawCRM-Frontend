@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 
 import { SelectField, TextField } from "@/components";
 import { Button } from "@/components/ui/button";
+import { PetSummaryCard } from "@/features/pets";
 import { formatMoney } from "@/utils/decimal";
 import type { Pet, Service } from "@/types/api";
 
@@ -97,6 +98,18 @@ export function BookingPetRowCard({
           </Button>
         )}
       </div>
+
+      {/*
+        WHAT THE SHOP ALREADY KNOWS ABOUT THIS ANIMAL — FR-5 kriteria 5.13, and
+        the reason the pet profile is worth building at all.
+
+        IT APPEARS THE MOMENT THE ANIMAL IS CHOSEN, above the controls rather
+        than below them: a severe allergy read after the service has been picked
+        is a warning that arrived too late to change anything. Nobody has to
+        remember to open a profile, which is the only version of this that works
+        on a Saturday morning.
+      */}
+      {pet && <PetSummaryCard pet={pet} className="mb-3" />}
 
       <div className="grid gap-3 sm:grid-cols-2">
         <SelectField

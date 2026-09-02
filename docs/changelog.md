@@ -7,6 +7,68 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Profil hewan: yang groomer perlu tahu, datang sendiri
+
+`/dashboard/master/pets/:id` bukan lagi form ubah, melainkan **profil empat
+tab**: Info, Riwayat, Preferensi, Medis. Gerbangnya turun dari `update` ke
+`read`, karena tiga dari empat tab itu untuk **dilihat** — groomer yang tidak
+boleh mengubah data hewan tetap harus tahu hewannya alergi sampo strawberry.
+Tab yang **menulis** membawa gerbangnya sendiri, dan catatan medis punya izin
+terpisah (`pets:medical`).
+
+### `PetSummaryCard` adalah fiturnya
+
+Halaman profil tempat fakta **dimasukkan**; kartu ini tempat fakta **dibaca**,
+dan itu bagian yang mengubah apa yang terjadi di toko. Profil yang harus diingat
+untuk dibuka adalah profil yang tidak dibuka siapa pun pada Sabtu pagi — jadi
+faktanya yang mendatangi mereka, di kartu yang memang sedang mereka isi.
+
+**Muncul di form booking begitu hewannya dipilih** (FR-5 kriteria 5.13), **di
+atas** kontrolnya, bukan di bawah: alergi berat yang dibaca setelah layanan
+dipilih adalah peringatan yang datang terlambat untuk mengubah apa pun.
+
+**Tiga tingkat, dan urutannya intinya.** Alergi berat merah dan paling atas —
+itu yang mencegah satu mandi berakhir buruk. Lalu obat rutin dan alergi ringan.
+Lalu preferensi dan tag.
+
+**Tidak menggambar apa pun kalau tidak ada yang perlu dikatakan.** Kotak kosong
+di bawah setiap hewan mengajari orang berhenti melihat kotaknya, dan hari yang
+penting adalah hari kotak itu diabaikan.
+
+### Tab Riwayat
+
+Satu daftar, bukan tiga. Grooming, penjualan kasir, dan faktur adalah tiga
+koleksi dan satu riwayat: yang orang ingin tahu adalah apa yang terjadi pada
+anjingnya, bukan sistem mana yang mencatatnya. Pill menyaringnya, tidak
+memecahnya.
+
+Tiga angka di atasnya — terakhir dilayani, jumlah kunjungan, groomer paling
+sering — **mengabaikan pill**. "Terakhir dilayani" punya satu jawaban, dan versi
+yang berubah saat orang menyaring ke Kasir menjawab pertanyaan berbeda dari yang
+ditanyakan labelnya. Dihitung dalam **kunjungan, bukan baris**.
+
+Booking yang dibatalkan tetap di daftar dan berkata begitu: "kami booking dia
+tiga kali dan dia tidak pernah datang" persis jenis hal yang riwayat dibuka
+untuk menjawabnya.
+
+### Tab Preferensi dan Medis
+
+Tag dinormalkan di layar dengan aturan yang sama seperti di server, supaya chip
+yang dilihat orang adalah chip yang tersimpan — tanpa itu form menampilkan
+`#Galak`, daftar menyaring `galak`, dan ketidaksepakatan keduanya adalah cara
+orang berhenti mempercayai sebuah filter. Saran tag diambil dari yang sudah
+dipakai toko.
+
+Di form medis, **Enter menambah tag, bukan menyimpan form** — tanpa itu orang
+yang menambah tag kedua akan menemukan yang pertama tersimpan dan halamannya
+sudah pindah.
+
+**Belum ada**: kartu profil cetak (kriteria 5.12). Ada di rencana, tidak di fase
+ini, dan cetakan bawaan browser tidak ditawarkan sebagai penggantinya — cetakan
+setengah jadi lebih buruk daripada tombol yang jelas belum ada.
+
+---
+
 ## [Unreleased] — Booking multi-pet: satu form untuk seluruh kunjungan
 
 Bu Lisa datang membawa Mochi dan Coco, dan sekarang itu **satu form, satu

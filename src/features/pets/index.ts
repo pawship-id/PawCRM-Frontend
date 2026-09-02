@@ -16,3 +16,8 @@ export { PetQuickAddDialog } from "./components/PetQuickAddDialog";
 export { CustomerPetsSection } from "./components/CustomerPetsSection";
 export { PetSpeciesBadge, PetStatusBadge, speciesLabel } from "./components/PetBadges";
 export { usePets, type PetsQuery } from "./hooks/usePets";
+export { PetSummaryCard } from "./components/PetSummaryCard";
+export { PetProfileScreen } from "./components/PetProfileScreen";
+export { PetTimelineTab } from "./components/PetTimelineTab";
+export { PetPreferencesTab } from "./components/PetPreferencesTab";
+export { PetMedicalTab } from "./components/PetMedicalTab";
