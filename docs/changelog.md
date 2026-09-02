@@ -7,6 +7,48 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Halaman detail booking
+
+`/dashboard/booking/:id` — satu kunjungan, utuh.
+
+**Kenapa ia perlu ada.** Daftar menjawab "apakah grooming tadi tercatat";
+kalender menjawab "siapa di mana jam sepuluh". Tidak satu pun menjawab pertanyaan
+yang ditanyakan orang sambil memegang telepon: **booking ini isinya apa, dan
+sudah sampai mana.** Sebelum halaman ini, satu-satunya cara melihat barisnya,
+riwayatnya, dan status tagihannya sekaligus adalah membuka tiga layar.
+
+**Satu blok per baris, bukan satu ringkasan per booking.** Sejak PCR-040 satu
+kunjungan bisa membawa Mochi dan Coco ke dua orang berbeda, dengan dua harga,
+ditagih terpisah. Halaman yang menjumlahkannya jadi satu baris akan
+menyembunyikan justru hal yang modul ini dibangun ulang untuknya.
+
+**Status tagih ditampilkan per baris**, karena di situlah penandanya tinggal
+sejak K3 — dan itu yang membuat kunjungan setengah-tertagih **terbaca**, bukan
+sekadar mungkin.
+
+**Kartu ringkas hewan muncul di tiap blok** — FR-5 kriteria 5.14, dan komponen
+yang sama dengan yang dipakai form booking dan halaman profil. Satu jawaban untuk
+"apa yang toko tahu tentang hewan ini"; render kedua akan berbeda pendapat dengan
+yang dibaca groomer.
+
+**Data hewannya diambil per PEMILIK, satu permintaan** — bukan satu per baris.
+Kunjungan tiga hewan kalau tidak akan jadi tiga permintaan untuk menggambar tiga
+kotak peringatan. Kalau pengambilannya gagal, barisnya tetap tampil dan hanya
+kotak peringatannya yang hilang: halaman yang menolak tampil karena pencarian
+hewan gagal akan menyembunyikan pekerjaan yang orang buka untuk dilihat.
+
+**Jalan masuknya**: nomor booking di daftar, dan tombol **Buka booking** di panel
+detail kalender. Nomor, bukan seluruh baris — baris membawa kontrol status
+sendiri, dan baris yang bisa diklik mengelilingi tombol adalah dua target yang
+berebut satu ketukan.
+
+**Draf tetap menampilkan "—" di kolom nomor**, bukan "Draf". Badge di sebelahnya
+sudah mengatakan itu, dan mengulanginya menaruh fakta yang sama dua kali sambil
+tidak memberi tahu siapa pun kolomnya untuk apa. `aria-label` yang membuat
+tautannya tetap punya nama.
+
+---
+
 ## [Unreleased] — Cabang ditanyakan di form, bukan diwarisi dari sesi
 
 Form booking dan kalender dulu mengikuti `session.currentBranchId` diam-diam.

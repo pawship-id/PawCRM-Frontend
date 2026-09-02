@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import {
   Table,
   TableBody,
@@ -74,11 +76,25 @@ export function BookingsTable({
                   draft, and an invented placeholder would be a number somebody
                   could quote back across a counter.
                 */}
-                <span className="block text-sm tabular-nums text-foreground">
-                  {booking.bookingNumber ?? (
-                    <span className="text-muted">—</span>
-                  )}
-                </span>
+                {/*
+                  THE WAY IN, and it is the number rather than the whole row: a
+                  row carries a status control of its own, and a clickable row
+                  around a button is two targets fighting for one tap.
+
+                  A DRAFT STILL READS "—", not "Draf". The badge beside it
+                  already says draft, and repeating the word in the number column
+                  would put the same fact on the row twice while telling nobody
+                  what the column is for. The dash means "no number yet", which
+                  is the true answer; `aria-label` is what makes the link
+                  nameable for anybody who cannot see the row it sits in.
+                */}
+                <Link
+                  href={`/dashboard/booking/${booking._id}`}
+                  aria-label={`Buka ${booking.bookingNumber ?? "booking draf"}`}
+                  className="block text-sm tabular-nums text-primary underline-offset-2 hover:underline"
+                >
+                  {booking.bookingNumber ?? "—"}
+                </Link>
                 {/*
                   WHERE IT CAME FROM, and only when it is the unusual one. Every
                   booking made the ordinary way would otherwise carry a badge

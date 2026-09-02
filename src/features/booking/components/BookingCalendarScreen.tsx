@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import {
@@ -526,9 +527,23 @@ function DetailPanel({
             <p className="mt-1 text-xs text-muted">{entry.notes}</p>
           )}
         </div>
-        <Button type="button" variant="ghost" size="sm" onClick={onClose}>
-          Tutup
-        </Button>
+        <div className="flex shrink-0 items-center gap-1">
+          {/*
+            THE WAY OUT OF THE CALENDAR AND INTO THE BOOKING. A block answers
+            "who is where at ten"; the questions that follow it — what else is on
+            this visit, has it been billed, what is this animal allergic to —
+            live on the booking, and making somebody find it by number would be
+            a search for something they are already looking at.
+          */}
+          <Button asChild variant="secondary" size="sm">
+            <Link href={`/dashboard/booking/${entry.bookingId}`}>
+              Buka booking
+            </Link>
+          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+            Tutup
+          </Button>
+        </div>
       </div>
     </div>
   );

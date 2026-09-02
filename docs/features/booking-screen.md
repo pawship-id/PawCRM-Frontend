@@ -18,6 +18,7 @@ The POS side of the same collection is [`booking-bridge.md`](./booking-bridge.md
 | **Built** | `BookingHistoryDialog` — when it reached each status, and who took it there |
 | **Built** | `BookingCalendarScreen` at `/dashboard/booking/kalender` — harian dan mingguan, kolom per groomer |
 | **Not built** | Capacity, and a column for a groomer who is in but has nothing booked |
+| **Built** | `BookingDetailScreen` at `/dashboard/booking/:id` — one visit whole: a block per animal, its own billing state, and the pet summary |
 | **Not built** | Editing a booking — rescheduling, changing the services, swapping the animal |
 
 Editing goes through `PATCH /bookings/:id` and wants a form, not a row. The table moves a
