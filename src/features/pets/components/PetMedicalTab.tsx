@@ -105,7 +105,7 @@ export function PetMedicalTab({
 
       onSaved(saved);
 
-      /* Chrome must never be able to fail a save — see BookingCreateForm. */
+      /* Chrome must never be able to fail a save — see BookingForm. */
       try {
         swalToast("Catatan medis disimpan.");
       } catch {

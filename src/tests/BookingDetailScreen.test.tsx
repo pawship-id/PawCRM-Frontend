@@ -193,6 +193,33 @@ describe("BookingDetailScreen", () => {
     expect(await screen.findByText(/pelanggan batal/i)).toBeInTheDocument();
   });
 
+  it("offers Ubah, pointing at the edit route for this booking", async () => {
+    renderWithAuth(<BookingDetailScreen id="bk-1" />);
+
+    const edit = await screen.findByRole("link", { name: /^ubah$/i });
+    expect(edit).toHaveAttribute("href", "/dashboard/booking/bk-1/edit");
+  });
+
+  it.each(["completed", "cancelled"] as const)(
+    "offers no Ubah on a %s booking",
+    async (status) => {
+      /*
+        THE TWO FROZEN STATES. Both have nowhere left to go on the ladder, and
+        the server answers 409 to a PATCH on either — so a button here would
+        send somebody to a form that cannot save. The server is still the one
+        refusing; this only stops the walk.
+      */
+      bookings.getById.mockResolvedValue(booking({ status }));
+
+      renderWithAuth(<BookingDetailScreen id="bk-1" />);
+
+      await screen.findByText(/BK-260902-001/);
+      expect(
+        screen.queryByRole("link", { name: /^ubah$/i }),
+      ).not.toBeInTheDocument();
+    },
+  );
+
   it("says plainly when the booking is not there", async () => {
     bookings.getById.mockRejectedValue(new ApiError("Not found", 404));
 

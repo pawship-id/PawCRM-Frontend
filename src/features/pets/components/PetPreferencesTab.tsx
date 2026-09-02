@@ -94,7 +94,7 @@ export function PetPreferencesTab({
 
       onSaved(saved);
 
-      /* Chrome must never be able to fail a save — see BookingCreateForm. */
+      /* Chrome must never be able to fail a save — see BookingForm. */
       try {
         swalToast("Preferensi disimpan.");
       } catch {

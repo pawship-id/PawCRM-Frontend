@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { BookingCreateForm, BOOKING_CRUMBS } from "@/features/booking";
+import { BookingForm, BOOKING_CRUMBS } from "@/features/booking";
 // Not from `@/components` — `PageHeading` is still a purchasing-local component
 // awaiting promotion (ui-rules §15). The sales pages import it from the same
 // place; a second copy is what that migration list exists to prevent.
@@ -35,7 +35,7 @@ export default function NewBookingPage() {
         Satu kunjungan, satu booking. Beberapa hewan sekaligus boleh — tambahkan
         barisnya di bawah.
       </PageHeading>
-      <BookingCreateForm />
+      <BookingForm />
     </RequirePermission>
   );
 }

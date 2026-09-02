@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { BookingCreateForm } from "@/features/booking";
+import { BookingForm } from "@/features/booking";
 import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
 import { branchService } from "@/services/branch.service";
@@ -129,10 +129,10 @@ async function choose(name: RegExp, option: RegExp | string) {
  * three cards of five controls each, and a dialog holding that is a form
  * scrolling inside a scrolling page.
  */
-describe("BookingCreateForm", () => {
+describe("BookingForm", () => {
   it("sends who, which animals, what services and when", async () => {
     renderWithAuth(
-      <BookingCreateForm />,
+      <BookingForm />,
     );
 
     await pickCustomer();
@@ -205,7 +205,7 @@ describe("BookingCreateForm", () => {
     );
 
     renderWithAuth(
-      <BookingCreateForm />,
+      <BookingForm />,
     );
 
     await pickCustomer();
@@ -242,7 +242,7 @@ describe("BookingCreateForm", () => {
   */
   it("refuses the same animal twice for the same service, and says which", async () => {
     renderWithAuth(
-      <BookingCreateForm />,
+      <BookingForm />,
     );
 
     await pickCustomer();
@@ -292,7 +292,7 @@ describe("BookingCreateForm", () => {
     ]);
 
     renderWithAuth(
-      <BookingCreateForm />,
+      <BookingForm />,
     );
 
     await pickCustomer();
@@ -324,7 +324,7 @@ describe("BookingCreateForm", () => {
 
   it("names the field that is still missing rather than leaving a dead button", async () => {
     renderWithAuth(
-      <BookingCreateForm />,
+      <BookingForm />,
     );
 
     expect(screen.getByRole("button", { name: /simpan booking/i })).toBeDisabled();
@@ -340,7 +340,7 @@ describe("BookingCreateForm", () => {
 
   it("sends the groomer somebody assigned", async () => {
     renderWithAuth(
-      <BookingCreateForm />,
+      <BookingForm />,
     );
 
     await pickCustomer();
@@ -368,7 +368,7 @@ describe("BookingCreateForm", () => {
     bookings.availability.mockRejectedValue(new ApiError("Forbidden", 403));
 
     renderWithAuth(
-      <BookingCreateForm />,
+      <BookingForm />,
     );
 
     await pickCustomer();
@@ -409,7 +409,7 @@ describe("BookingCreateForm", () => {
     );
 
     renderWithAuth(
-      <BookingCreateForm />,
+      <BookingForm />,
     );
 
     await pickCustomer();
@@ -440,7 +440,7 @@ describe("BookingCreateForm", () => {
       ]) as never,
     );
 
-    renderWithAuth(<BookingCreateForm />);
+    renderWithAuth(<BookingForm />);
 
     /* Two branches IS a choice, so the picker appears and nothing is guessed. */
     expect(
@@ -452,7 +452,7 @@ describe("BookingCreateForm", () => {
 
   /* ONE BRANCH IS NOT A CHOICE — `soleBranch` answers it, no dropdown appears. */
   it("does not ask when the shop has one branch", async () => {
-    renderWithAuth(<BookingCreateForm />);
+    renderWithAuth(<BookingForm />);
 
     /* `soleBranch` lands a tick after the fetch resolves. */
     await waitFor(() =>
@@ -467,7 +467,7 @@ describe("BookingCreateForm", () => {
 
   it("offers only the two states a booking can start in", async () => {
     renderWithAuth(
-      <BookingCreateForm />,
+      <BookingForm />,
     );
 
     await userEvent.click(screen.getByRole("combobox", { name: /status/i }));
@@ -492,7 +492,7 @@ describe("BookingCreateForm", () => {
       throw new Error("toast gagal");
     });
 
-    renderWithAuth(<BookingCreateForm />);
+    renderWithAuth(<BookingForm />);
 
     await pickCustomer();
     await screen.findByRole("combobox", { name: /layanan/i });
@@ -530,7 +530,7 @@ describe("BookingCreateForm", () => {
       ]),
     );
 
-    renderWithAuth(<BookingCreateForm />);
+    renderWithAuth(<BookingForm />);
 
     await pickCustomer();
 
@@ -542,7 +542,7 @@ describe("BookingCreateForm", () => {
   });
 
   it("says nothing when the shop knows nothing about the animal", async () => {
-    renderWithAuth(<BookingCreateForm />);
+    renderWithAuth(<BookingForm />);
 
     await pickCustomer();
     await screen.findByRole("combobox", { name: /layanan/i });
@@ -562,7 +562,7 @@ describe("BookingCreateForm", () => {
       { _id: "user-1", fullName: "Mbak Sari", offReason: "Libur setiap Rabu" },
     ]);
 
-    renderWithAuth(<BookingCreateForm />);
+    renderWithAuth(<BookingForm />);
 
     await pickCustomer();
     await screen.findByRole("combobox", { name: /groomer/i });
@@ -580,7 +580,7 @@ describe("BookingCreateForm", () => {
     receptionist moves the appointment.
   */
   it("asks again when the date moves", async () => {
-    renderWithAuth(<BookingCreateForm />);
+    renderWithAuth(<BookingForm />);
 
     await pickCustomer();
     await waitFor(() => expect(bookings.availability).toHaveBeenCalled());
@@ -616,7 +616,7 @@ describe("BookingCreateForm", () => {
       )
       .mockResolvedValueOnce(created);
 
-    renderWithAuth(<BookingCreateForm />);
+    renderWithAuth(<BookingForm />);
 
     await pickCustomer();
     await screen.findByRole("combobox", { name: /layanan/i });
@@ -632,5 +632,175 @@ describe("BookingCreateForm", () => {
     await waitFor(() =>
       expect(bookings.create.mock.calls[1][0].forceClash).toBe(true),
     );
+  });
+});
+
+/**
+ * `/dashboard/booking/:id/edit` — the same form, correcting a booking.
+ *
+ * ONE COMPONENT DOES BOTH, the shape `PetForm` already uses. What these tests
+ * pin is the three things that differ: `update` rather than `create`, no
+ * `status` in the body, and a row already billed that cannot be touched.
+ */
+describe("BookingForm — mengubah booking", () => {
+  const existing = {
+    _id: "bk-9",
+    bookingNumber: "BK-260901-007",
+    customerId: "cust-1",
+    branchId: BRANCH_ID,
+    // 09:00 local. Read through UTC this lands the previous day east of London.
+    scheduledAt: new Date("2026-09-03T09:00:00").toISOString(),
+    status: "confirmed",
+    notes: "Alergi sampo biasa",
+    items: [
+      {
+        _id: "it-1",
+        petId: "pet-1",
+        serviceId: "svc-1",
+        name: "Grooming Full Service",
+        price: "150000.0000",
+        durationMin: 90,
+        notes: null,
+        groomerUserId: null,
+        groomerName: "Belum ditentukan",
+        pulledToCartAt: null,
+        pulledToInvoiceAt: null,
+      },
+    ],
+  } as unknown as Booking;
+
+  beforeEach(() => {
+    bookings.getById.mockResolvedValue(existing);
+    customers.getById.mockResolvedValue(customer);
+    bookings.update.mockResolvedValue(existing);
+  });
+
+  it("loads the booking into the form and saves through update, not create", async () => {
+    renderWithAuth(<BookingForm bookingId="bk-9" />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: /layanan/i })).toHaveTextContent(
+        "Grooming Full Service",
+      ),
+    );
+
+    /*
+      THE WALL CLOCK, NOT UTC. The calendar shipped with exactly this bug once:
+      splitting a stored instant through `toISOString` moves a Jakarta morning to
+      the previous day, and the form would save the booking a day early.
+    */
+    expect(screen.getByLabelText(/tanggal/i)).toHaveValue("2026-09-03");
+    expect(screen.getByLabelText(/jam/i)).toHaveValue("09:00");
+    expect(screen.getByText(/ibu rina/i)).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /simpan perubahan/i }),
+    );
+
+    await waitFor(() => expect(bookings.update).toHaveBeenCalled());
+    expect(bookings.create).not.toHaveBeenCalled();
+
+    const [id, patch] = bookings.update.mock.calls[0];
+    expect(id).toBe("bk-9");
+    expect(patch.customerId).toBe("cust-1");
+    expect(patch.items).toEqual([
+      {
+        petId: "pet-1",
+        serviceId: "svc-1",
+        groomerUserId: null,
+        durationMin: 90,
+        notes: null,
+      },
+    ]);
+    /*
+      `status` MUST NOT BE IN THE BODY. PATCH has no such field — a transition
+      has rules a `$set` cannot express, so it moves through its own route. Joi
+      would refuse the whole save over a key nobody meant to send.
+    */
+    expect(patch).not.toHaveProperty("status");
+  });
+
+  it("goes back to the booking it corrected, not to the list", async () => {
+    renderWithAuth(<BookingForm bookingId="bk-9" />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: /layanan/i })).toHaveTextContent(
+        "Grooming Full Service",
+      ),
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /simpan perubahan/i }),
+    );
+
+    await waitFor(() =>
+      expect(push).toHaveBeenCalledWith("/dashboard/booking/bk-9"),
+    );
+  });
+
+  it("says that saving re-prices at today's rates", async () => {
+    renderWithAuth(<BookingForm bookingId="bk-9" />);
+
+    /*
+      SAID BEFORE IT HAPPENS. The server re-snapshots every unbilled row at the
+      current catalogue price, so a booking taken before a price rise and
+      corrected after one costs the customer more — including rows nobody
+      touched. Discovering that on the bill is how a shop loses an argument.
+    */
+    expect(
+      await screen.findByText(/harga layanan hari ini/i),
+    ).toBeInTheDocument();
+  });
+
+  it("locks a row that has already been billed and refuses to let it go", async () => {
+    bookings.getById.mockResolvedValue({
+      ...existing,
+      items: [
+        { ...existing.items[0], pulledToInvoiceAt: "2026-09-01T04:00:00.000Z" },
+        {
+          ...existing.items[0],
+          _id: "it-2",
+          serviceId: "svc-2",
+          name: "Potong Kuku",
+        },
+      ],
+    } as unknown as Booking);
+    services.list.mockResolvedValue(
+      page([service(), service({ _id: "svc-2", name: "Potong Kuku" })]),
+    );
+
+    renderWithAuth(<BookingForm bookingId="bk-9" />);
+
+    expect(await screen.findByText(/sudah ditagih/i)).toBeInTheDocument();
+
+    /*
+      NO REMOVE BUTTON ON THE BILLED ROW, and one on the other. PRD 2.12: work
+      already on a bill cannot leave the booking it was billed from, or the
+      appointment and the invoice stop agreeing about what was done.
+    */
+    const cards = screen.getAllByRole("listitem");
+    expect(
+      within(cards[0]).queryByRole("button", { name: /hapus/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(cards[1]).getByRole("button", { name: /hapus/i }),
+    ).toBeInTheDocument();
+
+    /* And the owner is pinned: emptying his animals would empty the billed one. */
+    expect(screen.getByRole("button", { name: /ganti/i })).toBeDisabled();
+  });
+
+  it("does not ask for a status, which moves through its own route", async () => {
+    renderWithAuth(<BookingForm bookingId="bk-9" />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: /layanan/i })).toHaveTextContent(
+        "Grooming Full Service",
+      ),
+    );
+
+    expect(
+      screen.queryByRole("combobox", { name: /^status$/i }),
+    ).not.toBeInTheDocument();
   });
 });

@@ -21,15 +21,14 @@ import { CustomerSearchDialog } from "@/features/customers";
 import { PetQuickAddDialog } from "@/features/pets";
 import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
+import { customerService } from "@/services/customer.service";
 import { petService } from "@/services/pet.service";
 import { serviceService } from "@/services/service.service";
-import { userService } from "@/services/user.service";
 import { swalToast } from "@/lib/swal";
 import { formatMoney, sumDecimals } from "@/utils/decimal";
 import { BookingPetRowCard, UNASSIGNED } from "./BookingPetRowCard";
 import type { PetRowDraft } from "./BookingPetRowCard";
 import type {
-  Booking,
   BookingStatus,
   Customer,
   Pet,
@@ -98,6 +97,27 @@ function nextHalfHourValue(): string {
   return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
 }
 
+/**
+ * The two halves of a stored instant, put back into the two fields.
+ *
+ * THE INVERSE OF `toScheduledAt`, AND IT READS THE LOCAL CLOCK — `getHours`,
+ * never `toISOString`. The calendar shipped with exactly this bug: an instant
+ * split through UTC lands on the previous day everywhere east of London, so a
+ * booking for Thursday 08:00 in Jakarta would open for editing as Wednesday
+ * 01:00 and save itself a day early if nobody looked.
+ */
+function localDateValue(at: Date): string {
+  return [
+    at.getFullYear(),
+    String(at.getMonth() + 1).padStart(2, "0"),
+    String(at.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+function localTimeValue(at: Date): string {
+  return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
+}
+
 /** What the two fields add up to, as the instant the API stores. */
 function toScheduledAt(date: string, time: string): string | null {
   // No `Z`, so this is read as WALL-CLOCK TIME in the browser's zone — which is
@@ -158,8 +178,29 @@ function blankRow(): PetRowDraft {
  * expected it would. That tab never called this path: it feeds the CART, which
  * raises the booking on the server side.
  */
-export function BookingCreateForm() {
+export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
   const router = useRouter();
+
+  /*
+    ONE COMPONENT, TWO JOBS — the shape `PetForm` already uses in this repo.
+    Taking a booking and correcting one ask for the same eleven things; only the
+    request, the wording, and what may still be touched differ. Two components
+    would be two places for the "selesai sekitar" rule to drift.
+  */
+  const editing = bookingId !== undefined;
+  /*
+    SAVING AND CANCELLING BOTH LAND WHERE THE WORK CAME FROM. A correction was
+    reached from that one booking's page, so that is where somebody expects to
+    be put back — and it is the page that shows whether the correction took.
+  */
+  const backHref = editing ? `/dashboard/booking/${bookingId}` : "/dashboard/booking";
+  const [loading, setLoading] = useState(bookingId !== undefined);
+  /*
+    THE ROWS THAT ARE ALREADY BILLED, by their local key. They are locked rather
+    than hidden: somebody correcting a visit has to SEE the grooming that was
+    paid for, or the total on screen stops matching the total on the bill.
+  */
+  const [lockedKeys, setLockedKeys] = useState<Set<string>>(new Set());
 
   /*
     THE BRANCH IS PICKED HERE, NOT INHERITED FROM THE SESSION.
@@ -196,6 +237,7 @@ export function BookingCreateForm() {
 
   const [date, setDate] = useState(todayValue);
   const [time, setTime] = useState(nextHalfHourValue);
+  /* NOT EDITABLE. Status moves through its own route — see the status ladder. */
   const [status, setStatus] = useState<BookingStatus>("confirmed");
   const [notes, setNotes] = useState("");
 
@@ -209,6 +251,70 @@ export function BookingCreateForm() {
   const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+
+  /*
+    THE BOOKING BEING CORRECTED, when there is one.
+
+    THE OWNER IS FETCHED SEPARATELY. The booking carries `customerName` for
+    display, but this form holds a whole `Customer` — the pet loader keys off it,
+    and `CustomerSearchDialog` hands back the same shape. Reconstructing one from
+    a name would give the pet loader an object with no id.
+
+    A ROW THAT IS ALREADY BILLED IS RECORDED AS LOCKED HERE, at the only moment
+    the server's answer is in hand. `pulledToCartAt` and `pulledToInvoiceAt` are
+    not on the draft the cards edit, and putting them there would invite some
+    later screen to decide billing state for itself.
+  */
+  useEffect(() => {
+    if (!bookingId) return;
+
+    let active = true;
+
+    bookingService
+      .getById(bookingId)
+      .then(async (booking) => {
+        const owner = await customerService.getById(booking.customerId);
+        if (!active) return;
+
+        const locked = new Set<string>();
+        const loaded = booking.items.map((item) => {
+          rowSeq += 1;
+          const key = `row-${rowSeq}`;
+          if (item.pulledToCartAt || item.pulledToInvoiceAt) locked.add(key);
+
+          return {
+            key,
+            petId: item.petId,
+            serviceId: item.serviceId,
+            groomerUserId: item.groomerUserId ?? UNASSIGNED,
+            // Shown as typed, so saving without touching it keeps the number.
+            durationMin: item.durationMin === null ? "" : String(item.durationMin),
+            notes: item.notes ?? "",
+          };
+        });
+
+        const at = new Date(booking.scheduledAt);
+
+        setCustomer(owner);
+        setRows(loaded.length > 0 ? loaded : [blankRow()]);
+        setLockedKeys(locked);
+        setPickedBranch(booking.branchId);
+        setStatus(booking.status);
+        setNotes(booking.notes ?? "");
+        setDate(localDateValue(at));
+        setTime(localTimeValue(at));
+      })
+      .catch(() => {
+        if (active) setLoadError("Booking tidak bisa dimuat.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [bookingId]);
 
   /* The catalogue, once the dialog is open. Only what is still offered — a
      retired service is not something to promise on Thursday. */
@@ -356,7 +462,7 @@ export function BookingCreateForm() {
   function cancel() {
     if (saving) return;
     reset();
-    router.push("/dashboard/booking");
+    router.push(backHref);
   }
 
   /**
@@ -368,6 +474,14 @@ export function BookingCreateForm() {
    * to ask. The services and the times survive; only the animals were the other
    * person's.
    */
+  /*
+    THE OWNER IS FIXED ONCE ANY OF THE VISIT IS BILLED.
+
+    Changing the customer empties every card's animal (PRD 2.2) — which for a
+    billed row would send an empty `petId` for grooming the server will not let
+    go of, and the save would fail on a field nobody touched. Moving a paid visit
+    to a different customer is a refund and a new booking, not an edit.
+  */
   function chooseCustomer(next: Customer) {
     setCustomer(next);
     setPets([]);
@@ -388,6 +502,12 @@ export function BookingCreateForm() {
   }
 
   function removeRow(key: string) {
+    /*
+      A BILLED ROW CANNOT LEAVE (PRD 2.12). The server refuses it with a 409, and
+      the card gives it no remove button — this is the third guard, for the case
+      where some future caller reaches the function directly.
+    */
+    if (lockedKeys.has(key)) return;
     // Never the last one: a visit with no animals is not a visit (PRD 2.10).
     setRows((prev) => (prev.length === 1 ? prev : prev.filter((r) => r.key !== key)));
     setFieldErrors({});
@@ -408,7 +528,7 @@ export function BookingCreateForm() {
     setFieldErrors({});
 
     try {
-      const booking = await bookingService.create({
+      const payload = {
         branchId,
         /*
           "SAVE IT ANYWAY", and only after somebody has been shown what they are
@@ -436,9 +556,18 @@ export function BookingCreateForm() {
           notes: row.notes.trim() === "" ? null : row.notes.trim(),
         })),
         scheduledAt,
-        status,
         notes: notes.trim() === "" ? null : notes.trim(),
-      });
+      };
+
+      /*
+        `status` GOES ONLY WITH A NEW BOOKING. PATCH has no `status` field at
+        all: a transition has rules a `$set` cannot express, so it moves through
+        its own route. Sending it here would be rejected by the schema, and the
+        rejection would be right.
+      */
+      const booking = editing
+        ? await bookingService.update(bookingId, payload)
+        : await bookingService.create({ ...payload, status });
 
       /*
         BACK TO THE LIST, AND THE LIST RE-ASKS THE SERVER — `router.refresh()`
@@ -448,7 +577,7 @@ export function BookingCreateForm() {
         it will be after the next reload.
       */
       reset();
-      router.push("/dashboard/booking");
+      router.push(backHref);
       router.refresh();
 
       /*
@@ -466,9 +595,11 @@ export function BookingCreateForm() {
       */
       try {
         swalToast(
-          booking.bookingNumber
-            ? `Booking ${booking.bookingNumber} dibuat.`
-            : "Booking dibuat sebagai draf.",
+          editing
+            ? `Booking ${booking.bookingNumber ?? "draf"} diperbarui.`
+            : booking.bookingNumber
+              ? `Booking ${booking.bookingNumber} dibuat.`
+              : "Booking dibuat sebagai draf.",
         );
       } catch {
         /* The list behind already shows it. */
@@ -599,6 +730,8 @@ export function BookingCreateForm() {
   */
   const incomplete = rows.find((row) => !row.petId || !row.serviceId);
 
+  const ownerFixed = lockedKeys.size > 0;
+
   const blockedReason = !branchId
     ? "Cabang belum dipilih."
     : !customer
@@ -621,7 +754,7 @@ export function BookingCreateForm() {
           describe; here they stay with the action they qualify.
         */}
         <FormActionBar
-          title="Booking baru"
+          title={editing ? "Ubah booking" : "Booking baru"}
           meta={
             <span className="flex flex-wrap gap-x-4 tabular-nums">
               <span>Total {formatMoney(total)}</span>
@@ -632,9 +765,9 @@ export function BookingCreateForm() {
               </span>
             </span>
           }
-          submitLabel="Simpan booking"
+          submitLabel={editing ? "Simpan perubahan" : "Simpan booking"}
           submitting={saving}
-          disabled={blockedReason !== null}
+          disabled={blockedReason !== null || loading}
           blockedReason={blockedReason}
           onCancel={cancel}
         />
@@ -655,6 +788,23 @@ export function BookingCreateForm() {
               not a decision. The SERVER still refuses it without
               `bookings:overrideClash`, so this is a courtesy, never the gate.
             */}
+            {/*
+              WHAT SAVING WILL DO TO THE PRICES, said before it happens.
+
+              An edit RE-SNAPSHOTS every row at today's catalogue rate — the
+              server's rule, and the deliberate one: changing what is being done
+              is a new quote, and half at Monday's price with half at Wednesday's
+              produces a total nobody can explain to the customer. The cost lands
+              on a booking taken weeks ago and corrected after a price rise, so it
+              is said here rather than discovered on the bill.
+            */}
+            {editing && (
+              <Alert variant="warning">
+                Menyimpan perubahan akan memakai harga layanan hari ini untuk
+                semua baris yang belum ditagih.
+              </Alert>
+            )}
+
             {clash && (
               <Alert variant="warning">
                 {clash} — tekan Simpan lagi kalau memang mau dijadwalkan
@@ -746,7 +896,7 @@ export function BookingCreateForm() {
                     type="button"
                     variant="secondary"
                     size="sm"
-                    disabled={saving}
+                    disabled={saving || ownerFixed}
                     onClick={() => setPicking(true)}
                   >
                     Ganti
@@ -757,12 +907,18 @@ export function BookingCreateForm() {
                   type="button"
                   variant="secondary"
                   className="h-11 justify-start"
-                  disabled={saving}
+                  disabled={saving || ownerFixed}
                   onClick={() => setPicking(true)}
                 >
                   <UserRound className="size-4" />
                   Pilih pelanggan
                 </Button>
+              )}
+              {ownerFixed && (
+                <p className="text-xs text-muted-foreground">
+                  Pemilik tidak bisa diganti karena sebagian layanan di booking
+                  ini sudah ditagih.
+                </p>
               )}
               {fieldErrors.customerId && (
                 <p role="alert" className="text-xs font-semibold text-danger">
@@ -793,7 +949,7 @@ export function BookingCreateForm() {
                 <p className="text-sm text-muted">
                   Pilih pelanggannya dulu — daftar hewan mengikuti pemiliknya.
                 </p>
-              ) : loadingPets || loadingServices ? (
+              ) : loading || loadingPets || loadingServices ? (
                 <div className="flex items-center gap-2 text-sm text-muted">
                   <Spinner /> Memuat hewan dan layanan…
                 </div>
@@ -831,6 +987,7 @@ export function BookingCreateForm() {
                         groomers={groomers}
                         disabled={saving}
                         removable={rows.length > 1}
+                        locked={lockedKeys.has(row.key)}
                         duplicate={duplicateKeys.has(row.key)}
                         onChange={(patch) => updateRow(row.key, patch)}
                         onRemove={() => removeRow(row.key)}
@@ -874,6 +1031,14 @@ export function BookingCreateForm() {
               )}
             </div>
 
+            {/*
+              STATUS IS ASKED ONLY WHEN THE BOOKING IS BEING MADE. PATCH has no
+              `status` field: a transition has rules a `$set` cannot express, so
+              it moves through `/status` and, on screen, through the buttons on
+              the booking's own page. A select here would offer moves the ladder
+              forbids and be refused one at a time.
+            */}
+            {!editing && (
             <SelectField
               label="Status"
               value={status}
@@ -883,6 +1048,7 @@ export function BookingCreateForm() {
               hint="Hanya booking yang dikonfirmasi bisa ditarik ke keranjang di kasir."
               required
             />
+            )}
 
             {/* §16: Catatan is always last. */}
             <TextareaField

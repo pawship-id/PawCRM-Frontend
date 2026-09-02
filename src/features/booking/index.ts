@@ -3,7 +3,7 @@
  *
  * `/dashboard/booking` is the list screen; `/dashboard/booking/new` is where a
  * booking is taken. That used to be a dialog on the list and outgrew it when a
- * booking could hold several animals — see `BookingCreateForm`.
+ * booking could hold several animals — see `BookingForm`.
  * The Booking module proper — a calendar, a groomer roster, clash detection — is
  * still ahead and is built on top of this collection rather than replacing it.
  *
@@ -20,7 +20,7 @@ export { useBookingBridge } from "./hooks/useBookingBridge";
 export { BookingsScreen } from "./components/BookingsScreen";
 export { BookingDetailScreen } from "./components/BookingDetailScreen";
 export { BookingCalendarScreen } from "./components/BookingCalendarScreen";
-export { BookingCreateForm } from "./components/BookingCreateForm";
+export { BookingForm } from "./components/BookingForm";
 export { BookingStatusActions } from "./components/BookingStatusActions";
 export { BookingHistoryDialog } from "./components/BookingHistoryDialog";
 export {

@@ -51,6 +51,7 @@ export function BookingPetRowCard({
   disabled,
   removable,
   duplicate,
+  locked = false,
   onChange,
   onRemove,
 }: {
@@ -67,6 +68,15 @@ export function BookingPetRowCard({
   disabled: boolean;
   /** False on the last remaining card — a booking with no animals is not one. */
   removable: boolean;
+  /**
+   * This grooming has already been billed — PRD 2.12.
+   *
+   * NOT HIDDEN, LOCKED. Somebody correcting a visit has to see the work that was
+   * paid for, or the total on screen stops matching the total on the bill. The
+   * server refuses to remove or reprice it either way; this is what makes the
+   * refusal legible before it happens.
+   */
+  locked?: boolean;
   /** Set when this exact animal + service is already on the booking. */
   duplicate: boolean;
   onChange: (next: Partial<PetRowDraft>) => void;
@@ -90,12 +100,17 @@ export function BookingPetRowCard({
         <span className="text-sm font-medium text-foreground">
           {pet?.name ?? `Hewan ${index + 1}`}
         </span>
-        {removable && (
+        {locked && (
+          <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+            Sudah ditagih
+          </span>
+        )}
+        {removable && !locked && (
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            disabled={disabled}
+            disabled={disabled || locked}
             aria-label={`Hapus ${pet?.name ?? `hewan ${index + 1}`}`}
             onClick={onRemove}
           >
@@ -123,7 +138,7 @@ export function BookingPetRowCard({
           onChange={(value) => onChange({ petId: value })}
           options={pets.map((item) => ({ value: item._id, label: item.name }))}
           placeholder="Pilih hewan…"
-          disabled={disabled}
+          disabled={disabled || locked}
           required
         />
 
@@ -136,7 +151,7 @@ export function BookingPetRowCard({
             label: `${item.name} · ${formatMoney(item.price)}`,
           }))}
           placeholder="Pilih layanan…"
-          disabled={disabled}
+          disabled={disabled || locked}
           required
         />
 
@@ -160,7 +175,7 @@ export function BookingPetRowCard({
                 ? "Yang sedang libur tidak bisa dipilih."
                 : undefined
             }
-            disabled={disabled}
+            disabled={disabled || locked}
           />
         )}
 
@@ -179,7 +194,7 @@ export function BookingPetRowCard({
               ? `Dari layanan: ${catalogueDuration} menit. Isi kalau hewan ini butuh lebih lama.`
               : "Layanan ini belum punya durasi."
           }
-          disabled={disabled}
+          disabled={disabled || locked}
         />
       </div>
 
@@ -191,7 +206,7 @@ export function BookingPetRowCard({
           onChange={(event) => onChange({ notes: event.target.value })}
           maxLength={500}
           placeholder="mis. mandi duluan, jangan blow keras"
-          disabled={disabled}
+          disabled={disabled || locked}
         />
       </div>
 
@@ -204,6 +219,13 @@ export function BookingPetRowCard({
           four cards on screen a message that does not say WHICH animal is a
           message somebody has to solve rather than read (PRD 2.7).
         */}
+        {locked && (
+          <p className="text-xs text-muted-foreground">
+            Layanan ini sudah masuk keranjang atau faktur, jadi tidak bisa
+            diubah atau dihapus dari booking.
+          </p>
+        )}
+
         {duplicate && (
           <p role="alert" className="text-xs font-semibold text-danger">
             {pet?.name ?? "Hewan ini"} sudah punya layanan yang sama di booking

@@ -217,7 +217,7 @@ export function RosterSection({
 
       onUpdated(saved);
 
-      /* Chrome must never be able to fail a save — see BookingCreateForm. */
+      /* Chrome must never be able to fail a save — see BookingForm. */
       try {
         swalToast("Jadwal dan komisi disimpan.");
       } catch {

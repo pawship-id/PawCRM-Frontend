@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Alert, Card, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import { useBranchScope } from "@/features/inventory/hooks/useBranchScope";
+import { Can } from "@/features/permissions";
 import { PetSummaryCard } from "@/features/pets";
 import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
@@ -149,7 +150,26 @@ export function BookingDetailScreen({ id }: { id: string }) {
           </p>
         </div>
 
-        <BookingStatusActions booking={booking} onChanged={() => setNonce((n) => n + 1)} />
+        <div className="flex flex-wrap items-center gap-2">
+          {/*
+            NO "UBAH" ONCE THE BOOKING IS FROZEN. `completed` and `cancelled`
+            are the two states with nowhere left to go, and the server answers
+            409 to a PATCH on either — offering the button would send somebody
+            to a form that cannot save.
+
+            THE STATUS IS NOT WHAT THE BUTTON EDITS. That moves through the menu
+            beside it, which is why both live here and neither is inside the
+            other.
+          */}
+          {booking.status !== "completed" && booking.status !== "cancelled" && (
+            <Can feature="bookings" action="update">
+              <Button asChild variant="secondary" size="sm">
+                <Link href={`/dashboard/booking/${booking._id}/edit`}>Ubah</Link>
+              </Button>
+            </Can>
+          )}
+          <BookingStatusActions booking={booking} onChanged={() => setNonce((n) => n + 1)} />
+        </div>
       </div>
 
       <Card title="Kunjungan">

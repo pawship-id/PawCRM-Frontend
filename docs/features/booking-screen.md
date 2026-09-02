@@ -19,7 +19,24 @@ The POS side of the same collection is [`booking-bridge.md`](./booking-bridge.md
 | **Built** | `BookingCalendarScreen` at `/dashboard/booking/kalender` — harian dan mingguan, kolom per groomer |
 | **Not built** | Capacity, and a column for a groomer who is in but has nothing booked |
 | **Built** | `BookingDetailScreen` at `/dashboard/booking/:id` — one visit whole: a block per animal, its own billing state, and the pet summary |
-| **Not built** | Editing a booking — rescheduling, changing the services, swapping the animal |
+| **Built** | `BookingForm` at `/dashboard/booking/:id/edit` — the SAME component, told a `bookingId`. Reschedule, change the services, swap the animal |
+
+**ONE COMPONENT TAKES A BOOKING AND CORRECTS ONE**, the shape `PetForm` already
+uses. Three things differ: it calls `update` rather than `create`, it never sends
+`status` — a transition has rules a `$set` cannot express, so it moves through
+the buttons on the booking's own page — and a row already pulled to a basket or
+a bill is locked rather than hidden. Somebody correcting a visit has to SEE the
+grooming that was paid for, or the total on screen stops matching the bill.
+
+**THE FORM SAYS WHAT SAVING COSTS.** An edit re-snapshots every unbilled row at
+today's catalogue price — the server's deliberate rule: changing what is being
+done is a new quote. So a booking taken before a price rise and corrected after
+one bills MORE, including rows nobody touched, and the warning is on the form
+rather than discovered on the bill.
+
+**NO "UBAH" ON A COMPLETED OR CANCELLED BOOKING.** Both are final on the ladder
+and the server answers 409 to a PATCH on either; offering the button would send
+somebody to a form that cannot save.
 
 Editing goes through `PATCH /bookings/:id` and wants a form, not a row. The table moves a
 booking along and nothing else.
