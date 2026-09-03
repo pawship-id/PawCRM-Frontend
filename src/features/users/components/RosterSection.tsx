@@ -51,8 +51,18 @@ const RATE_TYPES: { value: EditableRate; label: string }[] = [
   { value: "matrix", label: "Persen berbeda per layanan" },
 ];
 
-/* Enough to hold a grooming catalogue whole; nobody pages a rate table. */
-const SERVICE_LIMIT = 200;
+/**
+ * THE SERVER'S OWN CAP, and it must not be exceeded.
+ *
+ * `common.validation.js` caps `limit` at 100. This asked for 200 and every
+ * request was refused with a 400 — which the catch below swallowed, so the
+ * dropdown simply had nothing in it and said nothing about why. Found by the BO
+ * on the first try.
+ *
+ * A grooming catalogue does not reach a hundred services; if one ever does, the
+ * fix is paging here, not a bigger number the server will refuse again.
+ */
+const SERVICE_LIMIT = 100;
 
 /** Longest leave this form will expand in one go — a fortnight and a bit. */
 const MAX_RANGE_DAYS = 60;
@@ -182,6 +192,7 @@ export function RosterSection({
   );
   const [services, setServices] = useState<Service[]>([]);
   const [loadingServices, setLoadingServices] = useState(false);
+  const [serviceError, setServiceError] = useState<string | null>(null);
 
   const [affected, setAffected] = useState<AffectedBooking[] | null>(null);
   const [checking, setChecking] = useState(false);
@@ -200,6 +211,8 @@ export function RosterSection({
 
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoadingServices(true);
+    /* A retry starts clean, or the old failure outlives the one that fixed it. */
+    setServiceError(null);
 
     serviceService
       .list({ isActive: true, limit: SERVICE_LIMIT })
@@ -207,7 +220,17 @@ export function RosterSection({
         if (active) setServices(result.items);
       })
       .catch(() => {
-        /* The rows still render by id; the picker is what degrades. */
+        /*
+          SAID, NOT SWALLOWED.
+
+          This used to be an empty catch with a comment claiming the rows would
+          "still render by id" — they do not: a row whose service is not in the
+          list renders as an empty picker, and an empty dropdown that explains
+          nothing reads as a broken screen. It hid a 400 caused by asking for
+          more rows than the server allows, and the only symptom was a menu with
+          nothing in it.
+        */
+        if (active) setServiceError("Daftar layanan tidak bisa dimuat. Coba muat ulang halaman.");
       })
       .finally(() => {
         if (active) setLoadingServices(false);
@@ -631,6 +654,18 @@ export function RosterSection({
 
           {loadingServices && (
             <p className="text-xs text-muted">Memuat daftar layanan…</p>
+          )}
+
+          {serviceError && <Alert variant="error">{serviceError}</Alert>}
+
+          {/*
+            NO SERVICES AT ALL is a different problem from a failed fetch, and
+            saying so points at the fix instead of at a retry that cannot help.
+          */}
+          {!loadingServices && !serviceError && services.length === 0 && (
+            <Alert variant="warning">
+              Belum ada layanan aktif. Buat dulu di Master Data › Layanan.
+            </Alert>
           )}
 
           {matrix.length > 0 && (

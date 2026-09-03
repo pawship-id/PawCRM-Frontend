@@ -535,4 +535,74 @@ describe("RosterSection", () => {
     await waitFor(() => expect(users.update).toHaveBeenCalled());
     expect(users.update.mock.calls[0][1].isGroomer).toBe(false);
   });
+
+  /*
+    ─── THE DROPDOWN THAT WAS ALWAYS EMPTY ───────────────────────────────────
+
+    Found by the BO on the first try: opening "Persen berbeda per layanan" and
+    clicking the service picker showed nothing at all.
+
+    The cause was a `limit` of 200 against a server that caps it at 100 — every
+    request refused with a 400 — and an empty `catch` that swallowed it. The only
+    symptom was a menu with nothing in it.
+  */
+  it("asks for no more services than the server allows", async () => {
+    renderWithAuth(
+      <RosterSection
+        user={user({
+          commissionRate: { type: "matrix", matrix: [] } as never,
+        })}
+        onUpdated={jest.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(services.list).toHaveBeenCalled());
+    const [query] = services.list.mock.calls[0];
+    expect(query?.limit).toBeLessThanOrEqual(100);
+  });
+
+  it("says so when the service list cannot be loaded", async () => {
+    /*
+      SAID, NOT SWALLOWED. An empty dropdown that explains nothing reads as a
+      broken screen, and this one hid a 400 for a whole release.
+    */
+    services.list.mockRejectedValue(new Error("offline"));
+
+    renderWithAuth(
+      <RosterSection
+        user={user({
+          commissionRate: { type: "matrix", matrix: [] } as never,
+        })}
+        onUpdated={jest.fn()}
+      />,
+    );
+
+    expect(
+      await screen.findByText(/daftar layanan tidak bisa dimuat/i),
+    ).toBeInTheDocument();
+  });
+
+  it("points at the fix when the shop has no services yet", async () => {
+    /*
+      A DIFFERENT PROBLEM FROM A FAILED FETCH, and saying which one points at the
+      remedy instead of at a retry that cannot help.
+    */
+    services.list.mockResolvedValue({
+      items: [],
+      pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
+    } as never);
+
+    renderWithAuth(
+      <RosterSection
+        user={user({
+          commissionRate: { type: "matrix", matrix: [] } as never,
+        })}
+        onUpdated={jest.fn()}
+      />,
+    );
+
+    expect(
+      await screen.findByText(/belum ada layanan aktif/i),
+    ).toBeInTheDocument();
+  });
 });
