@@ -93,13 +93,26 @@ export function PetInfoTab({ pet }: { pet: Pet }) {
           <PetStatusBadge isActive={pet.isActive} deleted={pet.deletedAt !== null} />
         </div>
 
-        <Can feature="pets" action="update">
+        <div className="flex flex-wrap items-center gap-2">
+          {/*
+            UNGATED BEYOND `pets:read`, like the screen it sits on. The card is
+            for the groomer holding the dog, and a grant that kept it from them
+            would keep the allergy off the cage door — see the print page.
+          */}
           <Button asChild variant="secondary" size="sm">
-            <Link href={`/dashboard/master/pets/${pet._id}/edit`}>
-              Ubah data hewan
+            <Link href={`/dashboard/master/pets/${pet._id}/print`}>
+              Cetak kartu
             </Link>
           </Button>
-        </Can>
+
+          <Can feature="pets" action="update">
+            <Button asChild variant="secondary" size="sm">
+              <Link href={`/dashboard/master/pets/${pet._id}/edit`}>
+                Ubah data hewan
+              </Link>
+            </Button>
+          </Can>
+        </div>
       </div>
 
       <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">

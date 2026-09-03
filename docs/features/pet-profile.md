@@ -128,11 +128,41 @@ seharusnya, dan tidak ada yang bisa menjelaskan kenapa.
 
 ---
 
+## Kartu cetak — `PetCardPrintScreen`
+
+Kriteria 5.12, di `/dashboard/master/pets/:id/print`. Selesai 3 September 2026.
+
+**Kenapa dicetak, di aplikasi yang punya layarnya.** Groomer sedang berdiri di
+meja basah dengan anjing di kedua tangan. Dia tidak akan membuka kunci ponsel, dan
+satu-satunya tablet toko ada di kasir sedang menerima booking berikutnya. Lembar
+yang dijepit di pintu kandang dibaca pada saat yang penting — satu-satunya saat
+catatan alergi ada gunanya.
+
+**Yang menentukan isinya adalah apa yang TIDAK ada di sana:** tidak ada harga,
+nomor faktur, atau alamat pemilik. Kartunya ditinggal di meja, di ruangan yang
+dilewati pelanggan.
+
+**Alergi berat pakai kotak dan kata, bukan warna** — `PetSummaryCard` di layar
+boleh mengandalkan merah; kertas sering hitam-putih.
+
+**Digerbangi `pets:read`, bukan `pets:medical`.** Kartunya membawa alergi dan obat
+— persis yang dilindungi izin medis di layar — tapi yang membutuhkannya adalah
+groomer yang memegang anjingnya, dan izin yang menahannya juga akan menahan
+peringatan alergi dari pintu kandang.
+
+**Pemilik dan lini masa diambil terpisah dan boleh gagal.** Kartu berisi alergi
+tanpa nomor telepon masih menjalankan tugasnya; yang menolak mencetak karena satu
+panggilan timeout akan mengirim orang ke meja basah tanpa apa pun.
+
+Memakai `print/receipt.css` yang sudah ada — berkas itu **menghapus** (bukan
+menyembunyikan) setiap anak langsung `body` kecuali `[data-print-root]`; kotak
+yang disembunyikan tetap memakan halaman dan akan mendorong kartunya ke lembar
+kedua.
+
+---
+
 ## Yang belum ada
 
-- **Kartu profil cetak** (kriteria 5.12). Ada di rencana, tidak di fase ini.
-  Cetakan bawaan browser tidak ditawarkan sebagai penggantinya: cetakan setengah
-  jadi lebih buruk daripada tombol yang jelas belum ada
 - **Penitipan hotel** di lini masa — menunggu modulnya
 - **Pengingat vaksinasi otomatis** lewat WhatsApp — di luar lingkup FR-5
 - **Unggah berkas dari dokter hewan** — di luar lingkup FR-5
