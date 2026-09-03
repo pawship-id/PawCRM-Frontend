@@ -553,15 +553,38 @@ describe("BookingsScreen — the groomer filter", () => {
     expect(mocked.list.mock.calls[0][0]?.groomerUserId).toBeUndefined();
   });
 
-  it("hides the filter entirely when the shop has named no groomers", async () => {
-    // A dropdown whose only option is "all" reads as broken, not as empty.
+  it("shows the filter disabled, with the reason, when nobody is marked", async () => {
+    /*
+      SHOWN AND DISABLED, NEVER HIDDEN — and it WAS hidden, which cost a bug
+      report. The list reads `users.isGroomer`, so a shop that has not ticked
+      anybody gets nothing back; a filter that simply is not there reads as a
+      feature that does not work, with nothing on screen to say otherwise.
+    */
     mocked.availability.mockResolvedValue([]);
 
     renderWithAuth(<BookingsScreen />);
     await screen.findByText("BK-260826-001");
 
+    const filter = screen.getByRole("button", { name: /filter groomer/i });
+    expect(filter).toBeInTheDocument();
+    expect(filter).toBeDisabled();
     expect(
-      screen.queryByRole("button", { name: /filter groomer/i }),
-    ).not.toBeInTheDocument();
+      screen.getByText(/ditandai sebagai groomer/i),
+    ).toBeInTheDocument();
+  });
+
+  it("says so when the groomer list cannot be loaded at all", async () => {
+    /*
+      A DIFFERENT PROBLEM FROM "nobody is marked", and saying which one points at
+      the remedy. Swallowing it made the two indistinguishable.
+    */
+    mocked.availability.mockRejectedValue(new Error("offline"));
+
+    renderWithAuth(<BookingsScreen />);
+    await screen.findByText("BK-260826-001");
+
+    expect(
+      await screen.findByText(/tidak bisa dimuat/i),
+    ).toBeInTheDocument();
   });
 });

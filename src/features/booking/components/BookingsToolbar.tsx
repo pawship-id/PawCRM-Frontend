@@ -96,6 +96,7 @@ export function BookingsToolbar({
     looks up.
   */
   const [groomers, setGroomers] = useState<GroomerAvailability[]>([]);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -106,7 +107,12 @@ export function BookingsToolbar({
         if (active) setGroomers(rows);
       })
       .catch(() => {
-        /* The other filters still work; this one just has no options. */
+        /*
+          SAID, NOT SWALLOWED — the same mistake the roster's service picker
+          made. A silently empty list is indistinguishable from "nobody is
+          marked", and the two need different fixes.
+        */
+        if (active) setError(true);
       });
 
     return () => {
@@ -116,6 +122,19 @@ export function BookingsToolbar({
 
   return (
     <FilterBar
+      /*
+        THE BAR CARRIES THE EXPLANATION, not the control — `FilterSelect` renders
+        `disabledHint` only when it stands alone with its own label; inside a bar
+        the caption belongs to the row, which is what `FilterBar.hint` is for.
+        Passing it to the control here dropped it silently.
+      */
+      hint={
+        groomers.length === 0
+          ? error
+            ? "Daftar groomer tidak bisa dimuat. Coba muat ulang halaman."
+            : "Filter groomer mati: belum ada staf yang ditandai sebagai Groomer di Master Data › Staf."
+          : undefined
+      }
       actions={
         <>
           {/*
@@ -165,25 +184,31 @@ export function BookingsToolbar({
         onChange={(origin) => onChange({ origin })}
       />
       {/*
-        HIDDEN WHEN THERE IS NOBODY TO PICK — a shop that has not named its
-        groomers yet gets a dropdown with one dead option, which reads as a
-        broken control rather than an empty one.
+        SHOWN AND DISABLED WHEN THERE IS NOBODY TO PICK — never hidden.
+
+        It WAS hidden, on the reasoning that a dropdown with one dead option
+        reads as broken. That was the wrong call and it cost a bug report: the
+        list reads `users.isGroomer`, so a shop that has not ticked anybody gets
+        an empty list — and a filter that simply is not there reads as a feature
+        that does not work, with nothing on screen to say otherwise.
+
+        `disabledHint` EXISTS FOR EXACTLY THIS. A dead control carries its own
+        reason; a missing one carries nothing.
       */}
-      {groomers.length > 0 && (
-        <FilterSelect
-          label="Groomer"
-          ariaLabel="Filter groomer"
-          value={query.groomerUserId}
-          options={withAll(
-            groomers.map((groomer) => ({
-              value: groomer._id,
-              label: groomer.fullName ?? "—",
-            })),
-            "Semua groomer",
-          )}
-          onChange={(groomerUserId) => onChange({ groomerUserId })}
-        />
-      )}
+      <FilterSelect
+        label="Groomer"
+        ariaLabel="Filter groomer"
+        value={query.groomerUserId}
+        options={withAll(
+          groomers.map((groomer) => ({
+            value: groomer._id,
+            label: groomer.fullName ?? "—",
+          })),
+          "Semua groomer",
+        )}
+        disabled={groomers.length === 0}
+        onChange={(groomerUserId) => onChange({ groomerUserId })}
+      />
     </FilterBar>
   );
 }

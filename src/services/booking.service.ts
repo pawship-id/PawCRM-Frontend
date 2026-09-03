@@ -37,6 +37,11 @@ export const bookingService = {
         limit: query.limit,
         customerId: query.customerId,
         petId: query.petId,
+        // A question about ROWS, like `petId` — the server resolves it to
+        // booking ids and intersects the two. Listed here because `query` is
+        // copied key by key: a field the type allows but this object omits is
+        // dropped silently, which is how the Groomer filter shipped dead.
+        groomerUserId: query.groomerUserId,
         branchId: query.branchId,
         // An array becomes repeated `status=` params — see buildUrl. Joining
         // with a comma would send one value the enum check rejects.
