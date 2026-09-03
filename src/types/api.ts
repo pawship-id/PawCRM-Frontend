@@ -2594,9 +2594,19 @@ export interface UpdateServiceInput {
 /**
  * The animal species a pet may be. Mirrors PET_SPECIES in pet.model.js — a
  * closed list, because it decides which services and prices a booking may offer.
+ * Scoped to cat and dog for now — see the model for why the list stays this
+ * short rather than growing in place.
  */
-export type PetSpecies =
-  "dog" | "cat" | "bird" | "rabbit" | "hamster" | "reptile" | "fish" | "other";
+export type PetSpecies = "cat" | "dog";
+
+/** Mirrors PET_BREEDS in pet.model.js. `domestic` is the mixed-breed answer. */
+export type PetBreed = "domestic" | "poodle";
+
+/** Mirrors PET_FUR_TYPES in pet.model.js. */
+export type PetFurType = "long hair" | "short hair";
+
+/** Mirrors PET_SIZES in pet.model.js. */
+export type PetSize = "small" | "medium" | "large";
 
 /**
  * `unknown` is a REAL value, not a missing one: a rescue arrives unsexed and
@@ -2716,13 +2726,18 @@ export interface Pet {
   name: string;
   species: PetSpecies;
   sex: PetSex;
-  breed: string | null;
+  breed: PetBreed | null;
+  furType: PetFurType | null;
+  size: PetSize | null;
   /** ISO date. The birth date, never an age — an age is wrong the day after it is written. */
   birthDate: string | null;
   weightKg: number | null;
   color: string | null;
   microchipNo: string | null;
-  notes: string | null;
+  /** A general description of the animal — appearance, personality. */
+  description: string | null;
+  /** Staff-facing only — what a groomer needs to know before touching the animal. */
+  internalNotes: string | null;
   /**
    * How the shop handles this animal — FR-5.
    *
@@ -2802,12 +2817,15 @@ export interface CreatePetInput {
   name: string;
   species: PetSpecies;
   sex?: PetSex;
-  breed?: string | null;
+  breed?: PetBreed | null;
+  furType?: PetFurType | null;
+  size?: PetSize | null;
   birthDate?: string | null;
   weightKg?: number | null;
   color?: string | null;
   microchipNo?: string | null;
-  notes?: string | null;
+  description?: string | null;
+  internalNotes?: string | null;
   photo?: MediaAsset | null;
   isActive?: boolean;
 }
@@ -2825,12 +2843,15 @@ export interface UpdatePetInput {
   name?: string;
   species?: PetSpecies;
   sex?: PetSex;
-  breed?: string | null;
+  breed?: PetBreed | null;
+  furType?: PetFurType | null;
+  size?: PetSize | null;
   birthDate?: string | null;
   weightKg?: number | null;
   color?: string | null;
   microchipNo?: string | null;
-  notes?: string | null;
+  description?: string | null;
+  internalNotes?: string | null;
   photo?: MediaAsset | null;
   isActive?: boolean;
 }

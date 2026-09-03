@@ -16,6 +16,22 @@ const SEX_LABELS: Record<string, string> = {
   unknown: "Tidak diketahui",
 };
 
+const BREED_LABELS: Record<string, string> = {
+  domestic: "Domestic",
+  poodle: "Poodle",
+};
+
+const FUR_TYPE_LABELS: Record<string, string> = {
+  "long hair": "Berbulu panjang",
+  "short hair": "Berbulu pendek",
+};
+
+const SIZE_LABELS: Record<string, string> = {
+  small: "Kecil",
+  medium: "Sedang",
+  large: "Besar",
+};
+
 /** A date somebody reads. */
 function day(iso: string | null): string {
   return iso
@@ -133,7 +149,12 @@ export function PetInfoTab({ pet }: { pet: Pet }) {
             )
           }
         />
-        <Row label="Ras" value={pet.breed ?? "—"} />
+        <Row label="Ras" value={pet.breed ? (BREED_LABELS[pet.breed] ?? pet.breed) : "—"} />
+        <Row label="Ukuran" value={pet.size ? (SIZE_LABELS[pet.size] ?? pet.size) : "—"} />
+        <Row
+          label="Jenis bulu"
+          value={pet.furType ? (FUR_TYPE_LABELS[pet.furType] ?? pet.furType) : "—"}
+        />
         <Row label="Kelamin" value={SEX_LABELS[pet.sex] ?? pet.sex} />
         <Row
           label="Lahir"
@@ -151,16 +172,25 @@ export function PetInfoTab({ pet }: { pet: Pet }) {
         <Row label="Microchip" value={pet.microchipNo ?? "—"} />
       </dl>
 
-      {pet.notes && (
+      {pet.description && (
         <div>
-          <dt className="text-xs text-muted">Catatan</dt>
+          <dt className="text-xs text-muted">Deskripsi</dt>
+          <dd className="mt-0.5 whitespace-pre-wrap text-sm text-foreground">
+            {pet.description}
+          </dd>
+        </div>
+      )}
+
+      {pet.internalNotes && (
+        <div>
+          <dt className="text-xs text-muted">Catatan internal</dt>
           {/*
             THE FREE-TEXT HALF, and it stays free text: temperament is a
             sentence, and the note that saves a groomer's hand is the one that
             was easy to write. What is structured lives under Medis.
           */}
           <dd className="mt-0.5 whitespace-pre-wrap text-sm text-foreground">
-            {pet.notes}
+            {pet.internalNotes}
           </dd>
         </div>
       )}

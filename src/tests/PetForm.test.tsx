@@ -29,12 +29,15 @@ const petFixture = {
   name: "Bella",
   species: "dog" as const,
   sex: "female" as const,
-  breed: "Golden Retriever",
+  breed: "domestic" as const,
+  furType: null,
+  size: null,
   birthDate: "2022-03-14T00:00:00.000Z",
   weightKg: 12.4,
   color: null,
   microchipNo: null,
-  notes: null,
+  description: null,
+  internalNotes: null,
   preferences: { text: null, tags: [] },
   medical: {
     allergies: [],
@@ -171,7 +174,9 @@ describe("PetForm — editing", () => {
     render(<PetForm petId={PET_ID} />);
 
     expect(await screen.findByDisplayValue("Bella")).toBeVisible();
-    expect(screen.getByDisplayValue("Golden Retriever")).toBeVisible();
+    expect(screen.getByRole("combobox", { name: "Ras" })).toHaveTextContent(
+      "Domestic",
+    );
     // The ISO instant is trimmed to the date half an <input type=date> wants.
     expect(screen.getByDisplayValue("2022-03-14")).toBeVisible();
   });

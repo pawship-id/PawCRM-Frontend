@@ -162,7 +162,7 @@ describe("PetInfoTab — the owner", () => {
     /* `Can` reads the session, so this one needs the provider. */
     renderWithAuth(
       <PetInfoTab
-        pet={pet({ customerId: "cust-1", breed: "Pomeranian" }) as Pet}
+        pet={pet({ customerId: "cust-1", breed: "domestic" }) as Pet}
       />,
     );
 

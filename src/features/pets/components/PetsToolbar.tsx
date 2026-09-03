@@ -26,14 +26,8 @@ import type { PetsQuery } from "../hooks/usePets";
  */
 const SPECIES = withAll<PetsQuery["species"]>(
   [
-    { value: "dog", label: "Anjing" },
     { value: "cat", label: "Kucing" },
-    { value: "bird", label: "Burung" },
-    { value: "rabbit", label: "Kelinci" },
-    { value: "hamster", label: "Hamster" },
-    { value: "reptile", label: "Reptil" },
-    { value: "fish", label: "Ikan" },
-    { value: "other", label: "Lainnya" },
+    { value: "dog", label: "Anjing" },
   ],
   "Semua jenis",
 );

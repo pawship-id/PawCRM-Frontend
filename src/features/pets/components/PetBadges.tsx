@@ -23,14 +23,8 @@ import type { PetSpecies } from "@/types/api";
 
 /** Indonesian labels — the visible word is copy, not the API's value. §12. */
 const SPECIES_LABELS: Record<PetSpecies, string> = {
-  dog: "Anjing",
   cat: "Kucing",
-  bird: "Burung",
-  rabbit: "Kelinci",
-  hamster: "Hamster",
-  reptile: "Reptil",
-  fish: "Ikan",
-  other: "Lainnya",
+  dog: "Anjing",
 };
 
 /** The pet's species, spelled out. */
