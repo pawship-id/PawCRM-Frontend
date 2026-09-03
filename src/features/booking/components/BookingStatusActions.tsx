@@ -147,7 +147,14 @@ export function BookingStatusActions({
 
         <DropdownMenuContent align="end">
           {forward.length > 0 && (
-            <Can feature="bookings" action="update">
+            /*
+              EITHER GRANT, matching the API. `advanceStatus` is the groomer's —
+              check a dog in, mark it done — and `update` is the stronger one a
+              receptionist already holds. Gating on the narrow one alone would
+              have hidden these items from every role that has only ever had
+              `update`.
+            */
+            <Can feature="bookings" action={["advanceStatus", "update"]}>
               {forward.map((status) => (
                 <DropdownMenuItem
                   key={status}

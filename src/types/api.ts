@@ -2154,6 +2154,11 @@ export interface BookingListQuery {
   limit?: number;
   customerId?: string;
   petId?: string;
+  /**
+   * Whose work. Like `petId`, a question about ROWS — the server resolves it to
+   * booking ids and intersects it with `petId` when both are asked.
+   */
+  groomerUserId?: string;
   branchId?: string;
   /** One status or several — a day sheet usually wants more than one. */
   status?: BookingStatus | BookingStatus[];

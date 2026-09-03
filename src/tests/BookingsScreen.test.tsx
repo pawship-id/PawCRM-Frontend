@@ -61,6 +61,16 @@ const page = (items: Booking[]): PageResult<Booking> => ({
 beforeEach(() => {
   mocked.list.mockResolvedValue(page([booking()]));
   /*
+    THE GROOMER FILTER'S OPTIONS. It reads `bookings/availability` rather than
+    the user register, because that endpoint rides on `bookings:read` — the same
+    grant that opened this list — and a receptionist has no reason to hold
+    `users:read`.
+  */
+  mocked.availability.mockResolvedValue([
+    { _id: "user-1", fullName: "Sinta", offReason: null },
+    { _id: "user-2", fullName: "Mbak Sari", offReason: null },
+  ]);
+  /*
     The unbilled lens asks for its own count on every load. Stubbed to "nothing
     outstanding" so these cases stay about the list rather than about the pill —
     the pill has its own describe at the foot of the file.
@@ -496,5 +506,62 @@ describe("BookingsScreen — the unbilled lens", () => {
     expect(await screen.findByText("BK-260826-001")).toBeInTheDocument();
     const pill = await screen.findByRole("button", { name: /belum ditagih/i });
     expect(pill).not.toHaveTextContent("3");
+  });
+
+});
+
+/**
+ * FILTERING BY WHO DOES THE WORK.
+ *
+ * Status and origin were on this bar from the first day; the question a shop
+ * actually asks — "mana bookingnya Sinta hari ini" — was not answerable at all.
+ */
+describe("BookingsScreen — the groomer filter", () => {
+/*
+    "SIAPA YANG MENGERJAKAN" — the filter a shop asks for first, and the one
+    that was missing while status and origin were there from the start.
+
+    IT IS A QUESTION ABOUT ROWS. The groomer sits on each service since PCR-040
+    and a visit can be split between two people, so the server resolves it into
+    booking ids rather than matching a header field.
+  */
+  it("filters the list by groomer", async () => {
+    const user = userEvent.setup();
+
+    renderWithAuth(<BookingsScreen />);
+    await screen.findByText("BK-260826-001");
+
+    await user.click(screen.getByRole("button", { name: /filter groomer/i }));
+    await user.click(await screen.findByRole("option", { name: /sinta/i }));
+
+    await waitFor(() =>
+      expect(mocked.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ groomerUserId: "user-1" }),
+      ),
+    );
+  });
+
+  it("sends no groomer at all for 'Semua groomer'", async () => {
+    /*
+      "" IS NOT A GROOMER. Sent as an empty string it would reach Joi as an
+      invalid ObjectId and take the whole list down with a 400 — the same shape
+      every other filter on this bar avoids by sending `undefined`.
+    */
+    renderWithAuth(<BookingsScreen />);
+    await screen.findByText("BK-260826-001");
+
+    expect(mocked.list.mock.calls[0][0]?.groomerUserId).toBeUndefined();
+  });
+
+  it("hides the filter entirely when the shop has named no groomers", async () => {
+    // A dropdown whose only option is "all" reads as broken, not as empty.
+    mocked.availability.mockResolvedValue([]);
+
+    renderWithAuth(<BookingsScreen />);
+    await screen.findByText("BK-260826-001");
+
+    expect(
+      screen.queryByRole("button", { name: /filter groomer/i }),
+    ).not.toBeInTheDocument();
   });
 });

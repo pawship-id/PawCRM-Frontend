@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 
 import { RosterSection } from "@/features/users";
 import { bookingService } from "@/services/booking.service";
+import { serviceService } from "@/services/service.service";
 import { userService } from "@/services/user.service";
 import type { User } from "@/types/api";
 
@@ -10,10 +11,12 @@ import { renderWithAuth } from "./helpers/renderWithAuth";
 
 jest.mock("@/services/user.service");
 jest.mock("@/services/booking.service");
+jest.mock("@/services/service.service");
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
 
 const users = userService as jest.Mocked<typeof userService>;
 const bookings = bookingService as jest.Mocked<typeof bookingService>;
+const services = serviceService as jest.Mocked<typeof serviceService>;
 
 const user = (overrides: Partial<User> = {}): User =>
   ({
@@ -27,6 +30,13 @@ const user = (overrides: Partial<User> = {}): User =>
 beforeEach(() => {
   jest.clearAllMocks();
   bookings.affectedByLeave.mockResolvedValue([]);
+  services.list.mockResolvedValue({
+    items: [
+      { _id: "svc-1", name: "Grooming Full Service" },
+      { _id: "svc-2", name: "Potong Kuku" },
+    ],
+    pagination: { page: 1, limit: 200, total: 2, totalPages: 1 },
+  } as never);
   users.update.mockImplementation(async (_id, patch) =>
     ({ ...user(), ...patch }) as User,
   );
@@ -221,20 +231,121 @@ describe("RosterSection", () => {
     picker with a row per service; squeezing a third mode in here would be worse
     than a stated limit.
   */
-  it("warns before a matrix rate would be replaced", () => {
+  /*
+    THE PER-SERVICE MATRIX — the last thing in the booking module that was
+    storable, validated and computed with no screen to set it. Until 3 September
+    2026 this form refused to show one and warned that switching type would wipe
+    it.
+  */
+  it("opens an existing matrix as rows, by service name", async () => {
     renderWithAuth(
       <RosterSection
         user={user({
           commissionRate: {
             type: "matrix",
-            value: null,
             matrix: [{ key: "svc-1", value: 30 }],
-          },
+          } as never,
         })}
         onUpdated={jest.fn()}
       />,
     );
 
-    expect(screen.getByText(/komisi matriks/i)).toBeInTheDocument();
+    /* The row's key is a service ID; the picker is what turns it into a name. */
+    expect(
+      await screen.findByText(/grooming full service/i),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/persen/i)).toHaveValue(30);
+  });
+
+  it("sends the matrix as rows, with no stray value beside it", async () => {
+    const onUpdated = jest.fn();
+
+    renderWithAuth(
+      <RosterSection
+        user={user({
+          commissionRate: {
+            type: "matrix",
+            matrix: [{ key: "svc-1", value: 30 }],
+          } as never,
+        })}
+        onUpdated={onUpdated}
+      />,
+    );
+
+    await screen.findByText(/grooming full service/i);
+    await userEvent.click(
+      screen.getByRole("button", { name: /simpan jadwal/i }),
+    );
+
+    /*
+      EXACTLY THIS SHAPE, asserted with `toEqual` rather than
+      `objectContaining`. The first version of this form sent `matrix: []`
+      alongside a percentage and was refused on every save; an
+      `objectContaining` check passed the whole time, because an extra key is
+      exactly what it is built to ignore.
+    */
+    await waitFor(() => expect(users.update).toHaveBeenCalled());
+    expect(users.update.mock.calls[0][1].commissionRate).toEqual({
+      type: "matrix",
+      matrix: [{ key: "svc-1", value: 30 }],
+    });
+  });
+
+  it("drops a half-filled row instead of letting the server refuse the save", async () => {
+    /*
+      An empty row is what an unfinished form looks like. The server answers
+      "matrix[1].key is not allowed to be empty" — a true sentence that tells
+      nobody which row to look at.
+    */
+    renderWithAuth(
+      <RosterSection
+        user={user({
+          commissionRate: {
+            type: "matrix",
+            matrix: [{ key: "svc-1", value: 30 }],
+          } as never,
+        })}
+        onUpdated={jest.fn()}
+      />,
+    );
+
+    await screen.findByText(/grooming full service/i);
+    await userEvent.click(
+      screen.getByRole("button", { name: /tambah layanan/i }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /simpan jadwal/i }),
+    );
+
+    await waitFor(() => expect(users.update).toHaveBeenCalled());
+    expect(users.update.mock.calls[0][1].commissionRate).toEqual({
+      type: "matrix",
+      matrix: [{ key: "svc-1", value: 30 }],
+    });
+  });
+
+  it("says that a service with no row earns nothing", async () => {
+    /*
+      THE SERVER'S RULE, SAID OUT LOUD. `#amountFor` returns null when no row
+      matches, and no commission record is written at all — which is invisible
+      until a groomer asks why a bath was not paid.
+    */
+    renderWithAuth(
+      <RosterSection
+        user={user({
+          commissionRate: {
+            type: "matrix",
+            matrix: [{ key: "svc-1", value: 30 }],
+          } as never,
+        })}
+        onUpdated={jest.fn()}
+      />,
+    );
+
+    /* Scoped to the sentence, not the word — "Tidak berkomisi" is also an
+       option in the type dropdown. */
+    expect(
+      await screen.findByText(/layanan yang tidak ada di daftar ini/i),
+    ).toBeInTheDocument();
   });
 });

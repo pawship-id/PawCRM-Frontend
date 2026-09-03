@@ -1,4 +1,5 @@
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { BookingDetailScreen } from "@/features/booking";
 import { bookingService } from "@/services/booking.service";
@@ -219,6 +220,36 @@ describe("BookingDetailScreen", () => {
       ).not.toBeInTheDocument();
     },
   );
+
+  it("shows a groomer the status moves but not the edit button", async () => {
+    /*
+      THE SPLIT, FROM THE SCREEN'S SIDE — `bookings:advanceStatus` without
+      `bookings:update`. A groomer checks a dog in and marks it done; the edit
+      form changes the services and re-quotes every unbilled row at today's
+      prices, which is not their decision to make.
+    */
+    renderWithAuth(<BookingDetailScreen id="bk-1" />, {
+      isSuperAdmin: false,
+      permissions: [{ feature: "bookings", actions: ["read", "advanceStatus"] }],
+    });
+
+    await screen.findByText(/BK-260902-001/);
+
+    expect(
+      screen.queryByRole("link", { name: /^ubah$/i }),
+    ).not.toBeInTheDocument();
+
+    /*
+      AND THE LADDER IS STILL THEIRS — asserted on a FORWARD MOVE, not on
+      "Riwayat status", which is ungated and would pass even if the split had
+      hidden every action a groomer needs.
+    */
+    await userEvent.click(
+      screen.getByRole("button", { name: /tindakan|aksi|status/i }),
+    );
+    expect(await screen.findByText(/check-in/i)).toBeInTheDocument();
+    expect(screen.queryByText(/batalkan booking/i)).not.toBeInTheDocument();
+  });
 
   it("says plainly when the booking is not there", async () => {
     bookings.getById.mockRejectedValue(new ApiError("Not found", 404));

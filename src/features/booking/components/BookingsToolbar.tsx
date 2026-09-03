@@ -1,12 +1,18 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 
 import { FilterBar, FilterDateRange, FilterSelect, withAll } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
-import type { BookingOrigin, BookingStatus } from "@/types/api";
+import { bookingService } from "@/services/booking.service";
+import type {
+  BookingOrigin,
+  BookingStatus,
+  GroomerAvailability,
+} from "@/types/api";
 
 import type { BookingsQuery } from "../hooks/useBookings";
 import { BOOKING_STATUS_LABELS } from "./BookingStatusBadge";
@@ -74,6 +80,40 @@ export function BookingsToolbar({
   query: BookingsQuery;
   onChange: (patch: Partial<BookingsQuery>) => void;
 }) {
+  /*
+    THE STAFF WHO CAN BE BOOKED, FROM `bookings/availability` RATHER THAN THE
+    USER REGISTER.
+
+    `userService.list` would need `users:read`, which a receptionist has no
+    reason to hold — and a filter that renders empty for the person who lives on
+    this screen is worse than no filter. This endpoint rides on `bookings:read`,
+    the same grant that opened the list, so the two can never disagree about who
+    may see it.
+
+    TODAY'S DATE IS ARBITRARY HERE. The endpoint answers "who may be booked on
+    this day, and why not"; the filter wants only the names, and the reasons are
+    ignored. Somebody off today is still somebody whose past bookings a shop
+    looks up.
+  */
+  const [groomers, setGroomers] = useState<GroomerAvailability[]>([]);
+
+  useEffect(() => {
+    let active = true;
+
+    bookingService
+      .availability(new Date().toISOString().slice(0, 10))
+      .then((rows) => {
+        if (active) setGroomers(rows);
+      })
+      .catch(() => {
+        /* The other filters still work; this one just has no options. */
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   return (
     <FilterBar
       actions={
@@ -124,6 +164,26 @@ export function BookingsToolbar({
         options={ORIGINS}
         onChange={(origin) => onChange({ origin })}
       />
+      {/*
+        HIDDEN WHEN THERE IS NOBODY TO PICK — a shop that has not named its
+        groomers yet gets a dropdown with one dead option, which reads as a
+        broken control rather than an empty one.
+      */}
+      {groomers.length > 0 && (
+        <FilterSelect
+          label="Groomer"
+          ariaLabel="Filter groomer"
+          value={query.groomerUserId}
+          options={withAll(
+            groomers.map((groomer) => ({
+              value: groomer._id,
+              label: groomer.fullName ?? "—",
+            })),
+            "Semua groomer",
+          )}
+          onChange={(groomerUserId) => onChange({ groomerUserId })}
+        />
+      )}
     </FilterBar>
   );
 }

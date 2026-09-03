@@ -146,8 +146,15 @@ The dialog is also where the two things worth saying fit:
 
 **Cancelling asks for a reason and does not require one.** A receptionist calling off an
 appointment at the customer's request has nothing to add, and a mandatory field with nothing
-to say gets filled with "-". It is gated on `bookings:cancel`, while the forward moves need
-`bookings:update` — the split the permission catalogue makes.
+to say gets filled with "-". It is gated on `bookings:cancel`, while the forward moves take
+`bookings:advanceStatus` **or** `bookings:update` — the split the permission catalogue makes.
+
+**`advanceStatus` is the groomer's grant, added 3 September 2026.** It was one grant with
+`update` while `update` had no screen: nothing called `PATCH /bookings/:id`, so giving a
+groomer `bookings:update` meant, in practice, "may check a dog in". The edit form changed
+what that sentence means overnight — the same grant now opens a screen that changes the
+services and re-quotes every unbilled row at today's prices. A permission whose safety rests
+on a missing button gets more dangerous the more you build.
 
 ---
 

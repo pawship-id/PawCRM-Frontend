@@ -1,23 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 
-import { Alert, SelectField, TextField } from "@/components";
+import { Alert, FilterSelect, SelectField, TextField } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
+import { serviceService } from "@/services/service.service";
 import { userService } from "@/services/user.service";
 import { swalToast } from "@/lib/swal";
-import type { AffectedBooking, User } from "@/types/api";
+import type { AffectedBooking, Service, User } from "@/types/api";
+
+/** All four states a rate can be in, and this form now sets every one. */
+type EditableRate = "none" | "percentage" | "fixed" | "matrix";
 
 /**
- * What this form can set. `matrix` is deliberately absent — see the notice this
- * component renders for a staff member who already has one.
+ * One row of a per-service matrix, while it is being edited.
+ *
+ * `value` IS A STRING HERE, not a number. A half-typed "1" on the way to "15"
+ * is a valid thing to have in a text box and not a valid rate, and coercing on
+ * every keystroke turns a cleared field into a silent zero — which for a
+ * commission means somebody works a day for nothing and nobody is told.
  */
-type EditableRate = "none" | "percentage" | "fixed";
+type MatrixRow = { key: string; value: string };
 
 /**
  * JAVASCRIPT'S DAY NUMBERING — 0 is Sunday, 3 is Wednesday.
@@ -40,7 +48,11 @@ const RATE_TYPES: { value: EditableRate; label: string }[] = [
   { value: "none", label: "Tidak berkomisi" },
   { value: "percentage", label: "Persentase dari harga layanan" },
   { value: "fixed", label: "Nominal tetap per layanan" },
+  { value: "matrix", label: "Persen berbeda per layanan" },
 ];
+
+/* Enough to hold a grooming catalogue whole; nobody pages a rate table. */
+const SERVICE_LIMIT = 200;
 
 const day = (iso: string) =>
   new Date(iso).toLocaleDateString("id-ID", {
@@ -84,10 +96,7 @@ export function RosterSection({
   const [draftDate, setDraftDate] = useState("");
 
   const [rateType, setRateType] = useState<EditableRate>(
-    /* A matrix cannot be shown as a choice this form offers — see the notice. */
-    user.commissionRate?.type === "matrix"
-      ? "none"
-      : (user.commissionRate?.type ?? "none"),
+    user.commissionRate?.type ?? "none",
   );
   const [rateValue, setRateValue] = useState(
     user.commissionRate?.value !== null &&
@@ -96,10 +105,60 @@ export function RosterSection({
       : "",
   );
 
+  /*
+    THE MATRIX ROWS, AND THE CATALOGUE THEY POINT AT.
+
+    A row's `key` IS A SERVICE ID — that is what `CommissionService#amountFor`
+    matches on. It has not always been: the field started as a free-text label
+    and `backfillCommissionMatrixKeys.js` mapped the old labels across. A picker
+    is the only thing that keeps it an id, and a text box here would quietly
+    re-open the drift that migration closed.
+  */
+  const [matrix, setMatrix] = useState<MatrixRow[]>(
+    user.commissionRate?.type === "matrix"
+      ? (user.commissionRate.matrix ?? []).map((row) => ({
+          key: String(row.key),
+          value: String(row.value),
+        }))
+      : [],
+  );
+  const [services, setServices] = useState<Service[]>([]);
+  const [loadingServices, setLoadingServices] = useState(false);
+
   const [affected, setAffected] = useState<AffectedBooking[] | null>(null);
   const [checking, setChecking] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /*
+    FETCHED ONLY WHEN THE MATRIX IS CHOSEN. Most staff are on a percentage or on
+    nothing at all, and loading the whole service catalogue to render a form that
+    never shows it is a request every user page would pay for.
+  */
+  useEffect(() => {
+    if (rateType !== "matrix" || services.length > 0) return;
+
+    let active = true;
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoadingServices(true);
+
+    serviceService
+      .list({ isActive: true, limit: SERVICE_LIMIT })
+      .then((result) => {
+        if (active) setServices(result.items);
+      })
+      .catch(() => {
+        /* The rows still render by id; the picker is what degrades. */
+      })
+      .finally(() => {
+        if (active) setLoadingServices(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [rateType, services.length]);
 
   /**
    * Adds a leave date, and asks what it would strand before accepting it.
@@ -177,6 +236,27 @@ export function RosterSection({
     else setAffected(null);
   }
 
+  function addMatrixRow() {
+    setMatrix((prev) => [...prev, { key: "", value: "" }]);
+  }
+
+  function updateMatrixRow(index: number, patch: Partial<MatrixRow>) {
+    setMatrix((prev) =>
+      prev.map((row, i) => (i === index ? { ...row, ...patch } : row)),
+    );
+  }
+
+  function removeMatrixRow(index: number) {
+    setMatrix((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  /*
+    A SERVICE ALREADY PRICED CANNOT BE PICKED TWICE. Two rows for one service is
+    a rate the reader has to guess between, and `#amountFor` takes the FIRST it
+    finds — a silent tie-break nobody chose.
+  */
+  const takenKeys = new Set(matrix.map((row) => row.key).filter(Boolean));
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (saving) return;
@@ -205,14 +285,31 @@ export function RosterSection({
           `null` IS THE ANSWER FOR MOST STAFF — cashiers, receptionists, a vet on
           salary — and it says so far more clearly than a rate of zero.
 
-          MATRIX IS NEVER SENT FROM HERE. This form has no editor for it, so
-          switching a matrix staff member to a percentage replaces it — which is
-          what the notice above the button warns about.
+          A MATRIX IS SENT AS ITS ROWS AND NOTHING ELSE — no `value` beside it,
+          for the same reason. Switching AWAY from a matrix still replaces it,
+          which is the moment the old rows stop meaning anything anyway.
         */
         commissionRate:
           rateType === "none"
             ? null
-            : { type: rateType, value: Number(rateValue) || 0 },
+            : rateType === "matrix"
+              ? {
+                  type: "matrix",
+                  /*
+                    ROWS WITH NEITHER A SERVICE NOR A NUMBER ARE DROPPED, not
+                    sent. An empty row is what a half-filled form looks like, and
+                    the server refuses the whole save over it — "matrix[2].key is
+                    not allowed to be empty" is a true sentence that tells nobody
+                    which row to look at.
+                  */
+                  matrix: matrix
+                    .filter((row) => row.key !== "" && row.value.trim() !== "")
+                    .map((row) => ({
+                      key: row.key,
+                      value: Number(row.value) || 0,
+                    })),
+                }
+              : { type: rateType, value: Number(rateValue) || 0 },
       });
 
       onUpdated(saved);
@@ -367,19 +464,113 @@ export function RosterSection({
       </div>
 
       {/*
-        MATRIX IS DELIBERATELY ABSENT FROM THIS FORM. A per-service rate needs a
-        service picker with a row per service, and a shop that wants one is
-        better served by a screen built for it than by a third mode squeezed in
-        here. A matrix already set through the API is left untouched: this form
-        only sends `matrix: []` when somebody actively switches the type, which
-        is the moment the old rows stop meaning anything anyway.
+        THE PER-SERVICE RATES — FR-6, and the last thing in this module that was
+        storable, validated, computed, and had no screen.
+
+        A ROW IS A SERVICE AND A PERCENT. Not a free-typed name: the row's key is
+        matched against a service ID by `CommissionService#amountFor`, and it was
+        a text label once — `backfillCommissionMatrixKeys.js` exists to clean up
+        after that. A picker is what keeps the ids ids.
+
+        A SERVICE WITH NO ROW PAYS NOTHING, and the form says so rather than
+        leaving it to be discovered on a payslip. That is the server's rule:
+        `#amountFor` returns null when no row matches, and no commission record
+        is written at all.
       */}
-      {user.commissionRate?.type === "matrix" && (
-        <Alert variant="info">
-          Staf ini memakai komisi matriks (rate berbeda per layanan), yang belum
-          bisa disunting dari layar ini. Mengganti jenis komisinya di sini akan
-          menghapus matriksnya.
-        </Alert>
+      {rateType === "matrix" && (
+        <div className="flex flex-col gap-2">
+          <Label>Rate per layanan</Label>
+          <p className="text-xs text-muted">
+            Layanan yang tidak ada di daftar ini <strong>tidak berkomisi</strong>{" "}
+            untuk staf ini.
+          </p>
+
+          {loadingServices && (
+            <p className="text-xs text-muted">Memuat daftar layanan…</p>
+          )}
+
+          {matrix.length > 0 && (
+            <ul className="flex flex-col gap-2">
+              {matrix.map((row, index) => (
+                <li
+                  key={index}
+                  className="flex flex-wrap items-end gap-2 rounded-lg border border-border p-3"
+                >
+                  <div className="min-w-52 flex-1">
+                    <FilterSelect
+                      label="Layanan"
+                      value={row.key}
+                      onChange={(value) => updateMatrixRow(index, { key: value })}
+                      options={services
+                        .filter(
+                          (service) =>
+                            service._id === row.key ||
+                            !takenKeys.has(service._id),
+                        )
+                        .map((service) => ({
+                          value: service._id,
+                          label: service.name,
+                        }))}
+                      placeholder="Pilih layanan"
+                      disabled={saving}
+                    />
+                  </div>
+
+                  <div className="w-28">
+                    <TextField
+                      label="Persen (%)"
+                      name={`matrix-value-${index}`}
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      max={100}
+                      value={row.value}
+                      onChange={(event) =>
+                        updateMatrixRow(index, { value: event.target.value })
+                      }
+                      disabled={saving}
+                    />
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={saving}
+                    aria-label={`Hapus baris ${index + 1}`}
+                    onClick={() => removeMatrixRow(index)}
+                  >
+                    <X className="size-4" />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={saving}
+              onClick={addMatrixRow}
+            >
+              Tambah layanan
+            </Button>
+          </div>
+
+          {/*
+            THE SERVER REFUSES AN EMPTY MATRIX — "commission, but no rate for
+            anything" is not a state worth storing. Said here so the refusal is
+            not the first anybody hears of it.
+          */}
+          {matrix.filter((row) => row.key !== "" && row.value.trim() !== "")
+            .length === 0 && (
+            <p className="text-xs font-semibold text-danger">
+              Tambahkan minimal satu layanan, atau pilih jenis komisi lain.
+            </p>
+          )}
+        </div>
       )}
 
       <div>
