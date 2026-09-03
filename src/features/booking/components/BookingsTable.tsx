@@ -190,9 +190,31 @@ export function BookingsTable({
                   booking.status !== "cancelled" &&
                   (booking.posTransactionId ? (
                     <span className="mt-1 block text-xs text-muted">
-                      {booking.status === "confirmed"
-                        ? "Sudah dibayar — belum dikerjakan"
+                      {/*
+                        ─── "PAID" IS NOT ENOUGH SINCE PCR-040 ─────────────────
+
+                        `posTransactionId` is stamped on the HEADER by any sale
+                        that touched the booking, and a sale may cover ONE of two
+                        animals. This read "Sudah dibayar" over a visit half of
+                        which had never been charged for — the screen agreeing
+                        with money the shop had lost.
+
+                        The detail page had it right from the start, because it
+                        shows the ROWS. The list shows one line for the whole
+                        visit, so the line has to carry the difference itself.
+                      */}
+                      {/*
+                        TWO FACTS, COMPOSED — not one branch choosing between
+                        them. How much was paid and whether the work has started
+                        are independent, and the first version folded them into a
+                        single ladder: a half-paid booking lost the "belum
+                        dikerjakan" half that every other row carries, so the one
+                        row that needed the most explanation carried the least.
+                      */}
+                      {booking.billingState === "partial"
+                        ? "Sudah dibayar sebagian"
                         : "Sudah dibayar"}
+                      {booking.status === "confirmed" && " — belum dikerjakan"}
                     </span>
                   ) : (
                     /*

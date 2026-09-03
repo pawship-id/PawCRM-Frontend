@@ -588,3 +588,77 @@ describe("BookingsScreen — the groomer filter", () => {
     ).toBeInTheDocument();
   });
 });
+
+/**
+ * ─── "SUDAH DIBAYAR" IS NOT ENOUGH SINCE PCR-040 ───────────────────────────
+ *
+ * `posTransactionId` is stamped on the header by any sale that touched the
+ * booking, and a sale may cover ONE of two animals. The list read "Sudah
+ * dibayar" over a visit half of which had never been charged for — the screen
+ * agreeing with money the shop had lost.
+ */
+describe("BookingsTable — a half-paid booking", () => {
+  it("says it was paid in part, not paid", async () => {
+    mocked.list.mockResolvedValue(
+      page([
+        booking({
+          posTransactionId: "sale-1",
+          billingState: "partial",
+          status: "confirmed",
+        }),
+      ]),
+    );
+
+    renderWithAuth(<BookingsScreen />);
+
+    /*
+      BOTH HALVES. How much was paid and whether the work has started are
+      independent facts, and the first version folded them into one ladder — so
+      a half-paid booking lost the "belum dikerjakan" that every other row
+      carries, on the one row that needed explaining most.
+    */
+    expect(
+      await screen.findByText(/sudah dibayar sebagian — belum dikerjakan/i),
+    ).toBeInTheDocument();
+  });
+
+  it("drops the work half once the booking has moved on", async () => {
+    // `confirmed` is the only status that means "paid, nobody has started".
+    mocked.list.mockResolvedValue(
+      page([
+        booking({
+          posTransactionId: "sale-1",
+          billingState: "partial",
+          status: "in_progress",
+        }),
+      ]),
+    );
+
+    renderWithAuth(<BookingsScreen />);
+
+    expect(
+      await screen.findByText(/sudah dibayar sebagian/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/belum dikerjakan/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("still says plainly paid when the whole visit was", async () => {
+    mocked.list.mockResolvedValue(
+      page([
+        booking({
+          posTransactionId: "sale-1",
+          billingState: "billed",
+          status: "confirmed",
+        }),
+      ]),
+    );
+
+    renderWithAuth(<BookingsScreen />);
+
+    expect(
+      await screen.findByText(/sudah dibayar — belum dikerjakan/i),
+    ).toBeInTheDocument();
+  });
+});
