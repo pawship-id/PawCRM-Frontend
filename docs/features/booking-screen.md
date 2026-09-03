@@ -17,7 +17,31 @@ The POS side of the same collection is [`booking-bridge.md`](./booking-bridge.md
 | **Built** | `BookingStatusActions` — move it along the ladder, or call it off |
 | **Built** | `BookingHistoryDialog` — when it reached each status, and who took it there |
 | **Built** | `BookingCalendarScreen` at `/dashboard/booking/kalender` — harian dan mingguan, kolom per groomer |
-| **Not built** | Capacity, and a column for a groomer who is in but has nothing booked |
+| **Built** | A column for a groomer who is **in but has nothing booked**, on the daily view — labelled `· kosong` |
+| **Not built** | Capacity (how much more the day can take) |
+
+**THE EMPTY COLUMN, AND WHY IT TOOK THE ROSTER TO BUILD.** A calendar showing only
+busy people cannot answer the question a receptionist brings to it — "siapa yang
+bisa ambil anjing jam dua" — because the one person who can is exactly the one
+with no blocks.
+
+**Only on a single day.** "Who is in" is a per-day fact; a week has no single
+answer, and the weekly view asks "which day is full" anyway.
+
+**Who counts as a groomer is derived from work done, not from the staff list.**
+Nothing in this system records that somebody IS a groomer: `listForDate` returns
+every ACTIVE USER, which is why the booking form's groomer dropdown already lists
+the cashier and the owner. A column per available user would be the "mostly empty
+columns" this feature's own comment warned against, reached from the other side.
+So `findGroomerIdsSince` reads it from grooming actually assigned at that branch
+in the last 60 days — self-maintaining, and right in practice.
+
+**It misses exactly one case:** a groomer hired this week who has never been
+assigned anything gets no column until their first booking. The honest fix is an
+explicit flag on the user, which is a data-model decision rather than a guess.
+
+**Somebody off today gets no column.** A column is somewhere to drop work, and
+dropping work on somebody on leave is what FR-4 refuses outright.
 | **Built** | `BookingDetailScreen` at `/dashboard/booking/:id` — one visit whole: a block per animal, its own billing state, and the pet summary |
 | **Built** | `BookingForm` at `/dashboard/booking/:id/edit` — the SAME component, told a `bookingId`. Reschedule, change the services, swap the animal |
 

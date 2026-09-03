@@ -254,4 +254,48 @@ describe("BookingCalendarScreen", () => {
       ),
     );
   });
+
+  /*
+    ─── THE EMPTY COLUMN ─────────────────────────────────────────────────────
+
+    A calendar that only shows busy people cannot answer the question a
+    receptionist actually brings to it: "siapa yang bisa ambil anjing jam dua".
+    The one person who can is exactly the one with no blocks.
+  */
+  it("draws a column for a groomer who is in but has nothing booked", async () => {
+    bookings.calendar.mockResolvedValue({
+      from: "2026-09-03T00:00:00.000Z",
+      to: "2026-09-03T16:59:59.999Z",
+      groomers: [
+        { _id: "user-1", name: "Sinta", idle: false },
+        { _id: "user-2", name: "Rio", idle: true },
+      ],
+      hasUnassigned: false,
+      entries: [],
+    } as never);
+
+    renderWithAuth(<BookingCalendarScreen />);
+
+    expect(await screen.findByText("Rio")).toBeInTheDocument();
+    /*
+      LABELLED, NOT A BLANK COLUMN. An empty column with no explanation reads as
+      a loading failure; "kosong" says the person is here and free.
+    */
+    expect(screen.getByText(/kosong/i)).toBeInTheDocument();
+  });
+
+  it("does not label a busy groomer as free", async () => {
+    bookings.calendar.mockResolvedValue({
+      from: "2026-09-03T00:00:00.000Z",
+      to: "2026-09-03T16:59:59.999Z",
+      groomers: [{ _id: "user-1", name: "Sinta", idle: false }],
+      hasUnassigned: false,
+      entries: [],
+    } as never);
+
+    renderWithAuth(<BookingCalendarScreen />);
+
+    await screen.findByText("Sinta");
+    expect(screen.queryByText(/kosong/i)).not.toBeInTheDocument();
+  });
 });

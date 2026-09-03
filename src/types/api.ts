@@ -2072,7 +2072,15 @@ export interface BookingCalendar {
    * The columns, derived from what is actually booked rather than from the staff
    * list — a column for every user is mostly empty columns.
    */
-  groomers: { _id: string; name: string | null }[];
+  /**
+   * The calendar's columns.
+   *
+   * `idle` MEANS "IN TODAY, NOTHING BOOKED" — a column that exists so somebody
+   * can be given work, not because they already have some. Only ever true on a
+   * single-day range: "who is in" is a per-day fact and a week has no single
+   * answer.
+   */
+  groomers: { _id: string; name: string | null; idle?: boolean }[];
   /** True when anything at all is waiting for somebody to be put on it. */
   hasUnassigned: boolean;
   entries: BookingCalendarEntry[];

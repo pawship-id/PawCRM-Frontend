@@ -185,10 +185,19 @@ export function BookingCalendarScreen() {
     ...(data?.groomers ?? []).map((groomer) => ({
       id: groomer._id,
       label: groomer.name ?? "—",
+      /*
+        IN TODAY, NOTHING BOOKED. The column exists so somebody can be GIVEN
+        work — which is the question a receptionist brings to this screen ("siapa
+        yang bisa ambil anjing jam dua") and the one a calendar of busy people
+        cannot answer, because the person who can is the one with no blocks.
+      */
+      idle: groomer.idle === true,
     })),
     /* LAST, ALWAYS — it is the column somebody has to empty. */
+    /* Never "idle": it is work waiting for a person, not a person waiting for
+       work — the opposite state, and the column somebody has to empty. */
     ...(data?.hasUnassigned
-      ? [{ id: null as string | null, label: "Belum ditentukan" }]
+      ? [{ id: null as string | null, label: "Belum ditentukan", idle: false }]
       : []),
   ];
 
@@ -314,7 +323,7 @@ function DayGrid({
   onOpen,
 }: {
   slots: number[];
-  columns: { id: string | null; label: string }[];
+  columns: { id: string | null; label: string; idle: boolean }[];
   entries: BookingCalendarEntry[];
   onOpen: (entry: BookingCalendarEntry) => void;
 }) {
@@ -337,6 +346,16 @@ function DayGrid({
             className="border-b border-l border-border bg-surface px-2 py-2 text-sm font-semibold text-foreground"
           >
             {column.label}
+            {/*
+              LABELLED, NOT LEFT AS A BLANK COLUMN. An empty column with no
+              explanation reads as a loading failure; "kosong" says the person is
+              here and free, which is the whole reason the column was added.
+            */}
+            {column.idle && (
+              <span className="ml-1 text-xs font-normal text-muted">
+                · kosong
+              </span>
+            )}
           </div>
         ))}
 
@@ -361,7 +380,7 @@ function Row({
   onOpen,
 }: {
   minutes: number;
-  columns: { id: string | null; label: string }[];
+  columns: { id: string | null; label: string; idle: boolean }[];
   entries: BookingCalendarEntry[];
   onOpen: (entry: BookingCalendarEntry) => void;
 }) {
