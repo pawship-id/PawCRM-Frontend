@@ -297,7 +297,17 @@ export function BookingBridgeDialog({
                               <span className="mt-1 block">
                                 {booking.items.map((item) => (
                                   <span
-                                    key={item.serviceId}
+                                    /*
+                                      THE ROW'S OWN ID, not the service's.
+
+                                      Since PCR-040 one booking may carry the
+                                      same service twice — Mochi and Coco both
+                                      having a Full Service — and `serviceId`
+                                      then repeats. React warned about duplicate
+                                      keys and is entitled to drop or duplicate
+                                      either row.
+                                    */
+                                    key={item._id}
                                     className="flex items-baseline justify-between gap-3"
                                   >
                                     <span className="min-w-0">

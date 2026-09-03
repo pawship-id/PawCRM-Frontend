@@ -469,4 +469,40 @@ describe("BookingBridgeDialog — several animals in one opening", () => {
       screen.getByRole("button", { name: /tambah ke keranjang/i }),
     ).toBeDisabled();
   });
+
+  it("gives each row its own key, even when two share a service", async () => {
+    /*
+      REPORTED FROM THE TILL, 3 September 2026: React warned about two children
+      with the same key. The rows were keyed on `serviceId`, and since PCR-040
+      one booking may carry the same service twice — Mochi and Coco both having a
+      Full Service. React is entitled to drop or duplicate either row.
+
+      RENDERED WITHOUT A WARNING is the assertion: the key itself is not
+      observable, so this watches the console the way the browser did.
+    */
+    const warn = jest.spyOn(console, "error").mockImplementation(() => {});
+
+    const base = booking();
+
+    mockedBookings.bridge.mockResolvedValue([
+      {
+        ...base,
+        /* SAME service, two animals — exactly what `serviceId` could not key. */
+        items: [
+          { ...base.items[0], _id: "it-1", petName: "Mochi" },
+          { ...base.items[0], _id: "it-2", petName: "Coco" },
+        ],
+      },
+    ] as never);
+
+    open();
+
+    await screen.findByText("BK-260824-001");
+
+    expect(
+      warn.mock.calls.some((call) => String(call[0]).includes("same key")),
+    ).toBe(false);
+
+    warn.mockRestore();
+  });
 });
