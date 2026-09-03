@@ -243,6 +243,34 @@ export function BookingDetailScreen({ id }: { id: string }) {
                         ? ` · ${item.durationMin} menit`
                         : " · durasi belum diisi"}
                     </span>
+
+                    {/*
+                      ─── THE GROOMER WENT ON LEAVE AFTER THIS WAS BOOKED ───────
+
+                      The roster screen warns when the leave is SET (kriteria
+                      4.9), but that warning fires once and is gone when the page
+                      closes. Until this existed the booking remembered nothing:
+                      on Thursday morning it still read "Sinta", and the only
+                      person who knew was whoever had ticked the box days before.
+
+                      `role="alert"` — it is not decoration. Somebody opening this
+                      booking has to be told before they read the name and assume
+                      it is settled.
+
+                      IT SAYS WHAT TO DO. A warning whose only content is "this is
+                      wrong" leaves the reader to invent the remedy; there are
+                      exactly two here, and naming them is the difference between
+                      a notice and a task.
+                    */}
+                    {item.groomerOffReason && (
+                      <span
+                        role="alert"
+                        className="mt-1 block rounded border border-danger/40 bg-danger/5 px-2 py-1 text-xs font-semibold text-danger"
+                      >
+                        {item.groomerName} {item.groomerOffReason.toLowerCase()}{" "}
+                        — ganti groomer atau hubungi pelanggan.
+                      </span>
+                    )}
                   </div>
 
                   <div className="text-right">

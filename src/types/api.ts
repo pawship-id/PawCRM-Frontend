@@ -1924,6 +1924,18 @@ export interface BookingItem {
    * three would eventually disagree about what an empty slot is called.
    */
   groomerName: string;
+  /**
+   * WHY THE GROOMER ON THIS ROW CANNOT WORK THE DAY IT IS BOOKED FOR — null in
+   * the ordinary case.
+   *
+   * COMPUTED ON READ, never stored: leave is set AFTER a booking is made, which
+   * is the entire problem, so a flag stamped at write time would be stale
+   * exactly when it matters.
+   *
+   * IT REFUSES NOTHING. The booking stands and the shop decides — move the
+   * groomer, or ring the customer.
+   */
+  groomerOffReason?: string | null;
 }
 
 /**
@@ -2084,6 +2096,8 @@ export interface BookingCalendarEntry {
   durationMin: number | null;
   groomerUserId: string | null;
   groomerName: string | null;
+  /** See `BookingItem.groomerOffReason` — the groomer went on leave since. */
+  groomerOffReason?: string | null;
   petId: string;
   petName: string | null;
   customerName: string | null;

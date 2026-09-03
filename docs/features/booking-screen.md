@@ -189,6 +189,34 @@ on a missing button gets more dangerous the more you build.
 
 ---
 
+## The groomer went on leave after the booking was made
+
+Found during the BO's own testing, 3 September 2026.
+
+Book Thursday with Sinta; then mark Sinta off on Thursdays. The roster screen
+warns (kriteria 4.9) — **once**, and it is gone when the page closes. The booking
+remembered nothing: on Thursday morning it still read "Sinta", and the only person
+who knew was whoever had ticked the box days earlier.
+
+Every booking row now carries `groomerOffReason`, **computed on read**. Leave is
+set AFTER a booking is made — that is the entire problem — so a flag stamped at
+write time would be stale exactly when it matters. It costs no extra query:
+`withNames` already fetches the groomers, and the projection gained `availability`.
+
+**Shown in both places, differently.** The detail page carries the sentence and the
+remedy; the calendar block carries a ring and `⚠ Groomer libur`, with the sentence
+in its `title` — a block is small and often truncated, so the outline is what reads
+at a glance across a full day.
+
+**It says what to do**, not merely that something is wrong: *ganti groomer atau
+hubungi pelanggan*. There are exactly two remedies, and naming them is the
+difference between a notice and a task.
+
+**It refuses nothing.** A system that voided the appointment would be taking a
+decision that belongs to the shop.
+
+---
+
 ## The trail
 
 `statusHistory[]` comes back on every booking: `{ status, at, by, byName, implied }`, oldest

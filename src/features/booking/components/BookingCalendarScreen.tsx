@@ -481,8 +481,27 @@ function Block({
       type="button"
       onClick={() => onOpen(entry)}
       style={{ height }}
-      className={`relative z-10 w-full overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-xs ${STATUS_TONE[entry.status]}`}
+      className={`relative z-10 w-full overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-xs ${STATUS_TONE[entry.status]} ${
+        /*
+          THE GROOMER WENT ON LEAVE SINCE THIS WAS BOOKED — a ring around the
+          block, on top of the marker below.
+
+          THE BLOCK IS SMALL AND OFTEN TRUNCATED, so the outline is what carries
+          at a glance across a full day; the marker is what says WHICH problem
+          when somebody looks closer. Neither is colour alone.
+        */
+        entry.groomerOffReason ? "ring-2 ring-danger" : ""
+      }`}
     >
+      {entry.groomerOffReason && (
+        <span
+          role="alert"
+          className="block truncate font-bold text-danger"
+          title={`${entry.groomerName ?? "Groomer"} ${entry.groomerOffReason.toLowerCase()} — ganti groomer atau hubungi pelanggan`}
+        >
+          ⚠ Groomer libur
+        </span>
+      )}
       <span className="block truncate font-semibold">
         {entry.petName ?? "—"}
       </span>

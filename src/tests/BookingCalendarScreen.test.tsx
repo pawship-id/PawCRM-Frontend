@@ -404,4 +404,46 @@ describe("BookingCalendarScreen", () => {
     expect(await screen.findByText(/kosong/i)).toBeInTheDocument();
     expect(screen.queryByText(/terisi/)).not.toBeInTheDocument();
   });
+
+  it("rings the block of a groomer who is now off that day", async () => {
+    /*
+      THE CALENDAR IS WHERE THURSDAY MORNING ACTUALLY GETS LOOKED AT. The detail
+      page is where somebody goes to FIX it — a step later, and only if they knew
+      to look.
+    */
+    bookings.calendar.mockResolvedValue({
+      from: "2026-09-03T00:00:00.000Z",
+      to: "2026-09-03T16:59:59.999Z",
+      groomers: [{ _id: "user-1", name: "Sinta", idle: false }],
+      hasUnassigned: false,
+      entries: [
+        {
+          _id: "it-1",
+          bookingId: "bk-1",
+          bookingNumber: "BK-1",
+          status: "confirmed",
+          startAt: "2026-09-03T02:00:00.000Z",
+          durationMin: 90,
+          groomerUserId: "user-1",
+          groomerName: "Sinta",
+          groomerOffReason: "Libur setiap Kamis",
+          petId: "pet-1",
+          petName: "Bruno",
+          customerName: "Ibu Rina",
+          serviceName: "Grooming Full Service",
+          notes: null,
+        },
+      ],
+    } as never);
+
+    renderWithAuth(<BookingCalendarScreen />);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/groomer libur/i);
+    /* The remedy is in the tooltip — the block itself has no room for it. */
+    expect(alert).toHaveAttribute(
+      "title",
+      expect.stringMatching(/ganti groomer atau hubungi pelanggan/i),
+    );
+  });
 });

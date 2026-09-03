@@ -272,4 +272,58 @@ describe("BookingDetailScreen", () => {
     expect(await screen.findByText("Mochi")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
+
+  /*
+    ─── THE GROOMER WENT ON LEAVE AFTER THIS WAS BOOKED ──────────────────────
+
+    The roster screen warns when the leave is SET (kriteria 4.9), but that
+    warning fires once and is gone when the page closes. Until 3 September 2026
+    the booking remembered nothing: on Thursday morning it still read "Sinta",
+    and the only person who knew was whoever had ticked the box days before.
+  */
+  it("warns that the groomer is off, and says what to do about it", async () => {
+    bookings.getById.mockResolvedValue(
+      booking({
+        items: [
+          {
+            _id: "it-1",
+            petId: "pet-1",
+            petName: "Bruno",
+            serviceId: "svc-1",
+            name: "Grooming Full Service",
+            price: "150000.0000",
+            durationMin: 90,
+            notes: null,
+            pulledToCartAt: null,
+            pulledToInvoiceAt: null,
+            groomerUserId: "user-1",
+            groomerName: "Sinta",
+            groomerOffReason: "Libur setiap Kamis",
+          },
+        ],
+      } as never),
+    );
+
+    renderWithAuth(<BookingDetailScreen id="bk-1" />);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/libur setiap kamis/i);
+    /*
+      IT SAYS WHAT TO DO. A warning whose only content is "this is wrong" leaves
+      the reader to invent the remedy; there are exactly two here.
+    */
+    expect(alert).toHaveTextContent(/ganti groomer atau hubungi pelanggan/i);
+  });
+
+  it("says nothing when the groomer is working that day", async () => {
+    /*
+      NULL, NOT A REASSURANCE. A note on every booking that its groomer is
+      available is noise on the ninety-nine that are fine, and noise is what
+      makes the hundredth unreadable.
+    */
+    renderWithAuth(<BookingDetailScreen id="bk-1" />);
+
+    await screen.findByText(/BK-260902-001/);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
 });
