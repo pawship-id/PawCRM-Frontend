@@ -2,6 +2,8 @@ import { apiClient } from "./api-client";
 import type { StockOnHandQuery, StockOnHandResult } from "@/types/report";
 import type {
   CommissionCloseResult,
+  CommissionOutstanding,
+  CommissionPaymentResult,
   CommissionRecap,
   CommissionRecapQuery,
 } from "@/types/api";
@@ -91,6 +93,40 @@ export const reportService = {
   closeCommissions: (input: { period: string; branchId: string }) =>
     apiClient.post<CommissionCloseResult>(
       "/reports/commissions/close",
+      input,
+    ),
+
+  /**
+   * GET /reports/commissions/outstanding — what one person is still owed.
+   *
+   * EVERYTHING CLOSED AND UNPAID, which may span several months: a groomer paid
+   * in November for September and October is one payment. Not the recap's
+   * monthly figure, and deliberately not derived from it.
+   */
+  outstandingCommissions: (query: {
+    groomerUserId: string;
+    branchId: string;
+  }) =>
+    apiClient.get<CommissionOutstanding>("/reports/commissions/outstanding", {
+      query,
+    }),
+
+  /**
+   * POST /reports/commissions/pay — settles what the books say is owed.
+   *
+   * `Dr 2102 Utang Komisi / Cr <the channel's account>`. NO AMOUNT IS SENT: the
+   * server pays exactly what its own books say is outstanding, because a
+   * caller-supplied figure would let a typo leave a liability matching nothing.
+   */
+  payCommissions: (input: {
+    groomerUserId: string;
+    branchId: string;
+    paymentChannelId: string;
+    paidAt?: string;
+    note?: string | null;
+  }) =>
+    apiClient.post<CommissionPaymentResult>(
+      "/reports/commissions/pay",
       input,
     ),
 

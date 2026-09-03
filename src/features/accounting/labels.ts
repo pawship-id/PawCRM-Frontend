@@ -62,6 +62,7 @@ export const SOURCE_LABEL: Record<JournalSourceType, string> = {
   return: "Retur",
   return_cogs: "HPP retur",
   commission: "Komisi",
+  commission_payment: "Bayar komisi",
   manual: "Manual",
 };
 
@@ -104,6 +105,10 @@ export const SOURCE_TONE: Record<JournalSourceType, string> = {
   // entries are one return, and a second tint would read as another event.
   return_cogs: "bg-tint-neutral text-muted",
   commission: "bg-tint-neutral text-muted",
+  // The same tone as the accrual it settles, the way `return_cogs` shares
+  // `return`: they are two halves of one commission, and a second tint would
+  // read as an unrelated event.
+  commission_payment: "bg-tint-neutral text-muted",
   // Manual entries are the ones an auditor looks at first — a human chose both
   // sides — so they are the only source that carries an outline instead of a
   // fill, which is what makes them findable while scrolling.

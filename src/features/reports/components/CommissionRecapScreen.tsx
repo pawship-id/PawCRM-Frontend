@@ -2,7 +2,15 @@
 
 import { useEffect, useState } from "react";
 
-import { Alert, Card, ConfirmDialog, FilterSelect, Spinner, TextField } from "@/components";
+import {
+  Alert,
+  Card,
+  ConfirmDialog,
+  FilterSelect,
+  SelectField,
+  Spinner,
+  TextField,
+} from "@/components";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -19,7 +27,13 @@ import { reportService } from "@/services/report.service";
 import { swalToast } from "@/lib/swal";
 import { formatMoney } from "@/utils/decimal";
 import { csvToXlsx, saveBlob } from "@/utils/xlsx";
-import type { CommissionCloseResult, CommissionRecap } from "@/types/api";
+import type {
+  CommissionCloseResult,
+  CommissionOutstanding,
+  CommissionRecap,
+  PaymentChannel,
+} from "@/types/api";
+import { paymentChannelService } from "@/services/paymentChannel.service";
 
 /** This month, as `<input type="month">` holds it — in the shop's own clock. */
 function thisMonth(): string {
@@ -53,6 +67,8 @@ export function CommissionRecapScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  /* Bumped after a close or a payment, so the recap re-reads the server. */
+  const [nonce, setNonce] = useState(0);
 
   /*
     THE BRANCH IS PICKED HERE, like every other posting in this app. A journal
@@ -69,6 +85,29 @@ export function CommissionRecapScreen() {
   const [closeError, setCloseError] = useState<string | null>(null);
   const [closed, setClosed] = useState<CommissionCloseResult | null>(null);
 
+  /*
+    ─── PAYING, THE HALF THAT MAKES THE ACCRUAL HONEST ────────────────────────
+
+    Without it, 2102 Utang Komisi only ever grows: a liability the shop appears
+    to owe forever, overstated by every rupiah it has ever actually paid.
+
+    WHAT IS OWED IS ASKED OF THE SERVER, NOT DERIVED FROM THE RECAP ABOVE. The
+    recap is one MONTH's earnings; what is owed is everything closed and unpaid,
+    which may span several. Subtracting one from the other on screen would be a
+    second way of computing a number the ledger already has — and two figures
+    computed two ways is how a reconciliation becomes an argument.
+  */
+  const [paying, setPaying] = useState<{
+    groomerUserId: string;
+    groomerName: string | null;
+  } | null>(null);
+  const [owed, setOwed] = useState<CommissionOutstanding | null>(null);
+  const [channels, setChannels] = useState<PaymentChannel[]>([]);
+  const [channelId, setChannelId] = useState("");
+  const [payError, setPayError] = useState<string | null>(null);
+  const [payBusy, setPayBusy] = useState(false);
+  const [paid, setPaid] = useState<string | null>(null);
+
   /**
    * TUTUP BULAN — posts the accrual.
    *
@@ -83,6 +122,82 @@ export function CommissionRecapScreen() {
    * nothing twice — which is exactly why the button is not disabled after the
    * first close.
    */
+  /**
+   * Opens the pay dialog for one person, and asks what they are owed.
+   *
+   * PER GROOMER, because a payment is handed to a person. Paying four people in
+   * one document would make "has Sinta been paid for September" a question about
+   * part of a row.
+   */
+  async function startPayment(groomerUserId: string, groomerName: string | null) {
+    setPaying({ groomerUserId, groomerName });
+    setOwed(null);
+    setPayError(null);
+
+    if (!branchId) return;
+
+    try {
+      const [outstanding, channelPage] = await Promise.all([
+        reportService.outstandingCommissions({ groomerUserId, branchId }),
+        /*
+          ONLY THE ONES MONEY MAY GO OUT OF. A tenant with two bank accounts who
+          receives into one and pays out of the other is exactly what `usableFor`
+          expresses, and the server refuses the wrong one anyway — offering it
+          would be a choice that always fails.
+        */
+        paymentChannelService.list({ isActive: true, usableFor: "out" }),
+      ]);
+
+      setOwed(outstanding);
+      setChannels(channelPage.items);
+      setChannelId(
+        channelPage.items.length === 1 ? channelPage.items[0]._id : "",
+      );
+    } catch (err) {
+      setPayError(
+        err instanceof ApiError
+          ? err.fullMessage
+          : "Tidak bisa memuat data pembayaran.",
+      );
+    }
+  }
+
+  async function payGroomer() {
+    if (payBusy || !paying || !branchId || !channelId) return;
+
+    setPayBusy(true);
+    setPayError(null);
+
+    try {
+      const result = await reportService.payCommissions({
+        groomerUserId: paying.groomerUserId,
+        branchId,
+        paymentChannelId: channelId,
+      });
+
+      setPaid(
+        `${result.groomerName ?? "Groomer"} dibayar ${formatMoney(result.amount)} — jurnal ${result.entryNumber}.`,
+      );
+      setPaying(null);
+      setNonce((n) => n + 1);
+
+      /* Chrome must never be able to fail a post — see BookingForm. */
+      try {
+        swalToast(`Jurnal ${result.entryNumber} dibuat.`);
+      } catch {
+        /* The panel below already says what happened. */
+      }
+    } catch (err) {
+      setPayError(
+        err instanceof ApiError
+          ? err.fullMessage
+          : "Tidak bisa membayar. Coba lagi.",
+      );
+    } finally {
+      setPayBusy(false);
+    }
+  }
+
   async function closeMonth() {
     if (closing || !branchId) return;
 
@@ -97,6 +212,7 @@ export function CommissionRecapScreen() {
 
       setClosed(result);
       setConfirming(false);
+      setNonce((n) => n + 1);
 
       /* Chrome must never be able to fail a post — see BookingForm. */
       try {
@@ -148,7 +264,7 @@ export function CommissionRecapScreen() {
     return () => {
       active = false;
     };
-  }, [period]);
+  }, [period, nonce]);
 
   /**
    * The file payroll actually uses.
@@ -253,6 +369,8 @@ export function CommissionRecapScreen() {
         who posted a month's wages should be able to write the entry number down
         without repeating the action to see it again.
       */}
+      {paid && <Alert variant="success">{paid}</Alert>}
+
       {closed && (
         <Alert variant={closed.posted ? "success" : "info"}>
           {closed.posted ? (
@@ -302,6 +420,7 @@ export function CommissionRecapScreen() {
                 <TableHead className="text-right">Layanan</TableHead>
                 <TableHead className="text-right">Dibatalkan</TableHead>
                 <TableHead className="text-right">Komisi</TableHead>
+                <TableHead className="text-right sr-only">Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -322,6 +441,25 @@ export function CommissionRecapScreen() {
                   <TableCell className="text-right tabular-nums font-semibold">
                     {formatMoney(row.amount)}
                   </TableCell>
+                  <TableCell className="text-right">
+                    {/*
+                      PAYING IS POSTING, so it takes the ledger grant rather than
+                      the payroll one that opened this screen.
+                    */}
+                    <Can feature="journalEntries" action="create">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={!branchId}
+                        onClick={() =>
+                          void startPayment(row.groomerUserId, row.groomerName)
+                        }
+                      >
+                        Bayar
+                      </Button>
+                    </Can>
+                  </TableCell>
                 </TableRow>
               ))}
 
@@ -332,11 +470,75 @@ export function CommissionRecapScreen() {
                 <TableCell className="text-right tabular-nums font-bold">
                   {formatMoney(data?.total ?? "0")}
                 </TableCell>
+                <TableCell />
               </TableRow>
             </TableBody>
           </Table>
         </div>
       )}
+      {paying && (
+        <ConfirmDialog
+          title={`Bayar komisi ${paying.groomerName ?? "groomer"}?`}
+          confirmLabel={payBusy ? "Membayar…" : "Bayar"}
+          busy={payBusy}
+          error={payError}
+          onConfirm={() => void payGroomer()}
+          onCancel={() => setPaying(null)}
+        >
+          {owed === null ? (
+            <p className="flex items-center gap-2 text-sm text-muted">
+              <Spinner /> Menghitung yang terutang…
+            </p>
+          ) : owed.recordCount === 0 ? (
+            /*
+              THE COMMONEST REASON, SAID FIRST. Commission has to be taken to the
+              ledger by a close before it can be settled against 2102 — paying
+              what was never accrued would debit a liability that does not exist,
+              and the balance would go negative.
+            */
+            <p>
+              Tidak ada yang bisa dibayar. Tutup bulannya dulu, atau semuanya
+              memang sudah dibayar.
+            </p>
+          ) : (
+            <>
+              <p>
+                Akan dibayar <strong>{formatMoney(owed.amount)}</strong> untuk{" "}
+                {owed.recordCount} layanan
+                {owed.periods.length > 0
+                  ? ` (${owed.periods.join(", ")})`
+                  : ""}
+                .
+              </p>
+
+              {/*
+                THE AMOUNT IS NOT EDITABLE, on purpose. The server pays exactly
+                what its own books say is outstanding; a figure somebody typed
+                would let a mis-key leave a liability matching nothing — and 2102
+                is what the balance sheet reports.
+              */}
+              <p className="mt-2 text-xs text-muted">
+                Jumlahnya dihitung dari pembukuan dan tidak bisa diubah di sini.
+              </p>
+
+              <div className="mt-3">
+                <SelectField
+                  label="Dibayar lewat"
+                  value={channelId}
+                  onChange={setChannelId}
+                  options={channels.map((channel) => ({
+                    value: channel._id,
+                    label: channel.name,
+                  }))}
+                  disabled={payBusy}
+                  required
+                />
+              </div>
+            </>
+          )}
+        </ConfirmDialog>
+      )}
+
       {confirming && (
         <ConfirmDialog
           title={`Tutup komisi ${period}?`}

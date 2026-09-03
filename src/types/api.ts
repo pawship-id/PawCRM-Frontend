@@ -2169,6 +2169,34 @@ export interface CommissionCloseResult {
   groomerCount?: number;
 }
 
+/**
+ * What is still owed to one groomer at one branch.
+ *
+ * COMPUTED FROM THE SAME ROWS A PAYMENT WOULD TAKE, not from the ledger and not
+ * from the recap. The recap is one MONTH's earnings; this is everything closed
+ * and unpaid, which may span several — and two figures computed two ways is how
+ * a reconciliation becomes an argument.
+ */
+export interface CommissionOutstanding {
+  groomerUserId: string;
+  branchId: string;
+  periods: string[];
+  amount: string;
+  recordCount: number;
+}
+
+/** The result of paying one groomer what the books say is owed. */
+export interface CommissionPaymentResult {
+  paymentId: string;
+  journalEntryId: string;
+  entryNumber: string;
+  groomerUserId: string;
+  groomerName: string | null;
+  periods: string[];
+  amount: string;
+  recordCount: number;
+}
+
 export interface BookingListQuery {
   page?: number;
   limit?: number;
