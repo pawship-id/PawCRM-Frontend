@@ -2149,6 +2149,26 @@ export interface CommissionRecapQuery {
 }
 
 /** Query parameters accepted by GET /api/bookings. All optional. */
+/**
+ * The result of taking a month's commission to the ledger.
+ *
+ * `posted: false` IS A SUCCESS, not a failure — "nothing to close" is a true and
+ * useful answer to "close September". The other fields are absent when it is
+ * false, because nothing was written to describe.
+ */
+export interface CommissionCloseResult {
+  posted: boolean;
+  period: string;
+  branchId?: string;
+  reason?: string;
+  closeId?: string;
+  journalEntryId?: string;
+  entryNumber?: string;
+  amount?: string;
+  recordCount?: number;
+  groomerCount?: number;
+}
+
 export interface BookingListQuery {
   page?: number;
   limit?: number;

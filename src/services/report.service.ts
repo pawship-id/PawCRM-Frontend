@@ -1,6 +1,10 @@
 import { apiClient } from "./api-client";
 import type { StockOnHandQuery, StockOnHandResult } from "@/types/report";
-import type { CommissionRecap, CommissionRecapQuery } from "@/types/api";
+import type {
+  CommissionCloseResult,
+  CommissionRecap,
+  CommissionRecapQuery,
+} from "@/types/api";
 
 /**
  * Report calls against `/api/reports`.
@@ -73,6 +77,23 @@ export const reportService = {
    * data — it names every groomer and what they are owed. Whoever may read the
    * staff register may read it.
    */
+  /**
+   * POST /reports/commissions/close — TUTUP BULAN KOMISI.
+   *
+   * Posts `Dr 5302 Beban Komisi Groomer / Cr 2102 Utang Komisi`, dated the last
+   * day of the month rather than today: grooming done in September is a cost of
+   * September even when payday falls in October.
+   *
+   * SAFE TO RUN AGAIN. It claims only the rows no close has taken, so a second
+   * run picks up stragglers — a booking completed late — and nothing twice.
+   * Gated on `journalEntries:create`, not on the recap's `users:read`.
+   */
+  closeCommissions: (input: { period: string; branchId: string }) =>
+    apiClient.post<CommissionCloseResult>(
+      "/reports/commissions/close",
+      input,
+    ),
+
   commissions: (query: CommissionRecapQuery = {}) =>
     apiClient.get<CommissionRecap>("/reports/commissions", {
       query: {

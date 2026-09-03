@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { Alert, Card, Spinner, TextField } from "@/components";
+import { Alert, Card, ConfirmDialog, FilterSelect, Spinner, TextField } from "@/components";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -12,11 +12,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useBranchScope } from "@/features/inventory/hooks/useBranchScope";
+import { Can } from "@/features/permissions";
 import { ApiError } from "@/services/api-error";
 import { reportService } from "@/services/report.service";
+import { swalToast } from "@/lib/swal";
 import { formatMoney } from "@/utils/decimal";
 import { csvToXlsx, saveBlob } from "@/utils/xlsx";
-import type { CommissionRecap } from "@/types/api";
+import type { CommissionCloseResult, CommissionRecap } from "@/types/api";
 
 /** This month, as `<input type="month">` holds it — in the shop's own clock. */
 function thisMonth(): string {
@@ -50,6 +53,71 @@ export function CommissionRecapScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+
+  /*
+    THE BRANCH IS PICKED HERE, like every other posting in this app. A journal
+    entry with no branch is invisible to every per-branch report while still
+    counting in the total, so the parts stop summing to the whole — the server
+    refuses one without it. `soleBranch` fills it in when there is only one.
+  */
+  const scope = useBranchScope();
+  const [pickedBranch, setPickedBranch] = useState("");
+  const branchId = pickedBranch || scope.soleBranch;
+
+  const [confirming, setConfirming] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [closeError, setCloseError] = useState<string | null>(null);
+  const [closed, setClosed] = useState<CommissionCloseResult | null>(null);
+
+  /**
+   * TUTUP BULAN — posts the accrual.
+   *
+   *   Dr 5302 Beban Komisi Groomer / Cr 2102 Utang Komisi
+   *
+   * ASKED FOR CONFIRMATION because it writes to the ledger: it changes the
+   * month's reported profit and creates a liability on the balance sheet. That
+   * is not something a mis-click should do.
+   *
+   * SAFE TO RUN TWICE, and the dialog says so. The server claims only the rows
+   * no close has taken, so a second run picks up a booking completed late and
+   * nothing twice — which is exactly why the button is not disabled after the
+   * first close.
+   */
+  async function closeMonth() {
+    if (closing || !branchId) return;
+
+    setClosing(true);
+    setCloseError(null);
+
+    try {
+      const result = await reportService.closeCommissions({
+        period,
+        branchId,
+      });
+
+      setClosed(result);
+      setConfirming(false);
+
+      /* Chrome must never be able to fail a post — see BookingForm. */
+      try {
+        swalToast(
+          result.posted
+            ? `Jurnal ${result.entryNumber} dibuat.`
+            : "Tidak ada komisi baru untuk dibukukan.",
+        );
+      } catch {
+        /* The panel below already says what happened. */
+      }
+    } catch (err) {
+      setCloseError(
+        err instanceof ApiError
+          ? err.fullMessage
+          : "Tidak bisa membukukan. Coba lagi.",
+      );
+    } finally {
+      setClosing(false);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -132,6 +200,20 @@ export function CommissionRecapScreen() {
             onChange={(event) => setPeriod(event.target.value)}
             hint="Payroll dihitung per bulan."
           />
+          {scope.branches.length > 1 && (
+            <FilterSelect
+              label="Cabang"
+              ariaLabel="Cabang untuk pembukuan"
+              value={pickedBranch}
+              options={scope.branches.map((branch) => ({
+                value: branch._id,
+                label: branch.name,
+              }))}
+              placeholder="Pilih cabang"
+              onChange={setPickedBranch}
+            />
+          )}
+
           <Button
             type="button"
             variant="secondary"
@@ -140,10 +222,54 @@ export function CommissionRecapScreen() {
           >
             {exporting ? "Menyiapkan…" : "Unduh Excel"}
           </Button>
+
+          {/*
+            POSTING IS NOT READING. The recap rides on `users:read` — a payroll
+            question. This writes a journal entry that changes the month's
+            reported profit, so it takes the grant a manual entry takes.
+          */}
+          <Can feature="journalEntries" action="create">
+            <Button
+              type="button"
+              disabled={closing || !branchId}
+              onClick={() => setConfirming(true)}
+            >
+              Tutup bulan
+            </Button>
+          </Can>
         </div>
+
+        {!branchId && scope.branches.length > 1 && (
+          <p className="mt-2 text-xs text-muted">
+            Pilih cabang dulu — jurnal komisi dibukukan per cabang.
+          </p>
+        )}
       </Card>
 
       {error && <Alert variant="error">{error}</Alert>}
+
+      {/*
+        WHAT THE CLOSE DID, kept on screen rather than left to a toast. Somebody
+        who posted a month's wages should be able to write the entry number down
+        without repeating the action to see it again.
+      */}
+      {closed && (
+        <Alert variant={closed.posted ? "success" : "info"}>
+          {closed.posted ? (
+            <>
+              <span className="block font-semibold">
+                Komisi {closed.period} dibukukan — jurnal {closed.entryNumber}.
+              </span>
+              <span className="block">
+                {formatMoney(closed.amount ?? "0")} untuk {closed.groomerCount}{" "}
+                groomer, dari {closed.recordCount} layanan.
+              </span>
+            </>
+          ) : (
+            <>Tidak ada komisi baru untuk dibukukan di {closed.period}.</>
+          )}
+        </Alert>
+      )}
 
       {/*
         SAID OUT LOUD RATHER THAN HIDDEN. Commission is earned when the work is
@@ -210,6 +336,30 @@ export function CommissionRecapScreen() {
             </TableBody>
           </Table>
         </div>
+      )}
+      {confirming && (
+        <ConfirmDialog
+          title={`Tutup komisi ${period}?`}
+          confirmLabel={closing ? "Membukukan…" : "Bukukan"}
+          busy={closing}
+          error={closeError}
+          onConfirm={() => void closeMonth()}
+          onCancel={() => setConfirming(false)}
+        >
+          {/*
+            WHAT IT WILL DO, in the shop's words rather than the ledger's. "Dr
+            5302 / Cr 2102" is correct and tells a shop owner nothing.
+          */}
+          <p>
+            Komisi bulan ini akan dicatat sebagai <strong>beban bulan ini</strong>{" "}
+            dan <strong>utang ke groomer</strong> — meskipun belum dibayar.
+          </p>
+          <p className="mt-2">
+            Aman dijalankan lagi nanti: yang sudah dibukukan tidak akan terhitung
+            dua kali, dan booking yang baru selesai belakangan akan ikut di
+            pembukuan berikutnya.
+          </p>
+        </ConfirmDialog>
       )}
     </div>
   );
