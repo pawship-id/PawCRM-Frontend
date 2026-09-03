@@ -174,8 +174,22 @@ export function ServicesTable({
                   <TableCell className="text-right tabular-nums text-foreground">
                     {formatMoney(service.price)}
                   </TableCell>
+                  {/*
+                    A BLANK DURATION IS FLAGGED, NOT SHOWN AS AN EM DASH.
+
+                    It is required on new services since 3 September 2026, but a
+                    shop that priced its catalogue before that has some without
+                    one — and the calendar GUESSES half an hour for each. An em
+                    dash reads as "not applicable"; this reads as a job.
+                  */}
                   <TableCell className="tabular-nums text-muted">
-                    {formatDuration(service.durationMin)}
+                    {service.durationMin === null ? (
+                      <span className="font-semibold text-danger">
+                        Belum diisi
+                      </span>
+                    ) : (
+                      formatDuration(service.durationMin)
+                    )}
                   </TableCell>
                   <TableCell>
                     <ServiceStatusBadge

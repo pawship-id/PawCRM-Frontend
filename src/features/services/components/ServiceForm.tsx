@@ -189,11 +189,30 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
       invalid = true;
     }
 
+    /*
+      ─── REQUIRED SINCE 3 SEPTEMBER 2026 ───────────────────────────────────────
+
+      The calendar has to draw a block, the clash check has to know when somebody
+      is free again, and "selesai sekitar" has to add up. A service with no
+      duration makes all three GUESS at half an hour — and a guess on a calendar
+      is read as fact by everybody downstream.
+
+      IT WAS NULLABLE FOR A GOOD REASON, and that reason expired. The field
+      shipped two phases before the booking module so a duration added later would
+      not mean backfilling every service a tenant had already priced. The module
+      is here; the field has readers.
+    */
     const duration =
       durationMin.trim() === "" ? null : Number(durationMin.trim());
-    if (
-      duration !== null &&
-      (!Number.isInteger(duration) || duration < 1 || duration > MAX_DURATION_MIN)
+    if (duration === null) {
+      setDurationError(
+        "Wajib diisi — kalender dan pengecekan bentrok membacanya.",
+      );
+      invalid = true;
+    } else if (
+      !Number.isInteger(duration) ||
+      duration < 1 ||
+      duration > MAX_DURATION_MIN
     ) {
       setDurationError(
         `Isi menit antara 1 dan ${MAX_DURATION_MIN}. Lebih dari sehari itu penitipan, dihitung per malam.`,
@@ -372,7 +391,9 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
             }}
             error={durationError ?? undefined}
             placeholder="90"
+            hint="Dipakai kalender dan pengecekan bentrok."
             disabled={saving}
+            required
           />
         </div>
       </Card>

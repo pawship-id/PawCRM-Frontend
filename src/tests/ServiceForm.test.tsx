@@ -96,6 +96,7 @@ describe("ServiceForm — creating", () => {
     );
     await userEvent.click(await screen.findByRole("option", { name: "Grooming" }));
     await userEvent.type(screen.getByLabelText(/^harga/i), "199999");
+    await userEvent.type(screen.getByLabelText(/durasi/i), "90");
     await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
 
     await waitFor(() =>
@@ -118,6 +119,7 @@ describe("ServiceForm — creating", () => {
 
     await userEvent.type(screen.getByLabelText(/nama layanan/i), "Grooming");
     await userEvent.type(screen.getByLabelText(/^harga/i), "150.000");
+    await userEvent.type(screen.getByLabelText(/durasi/i), "90");
     await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
 
     expect(await screen.findByText(/tanpa titik atau koma/i)).toBeVisible();
@@ -129,6 +131,7 @@ describe("ServiceForm — creating", () => {
 
     await userEvent.type(screen.getByLabelText(/nama layanan/i), "Grooming");
     await userEvent.type(screen.getByLabelText(/^harga/i), "150,000");
+    await userEvent.type(screen.getByLabelText(/durasi/i), "90");
     await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
 
     expect(await screen.findByText(/tanpa titik atau koma/i)).toBeVisible();
@@ -139,6 +142,7 @@ describe("ServiceForm — creating", () => {
 
     await userEvent.type(screen.getByLabelText(/nama layanan/i), "Grooming");
     await userEvent.type(screen.getByLabelText(/^harga/i), "-1");
+    await userEvent.type(screen.getByLabelText(/durasi/i), "90");
     await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
 
     expect(await screen.findByText(/tanpa titik atau koma/i)).toBeVisible();
@@ -155,6 +159,7 @@ describe("ServiceForm — creating", () => {
     );
     await userEvent.click(await screen.findByRole("option", { name: "Grooming" }));
     await userEvent.type(screen.getByLabelText(/^harga/i), "0");
+    await userEvent.type(screen.getByLabelText(/durasi/i), "90");
     await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
 
     await waitFor(() =>
@@ -169,6 +174,7 @@ describe("ServiceForm — creating", () => {
 
     await userEvent.type(screen.getByLabelText(/nama layanan/i), "Penitipan");
     await userEvent.type(screen.getByLabelText(/^harga/i), "90000");
+    await userEvent.type(screen.getByLabelText(/durasi/i), "90");
     await userEvent.type(screen.getByLabelText(/durasi/i), "1441");
     await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
 
@@ -188,6 +194,7 @@ describe("ServiceForm — creating", () => {
     );
     await userEvent.click(await screen.findByRole("option", { name: "Grooming" }));
     await userEvent.type(screen.getByLabelText(/^harga/i), "150000");
+    await userEvent.type(screen.getByLabelText(/durasi/i), "90");
     await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
 
     expect(
@@ -253,5 +260,34 @@ describe("ServiceForm — editing", () => {
       ),
     );
     expect(push).toHaveBeenCalledWith("/dashboard/master/layanan");
+  });
+
+  /*
+    ─── THE DURATION IS REQUIRED — 3 September 2026 ──────────────────────────
+
+    Asked for by the BO during end-to-end testing: the calendar cannot draw a
+    block without one, so it guesses half an hour — and a guess on a calendar is
+    read as fact by everybody downstream, including the clash check.
+  */
+  it("refuses to save a service with no duration", async () => {
+    await renderNew();
+
+    await userEvent.type(screen.getByLabelText(/nama layanan/i), "Grooming");
+    await userEvent.click(
+      screen.getByRole("button", { name: /pilih lini bisnis/i }),
+    );
+    await userEvent.click(await screen.findByRole("option", { name: "Grooming" }));
+    await userEvent.type(screen.getByLabelText(/^harga/i), "150000");
+    await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
+
+    /*
+      THE REASON, NOT JUST "WAJIB DIISI". Somebody typing a price has no idea the
+      calendar exists; saying which part of the shop reads this field is what
+      makes the rule land as sense rather than as an obstacle.
+    */
+    expect(
+      await screen.findByText(/kalender dan pengecekan bentrok/i),
+    ).toBeInTheDocument();
+    expect(mockedServiceService.create).not.toHaveBeenCalled();
   });
 });

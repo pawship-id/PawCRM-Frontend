@@ -86,12 +86,26 @@ re-tags nothing historical, because journal lines carry the id they were posted 
 
 ---
 
-## `durationMin` is stored and read by nothing
+## `durationMin` is required — since 3 September 2026
 
-Deliberate. Booking lands two phases from now and its whole job is placing these on a
-calendar. Adding the field afterwards means backfilling every service a tenant already
-priced, from memory, one at a time. The form says so in the card description rather than
-presenting it as though something used it today.
+**It was nullable for two phases, and that was the right call at the time.** The field
+shipped before the booking module so that adding a duration afterwards would not mean
+backfilling every service a tenant had already priced, from memory, one at a time. The bet
+paid off: the module is here and the field has readers.
+
+**Now three things read it, and all three GUESS without it** — the calendar draws a block,
+the clash check works out when somebody is free again, and "selesai sekitar" adds up. The
+guess is half an hour, the smallest slot the grid draws, and a guess on a calendar is read
+as fact by everybody downstream.
+
+**On update it may be GAINED and not lost.** A catalogue priced before the rule can still be
+edited — that is how the remaining blanks get filled — but clearing it is refused. The
+services table marks the ones still missing it as **"Belum diisi"** in red rather than as an
+em dash: a dash reads as "not applicable", this reads as a job.
+
+**The one case to watch:** a service that genuinely has no duration — a pickup, a phone
+consultation — now needs a number anyway. If that bites, the rule should narrow to services
+that can be booked rather than loosen for everything.
 
 Capped at 1440 — a stay longer than a day is a hotel booking, one line per night, not one
 service lasting a week. The error message says that rather than quoting the number.
