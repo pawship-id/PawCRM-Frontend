@@ -2185,6 +2185,20 @@ export interface CommissionOutstanding {
   recordCount: number;
 }
 
+/**
+ * KOMISI SAYA — one person's own commission.
+ *
+ * `earned` IS NULL, NOT A ZEROED ROW, for a month with no work. "You earned
+ * nothing" and "there is nothing here yet" are different sentences, and a zeroed
+ * row says the first when the second is true.
+ */
+export interface MyCommission {
+  period: string | null;
+  earned: CommissionRecapRow | null;
+  total: string;
+  outstanding: CommissionOutstanding;
+}
+
 /** The result of paying one groomer what the books say is owed. */
 export interface CommissionPaymentResult {
   paymentId: string;

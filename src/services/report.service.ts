@@ -5,6 +5,7 @@ import type {
   CommissionOutstanding,
   CommissionPaymentResult,
   CommissionRecap,
+  MyCommission,
   CommissionRecapQuery,
 } from "@/types/api";
 
@@ -103,6 +104,17 @@ export const reportService = {
    * in November for September and October is one payment. Not the recap's
    * monthly figure, and deliberately not derived from it.
    */
+  /**
+   * GET /reports/commissions/mine — the signed-in person's own commission.
+   *
+   * NO GRANT BEYOND BEING SIGNED IN, and no way to name anybody else: the server
+   * reads the person from the SESSION. The recap beside it is the whole shop's
+   * payroll and needs `users:read`, which is why this route exists at all — a
+   * groomer could otherwise see everybody's pay or nobody's.
+   */
+  myCommissions: (query: { period?: string } = {}) =>
+    apiClient.get<MyCommission>("/reports/commissions/mine", { query }),
+
   outstandingCommissions: (query: {
     groomerUserId: string;
     branchId: string;

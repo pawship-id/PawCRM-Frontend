@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { RosterSection } from "@/features/users";
@@ -347,5 +347,146 @@ describe("RosterSection", () => {
     expect(
       await screen.findByText(/layanan yang tidak ada di daftar ini/i),
     ).toBeInTheDocument();
+  });
+
+  /*
+    ─── LEAVE, TAKEN IN WEEKS ────────────────────────────────────────────────
+
+    Somebody off from the 14th to the 20th was SEVEN uses of a date picker until
+    3 September 2026, and a shop that finds that tedious writes the leave on
+    paper — at which point the booking form cheerfully offers a groomer who is
+    in Bali.
+  */
+  it("expands a range into individual days", async () => {
+    /*
+      STORED AS DAYS, DELIBERATELY. A stored range would need every reader —
+      `offReason`, the clash check, the calendar — to learn about intervals, and
+      each is a place to get an off-by-one wrong on somebody's last day off.
+    */
+    const onUpdated = jest.fn();
+
+    renderWithAuth(<RosterSection user={user()} onUpdated={onUpdated} />);
+
+    fireEvent.change(screen.getByLabelText(/dari tanggal/i), {
+      target: { value: "2026-09-14" },
+    });
+    fireEvent.change(screen.getByLabelText(/sampai/i), {
+      target: { value: "2026-09-16" },
+    });
+
+    /* The button counts, so nobody presses it wondering what it will do. */
+    await userEvent.click(
+      screen.getByRole("button", { name: /tambah 3 hari/i }),
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /simpan jadwal/i }),
+    );
+
+    await waitFor(() => expect(users.update).toHaveBeenCalled());
+    expect(users.update.mock.calls[0][1].availability?.leaveDates).toEqual([
+      "2026-09-14",
+      "2026-09-15",
+      "2026-09-16",
+    ]);
+  });
+
+  it("asks about the whole range in one go, not a day at a time", async () => {
+    /*
+      Seven round trips would be bad; seven separate warnings a reader has to add
+      up would be worse.
+    */
+    renderWithAuth(<RosterSection user={user()} onUpdated={jest.fn()} />);
+
+    fireEvent.change(screen.getByLabelText(/dari tanggal/i), {
+      target: { value: "2026-09-14" },
+    });
+    fireEvent.change(screen.getByLabelText(/sampai/i), {
+      target: { value: "2026-09-16" },
+    });
+    await userEvent.click(
+      screen.getByRole("button", { name: /tambah 3 hari/i }),
+    );
+
+    await waitFor(() => expect(bookings.affectedByLeave).toHaveBeenCalled());
+    expect(bookings.affectedByLeave).toHaveBeenCalledTimes(1);
+    expect(bookings.affectedByLeave).toHaveBeenCalledWith("user-1", [
+      "2026-09-14",
+      "2026-09-15",
+      "2026-09-16",
+    ]);
+  });
+
+  it("keeps one day one field and one press", async () => {
+    /*
+      "Sampai" IS OPTIONAL. A required second date would make every single-day
+      absence a decision about whether to repeat the first one.
+    */
+    renderWithAuth(<RosterSection user={user()} onUpdated={jest.fn()} />);
+
+    fireEvent.change(screen.getByLabelText(/dari tanggal/i), {
+      target: { value: "2026-09-14" },
+    });
+    await userEvent.click(screen.getByRole("button", { name: /^tambah$/i }));
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /simpan jadwal/i }),
+    );
+
+    await waitFor(() => expect(users.update).toHaveBeenCalled());
+    expect(users.update.mock.calls[0][1].availability?.leaveDates).toEqual([
+      "2026-09-14",
+    ]);
+  });
+
+  it("refuses a range that runs backwards, and says so", async () => {
+    // Silently doing nothing is the other option, and it teaches nobody.
+    renderWithAuth(<RosterSection user={user()} onUpdated={jest.fn()} />);
+
+    fireEvent.change(screen.getByLabelText(/dari tanggal/i), {
+      target: { value: "2026-09-16" },
+    });
+    fireEvent.change(screen.getByLabelText(/sampai/i), {
+      target: { value: "2026-09-14" },
+    });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /harus setelah tanggal mulai/i,
+    );
+    expect(screen.getByRole("button", { name: /^tambah$/i })).toBeDisabled();
+  });
+
+  it("warns about the bookings a range would strand", async () => {
+    /*
+      KRITERIA 4.9. Marking somebody off when they already have four animals
+      booked is a DECISION, not a typo — so it is shown before the save, and the
+      save is still allowed.
+    */
+    bookings.affectedByLeave.mockResolvedValue([
+      {
+        _id: "it-1",
+        name: "Grooming Full Service",
+        scheduledAt: "2026-09-15T02:00:00.000Z",
+        bookingNumber: "BK-260915-001",
+      },
+    ] as never);
+
+    renderWithAuth(<RosterSection user={user()} onUpdated={jest.fn()} />);
+
+    fireEvent.change(screen.getByLabelText(/dari tanggal/i), {
+      target: { value: "2026-09-14" },
+    });
+    fireEvent.change(screen.getByLabelText(/sampai/i), {
+      target: { value: "2026-09-16" },
+    });
+    await userEvent.click(
+      screen.getByRole("button", { name: /tambah 3 hari/i }),
+    );
+
+    expect(await screen.findByText(/BK-260915-001/)).toBeInTheDocument();
+    /* Shown, never enforced — the shop will phone the customer. */
+    expect(
+      screen.getByRole("button", { name: /simpan jadwal/i }),
+    ).toBeEnabled();
   });
 });

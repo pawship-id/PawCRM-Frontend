@@ -27,8 +27,16 @@ interface ReportCard {
   title: string;
   description: string;
   href: string;
-  feature: Feature;
-  action: Action;
+  /**
+   * Omitted when the report needs no grant at all.
+   *
+   * ONE CARD IS LIKE THAT — "Komisi Saya", which answers only about the signed-in
+   * person. Requiring a permission for it would mean granting a groomer the
+   * staff register to be told what they themselves earned, which is the leak
+   * that card exists to close.
+   */
+  feature?: Feature;
+  action?: Action;
   /**
    * Set when a report cannot work yet, with the reason. Renders disabled rather
    * than hidden — see the note on the sales report below.
@@ -68,6 +76,19 @@ const CARDS: ReportCard[] = [
     href: "/dashboard/inventory/batches",
     feature: "productBatches",
     action: "read",
+  },
+  {
+    title: "Komisi Saya",
+    description:
+      "Berapa yang Anda hasilkan bulan ini, dan berapa yang belum dibayar. Hanya milik Anda sendiri.",
+    href: "/dashboard/reports/commissions/mine",
+    /*
+      NO GRANT. It answers only about the signed-in person — the server reads the
+      id from the session and the query has no way to name anybody else. The
+      recap below is the whole shop's payroll and is gated accordingly; requiring
+      a grant here would mean handing a groomer the staff register to be told
+      what they themselves earned.
+    */
   },
   {
     title: "Rekap Komisi",
@@ -119,17 +140,25 @@ const CARDS: ReportCard[] = [
 export function ReportsHub() {
   const { can } = usePermissions();
 
-  const visible = CARDS.filter((card) => can(card.feature, card.action));
+  const visible = CARDS.filter(
+    (card) =>
+      card.feature === undefined ||
+      card.action === undefined ||
+      can(card.feature, card.action),
+  );
 
-  if (visible.length === 0) {
-    return (
-      <p className="text-sm text-muted">
-        Role Anda belum punya akses ke satu pun laporan. Hubungi owner atau admin
-        untuk membuka aksesnya.
-      </p>
-    );
-  }
+  /*
+    THE "NO ACCESS AT ALL" EMPTY STATE IS GONE, and it was removed rather than
+    left unreachable.
 
+    It said "your role has access to no report; ask an owner" — true and useful
+    while every card was gated. Since "Komisi Saya" needs no grant, `visible` can
+    never be empty, and a branch that cannot run is worse than no branch: the
+    next reader takes it as evidence the case is possible and writes code around
+    it.
+
+    If a gated-only hub ever comes back, so does this.
+  */
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {visible.map((card) =>

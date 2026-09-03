@@ -54,6 +54,53 @@ const RATE_TYPES: { value: EditableRate; label: string }[] = [
 /* Enough to hold a grooming catalogue whole; nobody pages a rate table. */
 const SERVICE_LIMIT = 200;
 
+/** Longest leave this form will expand in one go — a fortnight and a bit. */
+const MAX_RANGE_DAYS = 60;
+
+/**
+ * Every calendar day from `from` to `to`, inclusive.
+ *
+ * BUILT WITH `setDate`, WHICH ROLLS MONTHS AND YEARS FOR US. Adding 86_400_000
+ * milliseconds looks equivalent and is not: it breaks across a daylight-saving
+ * boundary, and although Indonesia has none, this component has no business
+ * knowing that — the shop that opens in a zone that does would find one day
+ * missing from somebody's leave and no way to explain it.
+ *
+ * PARSED FROM PARTS, NOT `new Date(iso)`. A bare "2026-09-14" is read as UTC
+ * midnight, which is the previous day everywhere east of London — so a range
+ * starting on the 14th would start on the 13th in Jakarta.
+ *
+ * CAPPED. `to` before `from` yields nothing, and a typo of "2026" for "2126" is
+ * a hundred years of dates rather than an error somebody can see.
+ */
+function expandRange(from: string, to: string): string[] {
+  if (!from) return [];
+  if (!to || to === from) return [from];
+
+  const [fy, fm, fd] = from.split("-").map(Number);
+  const [ty, tm, td] = to.split("-").map(Number);
+  const cursor = new Date(fy, fm - 1, fd);
+  const end = new Date(ty, tm - 1, td);
+
+  if (Number.isNaN(cursor.getTime()) || Number.isNaN(end.getTime())) return [];
+  if (end < cursor) return [];
+
+  const dates: string[] = [];
+
+  while (cursor <= end && dates.length < MAX_RANGE_DAYS) {
+    dates.push(
+      [
+        cursor.getFullYear(),
+        String(cursor.getMonth() + 1).padStart(2, "0"),
+        String(cursor.getDate()).padStart(2, "0"),
+      ].join("-"),
+    );
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return dates;
+}
+
 const day = (iso: string) =>
   new Date(iso).toLocaleDateString("id-ID", {
     weekday: "long",
@@ -94,6 +141,8 @@ export function RosterSection({
     (user.availability?.leaveDates ?? []).map((date) => date.slice(0, 10)),
   );
   const [draftDate, setDraftDate] = useState("");
+  /* Empty means "just the one day" — a range is the exception, not the shape. */
+  const [draftUntil, setDraftUntil] = useState("");
 
   const [rateType, setRateType] = useState<EditableRate>(
     user.commissionRate?.type ?? "none",
@@ -168,18 +217,43 @@ export function RosterSection({
    * a screen that refused would send that decision somewhere this system cannot
    * see.
    */
-  async function addLeaveDate(value: string) {
-    if (!value || leaveDates.includes(value)) {
-      setDraftDate("");
-      return;
-    }
+  /**
+   * Adds a leave date, or a RANGE of them, and asks what it would strand.
+   *
+   * ─── WHY A RANGE AT ALL ────────────────────────────────────────────────────
+   *
+   * Leave is taken in weeks, not days. Somebody off from the 14th to the 20th is
+   * SEVEN uses of a date picker under the old form, and a shop that finds that
+   * tedious writes the leave on paper instead — at which point the booking form
+   * happily offers a groomer who is in Bali.
+   *
+   * ─── STORED AS INDIVIDUAL DAYS, DELIBERATELY ──────────────────────────────
+   *
+   * `availability.leaveDates` is a list of dates and stays one. A stored range
+   * would need every reader — `offReason`, the clash check, the calendar — to
+   * learn about intervals, and each is a place to get an off-by-one wrong on
+   * somebody's last day off. The range is a TYPING CONVENIENCE, expanded here.
+   *
+   * ─── THE WHOLE RANGE IS CHECKED IN ONE ASK ────────────────────────────────
+   *
+   * `affectedByLeave` already accepts a list; asking per day would be seven
+   * round trips and, worse, seven separate warnings a reader has to add up.
+   */
+  async function addLeaveDates(from: string, to: string) {
+    const added = expandRange(from, to).filter(
+      (date) => !leaveDates.includes(date),
+    );
 
-    setLeaveDates((prev) => [...prev, value].sort());
     setDraftDate("");
+    setDraftUntil("");
+
+    if (added.length === 0) return;
+
+    setLeaveDates((prev) => [...prev, ...added].sort());
     setChecking(true);
 
     try {
-      const rows = await bookingService.affectedByLeave(user._id, [value]);
+      const rows = await bookingService.affectedByLeave(user._id, added);
       setAffected(rows.length > 0 ? rows : null);
     } catch {
       /*
@@ -256,6 +330,9 @@ export function RosterSection({
     finds — a silent tie-break nobody chose.
   */
   const takenKeys = new Set(matrix.map((row) => row.key).filter(Boolean));
+
+  /* How many days the button is about to add — 0 means the range is unusable. */
+  const rangeSize = expandRange(draftDate, draftUntil).length;
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -386,22 +463,57 @@ export function RosterSection({
 
         <div className="flex flex-wrap items-end gap-2">
           <TextField
-            label="Tambah tanggal cuti"
+            label="Dari tanggal"
             name="leave-date"
             type="date"
             value={draftDate}
             onChange={(event) => setDraftDate(event.target.value)}
             disabled={saving}
           />
+          {/*
+            "SAMPAI" IS OPTIONAL AND EMPTY BY DEFAULT. One day off is the common
+            case and must stay one field and one button; a required second date
+            would make every single-day absence a decision about whether to
+            repeat the first one.
+
+            `min` KEEPS THE PICKER HONEST about which way a range runs. The
+            expander refuses a backwards one anyway — this only saves somebody
+            finding that out after typing.
+          */}
+          <TextField
+            label="Sampai (opsional)"
+            name="leave-date-until"
+            type="date"
+            value={draftUntil}
+            min={draftDate || undefined}
+            onChange={(event) => setDraftUntil(event.target.value)}
+            disabled={saving || draftDate === ""}
+            hint="Kosongkan kalau cuma sehari."
+          />
           <Button
             type="button"
             variant="secondary"
-            disabled={saving || draftDate === ""}
-            onClick={() => void addLeaveDate(draftDate)}
+            disabled={saving || draftDate === "" || rangeSize === 0}
+            onClick={() => void addLeaveDates(draftDate, draftUntil)}
           >
-            Tambah
+            {rangeSize > 1 ? `Tambah ${rangeSize} hari` : "Tambah"}
           </Button>
         </div>
+
+        {/*
+          THE TWO WAYS A RANGE CAN BE UNUSABLE, said before the button is
+          pressed rather than by silently doing nothing.
+        */}
+        {draftUntil !== "" && rangeSize === 0 && (
+          <p role="alert" className="text-xs font-semibold text-danger">
+            Tanggal &ldquo;sampai&rdquo; harus setelah tanggal mulai.
+          </p>
+        )}
+        {rangeSize === MAX_RANGE_DAYS && (
+          <p className="text-xs text-muted">
+            Maksimal {MAX_RANGE_DAYS} hari sekali tambah.
+          </p>
+        )}
       </div>
 
       {/*
