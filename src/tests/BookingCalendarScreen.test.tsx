@@ -298,4 +298,110 @@ describe("BookingCalendarScreen", () => {
     await screen.findByText("Sinta");
     expect(screen.queryByText(/kosong/i)).not.toBeInTheDocument();
   });
+
+  /*
+    ─── HOW FULL SOMEBODY'S DAY IS ────────────────────────────────────────────
+
+    LOAD, NOT CAPACITY. "Capacity" would mean announcing a limit, and nothing in
+    this system knows anybody's working hours: a groomer on half days, one who
+    stays late on Saturdays, one who is training somebody — each has a different
+    ceiling and none is written down. A wrong ceiling is worse than none, because
+    somebody starts refusing work against it.
+  */
+  it("says how much of each groomer's day is already booked", async () => {
+    bookings.calendar.mockResolvedValue({
+      from: "2026-09-03T00:00:00.000Z",
+      to: "2026-09-03T16:59:59.999Z",
+      groomers: [{ _id: "user-1", name: "Sinta", idle: false }],
+      hasUnassigned: false,
+      entries: [
+        {
+          _id: "it-1",
+          bookingId: "bk-1",
+          bookingNumber: "BK-1",
+          status: "confirmed",
+          startAt: "2026-09-03T02:00:00.000Z",
+          durationMin: 90,
+          groomerUserId: "user-1",
+          groomerName: "Sinta",
+          petId: "pet-1",
+          petName: "Bruno",
+          customerName: "Ibu Rina",
+          serviceName: "Grooming Full Service",
+          notes: null,
+        },
+        {
+          _id: "it-2",
+          bookingId: "bk-2",
+          bookingNumber: "BK-2",
+          status: "confirmed",
+          startAt: "2026-09-03T05:00:00.000Z",
+          durationMin: 60,
+          groomerUserId: "user-1",
+          groomerName: "Sinta",
+          petId: "pet-2",
+          petName: "Coco",
+          customerName: "Pak Adi",
+          serviceName: "Potong Kuku",
+          notes: null,
+        },
+      ],
+    } as never);
+
+    renderWithAuth(<BookingCalendarScreen />);
+
+    expect(await screen.findByText(/2j 30m terisi/)).toBeInTheDocument();
+  });
+
+  it("counts a row with no duration as one slot, not as nothing", async () => {
+    /*
+      The same assumption the grid DRAWS it with. Counting it as zero would make
+      a day of untimed work look empty — which is the one reading that would get
+      somebody double-booked.
+    */
+    bookings.calendar.mockResolvedValue({
+      from: "2026-09-03T00:00:00.000Z",
+      to: "2026-09-03T16:59:59.999Z",
+      groomers: [{ _id: "user-1", name: "Sinta", idle: false }],
+      hasUnassigned: false,
+      entries: [
+        {
+          _id: "it-1",
+          bookingId: "bk-1",
+          bookingNumber: "BK-1",
+          status: "confirmed",
+          startAt: "2026-09-03T02:00:00.000Z",
+          durationMin: null,
+          groomerUserId: "user-1",
+          groomerName: "Sinta",
+          petId: "pet-1",
+          petName: "Bruno",
+          customerName: "Ibu Rina",
+          serviceName: "Grooming Full Service",
+          notes: null,
+        },
+      ],
+    } as never);
+
+    renderWithAuth(<BookingCalendarScreen />);
+
+    expect(await screen.findByText(/30m terisi/)).toBeInTheDocument();
+  });
+
+  it("says 'kosong' rather than '0m terisi' for a free groomer", async () => {
+    // Two ways of saying the same thing, and only one of them reads as an
+    // invitation to book somebody.
+    bookings.calendar.mockResolvedValue({
+      from: "2026-09-03T00:00:00.000Z",
+      to: "2026-09-03T16:59:59.999Z",
+      groomers: [{ _id: "user-2", name: "Rio", idle: true }],
+      hasUnassigned: false,
+      entries: [],
+    } as never);
+
+    renderWithAuth(<BookingCalendarScreen />);
+
+    expect(await screen.findByText(/kosong/i)).toBeInTheDocument();
+    expect(screen.queryByText(/terisi/)).not.toBeInTheDocument();
+  });
 });

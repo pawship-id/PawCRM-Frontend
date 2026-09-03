@@ -18,7 +18,8 @@ The POS side of the same collection is [`booking-bridge.md`](./booking-bridge.md
 | **Built** | `BookingHistoryDialog` — when it reached each status, and who took it there |
 | **Built** | `BookingCalendarScreen` at `/dashboard/booking/kalender` — harian dan mingguan, kolom per groomer |
 | **Built** | A column for a groomer who is **in but has nothing booked**, on the daily view — labelled `· kosong` |
-| **Not built** | Capacity (how much more the day can take) |
+| **Built** | Each column's **load** — `· 4j 30m terisi`, or `· kosong` |
+| **Not built** | Capacity as a ceiling — see below |
 
 **THE EMPTY COLUMN, AND WHY IT TOOK THE ROSTER TO BUILD.** A calendar showing only
 busy people cannot answer the question a receptionist brings to it — "siapa yang
@@ -36,6 +37,18 @@ they come to disagree.
 
 **Somebody off today gets no column.** A column is somewhere to drop work, and
 dropping work on somebody on leave is what FR-4 refuses outright.
+
+**LOAD, NOT CAPACITY, AND THE DIFFERENCE IS THE POINT.** "Capacity" would mean
+announcing a limit — "Sinta can take 8 hours" — and nothing in this system knows
+anybody's working hours. A groomer on half days, one who stays late on Saturdays,
+one who is training somebody: each has a different ceiling and none is written
+down. So the header reports what IS booked and lets the shop judge. A wrong
+ceiling would be worse than no ceiling, because somebody would start refusing work
+against it.
+
+**A row with no duration counts as one slot** — the same assumption the grid draws
+it with. Counting it as zero would make a day of untimed work look empty, which is
+the one reading that gets somebody double-booked.
 | **Built** | `BookingDetailScreen` at `/dashboard/booking/:id` — one visit whole: a block per animal, its own billing state, and the pet summary |
 | **Built** | `BookingForm` at `/dashboard/booking/:id/edit` — the SAME component, told a `bookingId`. Reschedule, change the services, swap the animal |
 

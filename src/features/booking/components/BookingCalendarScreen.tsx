@@ -41,6 +41,46 @@ const SLOT_HEIGHT = 28;
 const DEFAULT_SLOT_MINUTES = SLOT_MINUTES;
 
 /**
+ * How much of the day is already spoken for, per column.
+ *
+ * ─── LOAD, NOT CAPACITY, AND THE DIFFERENCE IS THE WHOLE POINT ─────────────
+ *
+ * "Capacity" would mean announcing a limit — "Sinta can take 8 hours" — and
+ * nothing in this system knows anybody's working hours. A groomer on half days,
+ * one who stays late on Saturdays, one who is training somebody: each has a
+ * different ceiling and none of them is written down anywhere.
+ *
+ * So it reports what IS booked and lets the shop judge. "4j 30m terisi" answers
+ * "who has room" without inventing a number nobody chose — and a wrong ceiling
+ * would be worse than no ceiling, because somebody would start refusing work
+ * against it.
+ *
+ * A ROW WITH NO DURATION COUNTS AS ONE SLOT, the same assumption the grid draws
+ * it with. Counting it as zero would make a day of untimed work look empty.
+ */
+function loadOf(
+  entries: BookingCalendarEntry[],
+  groomerUserId: string | null,
+): number {
+  return entries
+    .filter((entry) => (entry.groomerUserId ?? null) === groomerUserId)
+    .reduce(
+      (total, entry) => total + (entry.durationMin ?? DEFAULT_SLOT_MINUTES),
+      0,
+    );
+}
+
+/** "4j 30m", "45m", "8j" — never "0j 0m". */
+function hoursMinutes(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+
+  if (hours === 0) return `${rest}m`;
+  if (rest === 0) return `${hours}j`;
+  return `${hours}j ${rest}m`;
+}
+
+/**
  * COLOUR IS NEVER THE ONLY DIFFERENCE. Every block also carries its status as
  * TEXT — for the reader who cannot separate these hues, and for the screen in a
  * sunlit reception that washes them out.
@@ -350,12 +390,16 @@ function DayGrid({
               LABELLED, NOT LEFT AS A BLANK COLUMN. An empty column with no
               explanation reads as a loading failure; "kosong" says the person is
               here and free, which is the whole reason the column was added.
+
+              A COLUMN WITH WORK CARRIES ITS LOAD INSTEAD — see `loadOf`. The two
+              are mutually exclusive by construction: idle means no blocks, and
+              no blocks means no hours to report.
             */}
-            {column.idle && (
-              <span className="ml-1 text-xs font-normal text-muted">
-                · kosong
-              </span>
-            )}
+            <span className="ml-1 text-xs font-normal text-muted">
+              {column.idle
+                ? "· kosong"
+                : `· ${hoursMinutes(loadOf(entries, column.id))} terisi`}
+            </span>
           </div>
         ))}
 
