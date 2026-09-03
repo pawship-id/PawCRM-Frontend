@@ -326,4 +326,37 @@ describe("BookingDetailScreen", () => {
     await screen.findByText(/BK-260902-001/);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
+
+  it("sends each animal's block to that animal's work page", async () => {
+    /*
+      THE WAY INTO THE WORK. Status lives on the ROWS now, so moving it happens
+      on a page about ONE animal — there must be no doubt whose button was
+      pressed. This page stays the overview.
+    */
+    renderWithAuth(<BookingDetailScreen id="bk-1" />);
+
+    /* ONE PER ANIMAL — the fixture has two, and so must the links. */
+    const links = await screen.findAllByRole("link", { name: /pekerjaan/i });
+    expect(links.length).toBeGreaterThan(1);
+
+    const targets = links.map((link) => link.getAttribute("href"));
+    expect(new Set(targets).size).toBe(targets.length);
+    targets.forEach((href) => {
+      expect(href).toMatch(/^\/dashboard\/booking\/bk-1\/hewan\/.+/);
+    });
+  });
+
+  it("keeps the profile link, and keeps the two apart in words", async () => {
+    /*
+      TWO DIFFERENT PAGES: "pekerjaan" is this visit, "profil" is the animal's
+      whole life. Confusing them sends somebody looking for today's grooming in
+      a list of last year's.
+    */
+    renderWithAuth(<BookingDetailScreen id="bk-1" />);
+
+    await screen.findAllByRole("link", { name: /pekerjaan/i });
+    expect(
+      screen.getAllByRole("link", { name: /^profil/i }).length,
+    ).toBeGreaterThan(0);
+  });
 });

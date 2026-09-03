@@ -1,5 +1,6 @@
 import { apiClient } from "./api-client";
 import type {
+  BookingWorkStatus,
   Booking,
   BookingCalendar,
   BookingCalendarQuery,
@@ -116,6 +117,47 @@ export const bookingService = {
    */
   changeStatus: (id: string, status: BookingStatus, reason?: string | null) =>
     apiClient.patch<Booking>(`/bookings/${id}/status`, { status, reason }),
+
+  /**
+   * PATCH /bookings/:id/items/:itemId/work — ONE ANIMAL's service moves.
+   *
+   * THIS IS THE STATUS ROUTE NOW, one animal at a time. "Mochi sudah selesai
+   * mandi tapi Coco belum" was a sentence the system had no way to hold: status
+   * lived on the booking, so a visit with two animals had one answer for both.
+   *
+   * NO `from` IS SENT. The server reads the row's current status itself; a
+   * caller-supplied one is a second opinion about a fact the database holds.
+   *
+   * The BOOKING's own status follows from the rows — nothing here sets it.
+   */
+  advanceItemWork: (
+    bookingId: string,
+    itemId: string,
+    workStatus: BookingWorkStatus,
+  ) =>
+    apiClient.patch<Booking>(
+      `/bookings/${bookingId}/items/${itemId}/work`,
+      { workStatus },
+    ),
+
+  /**
+   * PATCH /bookings/:id/items/:itemId/times — correcting the clock.
+   *
+   * SEPARATE FROM THE MOVE, and gated on `bookings:update` rather than
+   * `advanceStatus`, because these two times decide `durationMin` in hindsight
+   * and duration is what a commission matrix is read against. Somebody trusted
+   * to say "this is done" is not, by that fact, trusted to say it took three
+   * hours. Every correction is audited with both values.
+   */
+  correctItemTimes: (
+    bookingId: string,
+    itemId: string,
+    times: { startedAt?: string | null; finishedAt?: string | null },
+  ) =>
+    apiClient.patch<Booking>(
+      `/bookings/${bookingId}/items/${itemId}/times`,
+      times,
+    ),
 
   /**
    * PATCH /bookings/:id/groomer — PCR-035. Puts a name on a slot, nothing else.

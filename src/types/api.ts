@@ -1936,6 +1936,20 @@ export interface BookingItem {
    * groomer, or ring the customer.
    */
   groomerOffReason?: string | null;
+  /**
+   * HOW FAR THIS ONE ANIMAL'S SERVICE HAS GOT — `pending | in_progress | done`.
+   *
+   * THREE RUNGS, NOT THE BOOKING'S FIVE. `draft` and `check_in` are not about a
+   * service: check-in is the ANIMAL arriving, one fact per visit rather than one
+   * per service, and copying the ladder would mean marking Coco arrived twice
+   * because she is having two things done.
+   *
+   * The BOOKING's status is derived from these — see `#deriveBookingStatus`.
+   */
+  workStatus?: BookingWorkStatus;
+  /** When the work actually started and finished. Correctable, and audited. */
+  startedAt?: string | null;
+  finishedAt?: string | null;
 }
 
 /**
@@ -1947,6 +1961,9 @@ export interface BookingItem {
  * sebelum datang atau langsung check-in", "siapa yang membatalkan" are asked
  * afterwards, and this is what can answer them.
  */
+/** The three rungs one animal's service walks. */
+export type BookingWorkStatus = "pending" | "in_progress" | "done";
+
 export interface BookingStatusEvent {
   status: BookingStatus;
   /** When it happened. ISO instant. */
@@ -2020,6 +2037,18 @@ export interface Booking {
    * there is a row nobody can act on.
    */
   customerName: string | null;
+  /**
+   * WHO CREATED THE BOOKING, resolved on read — the same rule as `petName` and
+   * `customerName`. Null when nothing human made it (a migration, a scheduled
+   * job), never a placeholder.
+   */
+  createdByName: string | null;
+  /**
+   * The role that person held AT THE TIME — null even when the name is not,
+   * for the seeded Owner: it reaches every permission by bypass rather than an
+   * assigned role, so there is genuinely no role to show.
+   */
+  createdByRoleName: string | null;
   items: BookingItem[];
   scheduledAt: string;
   status: BookingStatus;

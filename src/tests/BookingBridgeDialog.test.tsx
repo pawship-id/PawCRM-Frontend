@@ -27,6 +27,8 @@ const booking = (overrides: Partial<Booking> = {}): Booking => ({
   branchId: "5a7f1f77bcf86cd7994390b1",
   bookingNumber: "BK-260824-001",
   customerId: CUSTOMER_ID,
+  createdByName: null,
+  createdByRoleName: null,
   // AFTER PCR-040: the animals live on the rows, and the header lists them.
   pets: [{ petId: PET_ID, petName: "Bruno" }],
   petCount: 1,

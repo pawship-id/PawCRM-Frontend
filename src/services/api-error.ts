@@ -88,9 +88,28 @@ export class ApiError extends Error {
    * is stripped here so it matches the form field name.
    */
   get fieldErrors(): Record<string, string> {
-    if (!this.details) return {};
+    /*
+      ─── A MALFORMED `details` MUST NOT TAKE THE PAGE DOWN ────────────────────
+
+      The type says `details` is an array of `{field, message}`, and a type is a
+      promise about data that arrives over a WIRE — TypeScript checks this file
+      against the declaration, never the declaration against the server.
+
+      A service passing a SENTENCE where the array belongs is an easy mistake to
+      make: `ApiError.badRequest(message, details)` takes an array, while its
+      neighbour `ApiError.conflict(message, reason)` takes a string. When it
+      happened, `details.reduce is not a function` replaced the whole screen —
+      so a refusal somebody should have READ became a crash instead.
+
+      DEGRADED, NOT SWALLOWED: an unusable `details` yields no field errors, and
+      `fullMessage` below still shows the sentence the server sent. The user sees
+      the refusal; only the binding to a specific input is lost.
+    */
+    if (!Array.isArray(this.details)) return {};
 
     return this.details.reduce<Record<string, string>>((acc, detail) => {
+      if (!detail || typeof detail.field !== "string") return acc;
+
       const field = detail.field.replace(/^(body|params|query)\./, "");
       acc[field] = detail.message;
       return acc;

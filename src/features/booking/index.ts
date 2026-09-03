@@ -19,6 +19,7 @@ export { useBookingBridge } from "./hooks/useBookingBridge";
 
 export { BookingsScreen } from "./components/BookingsScreen";
 export { BookingDetailScreen } from "./components/BookingDetailScreen";
+export { BookingPetWorkScreen } from "./components/BookingPetWorkScreen";
 export { BookingCalendarScreen } from "./components/BookingCalendarScreen";
 export { BookingForm } from "./components/BookingForm";
 export { BookingStatusActions } from "./components/BookingStatusActions";

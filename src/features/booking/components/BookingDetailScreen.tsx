@@ -303,15 +303,37 @@ export function BookingDetailScreen({ id }: { id: string }) {
                 */}
                 {pet && <PetSummaryCard pet={pet} className="mt-2" />}
 
-                {pet && (
-                  <div className="mt-2">
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {/*
+                    THE WAY INTO THE WORK, and the primary action on this block.
+
+                    Status lives on the ROWS now — "Mochi sudah selesai mandi
+                    tapi Coco belum" — so moving it happens on a page about ONE
+                    animal, where there is no doubt whose button was pressed.
+                    This page stays the overview: what the whole visit is, and
+                    what it comes to.
+
+                    TWO DIFFERENT PAGES, and the wording keeps them apart.
+                    "Pekerjaan" is this visit; "profil" is the animal's whole
+                    life, and confusing them would send somebody looking for
+                    today's grooming in a list of last year's.
+                  */}
+                  <Button asChild size="sm">
+                    <Link
+                      href={`/dashboard/booking/${booking._id}/hewan/${item.petId}`}
+                    >
+                      Pekerjaan {item.petName ?? "hewan ini"}
+                    </Link>
+                  </Button>
+
+                  {pet && (
                     <Button asChild variant="ghost" size="sm">
                       <Link href={`/dashboard/master/pets/${pet._id}`}>
-                        Buka profil {pet.name}
+                        Profil {pet.name}
                       </Link>
                     </Button>
-                  </div>
-                )}
+                  )}
+                </div>
               </li>
             );
           })}

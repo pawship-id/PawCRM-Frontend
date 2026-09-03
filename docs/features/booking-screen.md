@@ -189,6 +189,59 @@ on a missing button gets more dangerous the more you build.
 
 ---
 
+## One animal's work — `/dashboard/booking/:id/hewan/:petId`
+
+`BookingPetWorkScreen`, reached from a "Pekerjaan <nama>" button on each animal's block on
+the detail page. Added 3 September 2026, from the shop: **"Mochi sudah selesai mandi tapi
+Coco belum" was a sentence the booking-level status alone could not hold.**
+
+**`bookingitems` gained `workStatus` (`pending → in_progress → done`), `startedAt` and
+`finishedAt`.** Three rungs, not the booking's five — `draft` and `check_in` are facts about
+the VISIT (an appointment agreed, an animal arriving), not about one service, and copying the
+booking's ladder onto every row would mark an animal "arrived" twice because it is having two
+things done.
+
+**The booking's own `in_progress`/`completed` now follow the rows rather than being set
+directly** — `BookingService#deriveBookingStatus`, fired every time a row moves. `draft`,
+`confirmed`, `check_in` and `cancelled` stay the booking's own, manual as before.
+
+### The header carries the one booking-level action on the page
+
+`BookingStatusActions` gained a `variant="prominent"` — same dialog, same confirm step, same
+audit trail, same server guard as the compact ellipsis menu used on the day sheet and the
+overview page. A primary button for the very next rung (`forward[0]`, since
+`BOOKING_TRANSITIONS[status]` is written in ladder order), and a secondary "Status lain"
+trigger for the skip-ahead moves, history, and cancel.
+
+**A red line above the button warns before it is pressed** — which animal is still
+unfinished, mirroring what the server would answer with a 409 if pressed anyway. It is a
+courtesy; the guard lives on the server (see `PATCH /bookings/:id/status` in `docs/api.md`
+for the money bug this closed).
+
+Cetak links to the printable pet card (kriteria 5.12, a real destination). WhatsApp
+normalises the customer's phone — stored locally (`0812…`), not E.164 — into a `wa.me` link,
+and is not rendered at all when the number cannot be normalised into something plausible.
+
+### The subtitle line: who made it, when, in what role
+
+Below the pet name, the line reads `Dibuat {created date/time} · {creator name}
+({creator role}) · {booking number}` — e.g. `Dibuat 3 Sep 2026 11.52 · Fitria (ops) ·
+ODR-1308`. Changed 3 September 2026, replacing a line that only repeated the booking
+number and status already shown above it.
+
+`Booking.createdBy` was written from the start but never read anywhere; `createdByName`
+and `createdByRoleName` are resolved server-side in `withNames`, batched the same way as
+groomer and customer names, via a new `RoleRepository.findNamesByIds`. Neither is stored
+on the booking document — both are looked up fresh, so a later name or role change is
+reflected automatically. When the creator has no role (a deleted user, a super-admin with
+none) or the booking has no `createdBy` at all, the parenthetical or the whole segment is
+left out rather than showing a placeholder.
+
+The back-arrow button that used to open this card is gone. The booking number in the
+subtitle is now a link back to `/dashboard/booking/:id` — the page's only way back.
+
+---
+
 ## The groomer went on leave after the booking was made
 
 Found during the BO's own testing, 3 September 2026.
