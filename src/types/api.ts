@@ -220,6 +220,19 @@ export interface User {
 
 /** The session context returned alongside the user. */
 export interface SessionContext {
+  /**
+   * WHICH SHOP THIS DEVICE IS STANDING IN — the till's choice, not "the branch".
+   *
+   * The POS is what it is for: a cashier picks it once and works there all day.
+   * EVERY HAND-TYPED FORM ASKS FOR ITS OWN BRANCH instead — the invoice, the
+   * receipt, the stock forms, the booking — because the person filling one in is
+   * not necessarily standing where the work will happen. A booking taken over
+   * the phone for the other shop is the ordinary case.
+   *
+   * Reading it as "the branch" cost two bugs: bookings filed to whichever branch
+   * the session pointed at, and a calendar filter that silently showed one
+   * branch when asked for all. Use `useBranchScope` and a picker.
+   */
   currentBranchId: string | null;
   /** Present on login, omitted by /me. */
   expiresAt?: string;
