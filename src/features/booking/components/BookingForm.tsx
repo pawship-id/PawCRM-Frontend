@@ -798,6 +798,26 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
               on a booking taken weeks ago and corrected after a price rise, so it
               is said here rather than discovered on the bill.
             */}
+            {/*
+              NOBODY IS MARKED AS A GROOMER — a dead end with a signpost.
+
+              The dropdown reads `users.isGroomer`, and a tenant that has never
+              ticked the box for anybody gets an empty list. An empty dropdown
+              with no explanation is the worst version of this: it looks broken,
+              and the fix — one checkbox on a staff page — is nowhere in sight.
+
+              NOT A BLOCKER. "Belum ditentukan" is a real state (FR-3), so a
+              booking can still be taken and the groomer filled in later.
+            */}
+            {!loadingServices && groomers.length === 0 && (
+              <Alert variant="warning">
+                Belum ada staf yang ditandai sebagai <strong>groomer</strong>.
+                Buka Master Data › Staf, buka orangnya, lalu centang
+                &ldquo;Groomer&rdquo;. Bookingnya tetap bisa dibuat dengan groomer
+                &ldquo;Belum ditentukan&rdquo;.
+              </Alert>
+            )}
+
             {editing && (
               <Alert variant="warning">
                 Menyimpan perubahan akan memakai harga layanan hari ini untuk

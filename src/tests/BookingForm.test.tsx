@@ -814,3 +814,43 @@ describe("BookingForm — mengubah booking", () => {
     ).not.toBeInTheDocument();
   });
 });
+
+/**
+ * NOBODY MARKED AS A GROOMER — a dead end with a signpost.
+ *
+ * The dropdown reads `users.isGroomer`, and a tenant that has never ticked the
+ * box for anybody gets an empty list. An empty dropdown with no explanation is
+ * the worst version of this: it looks broken, and the fix — one checkbox on a
+ * staff page — is nowhere in sight.
+ */
+describe("BookingForm — when no staff are marked as groomers", () => {
+  it("says so, and says where to fix it", async () => {
+    bookings.availability.mockResolvedValue([]);
+
+    renderWithAuth(<BookingForm />);
+
+    expect(
+      await screen.findByText(/ditandai sebagai/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/master data/i)).toBeInTheDocument();
+  });
+
+  it("still lets the booking be taken", async () => {
+    /*
+      NOT A BLOCKER. "Belum ditentukan" is a real state (FR-3) — a booking taken
+      over the phone on Monday for Thursday often has no groomer decided yet.
+    */
+    bookings.availability.mockResolvedValue([]);
+
+    renderWithAuth(<BookingForm />);
+
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /layanan/i });
+    await choose(/layanan/i, /grooming full service/i);
+
+    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+    await waitFor(() => expect(bookings.create).toHaveBeenCalled());
+    expect(bookings.create.mock.calls[0][0].items[0].groomerUserId).toBeNull();
+  });
+});

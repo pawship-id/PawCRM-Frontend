@@ -134,6 +134,15 @@ export function RosterSection({
   user: User;
   onUpdated: (user: User) => void;
 }) {
+  /*
+    WHAT THIS PERSON DOES IN THE SHOP — not what they may do in this system.
+    It decides who appears in the booking form's groomer dropdown, who gets a
+    column on the calendar, and who the booking list can be filtered by. Before
+    it existed all three read "every active user", so a shop with ten staff and
+    two groomers picked from ten names.
+  */
+  const [isGroomer, setIsGroomer] = useState(user.isGroomer === true);
+
   const [weeklyOff, setWeeklyOff] = useState<number[]>(
     user.availability?.weeklyOff ?? [],
   );
@@ -348,6 +357,7 @@ export function RosterSection({
           weekly pattern must not wipe next month's leave. Both are sent anyway
           because this form owns both.
         */
+        isGroomer,
         availability: { weeklyOff, leaveDates },
         /*
           ONLY THE MEANINGFUL KEY. The server FORBIDS the other one, and it is
@@ -411,6 +421,28 @@ export function RosterSection({
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-5">
       {error && <Alert variant="error">{error}</Alert>}
+
+      {/*
+        FIRST, because it decides whether the rest of this card matters at all.
+        The weekly pattern and the leave dates exist to keep somebody OUT of a
+        booking form they have to be in first.
+      */}
+      <div className="flex flex-col gap-2">
+        <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-foreground">
+          <Checkbox
+            checked={isGroomer}
+            onCheckedChange={() => setIsGroomer((prev) => !prev)}
+            disabled={saving}
+            aria-label="Groomer"
+          />
+          Groomer — bisa ditugaskan menangani hewan
+        </label>
+        <p className="text-xs text-muted">
+          Hanya yang ditandai di sini yang muncul di pilihan groomer saat membuat
+          booking, dan di kolom kalender. Kasir dan resepsionis tidak perlu
+          ditandai.
+        </p>
+      </div>
 
       <div className="flex flex-col gap-2">
         <Label>Libur mingguan</Label>

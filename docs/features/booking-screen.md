@@ -28,17 +28,11 @@ with no blocks.
 **Only on a single day.** "Who is in" is a per-day fact; a week has no single
 answer, and the weekly view asks "which day is full" anyway.
 
-**Who counts as a groomer is derived from work done, not from the staff list.**
-Nothing in this system records that somebody IS a groomer: `listForDate` returns
-every ACTIVE USER, which is why the booking form's groomer dropdown already lists
-the cashier and the owner. A column per available user would be the "mostly empty
-columns" this feature's own comment warned against, reached from the other side.
-So `findGroomerIdsSince` reads it from grooming actually assigned at that branch
-in the last 60 days — self-maintaining, and right in practice.
-
-**It misses exactly one case:** a groomer hired this week who has never been
-assigned anything gets no column until their first booking. The honest fix is an
-explicit flag on the user, which is a data-model decision rather than a guess.
+**Who counts as a groomer is `users.isGroomer`.** It was derived from work already
+assigned for one release — the least-bad guess available while nothing recorded
+the fact, and one that could not see a groomer hired last week. The derivation was
+**removed** rather than kept as a fallback: two sources for one question is how
+they come to disagree.
 
 **Somebody off today gets no column.** A column is somewhere to drop work, and
 dropping work on somebody on leave is what FR-4 refuses outright.

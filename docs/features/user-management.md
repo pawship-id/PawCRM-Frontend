@@ -66,6 +66,7 @@ no reader*, and later *a reader with no writer*.
 
 | Control | Notes |
 | --- | --- |
+| **Groomer** | `isGroomer` — can this person be assigned an animal. It decides who appears in the booking form's dropdown, who gets a calendar column, and who the booking list filters by. **Not a role**: a role says what somebody may DO in this system, this says what they do in the SHOP, and an owner who grooms on Saturdays is both |
 | **Libur mingguan** | Checkboxes in JavaScript's day numbering — 0 is Sunday, 3 is Wednesday. A friendlier numbering would be a translation layer with one job: to be got wrong once, quietly, on somebody's day off |
 | **Cuti tanggal tertentu** | A start date and an **optional** "sampai". A range is expanded here into individual days — see below |
 | **Komisi** | `percentage`, `fixed`, `matrix`, or none. Only the meaningful key is sent: the server forbids `value` beside a matrix and `matrix` beside a percentage |

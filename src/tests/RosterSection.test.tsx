@@ -489,4 +489,50 @@ describe("RosterSection", () => {
       screen.getByRole("button", { name: /simpan jadwal/i }),
     ).toBeEnabled();
   });
+
+  /*
+    ─── WHO IS EVEN A GROOMER ────────────────────────────────────────────────
+
+    Nothing recorded this until 3 September 2026, so the booking form's dropdown
+    was built from "every active user" — a shop with ten staff and two groomers
+    picked from ten names, cashier and owner included.
+  */
+  it("sends the groomer flag when it is ticked", async () => {
+    renderWithAuth(<RosterSection user={user()} onUpdated={jest.fn()} />);
+
+    await userEvent.click(screen.getByRole("checkbox", { name: /^groomer$/i }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /simpan jadwal/i }),
+    );
+
+    await waitFor(() => expect(users.update).toHaveBeenCalled());
+    expect(users.update.mock.calls[0][1].isGroomer).toBe(true);
+  });
+
+  it("opens already ticked for somebody who is one", async () => {
+    renderWithAuth(
+      <RosterSection user={user({ isGroomer: true })} onUpdated={jest.fn()} />,
+    );
+
+    expect(screen.getByRole("checkbox", { name: /^groomer$/i })).toBeChecked();
+  });
+
+  it("can untick somebody who has stopped grooming", async () => {
+    /*
+      THE FLAG IS EDITABLE IN BOTH DIRECTIONS, which is the point of storing it
+      rather than deriving it from work already done: a derivation cannot be told
+      that somebody has moved to the counter.
+    */
+    renderWithAuth(
+      <RosterSection user={user({ isGroomer: true })} onUpdated={jest.fn()} />,
+    );
+
+    await userEvent.click(screen.getByRole("checkbox", { name: /^groomer$/i }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /simpan jadwal/i }),
+    );
+
+    await waitFor(() => expect(users.update).toHaveBeenCalled());
+    expect(users.update.mock.calls[0][1].isGroomer).toBe(false);
+  });
 });

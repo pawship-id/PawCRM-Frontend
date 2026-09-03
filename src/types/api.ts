@@ -189,6 +189,18 @@ export interface User {
    */
   warehouseAccess: WarehouseScopeEntry[];
   /** Null for staff who earn no commission — which is most of them. */
+  /**
+   * Can this person be assigned an animal to groom?
+   *
+   * NOT A ROLE AND NOT A PERMISSION. A role says what somebody may DO in this
+   * system; this says what they do in the SHOP — an owner who grooms on
+   * Saturdays holds every permission there is and must appear in the booking
+   * form's dropdown, while a manager with identical permissions must not.
+   *
+   * The groomer dropdown, the calendar's columns and the booking list's filter
+   * all read it. Before it existed they read "every active user".
+   */
+  isGroomer: boolean;
   commissionRate: CommissionRate | null;
   availability: UserAvailability;
   status: "active" | "suspended";
@@ -331,6 +343,8 @@ export interface UpdateUserInput {
    * matrix rows behind a new percentage — a document no reader can interpret.
    * `null` clears it: this person earns no commission.
    */
+  /** See `User.isGroomer` — what they do in the shop, not what they may do here. */
+  isGroomer?: boolean;
   commissionRate?: CommissionRateInput | null;
   /**
    * MERGED, unlike the rate. Its two keys are independent, so writing the weekly
