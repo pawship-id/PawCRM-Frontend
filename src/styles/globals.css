@@ -127,6 +127,16 @@
   /* App-layer aliases for the two states shadcn calls "accent". */
   --surface-hover: var(--accent);
   --surface-selected: var(--navy-100);
+
+  /*
+   * MARKETING SURFACE. The deepest navy, used as a ground rather than as ink —
+   * today only by the landing page's footer at `/`. It has its own name because
+   * §3 asks components for a semantic token, and "the darkest thing on the page"
+   * is not a role any product token covers: --foreground is the body text
+   * colour, and a footer that borrowed it would break the moment text and
+   * surface stopped being the same navy.
+   */
+  --brand-deep: var(--navy-900);
 }
 
 /**
@@ -229,6 +239,7 @@
   --color-tint-danger: var(--tint-danger);
 
   --color-navy-900: var(--navy-900);
+  --color-brand-deep: var(--brand-deep);
   --color-navy-800: var(--navy-800);
   --color-navy-700: var(--navy-700);
   --color-navy-600: var(--navy-600);

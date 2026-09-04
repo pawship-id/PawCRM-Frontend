@@ -22,13 +22,13 @@ jest.mock("sweetalert2", () => ({
 
 /**
  * The picker is stubbed. Its own behaviour — pick, crop, upload, the purpose
- * segment, the failure paths — is covered in CategoryImageField.test.tsx
+ * segment, the failure paths — is covered in ImageField.test.tsx
  * against a mocked media service; here what matters is only what the form does
  * with the asset it is handed, and a real one would drag `react-easy-crop` and
  * a canvas into every case below.
  */
-jest.mock("@/features/categories/components/CategoryImageField", () => ({
-  CategoryImageField: ({
+jest.mock("@/components/ImageField", () => ({
+  ImageField: ({
     value,
     onChange,
   }: {

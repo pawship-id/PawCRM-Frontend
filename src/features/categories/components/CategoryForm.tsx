@@ -7,6 +7,7 @@ import {
   Alert,
   Card,
   FormActionBar,
+  ImageField,
   Spinner,
   TextField,
   TextareaField,
@@ -19,7 +20,6 @@ import { swalToast } from "@/lib/swal";
 import type { Category } from "@/types/api";
 import type { MediaAsset } from "@/types/inventory";
 
-import { CategoryImageField } from "./CategoryImageField";
 import { CategoryParentField } from "./CategoryParentField";
 import {
   CategoryPostingAccounts,
@@ -400,9 +400,11 @@ function CategoryFields({
         title="Gambar"
         description="Dipakai di kartu kategori, tombol grup di kasir, dan etalase."
       >
-        <CategoryImageField
+        <ImageField
           value={image}
           onChange={setImage}
+          purpose="category"
+          alt="Gambar kategori"
           disabled={saving}
         />
       </Card>

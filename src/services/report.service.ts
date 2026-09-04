@@ -1,5 +1,13 @@
 import { apiClient } from "./api-client";
 import type { StockOnHandQuery, StockOnHandResult } from "@/types/report";
+import type {
+  CommissionCloseResult,
+  CommissionOutstanding,
+  CommissionPaymentResult,
+  CommissionRecap,
+  MyCommission,
+  CommissionRecapQuery,
+} from "@/types/api";
 
 /**
  * Report calls against `/api/reports`.
@@ -63,5 +71,83 @@ export const reportService = {
       },
       fallbackFilename: "stok-per-cabang.csv",
       timeoutMs: 60_000,
+    }),
+
+  /**
+   * GET /reports/commissions — Rekap Komisi.
+   *
+   * GATED ON `users:read` SERVER-SIDE, not on a reports grant: this IS payroll
+   * data — it names every groomer and what they are owed. Whoever may read the
+   * staff register may read it.
+   */
+  /**
+   * POST /reports/commissions/close — TUTUP BULAN KOMISI.
+   *
+   * Posts `Dr 5302 Beban Komisi Groomer / Cr 2102 Utang Komisi`, dated the last
+   * day of the month rather than today: grooming done in September is a cost of
+   * September even when payday falls in October.
+   *
+   * SAFE TO RUN AGAIN. It claims only the rows no close has taken, so a second
+   * run picks up stragglers — a booking completed late — and nothing twice.
+   * Gated on `journalEntries:create`, not on the recap's `users:read`.
+   */
+  closeCommissions: (input: { period: string; branchId: string }) =>
+    apiClient.post<CommissionCloseResult>(
+      "/reports/commissions/close",
+      input,
+    ),
+
+  /**
+   * GET /reports/commissions/outstanding — what one person is still owed.
+   *
+   * EVERYTHING CLOSED AND UNPAID, which may span several months: a groomer paid
+   * in November for September and October is one payment. Not the recap's
+   * monthly figure, and deliberately not derived from it.
+   */
+  /**
+   * GET /reports/commissions/mine — the signed-in person's own commission.
+   *
+   * NO GRANT BEYOND BEING SIGNED IN, and no way to name anybody else: the server
+   * reads the person from the SESSION. The recap beside it is the whole shop's
+   * payroll and needs `users:read`, which is why this route exists at all — a
+   * groomer could otherwise see everybody's pay or nobody's.
+   */
+  myCommissions: (query: { period?: string } = {}) =>
+    apiClient.get<MyCommission>("/reports/commissions/mine", { query }),
+
+  outstandingCommissions: (query: {
+    groomerUserId: string;
+    branchId: string;
+  }) =>
+    apiClient.get<CommissionOutstanding>("/reports/commissions/outstanding", {
+      query,
+    }),
+
+  /**
+   * POST /reports/commissions/pay — settles what the books say is owed.
+   *
+   * `Dr 2102 Utang Komisi / Cr <the channel's account>`. NO AMOUNT IS SENT: the
+   * server pays exactly what its own books say is outstanding, because a
+   * caller-supplied figure would let a typo leave a liability matching nothing.
+   */
+  payCommissions: (input: {
+    groomerUserId: string;
+    branchId: string;
+    paymentChannelId: string;
+    paidAt?: string;
+    note?: string | null;
+  }) =>
+    apiClient.post<CommissionPaymentResult>(
+      "/reports/commissions/pay",
+      input,
+    ),
+
+  commissions: (query: CommissionRecapQuery = {}) =>
+    apiClient.get<CommissionRecap>("/reports/commissions", {
+      query: {
+        period: query.period,
+        branchId: query.branchId,
+        groomerUserId: query.groomerUserId,
+      },
     }),
 };

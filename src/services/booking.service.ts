@@ -1,7 +1,12 @@
 import { apiClient } from "./api-client";
 import type {
+  BookingWorkStatus,
   Booking,
+  BookingCalendar,
+  BookingCalendarQuery,
   BookingListQuery,
+  AffectedBooking,
+  GroomerAvailability,
   BookingStatus,
   BookingUnbilledSummary,
   CreateBookingInput,
@@ -33,6 +38,11 @@ export const bookingService = {
         limit: query.limit,
         customerId: query.customerId,
         petId: query.petId,
+        // A question about ROWS, like `petId` — the server resolves it to
+        // booking ids and intersects the two. Listed here because `query` is
+        // copied key by key: a field the type allows but this object omits is
+        // dropped silently, which is how the Groomer filter shipped dead.
+        groomerUserId: query.groomerUserId,
         branchId: query.branchId,
         // An array becomes repeated `status=` params — see buildUrl. Joining
         // with a comma would send one value the enum check rejects.
@@ -83,6 +93,55 @@ export const bookingService = {
   unbilledSummary: () =>
     apiClient.get<BookingUnbilledSummary>("/bookings/unbilled-summary"),
 
+  /**
+   * PATCH /bookings/:id/items/:itemId/groomers — who is on ONE session.
+   *
+   * The lead (`groomerUserId`, `null` unassigns) and the extra hands beside
+   * them. The booking form sets one default per animal; this is how a session
+   * gets handed to somebody else once the day is running, or gains a second
+   * person at the table.
+   *
+   * Only the LEAD earns: commission reads that field and nothing else. Both the
+   * lead and the assistants are checked against the diary, so a `409` here is a
+   * clash — send `forceClash` to save it anyway, as the booking form does.
+   */
+  setItemGroomers: (
+    bookingId: string,
+    itemId: string,
+    patch: {
+      groomerUserId?: string | null;
+      assistantGroomerUserIds?: string[];
+      forceClash?: boolean;
+    },
+  ) =>
+    apiClient.patch<Booking>(
+      `/bookings/${bookingId}/items/${itemId}/groomers`,
+      patch,
+    ),
+
+  /**
+   * PATCH /bookings/:id/belongings/:belongingId — ticks ONE thing in or out.
+   *
+   * A VERB OF ITS OWN, not a corner of `update`. Two counters handing back two
+   * animals' things at the same moment would each send the whole list, and the
+   * second would carry the state it read before the first happened — quietly
+   * un-returning an item somebody had already given back, on a booking the
+   * completion guard then lets close.
+   *
+   * Handing back something never checked in is a `409`: there is nothing to give
+   * back, and recording it would leave the pair in a state the guard reads as
+   * settled.
+   */
+  checkBelonging: (
+    bookingId: string,
+    belongingId: string,
+    patch: { checkedIn?: boolean; checkedOut?: boolean },
+  ) =>
+    apiClient.patch<Booking>(
+      `/bookings/${bookingId}/belongings/${belongingId}`,
+      patch,
+    ),
+
   /** GET /bookings/:id — a single booking. */
   getById: (id: string) => apiClient.get<Booking>(`/bookings/${id}`),
 
@@ -109,6 +168,47 @@ export const bookingService = {
     apiClient.patch<Booking>(`/bookings/${id}/status`, { status, reason }),
 
   /**
+   * PATCH /bookings/:id/items/:itemId/work — ONE ANIMAL's service moves.
+   *
+   * THIS IS THE STATUS ROUTE NOW, one animal at a time. "Mochi sudah selesai
+   * mandi tapi Coco belum" was a sentence the system had no way to hold: status
+   * lived on the booking, so a visit with two animals had one answer for both.
+   *
+   * NO `from` IS SENT. The server reads the row's current status itself; a
+   * caller-supplied one is a second opinion about a fact the database holds.
+   *
+   * The BOOKING's own status follows from the rows — nothing here sets it.
+   */
+  advanceItemWork: (
+    bookingId: string,
+    itemId: string,
+    workStatus: BookingWorkStatus,
+  ) =>
+    apiClient.patch<Booking>(
+      `/bookings/${bookingId}/items/${itemId}/work`,
+      { workStatus },
+    ),
+
+  /**
+   * PATCH /bookings/:id/items/:itemId/times — correcting the clock.
+   *
+   * SEPARATE FROM THE MOVE, and gated on `bookings:update` rather than
+   * `advanceStatus`, because these two times decide `durationMin` in hindsight
+   * and duration is what a commission matrix is read against. Somebody trusted
+   * to say "this is done" is not, by that fact, trusted to say it took three
+   * hours. Every correction is audited with both values.
+   */
+  correctItemTimes: (
+    bookingId: string,
+    itemId: string,
+    times: { startedAt?: string | null; finishedAt?: string | null },
+  ) =>
+    apiClient.patch<Booking>(
+      `/bookings/${bookingId}/items/${itemId}/times`,
+      times,
+    ),
+
+  /**
    * PATCH /bookings/:id/groomer — PCR-035. Puts a name on a slot, nothing else.
    *
    * NOT `update({items})`, which re-snapshots every price at today's rates. A
@@ -128,5 +228,43 @@ export const bookingService = {
     apiClient.patch<Booking>(`/bookings/${id}/groomer`, {
       groomerUserId,
       serviceId,
+    }),
+
+  /**
+   * GET /bookings/calendar — the day sheet, drawn.
+   *
+   * ONE OBJECT, not a page: the range bounds the answer, and the screen needs
+   * the groomer columns and the blocks together to draw anything at all.
+   */
+  /**
+   * GET /bookings/availability?date= — who may be booked that day, and why not.
+   *
+   * A BARE ARRAY: a handful of names a dropdown renders whole.
+   */
+  availability: (date: string) =>
+    apiClient.get<GroomerAvailability[]>("/bookings/availability", {
+      query: { date },
+    }),
+
+  calendar: (query: BookingCalendarQuery = {}) =>
+    apiClient.get<BookingCalendar>("/bookings/calendar", {
+      query: {
+        branchId: query.branchId,
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+      },
+    }),
+
+  /**
+   * GET /bookings/affected-by-leave — the live bookings a proposed leave would
+   * strand (FR-4 kriteria 4.9).
+   *
+   * ASKED BEFORE SAVING, never after. Marking somebody off for next Wednesday
+   * when they already have four animals booked is a DECISION, not a typo, and it
+   * has to be made with the four animals visible.
+   */
+  affectedByLeave: (groomerUserId: string, dates: string[]) =>
+    apiClient.get<AffectedBooking[]>("/bookings/affected-by-leave", {
+      query: { groomerUserId, dates },
     }),
 };

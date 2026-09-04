@@ -20,14 +20,8 @@ import type { Pet, PetSpecies } from "@/types/api";
 const NAME_MAX_LENGTH = 80;
 
 const SPECIES_OPTIONS: { value: PetSpecies; label: string }[] = [
-  { value: "dog", label: "Anjing" },
   { value: "cat", label: "Kucing" },
-  { value: "bird", label: "Burung" },
-  { value: "rabbit", label: "Kelinci" },
-  { value: "hamster", label: "Hamster" },
-  { value: "reptile", label: "Reptil" },
-  { value: "fish", label: "Ikan" },
-  { value: "other", label: "Lainnya" },
+  { value: "dog", label: "Anjing" },
 ];
 
 /**

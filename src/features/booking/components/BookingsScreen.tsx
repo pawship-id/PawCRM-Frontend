@@ -1,13 +1,9 @@
 "use client";
 
-import { useState } from "react";
-
 import { Alert, FilterPills, Pagination, Spinner } from "@/components";
 import { formatMoney } from "@/utils/decimal";
-import { swalToast } from "@/lib/swal";
 
 import { useBookings } from "../hooks/useBookings";
-import { BookingCreateDialog } from "./BookingCreateDialog";
 import { BookingsTable } from "./BookingsTable";
 import { BookingsToolbar } from "./BookingsToolbar";
 
@@ -24,9 +20,13 @@ import { BookingsToolbar } from "./BookingsToolbar";
  * an empty list filtered to a day they have not thought about reads as "no".
  * The date filter is one tap away with "Hari ini" as its first preset.
  *
- * IT TAKES BOOKINGS NOW, not only shows them. Until the dialog existed the only
+ * IT TAKES BOOKINGS NOW, not only shows them. Until the form existed the only
  * way to make one was to sell it at the till, which cannot answer the phone call
  * that books Thursday.
+ *
+ * THE FORM IS A PAGE OF ITS OWN — `/dashboard/booking/new`. It was a dialog on
+ * this screen until a booking could hold several animals; three cards of five
+ * controls each is a form scrolling inside a scrolling page.
  */
 export function BookingsScreen() {
   const {
@@ -39,8 +39,6 @@ export function BookingsScreen() {
     setQuery,
     refetch,
   } = useBookings();
-  const [creating, setCreating] = useState(false);
-
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -101,11 +99,7 @@ export function BookingsScreen() {
         </p>
       )}
 
-      <BookingsToolbar
-        query={query}
-        onChange={setQuery}
-        onCreate={() => setCreating(true)}
-      />
+      <BookingsToolbar query={query} onChange={setQuery} />
 
       {error && <Alert variant="error">{error}</Alert>}
 
@@ -136,21 +130,6 @@ export function BookingsScreen() {
         </>
       )}
 
-      <BookingCreateDialog
-        open={creating}
-        onOpenChange={setCreating}
-        onCreated={(booking) => {
-          /*
-            The whole list is re-asked rather than the new row spliced in: the
-            server sorts by `scheduledAt` and pages the result, so a booking made
-            for next month belongs on a page this screen is not showing — and a
-            local insert would put it at the top, which is a lie about where it
-            will be after the next refresh.
-          */
-          refetch();
-          swalToast(`Booking ${booking.bookingNumber} dibuat.`);
-        }}
-      />
     </div>
   );
 }

@@ -27,12 +27,43 @@ const booking = (overrides: Partial<Booking> = {}): Booking => ({
   branchId: "5a7f1f77bcf86cd7994390b1",
   bookingNumber: "BK-260824-001",
   customerId: CUSTOMER_ID,
-  petId: PET_ID,
+  /* The visit's own shape: a salon booking with no trip and nothing handed in. */
+  location: "in_store",
+  pickupRequested: false,
+  deliveryRequested: false,
+  tripAddress: null,
+  belongings: [],
+  createdByName: null,
+  createdByRoleName: null,
+  /*
+    AFTER PCR-040 the animals live on the rows and the header lists them; the
+    services are grouped under each on the way out. This dialog reads the flat
+    `items` — the group is empty here because the shape, not the contents, is
+    what it needs.
+  */
+  pets: [{ petId: PET_ID, petName: "Bruno", services: [] }],
+  petCount: 1,
+  totalAmount: "150000.0000",
+  totalDurationMin: null,
+  billingState: "unbilled",
   items: [
     {
+      _id: "5a7f1f77bcf86cd799439151",
+      petId: PET_ID,
+      petName: "Bruno",
+    /* Null on a main service — an add-on names the row it hangs off. */
+    parentItemId: null,
+    /* Nobody helping: this row is one groomer's, which is the ordinary case. */
+    assistantGroomers: [],
+    /* The kind of work, snapshotted as text — NOT main/addon. See BookingItem. */
+    serviceType: "Grooming",
       serviceId: SERVICE_ID,
       name: "Grooming Full Service",
       price: "150000.0000",
+      durationMin: null,
+      notes: null,
+      pulledToCartAt: null,
+      pulledToInvoiceAt: null,
       groomerUserId: null,
       // Never null — the server names an unassigned slot (FR-3's edge case).
       groomerName: "Belum ditentukan",
@@ -45,7 +76,6 @@ const booking = (overrides: Partial<Booking> = {}): Booking => ({
   statusHistory: [],
   origin: "booking",
   posTransactionId: null,
-  pulledToCartAt: null,
   notes: null,
   cancelReason: null,
   createdAt: "2026-08-24T00:00:00.000Z",
@@ -457,5 +487,41 @@ describe("BookingBridgeDialog — several animals in one opening", () => {
     expect(
       screen.getByRole("button", { name: /tambah ke keranjang/i }),
     ).toBeDisabled();
+  });
+
+  it("gives each row its own key, even when two share a service", async () => {
+    /*
+      REPORTED FROM THE TILL, 3 September 2026: React warned about two children
+      with the same key. The rows were keyed on `serviceId`, and since PCR-040
+      one booking may carry the same service twice — Mochi and Coco both having a
+      Full Service. React is entitled to drop or duplicate either row.
+
+      RENDERED WITHOUT A WARNING is the assertion: the key itself is not
+      observable, so this watches the console the way the browser did.
+    */
+    const warn = jest.spyOn(console, "error").mockImplementation(() => {});
+
+    const base = booking();
+
+    mockedBookings.bridge.mockResolvedValue([
+      {
+        ...base,
+        /* SAME service, two animals — exactly what `serviceId` could not key. */
+        items: [
+          { ...base.items[0], _id: "it-1", petName: "Mochi" },
+          { ...base.items[0], _id: "it-2", petName: "Coco" },
+        ],
+      },
+    ] as never);
+
+    open();
+
+    await screen.findByText("BK-260824-001");
+
+    expect(
+      warn.mock.calls.some((call) => String(call[0]).includes("same key")),
+    ).toBe(false);
+
+    warn.mockRestore();
   });
 });

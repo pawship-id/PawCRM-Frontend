@@ -55,14 +55,26 @@ const booking = (overrides: Partial<Booking> = {}): Booking =>
     branchId: "b1",
     bookingNumber: "BK-260826-001",
     customerId: "cust-1",
-    petId: PET_ID,
+    // AFTER PCR-040 the animals are on the rows; the header lists them.
+    pets: [{ petId: PET_ID, petName: "Bruno" }],
+    petCount: 1,
+    totalAmount: "150000.0000",
+    totalDurationMin: null,
+    billingState: "unbilled",
     petName: "Bruno",
     customerName: "Ibu Rina",
     items: [
       {
+        _id: "row-1",
+        petId: PET_ID,
+        petName: "Bruno",
         serviceId: "svc-1",
         name: "Grooming Full Service",
         price: "150000.0000",
+        durationMin: null,
+        notes: null,
+        pulledToCartAt: null,
+        pulledToInvoiceAt: null,
         groomerUserId: null,
         groomerName: "Belum ditentukan",
         bookingStatus: "draft",
@@ -74,7 +86,6 @@ const booking = (overrides: Partial<Booking> = {}): Booking =>
     status: "confirmed",
     origin: "booking",
     posTransactionId: null,
-    pulledToCartAt: null,
     notes: null,
     cancelReason: null,
     createdAt: "2026-08-26T00:00:00.000Z",
@@ -609,6 +620,12 @@ describe("PosCart — a line whose service has already started", () => {
     discount: null,
     hppAtTime: null,
     bookingId: "bk-1",
+    /*
+      A CART LINE, not a booking header. It names the ROW it came from since
+      PCR-040, so taking this line out releases Bruno's row and leaves any other
+      animal on the same visit claimed.
+    */
+    bookingItemId: "row-1",
     petId: PET_ID,
     petName: "Bruno",
     groomerName: "Belum ditentukan",
@@ -788,6 +805,12 @@ describe("PosScreen — changing who the basket is for", () => {
     discount: null,
     hppAtTime: null,
     bookingId: "bk-1",
+    /*
+      A CART LINE, not a booking header. It names the ROW it came from since
+      PCR-040, so taking this line out releases Bruno's row and leaves any other
+      animal on the same visit claimed.
+    */
+    bookingItemId: "row-1",
     petId: PET_ID,
     petName: "Bruno",
     groomerName: "Belum ditentukan",
@@ -924,7 +947,12 @@ describe("PosScreen — the banner follows the basket", () => {
     discount: null,
     hppAtTime: null,
     bookingId: BOOKING_ID,
-    petId: PET_ID,
+    // AFTER PCR-040 the animals are on the rows; the header lists them.
+    pets: [{ petId: PET_ID, petName: "Bruno" }],
+    petCount: 1,
+    totalAmount: "150000.0000",
+    totalDurationMin: null,
+    billingState: "unbilled",
     petName: "Bruno",
     groomerName: "Belum ditentukan",
     bookingStatus: "confirmed",

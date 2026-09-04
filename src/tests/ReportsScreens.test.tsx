@@ -154,10 +154,29 @@ describe("ReportsHub", () => {
     expect(screen.queryByText("Kartu Stok")).not.toBeInTheDocument();
   });
 
-  it("says so rather than rendering an empty grid for a role with nothing", () => {
+  it("still offers a role with no grants their own commission", () => {
+    /*
+      THE HUB IS NEVER EMPTY ANY MORE, and the "no access to any report" message
+      was removed rather than left unreachable — a branch that cannot run reads
+      as evidence the case is possible.
+
+      "Komisi Saya" needs no grant because it answers only about the signed-in
+      person. Requiring one would mean handing a groomer the staff register to be
+      told what they themselves earned.
+    */
     renderWithAuth(<ReportsHub />, { isSuperAdmin: false, permissions: [] });
 
-    expect(screen.getByText(/belum punya akses/i)).toBeInTheDocument();
+    const cards = screen.getAllByRole("link");
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toHaveAttribute(
+      "href",
+      "/dashboard/reports/commissions/mine",
+    );
+
+    /* And NOT the whole shop's payroll, which is the point of the split. */
+    expect(
+      screen.queryByRole("link", { name: /rekap komisi/i }),
+    ).not.toBeInTheDocument();
   });
 
   /**

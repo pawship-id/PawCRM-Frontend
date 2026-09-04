@@ -88,6 +88,42 @@ describe("AuthProvider — hydrating the session", () => {
   });
 
   /*
+    THE LANDING PAGE IS READ BY PEOPLE WITH NO ACCOUNT, so `/` is public for the
+    same reason `/struk` is.
+  */
+  it("asks nobody on the landing page", async () => {
+    pathname.mockReturnValue("/");
+
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+
+    expect(
+      await screen.findByText(/status: unauthenticated/),
+    ).toBeInTheDocument();
+    expect(mockedAuth.me).not.toHaveBeenCalled();
+  });
+
+  /*
+    AND "/" DOES NOT MAKE THE WHOLE APP PUBLIC. Every path begins with a slash,
+    so the exact-match half of the predicate is the only thing keeping the
+    dashboard hydrating. This test fails the moment somebody loosens it.
+  */
+  it("does not treat every route as public just because / is listed", async () => {
+    pathname.mockReturnValue("/dashboard/keuangan");
+
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(mockedAuth.me).toHaveBeenCalled());
+  });
+
+  /*
     A PREFIX, NOT A SUBSTRING. `/strukturku` is somebody else's route and must
     still hydrate — matching on `startsWith("/struk")` alone would silently sign
     out every page whose path happens to begin with those five letters.

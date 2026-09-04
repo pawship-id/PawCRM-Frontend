@@ -89,10 +89,69 @@ export interface HealthPayload {
 
 /**
  * A staff user, as returned by /api/auth/login, /api/auth/me and /api/users.
- * The backend never returns `passwordHash` — see user.model.js. Fields the
- * profile UI does not yet touch (commissionRate, availability) are omitted
- * rather than typed loosely; add them when a screen needs them.
+ * The backend never returns `passwordHash` — see user.model.js.
+ *
+ * `commissionRate` AND `availability` USED TO BE OMITTED HERE, with a note
+ * saying to add them when a screen needed one. FR-4 and FR-6 made both
+ * load-bearing — the roster decides who may be booked, the rate decides what
+ * they earn — and until the roster screen landed there was no way to set either
+ * except by calling the API by hand.
  */
+/**
+ * How a groomer's commission is worked out — FR-6.
+ *
+ *   percentage — `value` per cent of the row's price
+ *   fixed      — `value` currency units per row, whatever it was worth
+ *   matrix     — a different rate per service, keyed by `serviceId` (K6)
+ *
+ * NULLABLE AS A WHOLE, and the null is the answer for most staff: cashiers,
+ * receptionists and a vet on salary earn no commission, and `null` says that far
+ * more clearly than a rate of zero.
+ */
+export type CommissionRateType = "percentage" | "fixed" | "matrix";
+
+/** As the API RETURNS it — every key present, whichever one is meaningful. */
+export interface CommissionRate {
+  type: CommissionRateType;
+  /** Meaningful for `percentage` and `fixed`; null alongside a matrix. */
+  value: number | null;
+  /** Meaningful for `matrix` only. `key` is a serviceId since K6. */
+  matrix: { key: string; value: number }[];
+}
+
+/**
+ * As the API ACCEPTS it — a UNION, so only the meaningful key can be sent.
+ *
+ * THE SERVER FORBIDS THE OTHER ONE, and it is right to: `value` alongside a
+ * matrix is a number no row would ever read, and `matrix` alongside a percentage
+ * is rows nothing would ever consult. Sending both is a payload that cannot mean
+ * anything, so Joi answers "commissionRate.matrix is not allowed for this
+ * commission type".
+ *
+ * A UNION RATHER THAN A COMMENT SAYING "ONLY SEND ONE". The first version of the
+ * roster form sent `matrix: []` with every percentage and was refused on every
+ * save — and the test that should have caught it used `objectContaining`, which
+ * passes happily on an extra key. The type makes the mistake unrepresentable
+ * instead of merely discouraged.
+ */
+export type CommissionRateInput =
+  | { type: "percentage" | "fixed"; value: number }
+  | { type: "matrix"; matrix: { key: string; value: number }[] };
+
+/**
+ * When a staff member cannot be booked — FR-4.
+ *
+ * `weeklyOff` USES JAVASCRIPT'S DAY NUMBERING: 0 is Sunday, 3 is Wednesday. It
+ * is the numbering `Date#getDay` returns, which is what the server compares
+ * against, and inventing a friendlier one here would be a translation layer with
+ * exactly one job — to be got wrong once.
+ */
+export interface UserAvailability {
+  weeklyOff: number[];
+  /** ISO dates. One-off absences, not a recurring pattern. */
+  leaveDates: string[];
+}
+
 /**
  * One branch's worth of warehouse scope on a user.
  *
@@ -129,6 +188,21 @@ export interface User {
    * "never configured" and treats as every warehouse of those branches.
    */
   warehouseAccess: WarehouseScopeEntry[];
+  /** Null for staff who earn no commission — which is most of them. */
+  /**
+   * Can this person be assigned an animal to groom?
+   *
+   * NOT A ROLE AND NOT A PERMISSION. A role says what somebody may DO in this
+   * system; this says what they do in the SHOP — an owner who grooms on
+   * Saturdays holds every permission there is and must appear in the booking
+   * form's dropdown, while a manager with identical permissions must not.
+   *
+   * The groomer dropdown, the calendar's columns and the booking list's filter
+   * all read it. Before it existed they read "every active user".
+   */
+  isGroomer: boolean;
+  commissionRate: CommissionRate | null;
+  availability: UserAvailability;
   status: "active" | "suspended";
   emailVerifiedAt: string | null;
   lastLoginAt: string | null;
@@ -146,6 +220,19 @@ export interface User {
 
 /** The session context returned alongside the user. */
 export interface SessionContext {
+  /**
+   * WHICH SHOP THIS DEVICE IS STANDING IN — the till's choice, not "the branch".
+   *
+   * The POS is what it is for: a cashier picks it once and works there all day.
+   * EVERY HAND-TYPED FORM ASKS FOR ITS OWN BRANCH instead — the invoice, the
+   * receipt, the stock forms, the booking — because the person filling one in is
+   * not necessarily standing where the work will happen. A booking taken over
+   * the phone for the other shop is the ordinary case.
+   *
+   * Reading it as "the branch" cost two bugs: bookings filed to whichever branch
+   * the session pointed at, and a calendar filter that silently showed one
+   * branch when asked for all. Use `useBranchScope` and a picker.
+   */
   currentBranchId: string | null;
   /** Present on login, omitted by /me. */
   expiresAt?: string;
@@ -263,6 +350,20 @@ export interface UpdateUserInput {
   allBranches?: boolean;
   branchAccess?: string[];
   warehouseAccess?: WarehouseScopeEntry[];
+  /**
+   * REPLACED WHOLE, never patched key by key. `type` decides whether `value` or
+   * `matrix` is the meaningful one, so sending half of it would leave the old
+   * matrix rows behind a new percentage — a document no reader can interpret.
+   * `null` clears it: this person earns no commission.
+   */
+  /** See `User.isGroomer` — what they do in the shop, not what they may do here. */
+  isGroomer?: boolean;
+  commissionRate?: CommissionRateInput | null;
+  /**
+   * MERGED, unlike the rate. Its two keys are independent, so writing the weekly
+   * pattern must not wipe next month's leave.
+   */
+  availability?: Partial<UserAvailability>;
 }
 
 /**
@@ -1120,6 +1221,15 @@ export interface PosItem {
   discount: PosDiscount | null;
   hppAtTime: string | null;
   bookingId: string | null;
+  /**
+   * The booking ROW this line came from — PCR-040.
+   *
+   * `bookingId` alone is no longer enough: a booking is a visit now, and taking
+   * Coco's line out of the basket must release Coco's row and leave Mochi's
+   * claimed. Null on lines pulled before the migration, where the server falls
+   * back to releasing the whole booking.
+   */
+  bookingItemId: string | null;
   petId: string | null;
   petName: string | null;
   groomerName: string | null;
@@ -1704,6 +1814,8 @@ export interface PosItemInput {
     approvedBy?: string;
   } | null;
   bookingId?: string | null;
+  /** The booking row this line came from — see `PosCartItem.bookingItemId`. */
+  bookingItemId?: string | null;
   petId?: string | null;
   petName?: string | null;
   groomerName?: string | null;
@@ -1770,9 +1882,60 @@ export type BookingOrigin = "booking" | "pos_adhoc" | "invoice_adhoc";
  * `price` is a decimal STRING, never a number.
  */
 export interface BookingItem {
+  /**
+   * The row's own id — new in PCR-040, and what a cart or invoice line points at
+   * so taking one line out releases THAT animal's row and leaves the others
+   * claimed.
+   */
+  _id: string;
+  /**
+   * WHOSE ROW THIS IS. The animal moved off the booking header in PCR-040: one
+   * visit may bring Mochi and Coco, and each row says which.
+   */
+  petId: string;
+  /** Resolved on read, like every other name here. Null when the pet is gone. */
+  petName: string | null;
   serviceId: string;
+  /**
+   * NULL ON A MAIN SERVICE; on an add-on, the row it hangs off.
+   *
+   * An add-on is a ROW of its own — it carries its own price and duration, so it
+   * bills as a line and prints as a line. The screen groups them back under
+   * their parent for display; the API keeps them flat, because every other
+   * reader (the calendar, the clash check, commission) wants them that way.
+   */
+  parentItemId: string | null;
   name: string;
+  /**
+   * THE KIND OF WORK — "Grooming", "Hotel", "Day Care" — as TEXT.
+   *
+   * ⚠️ NOT `Service["serviceType"]`, which is `main` | `addon`. Same name, two
+   * meanings, one join apart: on a booking row this is the kind of work, and
+   * whether a line is an add-on is said by `parentItemId` instead.
+   *
+   * READ FROM THE SERVICE'S LINE OF BUSINESS and stored as its NAME, so the
+   * booking is not coupled to the catalogue's accounting dimension. A SNAPSHOT
+   * like `name` and `price`: renaming a line must not rewrite last month's day
+   * sheets. Null on rows written before the field, and on a service whose line
+   * has since been deleted.
+   */
+  serviceType: string | null;
   price: string;
+  /**
+   * How long this row takes, in minutes. Snapshotted from the service and
+   * overridable — a nervous dog genuinely takes longer than the catalogue says.
+   *
+   * NULL WHEN THE CATALOGUE CARRIES NONE, and a calendar draws such a row at a
+   * default height rather than refusing to draw it: a booking nobody can see is
+   * worse than one drawn at the wrong height.
+   */
+  durationMin: number | null;
+  /** Anything special about THIS animal on THIS visit. */
+  notes: string | null;
+  /** When this row was dropped into a POS cart. Null = still billable. */
+  pulledToCartAt: string | null;
+  /** When this row was claimed by an invoice. Null = still billable. */
+  pulledToInvoiceAt: string | null;
   /** null = FR-3's "Belum ditentukan". Assignment is a scheduling question. */
   groomerUserId: string | null;
   /**
@@ -1784,6 +1947,41 @@ export interface BookingItem {
    * three would eventually disagree about what an empty slot is called.
    */
   groomerName: string;
+  /**
+   * THE EXTRA HANDS ON THIS SESSION — resolved to `{ _id, name }` on read.
+   *
+   * SCHEDULING ONLY. They count against their own day in the clash check, and
+   * they earn nothing: commission is computed for `groomerUserId` alone. A pair
+   * rather than two index-aligned arrays, because the screen renders and removes
+   * them together.
+   */
+  assistantGroomers: { _id: string; name: string }[];
+  /**
+   * WHY THE GROOMER ON THIS ROW CANNOT WORK THE DAY IT IS BOOKED FOR — null in
+   * the ordinary case.
+   *
+   * COMPUTED ON READ, never stored: leave is set AFTER a booking is made, which
+   * is the entire problem, so a flag stamped at write time would be stale
+   * exactly when it matters.
+   *
+   * IT REFUSES NOTHING. The booking stands and the shop decides — move the
+   * groomer, or ring the customer.
+   */
+  groomerOffReason?: string | null;
+  /**
+   * HOW FAR THIS ONE ANIMAL'S SERVICE HAS GOT — `pending | in_progress | done`.
+   *
+   * THREE RUNGS, NOT THE BOOKING'S FIVE. `draft` and `check_in` are not about a
+   * service: check-in is the ANIMAL arriving, one fact per visit rather than one
+   * per service, and copying the ladder would mean marking Coco arrived twice
+   * because she is having two things done.
+   *
+   * The BOOKING's status is derived from these — see `#deriveBookingStatus`.
+   */
+  workStatus?: BookingWorkStatus;
+  /** When the work actually started and finished. Correctable, and audited. */
+  startedAt?: string | null;
+  finishedAt?: string | null;
 }
 
 /**
@@ -1795,6 +1993,9 @@ export interface BookingItem {
  * sebelum datang atau langsung check-in", "siapa yang membatalkan" are asked
  * afterwards, and this is what can answer them.
  */
+/** The three rungs one animal's service walks. */
+export type BookingWorkStatus = "pending" | "in_progress" | "done";
+
 export interface BookingStatusEvent {
   status: BookingStatus;
   /** When it happened. ISO instant. */
@@ -1841,16 +2042,31 @@ export interface Booking {
    */
   bookingNumber: string | null;
   customerId: string;
-  petId: string;
+  /** Where the work happens — `in_store` unless the visit is a house call. */
+  location: BookingLocation;
+  pickupRequested: boolean;
+  deliveryRequested: boolean;
+  tripAddress: string | null;
+  /** What the owner handed over, per animal. See `BookingBelonging`. */
+  belongings: BookingBelonging[];
   /**
-   * The animal's name, RESOLVED ON READ — never snapshotted onto the booking.
+   * THE ANIMALS ON THIS VISIT — plural since PCR-040.
    *
-   * A pet renamed between the appointment and the counter appears under its new
-   * name, because this is a LABEL rather than a record of what was agreed. (The
-   * price on `items[]` is the opposite and IS frozen: a booking is a quote.)
+   * Distinct, in row order. Anything that needs them apart reads this; anything
+   * that wants one string reads `petName` below.
+   */
+  pets: BookingPet[];
+  /**
+   * The animals' names JOINED — "Mochi, Coco" — resolved on read.
    *
-   * Null only when the reference is genuinely broken — a pet deleted outright.
-   * Inventing a name for that would hide it.
+   * IT USED TO BE ONE NAME, and it is kept as a label rather than dropped
+   * because a day-sheet column wants one string. Null on a booking with no rows
+   * at all; never null merely because there are two animals, which would blank
+   * the column on exactly the bookings PCR-040 was built for.
+   *
+   * A LABEL, NOT A RECORD. A pet renamed between the appointment and the counter
+   * appears under its new name. (The price on `items[]` is the opposite and IS
+   * frozen: a booking is a quote.)
    */
   petName: string | null;
   /**
@@ -1860,6 +2076,18 @@ export interface Booking {
    * there is a row nobody can act on.
    */
   customerName: string | null;
+  /**
+   * WHO CREATED THE BOOKING, resolved on read — the same rule as `petName` and
+   * `customerName`. Null when nothing human made it (a migration, a scheduled
+   * job), never a placeholder.
+   */
+  createdByName: string | null;
+  /**
+   * The role that person held AT THE TIME — null even when the name is not,
+   * for the seeded Owner: it reaches every permission by bypass rather than an
+   * assigned role, so there is genuinely no role to show.
+   */
+  createdByRoleName: string | null;
   items: BookingItem[];
   scheduledAt: string;
   status: BookingStatus;
@@ -1875,20 +2103,288 @@ export interface Booking {
   origin: BookingOrigin;
   /** Set by the POS when this booking is paid for. */
   posTransactionId: string | null;
-  /** When its services were dropped into a POS cart. Cleared on cancel. */
-  pulledToCartAt: string | null;
+  /** What the whole visit comes to — the sum of its rows. */
+  totalAmount: string | null;
+  /**
+   * How long the visit takes: the LONGEST groomer's workload, not the sum.
+   *
+   * Two groomers work at the same time — Mochi with Sinta for 90 minutes and
+   * Coco with Rio for 60 means the customer waits 90, not 150.
+   */
+  totalDurationMin: number | null;
+  /** How many distinct animals, for the "2 hewan" badge. */
+  petCount: number;
+  /**
+   * HOW MUCH OF THIS VISIT HAS BEEN BILLED.
+   *
+   * `partial` IS THE VALUE PCR-040 CREATED: Coco went home ungroomed and Mochi
+   * was paid for. Before multi-pet this could not be expressed at all.
+   *
+   * A SUMMARY OF THE ROWS. Draw a badge from it; never decide from it whether
+   * something may be billed — that question belongs to the row.
+   */
+  billingState: BookingBillingState;
   notes: string | null;
   cancelReason: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
+/** One animal on a booking, for the header's `pets` list. */
+/** One service on a visit, with its add-ons under it — see `BookingPet`. */
+export interface BookingPetService {
+  /** The stored row's id: what an invoice line or a POS line points at. */
+  itemId: string;
+  serviceId: string;
+  name: string;
+  /** The kind of work — "Grooming", "Hotel". Not main/addon. */
+  serviceType: string | null;
+  price: string;
+  durationMin: number | null;
+  groomerUserId: string | null;
+  groomerName: string | null;
+  /** Set when the person named cannot work the day this is booked for. */
+  groomerOffReason: string | null;
+  assistantGroomers: { _id: string; name: string }[];
+  workStatus: BookingWorkStatus;
+  startedAt: string | null;
+  finishedAt: string | null;
+  notes: string | null;
+  pulledToCartAt: string | null;
+  pulledToInvoiceAt: string | null;
+  addons: {
+    itemId: string;
+    serviceId: string;
+    name: string;
+    price: string;
+    durationMin: number | null;
+    pulledToCartAt: string | null;
+    pulledToInvoiceAt: string | null;
+  }[];
+}
+
+/**
+ * ONE ANIMAL ON THE VISIT, WITH WHAT IS BEING DONE TO IT.
+ *
+ * ─── A VIEW, NOT THE STORED SHAPE ──────────────────────────────────────────
+ *
+ * The API stores one document per sellable line — that is what an invoice line
+ * and a POS line each point at, what `commissionrecords` is unique per, and what
+ * the calendar, the clash check and the pet timeline find by index. This is the
+ * same rows grouped the way every screen reads them, built on the way out.
+ *
+ * `petId` / `petName` HAVE ALWAYS BEEN HERE and are unchanged; `services` is
+ * added beside them, so a day sheet that wants only the names keeps working.
+ * The flat `Booking["items"]` is also untouched.
+ */
+export interface BookingPet {
+  petId: string;
+  petName: string | null;
+  services: BookingPetService[];
+}
+
+/** How much of a visit has been billed — see `Booking.billingState`. */
+export type BookingBillingState = "unbilled" | "partial" | "billed";
+
+/**
+ * One block on the calendar — FR-3.
+ *
+ * A BLOCK IS A ROW, NOT A BOOKING. Since PCR-040 a visit may bring Mochi and
+ * Coco with different groomers, so one booking appears in two columns at once.
+ * Rows of one visit share `bookingId`, which is what lets the screen tie them
+ * together and open the whole booking from either.
+ */
+export interface BookingCalendarEntry {
+  /** The ROW's id. */
+  _id: string;
+  bookingId: string;
+  bookingNumber: string | null;
+  status: BookingStatus;
+  branchId: string;
+  /** The visit's arrival time — every row of a booking shares it (K4). */
+  startAt: string;
+  /**
+   * NULL WHEN THE SERVICE CARRIES NO DURATION, rather than a guess. The screen
+   * draws such a block at a default height and says so; inventing a length would
+   * put a number on the calendar that nobody chose.
+   */
+  durationMin: number | null;
+  groomerUserId: string | null;
+  groomerName: string | null;
+  /** See `BookingItem.groomerOffReason` — the groomer went on leave since. */
+  groomerOffReason?: string | null;
+  petId: string;
+  petName: string | null;
+  customerName: string | null;
+  serviceName: string;
+  notes: string | null;
+}
+
+/** GET /api/bookings/calendar. */
+export interface BookingCalendar {
+  from: string;
+  to: string;
+  /**
+   * The columns, derived from what is actually booked rather than from the staff
+   * list — a column for every user is mostly empty columns.
+   */
+  /**
+   * The calendar's columns.
+   *
+   * `idle` MEANS "IN TODAY, NOTHING BOOKED" — a column that exists so somebody
+   * can be given work, not because they already have some. Only ever true on a
+   * single-day range: "who is in" is a per-day fact and a week has no single
+   * answer.
+   */
+  groomers: { _id: string; name: string | null; idle?: boolean }[];
+  /** True when anything at all is waiting for somebody to be put on it. */
+  hasUnassigned: boolean;
+  entries: BookingCalendarEntry[];
+}
+
+export interface BookingCalendarQuery {
+  branchId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+/**
+ * One staff member, and why they cannot be booked on a given day — FR-4.
+ *
+ * `offReason` IS PART OF THE ANSWER, not a nicety. A disabled row with no
+ * explanation is the commonest dead end in this app: "Libur setiap Rabu" tells a
+ * receptionist to offer Thursday; a greyed name tells them to phone somebody.
+ *
+ * EVERYBODY IS LISTED, including the ones who are off. A list that silently
+ * omitted them would leave somebody wondering whether the name they wanted is
+ * missing or the list is broken.
+ */
+export interface GroomerAvailability {
+  _id: string;
+  fullName: string;
+  offReason: string | null;
+}
+
+/** A booking row that a proposed leave would strand — FR-4 kriteria 4.9. */
+export interface AffectedBooking {
+  _id: string;
+  bookingId: string;
+  bookingNumber: string | null;
+  scheduledAt: string;
+  durationMin: number | null;
+  petId: string;
+  name: string;
+}
+
+/**
+ * One line of Rekap Komisi — FR-6.
+ *
+ * `reversedRows` IS COUNTED SEPARATELY and never folded into `amount`. A payroll
+ * figure that quietly included work that was undone is wrong in the direction
+ * that costs money; one that pretended the reversal never happened is wrong in
+ * the direction nobody can audit.
+ */
+export interface CommissionRecapRow {
+  groomerUserId: string;
+  groomerName: string | null;
+  /** Records that count — reversals excluded. */
+  rows: number;
+  reversedRows: number;
+  amount: string;
+}
+
+/**
+ * GET /api/reports/commissions.
+ *
+ * `total` IS SUMMED FROM `rows`, not queried separately — kriteria 6.12 asks
+ * that the recap match the sum of its records to the last rupiah, and the surest
+ * way to satisfy that is to have one number, computed once.
+ */
+export interface CommissionRecap {
+  rows: CommissionRecapRow[];
+  total: string;
+}
+
+export interface CommissionRecapQuery {
+  /** `YYYY-MM`. Payroll is monthly; a range across a boundary pays nobody. */
+  period?: string;
+  branchId?: string;
+  groomerUserId?: string;
+}
+
 /** Query parameters accepted by GET /api/bookings. All optional. */
+/**
+ * The result of taking a month's commission to the ledger.
+ *
+ * `posted: false` IS A SUCCESS, not a failure — "nothing to close" is a true and
+ * useful answer to "close September". The other fields are absent when it is
+ * false, because nothing was written to describe.
+ */
+export interface CommissionCloseResult {
+  posted: boolean;
+  period: string;
+  branchId?: string;
+  reason?: string;
+  closeId?: string;
+  journalEntryId?: string;
+  entryNumber?: string;
+  amount?: string;
+  recordCount?: number;
+  groomerCount?: number;
+}
+
+/**
+ * What is still owed to one groomer at one branch.
+ *
+ * COMPUTED FROM THE SAME ROWS A PAYMENT WOULD TAKE, not from the ledger and not
+ * from the recap. The recap is one MONTH's earnings; this is everything closed
+ * and unpaid, which may span several — and two figures computed two ways is how
+ * a reconciliation becomes an argument.
+ */
+export interface CommissionOutstanding {
+  groomerUserId: string;
+  branchId: string;
+  periods: string[];
+  amount: string;
+  recordCount: number;
+}
+
+/**
+ * KOMISI SAYA — one person's own commission.
+ *
+ * `earned` IS NULL, NOT A ZEROED ROW, for a month with no work. "You earned
+ * nothing" and "there is nothing here yet" are different sentences, and a zeroed
+ * row says the first when the second is true.
+ */
+export interface MyCommission {
+  period: string | null;
+  earned: CommissionRecapRow | null;
+  total: string;
+  outstanding: CommissionOutstanding;
+}
+
+/** The result of paying one groomer what the books say is owed. */
+export interface CommissionPaymentResult {
+  paymentId: string;
+  journalEntryId: string;
+  entryNumber: string;
+  groomerUserId: string;
+  groomerName: string | null;
+  periods: string[];
+  amount: string;
+  recordCount: number;
+}
+
 export interface BookingListQuery {
   page?: number;
   limit?: number;
   customerId?: string;
   petId?: string;
+  /**
+   * Whose work. Like `petId`, a question about ROWS — the server resolves it to
+   * booking ids and intersects it with `petId` when both are asked.
+   */
+  groomerUserId?: string;
   branchId?: string;
   /** One status or several — a day sheet usually wants more than one. */
   status?: BookingStatus | BookingStatus[];
@@ -1935,15 +2431,102 @@ export interface BookingUnbilledSummary {
  *
  * `branchId` is optional — the server falls back to the session's current branch.
  */
+/**
+ * One row of a booking, as the API accepts it — PCR-040.
+ *
+ * `petId` MOVED HERE from beside `customerId`. A booking is a VISIT now, and
+ * each row says whose animal it is for.
+ *
+ * NOTE WHAT IS ABSENT: a price. It is read from the catalogue by the server and
+ * never accepted from a client, because a price a client can set is a discount a
+ * client can grant. `durationMin` IS accepted, and the asymmetry is deliberate:
+ * it is a receptionist recording that this nervous dog takes longer than the
+ * catalogue thinks, which is not the same kind of fact at all.
+ */
+export interface BookingItemInput {
+  petId: string;
+  serviceId: string;
+  groomerUserId?: string | null;
+  /** Omit to follow the catalogue. 1–1440. */
+  durationMin?: number | null;
+  notes?: string | null;
+  /**
+   * The add-ons ticked under this service — sent on the PARENT, stored as rows.
+   *
+   * Each must be a service filed `serviceType: "addon"` AND listed in this
+   * service's own `addonServiceIds`; the server refuses anything else. It mints
+   * the ids and the `parentItemId` link, so the client never invents one. The
+   * add-on takes the parent's animal and groomer, and its own price and duration
+   * from the catalogue.
+   */
+  addonServiceIds?: string[];
+}
+
+/**
+ * "Save it anyway" — FR-4 kriteria 4.6.
+ *
+ * A CLASH IS A WARNING, NOT A REFUSAL: two small dogs at ten really can be
+ * handled together sometimes, and the shop is the only one who knows. The server
+ * refuses this flag without `bookings:overrideClash` and writes every override
+ * to the audit log.
+ *
+ * LEAVE IS NOT OVERRIDABLE. A groomer who is off is off, and this flag does not
+ * change that.
+ */
+
+/** Where the work happens. Mirrors BOOKING_LOCATIONS in booking.model.js. */
+export type BookingLocation = "in_store" | "in_home";
+
+/**
+ * One thing the owner handed over with an animal — barang bawaan pawrents.
+ *
+ * TWO DATES, NOT A `returned` FLAG. `checkedInAt: null` means it was written
+ * down when the booking was taken and never actually handed over, which is not
+ * the same as "handed over and given back" — and only the second kind can hold a
+ * visit open. A single boolean could not tell them apart.
+ */
+export interface BookingBelonging {
+  _id: string;
+  petId: string;
+  name: string;
+  checkedInAt: string | null;
+  checkedOutAt: string | null;
+  checkedInBy: string | null;
+  checkedOutBy: string | null;
+}
+
+/** What a create or edit sends. `checkedOutAt` is not accepted on a create. */
+export interface BookingBelongingInput {
+  petId: string;
+  name: string;
+  checkedInAt?: string | null;
+  checkedOutAt?: string | null;
+}
+
 export interface CreateBookingInput {
   customerId: string;
-  petId: string;
-  items: { serviceId: string; groomerUserId?: string | null }[];
+  items: BookingItemInput[];
+  forceClash?: boolean;
   scheduledAt: string;
   branchId?: string;
   status?: BookingStatus;
   origin?: BookingOrigin;
   notes?: string | null;
+  /**
+   * Where the work happens — and it NARROWS what may be booked: a service that
+   * does not list this location in its own `serviceLocations` is refused.
+   */
+  location?: BookingLocation;
+  /**
+   * ONE TRIP PER VISIT, not per animal — a van goes to an address, and two of
+   * one customer's dogs travel in the same one. Both are forced to false on an
+   * `in_home` booking: the salon is already going to the animal.
+   */
+  pickupRequested?: boolean;
+  deliveryRequested?: boolean;
+  /** Null means the customer's stored address, not "no address". */
+  tripAddress?: string | null;
+  belongings?: BookingBelongingInput[];
 }
 
 /**
@@ -1954,11 +2537,21 @@ export interface CreateBookingInput {
  */
 export interface UpdateBookingInput {
   customerId?: string;
-  petId?: string;
-  items?: { serviceId: string; groomerUserId?: string | null }[];
+  items?: BookingItemInput[];
+  forceClash?: boolean;
   scheduledAt?: string;
   branchId?: string;
   notes?: string | null;
+  location?: BookingLocation;
+  pickupRequested?: boolean;
+  deliveryRequested?: boolean;
+  tripAddress?: string | null;
+  /**
+   * SENT WHOLESALE, like `items`: what this list holds IS the booking's
+   * belongings afterwards. Ticking one back out is this route with the whole
+   * list — `checkedOutAt` is accepted here, unlike on a create.
+   */
+  belongings?: BookingBelongingInput[];
 }
 
 /**
@@ -2075,18 +2668,71 @@ export interface UpdatePaymentChannelInput {
  * `price` is a STRING, never a number — the API returns and accepts the decimal
  * as written, because JSON.parse("199999.99") is already not 199999.99.
  */
+/**
+ * Whether a service is booked directly (`main`) or only ever tagged onto one
+ * (`addon`). Mirrors SERVICE_TYPES in service.model.js.
+ */
+export type ServiceType = "main" | "addon";
+
+/**
+ * The three facts a service's price may vary by. Mirrors VARIANT_AXES in
+ * service.model.js — a CLOSED list, unlike a product's free-text `variantAxes`,
+ * because a service varies by what is standing on the table.
+ */
+export type ServiceVariantAxis = "petType" | "sizeCategory" | "furType";
+
+/** Where a service is performed. Mirrors SERVICE_LOCATIONS. */
+export type ServiceLocation = "in_home" | "in_store";
+
+/**
+ * One priced combination of the axes a service declares. Only the fields named
+ * in the service's `variantAxes` are populated; the rest are null.
+ *
+ * The values are the PET's own vocabulary, deliberately: `PetSpecies`,
+ * `PetSize` and `PetFurType` are the same enums a pet profile records.
+ */
+export interface ServiceVariant {
+  petType: PetSpecies | null;
+  sizeCategory: PetSize | null;
+  furType: PetFurType | null;
+  /** Decimal as a string, e.g. "120000.0000". */
+  price: string;
+}
+
 export interface Service {
   _id: string;
   tenantId: string;
   name: string;
-  /** Optional quick-entry code, uppercased, unique per tenant when present. */
-  code: string | null;
+  /** Quick-entry code, uppercased, required and unique per tenant. */
+  code: string;
+  /** One image, not a gallery — the same shape a category's picture takes. */
+  image: MediaAsset | null;
   businessLineId: string;
+  salesAccountId: string | null;
   categoryId: string | null;
-  /** Decimal as a string, e.g. "150000.0000". */
-  price: string;
+  /**
+   * Decimal as a string, e.g. "150000.0000" — or NULL when `hasVariants` is
+   * true, where each variant carries its own price instead.
+   */
+  price: string | null;
   durationMin: number | null;
   description: string | null;
+  /** Whether the price depends on the pet — see `variants`. */
+  hasVariants: boolean;
+  variantAxes: ServiceVariantAxis[];
+  variants: ServiceVariant[];
+  /** The stops a booking of this service moves through. */
+  sessions: string[];
+  /** `true` means every branch, now and as new ones open — `branchIds` is []. */
+  allBranches: boolean;
+  branchIds: string[];
+  serviceType: ServiceType;
+  /** Only a `main` service carries these, and only ids of `addon` services. */
+  addonServiceIds: string[];
+  /** What the price covers, for a storefront to list — not the description. */
+  included: string[];
+  serviceLocations: ServiceLocation[];
+  pickupDeliveryAvailable: boolean;
   taxExempt: boolean;
   /** Still offered at the till. Orthogonal to `deletedAt`. */
   isActive: boolean;
@@ -2103,27 +2749,54 @@ export interface ServiceListQuery {
   /** "Every grooming service" — the POS pill and the booking form. */
   businessLineId?: string;
   categoryId?: string;
+  /** "Every addon" — the addon picker's list. */
+  serviceType?: ServiceType;
+  /** Only services offered at that branch, `allBranches` ones included. */
+  branchId?: string;
   isActive?: boolean;
   /** Free-text over name / code. */
   search?: string;
   includeDeleted?: boolean;
 }
 
+/** One variant as the form sends it — the same shape, price as typed. */
+export interface ServiceVariantInput {
+  petType?: PetSpecies | null;
+  sizeCategory?: PetSize | null;
+  furType?: PetFurType | null;
+  price: string;
+}
+
 /**
- * Body of POST /api/services. `name`, `businessLineId` and `price` are required;
- * `tenantId` and `createdBy` come from the session.
+ * Body of POST /api/services. `name`, `code`, `businessLineId`, `durationMin`
+ * and `serviceLocations` are required; `tenantId` and `createdBy` come from the
+ * session.
  *
  * `price` MUST be sent as a string. A numeric one is a 400 — see the Service
- * type.
+ * type. It is required unless `hasVariants` is true, and FORBIDDEN when it is:
+ * a service is priced flat or per variant, never both.
  */
 export interface CreateServiceInput {
   name: string;
+  code: string;
   businessLineId: string;
-  price: string;
-  code?: string | null;
+  durationMin: number;
+  serviceLocations: ServiceLocation[];
+  price?: string;
+  image?: MediaAsset | null;
+  salesAccountId?: string | null;
   categoryId?: string | null;
-  durationMin?: number | null;
   description?: string | null;
+  hasVariants?: boolean;
+  variantAxes?: ServiceVariantAxis[];
+  variants?: ServiceVariantInput[];
+  sessions?: string[];
+  allBranches?: boolean;
+  branchIds?: string[];
+  serviceType?: ServiceType;
+  addonServiceIds?: string[];
+  included?: string[];
+  pickupDeliveryAvailable?: boolean;
   taxExempt?: boolean;
   isActive?: boolean;
 }
@@ -2135,15 +2808,32 @@ export interface CreateServiceInput {
  * `businessLineId` IS here, unlike `UpdatePetInput`'s missing `customerId`:
  * moving a service between lines re-tags nothing historical, because journal
  * lines carry the id they were posted with.
+ *
+ * The variant fields may be sent in any combination: the server reads the
+ * stored document for whichever half a patch leaves out before deciding whether
+ * the result is a valid flat-priced or variant-priced service.
  */
 export interface UpdateServiceInput {
   name?: string;
+  code?: string;
+  image?: MediaAsset | null;
   businessLineId?: string;
-  price?: string;
-  code?: string | null;
+  salesAccountId?: string | null;
   categoryId?: string | null;
-  durationMin?: number | null;
+  price?: string;
+  durationMin?: number;
   description?: string | null;
+  hasVariants?: boolean;
+  variantAxes?: ServiceVariantAxis[];
+  variants?: ServiceVariantInput[];
+  sessions?: string[];
+  allBranches?: boolean;
+  branchIds?: string[];
+  serviceType?: ServiceType;
+  addonServiceIds?: string[];
+  included?: string[];
+  serviceLocations?: ServiceLocation[];
+  pickupDeliveryAvailable?: boolean;
   taxExempt?: boolean;
   isActive?: boolean;
 }
@@ -2151,9 +2841,19 @@ export interface UpdateServiceInput {
 /**
  * The animal species a pet may be. Mirrors PET_SPECIES in pet.model.js — a
  * closed list, because it decides which services and prices a booking may offer.
+ * Scoped to cat and dog for now — see the model for why the list stays this
+ * short rather than growing in place.
  */
-export type PetSpecies =
-  "dog" | "cat" | "bird" | "rabbit" | "hamster" | "reptile" | "fish" | "other";
+export type PetSpecies = "cat" | "dog";
+
+/** Mirrors PET_BREEDS in pet.model.js. `domestic` is the mixed-breed answer. */
+export type PetBreed = "domestic" | "poodle";
+
+/** Mirrors PET_FUR_TYPES in pet.model.js. */
+export type PetFurType = "long hair" | "short hair";
+
+/** Mirrors PET_SIZES in pet.model.js. */
+export type PetSize = "small" | "medium" | "large";
 
 /**
  * `unknown` is a REAL value, not a missing one: a rescue arrives unsexed and
@@ -2174,6 +2874,98 @@ export type PetSex = "male" | "female" | "unknown";
  *
  * `customerId` is set at creation and never changed — see UpdatePetInput.
  */
+/** How the shop handles this animal. Tags are normalised: lowercase, hyphens. */
+export interface PetPreferences {
+  text: string | null;
+  tags: string[];
+}
+
+/**
+ * `severe` IS THE ONE THAT RAISES A RED WARNING on the booking form. That is the
+ * whole reason allergies are a list with a severity rather than a paragraph — a
+ * sentence cannot be asked which of the things in it is dangerous.
+ */
+export type PetAllergySeverity = "severe" | "mild";
+
+export interface PetAllergy {
+  name: string;
+  severity: PetAllergySeverity;
+  note: string | null;
+}
+
+export interface PetCondition {
+  name: string;
+  foundAt: string | null;
+  note: string | null;
+}
+
+/**
+ * Dose and frequency are SEPARATE, because the reader is somebody about to board
+ * the animal overnight and hand it a tablet. "1 tablet" and "twice a day" answer
+ * two different questions, and one string is where the second goes missing.
+ */
+export interface PetMedication {
+  name: string;
+  dose: string | null;
+  frequency: string | null;
+  since: string | null;
+}
+
+/** `nextDueAt` is STORED, not derived — intervals differ by vaccine and by vet. */
+export interface PetVaccination {
+  type: string;
+  givenAt: string;
+  nextDueAt: string | null;
+}
+
+export interface PetMedical {
+  allergies: PetAllergy[];
+  conditions: PetCondition[];
+  medications: PetMedication[];
+  vaccinations: PetVaccination[];
+  /** Who to ring when something goes wrong. A name with no number is unusable. */
+  vet: { clinicName: string | null; phone: string | null };
+}
+
+/**
+ * One thing that happened to an animal — FR-5's timeline.
+ *
+ * ONE FLAT SHAPE FOR EVERY SOURCE, not three named buckets, so a fourth source
+ * (hotel stays, when that module exists) appears without a new shape to render.
+ */
+export interface PetTimelineEntry {
+  kind: "booking" | "pos" | "invoice";
+  at: string;
+  /** What was done — the service name. */
+  title: string;
+  /** The document number a human reads off a note. */
+  reference: string | null;
+  amount: string | null;
+  bookingId?: string;
+  status?: BookingStatus;
+  durationMin?: number | null;
+  groomerName?: string | null;
+  notes?: string | null;
+}
+
+/**
+ * The three figures above the timeline.
+ *
+ * THEY IGNORE THE LIST'S FILTER, deliberately: "terakhir dilayani" has one
+ * answer, and a version that moved when somebody narrowed the list to
+ * grooming-only would be answering a different question from the one its label
+ * asks.
+ */
+export interface PetTimeline {
+  summary: {
+    lastServedAt: string | null;
+    /** Visits, not rows — a bath and a nail trim on one booking is one visit. */
+    visitCount: number;
+    topGroomerName: string | null;
+  };
+  entries: PetTimelineEntry[];
+}
+
 export interface Pet {
   _id: string;
   tenantId: string;
@@ -2181,13 +2973,27 @@ export interface Pet {
   name: string;
   species: PetSpecies;
   sex: PetSex;
-  breed: string | null;
+  breed: PetBreed | null;
+  furType: PetFurType | null;
+  size: PetSize | null;
   /** ISO date. The birth date, never an age — an age is wrong the day after it is written. */
   birthDate: string | null;
   weightKg: number | null;
   color: string | null;
   microchipNo: string | null;
-  notes: string | null;
+  /** A general description of the animal — appearance, personality. */
+  description: string | null;
+  /** Staff-facing only — what a groomer needs to know before touching the animal. */
+  internalNotes: string | null;
+  /**
+   * How the shop handles this animal — FR-5.
+   *
+   * `text` is read; `tags` are FILTERED. "Suka dimandiin pertama" is a sentence,
+   * `galak` is a question the pet list can answer.
+   */
+  preferences: PetPreferences;
+  /** The medical file — see `PetMedical`. */
+  medical: PetMedical;
   photo: MediaAsset | null;
   /** Still in the tenant's care. See the two-axes note above. */
   isActive: boolean;
@@ -2208,8 +3014,44 @@ export interface PetListQuery {
   isActive?: boolean;
   /** Free-text over name / breed. */
   search?: string;
+  /**
+   * One tag, matched exactly — "which animals need two people on a Saturday".
+   *
+   * NOT a substring: `galak` and `galak-sama-anak` are different answers, and a
+   * shop that filtered one and got both would stop trusting the filter.
+   */
+  tag?: string;
   /** Include soft-deleted pets (default false on the backend). */
   includeDeleted?: boolean;
+}
+
+/** Body of PATCH /api/pets/:id/preferences. */
+export interface UpdatePetPreferencesInput {
+  text?: string | null;
+  /** Sent as typed; the server normalises `#Galak`, `Galak` and `galak` to one. */
+  tags?: string[];
+}
+
+/**
+ * Body of PATCH /api/pets/:id/medical.
+ *
+ * THE WHOLE FILE, EVERY TIME. A partial patch cannot express "empty this list":
+ * an absent key would mean "leave it alone", and no form can reliably tell the
+ * two apart.
+ */
+export interface UpdatePetMedicalInput {
+  allergies?: Omit<PetAllergy, "note"> & { note?: string | null }[] | PetAllergy[];
+  conditions?: PetCondition[];
+  medications?: PetMedication[];
+  vaccinations?: PetVaccination[];
+  vet?: { clinicName?: string | null; phone?: string | null };
+}
+
+/** Query for GET /api/pets/:id/timeline. */
+export interface PetTimelineQuery {
+  kind?: "all" | "booking" | "pos" | "invoice";
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 /**
@@ -2222,12 +3064,15 @@ export interface CreatePetInput {
   name: string;
   species: PetSpecies;
   sex?: PetSex;
-  breed?: string | null;
+  breed?: PetBreed | null;
+  furType?: PetFurType | null;
+  size?: PetSize | null;
   birthDate?: string | null;
   weightKg?: number | null;
   color?: string | null;
   microchipNo?: string | null;
-  notes?: string | null;
+  description?: string | null;
+  internalNotes?: string | null;
   photo?: MediaAsset | null;
   isActive?: boolean;
 }
@@ -2245,12 +3090,15 @@ export interface UpdatePetInput {
   name?: string;
   species?: PetSpecies;
   sex?: PetSex;
-  breed?: string | null;
+  breed?: PetBreed | null;
+  furType?: PetFurType | null;
+  size?: PetSize | null;
   birthDate?: string | null;
   weightKg?: number | null;
   color?: string | null;
   microchipNo?: string | null;
-  notes?: string | null;
+  description?: string | null;
+  internalNotes?: string | null;
   photo?: MediaAsset | null;
   isActive?: boolean;
 }
@@ -4142,6 +4990,15 @@ export interface CustomerInvoiceItem {
    * Null on every product line, and on a service nobody attached an animal to.
    */
   bookingId: string | null;
+  /**
+   * The booking ROW this line came from — PCR-040.
+   *
+   * `bookingId` alone is no longer enough: a booking is a visit now, and taking
+   * Coco's line out of the basket must release Coco's row and leave Mochi's
+   * claimed. Null on lines pulled before the migration, where the server falls
+   * back to releasing the whole booking.
+   */
+  bookingItemId: string | null;
   /** Whose animal the service is for. Null on a product line. */
   petId: string | null;
   /**

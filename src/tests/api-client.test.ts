@@ -333,3 +333,50 @@ describe("apiClient", () => {
     });
   });
 });
+
+/**
+ * ─── A MALFORMED `details` MUST NOT TAKE THE PAGE DOWN ─────────────────────
+ *
+ * Reported from the till, 3 September 2026: pressing "Mulai kerjakan" replaced
+ * the screen with `details.reduce is not a function`.
+ *
+ * The cause was on the server — `ApiError.badRequest(message, details)` takes an
+ * ARRAY, while its neighbour `ApiError.conflict(message, reason)` takes a
+ * string, and a service passed the sentence. But a type is a promise about data
+ * that arrives over a WIRE, and the client must survive the promise being
+ * broken: a refusal somebody should have READ became a crash instead.
+ */
+describe("ApiError.fieldErrors — a details it cannot use", () => {
+  it("yields no field errors instead of throwing", () => {
+    const error = new ApiError("Tentukan groomernya dulu", 400, {
+      details: "Pekerjaan tanpa groomer tidak bisa dimulai" as never,
+    });
+
+    expect(() => error.fieldErrors).not.toThrow();
+    expect(error.fieldErrors).toEqual({});
+  });
+
+  it("still shows the server's own sentence", () => {
+    /*
+      DEGRADED, NOT SWALLOWED. Only the binding to a specific input is lost —
+      the person still reads why they were refused.
+    */
+    const error = new ApiError("Tentukan groomernya dulu", 400, {
+      details: "bukan array" as never,
+    });
+
+    expect(error.fullMessage).toBe("Tentukan groomernya dulu");
+  });
+
+  it("skips a single malformed entry and keeps the rest", () => {
+    const error = new ApiError("Validation failed", 400, {
+      details: [
+        { field: "body.email", message: "wajib diisi" },
+        null,
+        { message: "tanpa field" },
+      ] as never,
+    });
+
+    expect(error.fieldErrors).toEqual({ email: "wajib diisi" });
+  });
+});

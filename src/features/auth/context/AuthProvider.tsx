@@ -71,7 +71,15 @@ export const AuthContext = createContext<AuthContextValue | null>(null);
  * wrong is not dangerous — a missing entry costs one 401, a wrong one just means
  * a signed-in user's context loads a moment later, on their next navigation.
  */
-export const PUBLIC_ROUTE_PREFIXES = ["/struk"] as const;
+export const PUBLIC_ROUTE_PREFIXES = ["/", "/struk"] as const;
+
+/*
+  "/" IS THE LANDING PAGE, AND IT MATCHES ONLY ITSELF. The test above is
+  `pathname === prefix || pathname.startsWith(`${prefix}/`)`, and for "/" the
+  second half is `startsWith("//")` — which no route is. So this entry does not
+  quietly make the whole app public; a one-character change to that predicate
+  would, which is why it is written down here.
+*/
 
 /**
  * Holds the authenticated user for the dashboard subtree.

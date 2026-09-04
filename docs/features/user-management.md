@@ -52,6 +52,46 @@ Forms follow the established hand-rolled pattern (see `ProfileForm`): local
 The inputs/buttons/cards/alerts are the shadcn/ui-backed `@/components`
 primitives (`TextField` composes shadcn `Input` + `Label`).
 
+## The roster card — `RosterSection`
+
+Added with FR-4/FR-6 and not covered above. It sets **when somebody cannot be
+booked** and **what they earn**, on the user edit screen.
+
+**Both fields had been storable since this module shipped and neither had a
+screen.** `users.availability` and `users.commissionRate` were validated,
+editable through the API, and read by nothing — until the booking module made the
+first load-bearing (it decides who may be booked) and the second decide what
+somebody is paid. That is the recurring shape in this codebase: *master data with
+no reader*, and later *a reader with no writer*.
+
+| Control | Notes |
+| --- | --- |
+| **Groomer** | `isGroomer` — can this person be assigned an animal. It decides who appears in the booking form's dropdown, who gets a calendar column, and who the booking list filters by. **Not a role**: a role says what somebody may DO in this system, this says what they do in the SHOP, and an owner who grooms on Saturdays is both |
+| **Libur mingguan** | Checkboxes in JavaScript's day numbering — 0 is Sunday, 3 is Wednesday. A friendlier numbering would be a translation layer with one job: to be got wrong once, quietly, on somebody's day off |
+| **Cuti tanggal tertentu** | A start date and an **optional** "sampai". A range is expanded here into individual days — see below |
+| **Komisi** | `percentage`, `fixed`, `matrix`, or none. Only the meaningful key is sent: the server forbids `value` beside a matrix and `matrix` beside a percentage |
+| **Rate per layanan** | The matrix editor. A row is a service picked from the catalogue and a percent |
+
+**A leave RANGE is a typing convenience, not a storage shape.** `leaveDates` is a
+list of days and stays one. Storing an interval would need every reader —
+`offReason`, the clash check, the calendar — to learn about intervals, and each is
+a place to get an off-by-one wrong on somebody's last day off. Expanded with
+`setDate` rather than adding milliseconds, which breaks across a daylight-saving
+boundary; Indonesia has none, but this component has no business knowing that.
+
+**A matrix row's key is a SERVICE ID, not a label.** It was free text once, and
+`backfillCommissionMatrixKeys.js` exists to clean up after that. The picker is
+what keeps the ids ids — a text box here would re-open exactly what that migration
+closed. **A service with no row earns nothing**, which the form says above the
+list rather than leaving it to be discovered on a payslip.
+
+**Adding leave asks what it would strand, before the save** (kriteria 4.9).
+Marking somebody off for next Wednesday when they already have four animals booked
+is a decision, not a typo — so the affected bookings are shown and the save is
+still allowed. A form that refused would send that decision somewhere this system
+cannot see. The whole range is checked in **one** request: asking per day would be
+seven round trips and seven warnings a reader has to add up.
+
 ## API consumed (no backend change)
 
 `GET/POST /users`, `GET/PATCH/DELETE /users/:id`, `PATCH /users/:id/password`,

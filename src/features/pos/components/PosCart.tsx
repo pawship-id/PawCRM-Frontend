@@ -32,10 +32,28 @@ import { PosOtherChargesEditor } from "./PosOtherChargesEditor";
  */
 function groupLines(items: PosItem[]): Array<{
   bookingId: string | null;
-  petName: string | null;
+  /**
+   * EVERY ANIMAL ON THIS BOOKING, not the first one.
+   *
+   * It took `item.petName` off the FIRST line and called that the group's
+   * animal. Since PCR-040 a visit may bring Mochi and Coco, and the header then
+   * read "Mochi" over two services — one of which was Coco's. The cashier is
+   * being asked to check the basket against the animals in front of them, and
+   * the header was quietly wrong about half of it.
+   *
+   * DISTINCT AND IN LINE ORDER, so two services for one animal still say the
+   * animal once — repeating it would make a one-pet visit look like two.
+   */
+  petNames: string[];
   lines: Array<{ item: PosItem; index: number }>;
 }> {
   const groups: ReturnType<typeof groupLines> = [];
+
+  const remember = (group: (typeof groups)[number], item: PosItem) => {
+    if (item.petName && !group.petNames.includes(item.petName)) {
+      group.petNames.push(item.petName);
+    }
+  };
 
   items.forEach((item, index) => {
     const bookingId = item.bookingId ?? null;
@@ -43,19 +61,24 @@ function groupLines(items: PosItem[]): Array<{
 
     if (last && last.bookingId === bookingId && bookingId !== null) {
       last.lines.push({ item, index });
+      remember(last, item);
       return;
     }
 
     if (last && last.bookingId === null && bookingId === null) {
       last.lines.push({ item, index });
+      remember(last, item);
       return;
     }
 
-    groups.push({
+    const group = {
       bookingId,
-      petName: item.petName ?? null,
+      petNames: [] as string[],
       lines: [{ item, index }],
-    });
+    };
+
+    remember(group, item);
+    groups.push(group);
   });
 
   return groups;
@@ -184,8 +207,15 @@ export function PosCart({
               */}
               {group.bookingId && (
                 <div className="flex items-baseline justify-between gap-2 bg-surface px-3 py-1.5">
+                  {/*
+                    ALL OF THEM, joined. A visit with two animals reads "Mochi,
+                    Coco" — which is what tells the cashier the two services
+                    below are not both for the same dog.
+                  */}
                   <span className="truncate text-xs font-medium text-foreground">
-                    {group.petName ?? "Hewan tidak diketahui"}
+                    {group.petNames.length > 0
+                      ? group.petNames.join(", ")
+                      : "Hewan tidak diketahui"}
                   </span>
                   <span className="shrink-0 text-xs tabular-nums text-muted">
                     Booking ·{group.bookingId.slice(-6)}

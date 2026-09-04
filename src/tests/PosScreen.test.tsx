@@ -104,6 +104,7 @@ const cartWithItem: PosTransaction = {
       discount: null,
       hppAtTime: null,
       bookingId: null,
+    bookingItemId: null,
       petId: null,
       petName: null,
       groomerName: null,
@@ -2142,5 +2143,77 @@ describe("PosScreen — the transaction note", () => {
     expect(
       screen.getByRole("textbox", { name: /catatan transaksi/i }),
     ).toHaveAttribute("maxLength", "500");
+  });
+});
+
+/**
+ * ─── THE BASKET'S BOOKING HEADER — reported from the till, 3 Sept 2026 ──────
+ *
+ * A basket pulled from a two-animal booking showed one header reading "Mochi"
+ * over two services, one of which was Coco's. The cashier is being asked to
+ * check the basket against the animals in front of them, and the header was
+ * quietly wrong about half of it.
+ */
+describe("PosCart — a booking with two animals", () => {
+  const line = (over: Record<string, unknown>) => ({
+    kind: "service",
+    refId: "svc-1",
+    name: "Grooming Full Service",
+    sku: null,
+    qty: "1.0000",
+    unitPrice: "120000.0000",
+    lineTotal: "120000.0000",
+    discount: null,
+    hppAtTime: null,
+    bookingId: "bk-1",
+    bookingItemId: "it-1",
+    petId: "pet-1",
+    petName: "Mochi",
+    groomerName: "Sinta",
+    bookingStatus: "confirmed",
+    bookingOwned: true,
+    bookingNumber: "BK-1",
+    ...over,
+  });
+
+  it("names every animal on the booking, not just the first", async () => {
+    mockedPos.activeCart.mockResolvedValue({
+      ...cartWithItem,
+      items: [
+        line({}),
+        line({
+          refId: "svc-2",
+          bookingItemId: "it-2",
+          name: "Basic Grooming",
+          petId: "pet-2",
+          petName: "Coco",
+          groomerName: "Rio",
+          unitPrice: "100000.0000",
+          lineTotal: "100000.0000",
+        }),
+      ],
+    } as never);
+
+    renderWithAuth(<PosScreen />);
+
+    expect(await screen.findByText("Mochi, Coco")).toBeInTheDocument();
+  });
+
+  it("says a single animal once, not twice, for two of its services", async () => {
+    /*
+      DISTINCT NAMES. Repeating it would make a one-pet visit read as two, which
+      is the same class of error in the other direction.
+    */
+    mockedPos.activeCart.mockResolvedValue({
+      ...cartWithItem,
+      items: [
+        line({}),
+        line({ refId: "svc-2", bookingItemId: "it-2", name: "Potong Kuku" }),
+      ],
+    } as never);
+
+    renderWithAuth(<PosScreen />);
+
+    expect(await screen.findByText("Mochi")).toBeInTheDocument();
   });
 });

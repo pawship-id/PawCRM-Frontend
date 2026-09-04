@@ -17,30 +17,55 @@ import { Switch } from "@/components/ui/switch";
 import { ApiError } from "@/services/api-error";
 import { petService } from "@/services/pet.service";
 import { swalToast } from "@/lib/swal";
-import type { Pet, PetSex, PetSpecies } from "@/types/api";
+import type {
+  Pet,
+  PetBreed,
+  PetFurType,
+  PetSex,
+  PetSize,
+  PetSpecies,
+} from "@/types/api";
 
 import { PetOwnerField } from "./PetOwnerField";
 
 /** Backend caps — NAME_MAX_LENGTH and friends in pet.model.js. */
 const NAME_MAX_LENGTH = 80;
-const BREED_MAX_LENGTH = 80;
 const COLOR_MAX_LENGTH = 40;
 const MICROCHIP_MAX_LENGTH = 40;
-const NOTES_MAX_LENGTH = 500;
+const DESCRIPTION_MAX_LENGTH = 500;
+const INTERNAL_NOTES_MAX_LENGTH = 500;
 const MAX_WEIGHT_KG = 500;
 
 /** Where both verbs return to, and what Batal goes back to. */
 const LIST_PATH = "/dashboard/master/pets";
 
+/**
+ * Cat and dog only, for now — PET_SPECIES in pet.model.js. Deliberately not
+ * extended in place; a wider set of species becomes a tenant-managed
+ * collection later rather than a longer hardcoded array here.
+ */
 const SPECIES_OPTIONS: { value: PetSpecies; label: string }[] = [
-  { value: "dog", label: "Anjing" },
   { value: "cat", label: "Kucing" },
-  { value: "bird", label: "Burung" },
-  { value: "rabbit", label: "Kelinci" },
-  { value: "hamster", label: "Hamster" },
-  { value: "reptile", label: "Reptil" },
-  { value: "fish", label: "Ikan" },
-  { value: "other", label: "Lainnya" },
+  { value: "dog", label: "Anjing" },
+];
+
+/** PET_BREEDS in pet.model.js. Same "grows into its own collection" caveat. */
+const BREED_OPTIONS: { value: PetBreed; label: string }[] = [
+  { value: "domestic", label: "Domestic" },
+  { value: "poodle", label: "Poodle" },
+];
+
+/** PET_FUR_TYPES in pet.model.js. */
+const FUR_TYPE_OPTIONS: { value: PetFurType; label: string }[] = [
+  { value: "long hair", label: "Berbulu panjang" },
+  { value: "short hair", label: "Berbulu pendek" },
+];
+
+/** PET_SIZES in pet.model.js. */
+const SIZE_OPTIONS: { value: PetSize; label: string }[] = [
+  { value: "small", label: "Kecil" },
+  { value: "medium", label: "Sedang" },
+  { value: "large", label: "Besar" },
 ];
 
 const SEX_OPTIONS: { value: PetSex; label: string }[] = [
@@ -76,9 +101,10 @@ function todayISO(): string {
  * answers a question nobody asked. Retiring is a decision taken later.
  *
  * NO PHOTO FIELD YET, and that is scoped rather than forgotten: the API accepts
- * one and the model stores one, but the upload control lives inside the
- * categories feature (`CategoryImageField`) and lifting it into the shared
- * component layer is a refactor of its own. It goes in when that move happens.
+ * one and the model stores one. The refactor this was waiting on has since
+ * happened — the upload control is now `ImageField` in the shared component
+ * layer, promoted out of the categories feature when services needed it — so
+ * adding one here is a field, not a refactor. It goes in when somebody asks.
  */
 export function PetForm({ petId }: { petId?: string }) {
   const editing = petId !== undefined;
@@ -91,12 +117,15 @@ export function PetForm({ petId }: { petId?: string }) {
   const [name, setName] = useState("");
   const [species, setSpecies] = useState<PetSpecies | "">("");
   const [sex, setSex] = useState<PetSex>("unknown");
-  const [breed, setBreed] = useState("");
+  const [breed, setBreed] = useState<PetBreed | "">("");
+  const [furType, setFurType] = useState<PetFurType | "">("");
+  const [size, setSize] = useState<PetSize | "">("");
   const [birthDate, setBirthDate] = useState("");
   const [weightKg, setWeightKg] = useState("");
   const [color, setColor] = useState("");
   const [microchipNo, setMicrochipNo] = useState("");
-  const [notes, setNotes] = useState("");
+  const [description, setDescription] = useState("");
+  const [internalNotes, setInternalNotes] = useState("");
   const [isActive, setIsActive] = useState(true);
 
   const [nameError, setNameError] = useState<string | null>(null);
@@ -122,12 +151,15 @@ export function PetForm({ petId }: { petId?: string }) {
         setSpecies(result.species);
         setSex(result.sex);
         setBreed(result.breed ?? "");
+        setFurType(result.furType ?? "");
+        setSize(result.size ?? "");
         // The API returns an ISO instant; <input type="date"> wants the date half.
         setBirthDate(result.birthDate ? result.birthDate.slice(0, 10) : "");
         setWeightKg(result.weightKg === null ? "" : String(result.weightKg));
         setColor(result.color ?? "");
         setMicrochipNo(result.microchipNo ?? "");
-        setNotes(result.notes ?? "");
+        setDescription(result.description ?? "");
+        setInternalNotes(result.internalNotes ?? "");
         setIsActive(result.isActive);
       })
       .catch((error) => {
@@ -194,12 +226,15 @@ export function PetForm({ petId }: { petId?: string }) {
       name: trimmedName,
       species: species as PetSpecies,
       sex,
-      breed: breed.trim() || null,
+      breed: breed || null,
+      furType: furType || null,
+      size: size || null,
       birthDate: birthDate || null,
       weightKg: weight,
       color: color.trim() || null,
       microchipNo: microchipNo.trim() || null,
-      notes: notes.trim() || null,
+      description: description.trim() || null,
+      internalNotes: internalNotes.trim() || null,
     };
 
     try {
@@ -330,13 +365,12 @@ export function PetForm({ petId }: { petId?: string }) {
       >
         <div className="flex flex-col gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <TextField
+            <SelectField
               label="Ras"
-              name="breed"
               value={breed}
-              onChange={(event) => setBreed(event.target.value)}
-              placeholder="mis. Golden Retriever"
-              maxLength={BREED_MAX_LENGTH}
+              onChange={(next) => setBreed(next as PetBreed)}
+              options={BREED_OPTIONS}
+              placeholder="Pilih ras"
               disabled={saving}
             />
             <TextField
@@ -346,6 +380,25 @@ export function PetForm({ petId }: { petId?: string }) {
               onChange={(event) => setColor(event.target.value)}
               placeholder="mis. Coklat keemasan"
               maxLength={COLOR_MAX_LENGTH}
+              disabled={saving}
+            />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <SelectField
+              label="Ukuran"
+              value={size}
+              onChange={(next) => setSize(next as PetSize)}
+              options={SIZE_OPTIONS}
+              placeholder="Pilih ukuran"
+              disabled={saving}
+            />
+            <SelectField
+              label="Jenis bulu"
+              value={furType}
+              onChange={(next) => setFurType(next as PetFurType)}
+              options={FUR_TYPE_OPTIONS}
+              placeholder="Pilih jenis bulu"
               disabled={saving}
             />
           </div>
@@ -395,15 +448,26 @@ export function PetForm({ petId }: { petId?: string }) {
             disabled={saving}
           />
 
+          <TextareaField
+            label="Deskripsi"
+            name="description"
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            hint="Gambaran umum hewannya — penampilan, kepribadian."
+            placeholder="mis. Kucing domestik berbulu tebal, aktif dan ramah"
+            maxLength={DESCRIPTION_MAX_LENGTH}
+            disabled={saving}
+          />
+
           {/* Keterangan closes the card — §16, whatever its length. */}
           <TextareaField
-            label="Catatan"
-            name="notes"
-            value={notes}
-            onChange={(event) => setNotes(event.target.value)}
+            label="Catatan internal"
+            name="internalNotes"
+            value={internalNotes}
+            onChange={(event) => setInternalNotes(event.target.value)}
             hint="Yang perlu diketahui groomer sebelum pegang hewannya — takut air, alergi sampo tertentu, tidak suka kakinya dipegang lama."
             placeholder="mis. Suka menggigit kalau kakinya dipegang terlalu lama"
-            maxLength={NOTES_MAX_LENGTH}
+            maxLength={INTERNAL_NOTES_MAX_LENGTH}
             disabled={saving}
           />
         </div>

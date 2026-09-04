@@ -26,6 +26,11 @@ function makeUser(overrides: Partial<User> = {}): User {
     allBranches: true,
     branchAccess: [],
     warehouseAccess: [],
+    /* Most staff are not groomers — the model's own default. */
+    isGroomer: false,
+    /* FR-4 and FR-6: the roster and the rate. Most staff carry neither. */
+    commissionRate: null,
+    availability: { weeklyOff: [], leaveDates: [] },
     status: "active",
     emailVerifiedAt: null,
     lastLoginAt: null,

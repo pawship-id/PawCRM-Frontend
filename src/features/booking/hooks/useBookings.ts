@@ -20,6 +20,15 @@ export interface BookingsQuery {
   status: BookingStatus | "";
   /** "" = both. Tells an appointment apart from a walk-in rung up at the till. */
   origin: BookingOrigin | "";
+  /**
+   * "" = everybody. Whose day sheet this is.
+   *
+   * A QUESTION ABOUT ROWS, not about the booking: the groomer sits on each
+   * service since PCR-040, and a visit can be split between two people. So a
+   * booking matches if ANY of its rows is theirs — which is what the shop means
+   * by "Sinta's bookings today".
+   */
+  groomerUserId: string;
   /** Calendar dates; the server expands them in the TENANT'S timezone. */
   scheduledFrom: string;
   scheduledTo: string;
@@ -40,6 +49,7 @@ const DEFAULT_QUERY: BookingsQuery = {
   page: 1,
   status: "",
   origin: "",
+  groomerUserId: "",
   scheduledFrom: "",
   scheduledTo: "",
   unbilled: false,
@@ -149,6 +159,8 @@ export function useBookings(): UseBookingsResult {
       limit: PAGE_SIZE,
       status: query.status === "" ? undefined : query.status,
       origin: query.origin === "" ? undefined : query.origin,
+      groomerUserId:
+        query.groomerUserId === "" ? undefined : query.groomerUserId,
       scheduledFrom: query.scheduledFrom || undefined,
       scheduledTo: query.scheduledTo || undefined,
       // Sent only when ON. `unbilled: false` is not the opposite question — the

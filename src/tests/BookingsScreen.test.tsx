@@ -19,13 +19,25 @@ const booking = (overrides: Partial<Booking> = {}): Booking =>
     bookingNumber: "BK-260826-001",
     customerId: "cust-1",
     customerName: "Ibu Rina",
-    petId: "pet-1",
+    // AFTER PCR-040 the animals are on the rows; the header lists them.
+    pets: [{ petId: "pet-1", petName: "Bruno" }],
+    petCount: 1,
+    totalAmount: "150000.0000",
+    totalDurationMin: null,
+    billingState: "unbilled",
     petName: "Bruno",
     items: [
       {
+        _id: "row-1",
+        petId: "pet-1",
+        petName: "Bruno",
         serviceId: "svc-1",
         name: "Grooming Full Service",
         price: "150000.0000",
+        durationMin: null,
+        notes: null,
+        pulledToCartAt: null,
+        pulledToInvoiceAt: null,
         groomerUserId: null,
         groomerName: "Belum ditentukan",
       },
@@ -34,7 +46,6 @@ const booking = (overrides: Partial<Booking> = {}): Booking =>
     status: "confirmed",
     origin: "booking",
     posTransactionId: null,
-    pulledToCartAt: null,
     notes: null,
     cancelReason: null,
     createdAt: "2026-08-26T00:00:00.000Z",
@@ -49,6 +60,16 @@ const page = (items: Booking[]): PageResult<Booking> => ({
 
 beforeEach(() => {
   mocked.list.mockResolvedValue(page([booking()]));
+  /*
+    THE GROOMER FILTER'S OPTIONS. It reads `bookings/availability` rather than
+    the user register, because that endpoint rides on `bookings:read` — the same
+    grant that opened this list — and a receptionist has no reason to hold
+    `users:read`.
+  */
+  mocked.availability.mockResolvedValue([
+    { _id: "user-1", fullName: "Sinta", offReason: null },
+    { _id: "user-2", fullName: "Mbak Sari", offReason: null },
+  ]);
   /*
     The unbilled lens asks for its own count on every load. Stubbed to "nothing
     outstanding" so these cases stay about the list rather than about the pill —
@@ -90,7 +111,7 @@ describe("BookingsScreen", () => {
   */
   it("says when a confirmed booking is already in a basket", async () => {
     mocked.list.mockResolvedValue(
-      page([booking({ pulledToCartAt: "2026-08-26T04:00:00.000Z" })]),
+      page([booking({ billingState: "billed" })]),
     );
 
     renderWithAuth(<BookingsScreen />);
@@ -103,7 +124,7 @@ describe("BookingsScreen", () => {
       page([
         booking({
           status: "completed",
-          pulledToCartAt: "2026-08-26T04:00:00.000Z",
+          billingState: "billed",
           posTransactionId: "sale-1",
         }),
       ]),
@@ -283,7 +304,7 @@ describe("BookingsScreen — what the badge cannot say on its own", () => {
 
   it("says when one is sitting in a basket", async () => {
     mocked.list.mockResolvedValue(
-      page([booking({ pulledToCartAt: "2026-08-26T02:00:00.000Z" })]),
+      page([booking({ billingState: "billed" })]),
     );
 
     renderWithAuth(<BookingsScreen />);
@@ -301,7 +322,7 @@ describe("BookingsScreen — what the badge cannot say on its own", () => {
       page([
         booking({
           posTransactionId: "sale-1",
-          pulledToCartAt: "2026-08-26T02:00:00.000Z",
+          billingState: "billed",
         }),
       ]),
     );
@@ -485,5 +506,159 @@ describe("BookingsScreen — the unbilled lens", () => {
     expect(await screen.findByText("BK-260826-001")).toBeInTheDocument();
     const pill = await screen.findByRole("button", { name: /belum ditagih/i });
     expect(pill).not.toHaveTextContent("3");
+  });
+
+});
+
+/**
+ * FILTERING BY WHO DOES THE WORK.
+ *
+ * Status and origin were on this bar from the first day; the question a shop
+ * actually asks — "mana bookingnya Sinta hari ini" — was not answerable at all.
+ */
+describe("BookingsScreen — the groomer filter", () => {
+/*
+    "SIAPA YANG MENGERJAKAN" — the filter a shop asks for first, and the one
+    that was missing while status and origin were there from the start.
+
+    IT IS A QUESTION ABOUT ROWS. The groomer sits on each service since PCR-040
+    and a visit can be split between two people, so the server resolves it into
+    booking ids rather than matching a header field.
+  */
+  it("filters the list by groomer", async () => {
+    const user = userEvent.setup();
+
+    renderWithAuth(<BookingsScreen />);
+    await screen.findByText("BK-260826-001");
+
+    await user.click(screen.getByRole("button", { name: /filter groomer/i }));
+    await user.click(await screen.findByRole("option", { name: /sinta/i }));
+
+    await waitFor(() =>
+      expect(mocked.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ groomerUserId: "user-1" }),
+      ),
+    );
+  });
+
+  it("sends no groomer at all for 'Semua groomer'", async () => {
+    /*
+      "" IS NOT A GROOMER. Sent as an empty string it would reach Joi as an
+      invalid ObjectId and take the whole list down with a 400 — the same shape
+      every other filter on this bar avoids by sending `undefined`.
+    */
+    renderWithAuth(<BookingsScreen />);
+    await screen.findByText("BK-260826-001");
+
+    expect(mocked.list.mock.calls[0][0]?.groomerUserId).toBeUndefined();
+  });
+
+  it("shows the filter disabled, with the reason, when nobody is marked", async () => {
+    /*
+      SHOWN AND DISABLED, NEVER HIDDEN — and it WAS hidden, which cost a bug
+      report. The list reads `users.isGroomer`, so a shop that has not ticked
+      anybody gets nothing back; a filter that simply is not there reads as a
+      feature that does not work, with nothing on screen to say otherwise.
+    */
+    mocked.availability.mockResolvedValue([]);
+
+    renderWithAuth(<BookingsScreen />);
+    await screen.findByText("BK-260826-001");
+
+    const filter = screen.getByRole("button", { name: /filter groomer/i });
+    expect(filter).toBeInTheDocument();
+    expect(filter).toBeDisabled();
+    expect(
+      screen.getByText(/ditandai sebagai groomer/i),
+    ).toBeInTheDocument();
+  });
+
+  it("says so when the groomer list cannot be loaded at all", async () => {
+    /*
+      A DIFFERENT PROBLEM FROM "nobody is marked", and saying which one points at
+      the remedy. Swallowing it made the two indistinguishable.
+    */
+    mocked.availability.mockRejectedValue(new Error("offline"));
+
+    renderWithAuth(<BookingsScreen />);
+    await screen.findByText("BK-260826-001");
+
+    expect(
+      await screen.findByText(/tidak bisa dimuat/i),
+    ).toBeInTheDocument();
+  });
+});
+
+/**
+ * ─── "SUDAH DIBAYAR" IS NOT ENOUGH SINCE PCR-040 ───────────────────────────
+ *
+ * `posTransactionId` is stamped on the header by any sale that touched the
+ * booking, and a sale may cover ONE of two animals. The list read "Sudah
+ * dibayar" over a visit half of which had never been charged for — the screen
+ * agreeing with money the shop had lost.
+ */
+describe("BookingsTable — a half-paid booking", () => {
+  it("says it was paid in part, not paid", async () => {
+    mocked.list.mockResolvedValue(
+      page([
+        booking({
+          posTransactionId: "sale-1",
+          billingState: "partial",
+          status: "confirmed",
+        }),
+      ]),
+    );
+
+    renderWithAuth(<BookingsScreen />);
+
+    /*
+      BOTH HALVES. How much was paid and whether the work has started are
+      independent facts, and the first version folded them into one ladder — so
+      a half-paid booking lost the "belum dikerjakan" that every other row
+      carries, on the one row that needed explaining most.
+    */
+    expect(
+      await screen.findByText(/sudah dibayar sebagian — belum dikerjakan/i),
+    ).toBeInTheDocument();
+  });
+
+  it("drops the work half once the booking has moved on", async () => {
+    // `confirmed` is the only status that means "paid, nobody has started".
+    mocked.list.mockResolvedValue(
+      page([
+        booking({
+          posTransactionId: "sale-1",
+          billingState: "partial",
+          status: "in_progress",
+        }),
+      ]),
+    );
+
+    renderWithAuth(<BookingsScreen />);
+
+    expect(
+      await screen.findByText(/sudah dibayar sebagian/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/belum dikerjakan/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("still says plainly paid when the whole visit was", async () => {
+    mocked.list.mockResolvedValue(
+      page([
+        booking({
+          posTransactionId: "sale-1",
+          billingState: "billed",
+          status: "confirmed",
+        }),
+      ]),
+    );
+
+    renderWithAuth(<BookingsScreen />);
+
+    expect(
+      await screen.findByText(/sudah dibayar — belum dikerjakan/i),
+    ).toBeInTheDocument();
   });
 });

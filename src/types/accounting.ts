@@ -119,7 +119,17 @@ export type JournalSourceType =
    * is idempotent on `(source.type, source.id)`.
    */
   | "return_cogs"
+  /** The monthly commission ACCRUAL, and the reversal of one already accrued. */
   | "commission"
+  /**
+   * PAYING that commission.
+   *
+   * A SECOND SOURCE TYPE, and not for taxonomy: this one MOVES CASH and belongs
+   * in the operating section of the cash flow statement, while the accrual
+   * belongs in no section at all. One type covering both would have to be
+   * classified one way, and either choice is wrong half the time.
+   */
+  | "commission_payment"
   | "manual";
 
 /**

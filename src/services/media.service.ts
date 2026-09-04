@@ -25,18 +25,26 @@ import type { MediaAsset } from "@/types/inventory";
 /** How long an upload may take before it is abandoned. */
 const UPLOAD_TIMEOUT_MS = 180_000;
 
+/**
+ * Which key segment an upload is filed under: `product` for a product gallery,
+ * `category` for a category's picture, `service` for a service's, `description`
+ * for an image embedded in rich text.
+ *
+ * The value only changes a segment of the storage key, but the orphan sweeper
+ * reads that segment — it never touches a `/desc/` file, and for the others it
+ * asks the matching collection whether anything still points at it. A closed
+ * list server-side (`PURPOSE_SEGMENTS` in media.controller.js); anything else
+ * falls back to `product`, which is why adding a value here without adding it
+ * there would file the asset where its own sweeper clause never looks.
+ */
+export type MediaUploadPurpose =
+  | "product"
+  | "category"
+  | "service"
+  | "description";
+
 export interface UploadOptions {
-  /**
-   * Which key segment the asset is filed under: `product` for a product
-   * gallery, `category` for a category's picture, `description` for an image
-   * embedded in rich text.
-   *
-   * The value only changes a segment of the storage key, but the orphan sweeper
-   * reads that segment — it never touches a `/desc/` file, and for the others it
-   * asks the matching collection whether anything still points at it. A closed
-   * list server-side; anything else falls back to `product`.
-   */
-  purpose?: "product" | "category" | "description";
+  purpose?: MediaUploadPurpose;
   /**
    * A still frame for a video, captured from a `<video>` element onto a canvas.
    * Without one the tile shows a play icon rather than a blank rectangle.

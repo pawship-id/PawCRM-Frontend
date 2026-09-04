@@ -183,8 +183,26 @@ export const PERMISSION_CATALOG = {
    * trust: a receptionist may reschedule all day, while calling an appointment
    * off is often somebody else's call. The API gates the status route on
    * whichever the payload implies.
+   *
+   * `advanceStatus` IS THE GROOMER'S GRANT — checking a dog in and marking it
+   * done, without the edit form. It and `update` both open the status route (the
+   * API takes either), because `update` is strictly the stronger of the two;
+   * only `update` opens `/dashboard/booking/:id/edit`, which changes the
+   * services and re-quotes every unbilled row at today's prices.
+   *
+   * `overrideClash` IS "SAVE IT ANYWAY" — a clash is a warning, not a refusal
+   * (kriteria 4.6), but pressing through one is a decision that should belong to
+   * somebody senior. It was MISSING from this list while the server has had it
+   * since FR-4: the role editor could not grant what the API was checking.
    */
-  bookings: ["create", "read", "update", "cancel"],
+  bookings: [
+    "create",
+    "read",
+    "update",
+    "advanceStatus",
+    "cancel",
+    "overrideClash",
+  ],
 
   /**
    * Cashier shifts. NOT the uniform five: a shift is opened, looked at, and

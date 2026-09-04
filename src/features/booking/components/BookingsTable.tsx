@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import {
   Table,
   TableBody,
@@ -74,11 +76,25 @@ export function BookingsTable({
                   draft, and an invented placeholder would be a number somebody
                   could quote back across a counter.
                 */}
-                <span className="block text-sm tabular-nums text-foreground">
-                  {booking.bookingNumber ?? (
-                    <span className="text-muted">—</span>
-                  )}
-                </span>
+                {/*
+                  THE WAY IN, and it is the number rather than the whole row: a
+                  row carries a status control of its own, and a clickable row
+                  around a button is two targets fighting for one tap.
+
+                  A DRAFT STILL READS "—", not "Draf". The badge beside it
+                  already says draft, and repeating the word in the number column
+                  would put the same fact on the row twice while telling nobody
+                  what the column is for. The dash means "no number yet", which
+                  is the true answer; `aria-label` is what makes the link
+                  nameable for anybody who cannot see the row it sits in.
+                */}
+                <Link
+                  href={`/dashboard/booking/${booking._id}`}
+                  aria-label={`Buka ${booking.bookingNumber ?? "booking draf"}`}
+                  className="block text-sm tabular-nums text-primary underline-offset-2 hover:underline"
+                >
+                  {booking.bookingNumber ?? "—"}
+                </Link>
                 {/*
                   WHERE IT CAME FROM, and only when it is the unusual one. Every
                   booking made the ordinary way would otherwise carry a badge
@@ -105,11 +121,22 @@ export function BookingsTable({
 
               <TableCell className="align-top text-sm text-foreground">
                 {booking.petName ?? "—"}
+                {/*
+                  A VISIT MAY BRING SEVERAL ANIMALS since PCR-040, and the names
+                  above are joined into one string. The count is repeated as a
+                  badge because "Mochi, Coco" reads as one long name at a glance
+                  and a number does not.
+                */}
+                {booking.petCount > 1 && (
+                  <span className="mt-1 block text-xs text-muted">
+                    {booking.petCount} hewan
+                  </span>
+                )}
               </TableCell>
 
               <TableCell className="align-top">
                 {booking.items.map((item) => (
-                  <span key={item.serviceId} className="block">
+                  <span key={item._id} className="block">
                     <span className="block text-sm text-foreground">
                       {item.name}
                     </span>
@@ -163,14 +190,44 @@ export function BookingsTable({
                   booking.status !== "cancelled" &&
                   (booking.posTransactionId ? (
                     <span className="mt-1 block text-xs text-muted">
-                      {booking.status === "confirmed"
-                        ? "Sudah dibayar — belum dikerjakan"
+                      {/*
+                        ─── "PAID" IS NOT ENOUGH SINCE PCR-040 ─────────────────
+
+                        `posTransactionId` is stamped on the HEADER by any sale
+                        that touched the booking, and a sale may cover ONE of two
+                        animals. This read "Sudah dibayar" over a visit half of
+                        which had never been charged for — the screen agreeing
+                        with money the shop had lost.
+
+                        The detail page had it right from the start, because it
+                        shows the ROWS. The list shows one line for the whole
+                        visit, so the line has to carry the difference itself.
+                      */}
+                      {/*
+                        TWO FACTS, COMPOSED — not one branch choosing between
+                        them. How much was paid and whether the work has started
+                        are independent, and the first version folded them into a
+                        single ladder: a half-paid booking lost the "belum
+                        dikerjakan" half that every other row carries, so the one
+                        row that needed the most explanation carried the least.
+                      */}
+                      {booking.billingState === "partial"
+                        ? "Sudah dibayar sebagian"
                         : "Sudah dibayar"}
+                      {booking.status === "confirmed" && " — belum dikerjakan"}
                     </span>
                   ) : (
-                    booking.pulledToCartAt && (
+                    /*
+                      THREE STATES SINCE PCR-040, not two. A visit can be
+                      half-billed — Coco went home ungroomed and Mochi was paid
+                      for — and a badge that only knew "billed or not" would
+                      report the whole visit as settled.
+                    */
+                    booking.billingState !== "unbilled" && (
                       <span className="mt-1 block text-xs text-muted">
-                        Ada di keranjang
+                        {booking.billingState === "partial"
+                          ? "Sebagian sudah ditagih"
+                          : "Ada di keranjang"}
                       </span>
                     )
                   ))}

@@ -14,5 +14,18 @@ export { PetForm } from "./components/PetForm";
 export { PetQuickAddDialog } from "./components/PetQuickAddDialog";
 /** One customer's animals — rendered by the customers feature's edit screen. */
 export { CustomerPetsSection } from "./components/CustomerPetsSection";
-export { PetSpeciesBadge, PetStatusBadge, speciesLabel } from "./components/PetBadges";
+export { PetCardPrintScreen } from "./components/PetCardPrintScreen";
+export {
+  PetSpeciesBadge,
+  PetStatusBadge,
+  speciesLabel,
+  sizeLabel,
+  furTypeLabel,
+} from "./components/PetBadges";
 export { usePets, type PetsQuery } from "./hooks/usePets";
+export { PetSummaryCard } from "./components/PetSummaryCard";
+export { PetProfileScreen } from "./components/PetProfileScreen";
+export { PetTimelineTab } from "./components/PetTimelineTab";
+export { PetPreferencesTab } from "./components/PetPreferencesTab";
+export { PetMedicalTab } from "./components/PetMedicalTab";
+export { PetInfoTab } from "./components/PetInfoTab";

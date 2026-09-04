@@ -7,6 +7,437 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Halaman depan di `/`
+
+`/` dulu me-redirect ke `/login`, dengan alasan tidak ada yang lain untuk
+ditampilkan. Sekarang ada: halaman marketing yang menjelaskan apa yang produk
+ini kerjakan, di `src/features/landing/`.
+
+**Server component, kecuali satu.** `LandingNav` `"use client"` untuk satu baris
+— garis rambut di bawah bar yang baru muncul setelah halaman di-scroll. Sisanya
+statis, jadi halaman pertama yang dilihat orang tidak mengirim bundle untuk
+mengatakan lima hal yang tidak berubah.
+
+**Isinya ditulis dari `docs/features/`, bukan dari brief.** Tiap klaim menunjuk
+sesuatu yang benar-benar ada: badge stok kasir dan aturan `minStock: 0`,
+Keranjang Tersimpan, booking yang ditarik ke keranjang, kolom groomer kosong dan
+beban-bukan-kapasitas, cabang vs gudang. Empat label di panel Keuangan adalah
+label `FinanceDashboardScreen` sendiri, supaya yang mendaftar setelah membacanya
+menemukan kata yang sama.
+
+**Yang belum jalan disebut belum jalan.** Hotel dan E-commerce Sync masih
+`SectionPlaceholder`, jadi keduanya tidak masuk daftar "yang sudah jalan" dan
+halamannya mengatakan itu dalam satu paragraf. `LandingScreen.test.tsx`
+menguncinya: kalau salah satunya muncul di daftar, tesnya gagal.
+
+**`/` masuk `PUBLIC_ROUTE_PREFIXES`.** Halaman ini dibaca orang yang tidak punya
+akun, dan tanpa itu tiap kunjungan membakar satu `GET /auth/me` yang hanya bisa
+401. Prefix `"/"` hanya cocok dengan dirinya sendiri — predikatnya
+menguji kesamaan persis atau awalan `"/" + "/"`, dan `"//"` bukan rute siapa
+pun. Ada tes untuk kedua sisi itu.
+
+**Ajakan bertindaknya "Minta akses uji coba", bukan "Coba gratis".** Tidak ada
+route pendaftaran di backend — `auth.routes.js` menyatakan itu disengaja — dan
+`POST /api/tenants` masih administrasi platform yang belum dijaga. Tombol yang
+berbunyi "Coba gratis" lalu mendaratkan orang di layar login yang akunnya belum
+ada akan menghabiskan kepercayaan yang baru saja dibangun sepuluh layar di
+atasnya. Jadi tombolnya membuka WhatsApp dengan pesan terisi, tenant-nya dibuat
+orang, dan bagian penutup menjelaskan urutan itu — termasuk bahwa 14 harinya
+mulai saat akunnya jadi, bukan saat pesannya dikirim.
+
+**Pesannya adalah formnya.** Tiga pertanyaan yang dibutuhkan untuk menyiapkan
+tenant (nama toko, nama, jumlah cabang) menunggu sebagai label kosong di kolom
+chat. Form pendek butuh tempat menyimpan jawabannya lebih dulu, dan sampai itu
+ada, form akan membuang apa yang diketik orang. Teksnya di-encode: satu baris
+baru yang lolos mentah memotong pesan di pertanyaan pertama.
+`LandingScreen.test.tsx` mengunci keduanya — tidak ada tautan yang boleh
+berbunyi "Coba gratis", dan pesan uji cobanya harus tetap memuat ketiga
+pertanyaan itu.
+
+**Nomor WhatsApp jadi konfigurasi.** `NEXT_PUBLIC_PHONE_NUMBER`, dibaca lewat
+`src/utils/env.ts` seperti base URL backend, dengan nomor Buloo sebagai fallback
+supaya clone baru tetap punya tombol yang jalan. Nilainya dibersihkan jadi angka
+saja sebelum dipakai — orang yang mengisinya di dashboard hosting akan wajar
+mengetik `+62 895-…`, dan `wa.me/+62 895…` membuka tautan rusak tanpa bilang
+apa-apa, tepat di satu tombol yang calon pelanggan tekan.
+
+**Satu token baru, `--brand-deep`.** Navy paling gelap sebagai *ground*, bukan
+sebagai tinta — footer halaman ini. §3 minta komponen memakai nama semantik, dan
+tidak ada token produk yang berarti "yang paling gelap di halaman":
+`--foreground` itu warna teks, dan footer yang meminjamnya akan patah begitu teks
+dan permukaan berhenti jadi navy yang sama.
+
+**Anggaran oranye di halaman ini lebih besar dari §4**, dan itu disengaja: dua
+tombol ajakan, satu bar, satu panel peringatan, satu blok onboarding. Aturan 5%
+ditulis untuk layar uang. Yang tetap dipegang adalah yang penting — oranye tidak
+pernah jadi teks, dan tiap isian oranye bertinta navy.
+
+## [Unreleased] — Halaman detail booking
+
+`/dashboard/booking/:id` — satu kunjungan, utuh.
+
+**Kenapa ia perlu ada.** Daftar menjawab "apakah grooming tadi tercatat";
+kalender menjawab "siapa di mana jam sepuluh". Tidak satu pun menjawab pertanyaan
+yang ditanyakan orang sambil memegang telepon: **booking ini isinya apa, dan
+sudah sampai mana.** Sebelum halaman ini, satu-satunya cara melihat barisnya,
+riwayatnya, dan status tagihannya sekaligus adalah membuka tiga layar.
+
+**Satu blok per baris, bukan satu ringkasan per booking.** Sejak PCR-040 satu
+kunjungan bisa membawa Mochi dan Coco ke dua orang berbeda, dengan dua harga,
+ditagih terpisah. Halaman yang menjumlahkannya jadi satu baris akan
+menyembunyikan justru hal yang modul ini dibangun ulang untuknya.
+
+**Status tagih ditampilkan per baris**, karena di situlah penandanya tinggal
+sejak K3 — dan itu yang membuat kunjungan setengah-tertagih **terbaca**, bukan
+sekadar mungkin.
+
+**Kartu ringkas hewan muncul di tiap blok** — FR-5 kriteria 5.14, dan komponen
+yang sama dengan yang dipakai form booking dan halaman profil. Satu jawaban untuk
+"apa yang toko tahu tentang hewan ini"; render kedua akan berbeda pendapat dengan
+yang dibaca groomer.
+
+**Data hewannya diambil per PEMILIK, satu permintaan** — bukan satu per baris.
+Kunjungan tiga hewan kalau tidak akan jadi tiga permintaan untuk menggambar tiga
+kotak peringatan. Kalau pengambilannya gagal, barisnya tetap tampil dan hanya
+kotak peringatannya yang hilang: halaman yang menolak tampil karena pencarian
+hewan gagal akan menyembunyikan pekerjaan yang orang buka untuk dilihat.
+
+**Jalan masuknya**: nomor booking di daftar, dan tombol **Buka booking** di panel
+detail kalender. Nomor, bukan seluruh baris — baris membawa kontrol status
+sendiri, dan baris yang bisa diklik mengelilingi tombol adalah dua target yang
+berebut satu ketukan.
+
+**Draf tetap menampilkan "—" di kolom nomor**, bukan "Draf". Badge di sebelahnya
+sudah mengatakan itu, dan mengulanginya menaruh fakta yang sama dua kali sambil
+tidak memberi tahu siapa pun kolomnya untuk apa. `aria-label` yang membuat
+tautannya tetap punya nama.
+
+---
+
+## [Unreleased] — Cabang ditanyakan di form, bukan diwarisi dari sesi
+
+Form booking dan kalender dulu mengikuti `session.currentBranchId` diam-diam.
+Itu **pola yang salah untuk aplikasi ini**: setiap dokumen yang diketik tangan
+menanyakan cabangnya di form — `InvoiceCreateForm`, `ReceiptForm`, form-form
+stok. `currentBranchId` adalah idenya **kasir**, dan alasannya masuk akal di
+sana: satu terminal berdiri di satu toko sepanjang hari. Booking yang diterima
+lewat telepon bukan itu.
+
+**Ongkos salahnya bukan crash.** Bookingnya diam-diam masuk ke cabang mana pun
+yang kebetulan ditunjuk sesi — tidak terlihat di layar mana pun sampai ada yang
+merekonsiliasi pemasukan sebuah cabang.
+
+**`soleBranch` menjawabnya untuk toko satu cabang.** Satu pilihan bukan pilihan,
+jadi pemilihnya tidak muncul sama sekali — sama seperti form stok yang sudah ada.
+
+**Kalender dapat filter cabang** sekaligus, yang memang diminta FR-3 kriteria 3.9
+dan tercatat sebagai belum ada. Kosong berarti semua cabang — pertanyaan yang sah
+untuk pemilik dua toko, dan default yang salah untuk yang punya satu.
+
+---
+
+## [Unreleased] — Jadwal & Komisi bisa diatur dari layar
+
+Kartu baru di **Ubah Pengguna**: hari libur mingguan, tanggal cuti, dan cara
+komisi dihitung.
+
+**Keduanya sudah bisa disimpan sejak modul pengguna dirilis dan tidak pernah
+punya layar.** Tipe `User` di frontend bahkan sengaja tidak memuatnya, dengan
+catatan "tambahkan kalau ada layar yang membutuhkannya". FR-4 membuat rosternya
+menentukan siapa yang boleh dibooking dan FR-6 membuat rate-nya menentukan berapa
+yang diperoleh — dan sampai kartu ini ada, satu-satunya cara mengaturnya adalah
+memanggil API dengan tangan.
+
+**Hari libur memakai penomoran hari JavaScript: 0 Minggu, 3 Rabu.** Itu yang
+`Date#getDay` kembalikan dan yang server bandingkan. Penomoran yang lebih ramah
+kalau diciptakan di sini adalah lapisan terjemahan dengan satu tugas: salah
+sekali, diam-diam, di hari libur seseorang.
+
+**Menambahkan hari libur memeriksa apa yang akan terdampak** — kriteria 4.9 — dan
+menampilkannya **sebelum** disimpan. Menandai seseorang libur Rabu depan padahal
+sudah ada empat hewan terjadwal adalah keputusan, bukan salah ketik.
+
+**Ditampilkan, bukan dilarang.** Toko yang tetap memutuskan orangnya libur sedang
+mengambil keputusan sungguhan — mereka akan menelepon empat pelanggan itu — dan
+layar yang menolak akan mengirim keputusan itu ke tempat yang tidak bisa dilihat
+sistem ini. Pemeriksaan yang gagal dimuat juga tidak menghalangi penyimpanan:
+peringatannya kesopanan, bukan gerbang.
+
+**Peringatan mingguan melihat empat kemunculan berikutnya.** "Setiap Rabu,
+selamanya" tidak punya ujung untuk diperiksa, dan menanyakan setiap Rabu sampai
+akhir zaman menjawab pertanyaan yang tidak ditanyakan siapa pun.
+
+**Komisi `null`, bukan nol, untuk yang tidak berkomisi.** Kebanyakan staf memang
+tidak, dan `null` mengatakannya jauh lebih jelas.
+
+### Bentuk payload komisi, dan uji yang tidak menangkapnya
+
+Versi pertama kartu ini mengirim `matrix: []` bersama setiap persentase, dan
+server **menolak setiap penyimpanan**: "commissionRate.matrix is not allowed for
+this commission type". Servernya benar — `value` di samping matriks adalah angka
+yang tidak akan dibaca baris mana pun, dan `matrix` di samping persentase adalah
+baris yang tidak akan dikonsultasikan apa pun. Mengirim keduanya adalah payload
+yang tidak bisa berarti apa-apa.
+
+**Uji yang seharusnya menangkapnya memakai `objectContaining`**, yang lolos
+dengan senang hati pada key tambahan yang tidak ditanyakannya. Assertion yang
+tidak bisa melihat field ekstra yang salah bukan menjaga payload-nya; ia menjaga
+sebagian darinya. Ujinya sekarang membandingkan payload **persis**.
+
+`CommissionRateInput` jadi **union**, bukan interface dengan komentar "kirim satu
+saja" — bentuk yang tidak bisa berarti apa-apa jadi tidak bisa ditulis juga.
+
+**Komisi matriks tidak bisa disunting di sini, dan layarnya berkata begitu**
+alih-alih diam-diam menawarkan kontrol yang akan menghapusnya. Rate per layanan
+butuh pemilih layanan dengan satu baris per layanan; menjejalkan mode ketiga di
+sini lebih buruk daripada batas yang dinyatakan.
+
+---
+
+## [Unreleased] — Rekap Komisi
+
+`/dashboard/reports/commissions` — komisi groomer per bulan, dengan unduhan
+Excel untuk payroll.
+
+**Digerbangi `users:read`, bukan grant laporan.** Ini data payroll: menyebut
+setiap groomer dan berapa yang jadi haknya. Grant "laporan" yang mencakup stok
+dan gaji sekaligus akan menyerahkan payroll ke orang yang sedang menghitung
+karung pakan.
+
+**Satu angka, dijumlahkan sekali.** Servernya menjumlahkan dari baris yang sama
+yang ia kembalikan — kriteria 6.12 meminta rekapnya cocok dengan jumlah
+catatannya sampai rupiah terakhir, dan cara paling pasti memenuhinya adalah hanya
+punya satu angka.
+
+**Pembatalan ditampilkan, tidak pernah dilebur.** Booking yang dibatalkan setelah
+selesai membatalkan komisinya; angka payroll yang diam-diam memasukkannya salah
+ke arah yang memakan uang, dan yang menyembunyikan pembatalannya salah ke arah
+yang tidak bisa diaudit siapa pun. Jadi nominalnya mengecualikan mereka dan
+hitungannya menyebut ada berapa.
+
+**Satu kalimat di atas tabel, bukan di dokumen.** "Komisi dihitung saat booking
+**selesai**, bukan saat dibayar. Pekerjaan yang selesai tapi belum dibayar
+pelanggan tetap menghasilkan komisi." Itu konsekuensi yang pemiliknya harus
+putuskan sendiri, bukan temukan sendiri.
+
+**Sebulan, bukan rentang tanggal.** Payroll bulanan, dan rentang yang melintasi
+batas bulan menghasilkan angka yang tidak bisa dibayarkan ke siapa pun.
+
+**Filenya dibuat dari yang ada di layar**, bukan dari permintaan kedua. Rekapnya
+segenggam baris — satu per groomer — jadi mengalirkannya terpisah adalah query
+kedua yang satu-satunya tugasnya berbeda pendapat dengan yang pertama.
+
+---
+
+## [Unreleased] — Anti-bentrok dan jadwal libur di form booking
+
+Dropdown groomer sekarang **tahu siapa yang libur pada tanggal yang dipilih**.
+Yang libur tidak bisa dipilih, dan barisnya berkata kenapa: "Sinta — Libur setiap
+Rabu".
+
+**Alasannya bagian dari jawaban, bukan hiasan.** Baris yang di-grey tanpa
+penjelasan adalah jalan buntu paling umum di aplikasi ini: yang satu menyuruh
+resepsionis menawarkan Kamis, yang lain menyuruh mereka menelepon seseorang.
+
+**Ditanyakan ulang setiap kali tanggalnya berubah.** Orang yang libur tiap Rabu
+bisa ditawarkan hari Kamis, dan daftar yang diambil sekali saat halaman dibuka
+akan salah begitu resepsionis memindahkan janjinya.
+
+**Bentrok ditampilkan, bukan ditolak.** Kalau groomer sudah punya pekerjaan yang
+beririsan jam, formnya menampilkan peringatan yang menyebut **booking mana, jam
+berapa, dan nomornya** — lalu menekan Simpan lagi adalah override-nya. Server
+tetap menolak override tanpa `bookings:overrideClash`, jadi tombolnya kesopanan,
+bukan gerbangnya.
+
+**`forceClash` tidak pernah dikirim pada percobaan pertama.** Peringatan yang
+tidak dibaca siapa pun bukan sebuah keputusan.
+
+**Libur tidak bisa di-override dari layar mana pun.** Groomer yang libur ya
+libur, dan itu 400 dari server — bukan 409 yang bisa dikonfirmasi.
+
+---
+
+## [Unreleased] — Kalender booking, dan dua perbaikan pada profil hewan
+
+`/dashboard/booking/kalender` — harian dan mingguan, kolom per groomer.
+
+**Satu blok adalah satu hewan yang sedang dikerjakan, bukan satu booking.**
+Kunjungan yang membawa Mochi dan Coco dengan groomer berbeda muncul di dua kolom
+sekaligus; blok dari satu kunjungan membawa `bookingId` yang sama dan membuka
+kunjungan utuh dari mana saja diklik.
+
+**Warna tidak pernah jadi satu-satunya pembeda.** Setiap blok juga membawa
+statusnya sebagai **teks** — untuk yang sulit membedakan warna, dan untuk layar
+resepsionis yang tersorot matahari.
+
+**"Belum ditentukan" adalah kolom, dan ia paling kanan.** Baris tanpa groomer
+adalah keadaan biasa untuk booking lewat telepon; membuangnya dari kalender
+justru menyembunyikan pekerjaan yang masih perlu diberi orang.
+
+**Tampilan mingguan meringkas, tidak menggambar tiap slot.** Tujuh hari berisi
+slot setengah jam adalah grid yang tidak bisa dibaca di laptop. Yang sebenarnya
+ditanyakan tampilan mingguan adalah "hari mana yang penuh" — jadi ia menjawab
+dalam hitungan layanan dan jam, dan tampilan harian satu klik jauhnya.
+
+**Tanpa drag & drop.** Memindahkan blok harus memicu pengecekan bentrok,
+pemeriksaan libur, dan jejak audit; itu FR-4, dan membangunnya di sini berarti
+membangun FR-4 dua kali.
+
+### Bug tanggal yang ditemukan ujinya sendiri
+
+Tombol "berikutnya" tidak memindahkan hari sama sekali. `addDays` memakai
+`toISOString().slice(0, 10)` — yang mengonversi ke UTC lebih dulu, sehingga di
+timur Greenwich **tanggalnya mundur**. Di Jakarta, `addDays("2026-09-02", 1)`
+kembali sebagai `"2026-09-02"`.
+
+Di tempat lain di aplikasi ini, field tanggal adalah tanggal pembukuan yang orang
+baca dan koreksi. Di sini ia sumbu yang seluruh layarnya digambar di atasnya.
+
+### Profil hewan — dua perbaikan
+
+**Pemilik ditampilkan sebagai nama, bukan id.** Halaman `/master/pets/:id`
+memasang form ubah sebagai tab pertamanya, dan sebuah form menjawab dalam **nilai
+field** — jadi pemiliknya tampil sebagai select yang dinonaktifkan berisi
+`6a9797bacc28e96138ba7764`. Tab Info sekarang **tampilan baca**: pemiliknya nama,
+dan namanya tertaut ke pelanggannya.
+
+Untuk field pemilik yang terkunci di form ubah, satu pelanggan diambil **by id**
+supaya labelnya punya nama — bukan seluruh daftar. Separuh alasan yang lama
+(jangan tarik empat ratus pelanggan untuk satu baris nonaktif) memang benar; yang
+salah adalah melewatkan satu baris yang justru jadi isi field itu.
+
+**Mengubah data hewan punya route sendiri** — `/master/pets/:id/edit`. Halaman
+profil turun gerbangnya dari `update` ke `read`, karena tiga dari empat tabnya
+untuk dilihat: groomer yang tidak boleh mengubah data hewan tetap harus tahu
+hewannya alergi sesuatu.
+
+---
+
+## [Unreleased] — Profil hewan: yang groomer perlu tahu, datang sendiri
+
+`/dashboard/master/pets/:id` bukan lagi form ubah, melainkan **profil empat
+tab**: Info, Riwayat, Preferensi, Medis. Gerbangnya turun dari `update` ke
+`read`, karena tiga dari empat tab itu untuk **dilihat** — groomer yang tidak
+boleh mengubah data hewan tetap harus tahu hewannya alergi sampo strawberry.
+Tab yang **menulis** membawa gerbangnya sendiri, dan catatan medis punya izin
+terpisah (`pets:medical`).
+
+### `PetSummaryCard` adalah fiturnya
+
+Halaman profil tempat fakta **dimasukkan**; kartu ini tempat fakta **dibaca**,
+dan itu bagian yang mengubah apa yang terjadi di toko. Profil yang harus diingat
+untuk dibuka adalah profil yang tidak dibuka siapa pun pada Sabtu pagi — jadi
+faktanya yang mendatangi mereka, di kartu yang memang sedang mereka isi.
+
+**Muncul di form booking begitu hewannya dipilih** (FR-5 kriteria 5.13), **di
+atas** kontrolnya, bukan di bawah: alergi berat yang dibaca setelah layanan
+dipilih adalah peringatan yang datang terlambat untuk mengubah apa pun.
+
+**Tiga tingkat, dan urutannya intinya.** Alergi berat merah dan paling atas —
+itu yang mencegah satu mandi berakhir buruk. Lalu obat rutin dan alergi ringan.
+Lalu preferensi dan tag.
+
+**Tidak menggambar apa pun kalau tidak ada yang perlu dikatakan.** Kotak kosong
+di bawah setiap hewan mengajari orang berhenti melihat kotaknya, dan hari yang
+penting adalah hari kotak itu diabaikan.
+
+### Tab Riwayat
+
+Satu daftar, bukan tiga. Grooming, penjualan kasir, dan faktur adalah tiga
+koleksi dan satu riwayat: yang orang ingin tahu adalah apa yang terjadi pada
+anjingnya, bukan sistem mana yang mencatatnya. Pill menyaringnya, tidak
+memecahnya.
+
+Tiga angka di atasnya — terakhir dilayani, jumlah kunjungan, groomer paling
+sering — **mengabaikan pill**. "Terakhir dilayani" punya satu jawaban, dan versi
+yang berubah saat orang menyaring ke Kasir menjawab pertanyaan berbeda dari yang
+ditanyakan labelnya. Dihitung dalam **kunjungan, bukan baris**.
+
+Booking yang dibatalkan tetap di daftar dan berkata begitu: "kami booking dia
+tiga kali dan dia tidak pernah datang" persis jenis hal yang riwayat dibuka
+untuk menjawabnya.
+
+### Tab Preferensi dan Medis
+
+Tag dinormalkan di layar dengan aturan yang sama seperti di server, supaya chip
+yang dilihat orang adalah chip yang tersimpan — tanpa itu form menampilkan
+`#Galak`, daftar menyaring `galak`, dan ketidaksepakatan keduanya adalah cara
+orang berhenti mempercayai sebuah filter. Saran tag diambil dari yang sudah
+dipakai toko.
+
+Di form medis, **Enter menambah tag, bukan menyimpan form** — tanpa itu orang
+yang menambah tag kedua akan menemukan yang pertama tersimpan dan halamannya
+sudah pindah.
+
+**Belum ada**: kartu profil cetak (kriteria 5.12). Ada di rencana, tidak di fase
+ini, dan cetakan bawaan browser tidak ditawarkan sebagai penggantinya — cetakan
+setengah jadi lebih buruk daripada tombol yang jelas belum ada.
+
+---
+
+## [Unreleased] — Booking multi-pet: satu form untuk seluruh kunjungan
+
+Bu Lisa datang membawa Mochi dan Coco, dan sekarang itu **satu form, satu
+booking, satu nomor**. Sebelumnya dialog booking hanya bisa satu hewan, jadi dia
+berarti dua putaran enam field yang sama dan dua baris di daftar yang tidak tahu
+bahwa keduanya satu kedatangan.
+
+**Bentuknya**: header untuk yang dipakai bersama seluruh kunjungan — pelanggan,
+tanggal, jam — lalu satu kartu per hewan (`BookingPetRowCard`) untuk yang
+berbeda: layanan, groomer, durasi, catatan, harga.
+
+**Dan sekarang ia halaman, bukan dialog** — `/dashboard/booking/new`. ui-rules §9
+mengizinkan dialog polos kalau isinya form, dan dialog memang ukuran yang tepat
+selagi booking itu enam field di atas checklist; daftar hari itu tetap terlihat
+di belakangnya sementara orang menyepakati jam di telepon. Multi-pet yang
+melampauinya: tiga hewan berarti tiga kartu berisi lima kontrol, dan dialog yang
+memuat itu adalah form yang menggulung di dalam halaman yang menggulung — dengan
+tombol simpan dan total berjalan meluncur menjauh dari field yang mereka
+jelaskan. Halaman punya ruang, alamat yang bisa dikirim ke orang, dan tombol
+kembali yang artinya selalu sama.
+
+Tombol "Booking baru" di daftar jadi **Link**, bukan handler. Total, "selesai
+sekitar", dan hitungan barisnya pindah ke `meta` pada `FormActionBar`, tempat
+identitas read-only memang seharusnya (§16).
+
+**"Selesai sekitar" memakai groomer terlama, bukan jumlahnya.** Mochi 90 menit
+dengan Sinta dan Coco 60 menit dengan Rio berarti pelanggan menunggu 90, bukan
+150 — dua groomer bekerja bersamaan. Baris yang berbagi groomer tetap
+dijumlahkan. Ini **pratinjau** dari aturan yang server terapkan di
+`BookingItemRepository#summarise`; yang tersimpan adalah jawaban server.
+
+**Durasi boleh ditimpa, harga tidak.** Field durasi dibiarkan kosong dengan
+angka katalog sebagai placeholder, bukan diisi angkanya: form yang tidak
+disentuh tidak mengirim durasi sama sekali, sehingga janji itu tetap mengikuti
+katalog kalau tokonya mengubahnya sebelum hari-H.
+
+**Duplikat disebut namanya.** Hewan yang sama dengan layanan yang sama dua kali
+ditolak dengan menyebut nama hewannya — dengan empat kartu di layar, "salah satu
+di antaranya salah" adalah teka-teki, bukan pesan.
+
+### Satu aturan yang mudah hilang saat refactor
+
+**Chrome tidak boleh bisa menggagalkan penyimpanan.** Toast sukses tadinya
+berada di dalam `try` yang sama dengan request-nya. Sebuah uji menemukan
+ongkosnya: library toast melempar error, `catch`-nya mengubahnya jadi "Terjadi
+kesalahan. Coba lagi.", dan booking yang **sudah tertulis** dilaporkan gagal —
+yang mengirim orang membuatnya untuk kedua kali.
+
+Urutannya sekarang: tulis, reset, pindah halaman, **baru** umumkan — dan
+pengumumannya punya `catch` sendiri. Booking yang tersimpan tapi gagal
+mengumumkan diri tetap booking yang tersimpan, dan daftar yang dituju sudah
+menampilkannya.
+
+### Daftar booking
+
+Kolom hewan menampilkan nama-nama yang digabung ("Mochi, Coco") dengan lencana
+`2 hewan` di bawahnya, dan lencana tagih punya **tiga** keadaan, bukan dua:
+`partial` — "Sebagian sudah ditagih" — adalah keadaan yang PCR-040 ciptakan.
+Bacalah sebagai lencana, jangan sebagai aturan: apakah sebuah layanan boleh
+ditagih adalah pertanyaan tentang barisnya, dan server yang menjawabnya.
+
+---
+
 ## [Unreleased] — Faktur dari kasir menampilkan rincian barang dan pembayarannya
 
 Halaman `/dashboard/sales/:id` untuk faktur dari kasir tidak lagi berkata

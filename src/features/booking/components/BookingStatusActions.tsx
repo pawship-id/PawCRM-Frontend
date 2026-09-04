@@ -67,10 +67,27 @@ const REASON_MAX_LENGTH = 500;
 export function BookingStatusActions({
   booking,
   onChanged,
+  variant = "compact",
 }: {
   booking: Booking;
   /** Called after a successful move so the list can re-ask the server. */
   onChanged: () => void;
+  /**
+   * "compact" (default) — the ellipsis menu used on the day sheet and the
+   * booking overview, where a whole row of these sits per line.
+   *
+   * "prominent" — a big primary button for the very next rung, plus a
+   * secondary "Status lain" trigger for everything else (skip-ahead moves,
+   * the trail, cancelling). Built for the per-animal work page, where this is
+   * the one booking-level action on the whole screen.
+   *
+   * BOTH VARIANTS SHARE EVERY LINE OF STATE BELOW THIS POINT — the confirm
+   * dialog, the implied-rungs note, the cancel reason, the error handling.
+   * Only the trigger markup differs; duplicating the dialog logic for a second
+   * look is exactly the "two sources of truth" shape this module keeps
+   * producing bugs from.
+   */
+  variant?: "compact" | "prominent";
 }) {
   const [next, setNext] = useState<BookingStatus | null>(null);
   const [reason, setReason] = useState("");
@@ -129,38 +146,73 @@ export function BookingStatusActions({
 
   const implied = next ? impliedStatuses(booking.status, next) : [];
 
+  /*
+    THE VERY NEXT RUNG, for the prominent variant's primary button.
+
+    `forward` IS ALREADY IN LADDER ORDER — `BOOKING_TRANSITIONS[status]` is
+    written that way in the model, check_in before in_progress before
+    completed — so its first entry is the one rung directly ahead. The rest are
+    the skip-ahead moves the ladder also allows (PCR's "a status skipped is
+    still one the booking passed through"), and belong in the menu, not the
+    headline button.
+  */
+  const [primaryMove, ...laterMoves] = forward;
+  const menuMoves = variant === "prominent" ? laterMoves : forward;
+
   return (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            // The icon carries no name, so the label says which row this menu
-            // belongs to — twenty identical "Aksi" buttons teach a screen-reader
-            // user nothing.
-            aria-label={`Aksi untuk ${label}`}
-          >
-            <EllipsisVertical className="size-4" />
-          </Button>
-        </DropdownMenuTrigger>
+      <div className="flex flex-wrap items-center gap-2">
+        {variant === "prominent" && primaryMove && (
+          <Can feature="bookings" action={["advanceStatus", "update"]}>
+            <Button size="lg" onClick={() => setNext(primaryMove)}>
+              {BOOKING_STATUS_ACTIONS[primaryMove]} →
+            </Button>
+          </Can>
+        )}
 
-        <DropdownMenuContent align="end">
-          {forward.length > 0 && (
-            <Can feature="bookings" action="update">
-              {forward.map((status) => (
-                <DropdownMenuItem
-                  key={status}
-                  onSelect={() => setNext(status)}
-                >
-                  {BOOKING_STATUS_ACTIONS[status]}
-                </DropdownMenuItem>
-              ))}
-              <DropdownMenuSeparator />
-            </Can>
-          )}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            {variant === "prominent" ? (
+              <Button variant="secondary" size="lg">
+                Status lain ▾
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                // The icon carries no name, so the label says which row this
+                // menu belongs to — twenty identical "Aksi" buttons teach a
+                // screen-reader user nothing.
+                aria-label={`Aksi untuk ${label}`}
+              >
+                <EllipsisVertical className="size-4" />
+              </Button>
+            )}
+          </DropdownMenuTrigger>
 
-          {/* Ungated: the trail is a read, and seeing the row is the only grant
+          <DropdownMenuContent align="end">
+            {menuMoves.length > 0 && (
+              /*
+                EITHER GRANT, matching the API. `advanceStatus` is the
+                groomer's — check a dog in, mark it done — and `update` is the
+                stronger one a receptionist already holds. Gating on the
+                narrow one alone would have hidden these items from every role
+                that has only ever had `update`.
+              */
+              <Can feature="bookings" action={["advanceStatus", "update"]}>
+                {menuMoves.map((status) => (
+                  <DropdownMenuItem
+                    key={status}
+                    onSelect={() => setNext(status)}
+                  >
+                    {BOOKING_STATUS_ACTIONS[status]}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+              </Can>
+            )}
+
+            {/* Ungated: the trail is a read, and seeing the row is the only grant
               reading its history needs. */}
           <DropdownMenuItem onSelect={() => setHistoryOpen(true)}>
             <History />
@@ -179,7 +231,8 @@ export function BookingStatusActions({
             </Can>
           )}
         </DropdownMenuContent>
-      </DropdownMenu>
+        </DropdownMenu>
+      </div>
 
       {next && (
         <Dialog open onOpenChange={(open) => !open && close()}>

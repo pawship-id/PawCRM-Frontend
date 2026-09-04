@@ -29,12 +29,23 @@ const petFixture = {
   name: "Bella",
   species: "dog" as const,
   sex: "female" as const,
-  breed: "Golden Retriever",
+  breed: "domestic" as const,
+  furType: null,
+  size: null,
   birthDate: "2022-03-14T00:00:00.000Z",
   weightKg: 12.4,
   color: null,
   microchipNo: null,
-  notes: null,
+  description: null,
+  internalNotes: null,
+  preferences: { text: null, tags: [] },
+  medical: {
+    allergies: [],
+    conditions: [],
+    medications: [],
+    vaccinations: [],
+    vet: { clinicName: null, phone: null },
+  },
   photo: null,
   isActive: true,
   deletedAt: null,
@@ -44,6 +55,16 @@ const petFixture = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  /*
+    A LOCKED OWNER FIELD NOW FETCHES THE ONE CUSTOMER BY ID so it can show a
+    NAME. Without this the edit screen rendered the raw `customerId` — which is
+    what a shop owner saw where a person's name belongs.
+  */
+  mockedCustomerService.getById.mockResolvedValue({
+    _id: CUSTOMER_ID,
+    name: "Ibu Rina",
+    phone: "0812-3456-7890",
+  } as never);
   mockedCustomerService.list.mockResolvedValue({
     items: [
       {
@@ -153,7 +174,9 @@ describe("PetForm — editing", () => {
     render(<PetForm petId={PET_ID} />);
 
     expect(await screen.findByDisplayValue("Bella")).toBeVisible();
-    expect(screen.getByDisplayValue("Golden Retriever")).toBeVisible();
+    expect(screen.getByRole("combobox", { name: "Ras" })).toHaveTextContent(
+      "Domestic",
+    );
     // The ISO instant is trimmed to the date half an <input type=date> wants.
     expect(screen.getByDisplayValue("2022-03-14")).toBeVisible();
   });

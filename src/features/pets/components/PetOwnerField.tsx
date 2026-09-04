@@ -62,10 +62,49 @@ export function PetOwnerField({
   const [truncated, setTruncated] = useState(false);
 
   useEffect(() => {
-    // Nothing to pick from when the field cannot be changed anyway — and the
-    // edit screen would otherwise pull four hundred customers to render one
-    // disabled row.
-    if (locked) return;
+    /*
+      A LOCKED FIELD STILL NEEDS ONE OPTION — the owner's NAME.
+
+      THE BUG THIS FIXES was visible on every edit screen: with no options
+      loaded, `FilterSelect` had nothing to match the value against and rendered
+      the raw `customerId` — a shop owner reading `6a9797bacc28e96138ba7764`
+      where a person's name belongs. The old comment called the skip a saving;
+      what it actually saved was the one row the field exists to display.
+
+      ONE CUSTOMER, BY ID, rather than the whole list. The edit screen genuinely
+      should not pull four hundred customers to render a disabled row — that
+      half of the reasoning was right.
+    */
+    if (locked) {
+      if (!value) return;
+
+      let active = true;
+
+      customerService
+        .getById(value)
+        .then((customer) => {
+          if (!active) return;
+          setOptions([
+            {
+              value: customer._id,
+              label: customer.phone
+                ? `${customer.name} · ${customer.phone}`
+                : customer.name,
+            },
+          ]);
+        })
+        .catch(() => {
+          /*
+            SILENT. The field is disabled and the id is still shown — which is
+            worse than a name and better than an empty box, and a red banner
+            over a form nobody can break here would be noise.
+          */
+        });
+
+      return () => {
+        active = false;
+      };
+    }
 
     let active = true;
 
@@ -98,7 +137,7 @@ export function PetOwnerField({
     return () => {
       active = false;
     };
-  }, [locked]);
+  }, [locked, value]);
 
   // FilterSelect carries no `hint` slot — it is a filter control first, and a
   // filter never explains itself. The note is rendered beside it here rather

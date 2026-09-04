@@ -23,14 +23,8 @@ import type { PetSpecies } from "@/types/api";
 
 /** Indonesian labels — the visible word is copy, not the API's value. §12. */
 const SPECIES_LABELS: Record<PetSpecies, string> = {
-  dog: "Anjing",
   cat: "Kucing",
-  bird: "Burung",
-  rabbit: "Kelinci",
-  hamster: "Hamster",
-  reptile: "Reptil",
-  fish: "Ikan",
-  other: "Lainnya",
+  dog: "Anjing",
 };
 
 /** The pet's species, spelled out. */
@@ -45,6 +39,35 @@ export function PetSpeciesBadge({ species }: { species: PetSpecies }) {
 /** Plain label for the species — for a picker or a sentence, where a badge would be noise. */
 export function speciesLabel(species: PetSpecies): string {
   return SPECIES_LABELS[species];
+}
+
+/**
+ * The two facts that decide a grooming price, spelled out.
+ *
+ * HERE BESIDE `speciesLabel` because they are the same kind of thing and were
+ * being retyped: `PetInfoTab` had its own copies, and so did the booking form's
+ * variant editor. Three spellings of "Berbulu panjang" is how one screen ends up
+ * disagreeing with another about the animal in front of them.
+ */
+const SIZE_LABELS: Record<string, string> = {
+  small: "Kecil",
+  medium: "Sedang",
+  large: "Besar",
+};
+
+const FUR_LABELS: Record<string, string> = {
+  "long hair": "Bulu panjang",
+  "short hair": "Bulu pendek",
+};
+
+/** `"large"` → `"Besar"`. Unknown values pass through rather than blanking. */
+export function sizeLabel(size: string | null | undefined): string | null {
+  return size ? (SIZE_LABELS[size] ?? size) : null;
+}
+
+/** `"long hair"` → `"Bulu panjang"`. */
+export function furTypeLabel(furType: string | null | undefined): string | null {
+  return furType ? (FUR_LABELS[furType] ?? furType) : null;
 }
 
 /**
