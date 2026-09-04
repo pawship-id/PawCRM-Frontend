@@ -1,20 +1,17 @@
 "use client";
 
-import { Plus, X } from "lucide-react";
-
 import { useState } from "react";
+import { ChevronDown, Plus, X } from "lucide-react";
 
 import {
   CheckRow,
   CheckRowGroup,
   FIELD_HEIGHT,
   SelectField,
-  TextField,
   TextareaField,
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { PetSummaryCard } from "@/features/pets";
 import { formatMoney } from "@/utils/decimal";
 import { AXIS_LABEL, priceForPet, variantLabelForPet } from "@/utils/serviceVariant";
@@ -38,16 +35,29 @@ const VARIANT_VALUE_LABELS: Record<string, Record<string, string>> = {
  * ONE ANIMAL ON THE BOOKING — its services, its add-ons, its note and what it
  * brought with it.
  *
- * ─── WHY THE CARD IS PER ANIMAL AND NOT PER LINE ───────────────────────────
+ * ─── THE CARD IS TITLED BY ITS ANIMAL, AND THAT IS THE WHOLE LAYOUT ────────
  *
- * It used to be per LINE: one card meant one animal having one service, so a dog
- * having a bath and a nail trim was two cards, each repeating the animal, the
- * groomer and the note. The questions a receptionist actually asks run the other
- * way — which animal, then what is being done to it — and everything from the
- * business-line filter down to the belongings list is a fact about the ANIMAL,
- * asked once here instead of once per service.
+ * The first version put every control on one flat card under a small grey
+ * caption, and the first question it produced from somebody using it was "ini
+ * input buat hewan 1 atau hewan 2?". A form somebody has to keep their place in
+ * is a form that gets filled in wrong.
  *
- * ─── IT FETCHES NOTHING ────────────────────────────────────────────────────
+ * So the animal's name is a HEADER STRIP with a numbered badge, tinted, running
+ * the full width of the card; everything belonging to that animal sits under it
+ * and nothing else does. The number survives an empty card — "Hewan ke-2" still
+ * answers which one this is — and becomes the name the moment one is chosen.
+ * The services sit behind a left rail, so the indent says "these belong to the
+ * animal named above" without repeating it on every row.
+ *
+ * ─── WHAT IS HIDDEN UNTIL IT IS WANTED ────────────────────────────────────
+ *
+ * A visit is usually one animal, one service, the catalogue's duration, no note
+ * and nothing handed over. Showing eight controls for that is what made the card
+ * hard to read, so the three usually left alone — the duration override, the
+ * note and the belongings — are folded away, and each fold says when it holds
+ * something. Nothing is removed; it stops being in the way.
+ *
+ * ─── IT FETCHES NOTHING ───────────────────────────────────────────────────
  *
  * Pets, services, business lines and groomers are loaded once by the form and
  * handed down. A card that fetched its own would ask four times over for a
@@ -115,19 +125,43 @@ export function BookingPetGroupCard({
     });
   }
 
+  const extrasCount =
+    group.belongings.length + (group.notes.trim() === "" ? 0 : 1);
+
   return (
-    <li className="rounded-xl border border-border p-4">
-      <div className="mb-3 flex items-start justify-between gap-2">
-        <span className="text-sm font-medium text-foreground">
-          {pet?.name ?? `Hewan ${index + 1}`}
+    <li className="overflow-hidden rounded-xl border border-border">
+      {/*
+        THE HEADER STRIP. Tinted and full width, so the eye finds where one
+        animal ends and the next begins without counting borders — which is the
+        thing the flat version could not do.
+      */}
+      <div className="flex items-center gap-3 bg-navy-100 px-4 py-3">
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold tabular-nums text-primary-foreground">
+          {index + 1}
         </span>
-        <span className="flex items-center gap-2">
-          {hasBilled && (
-            <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-              Sudah ditagih
+
+        <span className="min-w-0 flex-1">
+          {/*
+            A REAL HEADING, not a styled span. It is the card's title in the
+            sense a reader means — "whose fields are these" — so a screen reader
+            should be able to jump between animals the way an eye does.
+          */}
+          <h3 className="truncate text-sm font-bold text-foreground">
+            {pet?.name ?? `Hewan ke-${index + 1}`}
+          </h3>
+          {group.services.length > 1 && (
+            <span className="block text-xs text-muted">
+              {group.services.length} layanan
             </span>
           )}
-          {removable && !hasBilled && (
+        </span>
+
+        {hasBilled ? (
+          <span className="rounded bg-surface px-2 py-0.5 text-xs text-muted">
+            Sudah ditagih
+          </span>
+        ) : (
+          removable && (
             <Button
               type="button"
               variant="ghost"
@@ -138,11 +172,11 @@ export function BookingPetGroupCard({
             >
               <X className="size-4" />
             </Button>
-          )}
-        </span>
+          )
+        )}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="flex flex-col gap-4 p-4">
         <SelectField
           label="Hewan"
           value={group.petId}
@@ -154,118 +188,125 @@ export function BookingPetGroupCard({
         />
 
         {/*
-          THE LINE OF BUSINESS IS A FILTER, NOT A FIELD. It is never sent — the
-          service already names its own — and it exists because a shop running
-          grooming, hotel and clinic out of one catalogue makes the service list
-          long enough to scroll past what you wanted.
+          WHAT THE SHOP ALREADY KNOWS ABOUT THIS ANIMAL — FR-5 kriteria 5.13.
+
+          ABOVE THE SERVICES, not below: a severe allergy read after the service
+          has been picked is a warning that arrived too late to change anything.
         */}
-        <SelectField
-          label="Tipe layanan"
-          value={group.businessLineId}
-          onChange={(value) =>
-            onChange({
-              businessLineId: value,
-              /*
-                THE CHOSEN SERVICES SURVIVE A CHANGE OF FILTER. Narrowing the
-                list is not un-choosing what is already on the card, and clearing
-                them would punish somebody for looking.
-              */
-            })
-          }
-          options={businessLines.map((line) => ({
-            value: line._id,
-            label: line.name,
-          }))}
-          placeholder="Semua tipe"
-          disabled={disabled}
-          hint="Menyaring daftar layanan di bawah. Tidak ikut tersimpan."
-        />
-      </div>
+        {pet && <PetSummaryCard pet={pet} />}
 
-      {/*
-        WHAT THE SHOP ALREADY KNOWS ABOUT THIS ANIMAL — FR-5 kriteria 5.13.
+        <div className="flex flex-col gap-3 border-l-2 border-border pl-3">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <span className="text-sm font-medium">
+              Layanan<span className="text-danger"> *</span>
+            </span>
 
-        ABOVE THE SERVICES, not below: a severe allergy read after the service
-        has been picked is a warning that arrived too late to change anything.
-      */}
-      {pet && <PetSummaryCard pet={pet} className="mt-3" />}
+            {/*
+              THE LINE OF BUSINESS IS A FILTER, NOT A FIELD — never sent, since
+              the service already names its own. It sits WITH the list it narrows
+              rather than beside "Hewan", where it read as another property of
+              the animal and was half the confusion.
+            */}
+            {businessLines.length > 0 && (
+              <SelectField
+                label="Tipe layanan"
+                className="w-44"
+                value={group.businessLineId}
+                onChange={(value) => onChange({ businessLineId: value })}
+                options={businessLines.map((line) => ({
+                  value: line._id,
+                  label: line.name,
+                }))}
+                placeholder="Semua tipe"
+                disabled={disabled}
+              />
+            )}
+          </div>
 
-      <div className="mt-4 flex flex-col gap-3">
-        <Label>
-          Layanan<span className="text-danger"> *</span>
-        </Label>
+          {group.services.map((line) => (
+            <ServiceLine
+              key={line.key}
+              line={line}
+              pet={pet}
+              mainServices={mainServices}
+              groomers={groomers}
+              disabled={disabled}
+              duplicate={duplicateKeys.has(line.key)}
+              removable={group.services.length > 1}
+              onChange={(patch) => updateLine(line.key, patch)}
+              onRemove={() =>
+                onChange({
+                  services: group.services.filter(
+                    (other) => other.key !== line.key,
+                  ),
+                })
+              }
+              serviceOf={serviceOf}
+            />
+          ))}
 
-        {group.services.map((line) => (
-          <ServiceLine
-            key={line.key}
-            line={line}
-            pet={pet}
-            mainServices={mainServices}
-            groomers={groomers}
-            disabled={disabled}
-            duplicate={duplicateKeys.has(line.key)}
-            removable={group.services.length > 1}
-            onChange={(patch) => updateLine(line.key, patch)}
-            onRemove={() =>
-              onChange({
-                services: group.services.filter(
-                  (other) => other.key !== line.key,
-                ),
-              })
-            }
-            serviceOf={serviceOf}
-          />
-        ))}
-
-        <div>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            disabled={disabled}
-            onClick={() =>
-              onChange({ services: [...group.services, blankService()] })
-            }
-          >
-            <Plus className="size-4" />
-            Tambah layanan
-          </Button>
+          <div>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={disabled}
+              onClick={() =>
+                onChange({ services: [...group.services, blankService()] })
+              }
+            >
+              <Plus className="size-4" />
+              Tambah layanan
+            </Button>
+          </div>
         </div>
+
+        {/*
+          THE TWO THINGS MOST VISITS DO NOT HAVE, behind one fold. The summary
+          counts what is inside, so nothing a reader needs is out of sight.
+        */}
+        <Disclosure
+          label="Catatan & barang bawaan"
+          count={extrasCount}
+          petName={pet?.name ?? `hewan ${index + 1}`}
+        >
+          <div className="flex flex-col gap-4 pt-3">
+            <TextareaField
+              label="Catatan"
+              name={`pet-notes-${group.key}`}
+              value={group.notes}
+              onChange={(event) => onChange({ notes: event.target.value })}
+              maxLength={NOTES_MAX_LENGTH}
+              placeholder="mis. takut hairdryer, mandi duluan"
+              hint="Berlaku untuk semua layanan hewan ini pada kunjungan ini."
+              disabled={disabled}
+            />
+
+            {/*
+              BARANG BAWAAN — ticked in and out on the booking's own page, listed
+              here. Nothing here ticks anything in: this is what the owner says
+              they will bring, and the counter confirms it on arrival.
+            */}
+            <BelongingList
+              belongings={group.belongings}
+              petName={pet?.name ?? `hewan ${index + 1}`}
+              disabled={disabled}
+              onChange={(belongings) => onChange({ belongings })}
+            />
+          </div>
+        </Disclosure>
       </div>
-
-      {/*
-        BARANG BAWAAN — checked in and out on the booking's own page, listed here.
-
-        WRITTEN DOWN AT BOOKING TIME IS NOT THE SAME AS HANDED OVER. Nothing here
-        ticks anything in: this is what the owner says they will bring, and the
-        counter confirms it on arrival. That distinction is the whole reason the
-        stored shape carries two dates.
-      */}
-      <BelongingList
-        belongings={group.belongings}
-        petName={pet?.name ?? `hewan ${index + 1}`}
-        disabled={disabled}
-        onChange={(belongings) => onChange({ belongings })}
-      />
-
-      {/* §16: the note is last, and it is about the ANIMAL on this visit. */}
-      <TextareaField
-        label="Catatan"
-        name={`pet-notes-${group.key}`}
-        className="mt-4"
-        value={group.notes}
-        onChange={(event) => onChange({ notes: event.target.value })}
-        maxLength={NOTES_MAX_LENGTH}
-        placeholder="mis. takut hairdryer, mandi duluan"
-        hint="Berlaku untuk semua layanan hewan ini pada kunjungan ini."
-        disabled={disabled}
-      />
     </li>
   );
 }
 
 /**
  * One service on one animal, with its add-ons underneath.
+ *
+ * TWO CONTROLS BY DEFAULT — the service, and who does it. The duration override
+ * is behind a button showing the catalogue's number: a receptionist disagreeing
+ * with the catalogue is the exception, and a box asking them to is one more
+ * thing to read past on every booking that does not need it.
  *
  * THE PRICE SHOWN IS RESOLVED FROM THE ANIMAL when the service is priced per
  * variant — the same lookup the server does, mirrored so the card can show a
@@ -297,6 +338,11 @@ function ServiceLine({
   onRemove: () => void;
   serviceOf: (id: string) => Service | null;
 }) {
+  /* Open when a duration was already typed, so an edit shows what it holds. */
+  const [editingDuration, setEditingDuration] = useState(
+    line.durationMin !== "",
+  );
+
   const service = serviceOf(line.serviceId);
   const locked = line.locked;
   const { price, missingAxis } = priceForPet(service, pet);
@@ -311,32 +357,62 @@ function ServiceLine({
     .map((id) => serviceOf(id))
     .filter((addon): addon is Service => addon !== null);
 
-  return (
-    <div className="rounded-lg border border-border bg-surface-hover/40 p-3">
-      <div className="grid gap-3 sm:grid-cols-2">
-        <SelectField
-          label="Layanan"
-          value={line.serviceId}
-          onChange={(value) =>
-            /* A different service offers different add-ons; keeping the old
-               ticks would send ones the new parent does not offer. */
-            onChange({ serviceId: value, addonServiceIds: [] })
-          }
-          options={mainServices.map((item) => ({
-            value: item._id,
-            label: item.name,
-          }))}
-          placeholder="Pilih layanan…"
-          disabled={disabled || locked}
-          error={
-            duplicate
-              ? `${pet?.name ?? "Hewan ini"} sudah punya layanan yang sama di booking ini.`
-              : undefined
-          }
-          required
-        />
+  const catalogueDuration = service?.durationMin ?? null;
 
-        {groomers.length > 0 && (
+  return (
+    <div className="rounded-lg border border-border p-3">
+      <SelectField
+        label="Layanan"
+        value={line.serviceId}
+        onChange={(value) =>
+          /* A different service offers different add-ons; keeping the old ticks
+             would send ones the new parent does not offer. */
+          onChange({ serviceId: value, addonServiceIds: [] })
+        }
+        options={mainServices.map((item) => ({
+          value: item._id,
+          label: item.name,
+        }))}
+        placeholder="Pilih layanan…"
+        disabled={disabled || locked}
+        error={
+          duplicate
+            ? `${pet?.name ?? "Hewan ini"} sudah punya layanan yang sama di booking ini.`
+            : undefined
+        }
+        required
+      />
+
+      {/* The price sits with the service it belongs to, not in a column of its own. */}
+      {service && (
+        <p className="mt-2 text-sm">
+          {price ? (
+            <>
+              <span className="font-medium tabular-nums text-foreground">
+                {formatMoney(price)}
+              </span>
+              {variantLabel && (
+                <span className="text-muted"> · varian {variantLabel}</span>
+              )}
+            </>
+          ) : missingAxis ? (
+            <span className="text-xs font-semibold text-danger">
+              {pet?.name ?? "Hewan ini"} belum punya {AXIS_LABEL[missingAxis]} —
+              harga layanan ini mengikutinya. Lengkapi dulu di profil hewan.
+            </span>
+          ) : (
+            <span className="text-muted">—</span>
+          )}
+        </p>
+      )}
+
+      {/*
+        NO STAFF LIST, NO SELECT. Reading staff takes a permission a receptionist
+        who books all day has no other reason to hold; assignment is optional and
+        the server names an empty slot, so a missing list costs a convenience.
+      */}
+      {groomers.length > 0 && (
+        <div className="mt-3">
           <SelectField
             label="Groomer"
             value={line.groomerUserId}
@@ -347,54 +423,9 @@ function ServiceLine({
             ]}
             disabled={disabled || locked}
           />
-        )}
-      </div>
-
-      <div className="mt-3 grid items-end gap-3 sm:grid-cols-2">
-        <TextField
-          label="Durasi (menit)"
-          name={`duration-${line.key}`}
-          type="number"
-          min={1}
-          max={1440}
-          value={line.durationMin}
-          onChange={(event) => onChange({ durationMin: event.target.value })}
-          placeholder={
-            service?.durationMin ? `${service.durationMin} (dari layanan)` : "—"
-          }
-          disabled={disabled || locked}
-        />
-
-        <div className="text-sm">
-          <span className="text-muted">Harga</span>
-          <div className="font-medium tabular-nums text-foreground">
-            {price ? (
-              formatMoney(price)
-            ) : missingAxis ? (
-              <span className="text-xs font-semibold text-danger">
-                {pet?.name ?? "Hewan ini"} belum punya {AXIS_LABEL[missingAxis]}
-              </span>
-            ) : (
-              "—"
-            )}
-          </div>
-          {variantLabel && price && (
-            <div className="text-xs text-muted">Varian {variantLabel}</div>
-          )}
-          {missingAxis && (
-            <p className="mt-1 text-xs text-muted">
-              Harga layanan ini mengikuti {AXIS_LABEL[missingAxis]} hewannya.
-              Lengkapi dulu di profil hewan.
-            </p>
-          )}
         </div>
-      </div>
+      )}
 
-      {/*
-        ADD-ONS, UNDER THE SERVICE THEY BELONG TO. Absent entirely when the
-        service offers none — an empty "Add-on" heading over nothing invites
-        somebody to go looking for a list that does not exist.
-      */}
       {offeredAddons.length > 0 && (
         <div className="mt-3">
           <p className="text-xs font-medium text-muted">Add-on</p>
@@ -429,13 +460,40 @@ function ServiceLine({
         </div>
       )}
 
-      {locked ? (
-        <p className="mt-3 text-xs text-muted">
-          Sudah ditagih — tidak bisa diubah atau dihapus.
-        </p>
-      ) : (
-        removable && (
-          <div className="mt-3">
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+        {editingDuration ? (
+          <span className="flex items-center gap-2">
+            <Input
+              aria-label="Durasi (menit)"
+              type="number"
+              min={1}
+              max={1440}
+              className={`w-28 ${FIELD_HEIGHT}`}
+              value={line.durationMin}
+              onChange={(event) => onChange({ durationMin: event.target.value })}
+              placeholder={catalogueDuration ? String(catalogueDuration) : "—"}
+              disabled={disabled || locked}
+            />
+            <span className="text-xs text-muted">menit</span>
+          </span>
+        ) : (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={disabled || locked}
+            onClick={() => setEditingDuration(true)}
+          >
+            Durasi {catalogueDuration ? `${catalogueDuration} mnt` : "—"} · ubah
+          </Button>
+        )}
+
+        {locked ? (
+          <span className="text-xs text-muted">
+            Sudah ditagih — tidak bisa diubah atau dihapus.
+          </span>
+        ) : (
+          removable && (
             <Button
               type="button"
               variant="ghost"
@@ -447,9 +505,59 @@ function ServiceLine({
               <X className="size-4" />
               Hapus layanan
             </Button>
-          </div>
-        )
-      )}
+          )
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * One fold, with a summary that says whether anything is inside.
+ *
+ * A BUTTON AND STATE RATHER THAN `<details>`: the open state has to survive the
+ * re-render that typing in a sibling field causes, and `<details>` keeps that in
+ * the DOM where React will fight it.
+ *
+ * OPEN WHEN IT ALREADY HOLDS SOMETHING, so editing a booking never hides what
+ * was written last time behind a fold nobody knows to open.
+ */
+function Disclosure({
+  label,
+  count,
+  petName,
+  children,
+}: {
+  label: string;
+  count: number;
+  petName: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(count > 0);
+
+  return (
+    <div className="border-t border-border pt-3">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        aria-expanded={open}
+        aria-label={`${label} ${petName}`}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <ChevronDown
+          className={`size-4 transition ${open ? "" : "-rotate-90"}`}
+          aria-hidden
+        />
+        {label}
+        {count > 0 && (
+          <span className="rounded-full bg-secondary/25 px-2 text-xs font-medium tabular-nums text-secondary-foreground">
+            {count}
+          </span>
+        )}
+      </Button>
+
+      {open && children}
     </div>
   );
 }
@@ -457,10 +565,9 @@ function ServiceLine({
 /**
  * What the owner is handing over with this animal.
  *
- * ADD-AND-REMOVE, not a comma-separated box, for the reason the service form's
- * own list fields give: each item is ticked in and out individually on the
- * booking's page, so a separator inside the data would turn one item containing
- * a comma into two.
+ * ADD-AND-REMOVE, not a comma-separated box: each item is ticked in and out
+ * individually on the booking's page, so a separator inside the data would turn
+ * one item containing a comma into two.
  */
 function BelongingList({
   belongings,
@@ -474,13 +581,12 @@ function BelongingList({
   onChange: (next: string[]) => void;
 }) {
   return (
-    <div className="mt-4 flex flex-col gap-2">
+    <div className="flex flex-col gap-2">
       <div>
         <p className="text-sm font-medium">Barang bawaan</p>
         <p className="mt-1 text-xs text-muted">
           Kalung, carrier, makanan. Dicentang masuk dan keluar di halaman
-          bookingnya — booking tidak bisa diselesaikan kalau masih ada yang belum
-          kembali.
+          bookingnya.
         </p>
       </div>
 
@@ -539,8 +645,8 @@ function BelongingInput({
     <div className="flex items-start gap-2">
       {/*
         An `aria-label` rather than a `TextField`: the list's own heading is the
-        label, and a second visible one over the box would read as a field of
-        its own rather than as the way to add to the list above.
+        label, and a second visible one over the box would read as a field of its
+        own rather than as the way to add to the list above.
       */}
       <Input
         aria-label={`Tambah barang bawaan ${petName}`}

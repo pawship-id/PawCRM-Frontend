@@ -132,6 +132,36 @@ So the moves live here, behind the same state machine the server enforces.
 **kapan** (tanggal + jam) → **di mana** (cabang, lokasi layanan) → antar-jemput → **dengan
 siapa** (pelanggan) → a card per animal → the status → catatan last.
 
+### The card is titled by its animal, and that is the whole layout
+
+The first version was flat: a small grey caption over eight controls, repeated per animal. The
+question it produced from the first person to use it was *"ini input buat hewan 1 atau hewan
+2?"* — and a form somebody has to keep their place in is a form that gets filled in wrong.
+
+What answers it now:
+
+| | |
+| --- | --- |
+| A tinted **header strip** with a numbered badge and the animal's name as an `<h3>` | The eye finds where one animal ends and the next begins without counting borders |
+| `Hewan ke-2` until one is chosen | A card with no animal yet still says which one it is |
+| The services sit behind a **left rail** | The indent says "these belong to the animal named above" without repeating it on every row |
+| **Tipe layanan** moved down beside the service list | Next to *Hewan* it read as another property of the animal, and was half the confusion |
+
+### Three things are folded away
+
+A visit is usually one animal, one service, the catalogue's duration, no note and nothing
+handed over — so the three controls that are usually left alone are behind a fold, and each
+fold says when it holds something:
+
+- **Durasi** is a button showing the catalogue's number (`Durasi 90 mnt · ubah`). A
+  receptionist disagreeing with the catalogue is the exception; the box was in the way of every
+  booking that agreed with it.
+- **Catatan & barang bawaan** is one disclosure per animal, with a count when it holds
+  anything, and it **opens by itself** when the booking already has something in it — editing
+  must not hide what was written last time behind a fold nobody knows to open.
+
+Nothing was removed. It stopped being in the way.
+
 ### The card is per ANIMAL, not per line
 
 It used to be per line: one card meant one animal having one service, so a dog having a bath

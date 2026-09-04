@@ -817,6 +817,142 @@ describe("BookingForm — layanan, add-on dan varian", () => {
   });
 });
 
+/**
+ * ─── WHOSE FIELD IS THIS? ───────────────────────────────────────────────────
+ *
+ * The first version of the per-animal card was flat: a small grey caption over
+ * eight controls, repeated. The question it produced from somebody using it was
+ * "ini input buat hewan 1 atau hewan 2?" — so these pin what answers it.
+ */
+describe("BookingForm — telling one animal's card from another's", () => {
+  beforeEach(() => {
+    pets.list.mockResolvedValue(
+      page([
+        { _id: "pet-1", name: "Mochi" } as Pet,
+        { _id: "pet-2", name: "Coco" } as Pet,
+      ]),
+    );
+  });
+
+  it("numbers a card that has no animal yet, so it still says which it is", async () => {
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^hewan$/i });
+
+    await userEvent.click(screen.getByRole("button", { name: /^tambah hewan$/i }));
+
+    expect(
+      screen.getByRole("heading", { name: "Hewan ke-1" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Hewan ke-2" }),
+    ).toBeInTheDocument();
+  });
+
+  it("titles each card with its own animal once one is chosen", async () => {
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^hewan$/i });
+
+    await choose(/^hewan$/i, "Mochi");
+    await userEvent.click(screen.getByRole("button", { name: /^tambah hewan$/i }));
+
+    const pickers = screen.getAllByRole("combobox", { name: /^hewan$/i });
+    await userEvent.click(pickers[1]);
+    await userEvent.click(await screen.findByRole("option", { name: "Coco" }));
+
+    /*
+      THE HEADER IS THE ANSWER. Each card carries its animal's name as its own
+      title, so the fields under it need no repeating label to be placed.
+    */
+    const cards = screen.getAllByRole("listitem");
+    /*
+      ASKED FOR AS A HEADING, which is what the card's title now is — the name
+      also appears inside each picker (and in the hidden native select Radix
+      renders for form support), so plain text would match either.
+    */
+    expect(
+      within(cards[0]).getByRole("heading", { name: "Mochi" }),
+    ).toBeInTheDocument();
+    expect(
+      within(cards[1]).getByRole("heading", { name: "Coco" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the note and the belongings folded away until they are wanted", async () => {
+    // Most visits have neither, and eight controls per animal is what made the
+    // card hard to read.
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^hewan$/i });
+
+    /* The booking's own Catatan is always there; the ANIMAL's is not, yet. */
+    expect(screen.getAllByLabelText(/^catatan$/i)).toHaveLength(1);
+    expect(
+      screen.queryByLabelText(/tambah barang bawaan/i),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getAllByRole("button", { name: /catatan & barang bawaan/i })[0],
+    );
+
+    expect(screen.getAllByLabelText(/^catatan$/i)).toHaveLength(2);
+    expect(screen.getByLabelText(/tambah barang bawaan/i)).toBeInTheDocument();
+  });
+
+  it("opens the fold by itself when the booking already has something in it", async () => {
+    /*
+      Editing must not hide what was written last time behind a fold nobody knows
+      to open.
+    */
+    bookings.getById.mockResolvedValue({
+      _id: "bk-9",
+      bookingNumber: "BK-260901-007",
+      customerId: "cust-1",
+      branchId: BRANCH_ID,
+      scheduledAt: new Date("2026-09-03T09:00:00").toISOString(),
+      status: "confirmed",
+      notes: null,
+      belongings: [],
+      items: [
+        {
+          _id: "it-1",
+          petId: "pet-1",
+          serviceId: "svc-1",
+          parentItemId: null,
+          name: "Grooming Full Service",
+          price: "150000.0000",
+          durationMin: 90,
+          notes: "Takut hairdryer",
+          groomerUserId: null,
+          pulledToCartAt: null,
+          pulledToInvoiceAt: null,
+        },
+      ],
+    } as unknown as Booking);
+    customers.getById.mockResolvedValue(customer);
+
+    renderWithAuth(<BookingForm bookingId="bk-9" />);
+
+    expect(await screen.findByDisplayValue("Takut hairdryer")).toBeInTheDocument();
+  });
+
+  it("shows the catalogue's duration on a button rather than a box", async () => {
+    // A receptionist disagreeing with the catalogue is the exception; the field
+    // was in the way of every booking that agreed with it.
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+    await choose(/^layanan$/i, /grooming full service/i);
+
+    expect(screen.queryByLabelText(/durasi/i)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /durasi 90 mnt/i }));
+
+    expect(screen.getByLabelText(/durasi/i)).toBeInTheDocument();
+  });
+});
+
 describe("BookingForm — lokasi, antar-jemput dan barang bawaan", () => {
   it("asks about antar-jemput for a salon visit and sends it", async () => {
     renderWithAuth(<BookingForm />);
@@ -854,6 +990,11 @@ describe("BookingForm — lokasi, antar-jemput dan barang bawaan", () => {
     await screen.findByRole("combobox", { name: /^layanan$/i });
     await choose(/^layanan$/i, /grooming full service/i);
 
+    /* Behind the fold: most visits have neither a note nor anything handed
+       over, so the card does not show either until asked. */
+    await userEvent.click(
+      screen.getByRole("button", { name: /catatan & barang bawaan/i }),
+    );
     await userEvent.type(
       screen.getByLabelText(/tambah barang bawaan/i),
       "Carrier biru",
@@ -889,6 +1030,9 @@ describe("BookingForm — lokasi, antar-jemput dan barang bawaan", () => {
     await userEvent.click(lines[1]);
     await userEvent.click(await screen.findByRole("option", { name: /potong kuku/i }));
 
+    await userEvent.click(
+      screen.getByRole("button", { name: /catatan & barang bawaan/i }),
+    );
     await userEvent.type(
       screen.getAllByLabelText(/^catatan$/i)[0],
       "Takut hairdryer",
