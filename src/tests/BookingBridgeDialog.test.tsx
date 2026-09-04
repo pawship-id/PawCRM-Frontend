@@ -27,6 +27,12 @@ const booking = (overrides: Partial<Booking> = {}): Booking => ({
   branchId: "5a7f1f77bcf86cd7994390b1",
   bookingNumber: "BK-260824-001",
   customerId: CUSTOMER_ID,
+  /* The visit's own shape: a salon booking with no trip and nothing handed in. */
+  location: "in_store",
+  pickupRequested: false,
+  deliveryRequested: false,
+  tripAddress: null,
+  belongings: [],
   createdByName: null,
   createdByRoleName: null,
   // AFTER PCR-040: the animals live on the rows, and the header lists them.
@@ -40,6 +46,8 @@ const booking = (overrides: Partial<Booking> = {}): Booking => ({
       _id: "5a7f1f77bcf86cd799439151",
       petId: PET_ID,
       petName: "Bruno",
+    /* Null on a main service — an add-on names the row it hangs off. */
+    parentItemId: null,
       serviceId: SERVICE_ID,
       name: "Grooming Full Service",
       price: "150000.0000",

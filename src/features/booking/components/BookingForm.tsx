@@ -6,6 +6,8 @@ import { Plus, UserRound } from "lucide-react";
 
 import {
   Alert,
+  CheckRow,
+  CheckRowGroup,
   FilterSelect,
   FormActionBar,
   SelectField,
@@ -26,9 +28,21 @@ import { petService } from "@/services/pet.service";
 import { serviceService } from "@/services/service.service";
 import { swalToast } from "@/lib/swal";
 import { formatMoney, sumDecimals } from "@/utils/decimal";
-import { BookingPetRowCard, UNASSIGNED } from "./BookingPetRowCard";
-import type { PetRowDraft } from "./BookingPetRowCard";
+import { businessLineService } from "@/services/businessLine.service";
+import type { BusinessLine } from "@/services/businessLine.service";
+import { BookingPetGroupCard } from "./BookingPetGroupCard";
+import {
+  blankGroup,
+  duplicateServiceKeys,
+  groupsFromBooking,
+  groupsToBelongings,
+  groupsToItems,
+  longestGroomerMinutes,
+} from "../bookingDraft";
+import type { PetGroupDraft } from "../bookingDraft";
+import { priceForPet } from "@/utils/serviceVariant";
 import type {
+  BookingLocation,
   BookingStatus,
   Customer,
   Pet,
@@ -127,26 +141,14 @@ function toScheduledAt(date: string, time: string): string | null {
 }
 
 /**
- * A fresh card.
- *
- * The key is local and never sent — React needs a stable identity, and the row's
- * own contents cannot supply one: two empty cards look identical, and a card
- * whose animal changes is still the same card.
+ * WHERE THE WORK HAPPENS. Two options, so a select would be two clicks for a
+ * question with a visible answer — the same reasoning that keeps the status
+ * field a select and not a dialog.
  */
-let rowSeq = 0;
-
-function blankRow(): PetRowDraft {
-  rowSeq += 1;
-
-  return {
-    key: `row-${rowSeq}`,
-    petId: "",
-    serviceId: "",
-    groomerUserId: UNASSIGNED,
-    durationMin: "",
-    notes: "",
-  };
-}
+const LOCATION_OPTIONS: { value: BookingLocation; label: string }[] = [
+  { value: "in_store", label: "Di toko" },
+  { value: "in_home", label: "Di rumah pelanggan" },
+];
 
 /**
  * Makes a booking — `/dashboard/booking/new`.
@@ -227,8 +229,13 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [pets, setPets] = useState<Pet[]>([]);
   const [services, setServices] = useState<Service[]>([]);
-  /** One card per animal-and-service. The order they were added is kept. */
-  const [rows, setRows] = useState<PetRowDraft[]>([blankRow()]);
+  /**
+   * ONE CARD PER ANIMAL, with its services nested under it — the shape the
+   * receptionist's questions run in. `bookingDraft.ts` converts between this and
+   * the flat rows the API stores; nothing else in this file knows both shapes.
+   */
+  const [groups, setGroups] = useState<PetGroupDraft[]>([blankGroup()]);
+  const [businessLines, setBusinessLines] = useState<BusinessLine[]>([]);
   const [groomers, setGroomers] = useState<
     { value: string; label: string; disabled?: boolean }[]
   >([]);
@@ -240,6 +247,17 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
   /* NOT EDITABLE. Status moves through its own route — see the status ladder. */
   const [status, setStatus] = useState<BookingStatus>("confirmed");
   const [notes, setNotes] = useState("");
+
+  /*
+    WHERE, AND WHAT TRAVELS. The trip is one per VISIT rather than per animal — a
+    van goes to an address, and two of one customer's dogs ride in the same one.
+    Both flags are meaningless on a house call and the server forces them off; the
+    form simply stops asking, so nobody answers a question that will be discarded.
+  */
+  const [location, setLocation] = useState<BookingLocation>("in_store");
+  const [pickupRequested, setPickupRequested] = useState(false);
+  const [deliveryRequested, setDeliveryRequested] = useState(false);
+  const [tripAddress, setTripAddress] = useState("");
 
   const [picking, setPicking] = useState(false);
   const [addingPet, setAddingPet] = useState(false);
@@ -276,31 +294,30 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
         const owner = await customerService.getById(booking.customerId);
         if (!active) return;
 
-        const locked = new Set<string>();
-        const loaded = booking.items.map((item) => {
-          rowSeq += 1;
-          const key = `row-${rowSeq}`;
-          if (item.pulledToCartAt || item.pulledToInvoiceAt) locked.add(key);
-
-          return {
-            key,
-            petId: item.petId,
-            serviceId: item.serviceId,
-            groomerUserId: item.groomerUserId ?? UNASSIGNED,
-            // Shown as typed, so saving without touching it keeps the number.
-            durationMin: item.durationMin === null ? "" : String(item.durationMin),
-            notes: item.notes ?? "",
-          };
-        });
-
         const at = new Date(booking.scheduledAt);
+        /*
+          ADD-ONS ARE FOLDED BACK UNDER THEIR PARENT here, and billed lines are
+          marked on the draft itself rather than in a parallel set — see
+          `groupsFromBooking`.
+        */
+        const loaded = groupsFromBooking(booking);
 
         setCustomer(owner);
-        setRows(loaded.length > 0 ? loaded : [blankRow()]);
-        setLockedKeys(locked);
+        setGroups(loaded);
+        setLockedKeys(
+          new Set(
+            loaded.flatMap((group) =>
+              group.services.filter((line) => line.locked).map((line) => line.key),
+            ),
+          ),
+        );
         setPickedBranch(booking.branchId);
         setStatus(booking.status);
         setNotes(booking.notes ?? "");
+        setLocation(booking.location ?? "in_store");
+        setPickupRequested(booking.pickupRequested ?? false);
+        setDeliveryRequested(booking.deliveryRequested ?? false);
+        setTripAddress(booking.tripAddress ?? "");
         setDate(localDateValue(at));
         setTime(localTimeValue(at));
       })
@@ -336,6 +353,28 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
       })
       .finally(() => {
         if (active) setLoadingServices(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  /*
+    THE LINES OF BUSINESS, for the per-animal service filter. Best effort and
+    silent: the filter is a convenience, and its absence leaves the full
+    catalogue on offer rather than an empty one.
+  */
+  useEffect(() => {
+    let active = true;
+
+    businessLineService
+      .list({ limit: FETCH_LIMIT })
+      .then((result) => {
+        if (active) setBusinessLines(result.items);
+      })
+      .catch(() => {
+        if (active) setBusinessLines([]);
       });
 
     return () => {
@@ -419,7 +458,7 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
           overwrite a decision.
         */
         if (result.items.length === 1) {
-          setRows((prev) =>
+          setGroups((prev) =>
             prev.length === 1 && prev[0].petId === ""
               ? [{ ...prev[0], petId: result.items[0]._id }]
               : prev,
@@ -443,7 +482,7 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
   function reset() {
     setCustomer(null);
     setPets([]);
-    setRows([blankRow()]);
+    setGroups([blankGroup()]);
     setDate(todayValue());
     setTime(nextHalfHourValue());
     setStatus("confirmed");
@@ -485,31 +524,35 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
   function chooseCustomer(next: Customer) {
     setCustomer(next);
     setPets([]);
-    setRows((prev) => prev.map((row) => ({ ...row, petId: "" })));
+    setGroups((prev) => prev.map((group) => ({ ...group, petId: "" })));
     setFieldErrors({});
   }
 
-  function updateRow(key: string, patch: Partial<PetRowDraft>) {
-    setRows((prev) =>
-      prev.map((row) => (row.key === key ? { ...row, ...patch } : row)),
+  function updateGroup(key: string, patch: Partial<PetGroupDraft>) {
+    setGroups((prev) =>
+      prev.map((group) => (group.key === key ? { ...group, ...patch } : group)),
     );
     setFieldErrors({});
   }
 
-  function addRow() {
-    setRows((prev) => [...prev, blankRow()]);
+  function addGroup() {
+    setGroups((prev) => [...prev, blankGroup()]);
     setFieldErrors({});
   }
 
-  function removeRow(key: string) {
+  function removeGroup(key: string) {
     /*
-      A BILLED ROW CANNOT LEAVE (PRD 2.12). The server refuses it with a 409, and
-      the card gives it no remove button — this is the third guard, for the case
-      where some future caller reaches the function directly.
+      A CARD HOLDING BILLED WORK CANNOT LEAVE (PRD 2.12). The server refuses it
+      with a 409 and the card gives it no remove button — this is the third
+      guard, for the case where some future caller reaches the function directly.
     */
-    if (lockedKeys.has(key)) return;
+    const group = groups.find((entry) => entry.key === key);
+    if (group?.services.some((line) => line.locked)) return;
+
     // Never the last one: a visit with no animals is not a visit (PRD 2.10).
-    setRows((prev) => (prev.length === 1 ? prev : prev.filter((r) => r.key !== key)));
+    setGroups((prev) =>
+      prev.length === 1 ? prev : prev.filter((entry) => entry.key !== key),
+    );
     setFieldErrors({});
   }
 
@@ -537,25 +580,23 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
         */
         forceClash: clash !== null,
         customerId: customer._id,
-        items: rows.map((row) => ({
-          petId: row.petId,
-          serviceId: row.serviceId,
-          // FR-3's "Belum ditentukan" is a real state, not a gap.
-          groomerUserId:
-            row.groomerUserId === UNASSIGNED ? null : row.groomerUserId,
-          /*
-            OMITTED WHEN NOBODY TYPED ONE, rather than sent as the catalogue's
-            number. The server snapshots from the catalogue itself, so sending
-            nothing keeps the appointment following a duration the shop may
-            still correct before Thursday.
-          */
-          durationMin:
-            row.durationMin.trim() === ""
-              ? undefined
-              : Number(row.durationMin),
-          notes: row.notes.trim() === "" ? null : row.notes.trim(),
-        })),
+        /*
+          THE CARDS FLATTENED BACK INTO ROWS — add-ons ride on their parent as
+          `addonServiceIds` and the server expands them into rows of their own.
+          See `bookingDraft.ts`; this file deliberately knows only one shape.
+        */
+        items: groupsToItems(groups),
+        belongings: groupsToBelongings(groups),
         scheduledAt,
+        location,
+        /*
+          NOT SENT AS FALSE ON A HOUSE CALL — sent as what was asked, and the
+          server forces both off for `in_home`. One rule, one place; mirroring
+          the forcing here would be a second copy to keep in step.
+        */
+        pickupRequested,
+        deliveryRequested,
+        tripAddress: tripAddress.trim() === "" ? null : tripAddress.trim(),
         notes: notes.trim() === "" ? null : notes.trim(),
       };
 
@@ -644,72 +685,50 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
 
   const serviceOf = (serviceId: string) =>
     services.find((service) => service._id === serviceId) ?? null;
+  const petOf = (petId: string) => pets.find((pet) => pet._id === petId) ?? null;
 
   /*
     Summed as decimal STRINGS — this is a quote somebody will be charged, and
     `0.1 + 0.2` is why utils/decimal exists.
+
+    PRICED FROM THE ANIMAL, not from the catalogue's headline figure: a service
+    that varies by size costs what THIS dog's size says it costs. A line whose
+    price cannot yet be determined contributes nothing rather than a guess — the
+    card says why, and the save is refused by the server until it can.
   */
   const total = sumDecimals(
-    rows
-      .map((row) => serviceOf(row.serviceId)?.price)
-      .filter((price): price is string => Boolean(price)),
+    groups.flatMap((group) =>
+      group.services.flatMap((line) =>
+        [line.serviceId, ...line.addonServiceIds]
+          .map(
+            (serviceId) =>
+              priceForPet(serviceOf(serviceId), petOf(group.petId)).price,
+          )
+          .filter((price): price is string => Boolean(price)),
+      ),
+    ),
   );
 
-  /**
-   * WHICH CARDS REPEAT AN ANIMAL AND A SERVICE ALREADY ON THE BOOKING.
-   *
-   * The FIRST occurrence is left alone and every later one is flagged, so the
-   * message lands on the card somebody just added rather than on the one they
-   * filled in five minutes ago (PRD 2.7).
-   */
-  const duplicateKeys = new Set<string>();
-  const seenPairs = new Set<string>();
-
-  rows.forEach((row) => {
-    if (!row.petId || !row.serviceId) return;
-
-    const pair = `${row.petId}|${row.serviceId}`;
-
-    if (seenPairs.has(pair)) duplicateKeys.add(row.key);
-    else seenPairs.add(pair);
-  });
+  /** Lines repeating an animal-and-service already on the booking (PRD 2.7). */
+  const duplicateKeys = duplicateServiceKeys(groups);
 
   /**
    * WHEN THE CUSTOMER GETS THEIR ANIMALS BACK — the longest groomer's workload,
-   * never the sum (PRD 2.9).
-   *
-   * Two groomers work at the same time: Mochi with Sinta for 90 minutes and Coco
-   * with Rio for 60 means the visit takes 90, not 150. Cards sharing a groomer
-   * ARE summed, because one person cannot do two animals at once, and cards with
-   * nobody assigned are grouped together — which over-estimates rather than
-   * under-, and promising an earlier finish than the shop can manage is the
-   * mistake that sends somebody home late.
-   *
-   * The same rule the server applies in `BookingItemRepository#summarise`. Two
-   * implementations of one rule is a thing to watch: this one is a preview and
-   * the stored answer is the server's.
+   * never the sum (PRD 2.9). An add-on's minutes count towards the groomer doing
+   * it. See `longestGroomerMinutes`; the stored answer is the server's.
    */
-  const perGroomer = new Map<string, number>();
-
-  rows.forEach((row) => {
-    const typed = Number(row.durationMin);
-    const minutes =
-      row.durationMin.trim() !== "" && Number.isFinite(typed) && typed > 0
-        ? typed
-        : (serviceOf(row.serviceId)?.durationMin ?? 0);
-
-    if (minutes <= 0) return;
-
-    const key = row.groomerUserId;
-    perGroomer.set(key, (perGroomer.get(key) ?? 0) + minutes);
-  });
-
-  const longest = Math.max(0, ...perGroomer.values());
+  const longest = longestGroomerMinutes(groups, serviceOf);
 
   /** Distinct animals — the same number the server stores as `petCount`. */
   const petCount = new Set(
-    rows.map((row) => row.petId).filter((petId) => petId !== ""),
+    groups.map((group) => group.petId).filter((petId) => petId !== ""),
   ).size;
+
+  /** Rows the API will receive — add-ons included, which is what it counts. */
+  const rowCount = groupsToItems(groups).reduce(
+    (count, item) => count + 1 + (item.addonServiceIds?.length ?? 0),
+    0,
+  );
 
   const finishesAt =
     longest > 0 && date !== "" && time !== ""
@@ -728,7 +747,30 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
     booking to the session's branch, and a user who reaches every branch signs in
     pointed at none of them.
   */
-  const incomplete = rows.find((row) => !row.petId || !row.serviceId);
+  const incomplete = groups.find(
+    (group) =>
+      !group.petId ||
+      group.services.length === 0 ||
+      group.services.some((line) => !line.serviceId),
+  );
+
+  /*
+    A PRICE THE FORM CANNOT WORK OUT IS A SAVE THE SERVER WILL REFUSE — a service
+    priced by size, on an animal whose size nobody recorded. Caught here so the
+    button says which animal rather than letting somebody press Simpan and read
+    it off a banner.
+  */
+  const unpriceable = groups.find((group) =>
+    group.services.some((line) =>
+      [line.serviceId, ...line.addonServiceIds]
+        .filter((serviceId) => serviceId !== "")
+        .some(
+          (serviceId) =>
+            priceForPet(serviceOf(serviceId), petOf(group.petId)).missingAxis !==
+            null,
+        ),
+    ),
+  );
 
   const ownerFixed = lockedKeys.size > 0;
 
@@ -740,9 +782,11 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
         ? "Setiap hewan harus punya layanan."
         : duplicateKeys.size > 0
           ? "Ada hewan dengan layanan yang sama dua kali."
-          : date === "" || time === ""
-            ? "Tanggal dan jamnya belum lengkap."
-            : null;
+          : unpriceable
+            ? `Data ${petOf(unpriceable.petId)?.name ?? "hewan"} belum lengkap, harganya belum bisa dihitung.`
+            : date === "" || time === ""
+              ? "Tanggal dan jamnya belum lengkap."
+              : null;
 
   return (
     <>
@@ -760,7 +804,7 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
               <span>Total {formatMoney(total)}</span>
               {finishesAt && <span>Selesai sekitar {finishesAt}</span>}
               <span>
-                {rows.length} baris
+                {rowCount} baris
                 {petCount > 1 ? ` · ${petCount} hewan` : ""}
               </span>
             </span>
@@ -885,6 +929,72 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
             </div>
 
             {/*
+              WHERE THE WORK HAPPENS — asked after the branch and before the
+              customer, which is the order the receptionist asks it in: when,
+              where, then who.
+
+              IT NARROWS THE CATALOGUE. A service that cannot be done at home is
+              refused by the server for an `in_home` booking, so the answer here
+              changes what the cards below may hold.
+            */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <SelectField
+                label="Lokasi layanan"
+                value={location}
+                onChange={(next) => setLocation(next as BookingLocation)}
+                options={LOCATION_OPTIONS}
+                disabled={saving}
+                hint="Layanan yang tidak melayani di rumah tidak bisa dipilih untuk booking ke rumah."
+                required
+              />
+            </div>
+
+            {/*
+              ANTAR-JEMPUT — ONE TRIP PER VISIT, and only when the animal has to
+              reach the salon.
+
+              THE QUESTION DISAPPEARS ON A HOUSE CALL rather than being asked and
+              ignored: the shop is already going to the animal, so collecting it
+              first is a journey to nowhere. The server forces both off for
+              `in_home`, so a booking switched to home does not silently keep a
+              van booked.
+            */}
+            {location === "in_store" && (
+              <div className="flex flex-col gap-3 rounded-xl border border-border p-4">
+                <p className="text-sm font-medium">Antar-jemput</p>
+                <CheckRowGroup>
+                  <CheckRow
+                    label="Dijemput"
+                    description="Hewannya diambil dari alamat pelanggan."
+                    checked={pickupRequested}
+                    disabled={saving}
+                    onCheckedChange={setPickupRequested}
+                  />
+                  <CheckRow
+                    label="Diantar pulang"
+                    description="Setelah selesai, hewannya diantar kembali."
+                    checked={deliveryRequested}
+                    disabled={saving}
+                    onCheckedChange={setDeliveryRequested}
+                  />
+                </CheckRowGroup>
+
+                {(pickupRequested || deliveryRequested) && (
+                  <TextField
+                    label="Alamat jemput/antar"
+                    name="booking-trip-address"
+                    value={tripAddress}
+                    onChange={(event) => setTripAddress(event.target.value)}
+                    maxLength={300}
+                    placeholder="Kosongkan kalau sama dengan alamat pelanggan"
+                    hint="Kosong berarti pakai alamat pelanggan yang tersimpan."
+                    disabled={saving}
+                  />
+                )}
+              </div>
+            )}
+
+            {/*
               THE POS PICKER, not a `FilterSelect`. §16 sends anything somebody
               would type into to the searchable picker, and for pelanggan that
               picker is `CustomerSearchDialog`: it searches ON THE SERVER, so the
@@ -961,7 +1071,7 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
                   Hewan dalam booking ini<span className="text-danger"> *</span>
                 </Label>
                 <span className="text-xs tabular-nums text-muted">
-                  {rows.length} baris
+                  {rowCount} baris
                 </span>
               </div>
 
@@ -997,20 +1107,20 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
               ) : (
                 <>
                   <ul className="flex flex-col gap-3">
-                    {rows.map((row, index) => (
-                      <BookingPetRowCard
-                        key={row.key}
-                        row={row}
+                    {groups.map((group, index) => (
+                      <BookingPetGroupCard
+                        key={group.key}
+                        group={group}
                         index={index}
                         pets={pets}
                         services={services}
+                        businessLines={businessLines}
                         groomers={groomers}
                         disabled={saving}
-                        removable={rows.length > 1}
-                        locked={lockedKeys.has(row.key)}
-                        duplicate={duplicateKeys.has(row.key)}
-                        onChange={(patch) => updateRow(row.key, patch)}
-                        onRemove={() => removeRow(row.key)}
+                        removable={groups.length > 1}
+                        duplicateKeys={duplicateKeys}
+                        onChange={(patch) => updateGroup(group.key, patch)}
+                        onRemove={() => removeGroup(group.key)}
                       />
                     ))}
                   </ul>
@@ -1020,8 +1130,8 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
                       type="button"
                       variant="secondary"
                       size="sm"
-                      disabled={saving || rows.length >= MAX_ITEMS}
-                      onClick={addRow}
+                      disabled={saving || rowCount >= MAX_ITEMS}
+                      onClick={addGroup}
                     >
                       <Plus className="size-4" />
                       Tambah hewan
@@ -1111,13 +1221,13 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
               a second dog mid-booking meant to add it, and making them pick it
               from a select they have just been through is a step for nothing.
             */
-            setRows((prev) => {
-              const empty = prev.findIndex((row) => row.petId === "");
+            setGroups((prev) => {
+              const empty = prev.findIndex((group) => group.petId === "");
 
               return empty === -1
-                ? [...prev, { ...blankRow(), petId: pet._id }]
-                : prev.map((row, index) =>
-                    index === empty ? { ...row, petId: pet._id } : row,
+                ? [...prev, blankGroup(pet._id)]
+                : prev.map((group, index) =>
+                    index === empty ? { ...group, petId: pet._id } : group,
                   );
             });
           }}

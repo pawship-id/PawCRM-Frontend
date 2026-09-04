@@ -93,6 +93,29 @@ export const bookingService = {
   unbilledSummary: () =>
     apiClient.get<BookingUnbilledSummary>("/bookings/unbilled-summary"),
 
+  /**
+   * PATCH /bookings/:id/belongings/:belongingId — ticks ONE thing in or out.
+   *
+   * A VERB OF ITS OWN, not a corner of `update`. Two counters handing back two
+   * animals' things at the same moment would each send the whole list, and the
+   * second would carry the state it read before the first happened — quietly
+   * un-returning an item somebody had already given back, on a booking the
+   * completion guard then lets close.
+   *
+   * Handing back something never checked in is a `409`: there is nothing to give
+   * back, and recording it would leave the pair in a state the guard reads as
+   * settled.
+   */
+  checkBelonging: (
+    bookingId: string,
+    belongingId: string,
+    patch: { checkedIn?: boolean; checkedOut?: boolean },
+  ) =>
+    apiClient.patch<Booking>(
+      `/bookings/${bookingId}/belongings/${belongingId}`,
+      patch,
+    ),
+
   /** GET /bookings/:id — a single booking. */
   getById: (id: string) => apiClient.get<Booking>(`/bookings/${id}`),
 

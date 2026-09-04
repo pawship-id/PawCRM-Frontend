@@ -1896,6 +1896,15 @@ export interface BookingItem {
   /** Resolved on read, like every other name here. Null when the pet is gone. */
   petName: string | null;
   serviceId: string;
+  /**
+   * NULL ON A MAIN SERVICE; on an add-on, the row it hangs off.
+   *
+   * An add-on is a ROW of its own — it carries its own price and duration, so it
+   * bills as a line and prints as a line. The screen groups them back under
+   * their parent for display; the API keeps them flat, because every other
+   * reader (the calendar, the clash check, commission) wants them that way.
+   */
+  parentItemId: string | null;
   name: string;
   price: string;
   /**
@@ -2010,6 +2019,13 @@ export interface Booking {
    */
   bookingNumber: string | null;
   customerId: string;
+  /** Where the work happens — `in_store` unless the visit is a house call. */
+  location: BookingLocation;
+  pickupRequested: boolean;
+  deliveryRequested: boolean;
+  tripAddress: string | null;
+  /** What the owner handed over, per animal. See `BookingBelonging`. */
+  belongings: BookingBelonging[];
   /**
    * THE ANIMALS ON THIS VISIT — plural since PCR-040.
    *
@@ -2364,6 +2380,16 @@ export interface BookingItemInput {
   /** Omit to follow the catalogue. 1–1440. */
   durationMin?: number | null;
   notes?: string | null;
+  /**
+   * The add-ons ticked under this service — sent on the PARENT, stored as rows.
+   *
+   * Each must be a service filed `serviceType: "addon"` AND listed in this
+   * service's own `addonServiceIds`; the server refuses anything else. It mints
+   * the ids and the `parentItemId` link, so the client never invents one. The
+   * add-on takes the parent's animal and groomer, and its own price and duration
+   * from the catalogue.
+   */
+  addonServiceIds?: string[];
 }
 
 /**
@@ -2378,6 +2404,35 @@ export interface BookingItemInput {
  * change that.
  */
 
+/** Where the work happens. Mirrors BOOKING_LOCATIONS in booking.model.js. */
+export type BookingLocation = "in_store" | "in_home";
+
+/**
+ * One thing the owner handed over with an animal — barang bawaan pawrents.
+ *
+ * TWO DATES, NOT A `returned` FLAG. `checkedInAt: null` means it was written
+ * down when the booking was taken and never actually handed over, which is not
+ * the same as "handed over and given back" — and only the second kind can hold a
+ * visit open. A single boolean could not tell them apart.
+ */
+export interface BookingBelonging {
+  _id: string;
+  petId: string;
+  name: string;
+  checkedInAt: string | null;
+  checkedOutAt: string | null;
+  checkedInBy: string | null;
+  checkedOutBy: string | null;
+}
+
+/** What a create or edit sends. `checkedOutAt` is not accepted on a create. */
+export interface BookingBelongingInput {
+  petId: string;
+  name: string;
+  checkedInAt?: string | null;
+  checkedOutAt?: string | null;
+}
+
 export interface CreateBookingInput {
   customerId: string;
   items: BookingItemInput[];
@@ -2387,6 +2442,21 @@ export interface CreateBookingInput {
   status?: BookingStatus;
   origin?: BookingOrigin;
   notes?: string | null;
+  /**
+   * Where the work happens — and it NARROWS what may be booked: a service that
+   * does not list this location in its own `serviceLocations` is refused.
+   */
+  location?: BookingLocation;
+  /**
+   * ONE TRIP PER VISIT, not per animal — a van goes to an address, and two of
+   * one customer's dogs travel in the same one. Both are forced to false on an
+   * `in_home` booking: the salon is already going to the animal.
+   */
+  pickupRequested?: boolean;
+  deliveryRequested?: boolean;
+  /** Null means the customer's stored address, not "no address". */
+  tripAddress?: string | null;
+  belongings?: BookingBelongingInput[];
 }
 
 /**
@@ -2402,6 +2472,16 @@ export interface UpdateBookingInput {
   scheduledAt?: string;
   branchId?: string;
   notes?: string | null;
+  location?: BookingLocation;
+  pickupRequested?: boolean;
+  deliveryRequested?: boolean;
+  tripAddress?: string | null;
+  /**
+   * SENT WHOLESALE, like `items`: what this list holds IS the booking's
+   * belongings afterwards. Ticking one back out is this route with the whole
+   * list — `checkedOutAt` is accepted here, unlike on a create.
+   */
+  belongings?: BookingBelongingInput[];
 }
 
 /**

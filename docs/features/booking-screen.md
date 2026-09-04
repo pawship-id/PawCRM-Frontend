@@ -128,9 +128,68 @@ So the moves live here, behind the same state machine the server enforces.
 
 ## Making one
 
-`BookingCreateDialog` asks the six things a booking needs, in §16's field order: **kapan**
-(tanggal + jam), **dengan siapa** (pelanggan → hewan), the services, the status, and catatan
-last.
+`BookingForm` asks in §16's field order, and since the per-animal flow landed that order is:
+**kapan** (tanggal + jam) → **di mana** (cabang, lokasi layanan) → antar-jemput → **dengan
+siapa** (pelanggan) → a card per animal → the status → catatan last.
+
+### The card is per ANIMAL, not per line
+
+It used to be per line: one card meant one animal having one service, so a dog having a bath
+and a nail trim was two cards, each repeating the animal, the groomer and the note. The
+questions a receptionist actually asks run the other way — *which animal, then what is being
+done to it* — and the business-line filter, the note and the belongings list are all facts
+about the ANIMAL, asked once instead of once per service.
+
+Inside a card: **tipe layanan** (a filter, never sent), one or more **layanan utama**, the
+**add-ons** offered under each, a **groomer** and **durasi** per service, the animal's
+**catatan**, and its **barang bawaan**.
+
+**The form's shape is not the API's, and `bookingDraft.ts` is the only place the two meet.**
+The API stores a flat list of rows — add-ons included, each with `parentItemId` — which is
+right for the calendar, the clash check and the commission run. The screen holds a tree.
+`groupsFromBooking` folds add-ons back under their parent on load; `groupsToItems` flattens
+them out on save. It is tested directly (`bookingDraft.test.ts`) because the property that
+matters — **load a booking, change nothing, save it back unchanged** — is invisible to a
+rendering test: it would pass while quietly dropping every add-on, and the loss would show up
+on the bill.
+
+### The price follows the animal
+
+A service priced per variant is quoted from the pet's own **species, size and coat** — the
+card shows the number and which variant it came from ("Varian Besar"), and the bar's total
+agrees with it.
+
+**When the animal's record is missing the fact the price varies by, the card says which fact
+and Simpan is disabled naming the animal.** It never falls back to the cheapest or the middle
+variant: the server would refuse the save anyway, and a number on screen that the save
+contradicts is worse than no number. The rule is mirrored from the server
+(`utils/serviceVariant.ts` ↔ `utils/serviceVariant.js`) — a preview, with the stored answer
+still the server's, the same trade "selesai sekitar" already makes.
+
+### Add-ons
+
+Ticked underneath the service they belong to, from **that service's own list** — the server
+refuses anything outside it, so offering more here would be a tick that fails on save. They
+are never in the main service dropdown: an add-on booked on its own is refused too.
+
+Sent as `addonServiceIds` on the parent; stored as rows. An add-on takes the parent's animal
+and groomer, and its own price and duration from the catalogue — so "+10 mnt" lengthens the
+visit by exactly what the catalogue says, and the finish-time preview counts it against the
+groomer doing it.
+
+### Lokasi, antar-jemput, barang bawaan
+
+| Field | Shape | Note |
+| --- | --- | --- |
+| Lokasi layanan | `in_store` / `in_home` | Narrows the catalogue: a service that cannot be done at home is refused for a house call |
+| Antar-jemput | Two check-rows + an optional address | **One trip per visit, not per animal** — a van goes to an address, and two of one customer's dogs ride in the same one. The question **disappears** on a house call rather than being asked and ignored; the server forces both off |
+| Barang bawaan | Add-and-remove chips, per animal | What the owner says they will bring. **Nothing here ticks anything in** — the counter confirms arrival on the booking's own page, and a visit cannot be completed while something handed over is still here |
+
+**The animal's note is written onto each of its rows.** `bookingitems.notes` is documented as
+"anything special about THIS animal on THIS visit" — a per-animal fact that happens to be
+stored per row, because the row is the only thing a visit has one of per animal per service.
+Asking once and fanning it out is what makes the screen match the field's own meaning; asking
+once per service would put the same sentence in front of somebody three times.
 
 | Decision | Why |
 | --- | --- |
@@ -239,6 +298,36 @@ left out rather than showing a placeholder.
 
 The back-arrow button that used to open this card is gone. The booking number in the
 subtitle is now a link back to `/dashboard/booking/:id` — the page's only way back.
+
+---
+
+## Barang bawaan — centang masuk dan keluar
+
+The card sits on the booking's own page, above the work, grouped by animal. Two checkboxes per
+item: **Masuk** when it is handed over at the counter, **Keluar** when it goes home.
+
+**Two ticks, not one.** A single "sudah dikembalikan" cannot tell apart the two states that
+matter — something written down when the booking was taken and never actually handed over, and
+something handed over and still in the drawer. Only the second holds a visit open, and a shop
+ticking "returned" on things that never arrived would train itself to ignore the warning.
+
+| Rule | Where it lives |
+| --- | --- |
+| Keluar is not tickable before Masuk | The box is disabled; the server also refuses it with a `409` naming the item |
+| Unticking Masuk clears Keluar | Server — a correction must not leave an item recorded as returned when it never came |
+| A visit cannot be completed while something is still here | Server, and the card shows the same sentence so the two never disagree |
+| Something that never arrived is **not** outstanding | Both — it is the whole reason the stored shape carries two dates |
+
+**One request per tick**, against that item's own id — never a save of the whole list. Two
+counters handing back two animals' things at the same moment would otherwise overwrite each
+other, and the loser is an item recorded as returned and then quietly un-returned.
+
+**The row reflects the server, not the click.** Nothing is ticked locally and reconciled
+afterwards: the request goes, the booking comes back, and the page redraws from it — so a
+refusal leaves the box exactly as it was rather than flicking and flicking back.
+
+**Without `bookings:update` the boxes are marks, not controls.** Somebody reading the page is
+not being stopped mid-act, and a row of dead checkboxes reads as broken; the state still shows.
 
 ---
 

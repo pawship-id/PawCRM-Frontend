@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 import { Alert, Card, Spinner } from "@/components";
+import { BookingBelongingsCard } from "./BookingBelongingsCard";
 import { Button } from "@/components/ui/button";
 import { useBranchScope } from "@/features/inventory/hooks/useBranchScope";
 import { Can } from "@/features/permissions";
@@ -209,6 +210,23 @@ export function BookingDetailScreen({ id }: { id: string }) {
           </Alert>
         )}
       </Card>
+
+      {/*
+        WHAT CAME IN WITH THE ANIMALS — above the work rather than below it.
+
+        It is the last thing checked before a visit closes and the first thing
+        asked about when something goes missing, so it sits where somebody
+        looking for it will find it without scrolling past every service. The
+        card renders nothing when the booking has no belongings, so a visit
+        where nobody handed anything over is unchanged.
+      */}
+      <BookingBelongingsCard
+        booking={booking}
+        petNames={
+          new Map(booking.pets.map((entry) => [entry.petId, entry.petName ?? ""]))
+        }
+        onChanged={setBooking}
+      />
 
       {/*
         ONE BLOCK PER ROW. This is where a visit stops being one thing: Mochi with

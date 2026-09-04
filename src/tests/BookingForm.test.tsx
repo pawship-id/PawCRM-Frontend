@@ -140,12 +140,12 @@ describe("BookingForm", () => {
     // One pet, so the first card is filled in — the click removed from every
     // booking a shop with single-dog customers ever takes.
     await waitFor(() =>
-      expect(screen.getByRole("combobox", { name: /hewan/i })).toHaveTextContent(
+      expect(screen.getByRole("combobox", { name: /^hewan$/i })).toHaveTextContent(
         "Bruno",
       ),
     );
 
-    await choose(/layanan/i, /grooming full service/i);
+    await choose(/^layanan$/i, /grooming full service/i);
 
     fireEvent.change(screen.getByLabelText(/tanggal/i), {
       target: { value: "2026-09-03" },
@@ -171,13 +171,23 @@ describe("BookingForm", () => {
           {
             petId: "pet-1",
             serviceId: "svc-1",
+            /* Nothing ticked, but the key is always sent — the server reads its
+               absence and its emptiness the same way, and a shape that changes
+               with the data is one more thing for a reader to work out. */
+            addonServiceIds: [],
             groomerUserId: null,
             durationMin: undefined,
             notes: null,
           },
         ],
+        belongings: [],
         // The two fields mean WALL-CLOCK TIME in the shop's own zone.
         scheduledAt: new Date("2026-09-03T10:30").toISOString(),
+        /* The salon unless somebody says otherwise, and no van booked. */
+        location: "in_store",
+        pickupRequested: false,
+        deliveryRequested: false,
+        tripAddress: null,
         status: "confirmed",
         notes: null,
       }),
@@ -209,18 +219,18 @@ describe("BookingForm", () => {
     );
 
     await pickCustomer();
-    await screen.findByRole("combobox", { name: /hewan/i });
+    await screen.findByRole("combobox", { name: /^hewan$/i });
 
-    await choose(/hewan/i, "Mochi");
-    await choose(/layanan/i, /grooming full service/i);
+    await choose(/^hewan$/i, "Mochi");
+    await choose(/^layanan$/i, /grooming full service/i);
 
     await userEvent.click(screen.getByRole("button", { name: /^tambah hewan$/i }));
 
-    const cards = screen.getAllByRole("combobox", { name: /hewan/i });
+    const cards = screen.getAllByRole("combobox", { name: /^hewan$/i });
     await userEvent.click(cards[1]);
     await userEvent.click(await screen.findByRole("option", { name: "Coco" }));
 
-    const serviceSelects = screen.getAllByRole("combobox", { name: /layanan/i });
+    const serviceSelects = screen.getAllByRole("combobox", { name: /^layanan$/i });
     await userEvent.click(serviceSelects[1]);
     await userEvent.click(await screen.findByRole("option", { name: /bath & blow/i }));
 
@@ -246,16 +256,16 @@ describe("BookingForm", () => {
     );
 
     await pickCustomer();
-    await screen.findByRole("combobox", { name: /layanan/i });
-    await choose(/layanan/i, /grooming full service/i);
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+    await choose(/^layanan$/i, /grooming full service/i);
 
     await userEvent.click(screen.getByRole("button", { name: /^tambah hewan$/i }));
 
-    const petSelects = screen.getAllByRole("combobox", { name: /hewan/i });
+    const petSelects = screen.getAllByRole("combobox", { name: /^hewan$/i });
     await userEvent.click(petSelects[1]);
     await userEvent.click(await screen.findByRole("option", { name: "Bruno" }));
 
-    const serviceSelects = screen.getAllByRole("combobox", { name: /layanan/i });
+    const serviceSelects = screen.getAllByRole("combobox", { name: /^layanan$/i });
     await userEvent.click(serviceSelects[1]);
     await userEvent.click(
       await screen.findByRole("option", { name: /grooming full service/i }),
@@ -296,21 +306,21 @@ describe("BookingForm", () => {
     );
 
     await pickCustomer();
-    await screen.findByRole("combobox", { name: /hewan/i });
+    await screen.findByRole("combobox", { name: /^hewan$/i });
 
     fireEvent.change(screen.getByLabelText(/jam/i), { target: { value: "10:00" } });
 
-    await choose(/hewan/i, "Mochi");
-    await choose(/layanan/i, /grooming full service/i);
+    await choose(/^hewan$/i, "Mochi");
+    await choose(/^layanan$/i, /grooming full service/i);
     await choose(/groomer/i, "Mbak Sari");
 
     await userEvent.click(screen.getByRole("button", { name: /^tambah hewan$/i }));
 
-    const petSelects = screen.getAllByRole("combobox", { name: /hewan/i });
+    const petSelects = screen.getAllByRole("combobox", { name: /^hewan$/i });
     await userEvent.click(petSelects[1]);
     await userEvent.click(await screen.findByRole("option", { name: "Coco" }));
 
-    const serviceSelects = screen.getAllByRole("combobox", { name: /layanan/i });
+    const serviceSelects = screen.getAllByRole("combobox", { name: /^layanan$/i });
     await userEvent.click(serviceSelects[1]);
     await userEvent.click(await screen.findByRole("option", { name: /bath & blow/i }));
 
@@ -344,8 +354,8 @@ describe("BookingForm", () => {
     );
 
     await pickCustomer();
-    await screen.findByRole("combobox", { name: /layanan/i });
-    await choose(/layanan/i, /grooming full service/i);
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+    await choose(/^layanan$/i, /grooming full service/i);
     await choose(/groomer/i, "Mbak Sari");
 
     await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
@@ -372,8 +382,8 @@ describe("BookingForm", () => {
     );
 
     await pickCustomer();
-    await screen.findByRole("combobox", { name: /layanan/i });
-    await choose(/layanan/i, /grooming full service/i);
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+    await choose(/^layanan$/i, /grooming full service/i);
 
     expect(
       screen.queryByRole("combobox", { name: /groomer/i }),
@@ -413,8 +423,8 @@ describe("BookingForm", () => {
     );
 
     await pickCustomer();
-    await screen.findByRole("combobox", { name: /layanan/i });
-    await choose(/layanan/i, /grooming full service/i);
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+    await choose(/^layanan$/i, /grooming full service/i);
     await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
 
     expect(
@@ -495,8 +505,8 @@ describe("BookingForm", () => {
     renderWithAuth(<BookingForm />);
 
     await pickCustomer();
-    await screen.findByRole("combobox", { name: /layanan/i });
-    await choose(/layanan/i, /grooming full service/i);
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+    await choose(/^layanan$/i, /grooming full service/i);
 
     await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
 
@@ -545,7 +555,7 @@ describe("BookingForm", () => {
     renderWithAuth(<BookingForm />);
 
     await pickCustomer();
-    await screen.findByRole("combobox", { name: /layanan/i });
+    await screen.findByRole("combobox", { name: /^layanan$/i });
 
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
@@ -621,8 +631,8 @@ describe("BookingForm", () => {
     renderWithAuth(<BookingForm />);
 
     await pickCustomer();
-    await screen.findByRole("combobox", { name: /layanan/i });
-    await choose(/layanan/i, /grooming full service/i);
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+    await choose(/^layanan$/i, /grooming full service/i);
 
     await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
 
@@ -652,6 +662,246 @@ describe("BookingForm", () => {
  * pin is the three things that differ: `update` rather than `create`, no
  * `status` in the body, and a row already billed that cannot be touched.
  */
+/**
+ * ─── WHAT THE PER-ANIMAL FLOW ADDED ─────────────────────────────────────────
+ *
+ * The card became per ANIMAL rather than per line, and with it came four things
+ * the old shape had nowhere to put: several services on one animal, add-ons
+ * under each, a price that follows the animal, and what it brought with it.
+ */
+describe("BookingForm — layanan, add-on dan varian", () => {
+  const main = service({
+    _id: "svc-1",
+    name: "Grooming Full Service",
+    serviceType: "main",
+    addonServiceIds: ["svc-addon"],
+    businessLineId: "line-1",
+  });
+  const addon = service({
+    _id: "svc-addon",
+    name: "Parfum",
+    price: "20000.0000",
+    durationMin: 10,
+    serviceType: "addon",
+  });
+
+  beforeEach(() => {
+    services.list.mockResolvedValue(page([main, addon]));
+  });
+
+  it("keeps an add-on off the service list — it is not something to book alone", async () => {
+    // The server refuses an add-on booked on its own, so offering it here would
+    // be a choice that fails on save.
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+
+    await userEvent.click(screen.getByRole("combobox", { name: /^layanan$/i }));
+
+    expect(
+      await screen.findByRole("option", { name: /grooming full service/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: /^parfum$/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers the add-ons the chosen service lists, and sends the ticked ones on it", async () => {
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+
+    await choose(/^layanan$/i, /grooming full service/i);
+    await userEvent.click(await screen.findByLabelText(/parfum/i));
+    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+    await waitFor(() => expect(bookings.create).toHaveBeenCalled());
+    expect(bookings.create.mock.calls[0][0].items).toEqual([
+      expect.objectContaining({
+        serviceId: "svc-1",
+        addonServiceIds: ["svc-addon"],
+      }),
+    ]);
+  });
+
+  it("adds a second service to the SAME animal without a second card", async () => {
+    services.list.mockResolvedValue(
+      page([main, addon, service({ _id: "svc-2", name: "Potong Kuku" })]),
+    );
+
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+
+    await choose(/^layanan$/i, /grooming full service/i);
+    await userEvent.click(
+      screen.getByRole("button", { name: /^tambah layanan$/i }),
+    );
+
+    const lines = screen.getAllByRole("combobox", { name: /^layanan$/i });
+    await userEvent.click(lines[1]);
+    await userEvent.click(await screen.findByRole("option", { name: /potong kuku/i }));
+
+    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+    await waitFor(() => expect(bookings.create).toHaveBeenCalled());
+    const sent = bookings.create.mock.calls[0][0];
+    // Two rows, one animal — and the form asked for the animal once.
+    expect(sent.items.map((item) => item.petId)).toEqual(["pet-1", "pet-1"]);
+    expect(sent.items.map((item) => item.serviceId)).toEqual(["svc-1", "svc-2"]);
+  });
+
+  it("prices a variant service from the animal's own size", async () => {
+    pets.list.mockResolvedValue(
+      page([{ _id: "pet-1", name: "Bruno", size: "large" } as unknown as Pet]),
+    );
+    services.list.mockResolvedValue(
+      page([
+        service({
+          _id: "svc-1",
+          name: "Full Grooming",
+          price: null,
+          hasVariants: true,
+          variantAxes: ["sizeCategory"],
+          variants: [
+            { petType: null, sizeCategory: "small", furType: null, price: "100000.0000" },
+            { petType: null, sizeCategory: "large", furType: null, price: "180000.0000" },
+          ],
+        } as unknown as Partial<Service>),
+      ]),
+    );
+
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+    await choose(/^layanan$/i, /full grooming/i);
+
+    /*
+      The price on the card is the LARGE one, because Bruno is large — and it
+      appears TWICE: on the line, and in the action bar's total. That the two
+      agree is the point, so both are asserted rather than one.
+    */
+    expect(await screen.findAllByText(/Rp\s?180[.,]000/)).toHaveLength(2);
+    expect(screen.getByText(/varian besar/i)).toBeInTheDocument();
+  });
+
+  it("refuses to save when the animal lacks the fact the price varies by", async () => {
+    // The server would refuse it; the button says which animal rather than
+    // letting somebody press Simpan and read it off a banner.
+    pets.list.mockResolvedValue(
+      page([{ _id: "pet-1", name: "Bruno", size: null } as unknown as Pet]),
+    );
+    services.list.mockResolvedValue(
+      page([
+        service({
+          _id: "svc-1",
+          name: "Full Grooming",
+          price: null,
+          hasVariants: true,
+          variantAxes: ["sizeCategory"],
+          variants: [
+            { petType: null, sizeCategory: "small", furType: null, price: "100000.0000" },
+          ],
+        } as unknown as Partial<Service>),
+      ]),
+    );
+
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+    await choose(/^layanan$/i, /full grooming/i);
+
+    expect(await screen.findByText(/belum punya ukuran/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /simpan booking/i })).toBeDisabled();
+    expect(bookings.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("BookingForm — lokasi, antar-jemput dan barang bawaan", () => {
+  it("asks about antar-jemput for a salon visit and sends it", async () => {
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+    await choose(/^layanan$/i, /grooming full service/i);
+
+    await userEvent.click(screen.getByLabelText(/dijemput/i));
+    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+    await waitFor(() => expect(bookings.create).toHaveBeenCalled());
+    expect(bookings.create.mock.calls[0][0]).toMatchObject({
+      location: "in_store",
+      pickupRequested: true,
+      deliveryRequested: false,
+    });
+  });
+
+  it("stops asking about antar-jemput once the visit is a house call", async () => {
+    // The salon is already going to the animal; collecting it first is a
+    // journey to nowhere, and the server forces both flags off anyway.
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+
+    await choose(/lokasi layanan/i, /di rumah pelanggan/i);
+
+    expect(screen.queryByLabelText(/dijemput/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/diantar pulang/i)).not.toBeInTheDocument();
+  });
+
+  it("sends the belongings under the animal that brought them", async () => {
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+    await choose(/^layanan$/i, /grooming full service/i);
+
+    await userEvent.type(
+      screen.getByLabelText(/tambah barang bawaan/i),
+      "Carrier biru",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /^tambah$/i }));
+    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+    await waitFor(() => expect(bookings.create).toHaveBeenCalled());
+    expect(bookings.create.mock.calls[0][0].belongings).toEqual([
+      { petId: "pet-1", name: "Carrier biru" },
+    ]);
+  });
+
+  it("writes the animal's one note onto each of its services", async () => {
+    /*
+      `bookingitems.notes` is "anything special about THIS animal on THIS visit"
+      — a per-animal fact stored per row. The card asks once; the payload fans it
+      out, rather than putting the same box in front of somebody twice.
+    */
+    services.list.mockResolvedValue(
+      page([service(), service({ _id: "svc-2", name: "Potong Kuku" })]),
+    );
+
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+
+    await choose(/^layanan$/i, /grooming full service/i);
+    await userEvent.click(
+      screen.getByRole("button", { name: /^tambah layanan$/i }),
+    );
+    const lines = screen.getAllByRole("combobox", { name: /^layanan$/i });
+    await userEvent.click(lines[1]);
+    await userEvent.click(await screen.findByRole("option", { name: /potong kuku/i }));
+
+    await userEvent.type(
+      screen.getAllByLabelText(/^catatan$/i)[0],
+      "Takut hairdryer",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+    await waitFor(() => expect(bookings.create).toHaveBeenCalled());
+    expect(
+      bookings.create.mock.calls[0][0].items.map((item) => item.notes),
+    ).toEqual(["Takut hairdryer", "Takut hairdryer"]);
+  });
+});
+
 describe("BookingForm — mengubah booking", () => {
   const existing = {
     _id: "bk-9",
@@ -689,7 +939,7 @@ describe("BookingForm — mengubah booking", () => {
     renderWithAuth(<BookingForm bookingId="bk-9" />);
 
     await waitFor(() =>
-      expect(screen.getByRole("combobox", { name: /layanan/i })).toHaveTextContent(
+      expect(screen.getByRole("combobox", { name: /^layanan$/i })).toHaveTextContent(
         "Grooming Full Service",
       ),
     );
@@ -717,6 +967,9 @@ describe("BookingForm — mengubah booking", () => {
       {
         petId: "pet-1",
         serviceId: "svc-1",
+        /* Loaded with none ticked, and sent back the same — the round trip that
+           must not quietly drop an add-on. See bookingDraft.test.ts. */
+        addonServiceIds: [],
         groomerUserId: null,
         durationMin: 90,
         notes: null,
@@ -734,7 +987,7 @@ describe("BookingForm — mengubah booking", () => {
     renderWithAuth(<BookingForm bookingId="bk-9" />);
 
     await waitFor(() =>
-      expect(screen.getByRole("combobox", { name: /layanan/i })).toHaveTextContent(
+      expect(screen.getByRole("combobox", { name: /^layanan$/i })).toHaveTextContent(
         "Grooming Full Service",
       ),
     );
@@ -784,17 +1037,22 @@ describe("BookingForm — mengubah booking", () => {
     expect(await screen.findByText(/sudah ditagih/i)).toBeInTheDocument();
 
     /*
-      NO REMOVE BUTTON ON THE BILLED ROW, and one on the other. PRD 2.12: work
+      NO REMOVE BUTTON ON THE BILLED LINE, and one on the other. PRD 2.12: work
       already on a bill cannot leave the booking it was billed from, or the
       appointment and the invoice stop agreeing about what was done.
+
+      BOTH LINES ARE ONE ANIMAL'S, so they sit in ONE card now — the grouping
+      that came with the per-pet flow. What is asserted is unchanged: exactly one
+      of the two services can be taken off.
     */
-    const cards = screen.getAllByRole("listitem");
+    const card = screen.getAllByRole("listitem")[0];
     expect(
-      within(cards[0]).queryByRole("button", { name: /hapus/i }),
+      within(card).getAllByRole("button", { name: /hapus layanan/i }),
+    ).toHaveLength(1);
+    /* And the card itself cannot go while it holds billed work. */
+    expect(
+      within(card).queryByRole("button", { name: /^hapus bruno$/i }),
     ).not.toBeInTheDocument();
-    expect(
-      within(cards[1]).getByRole("button", { name: /hapus/i }),
-    ).toBeInTheDocument();
 
     /* And the owner is pinned: emptying his animals would empty the billed one. */
     expect(screen.getByRole("button", { name: /ganti/i })).toBeDisabled();
@@ -804,7 +1062,7 @@ describe("BookingForm — mengubah booking", () => {
     renderWithAuth(<BookingForm bookingId="bk-9" />);
 
     await waitFor(() =>
-      expect(screen.getByRole("combobox", { name: /layanan/i })).toHaveTextContent(
+      expect(screen.getByRole("combobox", { name: /^layanan$/i })).toHaveTextContent(
         "Grooming Full Service",
       ),
     );
@@ -845,8 +1103,8 @@ describe("BookingForm — when no staff are marked as groomers", () => {
     renderWithAuth(<BookingForm />);
 
     await pickCustomer();
-    await screen.findByRole("combobox", { name: /layanan/i });
-    await choose(/layanan/i, /grooming full service/i);
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+    await choose(/^layanan$/i, /grooming full service/i);
 
     await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
 
