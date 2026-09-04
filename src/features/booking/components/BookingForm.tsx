@@ -6,6 +6,7 @@ import { Plus, UserRound } from "lucide-react";
 
 import {
   Alert,
+  Card,
   CheckRow,
   CheckRowGroup,
   FilterSelect,
@@ -876,7 +877,12 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
               </Alert>
             )}
 
-            {/* §16 field order: kapan, lalu dengan siapa, lalu isinya. */}
+            {/*
+              §16 field order: kapan, lalu di mana, lalu dengan siapa, lalu
+              isinya — and each group is a CARD rather than a run of loose
+              fields. Two dozen controls on one page need somewhere to stop.
+            */}
+            <Card title="Jadwal & lokasi">
             <div className="grid gap-4 sm:grid-cols-2">
               <TextField
                 label="Tanggal"
@@ -926,18 +932,14 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
                   onChange={setPickedBranch}
                 />
               )}
-            </div>
+              {/*
+                WHERE THE WORK HAPPENS — asked with the day and the branch, which
+                is the order the receptionist asks it in: when, where, then who.
 
-            {/*
-              WHERE THE WORK HAPPENS — asked after the branch and before the
-              customer, which is the order the receptionist asks it in: when,
-              where, then who.
-
-              IT NARROWS THE CATALOGUE. A service that cannot be done at home is
-              refused by the server for an `in_home` booking, so the answer here
-              changes what the cards below may hold.
-            */}
-            <div className="grid gap-4 sm:grid-cols-2">
+                IT NARROWS THE CATALOGUE. A service that cannot be done at home is
+                refused by the server for an `in_home` booking, so the answer here
+                changes what the cards below may hold.
+              */}
               <SelectField
                 label="Lokasi layanan"
                 value={location}
@@ -948,6 +950,7 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
                 required
               />
             </div>
+            </Card>
 
             {/*
               ANTAR-JEMPUT — ONE TRIP PER VISIT, and only when the animal has to
@@ -960,8 +963,11 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
               van booked.
             */}
             {location === "in_store" && (
-              <div className="flex flex-col gap-3 rounded-xl border border-border p-4">
-                <p className="text-sm font-medium">Antar-jemput</p>
+              <Card
+                title="Antar-jemput"
+                description="Satu perjalanan untuk satu kedatangan — semua hewan pelanggan ini ikut mobil yang sama."
+              >
+                <div className="flex flex-col gap-3">
                 <CheckRowGroup>
                   <CheckRow
                     label="Dijemput"
@@ -991,7 +997,8 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
                     disabled={saving}
                   />
                 )}
-              </div>
+                </div>
+              </Card>
             )}
 
             {/*
@@ -1001,6 +1008,7 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
               shop with four hundred customers can find the four hundredth, and
               it registers a new one without leaving the form.
             */}
+            <Card title="Pelanggan">
             <div className="flex flex-col gap-1.5">
               <Label>
                 Pelanggan<span className="text-danger"> *</span>
@@ -1056,6 +1064,7 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
                 </p>
               )}
             </div>
+            </Card>
 
             {/*
               THE ANIMALS ON THIS VISIT — one card each (FR-2).
@@ -1065,15 +1074,27 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
               arriving with Mochi and Coco needed two whole bookings, typed one
               after the other.
             */}
+            {/*
+              NOT WRAPPED IN A CARD, unlike the groups above it, and the
+              exception is the point: the ANIMAL's card is the white card here.
+              Putting white cards inside another white card leaves the middle
+              level doing nothing — a border around a border — and the
+              hierarchy that actually helps is page tint → white card per
+              animal → tinted inset per service.
+            */}
             <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between gap-3">
-                <Label>
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h2 className="text-lg font-bold">
                   Hewan dalam booking ini<span className="text-danger"> *</span>
-                </Label>
+                </h2>
                 <span className="text-xs tabular-nums text-muted">
                   {rowCount} baris
                 </span>
               </div>
+              <p className="text-sm text-muted">
+                Satu kartu per hewan. Layanan, add-on, catatan dan barang
+                bawaannya ada di dalam kartunya masing-masing.
+              </p>
 
               {!customer ? (
                 <p className="text-sm text-muted">
@@ -1168,6 +1189,8 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
               the booking's own page. A select here would offer moves the ladder
               forbids and be refused one at a time.
             */}
+            <Card title="Status & catatan">
+            <div className="flex flex-col gap-4">
             {!editing && (
             <SelectField
               label="Status"
@@ -1180,17 +1203,23 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
             />
             )}
 
-            {/* §16: Catatan is always last. */}
+            {/*
+              §16: Catatan is always last — and this one is about the VISIT.
+              Anything about one animal belongs on that animal's card, where the
+              person reading it is already looking.
+            */}
             <TextareaField
               label="Catatan"
               name="booking-notes"
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
               maxLength={NOTES_MAX_LENGTH}
-              placeholder="mis. anjingnya takut hairdryer"
+              placeholder="mis. datang agak telat, minta ditunggu"
               error={fieldErrors.notes}
               disabled={saving}
             />
+            </div>
+            </Card>
 
       </form>
 

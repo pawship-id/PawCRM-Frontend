@@ -129,7 +129,12 @@ export function BookingPetGroupCard({
     group.belongings.length + (group.notes.trim() === "" ? 0 : 1);
 
   return (
-    <li className="overflow-hidden rounded-xl border border-border">
+    /*
+      `bg-surface` — a WHITE card, not the page's tint showing through a border.
+      The pet cards sit inside another card now, and an unfilled panel on a
+      filled one reads as a gap rather than as a thing.
+    */
+    <li className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
       {/*
         THE HEADER STRIP. Tinted and full width, so the eye finds where one
         animal ends and the next begins without counting borders — which is the
@@ -360,7 +365,13 @@ function ServiceLine({
   const catalogueDuration = service?.durationMin ?? null;
 
   return (
-    <div className="rounded-lg border border-border p-3">
+    /*
+      INSET, not another white panel. The card behind it is white, so a service
+      line takes the page's own tint to separate from it — the inverse of the
+      usual card-on-background, and the only way to nest twice without the
+      borders doing all the work.
+    */
+    <div className="rounded-lg border border-border bg-background p-3">
       <SelectField
         label="Layanan"
         value={line.serviceId}

@@ -132,6 +132,25 @@ So the moves live here, behind the same state machine the server enforces.
 **kapan** (tanggal + jam) → **di mana** (cabang, lokasi layanan) → antar-jemput → **dengan
 siapa** (pelanggan) → a card per animal → the status → catatan last.
 
+### The page is four cards and one list
+
+`Jadwal & lokasi` · `Antar-jemput` (only for a salon visit) · `Pelanggan` · **the animals** ·
+`Status & catatan`. Each card is a `<Card>` — white `bg-surface` on the page's tint — so a form
+with two dozen controls has somewhere for the eye to stop.
+
+**The animals are the one group NOT wrapped in a card**, and that is deliberate: the ANIMAL's
+card is the white card there. White cards inside another white card leave the middle level
+doing nothing — a border around a border — and the hierarchy that reads is:
+
+```
+page tint
+└── white card per animal          ← bg-surface, tinted header strip
+    └── tinted inset per service   ← bg-background, the page's own colour
+```
+
+The inset inverts the usual card-on-background, which is the only way to nest twice without
+the borders doing all the work.
+
 ### The card is titled by its animal, and that is the whole layout
 
 The first version was flat: a small grey caption over eight controls, repeated per animal. The
