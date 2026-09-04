@@ -35,6 +35,16 @@ export const UNASSIGNED = "belum-ditentukan";
 export interface ServiceDraft {
   /** Local identity. Never sent — see `blankGroup`. */
   key: string;
+  /**
+   * WHICH LINE OF BUSINESS this line's service picker is narrowed to.
+   *
+   * A FILTER, NOT A FIELD: never sent, because the service already names its
+   * own. It sits on the LINE rather than on the animal because one animal may
+   * take a Grooming service and a Hotel one on the same visit — a single filter
+   * per card could not express that, and asking it once per card made it read as
+   * a property of the animal rather than of the list it narrows.
+   */
+  businessLineId: string;
   serviceId: string;
   /** The add-ons ticked under this service, by service id. */
   addonServiceIds: string[];
@@ -62,13 +72,6 @@ export interface PetGroupDraft {
    * the person who knows is standing.
    */
   groomerUserId: string;
-  /**
-   * WHICH LINE OF BUSINESS the service picker is filtered to — Grooming, Hotel,
-   * Klinik. A FILTER, NOT A FIELD: it is never sent, because the row's service
-   * already names its own business line and storing a second copy would be a
-   * second place for one fact to live.
-   */
-  businessLineId: string;
   services: ServiceDraft[];
   /**
    * About THIS animal on THIS visit — the exact words `bookingitems.notes` is
@@ -87,6 +90,7 @@ export function blankService(): ServiceDraft {
   seq += 1;
   return {
     key: `svc-${seq}`,
+    businessLineId: "",
     serviceId: "",
     addonServiceIds: [],
     durationMin: "",
@@ -101,7 +105,6 @@ export function blankGroup(petId = ""): PetGroupDraft {
     key: `pet-${seq}`,
     petId,
     groomerUserId: UNASSIGNED,
-    businessLineId: "",
     services: [blankService()],
     notes: "",
     belongings: [],

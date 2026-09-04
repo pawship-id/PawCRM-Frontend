@@ -5,6 +5,7 @@ import { BookingForm } from "@/features/booking";
 import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
 import { branchService } from "@/services/branch.service";
+import { businessLineService } from "@/services/businessLine.service";
 import { customerService } from "@/services/customer.service";
 import { petService } from "@/services/pet.service";
 import { serviceService } from "@/services/service.service";
@@ -26,6 +27,7 @@ jest.mock("@/services/user.service");
   `soleBranch` answers it and no dropdown appears.
 */
 jest.mock("@/services/branch.service");
+jest.mock("@/services/businessLine.service");
 /* The house pattern: the toast is chrome, and the real Swal drags a timer into
    every test that saves. */
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
@@ -47,6 +49,9 @@ const pets = petService as jest.Mocked<typeof petService>;
 const services = serviceService as jest.Mocked<typeof serviceService>;
 const users = userService as jest.Mocked<typeof userService>;
 const branches = branchService as jest.Mocked<typeof branchService>;
+const businessLines = businessLineService as jest.Mocked<
+  typeof businessLineService
+>;
 
 const BRANCH_ID = "branch-1";
 
@@ -98,6 +103,13 @@ beforeEach(() => {
   bookings.create.mockResolvedValue(created);
   branches.list.mockResolvedValue(
     page([{ _id: BRANCH_ID, name: "Cibubur" }]) as never,
+  );
+  /* The lines of business the per-line "Tipe layanan" filter offers. */
+  businessLines.list.mockResolvedValue(
+    page([
+      { _id: "line-groom", name: "Grooming" },
+      { _id: "line-hotel", name: "Hotel" },
+    ]) as never,
   );
   /*
     FR-4: the groomer dropdown asks who may be booked on the chosen DAY, not who
@@ -687,6 +699,58 @@ describe("BookingForm — layanan, add-on dan varian", () => {
 
   beforeEach(() => {
     services.list.mockResolvedValue(page([main, addon]));
+  });
+
+  it("narrows only its OWN line when a type is chosen", async () => {
+    /*
+      THE FILTER IS PER LINE, not per animal: one visit may take a Grooming
+      service and a Hotel one, and a single filter per card could not say that.
+    */
+    services.list.mockResolvedValue(
+      page([
+        service({ _id: "svc-groom", name: "Full Grooming", businessLineId: "line-groom" }),
+        service({ _id: "svc-hotel", name: "Penitipan", businessLineId: "line-hotel" }),
+      ]),
+    );
+
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+
+    await choose(/tipe layanan/i, "Grooming");
+    await userEvent.click(screen.getByRole("combobox", { name: /^layanan$/i }));
+
+    expect(
+      await screen.findByRole("option", { name: /full grooming/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: /penitipan/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("clears a service the new type no longer offers", async () => {
+    // Leaving a name the list below cannot show is worse than asking again.
+    services.list.mockResolvedValue(
+      page([
+        service({ _id: "svc-groom", name: "Full Grooming", businessLineId: "line-groom" }),
+        service({ _id: "svc-hotel", name: "Penitipan", businessLineId: "line-hotel" }),
+      ]),
+    );
+
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+
+    await choose(/^layanan$/i, /full grooming/i);
+    expect(
+      screen.getByRole("combobox", { name: /^layanan$/i }),
+    ).toHaveTextContent("Full Grooming");
+
+    await choose(/tipe layanan/i, "Hotel");
+
+    expect(
+      screen.getByRole("combobox", { name: /^layanan$/i }),
+    ).not.toHaveTextContent("Full Grooming");
   });
 
   it("keeps an add-on off the service list — it is not something to book alone", async () => {

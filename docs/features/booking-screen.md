@@ -189,9 +189,26 @@ questions a receptionist actually asks run the other way — *which animal, then
 done to it* — and the business-line filter, the note and the belongings list are all facts
 about the ANIMAL, asked once instead of once per service.
 
-Inside a card: **tipe layanan** (a filter, never sent), one or more **layanan utama**, the
-**add-ons** offered under each, a **groomer** and **durasi** per service, the animal's
-**catatan**, and its **barang bawaan**.
+Inside a card: the animal, its **groomer** (one default for the whole visit), then a numbered
+list of services. **One service line reads top to bottom in the order it is answered:**
+
+```
+Layanan 1                                    [×]
+  [ Tipe layanan ▾ ]     [ Layanan ▾ ]        ← the second is narrowed by the first
+  Rp 180.000 · varian Besar
+  Add-on
+    ☐ Parfum   Rp 20.000 · +10 mnt            ← only what THIS service offers
+  Durasi 90 mnt · ubah
+```
+
+**The type filter is per LINE, not per animal.** One visit may take a Grooming service and a
+Hotel one, which a single filter per card could not say — and asked once per card it read as a
+property of the animal rather than of the list it narrows. Changing it **clears the chosen
+service**: leaving a name the list below no longer offers is worse than asking again.
+
+**The word "Layanan" appears once per meaning.** The list is headed `Daftar layanan`; each
+entry is `Layanan 1`, `Layanan 2`. The first version had the section and the select inside it
+both labelled "Layanan", a few pixels apart, meaning different things.
 
 **The form's shape is not the API's, and `bookingDraft.ts` is the only place the two meet.**
 The API stores a flat list of rows — add-ons included, each with `parentItemId` — which is

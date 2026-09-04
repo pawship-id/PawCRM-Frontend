@@ -102,21 +102,6 @@ export function BookingPetGroupCard({
   /* A billed line may not be removed, and nor may the card holding one. */
   const hasBilled = group.services.some((line) => line.locked);
 
-  /*
-    THE MAIN SERVICES ON OFFER, narrowed to the chosen line of business.
-
-    ADD-ONS ARE NOT IN THIS LIST. An add-on is chosen underneath the service it
-    belongs to — that is what makes it an add-on — and offering it here would let
-    somebody book "Parfum" on its own, which the server then refuses. The filter
-    is a convenience; the exclusion is a rule.
-  */
-  const mainServices = services.filter(
-    (service) =>
-      service.serviceType !== "addon" &&
-      (group.businessLineId === "" ||
-        service.businessLineId === group.businessLineId),
-  );
-
   function updateLine(key: string, patch: Partial<ServiceDraft>) {
     onChange({
       services: group.services.map((line) =>
@@ -232,39 +217,24 @@ export function BookingPetGroupCard({
         {pet && <PetSummaryCard pet={pet} />}
 
         <div className="flex flex-col gap-3 border-l-2 border-border pl-3">
-          <div className="flex flex-wrap items-end justify-between gap-2">
-            <span className="text-sm font-medium">
-              Layanan<span className="text-danger"> *</span>
-            </span>
+          {/*
+            ONE LABEL FOR THE LIST, and the lines inside number themselves. The
+            first version put "Layanan" here AND on the select inside every line,
+            so the same word appeared twice a few pixels apart with different
+            meanings — the list, and one entry of it.
+          */}
+          <span className="text-sm font-medium">
+            Daftar layanan<span className="text-danger"> *</span>
+          </span>
 
-            {/*
-              THE LINE OF BUSINESS IS A FILTER, NOT A FIELD — never sent, since
-              the service already names its own. It sits WITH the list it narrows
-              rather than beside "Hewan", where it read as another property of
-              the animal and was half the confusion.
-            */}
-            {businessLines.length > 0 && (
-              <SelectField
-                label="Tipe layanan"
-                className="w-44"
-                value={group.businessLineId}
-                onChange={(value) => onChange({ businessLineId: value })}
-                options={businessLines.map((line) => ({
-                  value: line._id,
-                  label: line.name,
-                }))}
-                placeholder="Semua tipe"
-                disabled={disabled}
-              />
-            )}
-          </div>
-
-          {group.services.map((line) => (
+          {group.services.map((line, position) => (
             <ServiceLine
               key={line.key}
               line={line}
+              position={position}
               pet={pet}
-              mainServices={mainServices}
+              services={services}
+              businessLines={businessLines}
               disabled={disabled}
               duplicate={duplicateKeys.has(line.key)}
               removable={group.services.length > 1}
@@ -352,8 +322,10 @@ export function BookingPetGroupCard({
  */
 function ServiceLine({
   line,
+  position,
   pet,
-  mainServices,
+  services,
+  businessLines,
   disabled,
   duplicate,
   removable,
@@ -362,8 +334,11 @@ function ServiceLine({
   serviceOf,
 }: {
   line: ServiceDraft;
+  /** Its place in the animal's list, for the numbered caption. */
+  position: number;
   pet: Pet | null;
-  mainServices: Service[];
+  services: Service[];
+  businessLines: BusinessLine[];
   disabled: boolean;
   duplicate: boolean;
   removable: boolean;
@@ -392,6 +367,21 @@ function ServiceLine({
 
   const catalogueDuration = service?.durationMin ?? null;
 
+  /*
+    THE MAIN SERVICES ON OFFER, narrowed by THIS line's type.
+
+    ADD-ONS ARE NOT IN THIS LIST. An add-on is chosen underneath the service it
+    belongs to — that is what makes it an add-on — and offering it here would let
+    somebody book "Parfum" on its own, which the server then refuses. The filter
+    is a convenience; the exclusion is a rule.
+  */
+  const mainServices = services.filter(
+    (entry) =>
+      entry.serviceType !== "addon" &&
+      (line.businessLineId === "" ||
+        entry.businessLineId === line.businessLineId),
+  );
+
   return (
     /*
       INSET, not another white panel. The card behind it is white, so a service
@@ -400,27 +390,80 @@ function ServiceLine({
       borders doing all the work.
     */
     <div className="rounded-lg border border-border bg-background p-3">
-      <SelectField
-        label="Layanan"
-        value={line.serviceId}
-        onChange={(value) =>
-          /* A different service offers different add-ons; keeping the old ticks
-             would send ones the new parent does not offer. */
-          onChange({ serviceId: value, addonServiceIds: [] })
-        }
-        options={mainServices.map((item) => ({
-          value: item._id,
-          label: item.name,
-        }))}
-        placeholder="Pilih layanan…"
-        disabled={disabled || locked}
-        error={
-          duplicate
-            ? `${pet?.name ?? "Hewan ini"} sudah punya layanan yang sama di booking ini.`
-            : undefined
-        }
-        required
-      />
+      {/*
+        ONE LINE READS TOP TO BOTTOM IN THE ORDER IT IS ANSWERED: which type,
+        then which service of that type, then what is added to it. The caption
+        numbers it so two lines on one animal are told apart the way two animals
+        are — and it carries the remove button, off the footer where it sat below
+        add-ons it was not about.
+      */}
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold tabular-nums text-muted">
+          Layanan {position + 1}
+        </span>
+        {locked ? (
+          <span className="text-xs text-muted">Sudah ditagih</span>
+        ) : (
+          removable && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={disabled}
+              aria-label={`Hapus layanan ${service?.name ?? position + 1}`}
+              onClick={onRemove}
+            >
+              <X className="size-4" />
+            </Button>
+          )
+        )}
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {businessLines.length > 0 && (
+          <SelectField
+            label="Tipe layanan"
+            value={line.businessLineId}
+            onChange={(value) =>
+              /* The chosen service may not be of the new type; clearing it is
+                 kinder than leaving a name the list below no longer offers. */
+              onChange({
+                businessLineId: value,
+                serviceId: "",
+                addonServiceIds: [],
+              })
+            }
+            options={businessLines.map((entry) => ({
+              value: entry._id,
+              label: entry.name,
+            }))}
+            placeholder="Semua tipe"
+            disabled={disabled || locked}
+          />
+        )}
+
+        <SelectField
+          label="Layanan"
+          value={line.serviceId}
+          onChange={(value) =>
+            /* A different service offers different add-ons; keeping the old
+               ticks would send ones the new parent does not offer. */
+            onChange({ serviceId: value, addonServiceIds: [] })
+          }
+          options={mainServices.map((item) => ({
+            value: item._id,
+            label: item.name,
+          }))}
+          placeholder="Pilih layanan…"
+          disabled={disabled || locked}
+          error={
+            duplicate
+              ? `${pet?.name ?? "Hewan ini"} sudah punya layanan yang sama di booking ini.`
+              : undefined
+          }
+          required
+        />
+      </div>
 
       {/* The price sits with the service it belongs to, not in a column of its own. */}
       {service && (
@@ -507,24 +550,10 @@ function ServiceLine({
           </Button>
         )}
 
-        {locked ? (
+        {locked && (
           <span className="text-xs text-muted">
-            Sudah ditagih — tidak bisa diubah atau dihapus.
+            Tidak bisa diubah atau dihapus.
           </span>
-        ) : (
-          removable && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={disabled}
-              aria-label={`Hapus layanan ${service?.name ?? ""}`.trim()}
-              onClick={onRemove}
-            >
-              <X className="size-4" />
-              Hapus layanan
-            </Button>
-          )
         )}
       </div>
     </div>
