@@ -7,6 +7,53 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Halaman depan di `/`
+
+`/` dulu me-redirect ke `/login`, dengan alasan tidak ada yang lain untuk
+ditampilkan. Sekarang ada: halaman marketing yang menjelaskan apa yang produk
+ini kerjakan, di `src/features/landing/`.
+
+**Server component, kecuali satu.** `LandingNav` `"use client"` untuk satu baris
+— garis rambut di bawah bar yang baru muncul setelah halaman di-scroll. Sisanya
+statis, jadi halaman pertama yang dilihat orang tidak mengirim bundle untuk
+mengatakan lima hal yang tidak berubah.
+
+**Isinya ditulis dari `docs/features/`, bukan dari brief.** Tiap klaim menunjuk
+sesuatu yang benar-benar ada: badge stok kasir dan aturan `minStock: 0`,
+Keranjang Tersimpan, booking yang ditarik ke keranjang, kolom groomer kosong dan
+beban-bukan-kapasitas, cabang vs gudang. Empat label di panel Keuangan adalah
+label `FinanceDashboardScreen` sendiri, supaya yang mendaftar setelah membacanya
+menemukan kata yang sama.
+
+**Yang belum jalan disebut belum jalan.** Hotel dan E-commerce Sync masih
+`SectionPlaceholder`, jadi keduanya tidak masuk daftar "yang sudah jalan" dan
+halamannya mengatakan itu dalam satu paragraf. `LandingScreen.test.tsx`
+menguncinya: kalau salah satunya muncul di daftar, tesnya gagal.
+
+**`/` masuk `PUBLIC_ROUTE_PREFIXES`.** Halaman ini dibaca orang yang tidak punya
+akun, dan tanpa itu tiap kunjungan membakar satu `GET /auth/me` yang hanya bisa
+401. Prefix `"/"` hanya cocok dengan dirinya sendiri — predikatnya
+menguji kesamaan persis atau awalan `"/" + "/"`, dan `"//"` bukan rute siapa
+pun. Ada tes untuk kedua sisi itu.
+
+**Nomor WhatsApp jadi konfigurasi.** `NEXT_PUBLIC_PHONE_NUMBER`, dibaca lewat
+`src/utils/env.ts` seperti base URL backend, dengan nomor Buloo sebagai fallback
+supaya clone baru tetap punya tombol yang jalan. Nilainya dibersihkan jadi angka
+saja sebelum dipakai — orang yang mengisinya di dashboard hosting akan wajar
+mengetik `+62 895-…`, dan `wa.me/+62 895…` membuka tautan rusak tanpa bilang
+apa-apa, tepat di satu tombol yang calon pelanggan tekan.
+
+**Satu token baru, `--brand-deep`.** Navy paling gelap sebagai *ground*, bukan
+sebagai tinta — footer halaman ini. §3 minta komponen memakai nama semantik, dan
+tidak ada token produk yang berarti "yang paling gelap di halaman":
+`--foreground` itu warna teks, dan footer yang meminjamnya akan patah begitu teks
+dan permukaan berhenti jadi navy yang sama.
+
+**Anggaran oranye di halaman ini lebih besar dari §4**, dan itu disengaja: dua
+tombol ajakan, satu bar, satu panel peringatan, satu blok onboarding. Aturan 5%
+ditulis untuk layar uang. Yang tetap dipegang adalah yang penting — oranye tidak
+pernah jadi teks, dan tiap isian oranye bertinta navy.
+
 ## [Unreleased] — Halaman detail booking
 
 `/dashboard/booking/:id` — satu kunjungan, utuh.
