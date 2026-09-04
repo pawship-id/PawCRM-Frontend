@@ -108,9 +108,14 @@ export interface VariantCombo {
  * The ceiling is arithmetic: 2 × 3 × 2 is twelve rows at the very widest, well
  * under the server's `MAX_VARIANTS`.
  */
-export function buildVariantCombos(axes: ServiceVariantAxis[]): VariantCombo[] {
+export function buildVariantCombos(
+  axes: ServiceVariantAxis[] | undefined,
+): VariantCombo[] {
+  // `undefined` is a real input, not a caller bug: a service stored before
+  // `variantAxes` existed has no such key, and this used to throw on
+  // `axes.includes(...)` and blank the edit page. No axes means no rows.
   const ordered = VARIANT_AXIS_TABLE.filter((entry) =>
-    axes.includes(entry.axis),
+    (axes ?? []).includes(entry.axis),
   );
 
   if (ordered.length === 0) return [];
@@ -137,14 +142,14 @@ export function buildVariantCombos(axes: ServiceVariantAxis[]): VariantCombo[] {
 
 /** The key a stored variant is held under — must match `buildVariantCombos`. */
 export function comboKey(
-  axes: ServiceVariantAxis[],
+  axes: ServiceVariantAxis[] | undefined,
   variant: {
     petType?: string | null;
     sizeCategory?: string | null;
     furType?: string | null;
   },
 ): string {
-  return VARIANT_AXIS_TABLE.filter((entry) => axes.includes(entry.axis))
+  return VARIANT_AXIS_TABLE.filter((entry) => (axes ?? []).includes(entry.axis))
     .map((entry) => `${variant[entry.axis] ?? ""}|`)
     .join("");
 }

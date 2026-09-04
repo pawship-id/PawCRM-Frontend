@@ -42,7 +42,8 @@ type PendingAction = { kind: "delete" | "restore"; service: Service } | null;
 function formatServicePrice(service: Service): string {
   if (!service.hasVariants) return formatMoney(service.price);
 
-  const priced = service.variants.filter(
+  // `?? []` — a service stored before `variants` existed has no such key.
+  const priced = (service.variants ?? []).filter(
     (variant) => toMinor(variant.price) !== null,
   );
   if (priced.length === 0) return "—";

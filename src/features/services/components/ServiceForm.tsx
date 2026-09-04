@@ -237,10 +237,23 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
         if (!active) return;
         setService(result);
         setName(result.name);
-        setCode(result.code);
+        /*
+          EVERY FIELD BELOW IS READ DEFENSIVELY, and the reason is a real blank
+          page rather than caution. A service priced before these fields existed
+          is stored without them — repository reads are `.lean()`, so Mongoose's
+          defaults never apply — and the first thing this form did with one was
+          `axes.includes(...)` on undefined.
+
+          ServiceService now fills the shape in on the way out, which is the
+          fix; this is the second belt. A form that blanks the page cannot be
+          used to REPAIR the record that blanked it, which is exactly what an
+          old service needs — and `code`, optional until this release, is null
+          on plenty of them, which would also flip its input to uncontrolled.
+        */
+        setCode(result.code ?? "");
         setBusinessLineId(result.businessLineId);
-        setImage(result.image);
-        setServiceType(result.serviceType);
+        setImage(result.image ?? null);
+        setServiceType(result.serviceType ?? "main");
         // The API stores four decimals; a counter should not have to read past
         // "150000.0000" to see the price they typed.
         setPrice(result.price === null ? "" : trimStoredPrice(result.price));
@@ -248,23 +261,29 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
           result.durationMin === null ? "" : String(result.durationMin),
         );
         setDescription(result.description ?? "");
-        setHasVariants(result.hasVariants);
-        setVariantAxes(result.variantAxes);
+        const axes = result.variantAxes ?? [];
+        setHasVariants(result.hasVariants ?? false);
+        setVariantAxes(axes);
         setVariantPrices(
           Object.fromEntries(
-            result.variants.map((variant) => [
-              comboKey(result.variantAxes, variant),
+            (result.variants ?? []).map((variant) => [
+              comboKey(axes, variant),
               trimStoredPrice(variant.price),
             ]),
           ),
         );
-        setSessions(result.sessions);
-        setIncluded(result.included);
-        setServiceLocations(result.serviceLocations);
-        setPickupDeliveryAvailable(result.pickupDeliveryAvailable);
-        setAllBranches(result.allBranches);
-        setBranchIds(result.branchIds);
-        setAddonServiceIds(result.addonServiceIds);
+        setSessions(result.sessions ?? []);
+        setIncluded(result.included ?? []);
+        // Not `[]`: an old service has no locations stored, and leaving the
+        // field empty would make Simpan fail on a rule the user never set.
+        // "Di toko" is what every service predating the field actually was.
+        setServiceLocations(
+          result.serviceLocations?.length ? result.serviceLocations : ["in_store"],
+        );
+        setPickupDeliveryAvailable(result.pickupDeliveryAvailable ?? false);
+        setAllBranches(result.allBranches ?? true);
+        setBranchIds(result.branchIds ?? []);
+        setAddonServiceIds(result.addonServiceIds ?? []);
         setTaxExempt(result.taxExempt);
         setIsActive(result.isActive);
       })

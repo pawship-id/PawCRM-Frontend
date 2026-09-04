@@ -527,6 +527,60 @@ describe("ServiceForm — editing", () => {
     expect(push).toHaveBeenCalledWith("/dashboard/master/layanan");
   });
 
+  /*
+    ─── A SERVICE PRICED BEFORE ANY OF THESE FIELDS EXISTED ────────────────────
+
+    Repository reads are `.lean()`, so Mongoose's defaults never apply and an old
+    document arrives with no `variantAxes` key at all. The form's first act was
+    `axes.includes(...)` on undefined — "Cannot read properties of undefined
+    (reading 'includes')" — and the page went blank, which also made it the one
+    screen that could not be used to REPAIR the record that blanked it.
+
+    ServiceService now fills the shape on the way out; this is the second belt,
+    and it renders the legacy shape the API used to hand over.
+  */
+  it("opens a service stored before the variant and branch fields existed", async () => {
+    const legacy = {
+      _id: SERVICE_ID,
+      tenantId: "507f1f77bcf86cd799439011",
+      name: "Mandi",
+      code: null,
+      businessLineId: LINE_ID,
+      price: "90000.0000",
+      durationMin: 60,
+      description: null,
+      isActive: true,
+      deletedAt: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+    mockedServiceService.getById.mockResolvedValue(legacy);
+
+    renderWithAuth(<ServiceForm serviceId={SERVICE_ID} />);
+
+    expect(await screen.findByDisplayValue("Mandi")).toBeVisible();
+    expect(screen.getByDisplayValue("90000")).toBeVisible();
+    // A null code renders as an empty controlled input, not as "null" and not
+    // as an uncontrolled field React then warns about.
+    expect(priceBox()).toBeVisible();
+    expect(screen.getByLabelText(/^kode/i)).toHaveValue("");
+  });
+
+  it("defaults an old service with no stored location to Di toko", async () => {
+    // Leaving it empty would make Simpan fail on a rule the user never set, on
+    // the one screen that exists to fill the blanks in.
+    mockedServiceService.getById.mockResolvedValue({
+      ...serviceFixture,
+      serviceLocations: [],
+    });
+
+    renderWithAuth(<ServiceForm serviceId={SERVICE_ID} />);
+
+    await screen.findByDisplayValue("Grooming Full Service");
+    expect(screen.getByLabelText(/di toko/i)).toBeChecked();
+  });
+
   it("never offers the service itself as one of its own add-ons", async () => {
     mockedServiceService.list.mockResolvedValue({
       items: [{ ...addonFixture, _id: SERVICE_ID }],
