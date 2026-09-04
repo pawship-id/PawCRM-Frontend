@@ -145,5 +145,24 @@ Deliberately absent from the foundation branch:
 - State management beyond React's built-ins (add only when a real need
   appears; server state may well be handled by a data-fetching library
   rather than a global store)
-- Design system and shared component library
+- Shared component library — the design system now exists (see below), but the
+  components it specifies are still specs, not code
 - End-to-end tests
+
+---
+
+## Design system
+
+The brand is **Buloo**: navy is the working colour, orange is the accent and
+always means a human must act. Three documents, in the order you need them:
+
+- [`docs/ui-rules.md`](./ui-rules.md) — the enforceable rules. Imported by
+  `AGENTS.md`, so it loads every session. Read it before writing markup.
+- [`docs/ui-component-specs.md`](./ui-component-specs.md) — props and anatomy
+  for the shared components that are specified but not yet built (the filter
+  system, `StatusBadge`, `EmptyState`, a promoted `PageHeading`).
+- [`docs/brand/`](./brand/) — the brand book, the filter spec, and the original
+  token handoff, copied byte-for-byte. Background reading, never imported.
+
+Tokens live in [`src/styles/globals.css`](../src/styles/globals.css) and nowhere
+else. No component hard-codes a hex.

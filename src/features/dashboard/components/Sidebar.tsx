@@ -72,7 +72,7 @@ export function Sidebar({ open, collapsed, onClose, onExpand }: SidebarProps) {
         >
           <Link
             href="/dashboard"
-            aria-label="PawShip dashboard"
+            aria-label="Buloo dashboard"
             className="flex items-center px-2"
           >
             {/* Full logo: always on mobile, on desktop only when expanded. */}
@@ -124,7 +124,7 @@ export function Sidebar({ open, collapsed, onClose, onExpand }: SidebarProps) {
             collapsed ? "md:hidden" : ""
           }`}
         >
-          PawShip CRM · Admin
+          Buloo CRM · Admin
         </div>
       </aside>
     </>
@@ -230,7 +230,7 @@ function NavGroup({
         ].join(" ")}
       >
         {item.children!.map((child) => {
-          const active = isActiveHref(child.href, pathname);
+          const active = isActiveHref(child.href, pathname, child.exact);
           const ChildIcon = child.icon;
           return (
             <Link

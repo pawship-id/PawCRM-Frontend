@@ -4,7 +4,7 @@ import { BranchEditForm } from "@/features/branches";
 import { RequirePermission } from "@/features/permissions";
 
 export const metadata: Metadata = {
-  title: "Edit branch · Master Data · PawShip",
+  title: "Edit branch · Master Data · Buloo",
 };
 
 /**

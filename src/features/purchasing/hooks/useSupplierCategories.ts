@@ -1,0 +1,162 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+
+import { supplierCategoryService } from "@/services/supplierCategory.service";
+import { ApiError } from "@/services/api-error";
+import type {
+  CategorySort,
+  PageResult,
+  SupplierCategory,
+  SupplierCategoryListQuery,
+} from "@/types/api";
+import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
+
+/** The query knobs the list screen drives (page + the visible filters). */
+export interface SupplierCategoriesQuery {
+  page: number;
+  search: string;
+  /** "" = retired and live both. */
+  status: "" | "active" | "inactive";
+  includeDeleted: boolean;
+  /** Which ordering to page through. */
+  sort: CategorySort;
+}
+
+const PAGE_SIZE = 20;
+
+/**
+ * OPENS ON EVERY CATEGORY, retired ones included. This screen exists to manage
+ * the label set, and the retired labels are the half of it most likely to need
+ * attention — defaulting to Aktif would hide them from the only screen that can
+ * bring them back. Deleted rows still stay out until asked for: those are gone,
+ * not merely retired.
+ */
+const DEFAULT_QUERY: SupplierCategoriesQuery = {
+  page: 1,
+  search: "",
+  status: "",
+  includeDeleted: false,
+  // The API's own default, restated rather than left out: the panel renders the
+  // current value, and a select whose value is `undefined` shows nothing.
+  sort: "newest",
+};
+
+/** Empty page so consumers can render a table shell before the first load. */
+const EMPTY_PAGE: PageResult<SupplierCategory>["pagination"] = {
+  page: 1,
+  limit: PAGE_SIZE,
+  total: 0,
+  totalPages: 0,
+};
+
+interface UseSupplierCategoriesResult {
+  categories: SupplierCategory[];
+  pagination: PageResult<SupplierCategory>["pagination"];
+  query: SupplierCategoriesQuery;
+  loading: boolean;
+  error: string | null;
+  /** Merge a partial query change; any change other than `page` resets to page 1. */
+  setQuery: (patch: Partial<SupplierCategoriesQuery>) => void;
+  /** Re-run the current query — call after a mutation (create, rename, delete). */
+  refetch: () => void;
+}
+
+/**
+ * Owns the supplier-category list query state and fetching.
+ *
+ * Mirrors useCategories: local state, a fetch effect keyed on the query, and an
+ * explicit `refetch` the mutations call. Any filter change resets to page 1 so
+ * the user is never stranded on an out-of-range page after narrowing a search.
+ *
+ * THREE KNOBS WHERE THE PRODUCT ONE HAS FOUR. There is no `level`, because this
+ * kind has no tree — the backend refuses a `parentId` on this resource at all
+ * (see supplierCategory.validation.js). That is the whole difference between
+ * the two hooks, and it is why this is a copy rather than a shared generic: two
+ * screens whose only common shape is "a paginated list of names" would be
+ * abstracted over their filters, which is precisely the part that differs.
+ */
+export function useSupplierCategories(): UseSupplierCategoriesResult {
+  const [query, setQueryState] =
+    useState<SupplierCategoriesQuery>(DEFAULT_QUERY);
+  const [categories, setCategories] = useState<SupplierCategory[]>([]);
+  const [pagination, setPagination] =
+    useState<PageResult<SupplierCategory>["pagination"]>(EMPTY_PAGE);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  // Bumped by refetch() to force the effect to re-run without changing query.
+  const [nonce, setNonce] = useState(0);
+
+  // The toolbar keeps the live query so typing stays responsive; only the
+  // request waits for the search box to settle.
+  const settled = useDebouncedQuery(query);
+
+  const setQuery = useCallback((patch: Partial<SupplierCategoriesQuery>) => {
+    setQueryState((prev) => {
+      const next = { ...prev, ...patch };
+      // A filter change (anything but an explicit page move) returns to page 1.
+      if (patch.page === undefined) next.page = 1;
+      return next;
+    });
+  }, []);
+
+  const refetch = useCallback(() => setNonce((n) => n + 1), []);
+
+  useEffect(() => {
+    let active = true;
+    // The query changed (or refetch bumped the nonce): show the loading state,
+    // then synchronize with the server. The stale-response guard (`active`)
+    // makes the late setStates safe. Same sanctioned fetch-effect shape as
+    // useCategories, so the heuristic lint rule is disabled here too.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoading(true);
+    setError(null);
+
+    const apiQuery: SupplierCategoryListQuery = {
+      page: settled.page,
+      limit: PAGE_SIZE,
+      search: settled.search.trim() || undefined,
+      // Sent only when narrowed: the API applies no default, so omitting it is
+      // how "both" is asked for.
+      ...(settled.status === ""
+        ? {}
+        : { isActive: settled.status === "active" }),
+      includeDeleted: settled.includeDeleted || undefined,
+      sort: settled.sort,
+    };
+
+    supplierCategoryService
+      .list(apiQuery)
+      .then((result) => {
+        if (!active) return;
+        setCategories(result.items);
+        setPagination(result.pagination);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setCategories([]);
+        setError(
+          err instanceof ApiError
+            ? err.message
+            : "Gagal memuat kategori supplier. Coba lagi.",
+        );
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [settled, nonce]);
+
+  return {
+    categories,
+    pagination,
+    query,
+    loading,
+    error,
+    setQuery,
+    refetch,
+  };
+}

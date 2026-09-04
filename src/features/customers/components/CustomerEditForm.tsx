@@ -20,6 +20,7 @@ import {
   validateCustomerPhone,
   validateCustomerAddress,
 } from "@/utils/validation";
+import { CustomerPetsSection } from "@/features/pets";
 import type { Customer, VipTier } from "@/types/api";
 
 import { VipTierSelect } from "./VipTierSelect";
@@ -63,7 +64,7 @@ export function CustomerEditForm({ id }: { id: string }) {
       {/* The header stays visible while the body loads. */}
       <div>
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold text-foreground">
+          <h1 className="text-2xl font-extrabold text-foreground">
             Edit Customer
           </h1>
           {customer && (
@@ -90,6 +91,23 @@ export function CustomerEditForm({ id }: { id: string }) {
         <>
           <Card title="Details" description="Contact details and VIP tier.">
             <DetailsSection customer={customer} onUpdated={setCustomer} />
+          </Card>
+
+          {/*
+            Between the details and the danger zone on purpose: it is context for
+            the delete below it. Removing a customer is refused while any of these
+            animals is still listed, and reading that after seeing them is what
+            makes the refusal make sense.
+          */}
+          <Card
+            title="Hewan"
+            description="Hewan yang terdaftar atas nama pelanggan ini. Yang sudah tidak dirawat tetap ditampilkan — riwayatnya masih di sini."
+          >
+            <CustomerPetsSection
+              customerId={customer._id}
+              customerName={customer.name}
+              disabled={customer.deletedAt !== null}
+            />
           </Card>
 
           <Card
@@ -294,9 +312,17 @@ function DangerSection({
       setPending(null);
       swalToast("Customer restored.");
     } catch (err) {
+      /*
+        `reason` FIRST, and it is not cosmetic. Deleting a customer that still has
+        pets is refused with a 409 whose `message` is only the headline ("Cannot
+        delete customer") — the half that says what to do ("3 pet(s) still belong
+        to this customer; delete or reassign them first") lives in `reason`.
+        Showing the headline alone leaves somebody staring at a button that will
+        not work with nothing on screen explaining why.
+      */
       setError(
         err instanceof ApiError
-          ? err.message
+          ? (err.reason ?? err.message)
           : "Something went wrong. Please try again.",
       );
     } finally {

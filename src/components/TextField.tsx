@@ -1,20 +1,23 @@
-import { useId } from "react";
 import type { ComponentProps, ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
+import { FIELD_HEIGHT, FormField } from "./form/FormField";
 import { Input } from "./ui/input";
-import { Label } from "./ui/label";
 
 /**
  * A labelled text input with inline error and optional hint, composed from the
- * shadcn/ui Input and Label.
+ * shadcn/ui Input.
  *
- * The project's form ergonomics are preserved: one component owns the label,
- * the error (red + aria-invalid + role="alert", announced via aria-describedby)
- * and the hint, so forms keep binding `error={fieldErrors.x}` exactly as before.
+ * The public API has not changed — call sites keep writing
+ * `label`, `error`, `hint`, `required` and a `className` that lands on the
+ * INPUT (not the wrapper), exactly as before. What moved is the label / error /
+ * hint markup, which now comes from `FormField` so this control, `TextareaField`,
+ * `SelectField` and `SearchSelect` cannot drift apart.
+ *
+ * 44px tall — see `FIELD_HEIGHT`. A call site may still override the height by
+ * passing its own `h-*`; `cn` merges in the caller's favour.
  */
-export interface TextFieldProps
-  extends Omit<ComponentProps<"input">, "id"> {
+export interface TextFieldProps extends Omit<ComponentProps<"input">, "id"> {
   label: string;
   /** Backend or client validation message; renders red + sets aria-invalid. */
   error?: string;
@@ -29,36 +32,20 @@ export function TextField({
   required,
   ...props
 }: TextFieldProps) {
-  const id = useId();
-  const errorId = `${id}-error`;
-  const hintId = `${id}-hint`;
-
   return (
-    <div className="flex flex-col gap-1.5">
-      <Label htmlFor={id}>
-        {label}
-        {required && <span className="text-danger"> *</span>}
-      </Label>
-      <Input
-        {...props}
-        id={id}
-        required={required}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={error ? errorId : hint ? hintId : undefined}
-        className={cn(
-          error && "border-danger focus-visible:ring-danger/40",
-          className,
-        )}
-      />
-      {error ? (
-        <p id={errorId} role="alert" className="text-xs text-danger">
-          {error}
-        </p>
-      ) : hint ? (
-        <p id={hintId} className="text-xs text-muted">
-          {hint}
-        </p>
-      ) : null}
-    </div>
+    <FormField label={label} required={required} error={error} hint={hint}>
+      {(field) => (
+        <Input
+          {...props}
+          {...field}
+          required={required}
+          className={cn(
+            FIELD_HEIGHT,
+            error && "border-danger focus-visible:ring-danger/40",
+            className,
+          )}
+        />
+      )}
+    </FormField>
   );
 }

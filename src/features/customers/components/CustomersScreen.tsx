@@ -18,7 +18,7 @@ export function CustomersScreen() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">Customers</h1>
+        <h1 className="text-2xl font-extrabold text-foreground">Customers</h1>
         <p className="mt-1 text-sm text-muted">
           Manage the people your business serves — their contact details and VIP
           tier.
@@ -45,8 +45,8 @@ export function CustomersScreen() {
             page={pagination.page}
             totalPages={pagination.totalPages}
             total={pagination.total}
-            unit="customer"
-            unitPlural="customers"
+            unit="pelanggan"
+            unitPlural="pelanggan"
             onPageChange={(page) => setQuery({ page })}
           />
         </>

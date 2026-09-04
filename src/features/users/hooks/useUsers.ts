@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { userService } from "@/services/user.service";
 import { ApiError } from "@/services/api-error";
 import type { User, UserListQuery, PageResult } from "@/types/api";
+import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 
 /** The query knobs the list screen drives (page + the visible filters). */
 export interface UsersQuery {
@@ -60,6 +61,10 @@ export function useUsers(): UseUsersResult {
   // Bumped by refetch() to force the effect to re-run without changing query.
   const [nonce, setNonce] = useState(0);
 
+  // The toolbar keeps the live query so typing stays responsive; only the
+  // request waits for the search box to settle.
+  const settled = useDebouncedQuery(query);
+
   const setQuery = useCallback((patch: Partial<UsersQuery>) => {
     setQueryState((prev) => {
       const next = { ...prev, ...patch };
@@ -83,10 +88,10 @@ export function useUsers(): UseUsersResult {
     setError(null);
 
     const apiQuery: UserListQuery = {
-      page: query.page,
-      search: query.search.trim() || undefined,
-      status: query.status || undefined,
-      includeDeleted: query.includeDeleted || undefined,
+      page: settled.page,
+      search: settled.search.trim() || undefined,
+      status: settled.status || undefined,
+      includeDeleted: settled.includeDeleted || undefined,
     };
 
     userService
@@ -112,7 +117,7 @@ export function useUsers(): UseUsersResult {
     return () => {
       active = false;
     };
-  }, [query, nonce]);
+  }, [settled, nonce]);
 
   return { users, pagination, query, loading, error, setQuery, refetch };
 }

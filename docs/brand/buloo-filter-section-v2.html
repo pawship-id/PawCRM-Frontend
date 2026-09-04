@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Buloo — Filter Section v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --navy-900:#0E1D38; --navy-800:#14284B; --navy-700:#1E3A6B; --navy-600:#2B4E8C;
+  --navy-500:#3E66AC; --navy-100:#E9EFF9; --navy-50:#F6F8FC;
+  --orange-700:#B96A05; --orange-600:#D97F0F; --orange-500:#F5921E; --orange-100:#FFF6EA;
+  --white:#FFFFFF; --slate:#667691; --line:#DFE5EF; --success:#178A5F; --danger:#D64545;
+  --font-d:'Plus Jakarta Sans',sans-serif; --font-b:'Inter',sans-serif; --font-m:'IBM Plex Mono',monospace;
+  --r-input:8px; --r-button:12px; --r-card:16px; --r-panel:24px; --r-pill:999px;
+  --sh-sm:0 1px 2px rgba(20,40,75,.06); --sh-md:0 4px 16px rgba(20,40,75,.08); --sh-lg:0 12px 32px rgba(20,40,75,.12);
+  --ease:cubic-bezier(.2,.8,.2,1); --focus:0 0 0 3px rgba(245,146,30,.45);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0; background:var(--navy-50); color:var(--navy-800); font-family:var(--font-b); font-size:15px; line-height:1.6; -webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{font-family:var(--font-d); font-weight:800; letter-spacing:-.02em; color:var(--navy-900); margin:0}
+code{font-family:var(--font-m); font-size:.85em; background:#fff; border:1px solid var(--line); padding:1px 6px; border-radius:6px}
+:focus-visible{outline:none; box-shadow:var(--focus); border-radius:6px}
+.wrap{max-width:1180px; margin:0 auto; padding:0 28px}
+
+/* top nav */
+.topnav{position:sticky; top:0; z-index:50; background:rgba(246,248,252,.92); backdrop-filter:blur(6px); border-bottom:1px solid var(--line); padding:14px 0}
+.topnav .wrap{display:flex; align-items:center; gap:22px; overflow-x:auto}
+.topnav a{font-size:12.5px; font-weight:700; color:var(--slate); text-decoration:none; white-space:nowrap}
+.topnav a:hover{color:var(--navy-700)}
+.topnav .brand{display:flex; align-items:center; gap:8px; margin-right:8px; flex:none}
+.topnav .brand b{font-family:var(--font-d); font-weight:800; color:var(--navy-900); font-size:14px}
+
+main{padding:44px 0 120px}
+section{padding-top:56px; margin-top:-10px}
+section:first-of-type{padding-top:0}
+.eyebrow{font-family:var(--font-m); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--orange-700); margin:0 0 10px}
+h2{font-size:26px; margin-bottom:10px; max-width:26ch}
+h3{font-size:16.5px; margin-bottom:8px}
+p.lede{font-size:15.5px; color:var(--navy-800); max-width:68ch; margin:0 0 18px}
+p.note{font-size:13.5px; color:var(--text-muted, var(--slate)); max-width:70ch; margin:10px 0 0}
+.callout{background:var(--orange-100); border:1px solid #F0D9AE; border-radius:var(--r-card); padding:18px 20px; margin:0 0 26px}
+.callout b{color:var(--orange-700)}
+.callout p{margin:6px 0 0; font-size:14px; color:var(--navy-800)}
+.g2{display:grid; grid-template-columns:1fr 1fr; gap:20px}
+@media (max-width:820px){.g2{grid-template-columns:1fr}}
+
+.stage{background:#fff; border:1px solid var(--line); border-radius:var(--r-card); box-shadow:var(--sh-sm); padding:22px; margin-bottom:16px}
+.stage-label{font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--slate); margin-bottom:14px; display:flex; justify-content:space-between; align-items:center}
+.ref-tag{display:inline-flex; align-items:center; gap:5px; background:var(--navy-100); color:var(--navy-700); font-size:10.5px; font-weight:700; padding:3px 9px; border-radius:var(--r-pill); text-transform:none; letter-spacing:0}
+
+table.specs{width:100%; border-collapse:collapse; font-size:13.5px; margin:14px 0 28px}
+table.specs th{text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--slate); padding:8px 10px; border-bottom:1px solid var(--line)}
+table.specs td{padding:10px 10px; border-bottom:1px solid var(--line); color:var(--navy-800); vertical-align:top}
+table.specs tr:last-child td{border-bottom:0}
+table.specs code{background:var(--navy-50); color:var(--navy-700)}
+
+pre{background:var(--navy-900); color:#DCE6F7; border-radius:var(--r-card); padding:18px 20px; overflow-x:auto; font-size:12.5px; line-height:1.65; margin:14px 0 26px}
+
+/* ============ shared control primitives ============ */
+.fbtn{height:40px; display:inline-flex; align-items:center; gap:7px; padding:0 15px; border-radius:var(--r-button);
+  font-size:13.5px; font-weight:700; font-family:var(--font-b); cursor:pointer; border:1.5px solid transparent; transition:filter .12s var(--ease), background .12s var(--ease)}
+.fbtn-primary{background:var(--navy-700); color:#fff}
+.fbtn-primary:hover{filter:brightness(1.08)}
+.fbtn-primary:disabled{background:var(--line); color:var(--slate); cursor:not-allowed}
+.fbtn-ghost{background:transparent; color:var(--slate)}
+.fbtn-ghost:hover{background:var(--navy-100); color:var(--navy-800)}
+.fbtn-text{background:none; border:0; color:var(--orange-700); font-weight:700; font-size:13px; cursor:pointer; padding:0}
+.fbtn-text:hover{text-decoration:underline}
+.fbtn-sm{height:34px; padding:0 12px; font-size:12.5px; border-radius:10px}
+
+/* search */
+.f-search{position:relative; height:40px}
+.f-search svg{position:absolute; left:12px; top:50%; transform:translateY(-50%); color:var(--slate); pointer-events:none}
+.f-search input{width:100%; height:40px; border:1px solid var(--line); border-radius:var(--r-input); background:#fff; padding:0 12px 0 36px; font-size:13.5px; font-family:var(--font-b); color:var(--navy-800)}
+.f-search input::placeholder{color:var(--slate)}
+.f-search input:focus{border-color:var(--navy-700); box-shadow:var(--focus)}
+
+/* labeled trigger — the core unit: "Label: Value ▾" */
+.ftrig{height:40px; display:inline-flex; align-items:center; gap:7px; padding:0 12px; border:1px solid var(--line);
+  border-radius:var(--r-input); background:#fff; cursor:pointer; font-size:13.5px; white-space:nowrap; user-select:none;
+  transition:background .12s var(--ease), border-color .12s var(--ease)}
+.ftrig .k{color:var(--slate)}
+.ftrig .v{color:var(--navy-800); font-weight:600}
+.ftrig svg.chev{color:var(--slate); transition:transform .15s var(--ease); flex:none}
+.ftrig:hover{border-color:#C7D2E5}
+.ftrig.active{background:var(--navy-100); border-color:var(--navy-100)}
+.ftrig.active .k, .ftrig.active .v{color:var(--navy-700)}
+.ftrig.open svg.chev{transform:rotate(180deg)}
+.ftrig.open{border-color:var(--navy-700); box-shadow:var(--focus)}
+
+.fdd{position:relative; display:inline-block}
+.fpop{position:absolute; top:calc(100% + 8px); left:0; z-index:40; background:#fff; border:1px solid var(--line);
+  border-radius:var(--r-card); box-shadow:var(--sh-lg); display:none; min-width:220px; overflow:hidden}
+.fdd.open .fpop{display:block}
+.fpop-list{padding:6px; max-height:280px; overflow-y:auto}
+.fopt{display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:9px; cursor:pointer; font-size:13.5px; color:var(--navy-800)}
+.fopt:hover{background:var(--navy-50)}
+.fopt .mark{width:16px; height:16px; border-radius:50%; border:1.5px solid var(--line); flex:none; display:flex; align-items:center; justify-content:center}
+.fopt.sel .mark{border-color:var(--navy-700); background:var(--navy-700)}
+.fopt.sel .mark svg{stroke:#fff}
+.fopt .mark svg{opacity:0; width:9px; height:9px}
+.fopt.sel .mark svg{opacity:1}
+.fopt.multi .mark{border-radius:5px}
+.fpop-foot{display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--line); padding:10px 12px; background:var(--navy-50)}
+
+/* panel-mode full-width field (Jubelio-style) */
+.ffield{display:block; margin-bottom:16px}
+.ffield > label{display:block; font-size:11.5px; font-weight:700; letter-spacing:.03em; color:var(--navy-800); margin-bottom:7px}
+.ffield input[type=text], .ffield input[type=date], .ffield select{
+  width:100%; height:40px; border:1px solid var(--line); border-radius:var(--r-input); background:#fff;
+  padding:0 12px; font-size:13.5px; font-family:var(--font-b); color:var(--navy-800)
+}
+.ffield input:focus, .ffield select:focus{border-color:var(--navy-700); box-shadow:var(--focus)}
+.ffield .drow{display:flex; align-items:center; gap:8px}
+.ffield .drow > div{flex:1}
+.fradio{display:flex; flex-direction:column; gap:9px}
+.fradio label{display:flex; align-items:center; gap:9px; font-size:13.5px; color:var(--navy-800); cursor:pointer}
+.fradio input{accent-color:var(--navy-700); width:16px; height:16px}
+.presetrow{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px}
+.presetchip{border:1px solid var(--line); background:#fff; border-radius:var(--r-pill); padding:5px 11px; font-size:12px; font-weight:600; color:var(--slate); cursor:pointer}
+.presetchip.sel{background:var(--navy-700); border-color:var(--navy-700); color:#fff}
+
+/* pills row (status quick filter) */
+.pillrow{display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:14px}
+.pill{height:36px; padding:0 16px; border-radius:var(--r-pill); border:1.5px solid var(--line); background:#fff;
+  color:var(--slate); font-size:13px; font-weight:700; display:inline-flex; align-items:center; gap:7px; cursor:pointer}
+.pill.sel{background:var(--navy-700); border-color:var(--navy-700); color:#fff}
+.pill .cnt{background:rgba(255,255,255,.28); border-radius:var(--r-pill); font-size:11px; padding:1px 7px}
+.pill:not(.sel) .cnt{background:var(--navy-100); color:var(--navy-700)}
+
+/* ============ layout: quick bar ============ */
+.fs-bar{display:flex; align-items:center; gap:10px; flex-wrap:wrap; background:#fff; border:1px solid var(--line);
+  border-radius:var(--r-card); padding:12px; box-shadow:var(--sh-sm)}
+.fs-bar .f-search{flex:1 1 200px; min-width:170px}
+.fs-bar .spacer{margin-left:auto; display:flex; gap:8px}
+
+/* overflow "more filters" popover reuses .fpop but wider, with fields+footer */
+.fpop-panel{padding:16px; width:300px}
+.fpop-panel .fs-hd{display:flex; justify-content:space-between; align-items:center; margin-bottom:14px}
+.fpop-panel .fs-hd h4{font-size:13px; color:var(--navy-800)}
+
+/* ============ layout: sidebar panel ============ */
+.fs-panel{background:#fff; border:1px solid var(--line); border-radius:var(--r-panel); box-shadow:var(--sh-sm); padding:20px; width:280px; flex:none}
+.fs-panel-hd{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:18px}
+.fs-panel-hd h3{font-size:16px}
+.fs-panel-foot{margin-top:6px}
+.fs-panel-foot .fbtn-primary{width:100%; justify-content:center}
+.split{display:flex; gap:22px; align-items:flex-start}
+@media (max-width:820px){.split{flex-direction:column}}
+.results-area{flex:1; min-width:0}
+
+/* demo table */
+.dtable{width:100%; border-collapse:collapse; background:#fff; border:1px solid var(--line); border-radius:var(--r-card); overflow:hidden; font-size:12.8px}
+.dtable thead th{text-align:left; background:var(--navy-50); font-size:10.3px; text-transform:uppercase; letter-spacing:.05em; color:var(--slate); font-weight:700; padding:9px 12px}
+.dtable td{padding:10px 12px; border-top:1px solid var(--line); color:var(--navy-800)}
+.dtable tr.hide{display:none}
+.badge{display:inline-block; padding:2px 9px; border-radius:var(--r-pill); font-size:10.8px; font-weight:700}
+.badge.ok{background:#E4F3EC; color:var(--success)}
+.badge.wait{background:var(--orange-100); color:var(--orange-700)}
+.tcap{font-size:11.5px; color:var(--slate); margin:10px 2px 12px; display:flex; justify-content:space-between}
+
+/* chips */
+.fchips{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px}
+.fchip{display:inline-flex; align-items:center; gap:6px; height:27px; padding:0 6px 0 11px; border-radius:var(--r-pill); background:var(--navy-100); color:var(--navy-700); font-size:12px; font-weight:600}
+.fchip button{width:16px; height:16px; border-radius:50%; border:0; background:rgba(30,58,107,.14); color:var(--navy-700); display:flex; align-items:center; justify-content:center; cursor:pointer}
+
+/* legacy recreations */
+.legacy-frame{border:1px solid var(--line); border-radius:12px; overflow:hidden}
+.legacy-topbar{background:#0F1E33; color:#fff; font-size:10.5px; padding:7px 12px; display:flex; align-items:center; gap:8px}
+.legacy-topbar .dots span{display:inline-block; width:8px; height:8px; border-radius:50%; background:#556; margin-right:3px}
+.legacy-body{padding:16px; background:#F7F8FA}
+
+/* decision table emphasis rows */
+.rule-yes{color:var(--success); font-weight:700}
+.rule-no{color:var(--danger); font-weight:700}
+</style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="wrap">
+    <div class="brand"><svg width="20" height="20" viewBox="0 0 512 512"><rect width="512" height="512" rx="132" fill="#1E3A6B"/><g transform="translate(120 165) scale(0.9)" fill="none" stroke="#fff" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14 L20 126"/><circle cx="54" cy="92" r="34"/><path d="M138 58 L138 92 A34 34 0 0 0 206 92 L206 58"/><path d="M256 14 L256 126"/><ellipse cx="344" cy="92" rx="38" ry="34" stroke="#F5921E"/></g></svg><b>buloo · filter section v2</b></div>
+    <a href="#insight">Koreksi</a>
+    <a href="#anatomy">Anatomi kontrol</a>
+    <a href="#reset-apply">Reset &amp; Terapkan</a>
+    <a href="#layouts">Bar vs. Panel</a>
+    <a href="#demo-bar">Contoh — Bar</a>
+    <a href="#demo-panel">Contoh — Panel</a>
+    <a href="#applied">Diterapkan ke PawCRM</a>
+  </div>
+</nav>
+
+<main>
+<div class="wrap">
+
+<section id="insight">
+  <p class="eyebrow">Revisi berdasarkan referensi Jubelio &amp; Accurate</p>
+  <h2>Satu tata bahasa, dua susunan.</h2>
+  <p class="lede">Versi pertama membuat tiap filter jadi elemen lepas: select polos, auto-apply, tanpa Reset/Terapkan. Itu yang bikin terasa "beda-beda." Jubelio dan Accurate justru sebaliknya — <strong>satu bentuk kontrol yang sama persis di semua menu</strong> (trigger berlabel <code>Label: Nilai</code>, satu Reset, satu Terapkan), dan yang berubah hanya <strong>susunannya</strong>: baris horizontal saat filter sedikit, panel/sidebar saat filter banyak.</p>
+  <div class="g2">
+    <div class="callout">
+      <b>Jubelio</b> — sidebar <code>Filter</code> tetap: "Reset" di kanan judul, tiap field diberi label di atasnya, ditutup satu tombol <code>Terapkan</code> biru penuh-lebar di paling bawah. Dipakai saat field banyak (Pesanan Penjualan: 9 field + radio + rentang tanggal).
+      <p>Plus baris pill status cepat (Semua / Belum Dibayar / Siap Proses) di luar sidebar — filter satu-dimensi yang paling sering dipakai, dipisah dari sidebar biar sekali klik.</p>
+    </div>
+    <div class="callout">
+      <b>Accurate</b> — baris horizontal berisi beberapa trigger berlabel (<code>Tanggal: Semua</code>, <code>Pemasok: Semua</code>…), tiap trigger langsung apply saat dipilih. Ikon corong di ujung untuk filter tambahan yang lebih jarang dipakai. Dipakai saat field sedikit (≤4–5) dan sebagian besar single-value.
+      <p>Search dan pengaturan tabel (export, print, kolom) selalu di kanan jauh — terpisah dari filter itu sendiri.</p>
+    </div>
+  </div>
+  <p class="note">Below: komponen kontrolnya dulu (search, select, multi-select, rentang tanggal) — bentuknya sama di kedua mode. Baru setelah itu aturan Reset/Terapkan, lalu dua susunan (bar &amp; panel) direkonstruksi memakai token Buloo, dan terakhir dipetakan ke 3 modul PawCRM yang sudah ada.</p>
+</section>
+
+<section id="anatomy">
+  <h2>Anatomi kontrol</h2>
+  <p class="lede">Empat kontrol, satu bentuk dasar: trigger tinggi 40px, radius 8px, label + nilai di dalam trigger-nya sendiri (bukan label terpisah di luar, kecuali dalam mode panel — lihat §Bar vs Panel).</p>
+
+  <h3 style="margin-top:4px">1 · Search</h3>
+  <div class="stage"><div class="f-search" style="max-width:360px">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+    <input placeholder="Cari nama, SKU, atau nomor…">
+  </div></div>
+
+  <h3>2 · Select (single) — trigger "Label: Nilai"</h3>
+  <div class="stage">
+    <div style="display:flex; gap:12px; flex-wrap:wrap">
+      <div class="fdd" id="ddDemo1">
+        <button class="ftrig" id="ddDemo1trig"><span class="k">Gudang</span><span class="v">Semua</span><svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+        <div class="fpop"><div class="fpop-list" id="ddDemo1list"></div></div>
+      </div>
+      <div class="fdd" id="ddDemo2">
+        <button class="ftrig active" id="ddDemo2trig"><span class="k">Status</span><span class="v">Lunas</span><svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+        <div class="fpop"><div class="fpop-list" id="ddDemo2list"></div></div>
+      </div>
+    </div>
+  </div>
+  <p class="note">Klik untuk buka daftar opsi custom (bukan native <code>&lt;select&gt;</code> — supaya bisa distyling penuh &amp; mendukung pencarian di dalam daftar untuk opsi panjang, mis. daftar Produk). Memilih opsi &nbsp;<strong>langsung menerapkan &amp; menutup popover</strong> — satu klik, satu hasil, sama seperti Accurate.</p>
+
+  <h3>3 · Multi-select — trigger "Label (n)"</h3>
+  <div class="stage">
+    <div class="fdd" id="ddMulti">
+      <button class="ftrig" id="ddMultiTrig"><span class="k">Kategori</span><svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+      <div class="fpop">
+        <div class="fpop-list" id="ddMultiList"></div>
+        <div class="fpop-foot">
+          <button class="fbtn-text" id="ddMultiReset">Reset</button>
+          <button class="fbtn-primary fbtn-sm" id="ddMultiApply">Terapkan</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="note">Bedanya dari single-select: memilih opsi <strong>tidak</strong> langsung menutup popover — orang biasanya centang beberapa sekaligus. Karena itu multi-select selalu punya Reset + Terapkan <em>miliknya sendiri</em> di dalam popover, walau dipakai berdiri sendiri di quick bar.</p>
+
+  <h3>4 · Rentang tanggal</h3>
+  <div class="stage">
+    <div class="fdd" id="ddDate">
+      <button class="ftrig" id="ddDateTrig">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+        <span class="k">Tanggal</span><span class="v">Semua</span>
+        <svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="fpop" style="width:340px">
+        <div style="padding:14px">
+          <div class="presetrow" id="ddDatePresets"></div>
+          <div class="ffield" style="margin-bottom:6px"><div class="drow">
+            <div><label style="font-size:10.5px">Dari</label><input type="date" id="ddDateFrom"></div>
+            <div><label style="font-size:10.5px">Sampai</label><input type="date" id="ddDateTo"></div>
+          </div></div>
+        </div>
+        <div class="fpop-foot">
+          <button class="fbtn-text" id="ddDateReset">Reset</button>
+          <button class="fbtn-primary fbtn-sm" id="ddDateApply">Terapkan</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="note">Preset di atas untuk kasus umum, dua field tanggal di bawah untuk kustom — menggantikan dua input terpisah <code>Tanggal awal</code> / <code>Tanggal akhir</code> yang berdiri sendiri seperti di Jubelio saat ini.</p>
+</section>
+
+<section id="reset-apply">
+  <h2>Reset &amp; Terapkan — aturannya</h2>
+  <p class="lede">Ini kunci yang hilang dari versi pertama. Satu pasang tombol per <em>kumpulan</em> filter, bukan per field — tapi kapan sebuah field auto-apply sendiri vs. ikut dalam kumpulan yang butuh Terapkan, ada aturannya:</p>
+  <table class="specs">
+    <tr><th>Situasi</th><th>Perilaku</th></tr>
+    <tr><td>Satu trigger select berdiri sendiri di quick bar (mis. <code>Status: Lunas</code>)</td><td><span class="rule-yes">Auto-apply</span> saat opsi diklik. Tidak perlu tombol Terapkan — satu klik sudah final, seperti Accurate.</td></tr>
+    <tr><td>Multi-select di manapun</td><td><span class="rule-no">Butuh Terapkan</span> miliknya sendiri di dalam popover — karena orang memilih beberapa opsi sebelum siap menerapkan.</td></tr>
+    <tr><td>Rentang tanggal di manapun</td><td><span class="rule-no">Butuh Terapkan</span> miliknya sendiri — memilih tanggal "Dari" saja belum berarti siap, "Sampai" juga harus terisi dulu.</td></tr>
+    <tr><td>Panel/sidebar berisi 2+ field digabung (search + beberapa select + tanggal)</td><td><span class="rule-no">Butuh satu Reset + satu Terapkan global</span> untuk seluruh panel — supaya tidak query berkali-kali saat orang masih menyusun kombinasi filter. Ini pola Jubelio.</td></tr>
+  </table>
+  <div class="callout">
+    <b>Kenapa bukan auto-apply semua?</b>
+    <p>Karena panel Jubelio sengaja menahan sampai <code>Terapkan</code> ditekan — orang bisa isi Lokasi + Channel + rentang tanggal dulu tanpa tabel me-refresh 3 kali di tengah jalan. Sebaliknya, trigger tunggal di quick bar Accurate sengaja auto-apply karena memang cuma satu keputusan per klik. Aturan di atas menjaga kedua rasa itu tetap konsisten di semua modul, bukan tercampur asal.</p>
+  </div>
+  <p class="note"><strong>Reset</strong> selalu langsung mengosongkan &amp; langsung menerapkan (balik ke hasil tanpa filter seketika) — tidak menunggu Terapkan lagi. Ini konsisten baik di panel maupun di popover multi-select/tanggal.</p>
+</section>
+
+<section id="layouts">
+  <h2>Bar vs. Panel — kapan pakai yang mana</h2>
+  <p class="lede">Bentuk kontrolnya sama persis (§Anatomi) di kedua mode. Yang berubah cuma bungkusnya.</p>
+  <table class="specs">
+    <tr><th>Kondisi</th><th>Susunan</th></tr>
+    <tr><td>≤4–5 field, mayoritas single-select/search</td><td><strong>Quick bar</strong> — satu baris horizontal, tiap trigger auto-apply. Contoh: Accurate Faktur Pembelian.</td></tr>
+    <tr><td>≥5 field, atau ada multi-select / grup radio / kombinasi field yang saling terkait</td><td><strong>Filter panel</strong> — sidebar tetap terbuka atau popover lebar dari ikon corong, field tersusun vertikal berlabel, ditutup Reset + Terapkan global. Contoh: Jubelio Pesanan Penjualan.</td></tr>
+    <tr><td>Ada satu dimensi yang paling sering dipakai untuk segmentasi cepat (status, tipe)</td><td>Tambahkan <strong>baris pill</strong> di atas/luar bar atau panel, terpisah dari filter lain — satu klik, tidak perlu buka apapun. Bisa dipasangkan dengan salah satu mode di atas (hybrid, lihat §Contoh — Panel).</td></tr>
+    <tr><td>Field yang jarang dipakai tapi tetap perlu ada (di bar mode)</td><td>Sembunyikan di balik ikon corong <code>+ Filter lain</code> — membuka panel kecil berisi field sisanya, dengan Reset + Terapkan sendiri untuk subset itu.</td></tr>
+  </table>
+</section>
+
+<section id="demo-bar">
+  <p class="eyebrow">Rekonstruksi</p>
+  <h2>Mode Bar — dari Accurate "Faktur Pembelian"</h2>
+  <div class="stage">
+    <div class="stage-label"><span>Direkonstruksi dengan token Buloo, komponen identik dengan §Anatomi</span><span class="ref-tag">ref: Accurate</span></div>
+    <div class="fs-bar" id="barDemo">
+      <div class="fdd" id="barDate"><button class="ftrig" id="barDateTrig"><span class="k">Tanggal</span><span class="v">Semua</span><svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+        <div class="fpop"><div style="padding:14px"><div class="presetrow" id="barDatePresets"></div>
+          <div class="ffield" style="margin-bottom:6px"><div class="drow"><div><label style="font-size:10.5px">Dari</label><input type="date" id="barDateFrom"></div><div><label style="font-size:10.5px">Sampai</label><input type="date" id="barDateTo"></div></div></div></div>
+          <div class="fpop-foot"><button class="fbtn-text" id="barDateReset">Reset</button><button class="fbtn-primary fbtn-sm" id="barDateApply">Terapkan</button></div>
+        </div>
+      </div>
+      <div class="fdd" id="barPemasok"><button class="ftrig" id="barPemasokTrig"><span class="k">Pemasok</span><span class="v">Semua</span><svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+        <div class="fpop"><div class="fpop-list" id="barPemasokList"></div></div>
+      </div>
+      <div class="fdd" id="barStatus"><button class="ftrig" id="barStatusTrig"><span class="k">Status</span><span class="v">Semua</span><svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+        <div class="fpop"><div class="fpop-list" id="barStatusList"></div></div>
+      </div>
+      <div class="fdd" id="barMoreDD">
+        <button class="ftrig" id="barMoreBtn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+          <span class="k">Filter lain</span>
+        </button>
+        <div class="fpop" id="barMorePop" style="left:auto; right:0">
+          <div class="fpop-panel">
+            <div class="fs-hd"><h4>Filter tambahan</h4><button class="fbtn-text" id="barMoreReset">Reset</button></div>
+            <div class="ffield"><label>Sudah dicetak</label><select id="barPrinted"><option>Semua</option><option>Sudah</option><option>Belum</option></select></div>
+            <button class="fbtn-primary fbtn-sm" id="barMoreApply" style="width:100%; justify-content:center; margin-top:4px">Terapkan</button>
+          </div>
+        </div>
+      </div>
+      <div class="f-search" style="max-width:220px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input id="barSearch" placeholder="Cari…"></div>
+    </div>
+    <div class="fchips" id="barChips"></div>
+  </div>
+  <p class="note">Tanggal/Pemasok/Status auto-apply sendiri-sendiri (aturan §Reset &amp; Terapkan). "Sudah dicetak" jarang dipakai → disembunyikan di balik <code>Filter lain</code>, dengan Terapkan sendiri untuk subset itu.</p>
+</section>
+
+<section id="demo-panel">
+  <p class="eyebrow">Rekonstruksi</p>
+  <h2>Mode Panel — dari Jubelio "Pesanan Penjualan"</h2>
+  <div class="stage">
+    <div class="stage-label"><span>Pill status cepat di luar panel + sidebar untuk sisanya — pola hybrid Jubelio</span><span class="ref-tag">ref: Jubelio</span></div>
+
+    <div class="pillrow" id="panelPills"></div>
+
+    <div class="split">
+      <div class="fs-panel">
+        <div class="fs-panel-hd"><h3>Filter</h3><button class="fbtn-text" id="panelReset">Reset</button></div>
+
+        <div class="ffield"><label>Cari pesanan</label>
+          <div class="f-search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input id="panelSearch" placeholder="Cari pesanan…"></div>
+        </div>
+        <div class="ffield"><label>Lokasi</label><select id="panelLokasi"><option>Semua lokasi</option><option>Pusat</option><option>Pawship Barat</option><option>Pawship Timur</option></select></div>
+        <div class="ffield"><label>Channel</label><select id="panelChannel"><option>Semua channel</option><option>PAWSHIP</option><option>Shopee</option><option>Tokopedia</option></select></div>
+        <div class="ffield"><label>Isi pesanan</label>
+          <div class="fradio">
+            <label><input type="radio" name="isi" value="kombinasi" checked> SKU kombinasi</label>
+            <label><input type="radio" name="isi" value="1sku1"> 1 SKU 1 qty</label>
+            <label><input type="radio" name="isi" value="1skuN"> 1 SKU &gt; 1 qty</label>
+          </div>
+        </div>
+        <div class="ffield"><label>Tanggal pesanan</label><div class="drow">
+          <div><input type="date" id="panelFrom"></div><div><input type="date" id="panelTo"></div>
+        </div></div>
+
+        <div class="fs-panel-foot"><button class="fbtn-primary" id="panelApply">Terapkan</button></div>
+      </div>
+
+      <div class="results-area">
+        <div class="tcap"><span>Menampilkan hasil <strong id="panelStatusLabel">Siap Proses</strong></span><span id="panelCount">6 pesanan</span></div>
+        <table class="dtable">
+          <thead><tr><th>No. Pesanan</th><th>Penerima</th><th>Lokasi</th><th>Channel</th><th>Nilai</th><th>Status</th></tr></thead>
+          <tbody id="panelBody"></tbody>
+        </table>
+        <div class="fchips" id="panelChips"></div>
+      </div>
+    </div>
+  </div>
+  <p class="note">Field di dalam panel tetap draf sampai <strong>Terapkan</strong> ditekan (search, lokasi, channel dikecualikan — bisa auto-apply ringan sesuai selera tim, tapi contoh ini konsisten "semua ikut Terapkan" supaya jelas bedanya dengan mode bar). Pill status di atas tetap independen &amp; langsung apply — itu levernya paling sering dipakai.</p>
+</section>
+
+<section id="applied">
+  <h2>Diterapkan ke 3 modul PawCRM</h2>
+  <p class="lede">Pakai aturan §Bar vs Panel apa adanya pada modul yang sudah ada, plus satu contoh modul masa depan yang jelas butuh mode panel.</p>
+  <table class="specs">
+    <tr><th>Modul</th><th>Jumlah field</th><th>Mode</th><th>Catatan</th></tr>
+    <tr><td><b>Produk &amp; Varian</b></td><td>Search + Kategori + Gudang + Status = 4</td><td>Quick bar</td><td>Semua single-select, auto-apply per trigger.</td></tr>
+    <tr><td><b>Batch &amp; Expired</b></td><td>Search + Gudang + Urgensi = 3</td><td>Quick bar</td><td>Urgensi cocok jadi pill cepat (Semua/Kritis/Perhatian/Lewat) karena itu lensa utama halaman ini — persis peran pill status di Jubelio.</td></tr>
+    <tr><td><b>Kartu Stok &amp; Batch</b></td><td>Gudang + Produk + Tipe pergerakan + Tanggal = 4</td><td>Quick bar</td><td>Select "Produk" pakai varian pencarian-di-dalam-popover karena daftar produk panjang.</td></tr>
+    <tr><td><b>Supplier / Purchasing</b></td><td>Search entity + tipe = 2</td><td>Quick bar + pill</td><td>Tipe (Beli-Putus/Konsinyasi/Both/Overdue) sebagai pill, bukan dropdown — kardinalitas kecil &amp; jadi filter utama.</td></tr>
+    <tr><td><b>Sales &amp; Invoice / Booking</b> <em>(mendatang)</em></td><td>Search + Lokasi + Channel + Kurir + Toko + Tipe + Isi + Tanggal ≈ 8</td><td><strong>Filter panel</strong></td><td>Field sebanyak ini akan terasa sesak sebagai bar — langsung pakai pola §Contoh Panel di atas, lengkap dengan pill status cepat.</td></tr>
+  </table>
+</section>
+
+</div>
+</main>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------- generic single-select dropdown ---------- */
+  function singleSelect(rootId, opts, defaultLabel, onPick){
+    var root = document.getElementById(rootId);
+    var trig = document.getElementById(rootId+'trig') || document.getElementById(rootId+'Trig');
+    var list = document.getElementById(rootId+'list') || document.getElementById(rootId+'List');
+    var current = defaultLabel;
+
+    function renderList(){
+      list.innerHTML = opts.map(function(o){
+        var sel = o === current;
+        return '<div class="fopt'+(sel?' sel':'')+'" data-v="'+o+'"><span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></span>'+o+'</div>';
+      }).join('');
+      Array.prototype.slice.call(list.querySelectorAll('.fopt')).forEach(function(el){
+        el.addEventListener('click', function(){
+          current = el.dataset.v;
+          close();
+          update();
+          if (onPick) onPick(current);
+        });
+      });
+    }
+    function update(){
+      var v = trig.querySelector('.v');
+      var k = trig.querySelector('.k');
+      v.textContent = current;
+      var isDefault = current === defaultLabel;
+      trig.classList.toggle('active', !isDefault);
+    }
+    function open(){ document.querySelectorAll('.fdd.open').forEach(function(d){ if(d!==root) d.classList.remove('open'); }); root.classList.add('open'); trig.classList.add('open'); renderList(); }
+    function close(){ root.classList.remove('open'); trig.classList.remove('open'); }
+    trig.addEventListener('click', function(e){ e.stopPropagation(); root.classList.contains('open') ? close() : open(); });
+    document.addEventListener('click', function(e){ if(!root.contains(e.target)) close(); });
+    update();
+    return { get:function(){return current;}, set:function(v){current=v; update();}, reset:function(){current=defaultLabel; update();} };
+  }
+
+  singleSelect('ddDemo1', ['Semua','Cabang Selatan','Cabang Timur'], 'Semua');
+  singleSelect('ddDemo2', ['Lunas','Belum lunas','Jatuh tempo'], 'Lunas');
+
+  /* ---------- multi-select ---------- */
+  (function(){
+    var root = document.getElementById('ddMulti'), trig = document.getElementById('ddMultiTrig'), list = document.getElementById('ddMultiList');
+    var opts = ['Makanan','Aksesoris','Obat & Kesehatan','Grooming supplies'];
+    var draft = [], applied = [];
+    function renderList(){
+      list.innerHTML = opts.map(function(o){
+        var sel = draft.indexOf(o) > -1;
+        return '<div class="fopt multi'+(sel?' sel':'')+'" data-v="'+o+'"><span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></span>'+o+'</div>';
+      }).join('');
+      Array.prototype.slice.call(list.querySelectorAll('.fopt')).forEach(function(el){
+        el.addEventListener('click', function(){
+          var v = el.dataset.v, i = draft.indexOf(v);
+          if (i>-1) draft.splice(i,1); else draft.push(v);
+          renderList();
+        });
+      });
+    }
+    function updateTrig(){
+      var k = trig.querySelector('.k');
+      var existingV = trig.querySelector('.v');
+      if (applied.length){
+        if (!existingV){ existingV = document.createElement('span'); existingV.className='v'; trig.insertBefore(existingV, trig.querySelector('.chev')); }
+        existingV.textContent = '('+applied.length+')';
+        trig.classList.add('active');
+      } else {
+        if (existingV) existingV.remove();
+        trig.classList.remove('active');
+      }
+    }
+    function open(){ document.querySelectorAll('.fdd.open').forEach(function(d){ if(d!==root) d.classList.remove('open'); }); draft = applied.slice(); root.classList.add('open'); trig.classList.add('open'); renderList(); }
+    function close(){ root.classList.remove('open'); trig.classList.remove('open'); }
+    trig.addEventListener('click', function(e){ e.stopPropagation(); root.classList.contains('open') ? close() : open(); });
+    document.addEventListener('click', function(e){ if(!root.contains(e.target)) close(); });
+    document.getElementById('ddMultiReset').addEventListener('click', function(){ draft=[]; applied=[]; renderList(); updateTrig(); });
+    document.getElementById('ddMultiApply').addEventListener('click', function(){ applied = draft.slice(); updateTrig(); close(); });
+  })();
+
+  /* ---------- date range popover (generic) ---------- */
+  function dateRange(prefix, defaultLabel){
+    var root = document.getElementById(prefix), trig = document.getElementById(prefix+'Trig');
+    var presetsEl = document.getElementById(prefix+'Presets');
+    var fromEl = document.getElementById(prefix+'From'), toEl = document.getElementById(prefix+'To');
+    var resetBtn = document.getElementById(prefix+'Reset'), applyBtn = document.getElementById(prefix+'Apply');
+    var PRESETS = [['7','7 hari'],['30','30 hari'],['month','Bulan ini'],['custom','Kustom']];
+    var chosen = null;
+
+    presetsEl.innerHTML = PRESETS.map(function(p){ return '<button type="button" class="presetchip" data-p="'+p[0]+'">'+p[1]+'</button>'; }).join('');
+    function markPreset(){
+      Array.prototype.slice.call(presetsEl.querySelectorAll('.presetchip')).forEach(function(b){ b.classList.toggle('sel', b.dataset.p === chosen); });
+    }
+    presetsEl.querySelectorAll('.presetchip').forEach(function(b){
+      b.addEventListener('click', function(){
+        chosen = b.dataset.p; markPreset();
+        if (chosen !== 'custom'){
+          var end = new Date(), start = new Date();
+          if (chosen === 'month'){ start = new Date(end.getFullYear(), end.getMonth(), 1); }
+          else { start.setDate(start.getDate() - (parseInt(chosen,10)-1)); }
+          fromEl.value = start.toISOString().slice(0,10);
+          toEl.value = end.toISOString().slice(0,10);
+        }
+      });
+    });
+    function fmt(d){ var m=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Ags','Sep','Okt','Nov','Des']; return d.getDate()+' '+m[d.getMonth()]; }
+    function label(){
+      var v = trig.querySelector('.v');
+      if (fromEl.value && toEl.value){ v.textContent = fmt(new Date(fromEl.value))+'–'+fmt(new Date(toEl.value)); trig.classList.add('active'); }
+      else { v.textContent = defaultLabel; trig.classList.remove('active'); }
+    }
+    function open(){ document.querySelectorAll('.fdd.open').forEach(function(d){ if(d!==root) d.classList.remove('open'); }); root.classList.add('open'); trig.classList.add('open'); }
+    function close(){ root.classList.remove('open'); trig.classList.remove('open'); }
+    trig.addEventListener('click', function(e){ e.stopPropagation(); root.classList.contains('open') ? close() : open(); });
+    document.addEventListener('click', function(e){ if(!root.contains(e.target)) close(); });
+    resetBtn.addEventListener('click', function(){ chosen=null; fromEl.value=''; toEl.value=''; markPreset(); label(); });
+    applyBtn.addEventListener('click', function(){ label(); close(); });
+    label();
+  }
+  dateRange('ddDate', 'Semua');
+  dateRange('barDate', 'Semua');
+
+  /* ---------- MODE BAR demo (Accurate recreation) ---------- */
+  var barState = { pemasok:'Semua', status:'Semua', printed:'Semua', search:'' };
+  var barPemasokCtrl = singleSelect('barPemasok', ['Semua','Akbar','Ardi','Darto','PT GSB'], 'Semua', function(v){ barState.pemasok=v; renderBarChips(); });
+  var barStatusCtrl = singleSelect('barStatus', ['Semua','Lunas','Belum lunas'], 'Semua', function(v){ barState.status=v; renderBarChips(); });
+
+  var barMoreRoot = document.getElementById('barMoreDD'), barMoreBtn = document.getElementById('barMoreBtn');
+  function openMore(){ document.querySelectorAll('.fdd.open').forEach(function(d){ d.classList.remove('open'); }); barMoreRoot.classList.add('open'); }
+  function closeMore(){ barMoreRoot.classList.remove('open'); }
+  barMoreBtn.addEventListener('click', function(e){ e.stopPropagation(); barMoreRoot.classList.contains('open') ? closeMore() : openMore(); });
+  document.addEventListener('click', function(e){ if(!barMoreRoot.contains(e.target) && e.target!==barMoreBtn) closeMore(); });
+  document.getElementById('barMoreApply').addEventListener('click', function(){ barState.printed = document.getElementById('barPrinted').value; barMoreBtn.classList.toggle('active', barState.printed!=='Semua'); closeMore(); renderBarChips(); });
+  document.getElementById('barMoreReset').addEventListener('click', function(){ document.getElementById('barPrinted').value='Semua'; barState.printed='Semua'; barMoreBtn.classList.remove('active'); renderBarChips(); });
+
+  document.getElementById('barSearch').addEventListener('input', function(e){ barState.search = e.target.value; renderBarChips(); });
+
+  function chipEl(label, onRemove){
+    var span = document.createElement('span'); span.className='fchip'; span.textContent = label + ' ';
+    var b = document.createElement('button'); b.innerHTML='✕'; b.addEventListener('click', onRemove); span.appendChild(b); return span;
+  }
+  function renderBarChips(){
+    var wrap = document.getElementById('barChips'); wrap.innerHTML='';
+    if (barState.search) wrap.appendChild(chipEl('Cari: "'+barState.search+'"', function(){ document.getElementById('barSearch').value=''; barState.search=''; renderBarChips(); }));
+    if (barState.pemasok!=='Semua') wrap.appendChild(chipEl('Pemasok: '+barState.pemasok, function(){ barState.pemasok='Semua'; barPemasokCtrl.reset(); renderBarChips(); }));
+    if (barState.status!=='Semua') wrap.appendChild(chipEl('Status: '+barState.status, function(){ barState.status='Semua'; barStatusCtrl.reset(); renderBarChips(); }));
+    if (barState.printed!=='Semua') wrap.appendChild(chipEl('Sudah dicetak: '+barState.printed, function(){ barState.printed='Semua'; document.getElementById('barPrinted').value='Semua'; barMoreBtn.classList.remove('active'); renderBarChips(); }));
+  }
+
+  /* ---------- MODE PANEL demo (Jubelio recreation) ---------- */
+  var ORDERS = [
+    {no:'SO-000012442', penerima:'ce mia', lokasi:'Pusat', channel:'PAWSHIP', nilai:'Rp 700.000', status:'Siap Proses'},
+    {no:'SO-000012366', penerima:'Suetgohouse', lokasi:'Pusat', channel:'PAWSHIP', nilai:'Rp 300.006', status:'Siap Proses'},
+    {no:'SO-000012353', penerima:'Ce Maria West', lokasi:'Pawship Barat', channel:'PAWSHIP', nilai:'Rp 615.000', status:'Siap Proses'},
+    {no:'SO-000012311', penerima:'ella', lokasi:'Pusat', channel:'PAWSHIP', nilai:'Rp 78.000', status:'Siap Proses'},
+    {no:'TP-585545661', penerima:'m***ana s***rno', lokasi:'Pusat', channel:'Shopee', nilai:'Rp 77.425', status:'Belum Dibayar'},
+    {no:'TP-585539426', penerima:'F***ciathunggal', lokasi:'Pusat', channel:'Shopee', nilai:'Rp 42.950', status:'Gagal Download'}
+  ];
+  var STATUSES = [
+    ['Semua', ORDERS.length],
+    ['Belum Dibayar', ORDERS.filter(function(o){return o.status==='Belum Dibayar';}).length],
+    ['Gagal Download', ORDERS.filter(function(o){return o.status==='Gagal Download';}).length],
+    ['Siap Proses', ORDERS.filter(function(o){return o.status==='Siap Proses';}).length]
+  ];
+  var activeStatus = 'Siap Proses';
+  var applied = { search:'', lokasi:'Semua lokasi', channel:'Semua channel', from:'', to:'' };
+
+  function renderPills(){
+    document.getElementById('panelPills').innerHTML = STATUSES.map(function(s){
+      return '<button type="button" class="pill'+(s[0]===activeStatus?' sel':'')+'" data-s="'+s[0]+'">'+s[0]+' <span class="cnt">'+s[1]+'</span></button>';
+    }).join('');
+    Array.prototype.slice.call(document.querySelectorAll('#panelPills .pill')).forEach(function(b){
+      b.addEventListener('click', function(){ activeStatus = b.dataset.s; renderPills(); renderResults(); });
+    });
+  }
+
+  function renderResults(){
+    document.getElementById('panelStatusLabel').textContent = activeStatus;
+    var q = applied.search.trim().toLowerCase();
+    var rows = ORDERS.filter(function(o){
+      var matchStatus = activeStatus==='Semua' || o.status===activeStatus;
+      var matchLokasi = applied.lokasi==='Semua lokasi' || o.lokasi===applied.lokasi;
+      var matchChannel = applied.channel==='Semua channel' || o.channel===applied.channel;
+      var matchQ = !q || o.no.toLowerCase().indexOf(q)>-1 || o.penerima.toLowerCase().indexOf(q)>-1;
+      return matchStatus && matchLokasi && matchChannel && matchQ;
+    });
+    document.getElementById('panelBody').innerHTML = rows.map(function(o){
+      var cls = o.status==='Siap Proses' ? 'ok' : 'wait';
+      return '<tr><td class="mono" style="font-family:var(--font-m); font-size:11.5px">'+o.no+'</td><td>'+o.penerima+'</td><td>'+o.lokasi+'</td><td>'+o.channel+'</td><td>'+o.nilai+'</td><td><span class="badge '+cls+'">'+o.status+'</span></td></tr>';
+    }).join('') || '<tr><td colspan="6" style="text-align:center; color:var(--slate); padding:22px">Tidak ada hasil</td></tr>';
+    document.getElementById('panelCount').textContent = rows.length + ' pesanan';
+
+    var chips = document.getElementById('panelChips'); chips.innerHTML='';
+    if (applied.search) chips.appendChild(chipEl('Cari: "'+applied.search+'"', function(){ applied.search=''; document.getElementById('panelSearch').value=''; renderResults(); }));
+    if (applied.lokasi!=='Semua lokasi') chips.appendChild(chipEl('Lokasi: '+applied.lokasi, function(){ applied.lokasi='Semua lokasi'; document.getElementById('panelLokasi').value='Semua lokasi'; renderResults(); }));
+    if (applied.channel!=='Semua channel') chips.appendChild(chipEl('Channel: '+applied.channel, function(){ applied.channel='Semua channel'; document.getElementById('panelChannel').value='Semua channel'; renderResults(); }));
+    if (applied.from && applied.to) chips.appendChild(chipEl('Tanggal: '+applied.from+' – '+applied.to, function(){ applied.from=''; applied.to=''; document.getElementById('panelFrom').value=''; document.getElementById('panelTo').value=''; renderResults(); }));
+  }
+
+  document.getElementById('panelApply').addEventListener('click', function(){
+    applied.search = document.getElementById('panelSearch').value;
+    applied.lokasi = document.getElementById('panelLokasi').value;
+    applied.channel = document.getElementById('panelChannel').value;
+    applied.from = document.getElementById('panelFrom').value;
+    applied.to = document.getElementById('panelTo').value;
+    renderResults();
+  });
+  document.getElementById('panelReset').addEventListener('click', function(){
+    document.getElementById('panelSearch').value=''; document.getElementById('panelLokasi').value='Semua lokasi';
+    document.getElementById('panelChannel').value='Semua channel'; document.getElementById('panelFrom').value=''; document.getElementById('panelTo').value='';
+    applied = { search:'', lokasi:'Semua lokasi', channel:'Semua channel', from:'', to:'' };
+    activeStatus = 'Semua';
+    renderPills(); renderResults();
+  });
+
+  renderPills();
+  renderResults();
+  renderBarChips();
+})();
+</script>
+</body>
+</html>

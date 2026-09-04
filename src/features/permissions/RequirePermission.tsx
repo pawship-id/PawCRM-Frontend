@@ -37,7 +37,7 @@ function AccessDenied() {
       <span className="flex size-12 items-center justify-center rounded-full bg-danger/10 text-danger">
         <ShieldAlert className="size-6" />
       </span>
-      <h2 className="text-lg font-semibold text-foreground">Access denied</h2>
+      <h2 className="text-lg font-bold text-foreground">Access denied</h2>
       <p className="max-w-sm text-sm text-muted-foreground">
         You don&apos;t have permission to view this page. If you think this is a
         mistake, contact your administrator.

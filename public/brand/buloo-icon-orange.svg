@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Buloo">
+  <title>Buloo — alternate icon, social avatars only</title>
+  <circle cx="256" cy="256" r="256" fill="#F5921E"/>
+  <g transform="translate(157 103) scale(0.565)">
+    <path d="M0 0 C52 64 58 102 58 142 A58 58 0 1 1 -58 142 C-58 102 -52 64 0 0 Z" transform="translate(50 250) rotate(30)" fill="#FFFFFF"/>
+    <g fill="none" stroke="#FFFFFF" stroke-width="104" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M120 72 L120 468"/>
+      <circle cx="248" cy="340" r="128"/>
+    </g>
+  </g>
+</svg>

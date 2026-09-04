@@ -27,7 +27,7 @@ export function UsersScreen() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">Users</h1>
+        <h1 className="text-2xl font-extrabold text-foreground">Users</h1>
         <p className="mt-1 text-sm text-muted">
           Manage staff accounts, their roles and branch access.
         </p>

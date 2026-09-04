@@ -78,6 +78,37 @@ describe("apiClient", () => {
         expect.anything(),
       );
     });
+
+    it("sends an array as REPEATED params, never comma-joined", async () => {
+      /*
+        Joining would produce `status=confirmed%2Cin_progress` — one value, which
+        every `.valid(...)` enum check on the far side rejects. Repeating is what
+        Express parses back into an array. This looks like it works until the
+        first filter that takes more than one value, which is why it is pinned.
+      */
+      const spy = mockFetch({ success: true, data: null });
+
+      await apiClient.get("/bookings", {
+        query: { status: ["confirmed", "in_progress"] },
+      });
+
+      expect(spy).toHaveBeenCalledWith(
+        `${BASE}/bookings?status=confirmed&status=in_progress`,
+        expect.anything(),
+      );
+    });
+
+    it("contributes nothing for an empty array", async () => {
+      // "Filter by none of these" is not a filter.
+      const spy = mockFetch({ success: true, data: null });
+
+      await apiClient.get("/bookings", { query: { page: 1, status: [] } });
+
+      expect(spy).toHaveBeenCalledWith(
+        `${BASE}/bookings?page=1`,
+        expect.anything(),
+      );
+    });
   });
 
   describe("request body", () => {
@@ -144,6 +175,115 @@ describe("apiClient", () => {
       });
     });
 
+    it("carries a 409's reason alongside the message", async () => {
+      // The delete guards put the WHAT in message and the actionable WHY in
+      // reason; dropping the second leaves the user nothing to act on.
+      mockFetch(
+        {
+          success: false,
+          message: "Cannot delete warehouse",
+          reason: "Warehouse still holds stock for 3 product(s).",
+        },
+        { status: 409 },
+      );
+
+      const error = (await apiClient
+        .delete("/warehouses/w1")
+        .catch((e) => e)) as ApiError;
+
+      expect(error.reason).toBe(
+        "Warehouse still holds stock for 3 product(s).",
+      );
+      expect(error.fullMessage).toBe(
+        "Cannot delete warehouse — Warehouse still holds stock for 3 product(s).",
+      );
+    });
+
+    it("falls back to the message when no reason was sent", async () => {
+      mockFetch(
+        { success: false, message: "Warehouse not found" },
+        { status: 404 },
+      );
+
+      const error = (await apiClient
+        .get("/warehouses/w1")
+        .catch((e) => e)) as ApiError;
+
+      expect(error.reason).toBeUndefined();
+      expect(error.fullMessage).toBe("Warehouse not found");
+    });
+
+    /**
+     * "Validation failed" ON ITS OWN IS A DEAD END. The backend answers a
+     * rejected schema with that bare string and puts what to fix in `details` —
+     * so an Alert bound to `message` reports a refusal and withholds the reason.
+     * That is what a stock adjustment form showed for seven hours a day while a
+     * date rule refused today's date.
+     */
+    it("carries the validation details when there is no reason", async () => {
+      mockFetch(
+        {
+          success: false,
+          message: "Validation failed",
+          details: [
+            { field: "body.entryDate", message: "cannot be in the future" },
+          ],
+        },
+        { status: 400 },
+      );
+
+      const error = (await apiClient
+        .post("/stock-entries/adjustments", {})
+        .catch((e) => e)) as ApiError;
+
+      expect(error.fullMessage).toBe(
+        "Validation failed — entryDate cannot be in the future",
+      );
+    });
+
+    it("names every field a schema refused, not just the first", async () => {
+      mockFetch(
+        {
+          success: false,
+          message: "Validation failed",
+          details: [
+            { field: "body.warehouseId", message: "is required" },
+            { field: "body.notes", message: "is not allowed to be empty" },
+          ],
+        },
+        { status: 400 },
+      );
+
+      const error = (await apiClient
+        .post("/stock-entries/adjustments", {})
+        .catch((e) => e)) as ApiError;
+
+      expect(error.fullMessage).toBe(
+        "Validation failed — warehouseId is required; notes is not allowed to be empty",
+      );
+    });
+
+    /** A reason is the backend's own sentence, and it wins over field names. */
+    it("prefers the reason over the details when both are sent", async () => {
+      mockFetch(
+        {
+          success: false,
+          message: "Cannot delete warehouse",
+          reason: "Warehouse still holds stock.",
+          details: [{ field: "body.id", message: "is in use" }],
+        },
+        { status: 409 },
+      );
+
+      const error = (await apiClient
+        .delete("/warehouses/w1")
+        .catch((e) => e)) as ApiError;
+
+      expect(error.fullMessage).toBe(
+        "Cannot delete warehouse — Warehouse still holds stock.",
+      );
+    });
+
     it("flags a 401 as unauthorized", async () => {
       mockFetch({ success: false, message: "Unauthorized" }, { status: 401 });
 
@@ -191,5 +331,52 @@ describe("apiClient", () => {
         message: "Something went wrong",
       });
     });
+  });
+});
+
+/**
+ * ─── A MALFORMED `details` MUST NOT TAKE THE PAGE DOWN ─────────────────────
+ *
+ * Reported from the till, 3 September 2026: pressing "Mulai kerjakan" replaced
+ * the screen with `details.reduce is not a function`.
+ *
+ * The cause was on the server — `ApiError.badRequest(message, details)` takes an
+ * ARRAY, while its neighbour `ApiError.conflict(message, reason)` takes a
+ * string, and a service passed the sentence. But a type is a promise about data
+ * that arrives over a WIRE, and the client must survive the promise being
+ * broken: a refusal somebody should have READ became a crash instead.
+ */
+describe("ApiError.fieldErrors — a details it cannot use", () => {
+  it("yields no field errors instead of throwing", () => {
+    const error = new ApiError("Tentukan groomernya dulu", 400, {
+      details: "Pekerjaan tanpa groomer tidak bisa dimulai" as never,
+    });
+
+    expect(() => error.fieldErrors).not.toThrow();
+    expect(error.fieldErrors).toEqual({});
+  });
+
+  it("still shows the server's own sentence", () => {
+    /*
+      DEGRADED, NOT SWALLOWED. Only the binding to a specific input is lost —
+      the person still reads why they were refused.
+    */
+    const error = new ApiError("Tentukan groomernya dulu", 400, {
+      details: "bukan array" as never,
+    });
+
+    expect(error.fullMessage).toBe("Tentukan groomernya dulu");
+  });
+
+  it("skips a single malformed entry and keeps the rest", () => {
+    const error = new ApiError("Validation failed", 400, {
+      details: [
+        { field: "body.email", message: "wajib diisi" },
+        null,
+        { message: "tanpa field" },
+      ] as never,
+    });
+
+    expect(error.fieldErrors).toEqual({ email: "wajib diisi" });
   });
 });

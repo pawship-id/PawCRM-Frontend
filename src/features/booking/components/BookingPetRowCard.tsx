@@ -1,0 +1,238 @@
+"use client";
+
+import { X } from "lucide-react";
+
+import { SelectField, TextField } from "@/components";
+import { Button } from "@/components/ui/button";
+import { PetSummaryCard } from "@/features/pets";
+import { formatMoney } from "@/utils/decimal";
+import type { Pet, Service } from "@/types/api";
+
+/**
+ * The groomer select's "nobody yet" row.
+ *
+ * A REAL VALUE, not `""`: Radix refuses an empty `SelectItem`, and an empty root
+ * value is how "nothing chosen" is spelled — which is not what this means. It is
+ * a deliberate answer (FR-3's "Belum ditentukan") and is sent to the API as
+ * `null`.
+ */
+export const UNASSIGNED = "belum-ditentukan";
+
+/** One line of the form: this animal, having this service. */
+export interface PetRowDraft {
+  /** Local only — React's key and the remove target. Never sent. */
+  key: string;
+  petId: string;
+  serviceId: string;
+  groomerUserId: string;
+  /** As typed. Empty means "use the catalogue's", which the parent resolves. */
+  durationMin: string;
+  notes: string;
+}
+
+/**
+ * One animal on a booking (FR-2 / PCR-041).
+ *
+ * WHY A CARD AND NOT A ROW IN A TABLE. Five controls per animal, two of them
+ * selects that need room for a name — a table would either scroll sideways on
+ * the phone the receptionist is holding or shrink every label to an abbreviation.
+ * The card also gives the alert below somewhere to sit.
+ *
+ * WHAT IT DELIBERATELY DOES NOT DO: fetch anything. Pets, services and groomers
+ * are loaded once by the dialog and handed down, because a card that fetched its
+ * own would ask three times over for a customer with three dogs.
+ */
+export function BookingPetRowCard({
+  row,
+  index,
+  pets,
+  services,
+  groomers,
+  disabled,
+  removable,
+  duplicate,
+  locked = false,
+  onChange,
+  onRemove,
+}: {
+  row: PetRowDraft;
+  index: number;
+  pets: Pet[];
+  services: Service[];
+  /**
+   * `disabled` CARRIES THE REASON — FR-4 kriteria 4.3. A greyed name with no
+   * explanation tells a receptionist to phone somebody; "Libur setiap Rabu"
+   * tells them to offer Thursday.
+   */
+  groomers: { value: string; label: string; disabled?: boolean }[];
+  disabled: boolean;
+  /** False on the last remaining card — a booking with no animals is not one. */
+  removable: boolean;
+  /**
+   * This grooming has already been billed — PRD 2.12.
+   *
+   * NOT HIDDEN, LOCKED. Somebody correcting a visit has to see the work that was
+   * paid for, or the total on screen stops matching the total on the bill. The
+   * server refuses to remove or reprice it either way; this is what makes the
+   * refusal legible before it happens.
+   */
+  locked?: boolean;
+  /** Set when this exact animal + service is already on the booking. */
+  duplicate: boolean;
+  onChange: (next: Partial<PetRowDraft>) => void;
+  onRemove: () => void;
+}) {
+  const service = services.find((item) => item._id === row.serviceId) ?? null;
+  const pet = pets.find((item) => item._id === row.petId) ?? null;
+
+  /*
+    THE CATALOGUE'S DURATION, shown when nothing was typed over it. The field is
+    left EMPTY rather than pre-filled with the number, so what the receptionist
+    sees is "90 menit (dari layanan)" until they choose to disagree — and an
+    untouched form sends no duration at all, which is what lets the server keep
+    following the catalogue if it changes before the appointment.
+  */
+  const catalogueDuration = service?.durationMin ?? null;
+
+  return (
+    <li className="rounded-lg border border-border p-3">
+      <div className="mb-3 flex items-start justify-between gap-2">
+        <span className="text-sm font-medium text-foreground">
+          {pet?.name ?? `Hewan ${index + 1}`}
+        </span>
+        {locked && (
+          <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+            Sudah ditagih
+          </span>
+        )}
+        {removable && !locked && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={disabled || locked}
+            aria-label={`Hapus ${pet?.name ?? `hewan ${index + 1}`}`}
+            onClick={onRemove}
+          >
+            <X className="size-4" />
+          </Button>
+        )}
+      </div>
+
+      {/*
+        WHAT THE SHOP ALREADY KNOWS ABOUT THIS ANIMAL — FR-5 kriteria 5.13, and
+        the reason the pet profile is worth building at all.
+
+        IT APPEARS THE MOMENT THE ANIMAL IS CHOSEN, above the controls rather
+        than below them: a severe allergy read after the service has been picked
+        is a warning that arrived too late to change anything. Nobody has to
+        remember to open a profile, which is the only version of this that works
+        on a Saturday morning.
+      */}
+      {pet && <PetSummaryCard pet={pet} className="mb-3" />}
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <SelectField
+          label="Hewan"
+          value={row.petId}
+          onChange={(value) => onChange({ petId: value })}
+          options={pets.map((item) => ({ value: item._id, label: item.name }))}
+          placeholder="Pilih hewan…"
+          disabled={disabled || locked}
+          required
+        />
+
+        <SelectField
+          label="Layanan"
+          value={row.serviceId}
+          onChange={(value) => onChange({ serviceId: value })}
+          options={services.map((item) => ({
+            value: item._id,
+            label: `${item.name} · ${formatMoney(item.price)}`,
+          }))}
+          placeholder="Pilih layanan…"
+          disabled={disabled || locked}
+          required
+        />
+
+        {/*
+          ASSIGNMENT IS OPTIONAL AND THE SELECT SIMPLY DOES NOT APPEAR when the
+          staff list could not be read — reading /api/users takes a permission a
+          receptionist who books all day has no other reason to hold. A red
+          banner over a working form would be the wrong answer to that.
+        */}
+        {groomers.length > 0 && (
+          <SelectField
+            label="Groomer"
+            value={row.groomerUserId}
+            onChange={(value) => onChange({ groomerUserId: value })}
+            options={[
+              { value: UNASSIGNED, label: "Belum ditentukan" },
+              ...groomers,
+            ]}
+            hint={
+              groomers.some((groomer) => groomer.disabled)
+                ? "Yang sedang libur tidak bisa dipilih."
+                : undefined
+            }
+            disabled={disabled || locked}
+          />
+        )}
+
+        <TextField
+          label="Durasi (menit)"
+          name={`row-duration-${row.key}`}
+          type="number"
+          inputMode="numeric"
+          min={1}
+          max={1440}
+          value={row.durationMin}
+          onChange={(event) => onChange({ durationMin: event.target.value })}
+          placeholder={catalogueDuration ? String(catalogueDuration) : "—"}
+          hint={
+            catalogueDuration
+              ? `Dari layanan: ${catalogueDuration} menit. Isi kalau hewan ini butuh lebih lama.`
+              : "Layanan ini belum punya durasi."
+          }
+          disabled={disabled || locked}
+        />
+      </div>
+
+      <div className="mt-3">
+        <TextField
+          label="Catatan"
+          name={`row-notes-${row.key}`}
+          value={row.notes}
+          onChange={(event) => onChange({ notes: event.target.value })}
+          maxLength={500}
+          placeholder="mis. mandi duluan, jangan blow keras"
+          disabled={disabled || locked}
+        />
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <span className="text-sm tabular-nums text-muted">
+          {service ? formatMoney(service.price) : "—"}
+        </span>
+        {/*
+          THE DUPLICATE IS NAMED, not reported as "one of these is wrong". With
+          four cards on screen a message that does not say WHICH animal is a
+          message somebody has to solve rather than read (PRD 2.7).
+        */}
+        {locked && (
+          <p className="text-xs text-muted-foreground">
+            Layanan ini sudah masuk keranjang atau faktur, jadi tidak bisa
+            diubah atau dihapus dari booking.
+          </p>
+        )}
+
+        {duplicate && (
+          <p role="alert" className="text-xs font-semibold text-danger">
+            {pet?.name ?? "Hewan ini"} sudah punya layanan yang sama di booking
+            ini.
+          </p>
+        )}
+      </div>
+    </li>
+  );
+}

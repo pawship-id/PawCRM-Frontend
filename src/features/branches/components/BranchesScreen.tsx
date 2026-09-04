@@ -18,7 +18,7 @@ export function BranchesScreen() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">Branches</h1>
+        <h1 className="text-2xl font-extrabold text-foreground">Branches</h1>
         <p className="mt-1 text-sm text-muted">
           Manage clinic and store locations, and their contact details.
         </p>
@@ -44,8 +44,8 @@ export function BranchesScreen() {
             page={pagination.page}
             totalPages={pagination.totalPages}
             total={pagination.total}
-            unit="branch"
-            unitPlural="branches"
+            unit="cabang"
+            unitPlural="cabang"
             onPageChange={(page) => setQuery({ page })}
           />
         </>

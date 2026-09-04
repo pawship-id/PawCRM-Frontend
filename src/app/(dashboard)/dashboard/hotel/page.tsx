@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { SectionPlaceholder } from "@/features/dashboard";
 import { HotelIcon } from "@/components/icons";
 
-export const metadata: Metadata = { title: "Hotel · PawShip" };
+export const metadata: Metadata = { title: "Hotel · Buloo" };
 
 export default function HotelPage() {
   return (

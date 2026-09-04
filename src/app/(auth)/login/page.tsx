@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { LoginForm } from "@/features/auth";
 
-export const metadata: Metadata = { title: "Sign in · PawShip" };
+export const metadata: Metadata = { title: "Masuk · Buloo" };
 
 /**
  * Only in-dashboard destinations are honored, so a crafted `?next=` cannot turn
@@ -22,10 +22,10 @@ export default async function LoginPage({
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-xl font-semibold text-foreground">Welcome back</h1>
-        <p className="mt-1 text-sm text-muted">
-          Sign in to your PawShip account.
-        </p>
+        <h1 className="font-display text-xl font-bold text-foreground">
+          Selamat datang kembali
+        </h1>
+        <p className="mt-1 text-sm text-muted">Masuk ke akun Buloo Anda.</p>
       </div>
       <LoginForm redirectTo={safeNext(next)} />
     </div>

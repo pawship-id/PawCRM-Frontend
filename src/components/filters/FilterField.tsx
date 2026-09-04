@@ -1,0 +1,81 @@
+"use client";
+
+import type { ReactNode } from "react";
+
+import { cn } from "@/lib/utils";
+
+/**
+ * A filter laid out vertically: its name above, the control full width below.
+ *
+ * The panel counterpart to the bar's `Label: Value ⌄` trigger. Same controls in
+ * both places — see `FilterSelect`'s `layout` prop; only the wrapper changes.
+ *
+ * `htmlFor` IS OPTIONAL AND USUALLY ABSENT: most filter controls here are a
+ * button that opens a popover, and a `<label for>` pointing at a button is not
+ * something a browser does anything useful with. Those render a plain span and
+ * carry their own `aria-label`. Pass `htmlFor` only for a real form control.
+ */
+export interface FilterFieldProps {
+  label: string;
+  /** The id of a real `<input>`/`<select>`, when the control is one. */
+  htmlFor?: string;
+  children: ReactNode;
+  /** Explanatory line under the control. */
+  hint?: ReactNode;
+  /**
+   * Validation message — red, announced, and it REPLACES the hint.
+   *
+   * A filter cannot be invalid, so this belongs to `layout="form"`. It exists
+   * because the three stock forms each hand-wrote `<p role="alert" className=
+   * "mt-1.5 text-xs text-danger">` under their FilterSelects — ten copies of
+   * the markup `TextField` already owned, which is how an error ends up red on
+   * one screen and silent to a screen reader on the next.
+   */
+  error?: string;
+  /**
+   * Draws the red `*` after the caption, the same marker `TextField` renders
+   * for a required input — a filter is never required, but a `layout="field"`
+   * control standing in a form is a form field and has to say so in the one
+   * way the rest of the forms already say it.
+   */
+  required?: boolean;
+  className?: string;
+}
+
+export function FilterField({
+  label,
+  htmlFor,
+  children,
+  hint,
+  error,
+  required,
+  className,
+}: FilterFieldProps) {
+  const caption = "mb-1.5 block text-xs font-semibold text-foreground";
+
+  return (
+    <div className={cn("min-w-0", className)}>
+      {htmlFor ? (
+        <label htmlFor={htmlFor} className={caption}>
+          {label}
+          {required && <span className="text-danger"> *</span>}
+        </label>
+      ) : (
+        <span className={caption}>
+          {label}
+          {required && <span className="text-danger"> *</span>}
+        </span>
+      )}
+      {children}
+      {error ? (
+        // Semibold at 13px, per docs/ui-rules.md §13: --danger is 4.38:1 as
+        // text, so danger copy is never small and never colour alone.
+        <p role="alert" className="mt-1.5 text-xs font-semibold text-danger">
+          {error}
+        </p>
+      ) : hint ? (
+        <p className="mt-1.5 text-xs text-muted">{hint}</p>
+      ) : null}
+    </div>
+  );
+}

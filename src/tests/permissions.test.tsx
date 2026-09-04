@@ -28,6 +28,7 @@ function withAuth(
     signOut: jest.fn(),
     refresh: jest.fn(),
     setUser: jest.fn(),
+    switchBranch: jest.fn(),
   };
   return render(
     <AuthContext.Provider value={value}>{ui}</AuthContext.Provider>,

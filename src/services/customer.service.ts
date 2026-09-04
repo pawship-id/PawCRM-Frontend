@@ -42,6 +42,19 @@ export const customerService = {
   create: (input: CreateCustomerInput) =>
     apiClient.post<Customer>("/customers", input),
 
+  /**
+   * POST /customers, keeping the envelope — for the caller that needs the
+   * WARNINGS beside the created customer.
+   *
+   * The only one today is the POS quick-add: registering somebody on a phone
+   * number another customer already holds SUCCEEDS (FR-2 is explicit — two
+   * people in one household share a handset), and the cashier is told so they
+   * can check whether this is the same person walking in twice. `create` drops
+   * that, because every other caller wants the customer and nothing else.
+   */
+  createWithWarnings: (input: CreateCustomerInput) =>
+    apiClient.postEnvelope<Customer>("/customers", input),
+
   /** PATCH /customers/:id — update editable fields (send only what changed). */
   update: (id: string, patch: UpdateCustomerInput) =>
     apiClient.patch<Customer>(`/customers/${id}`, patch),

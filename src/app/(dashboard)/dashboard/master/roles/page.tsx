@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { RolesScreen } from "@/features/roles";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Roles · Master Data · PawShip" };
+export const metadata: Metadata = { title: "Roles · Master Data · Buloo" };
 
 export default function MasterRolesPage() {
   return (

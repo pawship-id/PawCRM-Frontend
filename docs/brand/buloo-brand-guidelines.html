@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Buloo — Brand Guidelines v1.0</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy:#1E3A6B; --navy-deep:#14284B; --navy-600:#2B4E8C;
+    --orange:#F5921E; --orange-deep:#B96A05;
+    --sky:#E9EFF9; --cream:#FFF6EA; --cloud:#F6F8FC;
+    --slate:#667691; --line:#DFE5EF;
+    --success:#178A5F; --danger:#D64545;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:#fff;color:var(--navy-deep);
+    font-family:Inter,system-ui,sans-serif;font-size:16px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 32px}
+  h1,h2,h3,h4{font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;letter-spacing:-.025em;line-height:1.12;margin:0}
+  h2{font-size:clamp(28px,4vw,42px)}
+  h3{font-size:21px;margin:0 0 8px}
+  h4{font-size:16px;font-weight:700;margin:0 0 6px}
+  p{margin:0 0 16px;max-width:66ch}
+  .eyebrow{font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--orange-deep);margin:0 0 12px}
+  .lede{font-size:18px;color:var(--slate)}
+  .note{font-size:14px;color:var(--slate);max-width:66ch}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:.85em;background:var(--cloud);padding:2px 6px;border-radius:6px}
+  section{padding:80px 0;border-top:1px solid var(--line)}
+  .head{margin-bottom:36px}
+  .head p{margin-top:14px}
+  .g2{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+  .g3{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+  .g4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:24px}
+  .card p{font-size:15px;color:var(--slate);margin:0}
+  .card.tint{background:var(--cloud);border-color:transparent}
+  .cover{background:var(--navy);color:#fff;padding:88px 0 76px}
+  .cover h1{font-size:clamp(38px,6.5vw,66px);margin:30px 0 16px;color:#fff}
+  .cover p{color:rgba(255,255,255,.78);font-size:18px;max-width:54ch}
+  .cover .eyebrow{color:var(--orange)}
+  .meta{display:flex;flex-wrap:wrap;gap:28px;margin-top:44px;padding-top:22px;
+    border-top:1px solid rgba(255,255,255,.2);font-size:13px;color:rgba(255,255,255,.62)}
+  .stage{background:var(--cloud);border-radius:20px;padding:44px;display:flex;
+    align-items:center;justify-content:center;min-height:180px}
+  .stage.navy{background:var(--navy)} .stage.cream{background:var(--cream)}
+  .cap{font-size:12px;color:var(--slate);margin-top:10px;font-weight:500}
+  .sizes{display:flex;align-items:flex-end;gap:26px;flex-wrap:wrap;justify-content:center}
+  .sizes figure{margin:0;text-align:center}
+  .sizes figcaption{font-size:11px;color:var(--slate);margin-top:8px}
+  .dont{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .dont div{border:1px solid var(--line);border-radius:12px;padding:14px 16px;font-size:14px;color:var(--slate);display:flex;gap:9px}
+  .x{color:var(--danger);font-weight:800;flex:none}
+  .sw{border-radius:14px;overflow:hidden;border:1px solid var(--line)}
+  .sw .chip{height:104px}
+  .sw .b{padding:14px 16px 16px}
+  .sw strong{display:block;font-size:15px;font-family:'Plus Jakarta Sans';font-weight:800}
+  .sw span{display:block;font-family:ui-monospace,monospace;font-size:12px;color:var(--slate);margin-top:1px}
+  .sw em{display:block;font-style:normal;font-size:13px;color:var(--slate);margin-top:7px;line-height:1.45}
+  .ratio{display:flex;height:50px;border-radius:12px;overflow:hidden;margin:6px 0 12px}
+  .ratio div{display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600}
+  .ts{display:grid;grid-template-columns:180px 1fr;gap:20px;padding:18px 0;border-bottom:1px solid var(--line);align-items:baseline}
+  .ts:last-child{border-bottom:0}
+  .ts .k{font-size:12px;color:var(--slate);font-weight:600}
+  .pj{font-family:'Plus Jakarta Sans',sans-serif}
+  .vo{border:1px solid var(--line);border-radius:16px;overflow:hidden}
+  .vo .ctx{background:var(--cloud);padding:9px 20px;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--slate)}
+  .vo .pair{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--line)}
+  .vo .pair:last-child{border-bottom:0}
+  .vo .c{padding:16px 20px;font-size:15px}
+  .vo .c:first-child{border-right:1px solid var(--line)}
+  .yes{color:var(--navy);font-weight:600}
+  .no{color:var(--slate);text-decoration:line-through;text-decoration-color:#C3CCDB}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--slate);font-weight:700}
+  td b{font-weight:600}
+  td code{font-size:12px}
+  .tok{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:12px}
+  .tok div{border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .tok b{display:block;font-family:ui-monospace,monospace;font-size:12px;color:var(--navy)}
+  .tok span{color:var(--slate);font-size:12px}
+  .btn{display:inline-flex;align-items:center;justify-content:center;font-weight:600;font-size:15px;
+    border-radius:12px;padding:12px 22px;border:1.5px solid transparent}
+  .btn-cta{background:var(--orange);color:var(--navy-deep)}
+  .btn-primary{background:var(--navy);color:#fff}
+  .btn-secondary{background:#fff;color:var(--navy);border-color:var(--navy)}
+  .btn-ghost{color:var(--navy)}
+  .btn-row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+  .shadow-demo{display:flex;gap:18px;flex-wrap:wrap}
+  .shadow-demo div{width:126px;height:80px;border-radius:16px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--slate)}
+  .s1{box-shadow:0 1px 2px rgba(20,40,75,.06)} .s2{box-shadow:0 4px 16px rgba(20,40,75,.08)} .s3{box-shadow:0 12px 32px rgba(20,40,75,.10)}
+  .radii{display:flex;gap:14px;flex-wrap:wrap}
+  .radii div{width:86px;height:64px;background:var(--sky);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--navy);font-weight:600}
+  .hero{background:var(--navy);border-radius:20px;padding:44px;color:#fff;position:relative;overflow:hidden}
+  .hero h3{font-size:30px;color:#fff;max-width:16ch;line-height:1.15;margin-bottom:12px}
+  .hero p{color:rgba(255,255,255,.74);font-size:15px;max-width:44ch}
+  .hero .btn-row{margin:22px 0 0}
+  .blob{position:absolute;border-radius:50%;opacity:.16}
+  .mock{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:0 4px 16px rgba(20,40,75,.06)}
+  .mock .bar{display:flex;justify-content:space-between;align-items:center;padding-bottom:12px;border-bottom:1px solid var(--line);margin-bottom:12px}
+  .mock .bar b{font-family:'Plus Jakarta Sans';font-size:16px;font-weight:800}
+  .pill{font-size:11px;font-weight:700;padding:4px 10px;border-radius:99px}
+  .pill.o{background:var(--cream);color:var(--orange-deep)} .pill.n{background:var(--sky);color:var(--navy)}
+  .row{display:flex;gap:12px;align-items:center;padding:10px 0}
+  .row+.row{border-top:1px solid var(--line)}
+  .av{width:38px;height:38px;border-radius:12px;flex:none;display:flex;align-items:center;justify-content:center;font-family:'Plus Jakarta Sans';font-weight:800;font-size:15px}
+  .row .w{flex:1} .row .w b{display:block;font-size:15px;font-weight:600} .row .w span{font-size:13px;color:var(--slate)}
+  .row .t{font-size:14px;font-variant-numeric:tabular-nums;font-weight:500}
+  .tot{display:flex;justify-content:space-between;align-items:baseline;margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)}
+  .tot span{font-size:14px;color:var(--slate)}
+  .tot b{font-size:21px;font-variant-numeric:tabular-nums;font-family:'Plus Jakarta Sans';font-weight:800}
+  .struk{background:#fff;border:1px solid var(--line);border-radius:8px;padding:20px;
+    font-family:ui-monospace,monospace;font-size:12px;line-height:1.7;max-width:300px;color:#000}
+  .struk hr{border:0;border-top:1px dashed #999;margin:8px 0}
+  ul.c{margin:0;padding-left:18px;font-size:15px;color:var(--slate)}
+  ul.c li{margin-bottom:7px} ul.c strong{color:var(--navy-deep)}
+  @media(max-width:860px){
+    .wrap{padding:0 20px}
+    .g2,.g3,.g4,.dont,.vo .pair{grid-template-columns:1fr}
+    .vo .c:first-child{border-right:0;border-bottom:1px solid var(--line)}
+    .ts{grid-template-columns:1fr;gap:6px}
+    section{padding:56px 0} .stage,.hero{padding:28px}
+    table{font-size:13px} th,td{padding:9px 8px}
+  }
+</style>
+</head>
+<body>
+
+<header class="cover">
+  <div class="wrap">
+    <svg viewBox="0 0 1803 600" style="width:min(500px,100%);display:block" aria-label="Buloo">
+      <g transform="translate(99 30)">
+        <path d="M0 0 C52 64 58 102 58 142 A58 58 0 1 1 -58 142 C-58 102 -52 64 0 0 Z" transform="translate(50 250) rotate(30)" fill="#fff"/>
+        <g fill="none" stroke="#fff" stroke-width="104" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M120 72 L120 468"/><circle cx="248" cy="340" r="128"/>
+          <path d="M528 252 L528 360 A108 108 0 0 0 744 360 L744 252"/>
+          <path d="M896 72 L896 468"/><circle cx="1156" cy="360" r="108"/>
+        </g>
+        <circle cx="1524" cy="360" r="108" fill="none" stroke="#F5921E" stroke-width="104"/>
+        <g stroke="#F5921E" stroke-width="26" stroke-linecap="round" fill="none">
+          <path d="M1431 75 L1454 143"/><path d="M1524 60 L1524 132"/><path d="M1617 75 L1594 143"/>
+        </g>
+      </g>
+    </svg>
+    <h1>Brand Guidelines</h1>
+    <p>Logo, colour, type, voice, the full website design system, and every applied surface. Written to be implemented, not admired — all tokens ship in <code style="background:rgba(255,255,255,.14);color:#fff">buloo-tokens.css</code>.</p>
+    <div class="meta">
+      <span>v1.0 · for engineers &amp; design partners</span>
+      <span>Bahasa Indonesia first, English secondary</span>
+      <span>Every size of petshop</span>
+    </div>
+  </div>
+</header>
+
+<!-- 01 FOUNDATION -->
+<section>
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow">01 — Foundation</p>
+      <h2>Friendly is the tone. Cute is the failure.</h2>
+      <p class="lede">Buloo holds the money, the schedule, and the medical history of animals people love. That has to feel safe. But the person using it is a groomer with a wet dog in one arm — not an operations manager — and a good share of our customers are one person working out of their house.</p>
+    </div>
+    <div class="g3">
+      <div class="card tint"><h3>Who it's for</h3><p>A solo home-groomer with fifteen regulars, and a five-branch chain. The brand reads identically to both.</p></div>
+      <div class="card tint"><h3>What it replaces</h3><p>A WhatsApp group, a whiteboard, a cash drawer, and the notebook where the vaccination dates live.</p></div>
+      <div class="card tint"><h3>The promise</h3><p>Nothing about a pet gets forgotten — not the allergy, not the booking, not the vaccine due next month.</p></div>
+    </div>
+
+    <h3 style="margin-top:40px">Personality</h3>
+    <div class="g4" style="margin-top:16px">
+      <div class="card"><h4>Warm</h4><p>Talks like a colleague at the counter. <em style="color:#98A3B8">Never baby talk.</em></p></div>
+      <div class="card"><h4>Capable</h4><p>Numbers and dates are always exact. <em style="color:#98A3B8">Never cold.</em></p></div>
+      <div class="card"><h4>Reachable</h4><p>No jargon, no enterprise posturing. <em style="color:#98A3B8">Never simplistic.</em></p></div>
+      <div class="card"><h4>Light</h4><p>One wink per surface. <em style="color:#98A3B8">Never silly.</em></p></div>
+    </div>
+
+    <div class="card" style="margin-top:24px;background:var(--cream);border-color:#F5C98A">
+      <h4 style="color:var(--orange-deep)">The cute line</h4>
+      <p style="color:var(--navy-deep)">This brand fails in one specific direction: too cute. Concretely — no faces on objects, no paw prints as bullet points, no more than one emoji anywhere, no diminutives in product copy, no mascot. Warmth comes from the roundness of the shapes and the plainness of the language, not from decoration. When a choice is between charming and clear, pick clear.</p>
+    </div>
+
+    <p class="note" style="margin-top:20px"><strong>The "any level" rule.</strong> Never describe customers by their size. No "UMKM", no "bisnis skala besar", no tier language in copy or on pricing pages. A petshop is a petshop.</p>
+  </div>
+</section>
+
+<!-- 02 LOGO -->
+<section>
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow">02 — Logo</p>
+      <h2>One ear. That's the whole idea.</h2>
+      <p>The wordmark is clean geometry — circles, one stroke weight, round caps — interrupted by a single soft ear beside the <em>b</em>. The ear is deliberately unspecified: dog, cat, rabbit. It belongs to whatever animal walks into the shop, which is the point. The final <em>o</em> lifts to orange because a brand needs one place where it stops behaving.</p>
+    </div>
+
+    <div class="stage">
+      <svg viewBox="0 0 1803 600" style="width:100%;max-width:600px" aria-label="Buloo primary">
+        <g transform="translate(99 30)">
+          <path d="M0 0 C52 64 58 102 58 142 A58 58 0 1 1 -58 142 C-58 102 -52 64 0 0 Z" transform="translate(50 250) rotate(30)" fill="#1E3A6B"/>
+          <g fill="none" stroke="#1E3A6B" stroke-width="104" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M120 72 L120 468"/><circle cx="248" cy="340" r="128"/>
+            <path d="M528 252 L528 360 A108 108 0 0 0 744 360 L744 252"/>
+            <path d="M896 72 L896 468"/><circle cx="1156" cy="360" r="108"/>
+          </g>
+          <circle cx="1524" cy="360" r="108" fill="none" stroke="#F5921E" stroke-width="104"/>
+          <g stroke="#F5921E" stroke-width="26" stroke-linecap="round" fill="none">
+            <path d="M1431 75 L1454 143"/><path d="M1524 60 L1524 132"/><path d="M1617 75 L1594 143"/>
+          </g>
+        </g>
+      </svg>
+    </div>
+    <p class="cap">Primary — works at every size. There is no longer a separate small-size wordmark.</p>
+
+    <h3 style="margin-top:38px">Construction</h3>
+    <p class="note" style="margin-bottom:18px">All values in the SVG's own units. These are fixed — do not eyeball a rebuild.</p>
+    <table>
+      <tr><th>Element</th><th>Value</th><th>Why it matters</th></tr>
+      <tr><td><b>Stroke weight</b></td><td><code>104</code>, round caps and joins</td><td>Identical on every letter. Uneven weights were the main flaw in earlier drafts.</td></tr>
+      <tr><td><b>Letter gap</b></td><td><code>48</code> between outer edges</td><td>Fixed everywhere, including between the two <em>o</em>s. They must not touch.</td></tr>
+      <tr><td><b>Ear gap</b></td><td><code>18</code> from the stem</td><td>The ear is detached. Close it up and it reads as a smudge; open it further and it floats.</td></tr>
+      <tr><td><b>Ear</b></td><td>Teardrop — lobe r <code>58</code>, tip <code>142</code> above it, rotated <code>+30°</code></td><td>Asymmetric on purpose: fat lobe hangs down-left, tapering to a point up-right at the stem. A symmetric ellipse here reads as a leaf. Never mirror it to the right side.</td></tr>
+      <tr><td><b>b bowl</b></td><td>r <code>128</code> — 12.5% larger than the <em>o</em>s (r <code>108</code>)</td><td>Enough presence for the <em>b</em> to stand alone as the icon, without reading as a different size. The counter stays empty.</td></tr>
+      <tr><td><b>Sparkles</b></td><td>3 strokes, weight <code>26</code>, at −108° / −90° / −72°</td><td>Radiate from the accent <em>o</em>'s centre. Optional — see below.</td></tr>
+    </table>
+
+    <div class="g2" style="margin-top:30px">
+      <div>
+        <div class="stage cream" style="min-height:160px">
+          <svg viewBox="0 0 1803 600" style="width:100%;max-width:340px" aria-label="Buloo plain">
+            <g transform="translate(99 30)">
+              <path d="M0 0 C52 64 58 102 58 142 A58 58 0 1 1 -58 142 C-58 102 -52 64 0 0 Z" transform="translate(50 250) rotate(30)" fill="#1E3A6B"/>
+              <g fill="none" stroke="#1E3A6B" stroke-width="104" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M120 72 L120 468"/><circle cx="248" cy="340" r="128"/>
+                <path d="M528 252 L528 360 A108 108 0 0 0 744 360 L744 252"/>
+                <path d="M896 72 L896 468"/><circle cx="1156" cy="360" r="108"/>
+              </g>
+              <circle cx="1524" cy="360" r="108" fill="none" stroke="#F5921E" stroke-width="104"/>
+            </g>
+          </svg>
+        </div>
+        <p class="cap">Plain — sparkles dropped. Use below 140 px wide, in dense UI, and on anything printed at one colour.</p>
+      </div>
+      <div>
+        <div class="stage navy" style="min-height:160px">
+          <svg viewBox="0 0 1803 600" style="width:100%;max-width:340px" aria-label="Buloo reversed">
+            <g transform="translate(99 30)">
+              <path d="M0 0 C52 64 58 102 58 142 A58 58 0 1 1 -58 142 C-58 102 -52 64 0 0 Z" transform="translate(50 250) rotate(30)" fill="#fff"/>
+              <g fill="none" stroke="#fff" stroke-width="104" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M120 72 L120 468"/><circle cx="248" cy="340" r="128"/>
+                <path d="M528 252 L528 360 A108 108 0 0 0 744 360 L744 252"/>
+                <path d="M896 72 L896 468"/><circle cx="1156" cy="360" r="108"/>
+              </g>
+              <circle cx="1524" cy="360" r="108" fill="none" stroke="#F5921E" stroke-width="104"/>
+              <g stroke="#F5921E" stroke-width="26" stroke-linecap="round" fill="none">
+                <path d="M1431 75 L1454 143"/><path d="M1524 60 L1524 132"/><path d="M1617 75 L1594 143"/>
+              </g>
+            </g>
+          </svg>
+        </div>
+        <p class="cap">Reversed — on navy, on photography, on dark UI. The accent <em>o</em> stays orange.</p>
+      </div>
+    </div>
+
+    <div style="margin-top:34px">
+      <h3>Rules</h3>
+      <ul class="c">
+        <li><strong>Clear space</strong> — the height of one <em>o</em> on all four sides, measured from the ear on the left and the sparkles on top.</li>
+        <li><strong>Minimum size</strong> — 140 px wide with sparkles, 96 px without. Below 96 px, use an icon instead of the wordmark.</li>
+        <li><strong>Orange lives on the last <em>o</em> only.</strong> Never on another letter, never on the ear, never on all of them.</li>
+        <li><strong>Single colour</strong> — for embroidery, stamps, and one-colour print, use <code>buloo-logo-mono.svg</code>. Never approximate by hand.</li>
+      </ul>
+    </div>
+
+    <h3 style="margin-top:30px">Never</h3>
+    <div class="dont">
+      <div><span class="x">✕</span> Put anything inside the <em>b</em>'s counter — no face, no icon</div>
+      <div><span class="x">✕</span> Close, widen, or mirror the ear gap</div>
+      <div><span class="x">✕</span> Let the two <em>o</em>s touch or overlap</div>
+      <div><span class="x">✕</span> Stretch, skew, rotate, or outline any part</div>
+      <div><span class="x">✕</span> Add shadows, glows, or gradients</div>
+      <div><span class="x">✕</span> Retype it in a font — it is drawn geometry</div>
+    </div>
+  </div>
+</section>
+
+<!-- 03 ICONS -->
+<section>
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow">03 — Icons</p>
+      <h2>Navy is the icon. The others have jobs.</h2>
+      <p>Three variants exist and each has exactly one purpose. Two competing silhouettes is the fastest way to dilute recognition, so the navy squircle is the icon people should learn — everything else is situational.</p>
+    </div>
+
+    <div class="g3">
+      <div>
+        <div class="stage" style="min-height:190px">
+          <svg viewBox="0 0 512 512" width="120" height="120"><rect width="512" height="512" rx="132" fill="#1E3A6B"/><g transform="translate(146 86) scale(0.631)"><path d="M0 0 C52 64 58 102 58 142 A58 58 0 1 1 -58 142 C-58 102 -52 64 0 0 Z" transform="translate(50 250) rotate(30)" fill="#fff"/><g fill="none" stroke="#fff" stroke-width="104" stroke-linecap="round" stroke-linejoin="round"><path d="M120 72 L120 468"/><circle cx="248" cy="340" r="128"/></g></g></svg>
+        </div>
+        <p class="cap"><strong style="color:var(--navy-deep)">Primary</strong> — app icon, favicon, PWA, WhatsApp Business avatar, struk header</p>
+      </div>
+      <div>
+        <div class="stage" style="min-height:190px">
+          <svg viewBox="0 0 512 512" width="120" height="120"><circle cx="256" cy="256" r="256" fill="#F5921E"/><g transform="translate(157 103) scale(0.565)"><path d="M0 0 C52 64 58 102 58 142 A58 58 0 1 1 -58 142 C-58 102 -52 64 0 0 Z" transform="translate(50 250) rotate(30)" fill="#fff"/><g fill="none" stroke="#fff" stroke-width="104" stroke-linecap="round" stroke-linejoin="round"><path d="M120 72 L120 468"/><circle cx="248" cy="340" r="128"/></g></g></svg>
+        </div>
+        <p class="cap"><strong style="color:var(--navy-deep)">Alternate</strong> — social avatars only, where the crop is round anyway. Never as the app icon.</p>
+      </div>
+      <div>
+        <div class="stage" style="min-height:190px">
+          <svg viewBox="0 0 547 540" width="120" height="118"><g transform="translate(99 0)"><path d="M0 0 C52 64 58 102 58 142 A58 58 0 1 1 -58 142 C-58 102 -52 64 0 0 Z" transform="translate(50 250) rotate(30)" fill="#1E3A6B"/><g fill="none" stroke="#1E3A6B" stroke-width="104" stroke-linecap="round" stroke-linejoin="round"><path d="M120 72 L120 468"/><circle cx="248" cy="340" r="128"/></g></g></svg>
+        </div>
+        <p class="cap"><strong style="color:var(--navy-deep)">Mono</strong> — embroidery on aprons and kaos, rubber stamps, engraving, fax-grade print</p>
+      </div>
+    </div>
+
+    <div class="stage" style="margin-top:26px">
+      <div class="sizes">
+        <figure><svg viewBox="0 0 512 512" width="96" height="96"><rect width="512" height="512" rx="132" fill="#1E3A6B"/><g transform="translate(146 86) scale(0.631)"><path d="M0 0 C52 64 58 102 58 142 A58 58 0 1 1 -58 142 C-58 102 -52 64 0 0 Z" transform="translate(50 250) rotate(30)" fill="#fff"/><g fill="none" stroke="#fff" stroke-width="104" stroke-linecap="round" stroke-linejoin="round"><path d="M120 72 L120 468"/><circle cx="248" cy="340" r="128"/></g></g></svg><figcaption>96 px</figcaption></figure>
+        <figure><svg viewBox="0 0 512 512" width="48" height="48"><rect width="512" height="512" rx="132" fill="#1E3A6B"/><g transform="translate(146 86) scale(0.631)"><path d="M0 0 C52 64 58 102 58 142 A58 58 0 1 1 -58 142 C-58 102 -52 64 0 0 Z" transform="translate(50 250) rotate(30)" fill="#fff"/><g fill="none" stroke="#fff" stroke-width="104" stroke-linecap="round" stroke-linejoin="round"><path d="M120 72 L120 468"/><circle cx="248" cy="340" r="128"/></g></g></svg><figcaption>48 px</figcaption></figure>
+        <figure><svg viewBox="0 0 512 512" width="32" height="32"><rect width="512" height="512" rx="132" fill="#1E3A6B"/><g transform="translate(146 86) scale(0.631)"><path d="M0 0 C52 64 58 102 58 142 A58 58 0 1 1 -58 142 C-58 102 -52 64 0 0 Z" transform="translate(50 250) rotate(30)" fill="#fff"/><g fill="none" stroke="#fff" stroke-width="104" stroke-linecap="round" stroke-linejoin="round"><path d="M120 72 L120 468"/><circle cx="248" cy="340" r="128"/></g></g></svg><figcaption>32 px</figcaption></figure>
+        <figure><svg viewBox="0 0 512 512" width="20" height="20"><rect width="512" height="512" rx="132" fill="#1E3A6B"/><g transform="translate(146 86) scale(0.631)"><path d="M0 0 C52 64 58 102 58 142 A58 58 0 1 1 -58 142 C-58 102 -52 64 0 0 Z" transform="translate(50 250) rotate(30)" fill="#fff"/><g fill="none" stroke="#fff" stroke-width="104" stroke-linecap="round" stroke-linejoin="round"><path d="M120 72 L120 468"/><circle cx="248" cy="340" r="128"/></g></g></svg><figcaption>20 px · minimum</figcaption></figure>
+      </div>
+    </div>
+    <p class="cap">The ear survives all the way to 20 px, which is why nothing else needed to go inside the letter.</p>
+
+    <h4 style="margin-top:28px">Export sizes engineers will need</h4>
+    <p class="note"><strong>Favicon</strong> 16 / 32 / 48 (ICO) · <strong>PWA</strong> 192 / 512 PNG + 512 maskable · <strong>iOS</strong> 180 · <strong>Android adaptive</strong> 432 with the mark inside the 264 safe circle · <strong>Open Graph</strong> 1200 × 630 using the reversed wordmark on navy, not the icon.</p>
+
+    <div class="card" style="margin-top:22px;background:var(--cream);border-color:#F5C98A">
+      <h4 style="color:var(--orange-deep)">Why orange isn't the app icon</h4>
+      <p style="color:var(--navy-deep)">White on orange measures about 2.1:1. Fine on a social platform where the avatar sits on a fixed background, but on a phone home screen — over a bright wallpaper, next to a dozen other icons — it loses definition and reads as an unfinished brand. Navy holds at 20 px. Orange does not.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 04 COLOUR -->
+<section>
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow">04 — Colour</p>
+      <h2>Navy earns the trust. Orange means act.</h2>
+      <p>Navy is the working colour — money screens, records, reports. Orange appears rarely and always signals something a human must do: sign up, pay, respond to a due date. That discipline is what keeps "friendly" from sliding into "unserious".</p>
+    </div>
+    <div class="g3">
+      <div class="sw"><div class="chip" style="background:#1E3A6B"></div><div class="b"><strong>Buloo Navy</strong><span>#1E3A6B</span><em>Primary. Logo, nav, primary buttons, headers.</em></div></div>
+      <div class="sw"><div class="chip" style="background:#F5921E"></div><div class="b"><strong>Buloo Orange</strong><span>#F5921E</span><em>Accent. CTAs, due dates. Fills only, never text.</em></div></div>
+      <div class="sw"><div class="chip" style="background:#14284B"></div><div class="b"><strong>Deep Navy</strong><span>#14284B</span><em>All body text. Never pure black.</em></div></div>
+      <div class="sw"><div class="chip" style="background:#E9EFF9"></div><div class="b"><strong>Sky</strong><span>#E9EFF9</span><em>Badges, selected rows, chart fills.</em></div></div>
+      <div class="sw"><div class="chip" style="background:#FFF6EA"></div><div class="b"><strong>Cream</strong><span>#FFF6EA</span><em>Warm panels, empty states, promos.</em></div></div>
+      <div class="sw"><div class="chip" style="background:#667691"></div><div class="b"><strong>Slate</strong><span>#667691</span><em>Secondary text, captions, placeholders.</em></div></div>
+    </div>
+    <div class="g3" style="margin-top:16px">
+      <div class="sw"><div class="chip" style="height:60px;background:#F6F8FC"></div><div class="b"><strong>Cloud</strong><span>#F6F8FC</span><em>App background behind cards.</em></div></div>
+      <div class="sw"><div class="chip" style="height:60px;background:#178A5F"></div><div class="b"><strong>Success</strong><span>#178A5F</span><em>Paid, saved, sent.</em></div></div>
+      <div class="sw"><div class="chip" style="height:60px;background:#D64545"></div><div class="b"><strong>Danger</strong><span>#D64545</span><em>Destructive actions and hard errors only.</em></div></div>
+    </div>
+
+    <div style="margin-top:32px">
+      <h3>Proportion</h3>
+      <div class="ratio">
+        <div style="flex:62;background:#fff;color:#98A3B8;box-shadow:inset 0 0 0 1px #DFE5EF">WHITE / CLOUD 62</div>
+        <div style="flex:26;background:#1E3A6B;color:#fff">NAVY 26</div>
+        <div style="flex:7;background:#E9EFF9;color:#1E3A6B">SKY 7</div>
+        <div style="flex:5;background:#F5921E;color:#14284B">5</div>
+      </div>
+      <p class="note"><strong>Orange never exceeds about 5% of a screen.</strong> As a background or a header bar it turns the brand into a discount flyer and shop owners stop trusting it with money.</p>
+    </div>
+
+    <div class="card" style="margin-top:20px;border-color:#F5C98A;background:var(--cream)">
+      <h4 style="color:var(--orange-deep)">⚠ The one accessibility trap</h4>
+      <p style="color:var(--navy-deep)">Orange <code>#F5921E</code> on white measures ~2.1:1 and <strong>fails</strong> WCAG for text. Three non-negotiable consequences: orange is a fill, never a text colour on white; orange buttons carry <strong>Deep Navy</strong> labels, not white; and for orange text on light surfaces use <strong><code>#B96A05</code></strong> instead.</p>
+    </div>
+
+    <h3 style="margin-top:32px">Dark theme — prepared, not shipped</h3>
+    <table style="margin-top:12px">
+      <tr><th>Token</th><th>Light</th><th>Dark</th><th>Note</th></tr>
+      <tr><td><b>bg</b></td><td><code>#FFFFFF</code></td><td><code>#0E1D38</code></td><td></td></tr>
+      <tr><td><b>surface</b></td><td><code>#FFFFFF</code></td><td><code>#1B3157</code></td><td>Cards lift by lightness, not shadow</td></tr>
+      <tr><td><b>text</b></td><td><code>#14284B</code></td><td><code>#E8EEF8</code></td><td></td></tr>
+      <tr><td><b>border</b></td><td><code>#DFE5EF</code></td><td><code>#27406B</code></td><td></td></tr>
+      <tr><td><b>primary action</b></td><td>Navy fill, white label</td><td>Orange fill, navy-800 label</td><td>Navy can't be the action colour on a navy field</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- 05 TYPE -->
+<section>
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow">05 — Typography</p>
+      <h2>Plus Jakarta Sans &amp; Inter.</h2>
+      <p><strong>Plus Jakarta Sans</strong> was commissioned for the city of Jakarta's identity and drawn by an Indonesian foundry — genuinely local without looking it. Its geometric bowls echo the logo directly, and it carries warmth without the rounded terminals that tip a brand into cute. <strong>Inter</strong> takes body copy, interface labels, and every number: it survives 13 px on a cheap Android under fluorescent light, and its tabular figures keep rupiah columns aligned. Both free on Google Fonts.</p>
+    </div>
+    <div class="ts"><div class="k">Display · PJS 800 · 56/1.05</div><div class="pj" style="font-size:46px;font-weight:800;letter-spacing:-.03em">Semua tercatat.</div></div>
+    <div class="ts"><div class="k">H1 · PJS 800 · 40/1.1</div><div class="pj" style="font-size:36px;font-weight:800;letter-spacing:-.025em">Booking hari ini</div></div>
+    <div class="ts"><div class="k">H3 · PJS 700 · 22/1.3</div><div class="pj" style="font-size:22px;font-weight:700">Riwayat Bella</div></div>
+    <div class="ts"><div class="k">Body · Inter 400 · 16/1.65</div><div style="font-size:16px">Riwayat grooming, vaksin, dan alergi setiap hewan tersimpan di satu kartu.</div></div>
+    <div class="ts"><div class="k">Label · Inter 600 · 13</div><div style="font-size:13px;font-weight:600;letter-spacing:.02em">NOMOR WHATSAPP PELANGGAN</div></div>
+    <div class="ts"><div class="k">Data · Inter 500 tabular</div><div style="font-size:18px;font-weight:500;font-variant-numeric:tabular-nums">Rp 265.500 &nbsp;·&nbsp; 14:30 &nbsp;·&nbsp; 0812-3344-5566</div></div>
+    <p class="note" style="margin-top:22px">Headings always Plus Jakarta Sans with tight negative tracking. Body never below 15 px in product. Always set <code>font-variant-numeric: tabular-nums</code> on prices and times so digits don't jitter as they update.</p>
+  </div>
+</section>
+
+<!-- 06 VOICE -->
+<section>
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow">06 — Voice</p>
+      <h2>Bahasa Indonesia, spoken like a colleague.</h2>
+      <p>Buloo is not translated software. It thinks in Bahasa and borrows English only where the trade already does — <em>grooming</em>, <em>booking</em>, <em>member</em>. Four rules: talk, don't lecture. Name real things. Keep it short, their hands are full. Never blame the user.</p>
+    </div>
+    <div class="vo">
+      <div class="ctx">Button</div>
+      <div class="pair"><div class="c yes">Simpan booking</div><div class="c no">Submit data reservasi</div></div>
+      <div class="ctx">Empty state</div>
+      <div class="pair"><div class="c yes">Belum ada booking hari ini. Tambah yang pertama →</div><div class="c no">No data available</div></div>
+      <div class="ctx">Error</div>
+      <div class="pair"><div class="c yes">Nomor WhatsApp-nya kurang satu angka. Coba cek lagi.</div><div class="c no">Invalid input. Please try again.</div></div>
+      <div class="ctx">Success</div>
+      <div class="pair"><div class="c yes">Tersimpan. Struk sudah dikirim ke WhatsApp Kak Rina.</div><div class="c no">Transaction completed successfully!!</div></div>
+      <div class="ctx">Reminder to a pet owner — the only place an emoji is allowed</div>
+      <div class="pair"><div class="c yes">Halo Kak Rina, vaksin Bella jatuh tempo 12 Agustus. Mau kami jadwalkan? 🐾</div><div class="c no">PENGINGAT: Jadwal vaksinasi hewan peliharaan Anda akan segera berakhir.</div></div>
+      <div class="ctx">Website headline</div>
+      <div class="pair"><div class="c yes">Petshop Anda, tercatat rapi.</div><div class="c no">Solusi manajemen terintegrasi untuk bisnis pet care</div></div>
+    </div>
+
+    <h3 style="margin-top:30px">English — secondary</h3>
+    <p class="note" style="margin-bottom:16px">For investors, regional expansion, and the English site. Same voice, no extra formality. English is a translation of the Indonesian, never the other way around.</p>
+    <div class="vo">
+      <div class="pair"><div class="c yes">Save booking</div><div class="c no">Submit reservation details</div></div>
+      <div class="pair"><div class="c yes">No bookings yet today. Add the first one →</div><div class="c no">There are currently no records to display</div></div>
+      <div class="pair"><div class="c yes">Your petshop, all written down.</div><div class="c no">The integrated management solution for pet care businesses</div></div>
+    </div>
+
+    <div class="g2" style="margin-top:22px">
+      <div class="card"><h4>Words we use</h4><p>kasir · booking · grooming · penitipan · pelanggan · struk · member · anabul <em>(marketing only)</em></p></div>
+      <div class="card"><h4>Words we don't</h4><p>POS · reservasi · user · invoice · modul · platform · solusi terintegrasi · revolusioner · UMKM</p></div>
+    </div>
+
+    <h3 style="margin-top:30px">Appearing on someone else's surface</h3>
+    <p class="note">On a shop's struk, booking page, or receipt, Buloo appears as <strong>text only</strong> — <em>"Dicatat dengan Buloo"</em> or <em>"Powered by Buloo"</em>, set in Inter Medium at no more than 11 px, in Slate. No logo, no icon, no colour. The shop's brand is the one the customer came for; ours is a footnote until the relationship justifies more.</p>
+  </div>
+</section>
+
+<!-- 07 WEB SYSTEM -->
+<section>
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow">07 — Website &amp; product design system</p>
+      <h2>Build tokens, not screens.</h2>
+      <p>Everything below ships in <code>buloo-tokens.css</code> as CSS custom properties, with a Tailwind config in the comments. If a value isn't in that file, it doesn't go in the product.</p>
+    </div>
+
+    <h3>Spacing — 4 px base</h3>
+    <div class="tok" style="margin:12px 0 30px">
+      <div><b>4</b><span>inline gaps</span></div><div><b>8</b><span>icon to label</span></div>
+      <div><b>12</b><span>inside controls</span></div><div><b>16</b><span>card padding sm</span></div>
+      <div><b>24</b><span>card padding</span></div><div><b>32</b><span>between cards</span></div>
+      <div><b>48</b><span>block spacing</span></div><div><b>80</b><span>section mobile</span></div>
+      <div><b>120</b><span>section desktop</span></div>
+    </div>
+
+    <h3>Radius — nothing is sharp</h3>
+    <div class="radii" style="margin:12px 0 10px">
+      <div style="border-radius:8px">8 input</div><div style="border-radius:12px">12 button</div>
+      <div style="border-radius:16px">16 card</div><div style="border-radius:24px">24 panel</div>
+      <div style="border-radius:999px">999 pill</div>
+    </div>
+    <p class="note" style="margin-bottom:30px">The logo is built entirely from circles and round caps. A square corner anywhere contradicts it.</p>
+
+    <h3>Elevation — navy-tinted, never grey</h3>
+    <div class="shadow-demo" style="margin:12px 0 8px">
+      <div class="s1">sm · rows</div><div class="s2">md · cards</div><div class="s3">lg · modals</div>
+    </div>
+    <p class="note" style="margin-bottom:30px"><code>0 1px 2px rgba(20,40,75,.06)</code> · <code>0 4px 16px rgba(20,40,75,.08)</code> · <code>0 12px 32px rgba(20,40,75,.10)</code></p>
+
+    <h3>Buttons</h3>
+    <div class="btn-row" style="margin-top:12px">
+      <span class="btn btn-cta">Coba gratis 14 hari</span>
+      <span class="btn btn-primary">Simpan booking</span>
+      <span class="btn btn-secondary">Lihat demo</span>
+      <span class="btn btn-ghost">Batal</span>
+    </div>
+    <ul class="c" style="margin-bottom:30px">
+      <li><strong>CTA</strong> — orange fill, <em>navy-800 label</em>. Marketing site only, one per viewport, never two in the same view.</li>
+      <li><strong>Primary</strong> — navy fill, white label. The main action inside the product.</li>
+      <li><strong>Secondary</strong> — white fill, 1.5 px navy border. <strong>Ghost</strong> — text only, for cancel and dismiss.</li>
+      <li>Heights 40 / 48 / 56. Hover darkens 8%, active 14%. Focus ring 3 px <code>#F5921E</code> at 45%, 2 px offset, on every interactive element without exception.</li>
+    </ul>
+
+    <h3>Grid &amp; breakpoints</h3>
+    <ul class="c" style="margin-bottom:30px">
+      <li>Container 1200 px, 12 columns, 24 px gutters, 32 px page padding (20 px mobile).</li>
+      <li>Breakpoints 640 / 768 / 1024 / 1280. <strong>Design mobile first</strong> — most petshop owners meet this site on a phone, on data.</li>
+      <li>Line length caps at 66 characters. Marketing sections alternate white and Cloud; never three coloured bands in a row.</li>
+    </ul>
+
+    <h3>Homepage hero</h3>
+    <div class="hero" style="margin:12px 0 10px">
+      <span class="blob" style="width:220px;height:220px;background:#F5921E;top:-70px;right:-40px"></span>
+      <span class="blob" style="width:140px;height:140px;background:#fff;bottom:-60px;right:120px"></span>
+      <h3>Petshop Anda, tercatat rapi.</h3>
+      <p>Kasir, booking grooming, penitipan, dan pengingat vaksin dalam satu aplikasi. Dipakai dari petshop rumahan sampai lima cabang.</p>
+      <div class="btn-row"><span class="btn btn-cta">Coba gratis 14 hari</span>
+        <span class="btn" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.5)">Lihat demo</span></div>
+    </div>
+    <p class="note" style="margin-bottom:30px">Navy field, reversed wordmark, one orange CTA, soft circular blobs bleeding off the edges — drawn from the same circle geometry as the letters. No stock photos of smiling models, no gradients.</p>
+
+    <h3>Product surfaces</h3>
+    <div class="g2" style="margin-top:12px">
+      <div class="mock">
+        <div class="bar"><b>Booking hari ini</b><span class="pill n">6 jadwal</span></div>
+        <div class="row"><div class="av" style="background:#E9EFF9;color:#1E3A6B">B</div><div class="w"><b>Bella</b><span>Grooming lengkap · Kak Rina</span></div><div class="t">10:00</div></div>
+        <div class="row"><div class="av" style="background:#FFF6EA;color:#B96A05">M</div><div class="w"><b>Miko</b><span>Mandi kutu · Kak Deni</span></div><div class="t">11:30</div></div>
+        <div class="row"><div class="av" style="background:#E9EFF9;color:#1E3A6B">O</div><div class="w"><b>Oyen</b><span>Penitipan 3 hari · Kak Sari</span></div><div class="t">13:00</div></div>
+      </div>
+      <div class="mock">
+        <div class="bar"><b>Kasir</b><span class="pill o">Member</span></div>
+        <div class="row"><div class="w"><b>Grooming lengkap — Bella</b><span>Potong kuku, mandi, blow dry</span></div><div class="t">Rp 150.000</div></div>
+        <div class="row"><div class="w"><b>Royal Canin Kitten 1 kg</b><span>Stok tersisa 4</span></div><div class="t">Rp 145.000</div></div>
+        <div class="tot"><span>Total setelah diskon member</span><b>Rp 265.500</b></div>
+        <div style="margin-top:14px"><span class="btn btn-primary" style="width:100%">Bayar &amp; kirim struk</span></div>
+      </div>
+    </div>
+    <p class="note" style="margin-top:14px">The product runs on white and Cloud, not navy. A groomer looks at this forty times a day under fluorescent light — the brand colour belongs in the nav bar and the buttons, not the canvas.</p>
+
+    <h3 style="margin-top:32px">Icons, illustration, motion</h3>
+    <ul class="c" style="margin-bottom:26px">
+      <li><strong>Icons</strong> — Lucide or Phosphor, rounded caps, 2 px stroke at 24 px. Never mix sets; never mix filled and outline.</li>
+      <li><strong>Illustration</strong> — flat, no outlines, built from circles and capsules like the letterforms. Navy and Sky base, orange for one focal element per drawing. No faces on objects.</li>
+      <li><strong>Photography</strong> — real Indonesian petshops, natural light, visible grooming tables and clutter. Never a golden retriever on a white cyclorama.</li>
+      <li><strong>Motion</strong> — 160 ms ease-out for micro-interactions, 240 ms for panels, nothing over 400 ms. The logo's only sanctioned animation is the three sparkles fading up in sequence over 240 ms on first load, once per session. Honour <code>prefers-reduced-motion</code>.</li>
+    </ul>
+
+    <h3>Accessibility floor</h3>
+    <ul class="c">
+      <li>Body text ≥ 15 px, contrast ≥ 4.5:1. Deep Navy on white and white on navy both clear it.</li>
+      <li>Orange is never a text colour on white.</li>
+      <li>Visible focus ring on every interactive element. Touch targets ≥ 44 × 44 px.</li>
+      <li>Status is never colour alone — every coloured badge pairs with a word.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 08 APPLICATIONS -->
+<section>
+  <div class="wrap">
+    <div class="head">
+      <p class="eyebrow">08 — Applied surfaces</p>
+      <h2>Where the brand actually gets seen.</h2>
+      <p>Most people will meet Buloo on a thermal receipt or a WhatsApp message, not the website. These surfaces get the same care.</p>
+    </div>
+
+    <div class="g2">
+      <div>
+        <h3>Struk — thermal receipt</h3>
+        <div class="struk">
+          <div style="text-align:center;font-weight:700">PETSHOP MELATI<br><span style="font-weight:400">Jl. Raya Sidoarjo 12</span></div>
+          <hr>
+          <div>Grooming lengkap — Bella</div>
+          <div style="display:flex;justify-content:space-between"><span>1 x</span><span>150.000</span></div>
+          <div>Royal Canin Kitten 1kg</div>
+          <div style="display:flex;justify-content:space-between"><span>1 x</span><span>145.000</span></div>
+          <hr>
+          <div style="display:flex;justify-content:space-between;font-weight:700"><span>TOTAL</span><span>265.500</span></div>
+          <hr>
+          <div style="text-align:center;font-size:10px">Dicatat dengan Buloo</div>
+        </div>
+        <ul class="c" style="margin-top:14px">
+          <li><strong>58 mm</strong> = 384 px printable at 203 dpi. <strong>80 mm</strong> = 576 px.</li>
+          <li>Pure 1-bit black. No greys, no anti-aliasing, no colour — thermal printers dither everything else into mush.</li>
+          <li>Use the <strong>mono icon</strong> only, max 200 px wide (58 mm) or 300 px (80 mm). Never the wordmark with sparkles.</li>
+          <li>Use the printer's built-in font for all text. Don't try to render Plus Jakarta Sans as a bitmap.</li>
+          <li>Footer line is always <em>"Dicatat dengan Buloo"</em> — small, centred, never above the shop's own name.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>WhatsApp &amp; social</h3>
+        <ul class="c">
+          <li><strong>WhatsApp Business avatar</strong> — navy squircle icon (it renders as a circle; the squircle survives the crop).</li>
+          <li><strong>Social avatars</strong> — orange circle icon. This is its only use.</li>
+          <li><strong>Instagram post</strong> 1080 × 1080, <strong>story</strong> 1080 × 1920, 80 px safe margins.</li>
+          <li>One orange element per post. Headline max two lines, Plus Jakarta Sans 800.</li>
+          <li>Message templates carry at most one 🐾 and only when they reach a pet owner.</li>
+        </ul>
+
+        <h3 style="margin-top:26px">Signage, stickers &amp; merch</h3>
+        <ul class="c">
+          <li><strong>Window sticker</strong> 100 × 100 mm die-cut circle, orange icon, text <em>"Booking di sini pakai Buloo"</em>.</li>
+          <li><strong>Spanduk</strong> — reversed wordmark on navy, logo width ≥ 25% of banner width.</li>
+          <li><strong>Apron &amp; kaos</strong> — mono icon embroidered, minimum 40 mm wide. Embroidery cannot hold the 18 px ear gap below that.</li>
+          <li><strong>Rubber stamp</strong> — mono icon only, minimum 25 mm.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section style="background:var(--navy);color:#fff;border:0">
+  <div class="wrap">
+    <p class="eyebrow" style="color:var(--orange)">09 — The short version</p>
+    <h2 style="color:#fff;max-width:19ch">Navy does the work. Orange does the smile. One smile per screen.</h2>
+    <p style="color:rgba(255,255,255,.74);margin-top:18px;font-size:17px">Round everything. Nothing goes inside the <em>b</em>. Keep the ear gap. Write like a colleague, in Bahasa. And never describe a customer by how big their shop is — the one-person groomer and the five-branch chain get exactly the same brand.</p>
+  </div>
+</section>
+
+</body>
+</html>
