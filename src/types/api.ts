@@ -2131,9 +2131,56 @@ export interface Booking {
 }
 
 /** One animal on a booking, for the header's `pets` list. */
+/** One service on a visit, with its add-ons under it — see `BookingPet`. */
+export interface BookingPetService {
+  /** The stored row's id: what an invoice line or a POS line points at. */
+  itemId: string;
+  serviceId: string;
+  name: string;
+  /** The kind of work — "Grooming", "Hotel". Not main/addon. */
+  serviceType: string | null;
+  price: string;
+  durationMin: number | null;
+  groomerUserId: string | null;
+  groomerName: string | null;
+  /** Set when the person named cannot work the day this is booked for. */
+  groomerOffReason: string | null;
+  assistantGroomers: { _id: string; name: string }[];
+  workStatus: BookingWorkStatus;
+  startedAt: string | null;
+  finishedAt: string | null;
+  notes: string | null;
+  pulledToCartAt: string | null;
+  pulledToInvoiceAt: string | null;
+  addons: {
+    itemId: string;
+    serviceId: string;
+    name: string;
+    price: string;
+    durationMin: number | null;
+    pulledToCartAt: string | null;
+    pulledToInvoiceAt: string | null;
+  }[];
+}
+
+/**
+ * ONE ANIMAL ON THE VISIT, WITH WHAT IS BEING DONE TO IT.
+ *
+ * ─── A VIEW, NOT THE STORED SHAPE ──────────────────────────────────────────
+ *
+ * The API stores one document per sellable line — that is what an invoice line
+ * and a POS line each point at, what `commissionrecords` is unique per, and what
+ * the calendar, the clash check and the pet timeline find by index. This is the
+ * same rows grouped the way every screen reads them, built on the way out.
+ *
+ * `petId` / `petName` HAVE ALWAYS BEEN HERE and are unchanged; `services` is
+ * added beside them, so a day sheet that wants only the names keeps working.
+ * The flat `Booking["items"]` is also untouched.
+ */
 export interface BookingPet {
   petId: string;
   petName: string | null;
+  services: BookingPetService[];
 }
 
 /** How much of a visit has been billed — see `Booking.billingState`. */

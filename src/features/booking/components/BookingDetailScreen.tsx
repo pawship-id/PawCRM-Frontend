@@ -235,103 +235,178 @@ export function BookingDetailScreen({ id }: { id: string }) {
       */}
       <Card
         title="Yang dikerjakan"
-        description="Satu blok per hewan. Tiap baris punya groomer, durasi, dan status tagihannya sendiri."
+        description="Satu blok per hewan. Tiap layanan punya groomer, durasi, dan status tagihannya sendiri; add-on menempel di layanannya."
       >
         <ul className="flex flex-col gap-3">
-          {booking.items.map((item) => {
-            const pet = pets.find((row) => row._id === item.petId) ?? null;
-            const claimed = item.pulledToCartAt ?? item.pulledToInvoiceAt;
+          {booking.pets.map((group) => {
+            const pet = pets.find((row) => row._id === group.petId) ?? null;
 
             return (
               <li
-                key={item._id}
+                key={group.petId}
                 className="rounded-lg border border-border p-3"
               >
+                {/*
+                  ONE BLOCK PER ANIMAL, and the services inside it — the shape
+                  the API now hands over (`booking.pets`), rather than this
+                  screen regrouping the flat list for itself. It used to be one
+                  block per ROW, which put the animal's name, its warnings and
+                  its two buttons on screen once per service, and showed an
+                  add-on as a line somebody had chosen on its own.
+                */}
                 <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <span className="block text-sm font-semibold text-foreground">
-                      {item.petName ?? "—"}
-                    </span>
-                    <span className="block text-sm text-foreground">
-                      {item.name}
-                      {/*
-                        THE KIND OF WORK, from the row's own snapshot — not read
-                        through the catalogue, so a renamed line does not rewrite
-                        what this visit says it was.
-                      */}
-                      {item.serviceType && (
-                        <span className="ml-2 rounded-full bg-tint-neutral px-2 py-0.5 text-xs text-muted">
-                          {item.serviceType}
-                        </span>
-                      )}
-                    </span>
-                    <span className="block text-xs text-muted">
-                      {item.groomerName}
-                      {item.durationMin
-                        ? ` · ${item.durationMin} menit`
-                        : " · durasi belum diisi"}
-                    </span>
-
-                    {/*
-                      ─── THE GROOMER WENT ON LEAVE AFTER THIS WAS BOOKED ───────
-
-                      The roster screen warns when the leave is SET (kriteria
-                      4.9), but that warning fires once and is gone when the page
-                      closes. Until this existed the booking remembered nothing:
-                      on Thursday morning it still read "Sinta", and the only
-                      person who knew was whoever had ticked the box days before.
-
-                      `role="alert"` — it is not decoration. Somebody opening this
-                      booking has to be told before they read the name and assume
-                      it is settled.
-
-                      IT SAYS WHAT TO DO. A warning whose only content is "this is
-                      wrong" leaves the reader to invent the remedy; there are
-                      exactly two here, and naming them is the difference between
-                      a notice and a task.
-                    */}
-                    {item.groomerOffReason && (
-                      <span
-                        role="alert"
-                        className="mt-1 block rounded border border-danger/40 bg-danger/5 px-2 py-1 text-xs font-semibold text-danger"
-                      >
-                        {item.groomerName} {item.groomerOffReason.toLowerCase()}{" "}
-                        — ganti groomer atau hubungi pelanggan.
-                      </span>
+                  <span className="text-sm font-semibold text-foreground">
+                    {group.petName ?? "—"}
+                  </span>
+                  <span className="text-sm font-semibold tabular-nums text-foreground">
+                    {formatMoney(
+                      sumDecimals(
+                        group.services.flatMap((service) => [
+                          service.price,
+                          ...service.addons.map((addon) => addon.price),
+                        ]),
+                      ),
                     )}
-                  </div>
-
-                  <div className="text-right">
-                    <span className="block text-sm tabular-nums text-foreground">
-                      {formatMoney(item.price)}
-                    </span>
-                    {/*
-                      PER ROW, because that is where the marker lives since K3 —
-                      and it is what makes a half-billed visit legible instead of
-                      merely possible.
-                    */}
-                    <span className="block text-xs text-muted">
-                      {claimed
-                        ? item.pulledToInvoiceAt
-                          ? "Sudah difakturkan"
-                          : "Sudah di kasir"
-                        : "Belum ditagih"}
-                    </span>
-                  </div>
+                  </span>
                 </div>
-
-                {item.notes && (
-                  <p className="mt-2 text-xs text-muted">{item.notes}</p>
-                )}
 
                 {/*
                   FR-5 kriteria 5.14 — the same card the booking form shows, so
                   whoever opens this booking before a hand-off reads exactly what
-                  the person who took it read.
+                  the person who took it read. ONCE PER ANIMAL now: it is about
+                  the animal, not about each thing being done to it.
                 */}
                 {pet && <PetSummaryCard pet={pet} className="mt-2" />}
 
-                <div className="mt-2 flex flex-wrap gap-2">
+                <ul className="mt-3 flex flex-col gap-2">
+                  {group.services.map((service) => {
+                    const claimed =
+                      service.pulledToCartAt ?? service.pulledToInvoiceAt;
+
+                    return (
+                      <li
+                        key={service.itemId}
+                        className="rounded-md border border-border bg-background p-2.5"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <span className="block text-sm text-foreground">
+                              {service.name}
+                              {/*
+                                THE KIND OF WORK, from the row's own snapshot —
+                                not read through the catalogue, so a renamed line
+                                does not rewrite what this visit says it was.
+                              */}
+                              {service.serviceType && (
+                                <span className="ml-2 rounded-full bg-tint-neutral px-2 py-0.5 text-xs text-muted">
+                                  {service.serviceType}
+                                </span>
+                              )}
+                            </span>
+                            <span className="block text-xs text-muted">
+                              {service.groomerName}
+                              {service.assistantGroomers.length > 0 &&
+                                ` + ${service.assistantGroomers
+                                  .map((one) => one.name)
+                                  .join(", ")}`}
+                              {service.durationMin
+                                ? ` · ${service.durationMin} menit`
+                                : " · durasi belum diisi"}
+                            </span>
+
+                            {/*
+                              ─── THE GROOMER WENT ON LEAVE AFTER THIS WAS
+                              BOOKED ───
+
+                              The roster screen warns when the leave is SET
+                              (kriteria 4.9), but that warning fires once and is
+                              gone when the page closes. Until this existed the
+                              booking remembered nothing: on Thursday morning it
+                              still read "Sinta", and the only person who knew was
+                              whoever had ticked the box days before.
+
+                              `role="alert"` — it is not decoration. Somebody
+                              opening this booking has to be told before they read
+                              the name and assume it is settled.
+
+                              IT SAYS WHAT TO DO. A warning whose only content is
+                              "this is wrong" leaves the reader to invent the
+                              remedy; there are exactly two here.
+                            */}
+                            {service.groomerOffReason && (
+                              <span
+                                role="alert"
+                                className="mt-1 block rounded border border-danger/40 bg-danger/5 px-2 py-1 text-xs font-semibold text-danger"
+                              >
+                                {service.groomerName}{" "}
+                                {service.groomerOffReason.toLowerCase()} — ganti
+                                groomer atau hubungi pelanggan.
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="text-right">
+                            <span className="block text-sm tabular-nums text-foreground">
+                              {formatMoney(service.price)}
+                            </span>
+                            {/*
+                              PER ROW, because that is where the marker lives
+                              since K3 — and it is what makes a half-billed visit
+                              legible instead of merely possible. An add-on is its
+                              own row and carries its own, which is why it is
+                              stated again below rather than assumed.
+                            */}
+                            <span className="block text-xs text-muted">
+                              {claimed
+                                ? service.pulledToInvoiceAt
+                                  ? "Sudah difakturkan"
+                                  : "Sudah di kasir"
+                                : "Belum ditagih"}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/*
+                          THE ADD-ONS, UNDER THE SERVICE THEY WERE ADDED TO.
+                          They are still their own stored rows — that is how each
+                          bills and prints on its own line — but nobody chose
+                          "Parfum" by itself, so nothing here shows it as though
+                          they had.
+                        */}
+                        {service.addons.length > 0 && (
+                          <ul className="mt-2 flex flex-col gap-1 border-l-2 border-border pl-2.5">
+                            {service.addons.map((addon) => (
+                              <li
+                                key={addon.itemId}
+                                className="flex justify-between gap-2 text-xs"
+                              >
+                                <span className="text-muted">
+                                  + {addon.name}
+                                  {addon.durationMin
+                                    ? ` · ${addon.durationMin} mnt`
+                                    : ""}
+                                </span>
+                                <span className="tabular-nums text-muted">
+                                  {formatMoney(addon.price)}
+                                  {(addon.pulledToCartAt ??
+                                    addon.pulledToInvoiceAt) && " · ditagih"}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+
+                        {service.notes && (
+                          <p className="mt-2 text-xs text-muted">
+                            {service.notes}
+                          </p>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+
+                <div className="mt-3 flex flex-wrap gap-2">
                   {/*
                     THE WAY INTO THE WORK, and the primary action on this block.
 
@@ -348,9 +423,9 @@ export function BookingDetailScreen({ id }: { id: string }) {
                   */}
                   <Button asChild size="sm">
                     <Link
-                      href={`/dashboard/booking/${booking._id}/hewan/${item.petId}`}
+                      href={`/dashboard/booking/${booking._id}/hewan/${group.petId}`}
                     >
-                      Pekerjaan {item.petName ?? "hewan ini"}
+                      Pekerjaan {group.petName ?? "hewan ini"}
                     </Link>
                   </Button>
 

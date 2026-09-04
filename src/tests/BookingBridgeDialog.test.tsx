@@ -35,8 +35,13 @@ const booking = (overrides: Partial<Booking> = {}): Booking => ({
   belongings: [],
   createdByName: null,
   createdByRoleName: null,
-  // AFTER PCR-040: the animals live on the rows, and the header lists them.
-  pets: [{ petId: PET_ID, petName: "Bruno" }],
+  /*
+    AFTER PCR-040 the animals live on the rows and the header lists them; the
+    services are grouped under each on the way out. This dialog reads the flat
+    `items` — the group is empty here because the shape, not the contents, is
+    what it needs.
+  */
+  pets: [{ petId: PET_ID, petName: "Bruno", services: [] }],
   petCount: 1,
   totalAmount: "150000.0000",
   totalDurationMin: null,

@@ -6,7 +6,12 @@ import { bookingService } from "@/services/booking.service";
 import { branchService } from "@/services/branch.service";
 import { petService } from "@/services/pet.service";
 import { ApiError } from "@/services/api-error";
-import type { Booking, BookingItem, Pet } from "@/types/api";
+import type {
+  Booking,
+  BookingItem,
+  BookingPetService,
+  Pet,
+} from "@/types/api";
 
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
@@ -38,6 +43,43 @@ const item = (overrides: Partial<BookingItem> = {}): BookingItem =>
     ...overrides,
   }) as BookingItem;
 
+/**
+ * The grouped view the API builds on read — one entry per animal, that animal's
+ * services inside it, add-ons under each. Derived from the same rows the flat
+ * `items` holds, because that is exactly what the server does: a fixture where
+ * the two disagree would test a screen against data the API cannot produce.
+ */
+const petGroup = (
+  petId: string,
+  petName: string,
+  services: Partial<BookingPetService>[] = [{}],
+) =>
+  ({
+    petId,
+    petName,
+    services: services.map((service) => ({
+      itemId: "row-mochi",
+      serviceId: "svc-1",
+      name: "Full Grooming",
+      serviceType: "Grooming",
+      price: "150000.0000",
+      durationMin: 90,
+      groomerUserId: "user-1",
+      groomerName: "Sinta",
+      groomerOffReason: null,
+      assistantGroomers: [],
+      workStatus: "pending",
+      startedAt: null,
+      finishedAt: null,
+      notes: null,
+      pulledToCartAt: null,
+      pulledToInvoiceAt: null,
+      addons: [],
+      ...service,
+    })),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  }) as any;
+
 const booking = (overrides: Partial<Booking> = {}): Booking =>
   ({
     _id: "bk-1",
@@ -46,8 +88,8 @@ const booking = (overrides: Partial<Booking> = {}): Booking =>
     customerId: "cust-1",
     customerName: "Bu Lisa",
     pets: [
-      { petId: MOCHI, petName: "Mochi" },
-      { petId: COCO, petName: "Coco" },
+      petGroup(MOCHI, "Mochi"),
+      petGroup(COCO, "Coco", [{ itemId: "row-coco" }]),
     ],
     petName: "Mochi, Coco",
     petCount: 2,
@@ -125,10 +167,85 @@ describe("BookingDetailScreen", () => {
     PER ROW, because that is where the marker lives since K3 — and it is what
     makes a half-billed visit legible instead of merely possible.
   */
+  it("shows an add-on under the service it was added to, not as a line of its own", async () => {
+    /*
+      THE COMPLAINT THIS ANSWERS. Nobody chooses "Parfum" by itself, and showing
+      it beside the bath made it look as though somebody had. It is still its own
+      STORED row — that is how it bills and prints on its own line, and how it can
+      carry its own commission — but the screen reads the grouped view the API
+      builds, where it hangs off its parent.
+    */
+    bookings.getById.mockResolvedValue(
+      booking({
+        pets: [
+          petGroup(MOCHI, "Mochi", [
+            {
+              addons: [
+                {
+                  itemId: "row-parfum",
+                  serviceId: "svc-addon",
+                  name: "Parfum",
+                  price: "20000.0000",
+                  durationMin: 10,
+                  pulledToCartAt: null,
+                  pulledToInvoiceAt: null,
+                },
+              ],
+            },
+          ]),
+        ],
+      }),
+    );
+
+    renderWithAuth(<BookingDetailScreen id="bk-1" />);
+
+    /* One animal, one service — and the add-on inside it rather than beside. */
+    expect(await screen.findByText(/\+ Parfum/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Full Grooming/)).toHaveLength(1);
+  });
+
+  it("adds the add-ons into the animal's total", async () => {
+    // A total that ignored them would disagree with the bill.
+    bookings.getById.mockResolvedValue(
+      booking({
+        pets: [
+          petGroup(MOCHI, "Mochi", [
+            {
+              addons: [
+                {
+                  itemId: "row-parfum",
+                  serviceId: "svc-addon",
+                  name: "Parfum",
+                  price: "20000.0000",
+                  durationMin: 10,
+                  pulledToCartAt: null,
+                  pulledToInvoiceAt: null,
+                },
+              ],
+            },
+          ]),
+        ],
+      }),
+    );
+
+    renderWithAuth(<BookingDetailScreen id="bk-1" />);
+
+    // 150.000 + 20.000
+    expect(await screen.findByText(/Rp\s?170[.,]000/)).toBeInTheDocument();
+  });
+
   it("says which rows have been billed and which have not", async () => {
     bookings.getById.mockResolvedValue(
       booking({
         billingState: "partial",
+        /* The claim lives on the ROW (K3), and the screen reads it through the
+           grouped view the API builds from those same rows. */
+        pets: [
+          petGroup(MOCHI, "Mochi", [
+            { pulledToCartAt: "2026-09-02T04:00:00.000Z" },
+          ]),
+          petGroup(COCO, "Coco", [{ itemId: "row-coco" }]),
+        ],
         items: [
           item({ pulledToCartAt: "2026-09-02T04:00:00.000Z" }),
           item({ _id: "row-coco", petId: COCO, petName: "Coco" }),
@@ -284,22 +401,12 @@ describe("BookingDetailScreen", () => {
   it("warns that the groomer is off, and says what to do about it", async () => {
     bookings.getById.mockResolvedValue(
       booking({
-        items: [
-          {
-            _id: "it-1",
-            petId: "pet-1",
-            petName: "Bruno",
-            serviceId: "svc-1",
-            name: "Grooming Full Service",
-            price: "150000.0000",
-            durationMin: 90,
-            notes: null,
-            pulledToCartAt: null,
-            pulledToInvoiceAt: null,
-            groomerUserId: "user-1",
-            groomerName: "Sinta",
-            groomerOffReason: "Libur setiap Kamis",
-          },
+        /* The warning travels with the SERVICE — a grouped view that dropped it
+           would hide the one thing this booking must say out loud. */
+        pets: [
+          petGroup("pet-1", "Bruno", [
+            { itemId: "it-1", groomerOffReason: "Libur setiap Kamis" },
+          ]),
         ],
       } as never),
     );
