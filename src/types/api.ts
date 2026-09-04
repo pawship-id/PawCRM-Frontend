@@ -1906,6 +1906,20 @@ export interface BookingItem {
    */
   parentItemId: string | null;
   name: string;
+  /**
+   * THE KIND OF WORK — "Grooming", "Hotel", "Day Care" — as TEXT.
+   *
+   * ⚠️ NOT `Service["serviceType"]`, which is `main` | `addon`. Same name, two
+   * meanings, one join apart: on a booking row this is the kind of work, and
+   * whether a line is an add-on is said by `parentItemId` instead.
+   *
+   * READ FROM THE SERVICE'S LINE OF BUSINESS and stored as its NAME, so the
+   * booking is not coupled to the catalogue's accounting dimension. A SNAPSHOT
+   * like `name` and `price`: renaming a line must not rewrite last month's day
+   * sheets. Null on rows written before the field, and on a service whose line
+   * has since been deleted.
+   */
+  serviceType: string | null;
   price: string;
   /**
    * How long this row takes, in minutes. Snapshotted from the service and

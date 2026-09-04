@@ -50,6 +50,8 @@ const booking = (overrides: Partial<Booking> = {}): Booking => ({
     parentItemId: null,
     /* Nobody helping: this row is one groomer's, which is the ordinary case. */
     assistantGroomers: [],
+    /* The kind of work, snapshotted as text — NOT main/addon. See BookingItem. */
+    serviceType: "Grooming",
       serviceId: SERVICE_ID,
       name: "Grooming Full Service",
       price: "150000.0000",

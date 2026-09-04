@@ -254,6 +254,16 @@ export function BookingDetailScreen({ id }: { id: string }) {
                     </span>
                     <span className="block text-sm text-foreground">
                       {item.name}
+                      {/*
+                        THE KIND OF WORK, from the row's own snapshot — not read
+                        through the catalogue, so a renamed line does not rewrite
+                        what this visit says it was.
+                      */}
+                      {item.serviceType && (
+                        <span className="ml-2 rounded-full bg-tint-neutral px-2 py-0.5 text-xs text-muted">
+                          {item.serviceType}
+                        </span>
+                      )}
                     </span>
                     <span className="block text-xs text-muted">
                       {item.groomerName}
