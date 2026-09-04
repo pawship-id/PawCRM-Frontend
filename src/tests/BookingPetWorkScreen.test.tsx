@@ -88,6 +88,15 @@ beforeEach(() => {
   bookings.advanceItemWork.mockResolvedValue(booking());
   bookings.correctItemTimes.mockResolvedValue(booking());
   bookings.changeStatus.mockResolvedValue(booking({ status: "in_progress" }));
+  /*
+    WHO MAY BE BOOKED THAT DAY — read by the per-session crew editor. Best
+    effort in the component; stubbed here so the cases that are about the clock
+    and the ladder are not about a rejected fetch.
+  */
+  bookings.availability.mockResolvedValue([
+    { _id: "user-1", fullName: "Mbak Sari", offReason: null },
+  ] as never);
+  bookings.setItemGroomers.mockResolvedValue(booking());
   customers.getById.mockResolvedValue({
     _id: "cust-1",
     name: "Bu Lisa",

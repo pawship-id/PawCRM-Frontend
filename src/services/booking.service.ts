@@ -94,6 +94,32 @@ export const bookingService = {
     apiClient.get<BookingUnbilledSummary>("/bookings/unbilled-summary"),
 
   /**
+   * PATCH /bookings/:id/items/:itemId/groomers — who is on ONE session.
+   *
+   * The lead (`groomerUserId`, `null` unassigns) and the extra hands beside
+   * them. The booking form sets one default per animal; this is how a session
+   * gets handed to somebody else once the day is running, or gains a second
+   * person at the table.
+   *
+   * Only the LEAD earns: commission reads that field and nothing else. Both the
+   * lead and the assistants are checked against the diary, so a `409` here is a
+   * clash — send `forceClash` to save it anyway, as the booking form does.
+   */
+  setItemGroomers: (
+    bookingId: string,
+    itemId: string,
+    patch: {
+      groomerUserId?: string | null;
+      assistantGroomerUserIds?: string[];
+      forceClash?: boolean;
+    },
+  ) =>
+    apiClient.patch<Booking>(
+      `/bookings/${bookingId}/items/${itemId}/groomers`,
+      patch,
+    ),
+
+  /**
    * PATCH /bookings/:id/belongings/:belongingId — ticks ONE thing in or out.
    *
    * A VERB OF ITS OWN, not a corner of `update`. Two counters handing back two

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Alert, Card, Spinner, TextField } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
+import { SessionGroomers } from "./SessionGroomers";
 import { PetSummaryCard } from "@/features/pets";
 import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
@@ -150,6 +151,16 @@ export function BookingPetWorkScreen({
   petId: string;
 }) {
   const [booking, setBooking] = useState<Booking | null>(null);
+  /*
+    WHO MAY BE BOOKED ON THE DAY THIS VISIT IS FOR — the same read the booking
+    form makes, and for the same reason: somebody who is off on Thursday must not
+    be offered for a Thursday session. Best effort and silent, since reading
+    staff takes a permission a groomer at the table may not hold; without it the
+    crew editor simply does not appear.
+  */
+  const [groomers, setGroomers] = useState<
+    { value: string; label: string; disabled?: boolean }[]
+  >([]);
   const [pet, setPet] = useState<Pet | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -309,6 +320,40 @@ export function BookingPetWorkScreen({
       setBusy(null);
     }
   }
+
+  useEffect(() => {
+    if (!booking?.scheduledAt) return;
+
+    let active = true;
+    const day = new Date(booking.scheduledAt);
+    const date = [
+      day.getFullYear(),
+      String(day.getMonth() + 1).padStart(2, "0"),
+      String(day.getDate()).padStart(2, "0"),
+    ].join("-");
+
+    bookingService
+      .availability(date)
+      .then((rows) => {
+        if (!active) return;
+        setGroomers(
+          rows.map((row) => ({
+            value: row._id,
+            label: row.offReason
+              ? `${row.fullName} — ${row.offReason}`
+              : row.fullName,
+            disabled: Boolean(row.offReason),
+          })),
+        );
+      })
+      .catch(() => {
+        if (active) setGroomers([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [booking?.scheduledAt]);
 
   if (loading) {
     return (
@@ -721,6 +766,21 @@ export function BookingPetWorkScreen({
                             atau hubungi pelanggan.
                           </p>
                         )}
+
+                        {/*
+                          WHO IS ON THIS SESSION — the booking form set one
+                          default per animal; this is where the day disagrees
+                          with it. Above the clock fields, because who is doing
+                          it is decided before how long it took.
+                        */}
+                        <div className="mb-3">
+                          <SessionGroomers
+                            bookingId={bookingId}
+                            row={row}
+                            groomers={groomers}
+                            onChanged={setBooking}
+                          />
+                        </div>
 
                         <Can feature="bookings" action="update">
                           <div className="flex flex-wrap items-end gap-3">

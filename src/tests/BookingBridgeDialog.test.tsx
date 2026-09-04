@@ -48,6 +48,8 @@ const booking = (overrides: Partial<Booking> = {}): Booking => ({
       petName: "Bruno",
     /* Null on a main service — an add-on names the row it hangs off. */
     parentItemId: null,
+    /* Nobody helping: this row is one groomer's, which is the ordinary case. */
+    assistantGroomers: [],
       serviceId: SERVICE_ID,
       name: "Grooming Full Service",
       price: "150000.0000",

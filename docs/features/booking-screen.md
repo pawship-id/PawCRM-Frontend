@@ -202,6 +202,33 @@ matters — **load a booking, change nothing, save it back unchanged** — is in
 rendering test: it would pass while quietly dropping every add-on, and the loss would show up
 on the bill.
 
+### The groomer is asked once per animal, and settled per session
+
+**On the form: one default per animal.** It used to be asked once per service, which is the
+wrong number of times — at booking a shop says "Sinta is doing Bruno today", not one name per
+line. The answer is written onto every one of that animal's sessions.
+
+**On the booking's own page: per session, and more than one.** Each session can be handed to
+somebody else, or gain a second pair of hands — `SessionGroomers`, in the expanded row of the
+per-animal work page, where the day is running and the person who knows is standing at the
+table.
+
+| | |
+| --- | --- |
+| The **lead** (`groomerUserId`) | Who is responsible — **and the only one commission is computed for** |
+| **Groomer tambahan** (`assistantGroomerUserIds`, max 4) | Counted busy by the clash check, paid nothing |
+
+**That split is said out loud on the screen**, not just in the schema: the lead's field says
+"yang dihitung komisinya", and adding somebody says they are counted busy and not paid. A
+screen that let people add "groomers" without saying so would be quietly deciding how a shop
+splits money — and the natural implementation would have been worse than quiet. Making the
+lead an array runs into `commissionrecords`' unique index on `bookingItemId`, where the second
+person's record is refused by the database and swallowed as success: never paid, nothing on
+screen, nothing in a log. See `bookingitems` in the backend's `database.md`.
+
+**Helpers with no lead are refused** on both sides — `advanceItemWork` will not start a session
+with no `groomerUserId`, so such a row would look staffed and behave unstaffed.
+
 ### The price follows the animal
 
 A service priced per variant is quoted from the pet's own **species, size and coat** — the

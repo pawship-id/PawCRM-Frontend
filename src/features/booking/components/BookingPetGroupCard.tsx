@@ -182,15 +182,46 @@ export function BookingPetGroupCard({
       </div>
 
       <div className="flex flex-col gap-4 p-4">
-        <SelectField
-          label="Hewan"
-          value={group.petId}
-          onChange={(value) => onChange({ petId: value })}
-          options={pets.map((item) => ({ value: item._id, label: item.name }))}
-          placeholder="Pilih hewan…"
-          disabled={disabled || hasBilled}
-          required
-        />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <SelectField
+            label="Hewan"
+            value={group.petId}
+            onChange={(value) => onChange({ petId: value })}
+            options={pets.map((item) => ({ value: item._id, label: item.name }))}
+            placeholder="Pilih hewan…"
+            disabled={disabled || hasBilled}
+            required
+          />
+
+          {/*
+            ONE GROOMER PER ANIMAL, AND IT IS A DEFAULT.
+
+            It used to be asked once per service, which is the wrong number of
+            times: at booking a shop says "Sinta is doing Bruno today", not one
+            name per line. It is written onto every one of this animal's
+            sessions, and the booking's own page is where a session gets handed
+            to somebody else or gains a second pair of hands — there, with the
+            day running, in front of the person who knows.
+
+            NO STAFF LIST, NO SELECT. Reading staff takes a permission a
+            receptionist who books all day has no other reason to hold;
+            assignment is optional and the server names an empty slot, so a
+            missing list costs a convenience rather than a rule.
+          */}
+          {groomers.length > 0 && (
+            <SelectField
+              label="Groomer"
+              value={group.groomerUserId}
+              onChange={(value) => onChange({ groomerUserId: value })}
+              options={[
+                { value: UNASSIGNED, label: "Belum ditentukan" },
+                ...groomers,
+              ]}
+              disabled={disabled || hasBilled}
+              hint="Berlaku untuk semua sesi hewan ini. Bisa diganti per sesi di halaman bookingnya."
+            />
+          )}
+        </div>
 
         {/*
           WHAT THE SHOP ALREADY KNOWS ABOUT THIS ANIMAL — FR-5 kriteria 5.13.
@@ -234,7 +265,6 @@ export function BookingPetGroupCard({
               line={line}
               pet={pet}
               mainServices={mainServices}
-              groomers={groomers}
               disabled={disabled}
               duplicate={duplicateKeys.has(line.key)}
               removable={group.services.length > 1}
@@ -324,7 +354,6 @@ function ServiceLine({
   line,
   pet,
   mainServices,
-  groomers,
   disabled,
   duplicate,
   removable,
@@ -335,7 +364,6 @@ function ServiceLine({
   line: ServiceDraft;
   pet: Pet | null;
   mainServices: Service[];
-  groomers: { value: string; label: string; disabled?: boolean }[];
   disabled: boolean;
   duplicate: boolean;
   removable: boolean;
@@ -415,26 +443,6 @@ function ServiceLine({
             <span className="text-muted">—</span>
           )}
         </p>
-      )}
-
-      {/*
-        NO STAFF LIST, NO SELECT. Reading staff takes a permission a receptionist
-        who books all day has no other reason to hold; assignment is optional and
-        the server names an empty slot, so a missing list costs a convenience.
-      */}
-      {groomers.length > 0 && (
-        <div className="mt-3">
-          <SelectField
-            label="Groomer"
-            value={line.groomerUserId}
-            onChange={(value) => onChange({ groomerUserId: value })}
-            options={[
-              { value: UNASSIGNED, label: "Belum ditentukan" },
-              ...groomers,
-            ]}
-            disabled={disabled || locked}
-          />
-        </div>
       )}
 
       {offeredAddons.length > 0 && (

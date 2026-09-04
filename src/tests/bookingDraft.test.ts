@@ -215,11 +215,29 @@ describe("groupsToItems", () => {
 
   it("turns the unassigned sentinel back into null", () => {
     const group = blankGroup(PET_A);
-    group.services = [
-      { ...blankService(), serviceId: MAIN, groomerUserId: UNASSIGNED },
-    ];
+    group.groomerUserId = UNASSIGNED;
+    group.services = [{ ...blankService(), serviceId: MAIN }];
 
     expect(groupsToItems([group])[0].groomerUserId).toBeNull();
+  });
+
+  it("writes the animal's one groomer onto each of its rows", () => {
+    /*
+      ASKED ONCE PER ANIMAL, applied to every session — the same fan-out the note
+      gets. At booking a shop says "Sinta is doing Bruno today", not one name per
+      line; who actually stands at each session is settled on the booking's page.
+    */
+    const group = blankGroup(PET_A);
+    group.groomerUserId = "groomer-1";
+    group.services = [
+      { ...blankService(), serviceId: MAIN },
+      { ...blankService(), serviceId: OTHER_MAIN },
+    ];
+
+    expect(groupsToItems([group]).map((row) => row.groomerUserId)).toEqual([
+      "groomer-1",
+      "groomer-1",
+    ]);
   });
 });
 
@@ -320,26 +338,26 @@ describe("longestGroomerMinutes", () => {
   it("takes the longest groomer's chain, never the sum", () => {
     // Mochi with Sinta for 90 and Coco with Rio for 60 means the visit takes 90.
     const a = blankGroup(PET_A);
+    a.groomerUserId = "sinta";
     a.services = [
-      { ...blankService(), serviceId: MAIN, groomerUserId: "sinta" },
+      { ...blankService(), serviceId: MAIN },
     ];
     const b = blankGroup(PET_B);
-    b.services = [
-      { ...blankService(), serviceId: OTHER_MAIN, groomerUserId: "rio" },
-    ];
+    b.groomerUserId = "rio";
+    b.services = [{ ...blankService(), serviceId: OTHER_MAIN }];
 
     expect(longestGroomerMinutes([a, b], serviceOf)).toBe(90);
   });
 
   it("sums the lines one groomer is doing — nobody does two animals at once", () => {
     const a = blankGroup(PET_A);
+    a.groomerUserId = "sinta";
     a.services = [
-      { ...blankService(), serviceId: MAIN, groomerUserId: "sinta" },
+      { ...blankService(), serviceId: MAIN },
     ];
     const b = blankGroup(PET_B);
-    b.services = [
-      { ...blankService(), serviceId: OTHER_MAIN, groomerUserId: "sinta" },
-    ];
+    b.groomerUserId = "sinta";
+    b.services = [{ ...blankService(), serviceId: OTHER_MAIN }];
 
     expect(longestGroomerMinutes([a, b], serviceOf)).toBe(150);
   });
@@ -351,8 +369,7 @@ describe("longestGroomerMinutes", () => {
         ...blankService(),
         serviceId: MAIN,
         addonServiceIds: [ADDON],
-        groomerUserId: "sinta",
-      },
+        },
     ];
 
     expect(longestGroomerMinutes([group], serviceOf)).toBe(120);
@@ -366,7 +383,6 @@ describe("longestGroomerMinutes", () => {
         serviceId: MAIN,
         durationMin: "45",
         addonServiceIds: [ADDON],
-        groomerUserId: "sinta",
       },
     ];
 

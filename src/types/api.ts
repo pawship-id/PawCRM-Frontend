@@ -1934,6 +1934,15 @@ export interface BookingItem {
    */
   groomerName: string;
   /**
+   * THE EXTRA HANDS ON THIS SESSION — resolved to `{ _id, name }` on read.
+   *
+   * SCHEDULING ONLY. They count against their own day in the clash check, and
+   * they earn nothing: commission is computed for `groomerUserId` alone. A pair
+   * rather than two index-aligned arrays, because the screen renders and removes
+   * them together.
+   */
+  assistantGroomers: { _id: string; name: string }[];
+  /**
    * WHY THE GROOMER ON THIS ROW CANNOT WORK THE DAY IT IS BOOKED FOR — null in
    * the ordinary case.
    *

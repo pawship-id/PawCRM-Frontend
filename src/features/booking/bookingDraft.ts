@@ -38,7 +38,6 @@ export interface ServiceDraft {
   serviceId: string;
   /** The add-ons ticked under this service, by service id. */
   addonServiceIds: string[];
-  groomerUserId: string;
   /** As typed; "" means "use the catalogue's". */
   durationMin: string;
   /**
@@ -52,6 +51,17 @@ export interface ServiceDraft {
 export interface PetGroupDraft {
   key: string;
   petId: string;
+  /**
+   * THE GROOMER THIS ANIMAL'S WHOLE VISIT STARTS WITH — a DEFAULT, not the last
+   * word.
+   *
+   * It is asked once per animal rather than once per service, because at booking
+   * time it is one answer: "Sinta is doing Bruno today". Who actually stands at
+   * each session — and whether a second pair of hands joins one of them — is
+   * settled on the booking's own page once the day is running, which is where
+   * the person who knows is standing.
+   */
+  groomerUserId: string;
   /**
    * WHICH LINE OF BUSINESS the service picker is filtered to — Grooming, Hotel,
    * Klinik. A FILTER, NOT A FIELD: it is never sent, because the row's service
@@ -79,7 +89,6 @@ export function blankService(): ServiceDraft {
     key: `svc-${seq}`,
     serviceId: "",
     addonServiceIds: [],
-    groomerUserId: UNASSIGNED,
     durationMin: "",
     locked: false,
   };
@@ -91,6 +100,7 @@ export function blankGroup(petId = ""): PetGroupDraft {
   return {
     key: `pet-${seq}`,
     petId,
+    groomerUserId: UNASSIGNED,
     businessLineId: "",
     services: [blankService()],
     notes: "",
@@ -133,7 +143,6 @@ export function groupsFromBooking(booking: Booking): PetGroupDraft[] {
     const line: ServiceDraft = {
       ...blankService(),
       serviceId: item.serviceId,
-      groomerUserId: item.groomerUserId ?? UNASSIGNED,
       // Shown as typed, so saving without touching it keeps the number.
       durationMin: item.durationMin === null ? "" : String(item.durationMin),
       locked: Boolean(item.pulledToCartAt || item.pulledToInvoiceAt),
@@ -146,6 +155,19 @@ export function groupsFromBooking(booking: Booking): PetGroupDraft[] {
     // One note per animal: the rows of one animal carry the same words, so the
     // first non-empty one is what the card shows.
     if (!group.notes && item.notes) group.notes = item.notes;
+    /*
+      THE ANIMAL'S DEFAULT GROOMER, from the first of its rows that names one.
+
+      The form asks this once per animal; the API stores it per row, and by the
+      time a booking is being edited those rows may genuinely differ — the day
+      ran, and one session was handed to somebody else. The card shows the first
+      answer rather than inventing a blank, and re-saving applies it to every row
+      of that animal, which is what "default" means on this screen. Per-session
+      crews are changed on the booking's own page, not here.
+    */
+    if (group.groomerUserId === UNASSIGNED && item.groomerUserId) {
+      group.groomerUserId = item.groomerUserId;
+    }
   }
 
   for (const item of addons) {
@@ -160,7 +182,6 @@ export function groupsFromBooking(booking: Booking): PetGroupDraft[] {
     group.services.push({
       ...blankService(),
       serviceId: item.serviceId,
-      groomerUserId: item.groomerUserId ?? UNASSIGNED,
       durationMin: item.durationMin === null ? "" : String(item.durationMin),
       locked: Boolean(item.pulledToCartAt || item.pulledToInvoiceAt),
     });
@@ -197,9 +218,14 @@ export function groupsToItems(groups: PetGroupDraft[]): BookingItemInput[] {
         petId: group.petId,
         serviceId: line.serviceId,
         addonServiceIds: line.addonServiceIds,
-        // FR-3's "Belum ditentukan" is a real state, not a gap.
+        /*
+          THE ANIMAL'S DEFAULT, ONTO EVERY ONE OF ITS ROWS. Asked once, applied
+          to each — the same fan-out the note gets, and for the same reason: at
+          booking time it is one answer about one animal. FR-3's "Belum
+          ditentukan" is a real state, not a gap.
+        */
         groomerUserId:
-          line.groomerUserId === UNASSIGNED ? null : line.groomerUserId,
+          group.groomerUserId === UNASSIGNED ? null : group.groomerUserId,
         /*
           OMITTED WHEN NOBODY TYPED ONE, rather than sent as the catalogue's
           number: the server snapshots from the catalogue itself, so sending
@@ -295,8 +321,8 @@ export function longestGroomerMinutes(
       if (minutes <= 0) continue;
 
       perGroomer.set(
-        line.groomerUserId,
-        (perGroomer.get(line.groomerUserId) ?? 0) + minutes,
+        group.groomerUserId,
+        (perGroomer.get(group.groomerUserId) ?? 0) + minutes,
       );
     }
   }
