@@ -13,6 +13,8 @@ import {
   PROBLEMS,
   RELEASES,
   SCOPE,
+  WHATSAPP_INTENTS,
+  type WhatsappIntent,
 } from "../content";
 
 /** The page's one column width, shared by every band. */
@@ -58,12 +60,20 @@ function SectionHead({
  */
 export function LandingScreen() {
   /*
-    ONE LINK, BUILT ONCE. The number is configuration (NEXT_PUBLIC_PHONE_NUMBER)
-    because it changes without the page changing — a shop line, a new SIM, a
-    second number for sales. Two hand-typed `wa.me` URLs is how one of them ends
-    up pointing at the old number six months after it was cancelled.
+    ONE BUILDER, TWO INTENTS. The number is configuration
+    (NEXT_PUBLIC_PHONE_NUMBER) because it changes without the page changing — a
+    shop line, a new SIM, a second number for sales. Four hand-typed `wa.me` URLs
+    is how one of them ends up pointing at the old number six months after it was
+    cancelled.
+
+    THE MESSAGE IS ENCODED, NOT PASTED. It carries newlines and a comma; an
+    unencoded `?text=` truncates at the first one, and the person on the other
+    end gets a greeting with the questions missing.
   */
-  const whatsappHref = `https://wa.me/${env.whatsappNumber}`;
+  const whatsappHref = (intent: WhatsappIntent) =>
+    `https://wa.me/${env.whatsappNumber}?text=${encodeURIComponent(
+      WHATSAPP_INTENTS[intent],
+    )}`;
 
   return (
     <div className="flex min-h-full flex-col bg-surface">
@@ -103,7 +113,7 @@ export function LandingScreen() {
                 asChild
                 className="h-12 bg-secondary px-6 text-[15px] text-secondary-foreground hover:bg-secondary-hover max-sm:w-full"
               >
-                <a href="#coba">Coba gratis 14 hari</a>
+                <a href={whatsappHref("trial")}>Minta akses uji coba</a>
               </Button>
               <Button
                 asChild
@@ -338,21 +348,32 @@ export function LandingScreen() {
               asChild
               className="h-12 bg-secondary px-6 text-[15px] text-secondary-foreground hover:bg-secondary-hover max-sm:w-full"
             >
-              <Link href="/login">Coba gratis 14 hari</Link>
+              <a href={whatsappHref("trial")}>Minta akses uji coba</a>
             </Button>
             <Button
               asChild
               variant="ghost"
               className="h-12 border-[1.5px] border-white/40 px-6 text-[15px] text-primary-foreground hover:bg-white/10 hover:text-primary-foreground max-sm:w-full"
             >
-              <a href={whatsappHref}>
-                Ngobrol dulu lewat WhatsApp
-              </a>
+              <a href={whatsappHref("talk")}>Tanya-tanya dulu</a>
             </Button>
           </div>
-          <p className="mx-auto mt-6 max-w-[54ch] text-sm text-primary-foreground/65">
-            Tanpa kartu kredit. Tanpa biaya pemasangan. Sisa hari percobaan
-            selalu terlihat di halaman bisnis Anda sendiri.
+          {/*
+            WHAT ACTUALLY HAPPENS, in the order it happens. There is no signup
+            form behind the button and this says so — a page that offers "Coba
+            gratis" and lands somebody on a login screen they have no account for
+            spends the trust the rest of it just earned.
+          */}
+          <p className="mx-auto mt-6 max-w-[56ch] text-sm leading-relaxed text-primary-foreground/65">
+            Tidak ada form pendaftaran. Kami yang menyiapkan akunnya — cabang,
+            gudang, dan katalog awalnya sekalian — lalu kredensialnya dikirim
+            lewat WhatsApp.{" "}
+            <span className="font-semibold text-primary-foreground/90">
+              Empat belas harinya baru mulai begitu akunnya jadi
+            </span>
+            , bukan sejak Anda mengirim pesan. Tanpa kartu kredit, tanpa biaya
+            pemasangan, dan sisa harinya selalu terlihat di halaman bisnis Anda
+            sendiri.
           </p>
         </div>
       </section>
@@ -420,7 +441,10 @@ export function LandingScreen() {
               <h4 className="mb-3 text-xs font-bold text-white">Hubungi</h4>
               <ul className="flex flex-col gap-2">
                 <li>
-                  <a href={whatsappHref} className="hover:text-white">
+                  <a
+                    href={whatsappHref("talk")}
+                    className="hover:text-white"
+                  >
                     WhatsApp
                   </a>
                 </li>

@@ -11,6 +11,37 @@
  * "invoice", "platform", "UMKM") do not appear here either.
  */
 
+/**
+ * The two conversations the page can start, as prefilled WhatsApp messages.
+ *
+ * WHY A MESSAGE AND NOT A FORM. There is no lead endpoint behind this app —
+ * `POST /api/tenants` is platform-owner administration and is not gated yet, and
+ * nothing stores an enquiry. A form would need a place to put what it collects
+ * before it collects anything, and until that exists it would drop what somebody
+ * typed. So the form's questions are asked HERE, in the channel that already
+ * answers them, and the reply comes from a person — which is what the page
+ * claims a few sections above it.
+ *
+ * THE BLANK LINES ARE THE FORM. Somebody opens WhatsApp and finds three labels
+ * waiting for three answers, which is faster than being asked them one at a time
+ * and is the whole reason to prefill rather than open an empty chat.
+ *
+ * REPLACE THIS WITH A REAL FORM once an enquiry has somewhere to live. The
+ * questions do not change; only where the answers land does.
+ */
+export const WHATSAPP_INTENTS = {
+  /** Wants the trial. Asks for exactly what setting up a tenant needs. */
+  trial: `Halo Buloo, saya mau minta akses uji coba 14 hari.
+
+Nama toko:
+Nama saya:
+Jumlah cabang:`,
+  /** Not ready to ask for anything yet, and should not be made to pretend. */
+  talk: "Halo Buloo, saya mau tanya-tanya dulu soal Buloo untuk petshop saya.",
+} as const;
+
+export type WhatsappIntent = keyof typeof WHATSAPP_INTENTS;
+
 /** In-page anchors, in the order the sections appear. */
 export const LANDING_SECTIONS = [
   { id: "masalah", label: "Yang dibereskan" },

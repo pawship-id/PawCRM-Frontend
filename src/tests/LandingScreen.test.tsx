@@ -30,16 +30,31 @@ describe("LandingScreen", () => {
   });
 
   it("sends the two calls to action somewhere", () => {
-    // The hero button is an anchor into the closing section, which exists.
+    // The nav button is an anchor into the closing section, which exists.
     const { container } = render(<LandingScreen />);
     expect(container.querySelector("#coba")).not.toBeNull();
 
     expect(
-      screen.getAllByRole("link", { name: /Coba gratis 14 hari/ }).length,
-    ).toBeGreaterThan(0);
-    expect(
-      screen.getAllByRole("link", { name: /Masuk/ })[0],
-    ).toHaveAttribute("href", "/login");
+      screen.getAllByRole("link", { name: /Minta akses uji coba/ }).length,
+    ).toBe(2);
+    expect(screen.getAllByRole("link", { name: /Masuk/ })[0]).toHaveAttribute(
+      "href",
+      "/login",
+    );
+  });
+
+  /*
+    NO BUTTON PROMISES A DOOR THAT IS NOT THERE. There is no signup route in the
+    backend — auth.routes.js says so on purpose — so nothing on this page may
+    read as "sign up and start". This test is what fails if somebody restores
+    the old "Coba gratis 14 hari" label without building the flow behind it.
+  */
+  it("never offers a self-serve signup", () => {
+    render(<LandingScreen />);
+
+    for (const link of screen.getAllByRole("link")) {
+      expect(link.textContent).not.toMatch(/Coba gratis|Daftar sekarang/i);
+    }
   });
 
   /*
@@ -47,17 +62,40 @@ describe("LandingScreen", () => {
     button and the footer — read the same resolved value, so a number change is
     one env var rather than a grep.
   */
-  it("points both WhatsApp links at the configured number", () => {
+  it("points every WhatsApp link at the configured number", () => {
     render(<LandingScreen />);
 
-    const expected = `https://wa.me/${env.whatsappNumber}`;
-    const links = screen
+    const hrefs = screen
       .getAllByRole("link")
-      .filter((link) => link.getAttribute("href")?.startsWith("https://wa.me/"));
+      .map((link) => link.getAttribute("href") ?? "")
+      .filter((href) => href.startsWith("https://wa.me/"));
 
-    expect(links).toHaveLength(2);
-    for (const link of links) expect(link).toHaveAttribute("href", expected);
+    expect(hrefs.length).toBeGreaterThan(0);
     expect(env.whatsappNumber).toMatch(/^\d+$/);
+    for (const href of hrefs) {
+      expect(href.startsWith(`https://wa.me/${env.whatsappNumber}?`)).toBe(true);
+    }
+  });
+
+  /*
+    THE MESSAGE IS THE FORM. Until an enquiry has somewhere to be stored, the
+    three things setting a tenant up needs are asked in the chat instead — and
+    an unencoded newline is what would quietly drop them.
+  */
+  it("prefills the trial message with what setting up an account needs", () => {
+    render(<LandingScreen />);
+
+    const href =
+      screen
+        .getAllByRole("link", { name: /Minta akses uji coba/ })[0]
+        .getAttribute("href") ?? "";
+    const text = decodeURIComponent(href.split("?text=")[1] ?? "");
+
+    expect(text).toMatch(/uji coba 14 hari/);
+    expect(text).toMatch(/Nama toko:/);
+    expect(text).toMatch(/Jumlah cabang:/);
+    // Encoded, so the newlines survive the trip into WhatsApp.
+    expect(href).not.toContain("\n");
   });
 
   /*

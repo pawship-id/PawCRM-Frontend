@@ -36,6 +36,24 @@ akun, dan tanpa itu tiap kunjungan membakar satu `GET /auth/me` yang hanya bisa
 menguji kesamaan persis atau awalan `"/" + "/"`, dan `"//"` bukan rute siapa
 pun. Ada tes untuk kedua sisi itu.
 
+**Ajakan bertindaknya "Minta akses uji coba", bukan "Coba gratis".** Tidak ada
+route pendaftaran di backend — `auth.routes.js` menyatakan itu disengaja — dan
+`POST /api/tenants` masih administrasi platform yang belum dijaga. Tombol yang
+berbunyi "Coba gratis" lalu mendaratkan orang di layar login yang akunnya belum
+ada akan menghabiskan kepercayaan yang baru saja dibangun sepuluh layar di
+atasnya. Jadi tombolnya membuka WhatsApp dengan pesan terisi, tenant-nya dibuat
+orang, dan bagian penutup menjelaskan urutan itu — termasuk bahwa 14 harinya
+mulai saat akunnya jadi, bukan saat pesannya dikirim.
+
+**Pesannya adalah formnya.** Tiga pertanyaan yang dibutuhkan untuk menyiapkan
+tenant (nama toko, nama, jumlah cabang) menunggu sebagai label kosong di kolom
+chat. Form pendek butuh tempat menyimpan jawabannya lebih dulu, dan sampai itu
+ada, form akan membuang apa yang diketik orang. Teksnya di-encode: satu baris
+baru yang lolos mentah memotong pesan di pertanyaan pertama.
+`LandingScreen.test.tsx` mengunci keduanya — tidak ada tautan yang boleh
+berbunyi "Coba gratis", dan pesan uji cobanya harus tetap memuat ketiga
+pertanyaan itu.
+
 **Nomor WhatsApp jadi konfigurasi.** `NEXT_PUBLIC_PHONE_NUMBER`, dibaca lewat
 `src/utils/env.ts` seperti base URL backend, dengan nomor Buloo sebagai fallback
 supaya clone baru tetap punya tombol yang jalan. Nilainya dibersihkan jadi angka

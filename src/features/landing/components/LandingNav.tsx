@@ -67,8 +67,14 @@ export function LandingNav() {
           <Button asChild variant="ghost" className="h-11 px-4 font-semibold">
             <Link href="/login">Masuk</Link>
           </Button>
+          {/*
+            "Minta akses", not "Coba gratis". The button scrolls to the closing
+            section, which explains that a person sets the account up — and a
+            label promising a self-serve trial would be contradicted by the
+            first thing it scrolls to.
+          */}
           <Button asChild className="h-11 px-4">
-            <a href="#coba">Coba gratis</a>
+            <a href="#coba">Minta akses</a>
           </Button>
         </div>
       </div>
