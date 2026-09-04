@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, UserRound } from "lucide-react";
 
@@ -480,6 +480,69 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
     };
   }, [customer, petsNonce]);
 
+  /**
+   * THIS CUSTOMER'S ANIMALS, RE-READ — QUIETLY.
+   *
+   * ─── WHY IT DOES NOT REUSE THE LOADER ABOVE ────────────────────────────────
+   *
+   * That one sets `loadingPets`, and the render swaps the whole list of animal
+   * cards for a spinner while it is true. Refreshing through it would blank
+   * every half-filled card — the services ticked, the notes typed — for as long
+   * as the request took, on a form somebody is in the middle of. So this writes
+   * `pets` and touches nothing else; the screen just quietly becomes right.
+   *
+   * ─── WHY IT IS NEEDED AT ALL ───────────────────────────────────────────────
+   *
+   * A service priced per variant is quoted from the animal's own species, size
+   * and coat, and the card says so and offers a link when one is missing — which
+   * opens the pet's page in ANOTHER TAB, because this form holds unsaved state.
+   * Fill the coat length in there and the booking tab is still holding the pet
+   * as it was loaded: the price stays unquotable and Simpan stays disabled, with
+   * the only way out being a reload that costs the whole booking.
+   *
+   * A FAILURE KEEPS WHAT IS ON SCREEN. This is a refresh of something already
+   * shown, so the honest answer to a dropped request is to leave the last good
+   * answer in place rather than empty the picker somebody is using.
+   */
+  const refreshPets = useCallback(async () => {
+    if (!customer) return;
+
+    try {
+      const page = await petService.list({
+        customerId: customer._id,
+        isActive: true,
+        limit: FETCH_LIMIT,
+      });
+      setPets(page.items);
+    } catch {
+      /* Keep the list we already have — see above. */
+    }
+  }, [customer]);
+
+  /*
+    BACK FROM THE OTHER TAB, and this is the case the feature exists for.
+
+    Picking an animal re-reads it too (see `updateGroup`), but that only helps
+    when the SELECTION changes — and the animal whose coat length was just
+    filled in is already selected, so choosing it again fires nothing. What
+    actually happens is a tab switch, so that is what this listens for.
+
+    `visibilitychange` RATHER THAN `focus`: focus fires for a click back into the
+    window from a devtools panel, an alert, or a dropdown closing, which would
+    put a request on the wire for nothing. Becoming visible is the event that
+    means "somebody has come back to this".
+  */
+  useEffect(() => {
+    if (!customer) return;
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refreshPets();
+    };
+
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [customer, refreshPets]);
+
   function reset() {
     setCustomer(null);
     setPets([]);
@@ -534,6 +597,14 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
       prev.map((group) => (group.key === key ? { ...group, ...patch } : group)),
     );
     setFieldErrors({});
+
+    /*
+      CHOOSING AN ANIMAL RE-READS IT. The list was loaded when the customer was
+      picked, and the record may have been corrected since — most likely by the
+      person who just followed this card's own "lengkapi ukuran" link. Quietly,
+      so the card being filled in is not replaced by a spinner.
+    */
+    if (patch.petId) void refreshPets();
   }
 
   function addGroup() {

@@ -252,10 +252,27 @@ A service priced per variant is quoted from the pet's own **species, size and co
 card shows the number and which variant it came from ("Varian Besar"), and the bar's total
 agrees with it.
 
-**When the animal's record is missing the fact the price varies by, the card says which fact
-and Simpan is disabled naming the animal.** It never falls back to the cheapest or the middle
-variant: the server would refuse the save anyway, and a number on screen that the save
-contradicts is worse than no number. The rule is mirrored from the server
+**When the animal's record is missing the fact the price varies by, the card says which fact,
+Simpan is disabled naming the animal, and the message carries a link to that pet's edit page.**
+It never falls back to the cheapest or the middle variant: the server would refuse the save
+anyway, and a number on screen that the save contradicts is worse than no number.
+
+**That link opens in a new tab**, the same way `ProductForm` links out to the product holding a
+taken barcode — this form holds unsaved state and no draft, so navigating away would lose the
+customer, the animals and every service ticked so far.
+
+**And coming back is enough.** The animals are re-read when the tab becomes visible again, so
+a coat length filled in next door prices the service without a reload. Picking an animal
+re-reads them too, but that only helps when the *selection* changes — the animal just corrected
+is already selected, so choosing it again fires nothing. `visibilitychange`, not `focus`: focus
+fires for a dropdown closing or a devtools click, which would put a request on the wire for
+nothing.
+
+**The refresh is deliberately quiet** — it writes `pets` and touches no loading flag. The
+loader that runs when a customer is picked swaps the whole list of animal cards for a spinner,
+so refreshing through it would blank the services ticked and the notes typed, on a form
+somebody is in the middle of. A dropped request keeps the last good list rather than emptying
+a picker in use. The rule is mirrored from the server
 (`utils/serviceVariant.ts` ↔ `utils/serviceVariant.js`) — a preview, with the stored answer
 still the server's, the same trade "selesai sekitar" already makes.
 

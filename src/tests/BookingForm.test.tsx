@@ -879,6 +879,41 @@ describe("BookingForm — layanan, add-on dan varian", () => {
     expect(screen.getByRole("button", { name: /simpan booking/i })).toBeDisabled();
     expect(bookings.create).not.toHaveBeenCalled();
   });
+
+  it("offers the way to fix it, opening beside the half-filled booking", async () => {
+    /*
+      Naming the missing fact still leaves somebody to find the animal through a
+      menu, a search and a form they have never opened. The link is the door —
+      and it opens in a NEW TAB because this form holds unsaved state and no
+      draft: navigating away loses the customer and every service ticked so far.
+    */
+    pets.list.mockResolvedValue(
+      page([{ _id: "pet-1", name: "Bruno", size: null } as unknown as Pet]),
+    );
+    services.list.mockResolvedValue(
+      page([
+        service({
+          _id: "svc-1",
+          name: "Full Grooming",
+          price: null,
+          hasVariants: true,
+          variantAxes: ["sizeCategory"],
+          variants: [
+            { petType: null, sizeCategory: "small", furType: null, price: "100000.0000" },
+          ],
+        } as unknown as Partial<Service>),
+      ]),
+    );
+
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+    await choose(/^layanan$/i, /full grooming/i);
+
+    const fix = await screen.findByRole("link", { name: /lengkapi ukuran bruno/i });
+    expect(fix).toHaveAttribute("href", "/dashboard/master/pets/pet-1/edit");
+    expect(fix).toHaveAttribute("target", "_blank");
+  });
 });
 
 /**
@@ -1014,6 +1049,95 @@ describe("BookingForm — telling one animal's card from another's", () => {
     await userEvent.click(screen.getByRole("button", { name: /durasi 90 mnt/i }));
 
     expect(screen.getByLabelText(/durasi/i)).toBeInTheDocument();
+  });
+});
+
+/**
+ * ─── COMING BACK FROM THE PET'S PAGE ────────────────────────────────────────
+ *
+ * The card offers a link to fill in a missing coat length, and it opens in
+ * another tab because this form holds unsaved state. Without a refresh, the
+ * booking tab is still holding the animal as it was loaded — the price stays
+ * unquotable and Simpan stays disabled, and the only way out is a reload that
+ * costs the whole booking.
+ */
+describe("BookingForm — re-reading an animal that was just corrected", () => {
+  const withoutSize = { _id: "pet-1", name: "Bruno", size: null } as unknown as Pet;
+  const withSize = { _id: "pet-1", name: "Bruno", size: "large" } as unknown as Pet;
+
+  const variantService = () =>
+    service({
+      _id: "svc-1",
+      name: "Full Grooming",
+      price: null,
+      hasVariants: true,
+      variantAxes: ["sizeCategory"],
+      variants: [
+        { petType: null, sizeCategory: "large", furType: null, price: "180000.0000" },
+      ],
+    } as unknown as Partial<Service>);
+
+  it("re-reads the animals when the tab is looked at again", async () => {
+    services.list.mockResolvedValue(page([variantService()]));
+    pets.list.mockResolvedValueOnce(page([withoutSize]));
+
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+    await choose(/^layanan$/i, /full grooming/i);
+
+    expect(await screen.findByText(/belum punya ukuran/i)).toBeInTheDocument();
+
+    /* The size is filled in on the other tab… */
+    pets.list.mockResolvedValue(page([withSize]));
+    /* …and somebody comes back to this one. */
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    expect(await screen.findAllByText(/Rp\s?180[.,]000/)).not.toHaveLength(0);
+    expect(screen.queryByText(/belum punya ukuran/i)).not.toBeInTheDocument();
+  });
+
+  it("re-reads them when an animal is picked, too", async () => {
+    pets.list.mockResolvedValue(
+      page([
+        { _id: "pet-1", name: "Mochi" } as Pet,
+        { _id: "pet-2", name: "Coco" } as Pet,
+      ]),
+    );
+
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^hewan$/i });
+
+    const before = pets.list.mock.calls.length;
+    await choose(/^hewan$/i, "Coco");
+
+    await waitFor(() =>
+      expect(pets.list.mock.calls.length).toBeGreaterThan(before),
+    );
+  });
+
+  it("does not blank the half-filled cards while it refreshes", async () => {
+    /*
+      THE TRAP THIS AVOIDS. The loader that runs when a customer is picked sets
+      `loadingPets`, and the render swaps the whole list of animal cards for a
+      spinner while it is true — so refreshing through it would wipe the services
+      ticked and the notes typed, on a form somebody is in the middle of.
+    */
+    services.list.mockResolvedValue(page([service()]));
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+    await choose(/^layanan$/i, /grooming full service/i);
+
+    /* A refresh that never resolves: the cards must survive it regardless. */
+    pets.list.mockReturnValue(new Promise(() => {}) as never);
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    expect(
+      screen.getByRole("combobox", { name: /^layanan$/i }),
+    ).toHaveTextContent("Grooming Full Service");
+    expect(screen.queryByText(/memuat hewan/i)).not.toBeInTheDocument();
   });
 });
 

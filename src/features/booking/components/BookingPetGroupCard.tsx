@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { ChevronDown, Plus, X } from "lucide-react";
 
 import {
@@ -16,7 +17,7 @@ import { PetSummaryCard } from "@/features/pets";
 import { formatMoney } from "@/utils/decimal";
 import { AXIS_LABEL, priceForPet, variantLabelForPet } from "@/utils/serviceVariant";
 import type { BusinessLine } from "@/services/businessLine.service";
-import type { Pet, Service } from "@/types/api";
+import type { Pet, Service, ServiceVariantAxis } from "@/types/api";
 import { blankService, UNASSIGNED } from "../bookingDraft";
 import type { PetGroupDraft, ServiceDraft } from "../bookingDraft";
 
@@ -480,7 +481,8 @@ function ServiceLine({
           ) : missingAxis ? (
             <span className="text-xs font-semibold text-danger">
               {pet?.name ?? "Hewan ini"} belum punya {AXIS_LABEL[missingAxis]} —
-              harga layanan ini mengikutinya. Lengkapi dulu di profil hewan.
+              harga layanan ini mengikutinya.{" "}
+              <PetFixLink pet={pet} axis={missingAxis} />
             </span>
           ) : (
             <span className="text-muted">—</span>
@@ -500,11 +502,17 @@ function ServiceLine({
                   key={addon._id}
                   label={addon.name}
                   description={
-                    addonPrice.price
-                      ? `${formatMoney(addonPrice.price)}${addon.durationMin ? ` · +${addon.durationMin} mnt` : ""}`
-                      : addonPrice.missingAxis
-                        ? `Belum bisa dihitung — ${pet?.name ?? "hewan ini"} belum punya ${AXIS_LABEL[addonPrice.missingAxis]}`
-                        : "—"
+                    addonPrice.price ? (
+                      `${formatMoney(addonPrice.price)}${addon.durationMin ? ` · +${addon.durationMin} mnt` : ""}`
+                    ) : addonPrice.missingAxis ? (
+                      <span className="text-danger">
+                        Belum bisa dihitung — {pet?.name ?? "hewan ini"} belum
+                        punya {AXIS_LABEL[addonPrice.missingAxis]}.{" "}
+                        <PetFixLink pet={pet} axis={addonPrice.missingAxis} />
+                      </span>
+                    ) : (
+                      "—"
+                    )
                   }
                   checked={line.addonServiceIds.includes(addon._id)}
                   disabled={disabled || locked}
@@ -557,6 +565,45 @@ function ServiceLine({
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * THE WAY OUT OF A PRICE THAT CANNOT BE WORKED OUT.
+ *
+ * A refusal that names the missing fact is better than "Validation failed", and
+ * still leaves somebody to find the animal themselves — through a menu, a
+ * search, and a form they have never opened. The fix is one field away; this is
+ * the door to it.
+ *
+ * ─── A NEW TAB, AND THAT IS THE WHOLE REASON IT IS A LINK AND NOT A ROUTE ───
+ *
+ * The booking form is a page holding unsaved state and no draft: navigating away
+ * loses the customer, the animals, every service ticked so far. So it opens
+ * beside the booking, exactly as `ProductForm` links out to the product holding
+ * a taken barcode — fill the coat length in, come back to the tab that still has
+ * the booking in it, and re-pick the service to reprice it.
+ *
+ * ABSENT WHEN NO ANIMAL IS CHOSEN. There is nothing to open, and a dead link is
+ * worse than a sentence that stops.
+ */
+function PetFixLink({
+  pet,
+  axis,
+}: {
+  pet: Pet | null;
+  axis: ServiceVariantAxis;
+}) {
+  if (!pet) return <>Pilih hewannya dulu.</>;
+
+  return (
+    <Link
+      href={`/dashboard/master/pets/${pet._id}/edit`}
+      className="underline underline-offset-2"
+      target="_blank"
+    >
+      Lengkapi {AXIS_LABEL[axis]} {pet.name} →
+    </Link>
   );
 }
 
