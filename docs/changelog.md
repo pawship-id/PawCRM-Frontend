@@ -7,6 +7,24 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Favicon jadi ikon Buloo
+
+Tab browser masih menampilkan segitiga bawaan Next.js. Sekarang ikon `b` navy —
+`public/brand/buloo-icon-navy.svg`, yang brand book-nya sendiri tunjuk untuk
+"app icon, favicon, PWA".
+
+**Ikon navy, bukan yang oranye.** Yang oranye ditandai *social avatars only* di
+asetnya sendiri. Dan ikon navy membawa alasnya sendiri (kotak membulat navy,
+mark putih), jadi ia terbaca di tab terang maupun gelap — mark navy telanjang
+akan hilang di tema gelap, yang justru tema di screenshot yang melaporkan ini.
+
+**Tiga file, bukan satu.** `icon.svg` untuk browser modern, `apple-icon.png`
+180×180 untuk layar utama iOS, dan `favicon.ico` yang tetap ada supaya
+`/favicon.ico` tidak 404 buat crawler dan klien lama yang memintanya tanpa
+membaca `<link>` mana pun. ICO-nya memuat 16 dan 32 sekaligus: satu ukuran 32
+yang diperkecil browser kehilangan celah 18 px antara telinga dan kepala, yang
+adalah satu-satunya hal yang membedakan mark ini dari huruf b biasa.
+
 ## [Unreleased] — Halaman depan di `/`
 
 `/` dulu me-redirect ke `/login`, dengan alasan tidak ada yang lain untuk
