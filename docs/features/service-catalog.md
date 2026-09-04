@@ -54,6 +54,20 @@ reformats what was typed, and this value has to reach the API exactly as entered
 
 ---
 
+## A refusal is never silent
+
+The form is five cards tall, so a banner at the top is off-screen from the button that was
+just pressed: **every failed save also raises a toast**. The banner shows `fullMessage` — the
+server's `details`, not just its headline — because "Validation failed" is the one sentence
+nobody can act on.
+
+> This was found from a screenshot: an ordinary add-on refused with a bare "Validation failed"
+> and nothing else. Three fields were at fault, and all three were fields the form sends
+> without having a box for them — `image: null`, and the two variant arrays sent empty on a
+> flat-priced service. The refusal named `variantAxes`, which this form only draws inside the
+> variant editor, so on a flat service it appeared nowhere at all. The form now omits what
+> does not apply, the API accepts an honest empty, and the toast makes sure a refusal is seen.
+
 ## Flat price, or one per variant — never both
 
 The **Harga beda per varian** switch decides which half of the pricing card exists, and the

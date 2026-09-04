@@ -453,16 +453,29 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
       name: trimmedName,
       code: trimmedCode,
       businessLineId,
-      image,
+      /*
+        SENT ONLY WHEN THERE IS ONE, except on an edit where `null` is how a
+        picture is taken off. A create carrying `image: null` was refused
+        outright until the API learned that "no picture" is an answer — see
+        service.validation.js — which made every service without one impossible
+        to create from this screen.
+      */
+      ...(image || editing ? { image } : {}),
       durationMin: duration as number,
       description: description.trim() || null,
       hasVariants,
-      // Exactly one half of the pricing is sent. Sending both is a 400, and
-      // sending the unused half as an empty value would be a lie about it.
+      /*
+        EXACTLY ONE HALF OF THE PRICING IS SENT, and the unused half is OMITTED
+        rather than sent empty. The server tolerates `[]` now — it is an honest
+        "none" — but sending a field this service has no use for is how the
+        first version produced a bare "Validation failed": the refusal named
+        `variantAxes`, which this form only draws inside the variant editor, so
+        on a flat-priced service nothing appeared at all.
+      */
       ...(hasVariants
         ? { variantAxes, variants }
         : // Sent exactly as typed. Never Number(price).
-          { price: trimmedPrice, variantAxes: [], variants: [] }),
+          { price: trimmedPrice }),
       sessions,
       included,
       serviceLocations,
@@ -504,15 +517,34 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
         ) {
           setVariantError(error.reason ?? error.message);
         } else {
-          setFormError(error.reason ?? error.message);
+          /*
+            `fullMessage`, NOT `message`. The server answers a malformed payload
+            with "Validation failed" and puts what is actually wrong in
+            `details` — so the bare message is the one sentence that cannot be
+            acted on. The field names are the API's and English; that is a real
+            cost and still the better trade.
+          */
+          setFormError(error.fullMessage);
         }
       } else {
         setFormError(
           error instanceof ApiError
-            ? (error.reason ?? error.message)
+            ? error.fullMessage
             : "Terjadi kesalahan. Coba lagi.",
         );
       }
+      /*
+        AND A TOAST, whatever the banner says. This form is five cards tall: a
+        refusal about the code, or one bound to a field further up, leaves the
+        page looking unchanged from where the Simpan button is. The toast is what
+        says something happened; the banner and the field say what.
+      */
+      try {
+        swalToast("Layanan belum tersimpan — cek pesan di formnya.");
+      } catch {
+        /* The banner already carries it. */
+      }
+
       setSaving(false);
     }
   }

@@ -15,6 +15,8 @@ jest.mock("@/services/businessLine.service");
 jest.mock("@/services/branch.service");
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
 
+import { swalToast } from "@/lib/swal";
+
 /**
  * The picture control is stubbed. Its own behaviour — pick, crop, upload, the
  * purpose segment, the failure paths — is covered in ImageField.test.tsx; a real
@@ -258,6 +260,88 @@ describe("ServiceForm — creating", () => {
     expect(
       await screen.findByText(/sudah dipakai layanan lain/i),
     ).toBeVisible();
+  });
+
+  /*
+    ─── THE PAYLOAD THAT CAME BACK "Validation failed" AND NOTHING ELSE ───────
+
+    Reported from the screen: a perfectly ordinary add-on, refused with a bare
+    banner. Three fields were at fault and all three were fields the form sends
+    without a box for them — `image: null`, and the two variant arrays sent
+    empty on a flat-priced service. The refusal named `variantAxes`, which this
+    form only draws inside the variant editor, so on a flat service it appeared
+    nowhere at all.
+  */
+  it("sends no variant fields at all when the price is flat", async () => {
+    mockedServiceService.create.mockResolvedValue(serviceFixture);
+    await renderNew();
+
+    await fillRequiredExceptPrice();
+    await userEvent.type(priceBox(), "20000");
+    await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
+
+    await waitFor(() => expect(mockedServiceService.create).toHaveBeenCalled());
+    const [payload] = mockedServiceService.create.mock.calls[0];
+
+    expect(payload).not.toHaveProperty("variantAxes");
+    expect(payload).not.toHaveProperty("variants");
+    expect(payload.price).toBe("20000");
+  });
+
+  it("sends no image key when no picture was chosen", async () => {
+    // `image: null` on a create was refused outright, which made a service
+    // without a picture impossible to make from this screen.
+    mockedServiceService.create.mockResolvedValue(serviceFixture);
+    await renderNew();
+
+    await fillRequiredExceptPrice();
+    await userEvent.type(priceBox(), "20000");
+    await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
+
+    await waitFor(() => expect(mockedServiceService.create).toHaveBeenCalled());
+    expect(mockedServiceService.create.mock.calls[0][0]).not.toHaveProperty(
+      "image",
+    );
+  });
+
+  it("shows WHAT was wrong, not just that something was", async () => {
+    /*
+      The server answers a malformed payload with "Validation failed" and puts
+      the actual fault in `details`. Showing only the message is the one
+      sentence nobody can act on.
+    */
+    mockedServiceService.create.mockRejectedValue(
+      new ApiError("Validation failed", 400, {
+        details: [{ field: "body.durationMin", message: "must be a number" }],
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any),
+    );
+    await renderNew();
+
+    await fillRequiredExceptPrice();
+    await userEvent.type(priceBox(), "20000");
+    await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
+
+    expect(await screen.findByText(/must be a number/i)).toBeInTheDocument();
+  });
+
+  it("says out loud that nothing was saved", async () => {
+    // The form is five cards tall; a banner at the top is off-screen from the
+    // button that was just pressed.
+    mockedServiceService.create.mockRejectedValue(
+      new ApiError("Validation failed", 400),
+    );
+    await renderNew();
+
+    await fillRequiredExceptPrice();
+    await userEvent.type(priceBox(), "20000");
+    await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
+
+    await waitFor(() =>
+      expect(swalToast).toHaveBeenCalledWith(
+        expect.stringMatching(/belum tersimpan/i),
+      ),
+    );
   });
 
   it("does not offer the availability switch when creating", async () => {
