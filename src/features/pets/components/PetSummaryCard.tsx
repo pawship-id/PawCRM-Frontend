@@ -111,8 +111,22 @@ export function PetSummaryCard({
         </p>
       )}
 
+      {/*
+        ─── HOW THIS ANIMAL IS HANDLED, UNDER ITS OWN HEADING ────────────────
+
+        It used to be a line of grey text under the alerts, where it read as a
+        caption for them. It is not a caption: "dryer jangan dekat telinga" is an
+        instruction somebody is about to follow, and it comes from the profile
+        rather than from this visit. The label is what separates it from the
+        booking's own note a few centimetres away.
+      */}
       {preferenceText && (
-        <p className="mt-1 text-xs text-muted">{preferenceText}</p>
+        <div className="mt-2 rounded-md border border-secondary/40 bg-secondary/10 px-3 py-2">
+          <p className="text-xs font-bold uppercase tracking-wide text-warning">
+            Catatan penanganan
+          </p>
+          <p className="mt-0.5 text-sm text-foreground">{preferenceText}</p>
+        </div>
       )}
 
       {tags.length > 0 && (

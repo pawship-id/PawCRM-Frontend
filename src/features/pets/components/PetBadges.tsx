@@ -42,6 +42,35 @@ export function speciesLabel(species: PetSpecies): string {
 }
 
 /**
+ * The two facts that decide a grooming price, spelled out.
+ *
+ * HERE BESIDE `speciesLabel` because they are the same kind of thing and were
+ * being retyped: `PetInfoTab` had its own copies, and so did the booking form's
+ * variant editor. Three spellings of "Berbulu panjang" is how one screen ends up
+ * disagreeing with another about the animal in front of them.
+ */
+const SIZE_LABELS: Record<string, string> = {
+  small: "Kecil",
+  medium: "Sedang",
+  large: "Besar",
+};
+
+const FUR_LABELS: Record<string, string> = {
+  "long hair": "Bulu panjang",
+  "short hair": "Bulu pendek",
+};
+
+/** `"large"` → `"Besar"`. Unknown values pass through rather than blanking. */
+export function sizeLabel(size: string | null | undefined): string | null {
+  return size ? (SIZE_LABELS[size] ?? size) : null;
+}
+
+/** `"long hair"` → `"Bulu panjang"`. */
+export function furTypeLabel(furType: string | null | undefined): string | null {
+  return furType ? (FUR_LABELS[furType] ?? furType) : null;
+}
+
+/**
  * Whether the pet is live, retired, or soft-deleted.
  *
  * Deleted wins over retired when both are true: a record that should not exist

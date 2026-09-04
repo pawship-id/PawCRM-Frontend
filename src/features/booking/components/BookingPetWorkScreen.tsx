@@ -2,12 +2,18 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { Cat, Dog } from "lucide-react";
 
 import { Alert, Card, Spinner, TextField } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
 import { SessionGroomers } from "./SessionGroomers";
-import { PetSummaryCard } from "@/features/pets";
+import {
+  furTypeLabel,
+  PetSummaryCard,
+  sizeLabel,
+  speciesLabel,
+} from "@/features/pets";
 import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
 import { branchService } from "@/services/branch.service";
@@ -646,14 +652,62 @@ export function BookingPetWorkScreen({
           <Card title="Hewan &amp; Pelanggan">
             {pet ? (
               <>
-                <p className="text-base font-extrabold text-foreground">
-                  {pet.name}
-                </p>
-                <p className="text-xs text-muted">
-                  {[pet.breed, pet.weightKg ? `${pet.weightKg} kg` : null]
-                    .filter(Boolean)
-                    .join(" · ") || "—"}
-                </p>
+                {/*
+                  ─── THE ANIMAL, AT ARM'S LENGTH ────────────────────────────
+                  A groomer reads this while holding a dog: the name, then the
+                  three facts that decide how it is handled, then the warnings.
+
+                  AN ICON, NOT AN EMOJI. ui-rules §1.8 keeps emoji out of the
+                  product UI entirely — the reference draws a cat's face here and
+                  this draws the same shape from the icon set everything else
+                  uses.
+                */}
+                <div className="flex items-start gap-3">
+                  <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-secondary/20 text-secondary-foreground">
+                    {pet.species === "cat" ? (
+                      <Cat className="size-6" aria-hidden />
+                    ) : (
+                      <Dog className="size-6" aria-hidden />
+                    )}
+                  </span>
+
+                  <div className="min-w-0">
+                    <p className="text-base font-extrabold text-foreground">
+                      {pet.name}
+                    </p>
+                    <p className="text-xs text-muted">
+                      {[
+                        pet.breed,
+                        pet.weightKg ? `${pet.weightKg} kg` : null,
+                        pet.species ? speciesLabel(pet.species) : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ") || "—"}
+                    </p>
+
+                    {/*
+                      SIZE AND COAT AS CHIPS, because they are the two facts a
+                      variant price is quoted from — the same pair the booking
+                      form refuses to guess at. Absent rather than shown as a
+                      dash when nobody has recorded them: an empty chip is a
+                      thing to decode.
+                    */}
+                    {(sizeLabel(pet.size) || furTypeLabel(pet.furType)) && (
+                      <ul className="mt-1.5 flex flex-wrap gap-1.5">
+                        {[sizeLabel(pet.size), furTypeLabel(pet.furType)]
+                          .filter((label): label is string => Boolean(label))
+                          .map((label) => (
+                            <li
+                              key={label}
+                              className="rounded-full bg-surface-hover px-2.5 py-1 text-xs font-medium text-foreground"
+                            >
+                              {label}
+                            </li>
+                          ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
 
                 {/*
                   THE HANDLING NOTES AND THE ALLERGIES, in the card the whole app
@@ -661,7 +715,7 @@ export function BookingPetWorkScreen({
                   a second way of saying "severe allergy" is a second way to get
                   it wrong.
                 */}
-                <PetSummaryCard pet={pet} className="mt-2" />
+                <PetSummaryCard pet={pet} className="mt-3" />
               </>
             ) : (
               <p className="text-sm text-muted">

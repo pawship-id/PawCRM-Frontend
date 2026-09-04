@@ -543,6 +543,98 @@ describe("BookingPetWorkScreen — the header's booking-level controls", () => {
  * appointment time repeated a second time; that already has its place in the
  * Detail Appointment card.
  */
+/**
+ * ─── THE ANIMAL, AT ARM'S LENGTH ────────────────────────────────────────────
+ *
+ * A groomer reads this card while holding a dog. What it has to answer without
+ * being opened: which animal, the facts that decide how it is handled, and
+ * anything that must not be done to it.
+ */
+describe("BookingPetWorkScreen — the Hewan & Pelanggan card", () => {
+  const brownie = {
+    _id: MOCHI,
+    name: "Brownie",
+    species: "cat",
+    breed: "domestic",
+    weightKg: 6.8,
+    size: "medium",
+    furType: "long hair",
+    preferences: {
+      text: "Dryer jangan dekat telinga.",
+      tags: ["kusut-berat"],
+    },
+    medical: {
+      allergies: [],
+      conditions: [],
+      medications: [],
+      vaccinations: [],
+      vet: { clinicName: null, phone: null },
+    },
+  } as never;
+
+  it("names the animal and the three facts under it", async () => {
+    pets.getById.mockResolvedValue(brownie);
+
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />);
+
+    expect(await screen.findByText("Brownie")).toBeInTheDocument();
+    // breed · weight · species, in the shop's own words.
+    expect(screen.getByText(/6\.8 kg/)).toBeInTheDocument();
+    expect(screen.getByText(/Kucing/)).toBeInTheDocument();
+  });
+
+  it("shows size and coat as chips — the two a variant price is quoted from", async () => {
+    pets.getById.mockResolvedValue(brownie);
+
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />);
+
+    expect(await screen.findByText("Sedang")).toBeInTheDocument();
+    expect(screen.getByText("Bulu panjang")).toBeInTheDocument();
+  });
+
+  it("leaves the chips out entirely when nobody recorded them", async () => {
+    // An empty chip is a thing to decode; absence says the same and reads faster.
+    pets.getById.mockResolvedValue({
+      ...(brownie as object),
+      size: null,
+      furType: null,
+    } as never);
+
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />);
+
+    await screen.findByText("Brownie");
+    expect(screen.queryByText("Sedang")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Bulu/)).not.toBeInTheDocument();
+  });
+
+  it("gives the handling note its own heading", async () => {
+    /*
+      It is an instruction somebody is about to follow, and it comes from the
+      profile rather than from this visit — the heading is what separates it from
+      the booking's own note a few centimetres away.
+    */
+    pets.getById.mockResolvedValue(brownie);
+
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />);
+
+    expect(await screen.findByText(/catatan penanganan/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/dryer jangan dekat telinga/i),
+    ).toBeInTheDocument();
+  });
+
+  it("still works the booking when the profile cannot be read", async () => {
+    // The card degrades; the work does not.
+    pets.getById.mockRejectedValue(new Error("no"));
+
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />);
+
+    expect(
+      await screen.findByText(/profil hewan tidak bisa dimuat/i),
+    ).toBeInTheDocument();
+  });
+});
+
 describe("BookingPetWorkScreen — the header's audit line", () => {
   it("shows when it was created, who made it, and their role", async () => {
     renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
