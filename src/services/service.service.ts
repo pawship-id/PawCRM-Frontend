@@ -27,6 +27,14 @@ export const serviceService = {
    * The sort is not a parameter: a catalogue is read as a menu, and every caller
    * wants it alphabetical. Spread into a fresh object literal so it satisfies
    * apiClient's query type; apiClient drops the undefined entries.
+   *
+   * ⚠️ EVERY FILTER MUST BE LISTED HERE BY HAND, and one that is not is dropped
+   * in SILENCE — the request simply goes out unfiltered and the screen shows
+   * everything. `serviceType` was added to the type, to the add-on picker and to
+   * the API and forgotten here, so the picker offered every service in the
+   * catalogue as an add-on. `service.service.test.ts` now holds a
+   * `Required<ServiceListQuery>` that breaks at compile time when a field is
+   * added and at run time until it is forwarded.
    */
   list: (query: ServiceListQuery = {}) =>
     apiClient.get<PageResult<Service>>("/services", {
@@ -35,6 +43,8 @@ export const serviceService = {
         limit: query.limit,
         businessLineId: query.businessLineId,
         categoryId: query.categoryId,
+        serviceType: query.serviceType,
+        branchId: query.branchId,
         isActive: query.isActive,
         search: query.search,
         includeDeleted: query.includeDeleted,

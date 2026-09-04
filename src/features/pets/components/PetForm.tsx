@@ -101,9 +101,10 @@ function todayISO(): string {
  * answers a question nobody asked. Retiring is a decision taken later.
  *
  * NO PHOTO FIELD YET, and that is scoped rather than forgotten: the API accepts
- * one and the model stores one, but the upload control lives inside the
- * categories feature (`CategoryImageField`) and lifting it into the shared
- * component layer is a refactor of its own. It goes in when that move happens.
+ * one and the model stores one. The refactor this was waiting on has since
+ * happened — the upload control is now `ImageField` in the shared component
+ * layer, promoted out of the categories feature when services needed it — so
+ * adding one here is a field, not a refactor. It goes in when somebody asks.
  */
 export function PetForm({ petId }: { petId?: string }) {
   const editing = petId !== undefined;

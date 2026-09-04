@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { CategoryImageField } from "@/features/categories/components/CategoryImageField";
+import { ImageField } from "@/components/ImageField";
 import { mediaService } from "@/services/media.service";
 import { ApiError } from "@/services/api-error";
 import type { MediaAsset } from "@/types/inventory";
@@ -46,7 +46,7 @@ jest.mock("@/components/ImageCropDialog", () => ({
  * sends to the API — token and all. A picker that renders a preview and reports
  * the wrong asset is the failure this cannot be allowed to miss.
  */
-describe("CategoryImageField", () => {
+describe("ImageField", () => {
   const asset = (overrides: Partial<MediaAsset> = {}): MediaAsset => ({
     mediaType: "image",
     url: "http://localhost:5000/media/t1/category/2026/08/a.webp",
@@ -78,7 +78,7 @@ describe("CategoryImageField", () => {
     const onChange = jest.fn();
 
     const { container } = render(
-      <CategoryImageField value={null} onChange={onChange} />,
+      <ImageField purpose="category" alt="Gambar kategori" value={null} onChange={onChange} />,
     );
 
     await userEvent.upload(fileInput(container), file());
@@ -91,7 +91,7 @@ describe("CategoryImageField", () => {
     (mediaService.upload as jest.Mock).mockResolvedValue(asset());
 
     const { container } = render(
-      <CategoryImageField value={null} onChange={jest.fn()} />,
+      <ImageField purpose="category" alt="Gambar kategori" value={null} onChange={jest.fn()} />,
     );
 
     await userEvent.upload(fileInput(container), file());
@@ -110,7 +110,7 @@ describe("CategoryImageField", () => {
 
   it("accepts only the image types the server can decode", () => {
     const { container } = render(
-      <CategoryImageField value={null} onChange={jest.fn()} />,
+      <ImageField purpose="category" alt="Gambar kategori" value={null} onChange={jest.fn()} />,
     );
 
     // A video is refused by the API — there is no second item to fall back to
@@ -122,7 +122,7 @@ describe("CategoryImageField", () => {
 
   it("uploads nothing when the crop is cancelled", async () => {
     const { container } = render(
-      <CategoryImageField value={null} onChange={jest.fn()} />,
+      <ImageField purpose="category" alt="Gambar kategori" value={null} onChange={jest.fn()} />,
     );
 
     await userEvent.upload(fileInput(container), file());
@@ -142,7 +142,7 @@ describe("CategoryImageField", () => {
     const onChange = jest.fn();
 
     const { container } = render(
-      <CategoryImageField value={null} onChange={onChange} />,
+      <ImageField purpose="category" alt="Gambar kategori" value={null} onChange={onChange} />,
     );
 
     await userEvent.upload(fileInput(container), file());
@@ -153,7 +153,7 @@ describe("CategoryImageField", () => {
   });
 
   it("renders the stored picture and offers to replace it", () => {
-    render(<CategoryImageField value={asset()} onChange={jest.fn()} />);
+    render(<ImageField purpose="category" alt="Gambar kategori" value={asset()} onChange={jest.fn()} />);
 
     expect(screen.getByRole("img")).toHaveAttribute(
       "src",
@@ -166,7 +166,7 @@ describe("CategoryImageField", () => {
 
   it("falls back to the full-size url on an asset stored before thumbnails", () => {
     render(
-      <CategoryImageField
+      <ImageField purpose="category" alt="Gambar kategori"
         value={asset({ thumbUrl: null })}
         onChange={jest.fn()}
       />,
@@ -181,7 +181,7 @@ describe("CategoryImageField", () => {
   it("clears the field on remove without deleting anything yet", async () => {
     const onChange = jest.fn();
 
-    render(<CategoryImageField value={asset()} onChange={onChange} />);
+    render(<ImageField purpose="category" alt="Gambar kategori" value={asset()} onChange={onChange} />);
 
     await userEvent.click(screen.getByRole("button", { name: /hapus/i }));
 
@@ -193,7 +193,7 @@ describe("CategoryImageField", () => {
 
   it("offers no picker at all while the form is saving", () => {
     render(
-      <CategoryImageField value={asset()} onChange={jest.fn()} disabled />,
+      <ImageField purpose="category" alt="Gambar kategori" value={asset()} onChange={jest.fn()} disabled />,
     );
 
     expect(screen.getByRole("button", { name: /ganti gambar/i })).toBeDisabled();

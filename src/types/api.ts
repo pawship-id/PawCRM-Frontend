@@ -2518,18 +2518,71 @@ export interface UpdatePaymentChannelInput {
  * `price` is a STRING, never a number — the API returns and accepts the decimal
  * as written, because JSON.parse("199999.99") is already not 199999.99.
  */
+/**
+ * Whether a service is booked directly (`main`) or only ever tagged onto one
+ * (`addon`). Mirrors SERVICE_TYPES in service.model.js.
+ */
+export type ServiceType = "main" | "addon";
+
+/**
+ * The three facts a service's price may vary by. Mirrors VARIANT_AXES in
+ * service.model.js — a CLOSED list, unlike a product's free-text `variantAxes`,
+ * because a service varies by what is standing on the table.
+ */
+export type ServiceVariantAxis = "petType" | "sizeCategory" | "furType";
+
+/** Where a service is performed. Mirrors SERVICE_LOCATIONS. */
+export type ServiceLocation = "in_home" | "in_store";
+
+/**
+ * One priced combination of the axes a service declares. Only the fields named
+ * in the service's `variantAxes` are populated; the rest are null.
+ *
+ * The values are the PET's own vocabulary, deliberately: `PetSpecies`,
+ * `PetSize` and `PetFurType` are the same enums a pet profile records.
+ */
+export interface ServiceVariant {
+  petType: PetSpecies | null;
+  sizeCategory: PetSize | null;
+  furType: PetFurType | null;
+  /** Decimal as a string, e.g. "120000.0000". */
+  price: string;
+}
+
 export interface Service {
   _id: string;
   tenantId: string;
   name: string;
-  /** Optional quick-entry code, uppercased, unique per tenant when present. */
-  code: string | null;
+  /** Quick-entry code, uppercased, required and unique per tenant. */
+  code: string;
+  /** One image, not a gallery — the same shape a category's picture takes. */
+  image: MediaAsset | null;
   businessLineId: string;
+  salesAccountId: string | null;
   categoryId: string | null;
-  /** Decimal as a string, e.g. "150000.0000". */
-  price: string;
+  /**
+   * Decimal as a string, e.g. "150000.0000" — or NULL when `hasVariants` is
+   * true, where each variant carries its own price instead.
+   */
+  price: string | null;
   durationMin: number | null;
   description: string | null;
+  /** Whether the price depends on the pet — see `variants`. */
+  hasVariants: boolean;
+  variantAxes: ServiceVariantAxis[];
+  variants: ServiceVariant[];
+  /** The stops a booking of this service moves through. */
+  sessions: string[];
+  /** `true` means every branch, now and as new ones open — `branchIds` is []. */
+  allBranches: boolean;
+  branchIds: string[];
+  serviceType: ServiceType;
+  /** Only a `main` service carries these, and only ids of `addon` services. */
+  addonServiceIds: string[];
+  /** What the price covers, for a storefront to list — not the description. */
+  included: string[];
+  serviceLocations: ServiceLocation[];
+  pickupDeliveryAvailable: boolean;
   taxExempt: boolean;
   /** Still offered at the till. Orthogonal to `deletedAt`. */
   isActive: boolean;
@@ -2546,27 +2599,54 @@ export interface ServiceListQuery {
   /** "Every grooming service" — the POS pill and the booking form. */
   businessLineId?: string;
   categoryId?: string;
+  /** "Every addon" — the addon picker's list. */
+  serviceType?: ServiceType;
+  /** Only services offered at that branch, `allBranches` ones included. */
+  branchId?: string;
   isActive?: boolean;
   /** Free-text over name / code. */
   search?: string;
   includeDeleted?: boolean;
 }
 
+/** One variant as the form sends it — the same shape, price as typed. */
+export interface ServiceVariantInput {
+  petType?: PetSpecies | null;
+  sizeCategory?: PetSize | null;
+  furType?: PetFurType | null;
+  price: string;
+}
+
 /**
- * Body of POST /api/services. `name`, `businessLineId` and `price` are required;
- * `tenantId` and `createdBy` come from the session.
+ * Body of POST /api/services. `name`, `code`, `businessLineId`, `durationMin`
+ * and `serviceLocations` are required; `tenantId` and `createdBy` come from the
+ * session.
  *
  * `price` MUST be sent as a string. A numeric one is a 400 — see the Service
- * type.
+ * type. It is required unless `hasVariants` is true, and FORBIDDEN when it is:
+ * a service is priced flat or per variant, never both.
  */
 export interface CreateServiceInput {
   name: string;
+  code: string;
   businessLineId: string;
-  price: string;
-  code?: string | null;
+  durationMin: number;
+  serviceLocations: ServiceLocation[];
+  price?: string;
+  image?: MediaAsset | null;
+  salesAccountId?: string | null;
   categoryId?: string | null;
-  durationMin?: number | null;
   description?: string | null;
+  hasVariants?: boolean;
+  variantAxes?: ServiceVariantAxis[];
+  variants?: ServiceVariantInput[];
+  sessions?: string[];
+  allBranches?: boolean;
+  branchIds?: string[];
+  serviceType?: ServiceType;
+  addonServiceIds?: string[];
+  included?: string[];
+  pickupDeliveryAvailable?: boolean;
   taxExempt?: boolean;
   isActive?: boolean;
 }
@@ -2578,15 +2658,32 @@ export interface CreateServiceInput {
  * `businessLineId` IS here, unlike `UpdatePetInput`'s missing `customerId`:
  * moving a service between lines re-tags nothing historical, because journal
  * lines carry the id they were posted with.
+ *
+ * The variant fields may be sent in any combination: the server reads the
+ * stored document for whichever half a patch leaves out before deciding whether
+ * the result is a valid flat-priced or variant-priced service.
  */
 export interface UpdateServiceInput {
   name?: string;
+  code?: string;
+  image?: MediaAsset | null;
   businessLineId?: string;
-  price?: string;
-  code?: string | null;
+  salesAccountId?: string | null;
   categoryId?: string | null;
-  durationMin?: number | null;
+  price?: string;
+  durationMin?: number;
   description?: string | null;
+  hasVariants?: boolean;
+  variantAxes?: ServiceVariantAxis[];
+  variants?: ServiceVariantInput[];
+  sessions?: string[];
+  allBranches?: boolean;
+  branchIds?: string[];
+  serviceType?: ServiceType;
+  addonServiceIds?: string[];
+  included?: string[];
+  serviceLocations?: ServiceLocation[];
+  pickupDeliveryAvailable?: boolean;
   taxExempt?: boolean;
   isActive?: boolean;
 }

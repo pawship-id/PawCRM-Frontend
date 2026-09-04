@@ -20,11 +20,48 @@ import {
 } from "@/components/ui/table";
 import { Can, usePermissions } from "@/features/permissions";
 import { cn } from "@/lib/utils";
-import { formatMoney } from "@/utils/decimal";
+import { formatMoney, toMinor } from "@/utils/decimal";
 import type { Service } from "@/types/api";
 
 /** The row action that opens a confirm dialog, plus the service it targets. */
 type PendingAction = { kind: "delete" | "restore"; service: Service } | null;
+
+/**
+ * What a variant-priced service costs, as one cell.
+ *
+ * A RANGE RATHER THAN AN EM DASH. A service priced per pet stores `price: null`
+ * and carries its amounts on the variants, so the plain field is genuinely
+ * empty — but "—" in a price column reads as "not priced yet", which is the one
+ * thing this row is not. The lowest and highest of its variants is what a menu
+ * reader actually wants to know, and it collapses to a single amount when every
+ * variant happens to cost the same.
+ *
+ * Compared as integer minor units (`toMinor`), never as Numbers: the ordering
+ * of two prices must not depend on what a double can hold.
+ */
+function formatServicePrice(service: Service): string {
+  if (!service.hasVariants) return formatMoney(service.price);
+
+  const priced = service.variants.filter(
+    (variant) => toMinor(variant.price) !== null,
+  );
+  if (priced.length === 0) return "—";
+
+  const lowest = priced.reduce((low, variant) =>
+    (toMinor(variant.price) as bigint) < (toMinor(low.price) as bigint)
+      ? variant
+      : low,
+  );
+  const highest = priced.reduce((high, variant) =>
+    (toMinor(variant.price) as bigint) > (toMinor(high.price) as bigint)
+      ? variant
+      : high,
+  );
+
+  return lowest.price === highest.price
+    ? formatMoney(lowest.price)
+    : `${formatMoney(lowest.price)} – ${formatMoney(highest.price)}`;
+}
 
 /** Minutes as something a person reads — "1 jam 30 mnt", not "90". */
 function formatDuration(minutes: number | null): string {
@@ -162,17 +199,18 @@ export function ServicesTable({
                   </TableCell>
                   <TableCell>
                     <span className="text-muted">
-                      {service.code ? (
-                        <HighlightText text={service.code} query={search} />
-                      ) : (
-                        "—"
-                      )}
+                      <HighlightText text={service.code} query={search} />
                     </span>
                   </TableCell>
                   {/* tabular-nums so the column does not shift as digit widths
                       differ — ui-rules §5. Right-aligned because it is money. */}
                   <TableCell className="text-right tabular-nums text-foreground">
-                    {formatMoney(service.price)}
+                    {formatServicePrice(service)}
+                    {service.hasVariants && (
+                      <div className="text-xs font-normal text-muted">
+                        per varian
+                      </div>
+                    )}
                   </TableCell>
                   {/*
                     A BLANK DURATION IS FLAGGED, NOT SHOWN AS AN EM DASH.

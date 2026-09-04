@@ -1,13 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
   Alert,
   Card,
+  CheckRow,
+  CheckRowGroup,
   FilterSelect,
   FormActionBar,
+  ImageField,
+  SelectField,
   Spinner,
   TextField,
   TextareaField,
@@ -17,17 +21,42 @@ import { Switch } from "@/components/ui/switch";
 import { ApiError } from "@/services/api-error";
 import { serviceService } from "@/services/service.service";
 import { businessLineService } from "@/services/businessLine.service";
+import { branchService } from "@/services/branch.service";
 import { swalToast } from "@/lib/swal";
-import type { Service } from "@/types/api";
+import type {
+  Branch,
+  Service,
+  ServiceLocation,
+  ServiceType,
+  ServiceVariantAxis,
+  ServiceVariantInput,
+} from "@/types/api";
+import type { MediaAsset } from "@/types/inventory";
+
+import {
+  buildVariantCombos,
+  comboKey,
+  LOCATION_LABELS,
+  ServiceAddonPicker,
+  ServiceBranchScope,
+  ServiceVariantEditor,
+  StringListField,
+} from "./ServiceFormFields";
 
 /** Backend caps — NAME_MAX_LENGTH and friends in service.model.js. */
 const NAME_MAX_LENGTH = 160;
 const CODE_MAX_LENGTH = 40;
 const DESCRIPTION_MAX_LENGTH = 500;
 const MAX_DURATION_MIN = 1440;
+const MAX_SESSIONS = 50;
+const SESSION_MAX_LENGTH = 120;
+const MAX_INCLUDED_ITEMS = 30;
+const INCLUDED_ITEM_MAX_LENGTH = 200;
 
 /** The API's page cap. Asking for more is a 400, not a bigger page. */
-const LINE_FETCH_LIMIT = 100;
+const OPTION_FETCH_LIMIT = 100;
+
+const SERVICE_LOCATION_ORDER: ServiceLocation[] = ["in_store", "in_home"];
 
 /**
  * DIGITS ONLY — no separator, no decimal point.
@@ -52,13 +81,19 @@ const WHOLE_RUPIAH = /^\d+$/;
 
 const LIST_PATH = "/dashboard/master/layanan";
 
+/** "150000.0000" → "150000" — a counter should not read past the decimals. */
+function trimStoredPrice(price: string): string {
+  return price.replace(/\.?0+$/, "");
+}
+
 /**
  * Create or edit a service — a **Form Entitas** (ui-rules §16): one record, no
  * row table underneath, so one card per group of fields.
  *
  * FIELD ORDER follows §16's entity order — Nama first and full-width, then the
  * identifier (Kode), then the classification that decides where its revenue
- * lands (Lini bisnis), then the optional attributes, then the note last.
+ * lands (Lini bisnis) and what it can be attached to (Jenis layanan), then the
+ * optional attributes, then the note last.
  *
  * ONE COMPONENT FOR BOTH VERBS, matching CategoryForm and PetForm: the fields are
  * identical and only the request and the wording differ.
@@ -66,7 +101,13 @@ const LIST_PATH = "/dashboard/master/layanan";
  * THE PRICE IS A STRING ALL THE WAY THROUGH. It is typed as text, validated as a
  * decimal, and sent as written — never parsed into a Number anywhere in this
  * file. `JSON.parse("199999.99")` is already not 199999.99, and a price is the
- * input to every total the tenant will ever invoice.
+ * input to every total the tenant will ever invoice. That holds for a variant's
+ * price exactly as it does for a flat one.
+ *
+ * FLAT OR PER-VARIANT, NEVER BOTH, which is the server's own rule (see
+ * `ServiceService.#prepareVariantConfig`). The switch decides which half of the
+ * card is shown, and the payload carries only that half: `price` alone, or
+ * `variantAxes` + `variants` alone.
  */
 export function ServiceForm({ serviceId }: { serviceId?: string }) {
   const editing = serviceId !== undefined;
@@ -77,12 +118,38 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
   const [lines, setLines] = useState<{ value: string; label: string }[]>([]);
   const [linesError, setLinesError] = useState<string | null>(null);
 
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [branchesLoading, setBranchesLoading] = useState(true);
+  const [branchesError, setBranchesError] = useState<string | null>(null);
+
+  const [addons, setAddons] = useState<Service[]>([]);
+  const [addonsLoading, setAddonsLoading] = useState(true);
+  const [addonsError, setAddonsError] = useState<string | null>(null);
+
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [businessLineId, setBusinessLineId] = useState("");
-  const [price, setPrice] = useState("");
+  const [image, setImage] = useState<MediaAsset | null>(null);
+  const [serviceType, setServiceType] = useState<ServiceType>("main");
   const [durationMin, setDurationMin] = useState("");
   const [description, setDescription] = useState("");
+
+  const [hasVariants, setHasVariants] = useState(false);
+  const [price, setPrice] = useState("");
+  const [variantAxes, setVariantAxes] = useState<ServiceVariantAxis[]>([]);
+  const [variantPrices, setVariantPrices] = useState<Record<string, string>>(
+    {},
+  );
+
+  const [sessions, setSessions] = useState<string[]>([]);
+  const [included, setIncluded] = useState<string[]>([]);
+  const [serviceLocations, setServiceLocations] = useState<ServiceLocation[]>([
+    "in_store",
+  ]);
+  const [pickupDeliveryAvailable, setPickupDeliveryAvailable] = useState(false);
+  const [allBranches, setAllBranches] = useState(true);
+  const [branchIds, setBranchIds] = useState<string[]>([]);
+  const [addonServiceIds, setAddonServiceIds] = useState<string[]>([]);
   const [taxExempt, setTaxExempt] = useState(false);
   const [isActive, setIsActive] = useState(true);
 
@@ -90,15 +157,23 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
   const [codeError, setCodeError] = useState<string | null>(null);
   const [lineError, setLineError] = useState<string | null>(null);
   const [priceError, setPriceError] = useState<string | null>(null);
+  const [variantError, setVariantError] = useState<string | null>(null);
   const [durationError, setDurationError] = useState<string | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [branchError, setBranchError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const combos = useMemo(
+    () => buildVariantCombos(variantAxes),
+    [variantAxes],
+  );
 
   useEffect(() => {
     let active = true;
 
     businessLineService
-      .list({ limit: LINE_FETCH_LIMIT })
+      .list({ limit: OPTION_FETCH_LIMIT })
       .then((result) => {
         if (!active) return;
         setLines(
@@ -109,6 +184,41 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
         if (!active) return;
         // Our own sentence, never the server's — the API answers in English.
         setLinesError("Daftar lini bisnis tidak bisa dimuat. Coba muat ulang.");
+      });
+
+    /*
+      BOTH LISTS FAIL SOFTLY. `branches:read` and a second `services:read` page
+      are separate reads from the one that opened this form, and a role can hold
+      the form's grant without them. Neither failure blocks a save: the schema's
+      defaults — every branch, no add-ons — are the safe answers when the list
+      cannot be seen, and both are reported beside their own field.
+    */
+    branchService
+      .list({ limit: OPTION_FETCH_LIMIT })
+      .then((result) => {
+        if (!active) return;
+        setBranches(result.items);
+      })
+      .catch(() => {
+        if (!active) return;
+        setBranchesError("Daftar cabang tidak bisa dimuat.");
+      })
+      .finally(() => {
+        if (active) setBranchesLoading(false);
+      });
+
+    serviceService
+      .list({ serviceType: "addon", isActive: true, limit: OPTION_FETCH_LIMIT })
+      .then((result) => {
+        if (!active) return;
+        setAddons(result.items);
+      })
+      .catch(() => {
+        if (!active) return;
+        setAddonsError("Daftar add-on tidak bisa dimuat.");
+      })
+      .finally(() => {
+        if (active) setAddonsLoading(false);
       });
 
     return () => {
@@ -127,15 +237,34 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
         if (!active) return;
         setService(result);
         setName(result.name);
-        setCode(result.code ?? "");
+        setCode(result.code);
         setBusinessLineId(result.businessLineId);
+        setImage(result.image);
+        setServiceType(result.serviceType);
         // The API stores four decimals; a counter should not have to read past
         // "150000.0000" to see the price they typed.
-        setPrice(result.price.replace(/\.?0+$/, ""));
+        setPrice(result.price === null ? "" : trimStoredPrice(result.price));
         setDurationMin(
           result.durationMin === null ? "" : String(result.durationMin),
         );
         setDescription(result.description ?? "");
+        setHasVariants(result.hasVariants);
+        setVariantAxes(result.variantAxes);
+        setVariantPrices(
+          Object.fromEntries(
+            result.variants.map((variant) => [
+              comboKey(result.variantAxes, variant),
+              trimStoredPrice(variant.price),
+            ]),
+          ),
+        );
+        setSessions(result.sessions);
+        setIncluded(result.included);
+        setServiceLocations(result.serviceLocations);
+        setPickupDeliveryAvailable(result.pickupDeliveryAvailable);
+        setAllBranches(result.allBranches);
+        setBranchIds(result.branchIds);
+        setAddonServiceIds(result.addonServiceIds);
         setTaxExempt(result.taxExempt);
         setIsActive(result.isActive);
       })
@@ -155,6 +284,24 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
 
   function goBack() {
     router.push(LIST_PATH);
+  }
+
+  function toggleAxis(axis: ServiceVariantAxis, checked: boolean) {
+    setVariantError(null);
+    setVariantAxes((current) =>
+      checked
+        ? [...current, axis]
+        : current.filter((entry) => entry !== axis),
+    );
+  }
+
+  function toggleLocation(location: ServiceLocation, checked: boolean) {
+    setLocationError(null);
+    setServiceLocations((current) =>
+      checked
+        ? [...current, location]
+        : current.filter((entry) => entry !== location),
+    );
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -177,15 +324,59 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
       setLineError("Pilih lini bisnisnya dulu.");
       invalid = true;
     }
-    if (trimmedPrice === "") {
+
+    /*
+      ─── THE CODE IS REQUIRED ──────────────────────────────────────────────────
+
+      It is what staff quote to each other and how a service is found in a hurry,
+      so it is expected from the day the service is priced rather than added
+      later — the same rule a product's SKU already keeps.
+    */
+    if (trimmedCode === "") {
+      setCodeError("Kode wajib diisi.");
+      invalid = true;
+    } else if (/\s/.test(trimmedCode)) {
+      setCodeError("Kode tidak boleh mengandung spasi.");
+      invalid = true;
+    }
+
+    /*
+      FLAT OR PER-VARIANT, NEVER BOTH — the server's rule, checked here so the
+      answer arrives before a round trip. Every generated row must carry a price:
+      a blank one is a combination the till could not quote.
+    */
+    let variants: ServiceVariantInput[] = [];
+    if (hasVariants) {
+      if (variantAxes.length === 0) {
+        setVariantError("Pilih minimal satu dasar pembeda harga.");
+        invalid = true;
+      } else if (
+        combos.some((combo) => (variantPrices[combo.key] ?? "").trim() === "")
+      ) {
+        setVariantError("Semua baris varian harus punya harga.");
+        invalid = true;
+      } else if (
+        combos.some(
+          (combo) => !WHOLE_RUPIAH.test((variantPrices[combo.key] ?? "").trim()),
+        )
+      ) {
+        setVariantError(
+          "Isi angka saja, tanpa titik atau koma. Contoh: 150000",
+        );
+        invalid = true;
+      } else {
+        variants = combos.map((combo) => ({
+          petType: combo.petType,
+          sizeCategory: combo.sizeCategory,
+          furType: combo.furType,
+          price: (variantPrices[combo.key] ?? "").trim(),
+        }));
+      }
+    } else if (trimmedPrice === "") {
       setPriceError("Harga wajib diisi.");
       invalid = true;
     } else if (!WHOLE_RUPIAH.test(trimmedPrice)) {
       setPriceError("Isi angka saja, tanpa titik atau koma. Contoh: 150000");
-      invalid = true;
-    }
-    if (trimmedCode && /\s/.test(trimmedCode)) {
-      setCodeError("Kode tidak boleh mengandung spasi.");
       invalid = true;
     }
 
@@ -220,6 +411,20 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
       invalid = true;
     }
 
+    if (serviceLocations.length === 0) {
+      setLocationError("Pilih minimal satu lokasi layanan.");
+      invalid = true;
+    }
+
+    // The same call the server makes: a service available at no branch at all
+    // vanishes from every till while looking perfectly healthy on its own page.
+    if (!allBranches && branchIds.length === 0) {
+      setBranchError(
+        "Pilih minimal satu cabang, atau centang “Semua cabang”.",
+      );
+      invalid = true;
+    }
+
     if (invalid) return;
 
     setSaving(true);
@@ -227,12 +432,28 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
 
     const payload = {
       name: trimmedName,
+      code: trimmedCode,
       businessLineId,
-      // Sent exactly as typed. Never Number(price).
-      price: trimmedPrice,
-      code: trimmedCode || null,
-      durationMin: duration,
+      image,
+      durationMin: duration as number,
       description: description.trim() || null,
+      hasVariants,
+      // Exactly one half of the pricing is sent. Sending both is a 400, and
+      // sending the unused half as an empty value would be a lie about it.
+      ...(hasVariants
+        ? { variantAxes, variants }
+        : // Sent exactly as typed. Never Number(price).
+          { price: trimmedPrice, variantAxes: [], variants: [] }),
+      sessions,
+      included,
+      serviceLocations,
+      pickupDeliveryAvailable,
+      allBranches,
+      branchIds: allBranches ? [] : branchIds,
+      serviceType,
+      // An add-on may not carry add-ons of its own — the server empties the
+      // list anyway, and sending it would ask for something it refuses to mean.
+      addonServiceIds: serviceType === "main" ? addonServiceIds : [],
       taxExempt,
     };
 
@@ -256,6 +477,13 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
         const detail = error.details?.[0];
         if (detail?.field === "businessLineId") {
           setLineError("Lini bisnis ini tidak ditemukan lagi. Pilih yang lain.");
+        } else if (detail?.field === "branchIds") {
+          setBranchError(detail.message);
+        } else if (
+          detail?.field === "variants" ||
+          detail?.field === "variantAxes"
+        ) {
+          setVariantError(error.reason ?? error.message);
         } else {
           setFormError(error.reason ?? error.message);
         }
@@ -326,8 +554,9 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
             error={codeError ?? undefined}
             placeholder="mis. GRM-FULL"
             maxLength={CODE_MAX_LENGTH}
-            hint="Opsional — untuk input cepat di kasir. Tanpa spasi, dan harus unik."
+            hint="Untuk input cepat di kasir. Tanpa spasi, dan harus unik."
             disabled={saving}
+            required
           />
 
           <div className="flex flex-col gap-1.5">
@@ -352,32 +581,36 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
               Menentukan laba-rugi lini mana yang mencatat penjualan ini.
             </p>
           </div>
+
+          <SelectField
+            label="Jenis layanan"
+            value={serviceType}
+            onChange={(next) => setServiceType(next as ServiceType)}
+            options={[
+              { value: "main", label: "Layanan utama" },
+              { value: "addon", label: "Add-on" },
+            ]}
+            hint="Layanan utama dipesan langsung. Add-on cuma bisa ditempelkan ke layanan utama."
+            disabled={saving}
+            required
+          />
+
+          <ImageField
+            value={image}
+            onChange={setImage}
+            purpose="service"
+            alt="Gambar layanan"
+            hint="Opsional. PNG, JPG atau WebP, dipotong jadi kotak — itu bentuk tampilannya di kasir dan etalase."
+            disabled={saving}
+          />
         </div>
       </Card>
 
       <Card
         title="Harga & durasi"
-        description="Harga wajib. Durasi belum dipakai di mana-mana — nanti dibaca modul Booking saat menaruh layanan ini di kalender."
+        description="Harga bisa satu untuk semua, atau beda-beda per varian. Durasi dibaca kalender dan pengecekan bentrok."
       >
-        <div className="grid gap-4 sm:grid-cols-2">
-          <TextField
-            label="Harga"
-            name="price"
-            // `inputMode` rather than type=number: a number input in some
-            // browsers silently reformats and loses what was typed, and this
-            // value must reach the API exactly as written.
-            inputMode="numeric"
-            value={price}
-            onChange={(event) => {
-              setPrice(event.target.value);
-              setPriceError(null);
-            }}
-            error={priceError ?? undefined}
-            placeholder="150000"
-            hint="Boleh 0 — layanan gratis itu hal yang nyata."
-            disabled={saving}
-            required
-          />
+        <div className="flex flex-col gap-5">
           <TextField
             label="Durasi (menit)"
             name="durationMin"
@@ -394,9 +627,187 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
             hint="Dipakai kalender dan pengecekan bentrok."
             disabled={saving}
             required
+            className="sm:max-w-xs"
           />
+
+          <div className="flex items-start justify-between gap-4 border-t border-border pt-4">
+            <div className="min-w-0">
+              <Label htmlFor="service-has-variants">
+                Harga beda per varian
+              </Label>
+              <p className="mt-1 max-w-prose text-xs text-muted">
+                Nyalakan kalau harganya tergantung hewannya — tipe, ukuran, atau
+                jenis bulu. Kalau mati, satu harga berlaku untuk semua.
+              </p>
+            </div>
+            <Switch
+              id="service-has-variants"
+              checked={hasVariants}
+              onCheckedChange={(next) => {
+                setHasVariants(next);
+                setPriceError(null);
+                setVariantError(null);
+              }}
+              disabled={saving}
+            />
+          </div>
+
+          {hasVariants ? (
+            <ServiceVariantEditor
+              axes={variantAxes}
+              prices={variantPrices}
+              combos={combos}
+              error={variantError ?? undefined}
+              disabled={saving}
+              onToggleAxis={toggleAxis}
+              onPriceChange={(key, value) => {
+                setVariantError(null);
+                setVariantPrices((current) => ({ ...current, [key]: value }));
+              }}
+            />
+          ) : (
+            <TextField
+              label="Harga"
+              name="price"
+              // `inputMode` rather than type=number: a number input in some
+              // browsers silently reformats and loses what was typed, and this
+              // value must reach the API exactly as written.
+              inputMode="numeric"
+              value={price}
+              onChange={(event) => {
+                setPrice(event.target.value);
+                setPriceError(null);
+              }}
+              error={priceError ?? undefined}
+              placeholder="150000"
+              hint="Boleh 0 — layanan gratis itu hal yang nyata."
+              disabled={saving}
+              required
+              className="sm:max-w-xs"
+            />
+          )}
         </div>
       </Card>
+
+      <Card
+        title="Isi layanan"
+        description="Sesi dipakai kalender untuk memecah pengerjaannya. Termasuk dipakai etalase untuk menyebut apa saja yang didapat pelanggan."
+      >
+        <div className="flex flex-col gap-6">
+          <StringListField
+            label="Sesi"
+            hint="Tahapan pengerjaannya, mis. Mandi → Gunting → Selesai."
+            placeholder="mis. Mandi"
+            values={sessions}
+            maxItems={MAX_SESSIONS}
+            maxLength={SESSION_MAX_LENGTH}
+            disabled={saving}
+            onChange={setSessions}
+          />
+
+          <div className="border-t border-border pt-6">
+            <StringListField
+              label="Termasuk"
+              hint="Apa saja yang sudah masuk harga. Beda dari keterangan — ini daftar, bukan paragraf."
+              placeholder="mis. Potong kuku"
+              values={included}
+              maxItems={MAX_INCLUDED_ITEMS}
+              maxLength={INCLUDED_ITEM_MAX_LENGTH}
+              disabled={saving}
+              onChange={setIncluded}
+            />
+          </div>
+        </div>
+      </Card>
+
+      <Card
+        title="Lokasi & jangkauan"
+        description="Di mana layanan ini dikerjakan, dan di cabang mana bisa dipesan."
+      >
+        <div className="flex flex-col gap-5">
+          <div>
+            <p className="text-sm font-medium">Lokasi layanan</p>
+            <p className="mt-1 text-xs text-muted">
+              Boleh dua-duanya — grooming panggilan yang juga melayani di toko.
+            </p>
+            <CheckRowGroup className="mt-2">
+              {SERVICE_LOCATION_ORDER.map((location) => (
+                <CheckRow
+                  key={location}
+                  label={LOCATION_LABELS[location]}
+                  checked={serviceLocations.includes(location)}
+                  onCheckedChange={(checked) =>
+                    toggleLocation(location, checked)
+                  }
+                  disabled={saving}
+                />
+              ))}
+            </CheckRowGroup>
+            {locationError && (
+              <p role="alert" className="mt-1 text-xs text-danger">
+                {locationError}
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-start justify-between gap-4 border-t border-border pt-4">
+            <div className="min-w-0">
+              <Label htmlFor="service-pickup-delivery">
+                Bisa antar-jemput
+              </Label>
+              <p className="mt-1 max-w-prose text-xs text-muted">
+                Nyalakan kalau hewannya boleh dijemput dan diantar pulang.
+              </p>
+            </div>
+            <Switch
+              id="service-pickup-delivery"
+              checked={pickupDeliveryAvailable}
+              onCheckedChange={setPickupDeliveryAvailable}
+              disabled={saving}
+            />
+          </div>
+
+          <div className="border-t border-border pt-4">
+            <ServiceBranchScope
+              branches={branches}
+              loading={branchesLoading}
+              loadError={branchesError}
+              allBranches={allBranches}
+              branchIds={branchIds}
+              error={branchError ?? undefined}
+              disabled={saving}
+              onChange={(patch) => {
+                setBranchError(null);
+                if (patch.allBranches !== undefined)
+                  setAllBranches(patch.allBranches);
+                if (patch.branchIds !== undefined) setBranchIds(patch.branchIds);
+              }}
+            />
+          </div>
+        </div>
+      </Card>
+
+      {/*
+        ONLY ON A MAIN SERVICE. An add-on may not carry add-ons of its own — the
+        server empties the list rather than refusing the save — so the card is
+        absent rather than shown disabled, which would offer a choice that has
+        no effect.
+      */}
+      {serviceType === "main" && (
+        <Card
+          title="Add-on"
+          description="Layanan tambahan yang bisa dicentang bareng layanan ini di kasir."
+        >
+          <ServiceAddonPicker
+            addons={addons.filter((addon) => addon._id !== serviceId)}
+            loading={addonsLoading}
+            loadError={addonsError}
+            selected={addonServiceIds}
+            disabled={saving}
+            onChange={setAddonServiceIds}
+          />
+        </Card>
+      )}
 
       <Card
         title="Pajak"
@@ -421,14 +832,14 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
 
       <Card
         title="Keterangan"
-        description="Opsional. Sebaris dua baris soal apa yang termasuk di dalamnya."
+        description="Opsional. Sebaris dua baris soal layanan ini — daftar isinya sendiri diisi di Termasuk."
       >
         <TextareaField
           label="Keterangan"
           name="description"
           value={description}
           onChange={(event) => setDescription(event.target.value)}
-          placeholder="mis. Mandi, potong kuku, bersih telinga, blow dry"
+          placeholder="mis. Mandi lengkap dengan pengeringan dan penataan bulu"
           maxLength={DESCRIPTION_MAX_LENGTH}
           disabled={saving}
         />
@@ -446,7 +857,7 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
                 Matikan kalau layanan ini sudah tidak dijual lagi. Struk dan
                 laporan lama tetap menyebut namanya — itu bedanya dengan
                 menghapus, yang ada di menu barisnya dan ditolak selama masih
-                dipakai paket bundling.
+                dipakai paket bundling atau jadi add-on layanan lain.
               </p>
             </div>
             <Switch
