@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import type { Booking } from "@/types/api";
 
-import { formatBookingMoment } from "../format";
+import { bookingActorLabel, formatBookingMoment } from "../format";
 import { BookingStatusBadge } from "./BookingStatusBadge";
 
 /**
@@ -72,12 +72,16 @@ export function BookingHistoryDialog({
                   <BookingStatusBadge status={event.status} />
                   <span className="text-sm text-muted">
                     {/*
-                      WHO, and "Sistem" when nothing human did it — a booking
-                      settled by a paid sale moves without anybody choosing to
-                      move it, and a blank there reads as a field that failed to
-                      load.
+                      WHO, WITH THEIR ROLE — "Fitria (ops)". A trail is read by
+                      somebody who was not there, and a bare name assumes they
+                      know who Fitria is. "Sistem" when nothing human did it: a
+                      booking settled by a paid sale moves without anybody
+                      choosing to, and a blank reads as a field that failed.
+
+                      Shared with the work page's timeline card, because two
+                      formatters for one label would drift.
                     */}
-                    {event.byName ?? "Sistem"}
+                    {bookingActorLabel(event.byName, event.byRoleName)}
                     {event.implied && (
                       /*
                         Two entries stamped at the same second would otherwise

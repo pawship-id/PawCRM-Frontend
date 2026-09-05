@@ -810,10 +810,16 @@ describe("BookingPetWorkScreen — the header's audit line", () => {
       permissions: [{ feature: "bookings", actions: ["read"] }] as never,
     });
 
-    expect(
-      await screen.findByText(/dibuat 30 agu 2026, 11\.52/i),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/fitria \(staff\)/i)).toBeInTheDocument();
+    /*
+      SCOPED TO THE HEADER LINE. "Fitria (staff)" is now on the page TWICE and
+      both are right: the audit line says who took the booking, and the trail's
+      "Booking dibuat" entry says the same thing in the story of the visit. An
+      unscoped query would have to be loosened to `getAllBy`, which would stop
+      pinning that the header itself carries the role.
+    */
+    const line = await screen.findByText(/dibuat 30 agu 2026, 11\.52/i);
+
+    expect(line).toHaveTextContent("Fitria (staff)");
   });
 
   it("names the booking number as a link back to the overview", async () => {

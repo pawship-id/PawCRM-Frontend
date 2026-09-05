@@ -31,6 +31,7 @@ const event = (overrides: Partial<BookingStatusEvent> = {}) =>
     at: "2026-08-26T03:00:00.000Z",
     by: "user-1",
     byName: "Mbak Sari",
+    byRoleName: "Ops",
     implied: false,
     ...overrides,
   }) as BookingStatusEvent;
@@ -232,7 +233,7 @@ describe("BookingStatusActions — the trail", () => {
 
     expect(within(dialog).getByText("Dikonfirmasi")).toBeInTheDocument();
     expect(within(dialog).getByText("Check-in")).toBeInTheDocument();
-    expect(within(dialog).getAllByText("Mbak Sari")).toHaveLength(2);
+    expect(within(dialog).getAllByText("Mbak Sari (ops)")).toHaveLength(2);
   });
 
   /* Two entries at the same second would otherwise claim two decisions. */
@@ -249,6 +250,19 @@ describe("BookingStatusActions — the trail", () => {
     const dialog = await screen.findByRole("dialog", { name: /riwayat status/i });
 
     expect(within(dialog).getByText(/otomatis/i)).toBeInTheDocument();
+  });
+
+  it("names the mover with the hat they were wearing", async () => {
+    /*
+      A TRAIL IS READ BY SOMEBODY WHO WAS NOT THERE, and a bare name assumes
+      they know who Mbak Sari is. The dialog shares its formatter with the work
+      page's timeline card so the two cannot drift apart.
+    */
+    await openHistory(booking({ statusHistory: [event()] }));
+
+    const dialog = await screen.findByRole("dialog", { name: /riwayat status/i });
+
+    expect(within(dialog).getByText("Mbak Sari (ops)")).toBeInTheDocument();
   });
 
   /* Nothing human moved it — a booking settled by a paid sale. */

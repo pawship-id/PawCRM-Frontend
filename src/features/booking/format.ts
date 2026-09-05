@@ -26,3 +26,36 @@ export function formatBookingMoment(value: string | null | undefined): string {
     minute: "2-digit",
   });
 }
+
+/**
+ * WHO DID IT, with the hat they were wearing — "Fitria (ops)", "Sinta (groomer)".
+ *
+ * ─── WHY THE ROLE IS WORTH THE PARENTHESES ─────────────────────────────────
+ *
+ * A trail is read after the fact, by somebody who was not there. "Fitria" alone
+ * assumes the reader knows who Fitria is; a shop with twelve staff and turnover
+ * does not, and the question actually being asked is whether the person who moved
+ * this was at the counter or at the table. The role answers it in three words.
+ *
+ * ─── THE ROLE MAY BE ABSENT WHEN THE NAME IS NOT ───────────────────────────
+ *
+ * A super-admin owner reaches every permission by BYPASS rather than through an
+ * assigned role, so `byRoleName` is genuinely null for that account. The name
+ * alone is honest; inventing "(admin)" would be a guess about how they got in.
+ *
+ * ─── AND NOBODY AT ALL IS A REAL ANSWER ────────────────────────────────────
+ *
+ * A booking settled by a paid sale moves without anybody choosing to move it.
+ * "Sistem" says so; a blank reads as a field that failed to load.
+ *
+ * ONE FORMATTER, because the trail is drawn twice — the card on the animal's
+ * work page and `BookingHistoryDialog` — and two would drift.
+ */
+export function bookingActorLabel(
+  name: string | null | undefined,
+  roleName?: string | null,
+): string {
+  if (!name) return "Sistem";
+
+  return roleName ? `${name} (${roleName.toLowerCase()})` : name;
+}

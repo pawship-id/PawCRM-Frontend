@@ -8,6 +8,8 @@ import { Alert, Card, Spinner, TextField } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
 import { BookingBelongingsCard } from "./BookingBelongingsCard";
+import { bookingActorLabel } from "../format";
+import { BookingHistoryCard } from "./BookingHistoryCard";
 import { BookingPetNotesCard } from "./BookingPetNotesCard";
 import { SessionGroomers } from "./SessionGroomers";
 import {
@@ -487,7 +489,17 @@ export function BookingPetWorkScreen({
               this app's other identifier-links are decorative; an id that goes
               nowhere is worse than no id.
             */}
-            <p className="mt-1 font-mono text-xs text-muted">
+            {/*
+              `tabular-nums`, NOT `font-mono` — ui-rules §5: there are two
+              typefaces in this product and mono is not one of them. Inter's
+              tabular figures do the digit-alignment job it was reached for.
+
+              THE NAME AND ROLE GO THROUGH `bookingActorLabel`, the same
+              formatter the trail below uses. Written out by hand here, this line
+              said "Fitria (Staff)" while the trail said "Fitria (staff)" — two
+              renderings of one fact, a few centimetres apart.
+            */}
+            <p className="mt-1 text-xs tabular-nums text-muted">
               Dibuat{" "}
               {new Date(booking.createdAt).toLocaleString("id-ID", {
                 day: "numeric",
@@ -496,10 +508,11 @@ export function BookingPetWorkScreen({
                 hour: "2-digit",
                 minute: "2-digit",
               })}{" "}
-              · {booking.createdByName ?? "sistem"}
-              {booking.createdByRoleName
-                ? ` (${booking.createdByRoleName})`
-                : ""}{" "}
+              ·{" "}
+              {bookingActorLabel(
+                booking.createdByName,
+                booking.createdByRoleName,
+              )}{" "}
               ·{" "}
               <Link
                 href={`/dashboard/booking/${bookingId}`}
@@ -1134,33 +1147,7 @@ export function BookingPetWorkScreen({
             onChanged={setBooking}
           />
 
-          <Card title="Riwayat" description={`${booking.statusHistory?.length ?? 0} aktivitas`}>
-            {(booking.statusHistory ?? []).length === 0 ? (
-              <p className="text-sm text-muted">Belum ada aktivitas.</p>
-            ) : (
-              <ol className="flex flex-col">
-                {[...(booking.statusHistory ?? [])].reverse().map((event) => (
-                  <li
-                    key={`${event.status}-${event.at}`}
-                    className="border-l-2 border-border pb-3 pl-4 last:pb-0"
-                  >
-                    <p className="text-xs font-bold text-foreground">
-                      Status → {event.status}
-                    </p>
-                    <p className="font-mono text-[10px] text-muted">
-                      {new Date(event.at).toLocaleString("id-ID", {
-                        day: "2-digit",
-                        month: "short",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}{" "}
-                      · {event.byName ?? "sistem"}
-                    </p>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </Card>
+          <BookingHistoryCard booking={booking} />
 
           {/*
             THE REFERENCE'S OWN NOTE, and it is right: this page is open at the

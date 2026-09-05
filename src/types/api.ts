@@ -2031,6 +2031,15 @@ export interface BookingStatusEvent {
    */
   byName: string | null;
   /**
+   * The role that person held — "ops", "groomer" — so a trail read after the
+   * fact says whether whoever moved this was at the counter or at the table.
+   *
+   * NULL EVEN WHEN THE NAME IS NOT, for the seeded Owner: it reaches every
+   * permission by bypass rather than an assigned role, so there is genuinely
+   * none to show.
+   */
+  byRoleName: string | null;
+  /**
    * True when this rung was filled in behind a skipped step rather than chosen.
    *
    * A receptionist who takes an animal straight to check-in has confirmed the

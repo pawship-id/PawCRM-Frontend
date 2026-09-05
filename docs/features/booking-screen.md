@@ -567,8 +567,17 @@ decision that belongs to the shop.
 
 ## The trail
 
-`statusHistory[]` comes back on every booking: `{ status, at, by, byName, implied }`, oldest
-first. `Riwayat status` in the row menu draws it.
+`statusHistory[]` comes back on every booking: `{ status, at, by, byName, byRoleName, implied }`,
+oldest first. It is drawn **twice**, deliberately differently:
+
+| Where | Shape | Order |
+| --- | --- | --- |
+| `BookingHistoryCard` — the rail on `/dashboard/booking/:id/hewan/:petId` | A timeline: a dot per entry, a line joining them, the current one ringed | **Newest first** |
+| `BookingHistoryDialog` — `Riwayat status` in the row menu | A list: status badge, mover, time | **Oldest first** |
+
+**The opposite orders are not an oversight.** The card sits open beside the work all day and is
+glanced at for *what just happened*; the dialog is opened on purpose to read the visit as a
+story, and a story starts at the beginning.
 
 **Why it exists.** `status` says where a booking stands and nothing about how it got there,
 and `updatedAt` answers only the last move because the next one overwrites it. *"Jam berapa
@@ -581,8 +590,32 @@ same instant. The filled-in entry carries `implied: true` and the dialog draws i
 *otomatis* — two entries at the same second would otherwise claim two separate decisions, and
 this says which one somebody actually made.
 
-**`byName` is null when nothing human moved it** — a booking settled by a paid sale — and the
-dialog says "Sistem" rather than leaving a blank that reads as a field that failed to load.
+**`byName` is null when nothing human moved it** — a booking settled by a paid sale — and both
+renderers say "Sistem" rather than leaving a blank that reads as a field that failed to load.
+
+**Whoever moved it is named with the hat they were wearing** — "Fitria (ops)", "Sinta
+(groomer)". A trail is read after the fact by somebody who was not there, and a bare name
+assumes they know who Fitria is; the question actually being asked is whether the person was at
+the counter or at the table. `bookingActorLabel` in `features/booking/format.ts` is the single
+formatter — the card, the dialog and the work page's own audit line all go through it, because
+three renderings of one label is how "Fitria (Staff)" and "Fitria (staff)" ended up a few
+centimetres apart. **`byRoleName` can be null when the name is not**: the seeded Owner reaches
+every permission by bypass rather than an assigned role, and the name alone is honest where
+"(admin)" would be a guess.
+
+**The card's first line is `Booking dibuat`, and it is not a status.** It comes from
+`createdAt` / `createdByName`, because `statusHistory` records only MOVES — without it the
+trail begins at "Dikonfirmasi" and reads as though the booking sprang into existence already
+confirmed. It is also why a booking whose trail predates the feature still shows one honest
+line instead of an empty card.
+
+**The current entry is ringed in navy, not orange.** The reference draws it orange; ui-rules §4
+spends orange on one meaning — a human must act — and on that page it is already spent on the
+status badge while an animal is on the table. Two orange things at once means one of them is
+wrong, and "this is the most recent line" is not a call to action.
+
+**The statuses are shown in Indonesian**, through `BOOKING_STATUS_LABELS`. The card used to
+print the API's own values — `Status → in_progress` — at a shop.
 
 **An empty trail means *not recorded*, never *never moved*.** Bookings made before the field
 existed carry one, and the empty state says so rather than implying the booking sat still.
