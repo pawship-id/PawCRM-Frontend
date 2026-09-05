@@ -433,14 +433,14 @@ describe("BookingDetailScreen", () => {
 
     /*
       AND THE LADDER IS STILL THEIRS — asserted on a FORWARD MOVE, not on
-      "Riwayat status", which is ungated and would pass even if the split had
+      "Status history", which is ungated and would pass even if the split had
       hidden every action a groomer needs.
     */
     await userEvent.click(
       screen.getByRole("button", { name: /tindakan|aksi|status/i }),
     );
-    expect(await screen.findByText(/hewan sudah datang/i)).toBeInTheDocument();
-    expect(screen.queryByText(/batalkan booking/i)).not.toBeInTheDocument();
+    expect(await screen.findByText(/mark arrived/i)).toBeInTheDocument();
+    expect(screen.queryByText(/cancel booking/i)).not.toBeInTheDocument();
   });
 
   it("says plainly when the booking is not there", async () => {

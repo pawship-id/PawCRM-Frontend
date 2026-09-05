@@ -42,7 +42,15 @@ export function BookingHistoryDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Riwayat status</DialogTitle>
+          {/*
+            THE SAME WORDS AS THE MENU ROW THAT OPENS IT. A row reading "Status
+            history" that opens a dialog titled "Riwayat status" is the
+            translation step the English exception exists to remove — the title
+            NAMES the thing, and names follow the status vocabulary (ui-rules
+            §12). What is inside it stays Bahasa: the empty state, "Sistem",
+            "otomatis" and Tutup are sentences.
+          */}
+          <DialogTitle>Status history</DialogTitle>
           <DialogDescription>
             {booking.bookingNumber ?? "Booking ini"}
             {booking.petName ? ` · ${booking.petName}` : ""}

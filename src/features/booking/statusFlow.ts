@@ -99,24 +99,37 @@ export function hasCompletedWork(booking: BookingLike): boolean {
  * What each move is CALLED as an action, which is not what the status is called
  * as a state.
  *
- * A menu row is something somebody does — "Terima booking", "Batalkan" — while a
- * badge is a fact about the booking ("Sudah datang"). `BOOKING_STATUS_LABELS`
- * names the state and this names the act; using one for both is how a menu ends
- * up reading like a list of adjectives.
+ * ─── IN ENGLISH, WITH THE STATUS NAMES — ui-rules §12 ──────────────────────
+ *
+ * These were Bahasa and the exception was scoped to the badge alone, on the
+ * argument that a menu row is a SENTENCE (what somebody does) while a badge is a
+ * NAME. The shop looked at the result and asked for the menu too, and they are
+ * right about the thing the argument missed: a menu of Indonesian verbs whose
+ * only purpose is to reach English-named rungs made every row a translation
+ * step — "Serahkan ke pemilik" to arrive at a badge reading "Return to
+ * Pawrents". Half a screen in each language is worse than either.
+ *
+ * STILL VERBS, NOT THE NAMES REPEATED. "Confirmed" as a menu row reads as a
+ * fact about the booking rather than something to press; each row says what
+ * pressing it DOES, and lands on the status it is named after.
+ *
+ * IT STOPS AT THE MENU. The dialog that opens behind these rows, its warnings,
+ * the cancel-reason field and every toast stay in Bahasa — those are sentences,
+ * and §12 is about sentences.
  */
 export const BOOKING_STATUS_ACTIONS: Record<BookingStatus, string> = {
-  draft: "Kembalikan ke draf",
-  requested: "Ajukan booking",
-  confirmed: "Konfirmasi booking",
-  pickup: "Mulai penjemputan",
-  arrived: "Hewan sudah datang",
-  in_progress: "Mulai dikerjakan",
-  completed: "Tandai selesai dikerjakan",
-  delivery: "Mulai pengantaran",
-  return_to_pawrents: "Serahkan ke pemilik",
-  cancelled: "Batalkan booking",
+  draft: "Move back to draft",
+  requested: "Mark as requested",
+  confirmed: "Confirm booking",
+  pickup: "Start pickup",
+  arrived: "Mark arrived",
+  in_progress: "Start work",
+  completed: "Mark completed",
+  delivery: "Start delivery",
+  return_to_pawrents: "Return to pawrents",
+  cancelled: "Cancel booking",
   /* Never offered as a move — rescheduling has its own dialog and its own date. */
-  rescheduled: "Jadwalkan ulang",
+  rescheduled: "Reschedule",
 };
 
 /**

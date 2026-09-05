@@ -470,7 +470,7 @@ describe("BookingPetWorkScreen — the header's booking-level controls", () => {
     });
 
     expect(
-      await screen.findByRole("button", { name: /mulai dikerjakan →/i }),
+      await screen.findByRole("button", { name: /start work →/i }),
     ).toBeInTheDocument();
   });
 
@@ -563,10 +563,10 @@ describe("BookingPetWorkScreen — the header's booking-level controls", () => {
     });
 
     await userEvent.click(
-      await screen.findByRole("button", { name: /mulai dikerjakan →/i }),
+      await screen.findByRole("button", { name: /start work →/i }),
     );
     await userEvent.click(
-      screen.getByRole("button", { name: "Mulai dikerjakan", hidden: false }),
+      screen.getByRole("button", { name: "Start work", hidden: false }),
     );
 
     await waitFor(() => expect(bookings.changeStatus).toHaveBeenCalledWith(

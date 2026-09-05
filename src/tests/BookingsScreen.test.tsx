@@ -796,8 +796,8 @@ describe("BookingsTable — the action column", () => {
     expect(within(menu).getAllByRole("menuitem")).toHaveLength(1);
     expect(within(menu).queryByText(/hewan sudah datang/i)).toBeNull();
     expect(within(menu).queryByText(/tandai selesai/i)).toBeNull();
-    expect(within(menu).queryByText(/batalkan booking/i)).toBeNull();
-    expect(within(menu).queryByText(/jadwalkan ulang/i)).toBeNull();
-    expect(within(menu).queryByText(/riwayat status/i)).toBeNull();
+    expect(within(menu).queryByText(/cancel booking/i)).toBeNull();
+    expect(within(menu).queryByText(/reschedule/i)).toBeNull();
+    expect(within(menu).queryByText(/status history/i)).toBeNull();
   });
 });

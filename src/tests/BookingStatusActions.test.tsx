@@ -65,12 +65,12 @@ describe("BookingStatusActions", () => {
 
     const menu = await openMenu();
 
-    expect(within(menu).getByRole("menuitem", { name: "Hewan sudah datang" })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: "Mark arrived" })).toBeInTheDocument();
     expect(
-      within(menu).getByRole("menuitem", { name: "Mulai dikerjakan" }),
+      within(menu).getByRole("menuitem", { name: "Start work" }),
     ).toBeInTheDocument();
     // Already confirmed — and nothing ever moves back down the ladder.
-    expect(within(menu).queryByRole("menuitem", { name: "Konfirmasi booking" })).toBeNull();
+    expect(within(menu).queryByRole("menuitem", { name: "Confirm booking" })).toBeNull();
   });
 
   it("offers nothing to move on a booking that is already final", async () => {
@@ -78,10 +78,10 @@ describe("BookingStatusActions", () => {
 
     const menu = await openMenu();
 
-    expect(within(menu).getByRole("menuitem", { name: /riwayat/i })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: /status history/i })).toBeInTheDocument();
     expect(within(menu).queryByRole("menuitem", { name: /batalkan/i })).toBeNull();
     expect(
-      within(menu).queryByRole("menuitem", { name: "Mulai dikerjakan" }),
+      within(menu).queryByRole("menuitem", { name: "Start work" }),
     ).toBeNull();
   });
 
@@ -89,10 +89,10 @@ describe("BookingStatusActions", () => {
     const onChanged = render(booking({ status: "confirmed" }));
 
     const menu = await openMenu();
-    await userEvent.click(within(menu).getByRole("menuitem", { name: "Hewan sudah datang" }));
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Mark arrived" }));
 
     await userEvent.click(
-      screen.getByRole("button", { name: "Hewan sudah datang", hidden: false }),
+      screen.getByRole("button", { name: "Mark arrived", hidden: false }),
     );
 
     await waitFor(() =>
@@ -110,7 +110,7 @@ describe("BookingStatusActions", () => {
     render(booking({ status: "draft", bookingNumber: null }));
 
     const menu = await openMenu("booking ini");
-    await userEvent.click(within(menu).getByRole("menuitem", { name: "Hewan sudah datang" }));
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Mark arrived" }));
 
     expect(await screen.findByText(/sekalian tercatat sebagai/i)).toBeInTheDocument();
     /*
@@ -127,7 +127,7 @@ describe("BookingStatusActions", () => {
 
     const menu = await openMenu();
     await userEvent.click(
-      within(menu).getByRole("menuitem", { name: "Mulai dikerjakan" }),
+      within(menu).getByRole("menuitem", { name: "Start work" }),
     );
 
     expect(screen.queryByText(/sekalian tercatat/i)).toBeNull();
@@ -139,7 +139,7 @@ describe("BookingStatusActions", () => {
 
     const menu = await openMenu();
     await userEvent.click(
-      within(menu).getByRole("menuitem", { name: "Tandai selesai dikerjakan" }),
+      within(menu).getByRole("menuitem", { name: "Mark completed" }),
     );
 
     expect(
@@ -152,12 +152,12 @@ describe("BookingStatusActions", () => {
 
     const menu = await openMenu();
     await userEvent.click(
-      within(menu).getByRole("menuitem", { name: /batalkan booking/i }),
+      within(menu).getByRole("menuitem", { name: /cancel booking/i }),
     );
 
     await userEvent.type(screen.getByLabelText(/alasan/i), "Pelanggan batal");
     await userEvent.click(
-      screen.getByRole("button", { name: /batalkan booking/i }),
+      screen.getByRole("button", { name: /cancel booking/i }),
     );
 
     await waitFor(() =>
@@ -177,7 +177,7 @@ describe("BookingStatusActions", () => {
 
     const menu = await openMenu();
 
-    expect(within(menu).getByRole("menuitem", { name: "Hewan sudah datang" })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: "Mark arrived" })).toBeInTheDocument();
     expect(within(menu).queryByRole("menuitem", { name: /batalkan/i })).toBeNull();
   });
 
@@ -190,8 +190,8 @@ describe("BookingStatusActions", () => {
 
     const menu = await openMenu();
 
-    expect(within(menu).getByRole("menuitem", { name: /riwayat/i })).toBeInTheDocument();
-    expect(within(menu).queryByRole("menuitem", { name: "Hewan sudah datang" })).toBeNull();
+    expect(within(menu).getByRole("menuitem", { name: /status history/i })).toBeInTheDocument();
+    expect(within(menu).queryByRole("menuitem", { name: "Mark arrived" })).toBeNull();
   });
 
   /*
@@ -208,8 +208,8 @@ describe("BookingStatusActions", () => {
     const onChanged = render(booking({ status: "confirmed" }));
 
     const menu = await openMenu();
-    await userEvent.click(within(menu).getByRole("menuitem", { name: "Hewan sudah datang" }));
-    await userEvent.click(screen.getByRole("button", { name: "Hewan sudah datang" }));
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Mark arrived" }));
+    await userEvent.click(screen.getByRole("button", { name: "Mark arrived" }));
 
     expect(await screen.findByText(/somebody else changed it first/i)).toBeInTheDocument();
     expect(onChanged).not.toHaveBeenCalled();
@@ -224,7 +224,7 @@ describe("BookingStatusActions — the trail", () => {
   async function openHistory(target: Booking) {
     render(target);
     const menu = await openMenu(target.bookingNumber ?? "booking ini");
-    await userEvent.click(within(menu).getByRole("menuitem", { name: /riwayat/i }));
+    await userEvent.click(within(menu).getByRole("menuitem", { name: /status history/i }));
   }
 
   it("lists each move with its time and who made it", async () => {
@@ -234,7 +234,7 @@ describe("BookingStatusActions — the trail", () => {
       }),
     );
 
-    const dialog = await screen.findByRole("dialog", { name: /riwayat status/i });
+    const dialog = await screen.findByRole("dialog", { name: /status history/i });
 
     expect(within(dialog).getByText("Confirmed")).toBeInTheDocument();
     expect(within(dialog).getByText("Arrived")).toBeInTheDocument();
@@ -252,7 +252,7 @@ describe("BookingStatusActions — the trail", () => {
       }),
     );
 
-    const dialog = await screen.findByRole("dialog", { name: /riwayat status/i });
+    const dialog = await screen.findByRole("dialog", { name: /status history/i });
 
     expect(within(dialog).getByText(/otomatis/i)).toBeInTheDocument();
   });
@@ -265,7 +265,7 @@ describe("BookingStatusActions — the trail", () => {
     */
     await openHistory(booking({ statusHistory: [event()] }));
 
-    const dialog = await screen.findByRole("dialog", { name: /riwayat status/i });
+    const dialog = await screen.findByRole("dialog", { name: /status history/i });
 
     expect(within(dialog).getByText("Mbak Sari (ops)")).toBeInTheDocument();
   });
@@ -278,7 +278,7 @@ describe("BookingStatusActions — the trail", () => {
       }),
     );
 
-    const dialog = await screen.findByRole("dialog", { name: /riwayat status/i });
+    const dialog = await screen.findByRole("dialog", { name: /status history/i });
 
     expect(within(dialog).getByText("Sistem")).toBeInTheDocument();
   });
@@ -324,28 +324,28 @@ describe("BookingStatusActions — prominent variant", () => {
     renderProminent(booking({ status: "confirmed" }));
 
     expect(
-      await screen.findByRole("button", { name: /hewan sudah datang →/i }),
+      await screen.findByRole("button", { name: /mark arrived →/i }),
     ).toBeInTheDocument();
   });
 
   it("keeps the skip-ahead moves in Status lain, not on the primary button", async () => {
     renderProminent(booking({ status: "confirmed" }));
 
-    await screen.findByRole("button", { name: /hewan sudah datang →/i });
+    await screen.findByRole("button", { name: /mark arrived →/i });
     await userEvent.click(
-      screen.getByRole("button", { name: /status lain/i }),
+      screen.getByRole("button", { name: /other statuses/i }),
     );
 
     const menu = screen.getByRole("menu");
     // Arrival is the primary button, not repeated in the menu.
     expect(
-      within(menu).queryByRole("menuitem", { name: "Hewan sudah datang" }),
+      within(menu).queryByRole("menuitem", { name: "Mark arrived" }),
     ).not.toBeInTheDocument();
     expect(
-      within(menu).getByRole("menuitem", { name: "Mulai dikerjakan" }),
+      within(menu).getByRole("menuitem", { name: "Start work" }),
     ).toBeInTheDocument();
     expect(
-      within(menu).getByRole("menuitem", { name: "Tandai selesai dikerjakan" }),
+      within(menu).getByRole("menuitem", { name: "Mark completed" }),
     ).toBeInTheDocument();
   });
 
@@ -353,10 +353,10 @@ describe("BookingStatusActions — prominent variant", () => {
     const onChanged = renderProminent(booking({ status: "confirmed" }));
 
     await userEvent.click(
-      await screen.findByRole("button", { name: /hewan sudah datang →/i }),
+      await screen.findByRole("button", { name: /mark arrived →/i }),
     );
     await userEvent.click(
-      screen.getByRole("button", { name: "Hewan sudah datang", hidden: false }),
+      screen.getByRole("button", { name: "Mark arrived", hidden: false }),
     );
 
     await waitFor(() =>
@@ -382,7 +382,7 @@ describe("BookingStatusActions — prominent variant", () => {
     ).not.toBeInTheDocument();
     // But Status lain — and the trail inside it — is still reachable.
     expect(
-      screen.getByRole("button", { name: /status lain/i }),
+      screen.getByRole("button", { name: /other statuses/i }),
     ).toBeInTheDocument();
   });
 
@@ -393,7 +393,7 @@ describe("BookingStatusActions — prominent variant", () => {
     });
 
     expect(
-      screen.queryByRole("button", { name: /hewan sudah datang →/i }),
+      screen.queryByRole("button", { name: /mark arrived →/i }),
     ).not.toBeInTheDocument();
   });
 });

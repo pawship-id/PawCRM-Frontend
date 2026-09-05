@@ -79,7 +79,7 @@ export function BookingStatusActions({
    * booking overview, where a whole row of these sits per line.
    *
    * "prominent" — a big primary button for the very next rung, plus a
-   * secondary "Status lain" trigger for everything else (skip-ahead moves,
+   * secondary "Other statuses" trigger for everything else (skip-ahead moves,
    * the trail, cancelling). Built for the per-animal work page, where this is
    * the one booking-level action on the whole screen.
    *
@@ -189,7 +189,7 @@ export function BookingStatusActions({
           <DropdownMenuTrigger asChild>
             {variant === "prominent" ? (
               <Button variant="secondary" size="lg">
-                Status lain ▾
+                Other statuses ▾
               </Button>
             ) : (
               <Button
@@ -231,7 +231,7 @@ export function BookingStatusActions({
               reading its history needs. */}
           <DropdownMenuItem onSelect={() => setHistoryOpen(true)}>
             <History />
-            Riwayat status
+            Status history
           </DropdownMenuItem>
 
           {/*
@@ -243,7 +243,7 @@ export function BookingStatusActions({
             <Can feature="bookings" action="update">
               <DropdownMenuItem onSelect={() => setRescheduleOpen(true)}>
                 <CalendarClock />
-                Jadwalkan ulang
+                Reschedule
               </DropdownMenuItem>
             </Can>
           )}

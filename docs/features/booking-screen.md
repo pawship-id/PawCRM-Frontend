@@ -498,8 +498,13 @@ draft ─► requested ─► confirmed ─► [pickup] ─► arrived ─► in
 `Rescheduled`. It is the one place this product does, a deliberate exception recorded in
 [ui-rules §12](../ui-rules.md): they are the names of rungs rather than sentences, the shop
 already says them in English (*"bookingnya masih requested"*), and they match the stored values
-word for word so an export and a badge read the same. **It stops at the status** — the menu that
-MOVES a booking is still Bahasa ("Hewan sudah datang"), because that names what somebody does.
+word for word so an export and a badge read the same.
+
+**The status CONTROL followed** — the menu rows ("Confirm booking", "Mark arrived", "Start
+work"), its "Other statuses" trigger, "Status history" and "Reschedule". The first pass kept
+those in Bahasa, and a menu of Indonesian verbs whose only purpose is to reach English-named
+rungs made every row a translation step. **It stops at the control**: the dialogs behind those
+rows, the cancel reason, and every toast are sentences and stay Bahasa.
 
 **The ladder is a function of the BOOKING, not a constant** — `ladderFor(booking)`. The two
 bracketed rungs exist only on a visit that asked to be fetched or driven home, so a menu built
