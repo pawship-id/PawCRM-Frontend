@@ -59,3 +59,27 @@ export function bookingActorLabel(
 
   return roleName ? `${name} (${roleName.toLowerCase()})` : name;
 }
+
+/**
+ * The clock a visit is expected to END on — its start plus what it is estimated
+ * to take. "22.31".
+ *
+ * THE ESTIMATE, NOT THE ACTUAL. The actual finish belongs to each session and
+ * moves while somebody is reading; a header that mixed the two would promise a
+ * time that changes under the reader.
+ *
+ * IN THE SHOP'S OWN CLOCK, like everything else in this module — never through
+ * UTC, which is seven hours out and would print the wrong evening.
+ *
+ * Shared by the booking's own page and the animal's work page, which is why it
+ * lives here: two copies of "what time will this be done" would eventually
+ * disagree on the one screen a customer is told the answer from.
+ */
+export function finishClock(startIso: string, minutes: number): string {
+  const at = new Date(startIso);
+  if (Number.isNaN(at.getTime())) return "—";
+
+  at.setMinutes(at.getMinutes() + minutes);
+
+  return `${String(at.getHours()).padStart(2, "0")}.${String(at.getMinutes()).padStart(2, "0")}`;
+}

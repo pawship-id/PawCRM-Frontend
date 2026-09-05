@@ -14,6 +14,7 @@ import { petService } from "@/services/pet.service";
 import { formatMoney, sumDecimals } from "@/utils/decimal";
 import type { Booking, Pet } from "@/types/api";
 
+import { bookingActorLabel, finishClock } from "../format";
 import { BookingStatusActions } from "./BookingStatusActions";
 import { BookingStatusBadge } from "./BookingStatusBadge";
 
@@ -132,10 +133,19 @@ export function BookingDetailScreen({ id }: { id: string }) {
 
   return (
     <div className="flex flex-col gap-6">
+      {/*
+        ─── ONE HEADING BLOCK, AND THE NUMBER IS THE TITLE ────────────────────
+
+        The page above renders the breadcrumb and nothing else now: this used to
+        sit under a `PageHeading` that said "Detail booking" over a sentence,
+        which made two `<h1>`s and put the document's own identity on the fourth
+        line. §16 — a document says what it is, what its number is and what can
+        be done with it AT ITS HEAD.
+      */}
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-extrabold text-foreground">
+            <h1 className="text-2xl font-extrabold tabular-nums text-foreground">
               {/* A DRAFT HAS NO NUMBER — see the model. Saying so beats a blank. */}
               {booking.bookingNumber ?? "Booking (draf)"}
             </h1>
@@ -144,9 +154,19 @@ export function BookingDetailScreen({ id }: { id: string }) {
               {BILLING_LABELS[booking.billingState] ?? booking.billingState}
             </span>
           </div>
+          {/*
+            WHOSE, WHERE, AND WHO WROTE IT DOWN — one line, in the order somebody
+            asks. The customer and the branch were already here; the audit half
+            is new, and it is what turns a title into a document header: "siapa
+            yang bikin booking ini" had no answer on this page at all.
+          */}
           <p className="mt-1 text-sm text-muted">
             {booking.customerName ?? "—"}
             {branchName ? ` · ${branchName}` : ""}
+          </p>
+          <p className="mt-0.5 text-xs tabular-nums text-muted">
+            Dibuat {moment(booking.createdAt)} ·{" "}
+            {bookingActorLabel(booking.createdByName, booking.createdByRoleName)}
           </p>
         </div>
 
@@ -173,29 +193,81 @@ export function BookingDetailScreen({ id }: { id: string }) {
       </div>
 
       <Card title="Kunjungan">
-        <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
-          <Row label="Waktu" value={moment(booking.scheduledAt)} />
+        {/*
+          ─── FOUR FACTS ON ONE LINE, NOT FOUR ROWS OF A TWO-COLUMN LIST ───────
+
+          These are the numbers somebody scans, not prose they read: when, how
+          long, how many animals, how much. A `sm:grid-cols-2` definition list
+          made four short answers occupy four rows and half the card's width
+          each, so the eye travelled down and back for facts that belong in one
+          glance. Four columns on a laptop, two on a phone.
+        */}
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-4 lg:grid-cols-4">
           <Row
-            label="Perkiraan selesai"
+            label="Waktu"
+            value={
+              <>
+                {moment(booking.scheduledAt)}
+                {/*
+                  THE FINISH TIME BELONGS BESIDE THE START. The old card had a
+                  field labelled "Perkiraan selesai" whose value was "121 menit"
+                  — a DURATION under a label promising a CLOCK. Whoever read it
+                  still had to do the arithmetic the label claimed to have done.
+                */}
+                {booking.totalDurationMin ? (
+                  <span className="text-muted">
+                    {" – "}
+                    {finishClock(booking.scheduledAt, booking.totalDurationMin)}
+                  </span>
+                ) : null}
+              </>
+            }
+          />
+          <Row
+            label="Perkiraan durasi"
             value={
               booking.totalDurationMin
                 ? `${booking.totalDurationMin} menit`
-                : "Durasi belum diisi"
+                : "Belum diisi"
             }
           />
           <Row
             label="Hewan"
             value={
-              booking.petCount > 0
-                ? `${booking.petCount} — ${booking.petName ?? "—"}`
-                : "—"
+              booking.petCount > 0 ? (
+                <>
+                  {booking.petCount}
+                  {/*
+                    THE NAMES UNDER THE COUNT, not joined onto it with a dash.
+                    "2 — Mochi, Coco" reads as one long label; the number is what
+                    the column is for and the names are what it means.
+                  */}
+                  <span className="mt-0.5 block text-xs text-muted">
+                    {booking.petName ?? "—"}
+                  </span>
+                </>
+              ) : (
+                "—"
+              )
             }
           />
-          <Row label="Total" value={formatMoney(booking.totalAmount ?? total)} />
+          <Row
+            label="Total"
+            value={
+              <span className="tabular-nums">
+                {/*
+                  THE HEADER'S OWN TOTAL, and the ROWS when nothing has computed
+                  one yet — a booking whose summary has not run has `null` there,
+                  and summing what is on screen beats an em dash.
+                */}
+                {formatMoney(booking.totalAmount ?? total)}
+              </span>
+            }
+          />
         </dl>
 
         {booking.notes && (
-          <div className="mt-3">
+          <div className="mt-5 border-t border-border pt-4">
             <dt className="text-xs text-muted">Catatan kunjungan</dt>
             <dd className="mt-0.5 whitespace-pre-wrap text-sm text-foreground">
               {booking.notes}
@@ -472,11 +544,20 @@ function outstandingFor(booking: Booking, petId: string): number {
   ).length;
 }
 
+/**
+ * One fact in the Kunjungan strip: a small caps label over its answer.
+ *
+ * THE LABEL IS UPPERCASE AND THE ANSWER IS NOT. Four of these sit side by side,
+ * and without the case difference the row reads as eight equal lines rather than
+ * four labelled facts. `text-xs` is 13px — the floor, not below it (§1.6).
+ */
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div>
-      <dt className="text-xs text-muted">{label}</dt>
-      <dd className="text-sm text-foreground">{value}</dd>
+    <div className="min-w-0">
+      <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+        {label}
+      </dt>
+      <dd className="mt-1 text-sm text-foreground">{value}</dd>
     </div>
   );
 }

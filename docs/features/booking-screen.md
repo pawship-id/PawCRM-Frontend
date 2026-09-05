@@ -448,6 +448,37 @@ The disabled Simpan says which field is still missing, that one included.
 
 ---
 
+## The detail page's head
+
+**One heading block, and the booking NUMBER is the title.** The page renders the breadcrumb and
+nothing else; `BookingDetailScreen` owns the `<h1>`. It used to sit under a `PageHeading` saying
+*"Detail booking"* over a sentence, which made **two `<h1>`s** and put the document's own
+identity on the fourth line. §16: a document says what it is, what its number is, and what can
+be done with it at its head. "Detail booking" stops adding anything the moment the number is on
+screen, and the breadcrumb already says which module this is.
+
+Under it: customer · branch, then *"Dibuat … · Fitria (ops)"*. The audit line is new — *"siapa
+yang bikin booking ini"* had no answer on this page at all.
+
+**The Kunjungan card is a four-up strip**, not a two-column definition list. Waktu · Perkiraan
+durasi · Hewan · Total are numbers somebody scans, and four short answers in a 2-column list
+took four rows and half the card's width each, so the eye travelled down and back for facts that
+belong in one glance.
+
+**Two things it was getting wrong:**
+
+- **`Perkiraan selesai` showed `121 menit`** — a duration under a label promising a clock, so
+  the reader still did the arithmetic the label claimed to have done. The label is now
+  `Perkiraan durasi`, and the finish TIME sits beside the start: *"…pukul 20.30 – 22.31"*.
+- **`Total —` on a visit with two animals.** `bookings.totalAmount` is Decimal128 and reached
+  the client as `{ "$numberDecimal": "274000" }` — an object, where the type promises a string —
+  so `formatMoney` could not parse it. **The same bug as `items[].price`**, which was fixed one
+  field over and left this one behind; fixed now in `BookingService#withNames`, where the
+  promise is made. A booking whose summary has never run still carries `null`, and the screen
+  sums the rows itself rather than showing nothing.
+
+---
+
 ## Moving one
 
 **On the booking's own page, not on the list** — `/dashboard/booking/:id`, and on the animal's

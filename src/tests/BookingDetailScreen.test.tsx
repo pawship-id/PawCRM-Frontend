@@ -97,6 +97,9 @@ const booking = (overrides: Partial<Booking> = {}): Booking =>
     petCount: 2,
     items: [item(), item({ _id: "row-coco", petId: COCO, petName: "Coco" })],
     scheduledAt: "2026-09-02T03:00:00.000Z",
+    createdAt: "2026-09-01T04:52:00.000Z",
+    createdByName: "Fitria",
+    createdByRoleName: "Ops",
     status: "confirmed",
     statusHistory: [],
     origin: "booking",
@@ -146,6 +149,76 @@ beforeEach(() => {
  * on the phone: what exactly is this booking, and where does it stand.
  */
 describe("BookingDetailScreen", () => {
+  it("shows the total the API sent, not an em dash", async () => {
+    /*
+      ─── WHAT WAS ON SCREEN ──────────────────────────────────────────────────
+
+      "Total —" on a visit with two animals and 121 minutes of work. `totalAmount`
+      is Decimal128 on the server and reached the client as
+      `{ "$numberDecimal": "274000" }` — an object, where the type promises a
+      string — so `formatMoney` could not parse it and drew its dash. Fixed in
+      `BookingService#withNames`; this pins the screen half.
+    */
+    bookings.getById.mockResolvedValue(booking({ totalAmount: "274000.0000" }));
+
+    renderWithAuth(<BookingDetailScreen id="bk-1" />);
+
+    expect(await screen.findByText("Rp 274.000")).toBeInTheDocument();
+  });
+
+  it("falls back to summing the rows when no total has been computed", async () => {
+    // A booking whose summary has never run carries null there, and summing
+    // what is already on screen beats showing nothing.
+    bookings.getById.mockResolvedValue(booking({ totalAmount: null }));
+
+    renderWithAuth(<BookingDetailScreen id="bk-1" />);
+
+    // Two rows at 150.000 in the fixture.
+    expect(await screen.findByText("Rp 300.000")).toBeInTheDocument();
+  });
+
+  it("puts a CLOCK under the label that promises one", async () => {
+    /*
+      The card had a field labelled "Perkiraan selesai" whose value was
+      "121 menit" — a duration under a label promising a time, leaving the
+      reader to do the arithmetic the label claimed to have done.
+    */
+    bookings.getById.mockResolvedValue(
+      booking({
+        scheduledAt: new Date("2026-09-05T20:30:00").toISOString(),
+        totalDurationMin: 121,
+      }),
+    );
+
+    renderWithAuth(<BookingDetailScreen id="bk-1" />);
+
+    // 20.30 + 121 menit.
+    expect(await screen.findByText(/22\.31/)).toBeInTheDocument();
+    expect(screen.getByText(/perkiraan durasi/i)).toBeInTheDocument();
+    expect(screen.getByText("121 menit")).toBeInTheDocument();
+  });
+
+  it("says who wrote the booking down", async () => {
+    // "Siapa yang bikin booking ini" had no answer on this page at all.
+    renderWithAuth(<BookingDetailScreen id="bk-1" />);
+
+    expect(await screen.findByText(/dibuat .* Fitria \(ops\)/i)).toBeInTheDocument();
+  });
+
+  it("has exactly one h1, and it is the booking number", async () => {
+    /*
+      THE PAGE ABOVE RENDERS THE BREADCRUMB AND NOTHING ELSE now. It used to add
+      a `PageHeading` saying "Detail booking", so the document's own identity
+      arrived on the fourth line under a second `<h1>`.
+    */
+    renderWithAuth(<BookingDetailScreen id="bk-1" />);
+
+    const headings = await screen.findAllByRole("heading", { level: 1 });
+
+    expect(headings).toHaveLength(1);
+    expect(headings[0]).toHaveTextContent("BK-260902-001");
+  });
+
   it("names the booking and who it is for", async () => {
     renderWithAuth(<BookingDetailScreen id="bk-1" />);
 

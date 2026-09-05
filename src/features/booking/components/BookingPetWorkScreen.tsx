@@ -8,7 +8,7 @@ import { Alert, Card, Spinner, TextField } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
 import { BookingBelongingsCard } from "./BookingBelongingsCard";
-import { bookingActorLabel } from "../format";
+import { bookingActorLabel, finishClock } from "../format";
 import { BookingHistoryCard } from "./BookingHistoryCard";
 import { BookingPetNotesCard } from "./BookingPetNotesCard";
 import { SessionGroomers } from "./SessionGroomers";
@@ -64,20 +64,6 @@ const NEXT_MOVE: Partial<
 };
 
 /** "09.05" from an instant, in the shop's own clock — never through UTC. */
-/**
- * The clock a visit is expected to END on — its start plus what it is estimated
- * to take.
- *
- * THE ESTIMATE, NOT THE ACTUAL. The actual finish belongs to each session and
- * moves while somebody is reading; a card that mixed the two would promise a
- * time that changes under the reader.
- */
-function finishClock(startIso: string, minutes: number): string {
-  const at = new Date(startIso);
-  at.setMinutes(at.getMinutes() + minutes);
-  return `${String(at.getHours()).padStart(2, "0")}.${String(at.getMinutes()).padStart(2, "0")}`;
-}
-
 function clock(iso: string | null | undefined): string {
   if (!iso) return "";
   const at = new Date(iso);
