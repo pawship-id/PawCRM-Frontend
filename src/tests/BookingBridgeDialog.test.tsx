@@ -215,7 +215,7 @@ describe("BookingBridgeDialog — pulling", () => {
   /*
     THE LIST IS NO LONGER ALL ONE THING. Since the bridge started offering every
     status but `cancelled`, a row can be a grooming already finished or a draft
-    nobody confirmed — and "Selesai" and "Draf" are different conversations
+    nobody confirmed — and "Selesai" and "Draft" are different conversations
     across a counter, so the row says which it is.
   */
   it("says what state each booking is in", async () => {
@@ -224,7 +224,7 @@ describe("BookingBridgeDialog — pulling", () => {
     ]);
     open();
 
-    expect(await screen.findByText("Sedang dikerjakan")).toBeVisible();
+    expect(await screen.findByText("In Progress")).toBeVisible();
   });
 
   /*

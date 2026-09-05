@@ -454,6 +454,14 @@ draft ─► requested ─► confirmed ─► [pickup] ─► arrived ─► in
   └──────────┴────────────┴───────────┴───────────┴────────────┴──► cancelled
 ```
 
+**The status names are shown in ENGLISH** — `Draft` · `Requested` · `Confirmed` · `Pickup` ·
+`Arrived` · `In Progress` · `Completed` · `Delivery` · `Return to Pawrents` · `Cancelled` ·
+`Rescheduled`. It is the one place this product does, a deliberate exception recorded in
+[ui-rules §12](../ui-rules.md): they are the names of rungs rather than sentences, the shop
+already says them in English (*"bookingnya masih requested"*), and they match the stored values
+word for word so an export and a badge read the same. **It stops at the status** — the menu that
+MOVES a booking is still Bahasa ("Hewan sudah datang"), because that names what somebody does.
+
 **The ladder is a function of the BOOKING, not a constant** — `ladderFor(booking)`. The two
 bracketed rungs exist only on a visit that asked to be fetched or driven home, so a menu built
 from the status alone would offer *"Mulai penjemputan"* on a booking with no van, and the
@@ -478,8 +486,8 @@ cancelled and made again.
 
 The dialog is also where the two things worth saying fit:
 
-- **Which rungs the jump fills in behind it.** Straight to arrival also records *Diminta* and
-  *Dikonfirmasi*, at the same minute — see below. A trip leg the booking never booked is never
+- **Which rungs the jump fills in behind it.** Straight to arrival also records *Requested* and
+  *Confirmed*, at the same minute — see below. A trip leg the booking never booked is never
   filled in.
 - **That completing here is not being paid.** The till stamps the sale when money lands;
   marking it done only says the work is finished, and a completed booking stops being offered

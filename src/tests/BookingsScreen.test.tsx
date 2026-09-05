@@ -107,7 +107,7 @@ describe("BookingsScreen", () => {
   /*
     A booking sitting in somebody's basket right now is neither
     confirmed-and-waiting nor sold, and the status alone cannot say so. Without
-    this a cashier at the second till reads "Dikonfirmasi" and rings it up again.
+    this a cashier at the second till reads "Confirmed" and rings it up again.
   */
   it("says when a confirmed booking is already in a basket", async () => {
     mocked.list.mockResolvedValue(
@@ -132,7 +132,7 @@ describe("BookingsScreen", () => {
 
     renderWithAuth(<BookingsScreen />);
 
-    await screen.findByText("Selesai dikerjakan");
+    await screen.findByText("Completed");
     expect(screen.queryByText(/ada di keranjang/i)).not.toBeInTheDocument();
   });
 
@@ -174,7 +174,7 @@ describe("BookingsScreen", () => {
 
     await screen.findByText("BK-260826-001");
     await user.click(screen.getByRole("button", { name: /filter status booking/i }));
-    await user.click(await screen.findByText("Selesai dikerjakan"));
+    await user.click(await screen.findByText("Completed"));
 
     await waitFor(() =>
       expect(
@@ -233,7 +233,7 @@ describe("BookingsScreen — drafts and the number they have not earned", () => 
 
     renderWithAuth(<BookingsScreen />);
 
-    expect(await screen.findByText("Draf")).toBeInTheDocument();
+    expect(await screen.findByText("Draft")).toBeInTheDocument();
     expect(screen.getByText("—")).toBeInTheDocument();
   });
 
@@ -244,7 +244,7 @@ describe("BookingsScreen — drafts and the number they have not earned", () => 
 
     renderWithAuth(<BookingsScreen />);
 
-    expect(await screen.findByText("Sudah datang")).toBeInTheDocument();
+    expect(await screen.findByText("Arrived")).toBeInTheDocument();
     expect(screen.getByText("BK-260826-001")).toBeInTheDocument();
   });
 
@@ -255,7 +255,7 @@ describe("BookingsScreen — drafts and the number they have not earned", () => 
     await screen.findByText("BK-260826-001");
 
     await user.click(screen.getByRole("button", { name: /filter status booking/i }));
-    await user.click(await screen.findByRole("option", { name: "Draf" }));
+    await user.click(await screen.findByRole("option", { name: "Draft" }));
 
     await waitFor(() =>
       expect(
@@ -273,7 +273,7 @@ describe("BookingsScreen — drafts and the number they have not earned", () => 
     await user.click(screen.getByRole("button", { name: /filter status booking/i }));
 
     expect(
-      await screen.findByRole("option", { name: "Sudah datang" }),
+      await screen.findByRole("option", { name: "Arrived" }),
     ).toBeInTheDocument();
   });
 });
@@ -282,7 +282,7 @@ describe("BookingsScreen — drafts and the number they have not earned", () => 
  * WHAT THE STATUS BADGE ALONE CANNOT SAY — and since Amandemen PCR-021/022/023
  * there are two such things rather than one.
  *
- * A paid booking used to read "Selesai", so "Dikonfirmasi" could only mean
+ * A paid booking used to read "Selesai", so "Confirmed" could only mean
  * waiting. Now paying leaves it CONFIRMED — paying is not being groomed — and
  * one badge covers three situations: untouched, in a basket right now, or paid
  * for and still to be done. Reading the wrong one rings a grooming up twice.
@@ -674,6 +674,71 @@ describe("BookingsTable — a half-paid booking", () => {
  * for the wrong visit. The ladder only runs forward — there is no undo, only a
  * cancellation and a new booking.
  */
+describe("BookingsTable — a newly saved booking", () => {
+  it("shows `requested` as a badge with a word on it", async () => {
+    /*
+      WHAT A NEW BOOKING LOOKS LIKE. Saving the form sends `requested`, and a row
+      that came back with an EMPTY status cell would mean the value reached the
+      list without a label to draw it with — the failure mode of adding a status
+      to the API and not to `BOOKING_STATUS_LABELS`.
+    */
+    mocked.list.mockResolvedValue(
+      page([booking({ status: "requested", bookingNumber: "BK-260905-004" })]),
+    );
+
+    renderWithAuth(<BookingsScreen />);
+
+    expect(await screen.findByText("Requested")).toBeInTheDocument();
+  });
+
+  it("draws every status the API can send", async () => {
+    /*
+      THE MAP IS EXHAUSTIVE OR THE BADGE IS BLANK. TypeScript enforces this on
+      `Record<BookingStatus, string>` — but only for code that compiles against
+      the current type, which is exactly what a half-deployed frontend is not.
+      Asserting it here makes a missing label a red test rather than an empty
+      cell somebody reports as "the status is gone".
+    */
+    const statuses = [
+      "draft",
+      "requested",
+      "confirmed",
+      "pickup",
+      "arrived",
+      "in_progress",
+      "completed",
+      "delivery",
+      "return_to_pawrents",
+      "cancelled",
+    ] as const;
+
+    mocked.list.mockResolvedValue(
+      page(
+        statuses.map((status, index) =>
+          booking({ _id: `bk-${index}`, status, bookingNumber: `BK-${index}` }),
+        ),
+      ),
+    );
+
+    renderWithAuth(<BookingsScreen />);
+
+    await screen.findByText("Requested");
+    for (const label of [
+      "Draft",
+      "Confirmed",
+      "Pickup",
+      "Arrived",
+      "In Progress",
+      "Completed",
+      "Delivery",
+      "Return to Pawrents",
+      "Cancelled",
+    ]) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
+  });
+});
+
 describe("BookingsTable — the action column", () => {
   const openMenu = async () => {
     const user = userEvent.setup();

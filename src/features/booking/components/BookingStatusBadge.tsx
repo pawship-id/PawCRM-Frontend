@@ -3,30 +3,52 @@ import { Badge } from "@/components/ui/badge";
 import type { BookingStatus } from "@/types/api";
 
 /**
- * Indonesian labels for the six statuses, in the order a booking walks them. The visible word is copy, not the
- * API's value — ui-rules §12.
+ * What each status is CALLED on screen — in English, and that is a deliberate
+ * exception to ui-rules §12.
+ *
+ * ─── WHY THE ONE PLACE THIS APP SPEAKS ENGLISH ────────────────────────────
+ *
+ * §12 says the product UI is Bahasa Indonesia and it still does; this is the
+ * exception the shop asked for, recorded in ui-rules §12 so nobody translates it
+ * back as a tidy-up.
+ *
+ * These eleven words are the NAMES OF THE RUNGS, and a name is not a sentence.
+ * The shop talks about them in English already — "bookingnya masih requested",
+ * "sudah in progress" — because that is what the schedule board and the trade
+ * call them. Translating produced labels that were longer than the thing they
+ * named ("Sudah dijemput pemilik" for `return_to_pawrents`) and that nobody said
+ * out loud, so the badge and the conversation used different words for one fact.
+ *
+ * IT STOPS AT THE STATUS. Every button, hint, empty state and error stays in
+ * Bahasa — including `BOOKING_STATUS_ACTIONS`, which names what somebody DOES
+ * ("Hewan sudah datang") rather than what the booking IS. Those are sentences,
+ * and §12 is about sentences.
+ *
+ * THEY MATCH THE STORED VALUES, word for word, which is the other half of the
+ * argument: a reader looking at `in_progress` in an export and "In Progress" on
+ * a badge does not have to hold a translation table in their head.
  */
 export const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
-  draft: "Draf",
+  draft: "Draft",
   /* Written down and asked for; the shop has not agreed yet. */
-  requested: "Diminta",
-  confirmed: "Dikonfirmasi",
+  requested: "Requested",
+  confirmed: "Confirmed",
   /* The van is out. Only on a booking that asked to be fetched. */
-  pickup: "Dijemput",
+  pickup: "Pickup",
   /* The animal is at the shop. `check_in` renamed — the word people use. */
-  arrived: "Sudah datang",
-  in_progress: "Sedang dikerjakan",
-  completed: "Selesai dikerjakan",
+  arrived: "Arrived",
+  in_progress: "In Progress",
+  completed: "Completed",
   /* The van has left with it. Only on a booking that asked to be taken home. */
-  delivery: "Diantar pulang",
-  return_to_pawrents: "Sudah dijemput pemilik",
-  cancelled: "Dibatalkan",
+  delivery: "Delivery",
+  return_to_pawrents: "Return to Pawrents",
+  cancelled: "Cancelled",
   /*
     A TRAIL ENTRY, NOT A STATE. No booking is ever in it — the label exists
     because the history card renders whatever the trail holds, and the one place
     this word appears is there.
   */
-  rescheduled: "Dijadwalkan ulang",
+  rescheduled: "Rescheduled",
 };
 
 /**

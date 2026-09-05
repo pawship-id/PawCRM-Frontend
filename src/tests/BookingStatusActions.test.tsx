@@ -118,7 +118,7 @@ describe("BookingStatusActions", () => {
       `confirmed` on 5 Sep 2026. A dog handed over was asked for and agreed to,
       and the warning has to name both or it under-reports what saving records.
     */
-    expect(screen.getByText("Diminta dan Dikonfirmasi")).toBeInTheDocument();
+    expect(screen.getByText("Requested dan Confirmed")).toBeInTheDocument();
     expect(screen.getByText(/pada jam yang sama/i)).toBeInTheDocument();
   });
 
@@ -236,8 +236,8 @@ describe("BookingStatusActions — the trail", () => {
 
     const dialog = await screen.findByRole("dialog", { name: /riwayat status/i });
 
-    expect(within(dialog).getByText("Dikonfirmasi")).toBeInTheDocument();
-    expect(within(dialog).getByText("Sudah datang")).toBeInTheDocument();
+    expect(within(dialog).getByText("Confirmed")).toBeInTheDocument();
+    expect(within(dialog).getByText("Arrived")).toBeInTheDocument();
     expect(within(dialog).getAllByText("Mbak Sari (ops)")).toHaveLength(2);
   });
 

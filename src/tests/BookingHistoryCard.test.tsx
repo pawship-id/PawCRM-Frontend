@@ -32,11 +32,15 @@ const booking = (over: Partial<Booking> = {}): Booking =>
  * trail starts at the beginning rather than at the first status move.
  */
 describe("BookingHistoryCard", () => {
-  it("names the status in Indonesian, not the API's value", () => {
-    // "in_progress" is a stored value; a shop reads "Sedang dikerjakan". §12.
+  it("names the status, rather than printing the API's value", () => {
+    /*
+      "in_progress" IS A STORED VALUE and a shop reads "In Progress". The status
+      NAMES are English by decision (ui-rules §12, the one sanctioned exception)
+      — but a raw enum with an underscore in it is not a name in any language.
+    */
     render(<BookingHistoryCard booking={booking({ statusHistory: [event({ status: "in_progress" })] })} />);
 
-    expect(screen.getByText(/Sedang dikerjakan/)).toBeInTheDocument();
+    expect(screen.getByText(/In Progress/)).toBeInTheDocument();
     expect(screen.queryByText(/in_progress/)).not.toBeInTheDocument();
   });
 
@@ -87,7 +91,7 @@ describe("BookingHistoryCard", () => {
 
   it("begins the trail at 'Booking dibuat'", () => {
     /*
-      WITHOUT IT the trail starts at "Dikonfirmasi" and reads as though the
+      WITHOUT IT the trail starts at "Confirmed" and reads as though the
       booking sprang into existence already confirmed. It comes from
       `createdAt`, which is recorded data — not an invention.
     */
@@ -111,8 +115,8 @@ describe("BookingHistoryCard", () => {
     );
 
     const entries = screen.getAllByRole("listitem");
-    expect(entries[0]).toHaveTextContent("Sedang dikerjakan");
-    expect(entries[1]).toHaveTextContent("Dikonfirmasi");
+    expect(entries[0]).toHaveTextContent("In Progress");
+    expect(entries[1]).toHaveTextContent("Confirmed");
   });
 
   it("marks a rung that was filled in behind a skipped step", () => {
@@ -133,7 +137,7 @@ describe("BookingHistoryCard", () => {
 
     const entries = screen.getAllByRole("listitem");
     const confirmed = entries.find((entry) =>
-      entry.textContent?.includes("Dikonfirmasi"),
+      entry.textContent?.includes("Confirmed"),
     );
 
     expect(within(confirmed as HTMLElement).getByText(/otomatis/)).toBeInTheDocument();
