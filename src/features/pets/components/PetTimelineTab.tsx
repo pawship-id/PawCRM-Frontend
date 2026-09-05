@@ -168,8 +168,14 @@ export function PetTimelineTab({ petId }: { petId: string }) {
                   <span className="font-semibold text-danger">Dibatalkan</span>
                 )}
               </div>
-              {entry.notes && (
-                <p className="mt-1 text-xs text-muted">{entry.notes}</p>
+              {/*
+                THE INTERNAL NOTE. This is what a groomer reads before touching
+                an animal it has not met; a message written for the owner about
+                one visit would turn a handling history into a mailbox, and the
+                API does not project it here.
+              */}
+              {entry.internalNotes && (
+                <p className="mt-1 text-xs text-muted">{entry.internalNotes}</p>
               )}
             </li>
           ))}

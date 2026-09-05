@@ -177,7 +177,10 @@ fold says when it holds something:
   booking that agreed with it.
 - **Catatan & barang bawaan** is one disclosure per animal, with a count when it holds
   anything, and it **opens by itself** when the booking already has something in it — editing
-  must not hide what was written last time behind a fold nobody knows to open.
+  must not hide what was written last time behind a fold nobody knows to open. It holds the
+  animal's **two** notes since 5 Sep 2026, and **each counts as one** in the badge: counting the
+  pair as a single item would hide that a customer note was written and an internal one was
+  not, which is exactly the distinction the fold must not obscure.
 
 Nothing was removed. It stopped being in the way.
 
@@ -295,11 +298,43 @@ groomer doing it.
 | Antar-jemput | Two check-rows + an optional address | **One trip per visit, not per animal** — a van goes to an address, and two of one customer's dogs ride in the same one. The question **disappears** on a house call rather than being asked and ignored; the server forces both off |
 | Barang bawaan | Add-and-remove chips, per animal | What the owner says they will bring. **Nothing here ticks anything in** — the counter confirms arrival on the animal's work page, and a visit cannot be completed while something handed over is still here |
 
-**The animal's note is written onto each of its rows.** `bookingitems.notes` is documented as
-"anything special about THIS animal on THIS visit" — a per-animal fact that happens to be
-stored per row, because the row is the only thing a visit has one of per animal per service.
-Asking once and fanning it out is what makes the screen match the field's own meaning; asking
-once per service would put the same sentence in front of somebody three times.
+### Two notes per animal, and one for the whole visit
+
+Inside each animal's fold there are **two** boxes, added 5 September 2026:
+
+| Field | Label | Who reads it |
+| --- | --- | --- |
+| `internalNotes` | **Catatan internal** | Staff only, never the customer — "takut hairdryer, mandi duluan". This is the old `notes`, renamed |
+| `customerNotes` | **Catatan untuk pelanggan** | The owner — "bulunya kusut parah, disarankan grooming tiap 3 minggu" |
+
+**One box could not serve both.** Everything went into a single "Catatan": handling
+instructions next to whatever somebody wanted the owner to know. Whichever way that box is then
+treated it is wrong — shown to the customer, "pemiliknya suka ngeyel soal harga" leaks; hidden
+from them, the advice never arrives.
+
+**The labels are the feature, not the storage.** Splitting the fields without saying which is
+which on screen would change nothing: the person typing decides where a sentence lands, so the
+label has to answer *who reads this* before the cursor gets there. The internal one is first
+because almost every visit has one and the customer's is the exception. The customer box's hint
+says out loud that **nothing prints it on a struk or sends it over WhatsApp yet** — a field
+that looks like it reaches the owner but does not is worse than one that is honest, because
+somebody would write "sudah kami hubungi" in it and assume the customer had been.
+
+**Both are written onto each of the animal's rows.** They are per-animal facts that happen to
+be stored per row, because the row is the only thing a visit has one of per animal per service.
+Asking once and fanning them out is what makes the screen match the fields' own meaning; asking
+once per service would put the same sentences in front of somebody three times. `groupsFromBooking`
+collapses them back, and it tests each **independently**: a booking whose rows disagree — one
+written before the split, or an edit that reached only some rows — must show both halves, and
+testing them together would silently drop whichever the first row happened to lack.
+
+**The booking's own Catatan is unchanged** — one note for the whole visit, `bookings.notes`,
+still a single box at the end of the form.
+
+**Where they are read back:** `BookingNotes` renders the pair, labelled, on the booking overview
+and the per-animal work page. The calendar block and the pet timeline show the **internal one
+only** — a day sheet and a handling history are staff surfaces, and the API does not send the
+customer's note to either.
 
 | Decision | Why |
 | --- | --- |

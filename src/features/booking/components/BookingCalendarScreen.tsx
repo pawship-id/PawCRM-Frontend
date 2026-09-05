@@ -605,8 +605,13 @@ function DetailPanel({
             {entry.customerName ?? "—"}
             {entry.bookingNumber ? ` · ${entry.bookingNumber}` : ""}
           </p>
-          {entry.notes && (
-            <p className="mt-1 text-xs text-muted">{entry.notes}</p>
+          {/*
+            THE INTERNAL NOTE. A block is a staff day sheet — "takut hairdryer"
+            is what belongs on it. The customer-facing note is a message for the
+            owner, and the API does not send it to this endpoint at all.
+          */}
+          {entry.internalNotes && (
+            <p className="mt-1 text-xs text-muted">{entry.internalNotes}</p>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1">

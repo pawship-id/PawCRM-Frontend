@@ -1930,8 +1930,31 @@ export interface BookingItem {
    * worse than one drawn at the wrong height.
    */
   durationMin: number | null;
-  /** Anything special about THIS animal on THIS visit. */
-  notes: string | null;
+  /**
+   * ─── TWO NOTES, TWO AUDIENCES ─────────────────────────────────────────────
+   *
+   * This was one field called `notes`, and it held operational instructions:
+   * "takut hairdryer, mandi duluan". A shop that also wanted to tell the OWNER
+   * something had nowhere to put it but the same box — and whichever way that
+   * box is then treated it is wrong. Shown to the customer it leaks; hidden
+   * from them the advice never arrives.
+   *
+   * BOTH ARE PER ANIMAL. A visit has no per-animal record, so each is written
+   * onto every row of that animal; the form asks once and fans out. See
+   * `bookingDraft.ts`.
+   *
+   * Staff-facing, never shown to the customer — the same contract
+   * `Pet.internalNotes` carries, and named to match it.
+   */
+  internalNotes: string | null;
+  /**
+   * What the shop wants the OWNER to read — advice, a warning about the coat.
+   *
+   * NOTHING SHOWS IT TO A CUSTOMER YET. No struk, no invoice line, no WhatsApp
+   * message carries it; it is stored and shown to staff, labelled so nobody
+   * writes an internal remark into it. Deliberate rather than unfinished.
+   */
+  customerNotes: string | null;
   /** When this row was dropped into a POS cart. Null = still billable. */
   pulledToCartAt: string | null;
   /** When this row was claimed by an invoice. Null = still billable. */
@@ -2149,7 +2172,9 @@ export interface BookingPetService {
   workStatus: BookingWorkStatus;
   startedAt: string | null;
   finishedAt: string | null;
-  notes: string | null;
+  /** See `BookingItem` — two notes, kept apart all the way to the screen. */
+  internalNotes: string | null;
+  customerNotes: string | null;
   pulledToCartAt: string | null;
   pulledToInvoiceAt: string | null;
   addons: {
@@ -2217,7 +2242,12 @@ export interface BookingCalendarEntry {
   petName: string | null;
   customerName: string | null;
   serviceName: string;
-  notes: string | null;
+  /**
+   * THE INTERNAL ONE ONLY — a calendar block is a staff day sheet. The
+   * customer-facing note is a message for the owner and the API does not send
+   * it here.
+   */
+  internalNotes: string | null;
 }
 
 /** GET /api/bookings/calendar. */
@@ -2449,7 +2479,12 @@ export interface BookingItemInput {
   groomerUserId?: string | null;
   /** Omit to follow the catalogue. 1–1440. */
   durationMin?: number | null;
-  notes?: string | null;
+  /**
+   * The animal's two notes — asked once per animal on the form, sent on every
+   * one of that animal's rows. See `BookingItem`.
+   */
+  internalNotes?: string | null;
+  customerNotes?: string | null;
   /**
    * The add-ons ticked under this service — sent on the PARENT, stored as rows.
    *
@@ -2945,7 +2980,12 @@ export interface PetTimelineEntry {
   status?: BookingStatus;
   durationMin?: number | null;
   groomerName?: string | null;
-  notes?: string | null;
+  /**
+   * THE INTERNAL ONE ONLY. The timeline is what a groomer reads before touching
+   * an animal it has not met; a message written for the owner about one visit
+   * would turn a handling history into a mailbox.
+   */
+  internalNotes?: string | null;
 }
 
 /**

@@ -8,6 +8,7 @@ import { Alert, Card, Spinner, TextField } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
 import { BookingBelongingsCard } from "./BookingBelongingsCard";
+import { BookingNotes } from "./BookingNotes";
 import { SessionGroomers } from "./SessionGroomers";
 import {
   furTypeLabel,
@@ -1061,11 +1062,11 @@ export function BookingPetWorkScreen({
                           </div>
                         </Can>
 
-                        {row.notes && (
-                          <p className="mt-3 rounded bg-tint-neutral px-2 py-1 text-xs text-muted">
-                            {row.notes}
-                          </p>
-                        )}
+                        <BookingNotes
+                          internalNotes={row.internalNotes}
+                          customerNotes={row.customerNotes}
+                          className="mt-3"
+                        />
 
                         <div className="mt-3 flex flex-wrap gap-2">
                           <Can

@@ -5,6 +5,7 @@ import Link from "next/link";
 
 import { Alert, Card, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
+import { BookingNotes } from "./BookingNotes";
 import { useBranchScope } from "@/features/inventory/hooks/useBranchScope";
 import { Can } from "@/features/permissions";
 import { PetSummaryCard } from "@/features/pets";
@@ -404,11 +405,11 @@ export function BookingDetailScreen({ id }: { id: string }) {
                           </ul>
                         )}
 
-                        {service.notes && (
-                          <p className="mt-2 text-xs text-muted">
-                            {service.notes}
-                          </p>
-                        )}
+                        <BookingNotes
+                          internalNotes={service.internalNotes}
+                          customerNotes={service.customerNotes}
+                          className="mt-2"
+                        />
                       </li>
                     );
                   })}

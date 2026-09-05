@@ -189,7 +189,9 @@ describe("BookingForm", () => {
             addonServiceIds: [],
             groomerUserId: null,
             durationMin: undefined,
-            notes: null,
+            /* Two notes, and the key is always sent — same reason as above. */
+            internalNotes: null,
+            customerNotes: null,
           },
         ],
         belongings: [],
@@ -985,8 +987,11 @@ describe("BookingForm — telling one animal's card from another's", () => {
     await pickCustomer();
     await screen.findByRole("combobox", { name: /^hewan$/i });
 
-    /* The booking's own Catatan is always there; the ANIMAL's is not, yet. */
+    /* The booking's own Catatan is always there; the ANIMAL's two are not. */
     expect(screen.getAllByLabelText(/^catatan$/i)).toHaveLength(1);
+    expect(
+      screen.queryByLabelText(/catatan internal/i),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByLabelText(/tambah barang bawaan/i),
     ).not.toBeInTheDocument();
@@ -995,7 +1000,14 @@ describe("BookingForm — telling one animal's card from another's", () => {
       screen.getAllByRole("button", { name: /catatan & barang bawaan/i })[0],
     );
 
-    expect(screen.getAllByLabelText(/^catatan$/i)).toHaveLength(2);
+    /*
+      TWO BOXES, EACH NAMING ITS AUDIENCE. The split is worth nothing if the
+      person typing cannot tell from the label which one the owner reads.
+    */
+    expect(screen.getByLabelText(/catatan internal/i)).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(/catatan untuk pelanggan/i),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText(/tambah barang bawaan/i)).toBeInTheDocument();
   });
 
@@ -1022,7 +1034,8 @@ describe("BookingForm — telling one animal's card from another's", () => {
           name: "Grooming Full Service",
           price: "150000.0000",
           durationMin: 90,
-          notes: "Takut hairdryer",
+          internalNotes: "Takut hairdryer",
+          customerNotes: null,
           groomerUserId: null,
           pulledToCartAt: null,
           pulledToInvoiceAt: null,
@@ -1196,11 +1209,11 @@ describe("BookingForm — lokasi, antar-jemput dan barang bawaan", () => {
     ]);
   });
 
-  it("writes the animal's one note onto each of its services", async () => {
+  it("writes both of the animal's notes onto each of its services", async () => {
     /*
-      `bookingitems.notes` is "anything special about THIS animal on THIS visit"
-      — a per-animal fact stored per row. The card asks once; the payload fans it
-      out, rather than putting the same box in front of somebody twice.
+      Both notes are "anything special about THIS animal on THIS visit" — a
+      per-animal fact stored per row. The card asks once; the payload fans them
+      out, rather than putting the same boxes in front of somebody twice.
     */
     services.list.mockResolvedValue(
       page([service(), service({ _id: "svc-2", name: "Potong Kuku" })]),
@@ -1222,15 +1235,53 @@ describe("BookingForm — lokasi, antar-jemput dan barang bawaan", () => {
       screen.getByRole("button", { name: /catatan & barang bawaan/i }),
     );
     await userEvent.type(
-      screen.getAllByLabelText(/^catatan$/i)[0],
+      screen.getByLabelText(/catatan internal/i),
       "Takut hairdryer",
+    );
+    await userEvent.type(
+      screen.getByLabelText(/catatan untuk pelanggan/i),
+      "Sarankan 3 minggu sekali",
     );
     await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
 
     await waitFor(() => expect(bookings.create).toHaveBeenCalled());
-    expect(
-      bookings.create.mock.calls[0][0].items.map((item) => item.notes),
-    ).toEqual(["Takut hairdryer", "Takut hairdryer"]);
+
+    const items = bookings.create.mock.calls[0][0].items;
+    expect(items.map((item) => item.internalNotes)).toEqual([
+      "Takut hairdryer",
+      "Takut hairdryer",
+    ]);
+    expect(items.map((item) => item.customerNotes)).toEqual([
+      "Sarankan 3 minggu sekali",
+      "Sarankan 3 minggu sekali",
+    ]);
+  });
+
+  it("keeps the two apart in the payload", async () => {
+    /*
+      THE ONE FAILURE THAT WOULD MATTER. If the card wired both boxes to one
+      field, or crossed them, an internal remark would be stored in the half the
+      product intends to show an owner — and nothing downstream could tell.
+    */
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+    await choose(/^layanan$/i, /grooming full service/i);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /catatan & barang bawaan/i }),
+    );
+    await userEvent.type(
+      screen.getByLabelText(/catatan internal/i),
+      "Pemiliknya suka ngeyel soal harga",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+    await waitFor(() => expect(bookings.create).toHaveBeenCalled());
+    expect(bookings.create.mock.calls[0][0].items[0]).toMatchObject({
+      internalNotes: "Pemiliknya suka ngeyel soal harga",
+      customerNotes: null,
+    });
   });
 });
 
@@ -1252,7 +1303,8 @@ describe("BookingForm — mengubah booking", () => {
         name: "Grooming Full Service",
         price: "150000.0000",
         durationMin: 90,
-        notes: null,
+        internalNotes: null,
+        customerNotes: null,
         groomerUserId: null,
         groomerName: "Belum ditentukan",
         pulledToCartAt: null,
@@ -1304,7 +1356,8 @@ describe("BookingForm — mengubah booking", () => {
         addonServiceIds: [],
         groomerUserId: null,
         durationMin: 90,
-        notes: null,
+        internalNotes: null,
+        customerNotes: null,
       },
     ]);
     /*
