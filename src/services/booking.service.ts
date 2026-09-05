@@ -133,6 +133,31 @@ export const bookingService = {
     ),
 
   /**
+   * PATCH /bookings/:id/pets/:petId/notes — one animal's two notes.
+   *
+   * ─── NOT `update`, AND THE DIFFERENCE IS MONEY ───────────────────────────
+   *
+   * `PATCH /bookings/:id` rebuilds the rows and re-snapshots every unbilled one
+   * at today's catalogue price — the server's deliberate rule, because changing
+   * what is being done is a new quote. Saving a note through it would reprice a
+   * visit nobody meant to reprice, and the shop would find out on the bill. This
+   * writes two strings and touches nothing else.
+   *
+   * SEND ONLY WHAT CHANGED. The two boxes save independently — one blurred while
+   * the other is still being typed in — and a patch carrying both would overwrite
+   * the half nobody submitted. `""` clears a note; the server stores null.
+   */
+  setPetNotes: (
+    bookingId: string,
+    petId: string,
+    patch: { internalNotes?: string | null; customerNotes?: string | null },
+  ) =>
+    apiClient.patch<Booking>(
+      `/bookings/${bookingId}/pets/${petId}/notes`,
+      patch,
+    ),
+
+  /**
    * PATCH /bookings/:id/belongings/:belongingId — ticks ONE thing in or out.
    *
    * A VERB OF ITS OWN, not a corner of `update`. Two counters handing back two

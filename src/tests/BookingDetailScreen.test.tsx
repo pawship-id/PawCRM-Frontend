@@ -35,7 +35,8 @@ const item = (overrides: Partial<BookingItem> = {}): BookingItem =>
     name: "Full Grooming",
     price: "150000.0000",
     durationMin: 90,
-    notes: null,
+    internalNotes: null,
+    customerNotes: null,
     pulledToCartAt: null,
     pulledToInvoiceAt: null,
     groomerUserId: "user-1",
@@ -71,7 +72,8 @@ const petGroup = (
       workStatus: "pending",
       startedAt: null,
       finishedAt: null,
-      notes: null,
+      internalNotes: null,
+      customerNotes: null,
       pulledToCartAt: null,
       pulledToInvoiceAt: null,
       addons: [],
@@ -536,6 +538,36 @@ describe("BookingDetailScreen", () => {
 
     await screen.findByText("Mochi");
     expect(screen.queryByText(/titipan belum kembali/)).not.toBeInTheDocument();
+  });
+
+  /*
+    THE TWO NOTES ARE NOT ON THIS PAGE EITHER. They are read AND written on the
+    animal's own work page; showing a read-only copy here would be a second place
+    to look for words that can only be changed in the first.
+  */
+  it("does not show the animal's notes", async () => {
+    bookings.getById.mockResolvedValue(
+      booking({
+        pets: [
+          petGroup(MOCHI, "Mochi", [
+            {
+              internalNotes: "Takut hairdryer",
+              customerNotes: "Sarankan 3 minggu sekali",
+            },
+          ]),
+        ],
+      }),
+    );
+
+    renderWithAuth(<BookingDetailScreen id="bk-1" />);
+
+    await screen.findByText("Mochi");
+    expect(screen.queryByText("Takut hairdryer")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Sarankan 3 minggu sekali"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/catatan internal/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/untuk pelanggan/i)).not.toBeInTheDocument();
   });
 
   /*

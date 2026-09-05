@@ -5,7 +5,6 @@ import Link from "next/link";
 
 import { Alert, Card, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
-import { BookingNotes } from "./BookingNotes";
 import { useBranchScope } from "@/features/inventory/hooks/useBranchScope";
 import { Can } from "@/features/permissions";
 import { PetSummaryCard } from "@/features/pets";
@@ -405,15 +404,17 @@ export function BookingDetailScreen({ id }: { id: string }) {
                           </ul>
                         )}
 
-                        <BookingNotes
-                          internalNotes={service.internalNotes}
-                          customerNotes={service.customerNotes}
-                          className="mt-2"
-                        />
                       </li>
                     );
                   })}
                 </ul>
+
+                {/*
+                  THE TWO NOTES ARE NOT HERE. They are read and written on the
+                  animal's own work page, where the card that holds them can also
+                  EDIT them — this screen is the overview: what the whole visit
+                  is, and what it comes to. The button below is the way to them.
+                */}
 
                 <div className="mt-3 flex flex-wrap gap-2">
                   {/*

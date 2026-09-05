@@ -331,10 +331,46 @@ testing them together would silently drop whichever the first row happened to la
 **The booking's own Catatan is unchanged** — one note for the whole visit, `bookings.notes`,
 still a single box at the end of the form.
 
-**Where they are read back:** `BookingNotes` renders the pair, labelled, on the booking overview
-and the per-animal work page. The calendar block and the pet timeline show the **internal one
-only** — a day sheet and a handling history are staff surfaces, and the API does not send the
-customer's note to either.
+**Where they are read back:** on the **animal's own work page**, in the card that also edits
+them (below), and nowhere else on the booking. The overview carried a read-only copy per animal
+block for a day and it was dropped: a second place to look for words that can only be changed
+in the first is a place somebody reads and then wonders why they cannot correct. The calendar
+block and the pet timeline show the **internal one only** — a day sheet and a handling history
+are staff surfaces, and the API does not send the customer's note to either.
+
+`BookingNotes`, the read-only labelled pair, was deleted with its last call site rather than
+left as a component nothing renders.
+
+### Editing them from the animal's work page
+
+`BookingPetNotesCard` sits at the head of the rail on `/dashboard/booking/:id/hewan/:petId` —
+"Catatan booking", with **Untuk pelanggan** above **Internal**, both editable in place.
+
+**Why they are editable there and not only on the form.** The booking form captures what was
+known when the appointment was taken. Everything else is learned afterwards: the coat is worse
+than it looked, the dog panics at the dryer, the owner says something at drop-off. All of that
+happens on this page, and the alternative was sending a groomer with wet hands to the edit
+form — which reprices the visit on save.
+
+**It is `PATCH /bookings/:id/pets/:petId/notes`, never `PATCH /bookings/:id`.** The wholesale
+edit re-snapshots every unbilled row at today's catalogue price, so saving a note through it
+would reprice a visit nobody meant to reprice. This is the one thing about this card worth
+remembering.
+
+**Saved on blur, one field at a time**, matching the time fields on the same page — no save
+button. Each box sends only itself: the other may be half-typed, and a patch carrying both
+would write a stale value over live editing. A blur that changed nothing sends nothing, because
+tabbing through a card is the commonest thing that happens to it.
+
+**The draft is local and reseeds when the stored value moves.** A textarea driven straight off
+`booking` fights the person typing; without the reseed a save from another tab would never
+show. It is also what makes a refusal recoverable — the box keeps the words and the error says
+why they are not saved yet.
+
+**In the rail, and read-only without `bookings:update`.** It is consulted while something else
+is being done — during the work, and again at hand-over — so it stays in view beside the
+sessions instead of scrolling away above them. Somebody without the grant sees the text, not
+disabled boxes: they are reading the page, not being stopped mid-act.
 
 | Decision | Why |
 | --- | --- |

@@ -8,7 +8,7 @@ import { Alert, Card, Spinner, TextField } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
 import { BookingBelongingsCard } from "./BookingBelongingsCard";
-import { BookingNotes } from "./BookingNotes";
+import { BookingPetNotesCard } from "./BookingPetNotesCard";
 import { SessionGroomers } from "./SessionGroomers";
 import {
   furTypeLabel,
@@ -1062,11 +1062,7 @@ export function BookingPetWorkScreen({
                           </div>
                         </Can>
 
-                        <BookingNotes
-                          internalNotes={row.internalNotes}
-                          customerNotes={row.customerNotes}
-                          className="mt-3"
-                        />
+
 
                         <div className="mt-3 flex flex-wrap gap-2">
                           <Can
@@ -1114,6 +1110,30 @@ export function BookingPetWorkScreen({
 
         {/* ─── The rail ────────────────────────────────────────────────── */}
         <div className="flex flex-col gap-4 lg:sticky lg:top-20">
+          {/*
+            THE ANIMAL'S TWO NOTES, EDITABLE, AT THE HEAD OF THE RAIL.
+
+            THEY USED TO BE READ-ONLY AND ONCE PER SESSION, which printed the
+            same sentence under every service — they are facts about the ANIMAL,
+            and a card with two services showed each note twice. Once per animal
+            is what they are.
+
+            EDITABLE HERE because the form can only capture what was known when
+            the appointment was taken. The coat turns out worse than it looked,
+            the dog panics at the dryer, the owner says something at drop-off —
+            all of it happens on this page, and the alternative was sending
+            somebody to the edit form, which reprices the visit on save.
+
+            IN THE RAIL, not the left column: it is read while something else is
+            being done — during the work, and again at hand-over — so it stays in
+            view beside the sessions rather than scrolling away above them.
+          */}
+          <BookingPetNotesCard
+            booking={booking}
+            petId={petId}
+            onChanged={setBooking}
+          />
+
           <Card title="Riwayat" description={`${booking.statusHistory?.length ?? 0} aktivitas`}>
             {(booking.statusHistory ?? []).length === 0 ? (
               <p className="text-sm text-muted">Belum ada aktivitas.</p>
