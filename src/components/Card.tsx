@@ -6,6 +6,7 @@ import {
   CardHeader,
   CardTitle,
   CardDescription,
+  CardAction,
   CardContent,
 } from "./ui/card";
 
@@ -17,22 +18,34 @@ import {
 export interface CardProps extends Omit<ComponentProps<"div">, "title"> {
   title?: ReactNode;
   description?: ReactNode;
+  /**
+   * One control in the header, opposite the title — an edit link, a filter.
+   *
+   * THE VENDORED CARD ALREADY LAYS THIS OUT: its header switches to two columns
+   * when it finds a `data-slot="card-action"` child, and that slot was
+   * unreachable from here until now. The alternative call sites were reaching
+   * for — a floated button inside the body — sits below the title rather than
+   * beside it, and drifts differently in every card that does it.
+   */
+  action?: ReactNode;
   children: ReactNode;
 }
 
 export function Card({
   title,
   description,
+  action,
   children,
   className,
   ...props
 }: CardProps) {
   return (
     <UICard className={cn(className)} {...props}>
-      {(title || description) && (
+      {(title || description || action) && (
         <CardHeader>
           {title && <CardTitle className="text-lg">{title}</CardTitle>}
           {description && <CardDescription>{description}</CardDescription>}
+          {action && <CardAction>{action}</CardAction>}
         </CardHeader>
       )}
       <CardContent>{children}</CardContent>

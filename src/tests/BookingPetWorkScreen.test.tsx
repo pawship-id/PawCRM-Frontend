@@ -44,6 +44,37 @@ const row = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+/** One animal's entry in the API's grouped view — see `Booking["pets"]`. */
+const petGroup = (
+  petId: string,
+  petName: string,
+  services: Record<string, unknown>[] = [{}],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): any => ({
+  petId,
+  petName,
+  services: services.map((service) => ({
+    itemId: "row-mochi",
+    serviceId: "svc-1",
+    name: "Grooming Full Service",
+    serviceType: "Grooming",
+    price: "150000.0000",
+    durationMin: 90,
+    groomerUserId: "user-1",
+    groomerName: "Mbak Sari",
+    groomerOffReason: null,
+    assistantGroomers: [],
+    workStatus: "pending",
+    startedAt: null,
+    finishedAt: null,
+    notes: null,
+    pulledToCartAt: null,
+    pulledToInvoiceAt: null,
+    addons: [],
+    ...service,
+  })),
+});
+
 const booking = (over: Record<string, unknown> = {}): Booking =>
   ({
     _id: "bk-1",
@@ -62,6 +93,16 @@ const booking = (over: Record<string, unknown> = {}): Booking =>
     items: [
       row(),
       row({ _id: "row-coco", petId: COCO, petName: "Coco", name: "Potong Kuku" }),
+    ],
+    /*
+      THE SAME ROWS GROUPED, the way the API hands them over: one entry per
+      animal, services inside, add-ons under each. The Detail Appointment card
+      reads this so an add-on hangs off its service rather than sitting beside
+      it; `items` above still answers the row questions.
+    */
+    pets: [
+      petGroup(MOCHI, "Mochi"),
+      petGroup(COCO, "Coco", [{ itemId: "row-coco", name: "Potong Kuku" }]),
     ],
     ...over,
   }) as unknown as Booking;
@@ -375,7 +416,11 @@ describe("BookingPetWorkScreen", () => {
     });
 
     expect(await screen.findByText("0812-3456-7890")).toBeInTheDocument();
-    expect(screen.getByText("Cibubur")).toBeInTheDocument();
+    /*
+      THE BRANCH READS WITH THE LOCATION, as one answer: "Di rumah pelanggan"
+      without the branch says nothing about who is driving.
+    */
+    expect(screen.getByText(/Di toko · Cibubur/i)).toBeInTheDocument();
   });
 
   it("still renders when the branch and customer cannot be read", async () => {
@@ -550,6 +595,129 @@ describe("BookingPetWorkScreen — the header's booking-level controls", () => {
  * being opened: which animal, the facts that decide how it is handled, and
  * anything that must not be done to it.
  */
+/**
+ * ─── DETAIL APPOINTMENT ─────────────────────────────────────────────────────
+ *
+ * What is being charged, and what was added to it. The add-on is the part that
+ * has to read as attached: nobody chooses "Parfum" on its own.
+ */
+describe("BookingPetWorkScreen — the Detail Appointment card", () => {
+  const withAddon = () =>
+    bookings.getById.mockResolvedValue(
+      booking({
+        pets: [
+          petGroup(MOCHI, "Mochi", [
+            {
+              name: "Basic Grooming",
+              price: "199000.0000",
+              durationMin: 110,
+              addons: [
+                {
+                  itemId: "row-detangle",
+                  serviceId: "svc-detangle",
+                  name: "Minor Full Body Detangling",
+                  price: "75000.0000",
+                  durationMin: 30,
+                  pulledToCartAt: null,
+                  pulledToInvoiceAt: null,
+                },
+              ],
+            },
+          ]),
+        ],
+        items: [
+          row({ name: "Basic Grooming", price: "199000.0000", durationMin: 110 }),
+          row({
+            _id: "row-detangle",
+            name: "Minor Full Body Detangling",
+            price: "75000.0000",
+            durationMin: 30,
+            parentItemId: "row-mochi",
+          }),
+        ],
+      }),
+    );
+
+  it("hangs the add-on off its service, with its own extra minutes", async () => {
+    withAddon();
+
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />);
+
+    expect(
+      await screen.findByText(/\+ Minor Full Body Detangling · \+30 mnt/),
+    ).toBeInTheDocument();
+  });
+
+  it("counts the add-on in the final total", async () => {
+    // 199.000 + 75.000 — a total that ignored it would disagree with the bill.
+    withAddon();
+
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />);
+
+    expect(await screen.findByText(/total akhir/i)).toBeInTheDocument();
+    expect(screen.getByText(/Rp\s?274[.,]000/)).toBeInTheDocument();
+  });
+
+  it("says when the visit ends, not only when it starts", async () => {
+    /*
+      "09.00" answers when to arrive; "09.00 – 11.20" answers when the animal
+      goes home, which is what the owner asks at the counter. 110 + 30 minutes.
+    */
+    withAddon();
+
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />);
+
+    expect(await screen.findByText(/09\.00 – 11\.20/)).toBeInTheDocument();
+  });
+
+  it("spells out that there is no trip rather than leaving it blank", async () => {
+    // "Tidak ada" is a real answer a driver needs; blank reads as undecided.
+    withAddon();
+
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />);
+
+    expect(await screen.findByText("Tidak ada")).toBeInTheDocument();
+  });
+
+  it("names the trip when there is one", async () => {
+    bookings.getById.mockResolvedValue(
+      booking({ pickupRequested: true, deliveryRequested: true }),
+    );
+
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />);
+
+    expect(await screen.findByText(/jemput & antar pulang/i)).toBeInTheDocument();
+  });
+
+  it("offers the way to correct the price, on the card that states it", async () => {
+    withAddon();
+
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
+      isSuperAdmin: false,
+      permissions: FULL as never,
+    });
+
+    const edit = await screen.findByRole("link", {
+      name: /edit layanan & harga/i,
+    });
+    expect(edit).toHaveAttribute("href", "/dashboard/booking/bk-1/edit");
+  });
+
+  it("keeps that link away from somebody who may not reprice", async () => {
+    withAddon();
+
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
+      isSuperAdmin: false,
+      permissions: [{ feature: "bookings", actions: ["read"] }] as never,
+    });
+
+    await screen.findByText(/total akhir/i);
+    expect(
+      screen.queryByRole("link", { name: /edit layanan & harga/i }),
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe("BookingPetWorkScreen — the Hewan & Pelanggan card", () => {
   const brownie = {
     _id: MOCHI,

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Cat, Dog } from "lucide-react";
+import { Cat, Dog, Pencil } from "lucide-react";
 
 import { Alert, Card, Spinner, TextField } from "@/components";
 import { Button } from "@/components/ui/button";
@@ -60,6 +60,20 @@ const NEXT_MOVE: Partial<
 };
 
 /** "09.05" from an instant, in the shop's own clock — never through UTC. */
+/**
+ * The clock a visit is expected to END on — its start plus what it is estimated
+ * to take.
+ *
+ * THE ESTIMATE, NOT THE ACTUAL. The actual finish belongs to each session and
+ * moves while somebody is reading; a card that mixed the two would promise a
+ * time that changes under the reader.
+ */
+function finishClock(startIso: string, minutes: number): string {
+  const at = new Date(startIso);
+  at.setMinutes(at.getMinutes() + minutes);
+  return `${String(at.getHours()).padStart(2, "0")}.${String(at.getMinutes()).padStart(2, "0")}`;
+}
+
 function clock(iso: string | null | undefined): string {
   if (!iso) return "";
   const at = new Date(iso);
@@ -383,6 +397,14 @@ export function BookingPetWorkScreen({
   if (!booking) return null;
 
   const rows = booking.items.filter((item) => item.petId === petId);
+  /*
+    THE SAME ROWS, GROUPED — from the API's own per-animal view, so an add-on
+    hangs off the service it was added to instead of being regrouped here. The
+    flat `rows` above still answers the questions that are about rows: how many
+    minutes, how much money, what may be moved along.
+  */
+  const services =
+    booking.pets.find((group) => group.petId === petId)?.services ?? [];
   const petName = rows[0]?.petName ?? pet?.name ?? "Hewan ini";
 
   if (rows.length === 0) {
@@ -590,7 +612,26 @@ export function BookingPetWorkScreen({
       <div className="grid items-start gap-4 lg:grid-cols-[1fr_320px]">
         <div className="flex flex-col gap-4">
           {/* ─── Detail Appointment ─────────────────────────────────────── */}
-          <Card title="Detail Appointment">
+          <Card
+            title="Detail Appointment"
+            /*
+              THE WAY TO CORRECT WHAT IS BEING CHARGED, on the card that states
+              it. Somebody who reads a wrong price here has the fix in the same
+              glance rather than having to remember the booking has an edit
+              screen — and `Can` keeps it off the page for whoever may read the
+              work but not reprice it.
+            */
+            action={
+              <Can feature="bookings" action="update">
+                <Button asChild variant="ghost" size="sm">
+                  <Link href={`/dashboard/booking/${bookingId}/edit`}>
+                    <Pencil className="size-4" aria-hidden />
+                    Edit layanan &amp; harga
+                  </Link>
+                </Button>
+              </Can>
+            }
+          >
             <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
               <Field
                 label="Tanggal"
@@ -599,14 +640,55 @@ export function BookingPetWorkScreen({
                   { day: "numeric", month: "long", year: "numeric" },
                 )}
               />
+              {/*
+                A RANGE, NOT A START. "09.00" answers when to be there; "09.00 –
+                12.00" answers when the animal goes home, which is the question
+                the owner actually asks at the counter. The end is the start plus
+                what this visit is ESTIMATED to take — the actual finish is on
+                each session, and a card that mixed the two would promise a time
+                that moves while somebody reads it.
+              */}
               <Field
                 label="Waktu"
-                value={new Date(booking.scheduledAt).toLocaleTimeString(
-                  "id-ID",
-                  { hour: "2-digit", minute: "2-digit" },
-                )}
+                value={
+                  <span className="tabular-nums">
+                    {clock(booking.scheduledAt)}
+                    {estimate > 0 && ` – ${finishClock(booking.scheduledAt, estimate)}`}
+                  </span>
+                }
               />
-              <Field label="Cabang" value={branchName ?? "—"} />
+              {/*
+                WHERE THE WORK HAPPENS AND WHICH SHOP — one line, because they
+                are one answer: "Di rumah pelanggan" without the branch says
+                nothing about who is driving.
+              */}
+              <Field
+                label="Tipe"
+                value={[
+                  booking.location === "in_home"
+                    ? "Di rumah pelanggan"
+                    : "Di toko",
+                  branchName,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              />
+              {/*
+                SPELLED OUT RATHER THAN TICKED. "Tidak ada" is a real answer a
+                driver needs; an empty field reads as nobody having decided.
+              */}
+              <Field
+                label="Antar-jemput"
+                value={
+                  booking.pickupRequested && booking.deliveryRequested
+                    ? "Jemput & antar pulang"
+                    : booking.pickupRequested
+                      ? "Jemput saja"
+                      : booking.deliveryRequested
+                        ? "Antar pulang saja"
+                        : "Tidak ada"
+                }
+              />
               <Field
                 label="Durasi aktual"
                 value={
@@ -620,27 +702,67 @@ export function BookingPetWorkScreen({
               />
             </dl>
 
-            <div className="mt-3 border-t border-border pt-2">
-              {rows.map((row) => (
-                <div
-                  key={row._id}
-                  className="flex justify-between gap-3 border-b border-border py-2 text-sm last:border-b-0"
-                >
-                  <span>
-                    {row.name}
-                    <span className="block text-xs text-muted">
-                      {row.durationMin
-                        ? `${row.durationMin} mnt`
-                        : "durasi belum diisi"}
+            {/*
+              WHAT IS BEING CHARGED, AND WHAT IS ADDED TO IT.
+
+              Read from the grouped view the API builds (`booking.pets`), so an
+              add-on hangs off the service it was added to instead of sitting
+              beside it as though somebody had chosen "Parfum" on its own. It is
+              still its own stored row — that is how it bills and prints — and
+              the indent is what says it is not a service in its own right.
+            */}
+            <div className="mt-4 border-t border-border pt-3">
+              {services.map((service) => (
+                <div key={service.itemId} className="py-2">
+                  <div className="flex justify-between gap-3 text-sm">
+                    <span className="font-medium text-foreground">
+                      {service.name}
                     </span>
-                  </span>
-                  <span className="font-bold tabular-nums">
-                    {formatMoney(row.price)}
-                  </span>
+                    <span className="font-semibold tabular-nums text-foreground">
+                      {formatMoney(service.price)}
+                    </span>
+                  </div>
+                  {/*
+                    THE FACTS THE PRICE WAS QUOTED FROM, under the name it was
+                    quoted for: a variant service costs what THIS animal's size
+                    and coat say it costs, and a line that showed only the total
+                    leaves somebody unable to check it.
+                  */}
+                  <p className="text-xs text-muted">
+                    {[
+                      sizeLabel(pet?.size),
+                      furTypeLabel(pet?.furType),
+                      service.durationMin
+                        ? `${service.durationMin} mnt`
+                        : "durasi belum diisi",
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+
+                  {service.addons.length > 0 && (
+                    <ul className="mt-2 border-l-2 border-border pl-3">
+                      {service.addons.map((addon) => (
+                        <li
+                          key={addon.itemId}
+                          className="flex justify-between gap-3 py-1 text-sm"
+                        >
+                          <span className="text-muted">
+                            + {addon.name}
+                            {addon.durationMin ? ` · +${addon.durationMin} mnt` : ""}
+                          </span>
+                          <span className="font-semibold tabular-nums text-foreground">
+                            {formatMoney(addon.price)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               ))}
-              <div className="flex justify-between gap-3 border-t-2 border-foreground pt-2 text-sm">
-                <span className="font-extrabold">Total untuk {petName}</span>
+
+              <div className="mt-1 flex justify-between gap-3 border-t-2 border-foreground pt-2 text-sm">
+                <span className="font-extrabold">Total akhir</span>
                 <span className="text-lg font-extrabold tabular-nums">
                   {formatMoney(total)}
                 </span>
