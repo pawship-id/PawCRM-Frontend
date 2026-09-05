@@ -293,7 +293,7 @@ groomer doing it.
 | --- | --- | --- |
 | Lokasi layanan | `in_store` / `in_home` | Narrows the catalogue: a service that cannot be done at home is refused for a house call |
 | Antar-jemput | Two check-rows + an optional address | **One trip per visit, not per animal** — a van goes to an address, and two of one customer's dogs ride in the same one. The question **disappears** on a house call rather than being asked and ignored; the server forces both off |
-| Barang bawaan | Add-and-remove chips, per animal | What the owner says they will bring. **Nothing here ticks anything in** — the counter confirms arrival on the booking's own page, and a visit cannot be completed while something handed over is still here |
+| Barang bawaan | Add-and-remove chips, per animal | What the owner says they will bring. **Nothing here ticks anything in** — the counter confirms arrival on the animal's work page, and a visit cannot be completed while something handed over is still here |
 
 **The animal's note is written onto each of its rows.** `bookingitems.notes` is documented as
 "anything special about THIS animal on THIS visit" — a per-animal fact that happens to be
@@ -411,10 +411,35 @@ subtitle is now a link back to `/dashboard/booking/:id` — the page's only way 
 
 ---
 
-## Barang bawaan — centang masuk dan keluar
+## Titipan owner — centang masuk dan keluar
 
-The card sits on the booking's own page, above the work, grouped by animal. Two checkboxes per
-item: **Masuk** when it is handed over at the counter, **Keluar** when it goes home.
+**The card lives on the animal's page**, `/dashboard/booking/:id/hewan/:petId`, in the left
+column **above Sesi Grooming**. What the owner handed over is checked at the two moments that
+bracket the work — arrival and collection — so it is read before the sessions and again after,
+while the sessions in between are worked through once. Sessions are also the longest card on
+the page, and anything under them is found only by scrolling past everything. A three-column
+table — **Barang / Masuk / Keluar** — showing only
+that animal's things, with a `N belum kembali` badge in the card header and **Tambah barang**
+underneath. Two checkboxes per item: **Masuk** when it is handed over at the counter,
+**Keluar** when it goes home.
+
+**It used to be on the booking overview, grouped by animal, and moved on 5 September 2026.**
+Handing a collar back happens at the table next to the animal it belongs to and the person
+holding it; the overview is about what the whole visit is and what it comes to. One card
+covering three animals meant scrolling past two others' things to tick one.
+
+**The count stayed behind.** Each animal's block on `/dashboard/booking/:id` carries
+`N titipan belum kembali` and the button through to the page. "Is anything still in the
+drawer" is the last question asked before a visit closes — a whole-visit question — so the
+answer must be readable without opening three pages. The **list** moved; the **number** did
+not. There is deliberately only one place to tick: two copies of the same checkbox is how an
+item gets recorded as returned and then quietly un-returned.
+
+**Tambah barang defaults to checked in.** Somebody arrives with more than they said they
+would, and an item written down at the counter arrived in the same movement that recorded it.
+It is `POST /api/bookings/:id/belongings`, which appends server-side — not the wholesale
+`PATCH` of the whole array, for the same reason the ticks are per-item. A refusal leaves the
+typed name in the field: making somebody retype it is where the typo goes in.
 
 **Two ticks, not one.** A single "sudah dikembalikan" cannot tell apart the two states that
 matter — something written down when the booking was taken and never actually handed over, and

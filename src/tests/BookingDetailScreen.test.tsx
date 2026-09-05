@@ -466,4 +466,87 @@ describe("BookingDetailScreen", () => {
       screen.getAllByRole("link", { name: /^profil/i }).length,
     ).toBeGreaterThan(0);
   });
+
+  /*
+    ─── WHAT SURVIVED MOVING THE TITIPAN CARD OFF THIS PAGE ───
+
+    Ticking a collar back happens on the animal's own page now. But "is anything
+    still in the drawer" is a question about the WHOLE VISIT — it is the last
+    thing checked before a booking closes — so the COUNT stays here, on the
+    animal it belongs to, with the way through to act on it.
+  */
+  it("counts what is still in the drawer, per animal", async () => {
+    bookings.getById.mockResolvedValue(
+      booking({
+        belongings: [
+          {
+            _id: "bel-1",
+            petId: MOCHI,
+            name: "Carrier biru",
+            checkedInAt: "2026-09-02T03:00:00.000Z",
+            checkedOutAt: null,
+            checkedInBy: null,
+            checkedOutBy: null,
+          },
+          {
+            _id: "bel-2",
+            petId: COCO,
+            name: "Kalung merah",
+            checkedInAt: "2026-09-02T03:00:00.000Z",
+            checkedOutAt: "2026-09-02T09:00:00.000Z",
+            checkedInBy: null,
+            checkedOutBy: null,
+          },
+        ],
+      }),
+    );
+
+    renderWithAuth(<BookingDetailScreen id="bk-1" />);
+
+    // Mochi's is still here; Coco's went home, so only one block is flagged.
+    expect(
+      await screen.findByText("1 titipan belum kembali"),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText(/titipan belum kembali/)).toHaveLength(1);
+  });
+
+  it("does not count something that never arrived", async () => {
+    /*
+      THE REASON THERE ARE TWO DATES. Written down when the booking was taken and
+      never handed over is not outstanding — flagging it would hold a visit open
+      over something nobody brought, and teach the shop to ignore the badge.
+    */
+    bookings.getById.mockResolvedValue(
+      booking({
+        belongings: [
+          {
+            _id: "bel-1",
+            petId: MOCHI,
+            name: "Carrier biru",
+            checkedInAt: null,
+            checkedOutAt: null,
+            checkedInBy: null,
+            checkedOutBy: null,
+          },
+        ],
+      }),
+    );
+
+    renderWithAuth(<BookingDetailScreen id="bk-1" />);
+
+    await screen.findByText("Mochi");
+    expect(screen.queryByText(/titipan belum kembali/)).not.toBeInTheDocument();
+  });
+
+  /*
+    THE CARD ITSELF IS GONE FROM THIS PAGE. Pinned, because leaving both would be
+    two places to tick the same box — and two people ticking different copies is
+    how an item gets recorded as returned and then quietly un-returned.
+  */
+  it("does not carry the titipan list itself any more", async () => {
+    renderWithAuth(<BookingDetailScreen id="bk-1" />);
+
+    await screen.findByText("Mochi");
+    expect(screen.queryByText("Titipan Owner")).not.toBeInTheDocument();
+  });
 });

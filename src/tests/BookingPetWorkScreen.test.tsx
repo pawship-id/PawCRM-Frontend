@@ -869,3 +869,69 @@ describe("BookingPetWorkScreen — the header's audit line", () => {
     ).not.toBeInTheDocument();
   });
 });
+
+/**
+ * TITIPAN OWNER, ON THE ANIMAL'S PAGE.
+ *
+ * It was one card on the booking overview, grouped by animal. Handing a collar
+ * back happens at the table next to the animal it belongs to, and the overview
+ * made somebody scroll past two other animals' things to tick one. What these
+ * pin is that it landed here and that it shows ONE animal's things — the card's
+ * own behaviour is `BookingBelongingsCard.test.tsx`.
+ */
+describe("BookingPetWorkScreen — titipan owner", () => {
+  const carrier = {
+    _id: "bel-1",
+    petId: MOCHI,
+    name: "Carrier biru",
+    checkedInAt: "2026-09-02T03:00:00.000Z",
+    checkedOutAt: null,
+    checkedInBy: null,
+    checkedOutBy: null,
+  };
+
+  it("carries the list, and only this animal's things", async () => {
+    bookings.getById.mockResolvedValue(
+      booking({
+        belongings: [
+          carrier,
+          { ...carrier, _id: "bel-2", petId: COCO, name: "Kalung merah" },
+        ],
+      }) as never,
+    );
+
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
+      isSuperAdmin: false,
+      permissions: FULL as never,
+    });
+
+    expect(await screen.findByText("Titipan Owner")).toBeInTheDocument();
+    expect(screen.getByText("Carrier biru")).toBeInTheDocument();
+    expect(screen.queryByText("Kalung merah")).not.toBeInTheDocument();
+    expect(screen.getByText("1 belum kembali")).toBeInTheDocument();
+  });
+
+  it("ticks a thing back out from here", async () => {
+    // The act the move was for: one request, against one item, on the page
+    // somebody has open while the owner is standing there.
+    bookings.getById.mockResolvedValue(
+      booking({ belongings: [carrier] }) as never,
+    );
+    bookings.checkBelonging.mockResolvedValue(
+      booking({ belongings: [] }) as never,
+    );
+
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
+      isSuperAdmin: false,
+      permissions: FULL as never,
+    });
+
+    await userEvent.click(await screen.findByLabelText(/carrier biru keluar/i));
+
+    await waitFor(() =>
+      expect(bookings.checkBelonging).toHaveBeenCalledWith("bk-1", "bel-1", {
+        checkedOut: true,
+      }),
+    );
+  });
+});

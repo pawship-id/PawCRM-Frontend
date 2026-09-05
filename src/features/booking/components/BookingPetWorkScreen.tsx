@@ -7,6 +7,7 @@ import { Cat, Dog, Pencil } from "lucide-react";
 import { Alert, Card, Spinner, TextField } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
+import { BookingBelongingsCard } from "./BookingBelongingsCard";
 import { SessionGroomers } from "./SessionGroomers";
 import {
   furTypeLabel,
@@ -156,12 +157,20 @@ function elapsed(row: BookingItem): number | null {
  * preferences, a lifetime of visits. This is about ONE visit's work, which is
  * why it lives under the booking: Coco may be on ten of them.
  *
+ * ─── TITIPAN OWNER LIVES HERE ──────────────────────────────────────────────
+ *
+ * It was one card on the booking overview, grouped by animal, so handing Mochi's
+ * collar back meant scrolling past Coco's things. Ticking it happens at the
+ * table beside the animal it belongs to, which is this page. The overview keeps
+ * the COUNT and links through — "can this visit close" is still a whole-visit
+ * question.
+ *
  * ─── WHAT THE REFERENCE HAS THAT THIS DOES NOT ─────────────────────────────
  *
- * Titipan owner, before/after photos, several groomers sharing one service with
- * a percentage split, and service variants with add-ons. None of them has
- * anywhere to be stored yet, and a card that looks like it works and does not is
- * worse than a card that is absent. See `Analisis-Detail-Booking-v2`.
+ * Before/after photos, several groomers sharing one service with a percentage
+ * split, and service variants with add-ons. None of them has anywhere to be
+ * stored yet, and a card that looks like it works and does not is worse than a
+ * card that is absent. See `Analisis-Detail-Booking-v2`.
  */
 export function BookingPetWorkScreen({
   bookingId,
@@ -862,6 +871,36 @@ export function BookingPetWorkScreen({
             </dl>
           </Card>
 
+          {/*
+            WHAT CAME IN WITH THIS ANIMAL — moved here from the booking overview.
+
+            It was one card there, grouped by animal, which meant handing Mochi's
+            collar back involved scrolling past Coco's things and Bruno's. This
+            page is already about one animal and is the page open at the table
+            when the owner comes to collect, so the list belongs beside the work
+            rather than beside the total. The overview keeps the COUNT and links
+            through, because "can this visit close" is still a whole-visit
+            question.
+
+            ABOVE THE SESSIONS, not under them. What the owner handed over is
+            checked at the two moments that bracket the work — arrival and
+            collection — so it is read before the sessions and again after, while
+            the sessions in between are worked through once. Sessions are also
+            the longest card on the page; anything under them is found by
+            scrolling past everything, which is what the overview already did
+            wrong.
+
+            LEFT COLUMN, NOT THE RAIL: the rail is for what is read (the trail,
+            the commission pointer); ticking a box is a thing done, and the three
+            columns want the width.
+          */}
+          <BookingBelongingsCard
+            booking={booking}
+            petId={petId}
+            petName={petName}
+            onChanged={setBooking}
+          />
+
           {/* ─── Sesi Grooming ──────────────────────────────────────────── */}
           <Card title="Sesi Grooming" description={`aktual ${actual} / est ${estimate} mnt`}>
             <ul className="flex flex-col gap-2">
@@ -1069,6 +1108,7 @@ export function BookingPetWorkScreen({
               </Button>
             </div>
           </Card>
+
         </div>
 
         {/* ─── The rail ────────────────────────────────────────────────── */}

@@ -94,6 +94,19 @@ export const bookingService = {
     apiClient.get<BookingUnbilledSummary>("/bookings/unbilled-summary"),
 
   /**
+   * POST /bookings/:id/belongings — one thing just handed over the counter.
+   *
+   * A VERB, not a save of the whole list: two people adding two things at the
+   * same moment must both get theirs. Counted as ARRIVED by default, unlike the
+   * booking form's list — a thing added from the animal's own page is a thing
+   * somebody is holding, while the form's is what the owner said they'd bring.
+   */
+  addBelonging: (
+    bookingId: string,
+    body: { petId: string; name: string; checkedIn?: boolean },
+  ) => apiClient.post<Booking>(`/bookings/${bookingId}/belongings`, body),
+
+  /**
    * PATCH /bookings/:id/items/:itemId/groomers — who is on ONE session.
    *
    * The lead (`groomerUserId`, `null` unassigns) and the extra hands beside

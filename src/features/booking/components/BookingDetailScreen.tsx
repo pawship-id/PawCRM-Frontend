@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 import { Alert, Card, Spinner } from "@/components";
-import { BookingBelongingsCard } from "./BookingBelongingsCard";
 import { Button } from "@/components/ui/button";
 import { useBranchScope } from "@/features/inventory/hooks/useBranchScope";
 import { Can } from "@/features/permissions";
@@ -212,21 +211,15 @@ export function BookingDetailScreen({ id }: { id: string }) {
       </Card>
 
       {/*
-        WHAT CAME IN WITH THE ANIMALS — above the work rather than below it.
+        TITIPAN OWNER LIVES ON THE ANIMAL'S PAGE NOW, not here.
 
-        It is the last thing checked before a visit closes and the first thing
-        asked about when something goes missing, so it sits where somebody
-        looking for it will find it without scrolling past every service. The
-        card renders nothing when the booking has no belongings, so a visit
-        where nobody handed anything over is unchanged.
+        It was on this screen, grouped by animal. Handing a collar back happens
+        at the table next to the animal it belongs to, and this screen is about
+        what the whole visit is and what it comes to — so ticking one animal's
+        things meant scrolling past two others'. The count still surfaces here:
+        each block below carries "N titipan belum kembali" and links through, so
+        the question "can this visit close" is still answerable from one screen.
       */}
-      <BookingBelongingsCard
-        booking={booking}
-        petNames={
-          new Map(booking.pets.map((entry) => [entry.petId, entry.petName ?? ""]))
-        }
-        onChanged={setBooking}
-      />
 
       {/*
         ONE BLOCK PER ROW. This is where a visit stops being one thing: Mochi with
@@ -255,8 +248,23 @@ export function BookingDetailScreen({ id }: { id: string }) {
                   add-on as a line somebody had chosen on its own.
                 */}
                 <div className="flex flex-wrap items-start justify-between gap-2">
-                  <span className="text-sm font-semibold text-foreground">
-                    {group.petName ?? "—"}
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground">
+                      {group.petName ?? "—"}
+                    </span>
+                    {/*
+                      THE COUNT SURVIVES THE MOVE. Ticking a collar back is done
+                      on the animal's page now, but "is anything still in the
+                      drawer" is a question about the WHOLE VISIT — it is the last
+                      thing checked before a booking closes. So the number stays
+                      here and the button below is the way to act on it.
+                    */}
+                    {outstandingFor(booking, group.petId) > 0 && (
+                      <span className="rounded-full bg-tint-danger px-2 py-0.5 text-xs font-semibold text-danger">
+                        {outstandingFor(booking, group.petId)} titipan belum
+                        kembali
+                      </span>
+                    )}
                   </span>
                   <span className="text-sm font-semibold tabular-nums text-foreground">
                     {formatMoney(
@@ -444,6 +452,22 @@ export function BookingDetailScreen({ id }: { id: string }) {
       </Card>
     </div>
   );
+}
+
+/**
+ * How many of this animal's things are HANDED OVER AND NOT YET GIVEN BACK.
+ *
+ * Something written down when the booking was taken and never actually handed
+ * over is not outstanding — that is why these are two dates and not one flag,
+ * and counting it would hold a visit open over something nobody brought.
+ */
+function outstandingFor(booking: Booking, petId: string): number {
+  return (booking.belongings ?? []).filter(
+    (belonging) =>
+      belonging.petId === petId &&
+      belonging.checkedInAt &&
+      !belonging.checkedOutAt,
+  ).length;
 }
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {

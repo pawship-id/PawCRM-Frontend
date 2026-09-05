@@ -31,16 +31,12 @@ const belonging = (
 const booking = (belongings: BookingBelonging[]): Booking =>
   ({ _id: "bk-1", belongings }) as Booking;
 
-const petNames = new Map([
-  [PET_A, "Mochi"],
-  [PET_B, "Coco"],
-]);
-
 function render(belongings: BookingBelonging[], onChanged = jest.fn()) {
   renderWithAuth(
     <BookingBelongingsCard
       booking={booking(belongings)}
-      petNames={petNames}
+      petId={PET_A}
+      petName="Mochi"
       onChanged={onChanged}
     />,
   );
@@ -50,36 +46,37 @@ function render(belongings: BookingBelonging[], onChanged = jest.fn()) {
 beforeEach(() => {
   jest.clearAllMocks();
   bookings.checkBelonging.mockResolvedValue(booking([]) as never);
+  bookings.addBelonging.mockResolvedValue(booking([]) as never);
 });
 
 /**
- * Barang bawaan pawrents — checked in on arrival, checked out on the way home.
+ * Titipan owner — checked in on arrival, checked out on the way home.
  *
  * WHAT THESE PIN is the pair of states a single "returned" checkbox cannot tell
- * apart, and the order the two ticks happen in.
+ * apart, the order the two ticks happen in, and — since the card moved off the
+ * booking overview onto one animal's page — that it shows ONE animal's things.
  */
 describe("BookingBelongingsCard", () => {
-  it("renders nothing when nobody handed anything over", () => {
-    // A visit where the owner brought only the dog is unchanged by this feature.
-    const { container } = renderWithAuth(
-      <BookingBelongingsCard
-        booking={booking([])}
-        petNames={petNames}
-        onChanged={jest.fn()}
-      />,
-    );
-
-    expect(container).toBeEmptyDOMElement();
-  });
-
-  it("groups the things under the animal that brought them", () => {
+  it("shows only the animal whose page this is", () => {
+    /*
+      THE REASON IT MOVED. It used to be one card on the booking overview,
+      grouped by animal, so handing Mochi's collar back meant scrolling past
+      Coco's. This page is about one animal; the other's things are not on it.
+    */
     render([
       belonging({ _id: "a", petId: PET_A, name: "Carrier biru" }),
       belonging({ _id: "b", petId: PET_B, name: "Kalung merah" }),
     ]);
 
-    expect(screen.getByText("Mochi")).toBeInTheDocument();
-    expect(screen.getByText("Coco")).toBeInTheDocument();
+    expect(screen.getByText("Carrier biru")).toBeInTheDocument();
+    expect(screen.queryByText("Kalung merah")).not.toBeInTheDocument();
+  });
+
+  it("says so plainly when this animal brought nothing", () => {
+    // Not an empty card and not a blank space: the fact, stated. §10.
+    render([belonging({ petId: PET_B })]);
+
+    expect(screen.getByText(/tidak menitipkan barang/i)).toBeInTheDocument();
   });
 
   it("ticks one thing in, by its own id", async () => {
@@ -123,11 +120,11 @@ describe("BookingBelongingsCard", () => {
     );
   });
 
-  it("names what is still here, and says what it blocks", async () => {
-    // "Masih ada barang" sends somebody hunting; naming the carrier tells them
-    // what to look for.
+  it("counts what is still here in the header, in words", async () => {
+    // §1.3 — a red "2" is a number somebody has to decode. The badge carries
+    // the word, and it is what tells a counter the visit cannot close yet.
     render([
-      belonging({ _id: "a", name: "Carrier biru", checkedInAt: "2026-09-04T01:00:00.000Z" }),
+      belonging({ _id: "a", checkedInAt: "2026-09-04T01:00:00.000Z" }),
       belonging({
         _id: "b",
         name: "Kalung merah",
@@ -136,10 +133,7 @@ describe("BookingBelongingsCard", () => {
       }),
     ]);
 
-    const warning = screen.getByText(/belum dikembalikan/i).closest("div");
-    // The one still here is named; the one already returned is not.
-    expect(warning).toHaveTextContent("Carrier biru");
-    expect(warning).not.toHaveTextContent("Kalung merah");
+    expect(screen.getByText("1 belum kembali")).toBeInTheDocument();
     expect(screen.getByText(/tidak bisa diselesaikan/i)).toBeInTheDocument();
   });
 
@@ -151,14 +145,39 @@ describe("BookingBelongingsCard", () => {
     */
     render([belonging({ checkedInAt: null })]);
 
-    expect(screen.queryByText(/belum dikembalikan/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/tidak ada barang yang tertinggal/i)).toBeInTheDocument();
+    expect(screen.queryByText(/belum kembali/i)).not.toBeInTheDocument();
+    expect(screen.getByText("Semua kembali")).toBeInTheDocument();
+  });
+
+  it("adds a thing to THIS animal, checked in", async () => {
+    /*
+      An item added at the counter is one somebody is holding — it arrived in the
+      same movement that recorded it — so the server defaults `checkedIn` and the
+      card does not send it. The petId is the page's, never asked for.
+    */
+    render([]);
+
+    await userEvent.click(screen.getByRole("button", { name: /tambah barang/i }));
+    await userEvent.type(
+      screen.getByLabelText(/nama barang titipan mochi/i),
+      "Kalung merah",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Simpan" }));
+
+    await waitFor(() =>
+      expect(bookings.addBelonging).toHaveBeenCalledWith("bk-1", {
+        petId: PET_A,
+        name: "Kalung merah",
+      }),
+    );
   });
 
   it("hands the updated booking up rather than guessing locally", async () => {
     // The row reflects the server: nothing is ticked optimistically and
     // reconciled afterwards.
-    const updated = booking([belonging({ checkedInAt: "2026-09-04T01:00:00.000Z" })]);
+    const updated = booking([
+      belonging({ checkedInAt: "2026-09-04T01:00:00.000Z" }),
+    ]);
     bookings.checkBelonging.mockResolvedValue(updated as never);
     const onChanged = render([belonging()]);
 
@@ -178,14 +197,33 @@ describe("BookingBelongingsCard", () => {
 
     await userEvent.click(screen.getByLabelText(/carrier biru keluar/i));
 
-    /*
-      The card already carries the outstanding-items warning, so the refusal is
-      asked for by its own words rather than by role.
-    */
     expect(
       await screen.findByText(/belum dicentang masuk/i),
     ).toBeInTheDocument();
     // Unchanged: the tick follows the server, and the server said no.
     expect(screen.getByLabelText(/carrier biru keluar/i)).not.toBeChecked();
+  });
+
+  it("keeps the draft on screen when the add is refused", async () => {
+    /*
+      A refusal that also empties the box makes somebody retype what they just
+      typed, and the second attempt is where the typo goes in. The form stays
+      open with the words in it.
+    */
+    bookings.addBelonging.mockRejectedValue(
+      new ApiError("Validation failed", 422, {
+        reason: "Barang titipan sudah mencapai batas",
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any),
+    );
+    render([]);
+
+    await userEvent.click(screen.getByRole("button", { name: /tambah barang/i }));
+    const field = screen.getByLabelText(/nama barang titipan mochi/i);
+    await userEvent.type(field, "Kalung merah");
+    await userEvent.click(screen.getByRole("button", { name: "Simpan" }));
+
+    expect(await screen.findByText(/sudah mencapai batas/i)).toBeInTheDocument();
+    expect(field).toHaveValue("Kalung merah");
   });
 });
