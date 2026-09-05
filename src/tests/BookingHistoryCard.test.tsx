@@ -125,7 +125,7 @@ describe("BookingHistoryCard", () => {
         booking={booking({
           statusHistory: [
             event({ status: "confirmed", implied: true }),
-            event({ status: "check_in", implied: false }),
+            event({ status: "arrived", implied: false }),
           ],
         })}
       />,
@@ -144,7 +144,7 @@ describe("BookingHistoryCard", () => {
     render(
       <BookingHistoryCard
         booking={booking({
-          statusHistory: [event({ status: "confirmed" }), event({ status: "check_in" })],
+          statusHistory: [event({ status: "confirmed" }), event({ status: "arrived" })],
         })}
       />,
     );
@@ -172,7 +172,7 @@ describe("BookingHistoryCard", () => {
         booking={booking({
           statusHistory: [
             event({ status: "confirmed" }),
-            event({ status: "check_in" }),
+            event({ status: "arrived" }),
           ],
         })}
       />,

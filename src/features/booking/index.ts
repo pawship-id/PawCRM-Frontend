@@ -27,7 +27,12 @@ export { BookingHistoryDialog } from "./components/BookingHistoryDialog";
 export {
   BOOKING_STATUS_ACTIONS,
   canCancel,
+  canReschedule,
   forwardStatuses,
+  hasCompletedWork,
   impliedStatuses,
+  ladderFor,
+  transitionsFor,
+  type BookingLike,
 } from "./statusFlow";
 export { BOOKING_CRUMBS, BOOKINGS_CRUMBS } from "./crumbs";

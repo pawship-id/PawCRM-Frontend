@@ -1852,11 +1852,22 @@ export interface UpdateCartInput {
 /** Where a booking stands. Mirrors BOOKING_STATUSES in booking.model.js. */
 export type BookingStatus =
   | "draft"
-  | "check_in"
+  | "requested"
   | "confirmed"
+  /* The two trip legs — only on a booking that asked to be fetched or taken home. */
+  | "pickup"
+  | "arrived"
   | "in_progress"
   | "completed"
-  | "cancelled";
+  | "delivery"
+  | "return_to_pawrents"
+  | "cancelled"
+  /*
+    RECORDED, NEVER RESTED IN. A reschedule moves the date and leaves the booking
+    on `confirmed`; this value appears in `statusHistory` so the trail can say
+    the appointment moved, and never in `booking.status`.
+  */
+  | "rescheduled";
 
 /**
  * How the booking came to exist.

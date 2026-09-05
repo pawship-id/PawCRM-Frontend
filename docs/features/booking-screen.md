@@ -130,12 +130,13 @@ So the moves live here, behind the same state machine the server enforces.
 
 `BookingForm` asks in §16's field order, and since the per-animal flow landed that order is:
 **kapan** (tanggal + jam) → **di mana** (cabang, lokasi layanan) → antar-jemput → **dengan
-siapa** (pelanggan) → a card per animal → the status → catatan last.
+siapa** (pelanggan) → a card per animal → catatan last. **There is no status field** — see
+below.
 
 ### The page is four cards and one list
 
 `Jadwal & lokasi` · `Antar-jemput` (only for a salon visit) · `Pelanggan` · **the animals** ·
-`Status & catatan`. Each card is a `<Card>` — white `bg-surface` on the page's tint — so a form
+`Catatan`. Each card is a `<Card>` — white `bg-surface` on the page's tint — so a form
 with two dozen controls has somewhere for the eye to stop.
 
 **The animals are the one group NOT wrapped in a card**, and that is deliberate: the ANIMAL's
@@ -165,6 +166,35 @@ What answers it now:
 | `Hewan ke-2` until one is chosen | A card with no animal yet still says which one it is |
 | The services sit behind a **left rail** | The indent says "these belong to the animal named above" without repeating it on every row |
 | **Tipe layanan** moved down beside the service list | Next to *Hewan* it read as another property of the animal, and was half the confusion |
+
+### The status is the button, and there is no field for it
+
+The form had a **Status** select — `requested` / `confirmed` / `draft`. Two buttons replaced it
+on 5 September 2026, and it is worth stating because it REMOVES a control:
+
+| Button | Saves as | Blocked while required fields are empty |
+| --- | --- | --- |
+| **Simpan booking** (primary) | `requested` | Yes — with `blockedReason` saying which field |
+| **Simpan sebagai draf** (secondary, left of Batal) | `draft`, always | **No** |
+
+**A select asked the wrong question.** "Which status should this start in" is not what somebody
+writing down a phone call is deciding; what they are deciding is **whether they are finished**.
+That is what a button answers, and a field that must be read and understood before every save is
+one people leave on whatever it happened to say last.
+
+**It was also a third place for one fact.** The ladder is enforced by the server and offered by
+the booking's own status menu; a select at creation time was a second door into the same
+machine — one that could put a booking into `confirmed` with nobody at the shop agreeing to it.
+
+**The draft button is not blocked by `blockedReason`, and Simpan is.** A draft is exactly what
+you save when the required fields are NOT answered — a phone rings mid-booking, a customer is
+not sure which day — so gating it on the same rule would make it useless in the one situation it
+exists for. It is off only while nothing could be sent at all (no customer picked); the server
+still refuses a booking with no animal on it, because a draft is unfinished, not unfounded.
+
+**It is not offered when editing.** `PATCH` carries no status, and pushing a live booking back
+down to a draft is a move the ladder does not have. An existing draft stays a draft on save and
+is promoted from the booking's own status menu.
 
 ### Three things are folded away
 
@@ -392,15 +422,31 @@ The disabled Simpan says which field is still missing, that one included.
 
 ## Moving one
 
-The kebab menu offers exactly the transitions `BOOKING_TRANSITIONS` allows from where the
-booking stands — `statusFlow.ts` mirrors the server's map so the menu cannot offer a move
-that comes back a 409.
+The kebab menu offers exactly the transitions the server allows from where the booking stands —
+`statusFlow.ts` mirrors `booking.model.js` so the menu cannot offer a move that comes back a 409.
 
 ```
-draft ──► confirmed ──► check_in ──► in_progress ──► completed
-  │           │             │             │
-  └───────────┴─────────────┴─────────────┴───────────► cancelled
+draft ─► requested ─► confirmed ─► [pickup] ─► arrived ─► in_progress ─► completed ─► [delivery] ─► return_to_pawrents
+  │          │            │           │           │            │
+  └──────────┴────────────┴───────────┴───────────┴────────────┴──► cancelled
 ```
+
+**The ladder is a function of the BOOKING, not a constant** — `ladderFor(booking)`. The two
+bracketed rungs exist only on a visit that asked to be fetched or driven home, so a menu built
+from the status alone would offer *"Mulai penjemputan"* on a booking with no van, and the
+server would refuse it one 409 at a time. Everything that reasons about order — the menu, the
+implied-rungs warning, the primary button — takes the booking.
+
+**`requested` is where a saved form lands, and `confirmed` is a separate act.** A booking that
+confirmed itself was one nobody had checked: a receptionist writing down a phone call has not
+yet asked whether the shop can take it. Confirming has a rung and a button of its own on the
+booking page. The walk-in standing at the counter is one click further away than before, and
+that is the trade.
+
+**`completed` is no longer the end**, and the split it created is the thing to remember on this
+screen. Money closes at `completed` — the edit form and the groomer pickers refuse from there,
+because commission is computed at that rung. The animal's own things — its two notes, its
+belongings — stay editable until `return_to_pawrents`, because that is when the visit ends.
 
 **Every move confirms, including the ordinary ones**, because none of them can be undone:
 the ladder only runs forward, so a mis-tapped "Tandai selesai" is not a click somebody takes
@@ -409,11 +455,35 @@ cancelled and made again.
 
 The dialog is also where the two things worth saying fit:
 
-- **Which rungs the jump fills in behind it.** Straight to check-in also records
-  *Dikonfirmasi*, at the same minute — see below.
+- **Which rungs the jump fills in behind it.** Straight to arrival also records *Diminta* and
+  *Dikonfirmasi*, at the same minute — see below. A trip leg the booking never booked is never
+  filled in.
 - **That completing here is not being paid.** The till stamps the sale when money lands;
   marking it done only says the work is finished, and a completed booking stops being offered
   to the kasir.
+
+### Jadwalkan ulang
+
+`BookingRescheduleDialog`, in the same kebab menu, offered while the animal has not arrived and
+the booking is not a draft.
+
+**It is not the edit form.** Saving that RE-PRICES every unbilled row at today's catalogue
+price — changing what is being done is a new quote — so moving a date through it would bill a
+shop's price rise to a customer who only rang to say Thursday is off. This calls
+`POST /bookings/:id/reschedule`, which writes two fields.
+
+**The booking comes back `confirmed`, and `rescheduled` goes to the trail.** Agreeing a new
+time is a confirmation; a booking parked in a status of its own is one somebody has to remember
+to un-park. It is the one trail entry that can appear twice.
+
+**A clash offers an override, and only after the diary has refused.** A checkbox that is always
+there is one people tick out of habit. The warning says what the override costs — *"groomer itu
+akan punya dua pekerjaan di jam yang sama"* — and changing the time clears it, because a stale
+warning turns the next save into an override nobody meant to make.
+
+**Gated on `bookings:update`, not `cancel`.** Rearranging a day is an edit to what was agreed;
+gating it on the cancel grant would mean a receptionist who may move bookings cannot, while one
+who may only end them can.
 
 **Cancelling asks for a reason and does not require one.** A receptionist calling off an
 appointment at the customer's request has nothing to add, and a mandatory field with nothing
@@ -436,14 +506,15 @@ the detail page. Added 3 September 2026, from the shop: **"Mochi sudah selesai m
 Coco belum" was a sentence the booking-level status alone could not hold.**
 
 **`bookingitems` gained `workStatus` (`pending → in_progress → done`), `startedAt` and
-`finishedAt`.** Three rungs, not the booking's five — `draft` and `check_in` are facts about
+`finishedAt`.** Three rungs, not the booking's nine — `draft` and `arrived` are facts about
 the VISIT (an appointment agreed, an animal arriving), not about one service, and copying the
 booking's ladder onto every row would mark an animal "arrived" twice because it is having two
 things done.
 
 **The booking's own `in_progress`/`completed` now follow the rows rather than being set
 directly** — `BookingService#deriveBookingStatus`, fired every time a row moves. `draft`,
-`confirmed`, `check_in` and `cancelled` stay the booking's own, manual as before.
+`confirmed`, `arrived`, the two trip legs, `return_to_pawrents` and `cancelled` stay the
+booking's own, manual as before.
 
 ### The header carries the one booking-level action on the page
 
@@ -581,11 +652,11 @@ story, and a story starts at the beginning.
 
 **Why it exists.** `status` says where a booking stands and nothing about how it got there,
 and `updatedAt` answers only the last move because the next one overwrites it. *"Jam berapa
-hewannya datang"*, *"sudah dikonfirmasi sebelum datang atau langsung check-in"* and *"siapa
+hewannya datang"*, *"sudah dikonfirmasi sebelum datang atau langsung datang"* and *"siapa
 yang membatalkan"* have nowhere else to come from.
 
 **A skipped rung is still a rung the booking passed through.** Nobody hands over a dog for an
-appointment that was never agreed, so `draft → check_in` records *both*, stamped with the
+appointment that was never agreed, so `draft → arrived` records *all of them*, stamped with the
 same instant. The filled-in entry carries `implied: true` and the dialog draws it as
 *otomatis* — two entries at the same second would otherwise claim two separate decisions, and
 this says which one somebody actually made.
@@ -630,7 +701,7 @@ filtered to a day they have not thought about reads as "no". "Hari ini" is the d
 first preset.
 
 The status filter, the badge labels and the menu all run in **ladder order** — confirmed
-before check-in. A picker that lists a booking's life out of order is one people read twice.
+before arrival. A picker that lists a booking's life out of order is one people read twice.
 
 ---
 

@@ -366,7 +366,7 @@ describe("BookingDetailScreen", () => {
     await userEvent.click(
       screen.getByRole("button", { name: /tindakan|aksi|status/i }),
     );
-    expect(await screen.findByText(/check-in/i)).toBeInTheDocument();
+    expect(await screen.findByText(/hewan sudah datang/i)).toBeInTheDocument();
     expect(screen.queryByText(/batalkan booking/i)).not.toBeInTheDocument();
   });
 

@@ -24,19 +24,31 @@ import { BOOKING_STATUS_LABELS } from "./BookingStatusBadge";
  * API's value is a coincidence, not a rule — `BOOKING_STATUS_LABELS` is the one
  * place that decides it, so the badge and this filter cannot drift apart.
  *
- * IN THE ORDER A BOOKING WALKS THEM, matching `BOOKING_LADDER` on the server:
- * confirmed before check-in, because an animal cannot arrive for an appointment
- * nobody agreed to. A picker listing a booking's life out of order is one people
- * have to read twice.
+ * IN THE ORDER A BOOKING WALKS THEM, matching `BOOKING_LADDER_FULL` on the
+ * server: confirmed before arrival, because an animal cannot arrive for an
+ * appointment nobody agreed to. A picker listing a booking's life out of order
+ * is one people have to read twice.
+ *
+ * BOTH TRIP LEGS ARE OFFERED even though most bookings never reach them. A
+ * filter is a question about the WHOLE LIST — "which vans are out" is exactly
+ * the kind of thing this control is for — and hiding an option because it is
+ * rare would make it unaskable on the day it matters.
+ *
+ * `rescheduled` IS NOT HERE. Nothing is ever stored in it, so filtering by it
+ * would return an empty list every time and teach people the filter is broken.
  */
 const STATUSES = withAll<BookingsQuery["status"]>(
   (
     [
       "draft",
+      "requested",
       "confirmed",
-      "check_in",
+      "pickup",
+      "arrived",
       "in_progress",
       "completed",
+      "delivery",
+      "return_to_pawrents",
       "cancelled",
     ] as BookingStatus[]
   ).map((status) => ({ value: status, label: BOOKING_STATUS_LABELS[status] })),

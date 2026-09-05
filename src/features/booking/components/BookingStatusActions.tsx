@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { EllipsisVertical, History } from "lucide-react";
+import { CalendarClock, EllipsisVertical, History } from "lucide-react";
 
 import { Alert, TextareaField } from "@/components";
 import { Button } from "@/components/ui/button";
@@ -28,12 +28,14 @@ import type { Booking, BookingStatus } from "@/types/api";
 
 import {
   BOOKING_STATUS_ACTIONS,
+  canReschedule,
   canCancel,
   forwardStatuses,
   impliedStatuses,
 } from "../statusFlow";
 import { BOOKING_STATUS_LABELS } from "./BookingStatusBadge";
 import { BookingHistoryDialog } from "./BookingHistoryDialog";
+import { BookingRescheduleDialog } from "./BookingRescheduleDialog";
 
 /** Mirrors NOTES_MAX_LENGTH in booking.model.js. */
 const REASON_MAX_LENGTH = 500;
@@ -94,9 +96,22 @@ export function BookingStatusActions({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [rescheduleOpen, setRescheduleOpen] = useState(false);
 
-  const forward = forwardStatuses(booking.status);
-  const cancellable = canCancel(booking.status);
+  /*
+    THE BOOKING, NOT ITS STATUS. Which rung comes next depends on whether anybody
+    asked to be fetched or driven home — a menu built from the status alone would
+    offer "Mulai penjemputan" on a visit with no van booked.
+  */
+  const forward = forwardStatuses(booking);
+  const cancellable = canCancel(booking);
+  /*
+    MOVING THE DATE IS NOT A RUNG, so it is not in `forward`. It sits beside
+    cancellation as the other thing that can happen to an appointment which is
+    not it advancing — and like cancellation it needs a second piece of
+    information, so it opens a dialog rather than firing on click.
+  */
+  const reschedulable = canReschedule(booking);
 
   /** What a human calls this row. A draft has no number yet. */
   const label = booking.bookingNumber ?? "booking ini";
@@ -144,14 +159,14 @@ export function BookingStatusActions({
     }
   }
 
-  const implied = next ? impliedStatuses(booking.status, next) : [];
+  const implied = next ? impliedStatuses(booking, next) : [];
 
   /*
     THE VERY NEXT RUNG, for the prominent variant's primary button.
 
-    `forward` IS ALREADY IN LADDER ORDER — `BOOKING_TRANSITIONS[status]` is
-    written that way in the model, check_in before in_progress before
-    completed — so its first entry is the one rung directly ahead. The rest are
+    `forward` IS ALREADY IN LADDER ORDER — `transitionsFor` slices the booking's
+    own ladder, arrived before in_progress before completed — so its first entry
+    is the one rung directly ahead. The rest are
     the skip-ahead moves the ladder also allows (PCR's "a status skipped is
     still one the booking passed through"), and belong in the menu, not the
     headline button.
@@ -218,6 +233,20 @@ export function BookingStatusActions({
             <History />
             Riwayat status
           </DropdownMenuItem>
+
+          {/*
+            `update`, NOT `cancel`. Rearranging a day is an edit to what was
+            agreed; gating it on the cancel grant would mean a receptionist who
+            may move bookings cannot, while one who may only end them can.
+          */}
+          {reschedulable && (
+            <Can feature="bookings" action="update">
+              <DropdownMenuItem onSelect={() => setRescheduleOpen(true)}>
+                <CalendarClock />
+                Jadwalkan ulang
+              </DropdownMenuItem>
+            </Can>
+          )}
 
           {cancellable && (
             <Can feature="bookings" action="cancel">
@@ -323,6 +352,21 @@ export function BookingStatusActions({
         open={historyOpen}
         onOpenChange={setHistoryOpen}
       />
+
+      {/*
+        MOUNTED ONLY WHILE OPEN, unlike the history dialog beside it. It seeds
+        its two fields from `booking.scheduledAt` on first render, so a dialog
+        that stayed mounted would keep showing the old date after a reschedule
+        until the whole screen remounted.
+      */}
+      {rescheduleOpen && (
+        <BookingRescheduleDialog
+          booking={booking}
+          open
+          onOpenChange={setRescheduleOpen}
+          onChanged={onChanged}
+        />
+      )}
     </>
   );
 }

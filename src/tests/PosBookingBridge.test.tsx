@@ -667,7 +667,7 @@ describe("PosCart — a line whose service has already started", () => {
     render(
       line({
         bookingOwned: true,
-        bookingStatus: "check_in",
+        bookingStatus: "arrived",
         bookingNumber: "BK-260826-001",
       }),
     );
@@ -736,7 +736,7 @@ describe("PosCart — a line whose service has already started", () => {
     render(
       line({
         bookingOwned: true,
-        bookingStatus: "check_in",
+        bookingStatus: "arrived",
         bookingNumber: "BK-260826-001",
       }),
     );
@@ -755,7 +755,7 @@ describe("PosCart — a line whose service has already started", () => {
     render(
       line({
         bookingOwned: true,
-        bookingStatus: "check_in",
+        bookingStatus: "arrived",
         bookingNumber: "BK-260826-001",
       }),
     );

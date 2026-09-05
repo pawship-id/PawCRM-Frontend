@@ -132,7 +132,7 @@ describe("BookingsScreen", () => {
 
     renderWithAuth(<BookingsScreen />);
 
-    await screen.findByText("Selesai");
+    await screen.findByText("Selesai dikerjakan");
     expect(screen.queryByText(/ada di keranjang/i)).not.toBeInTheDocument();
   });
 
@@ -174,7 +174,7 @@ describe("BookingsScreen", () => {
 
     await screen.findByText("BK-260826-001");
     await user.click(screen.getByRole("button", { name: /filter status booking/i }));
-    await user.click(await screen.findByText("Selesai"));
+    await user.click(await screen.findByText("Selesai dikerjakan"));
 
     await waitFor(() =>
       expect(
@@ -237,14 +237,14 @@ describe("BookingsScreen — drafts and the number they have not earned", () => 
     expect(screen.getByText("—")).toBeInTheDocument();
   });
 
-  it("shows the number once the animal has checked in", async () => {
+  it("shows the number once the animal has arrived", async () => {
     mocked.list.mockResolvedValue(
-      page([booking({ status: "check_in", bookingNumber: "BK-260826-001" })]),
+      page([booking({ status: "arrived", bookingNumber: "BK-260826-001" })]),
     );
 
     renderWithAuth(<BookingsScreen />);
 
-    expect(await screen.findByText("Check-in")).toBeInTheDocument();
+    expect(await screen.findByText("Sudah datang")).toBeInTheDocument();
     expect(screen.getByText("BK-260826-001")).toBeInTheDocument();
   });
 
@@ -264,7 +264,7 @@ describe("BookingsScreen — drafts and the number they have not earned", () => 
     );
   });
 
-  it("offers check-in as a status of its own", async () => {
+  it("offers arrival as a status of its own", async () => {
     const user = userEvent.setup();
 
     renderWithAuth(<BookingsScreen />);
@@ -273,7 +273,7 @@ describe("BookingsScreen — drafts and the number they have not earned", () => 
     await user.click(screen.getByRole("button", { name: /filter status booking/i }));
 
     expect(
-      await screen.findByRole("option", { name: "Check-in" }),
+      await screen.findByRole("option", { name: "Sudah datang" }),
     ).toBeInTheDocument();
   });
 });

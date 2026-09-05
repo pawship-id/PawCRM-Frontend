@@ -206,6 +206,27 @@ export const bookingService = {
     apiClient.patch<Booking>(`/bookings/${id}/status`, { status, reason }),
 
   /**
+   * POST /bookings/:id/reschedule — the appointment moves to another time.
+   *
+   * ─── NOT A `changeStatus`, AND NOT AN EDIT TO THE DATE FIELD ─────────────
+   *
+   * `PATCH /bookings/:id` can already change `scheduledAt`, and goes on doing so:
+   * that is correcting a typo made while writing the booking down. This is the
+   * other thing — the customer rang and cannot come on Thursday — and only one of
+   * the two belongs in the trail. A shop asking "how often do we get moved"
+   * cannot answer it from a field that was overwritten.
+   *
+   * The booking comes back on `confirmed`; `rescheduled` is written to the
+   * history rather than stored as a status. The new time is checked against the
+   * diary exactly like a new booking, so a `400` here is a clash — send
+   * `forceClash` to save it anyway, as the booking form does.
+   */
+  reschedule: (
+    id: string,
+    body: { scheduledAt: string; forceClash?: boolean },
+  ) => apiClient.post<Booking>(`/bookings/${id}/reschedule`, body),
+
+  /**
    * PATCH /bookings/:id/items/:itemId/work — ONE ANIMAL's service moves.
    *
    * THIS IS THE STATUS ROUTE NOW, one animal at a time. "Mochi sudah selesai

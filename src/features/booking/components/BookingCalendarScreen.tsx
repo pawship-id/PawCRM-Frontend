@@ -87,11 +87,19 @@ function hoursMinutes(minutes: number): string {
  */
 const STATUS_TONE: Record<BookingStatus, string> = {
   draft: "border-border bg-surface-hover text-muted",
+  /* Waiting on the SHOP to answer — the one thing on a day sheet that is. */
+  requested: "border-warning bg-tint-warning text-foreground",
   confirmed: "border-primary/40 bg-navy-100 text-primary",
-  check_in: "border-primary bg-navy-100 text-primary",
+  /* The two trip legs read as travel rather than as a state of the animal. */
+  pickup: "border-info bg-tint-info text-info",
+  arrived: "border-primary bg-navy-100 text-primary",
   in_progress: "border-warning bg-tint-warning text-foreground",
   completed: "border-success bg-tint-success text-foreground",
+  delivery: "border-info bg-tint-info text-info",
+  return_to_pawrents: "border-success bg-tint-success text-foreground",
   cancelled: "border-danger bg-tint-danger text-danger-ink",
+  /* Never on a block — a booking is never in it. Present for the exhaustive map. */
+  rescheduled: "border-border bg-surface-hover text-muted",
 };
 
 /**

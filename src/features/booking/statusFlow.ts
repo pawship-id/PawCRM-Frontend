@@ -1,59 +1,157 @@
-import type { BookingStatus } from "@/types/api";
+import type { Booking, BookingStatus } from "@/types/api";
 
 /**
- * Which status may follow which — a mirror of `BOOKING_TRANSITIONS` in
- * booking.model.js.
+ * Every rung, in order — the shape of a visit with BOTH trip legs.
+ *
+ * A MIRROR of `BOOKING_LADDER_FULL` in booking.model.js. `frontendEnumParity`
+ * on the server checks that `BookingStatus` knows every value it can send; this
+ * file is the other half — the ORDER, which no test can read off a type.
+ *
+ * `cancelled` and `rescheduled` are absent: neither is a rung. One is a way out,
+ * the other a note about the date.
+ */
+const LADDER: BookingStatus[] = [
+  "draft",
+  "requested",
+  "confirmed",
+  "pickup",
+  "arrived",
+  "in_progress",
+  "completed",
+  "delivery",
+  "return_to_pawrents",
+];
+
+/**
+ * What the booking must carry for any of this to be answerable.
+ *
+ * A STATUS IS NOT ENOUGH ANY MORE, and that is the whole shape of this file
+ * since the trip legs landed: whether `pickup` is the next rung depends on
+ * whether anybody asked to be fetched. Callers that used to pass a bare status
+ * now pass the booking.
+ */
+export type BookingLike = Pick<
+  Booking,
+  "status" | "pickupRequested" | "deliveryRequested"
+>;
+
+/**
+ * The path THIS booking walks — a mirror of `ladderFor` on the server.
+ *
+ * A booking with no pickup never passes through `pickup`, and offering it would
+ * put a van journey on a trail that never left the shop.
+ */
+export function ladderFor(booking: BookingLike): BookingStatus[] {
+  return LADDER.filter((status) => {
+    if (status === "pickup") return Boolean(booking.pickupRequested);
+    if (status === "delivery") return Boolean(booking.deliveryRequested);
+    return true;
+  });
+}
+
+/**
+ * Which statuses may follow — a mirror of `transitionsFor` in booking.model.js.
  *
  * A COPY, DELIBERATELY, and the server stays the authority: it refuses an
  * illegal move with a 409 whatever this file says. What this buys is a menu that
  * offers only moves that will be accepted — the alternative is a screen that
  * lists five actions and answers "conflict" to three of them.
  *
- * KEEP IT IN STEP WITH THE MODEL. It is small and it changes rarely; when it
- * does, both files change together.
+ * KEEP IT IN STEP WITH THE MODEL. Both files change together.
  */
-const BOOKING_TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
-  draft: ["confirmed", "check_in", "cancelled"],
-  confirmed: ["check_in", "in_progress", "completed", "cancelled"],
-  check_in: ["in_progress", "completed", "cancelled"],
-  in_progress: ["completed", "cancelled"],
-  completed: [],
-  cancelled: [],
-};
+export function transitionsFor(booking: BookingLike): BookingStatus[] {
+  const ladder = ladderFor(booking);
+  const at = ladder.indexOf(booking.status);
+
+  /* `rescheduled` is never a stored status; an unknown value moves nowhere. */
+  if (at === -1) return [];
+
+  /*
+    A DRAFT MAY NOT JUMP PAST THE ANIMAL ARRIVING. It is a line in a basket
+    somebody may yet empty, and landing one on `completed` would mint a finished,
+    commissioned visit out of something nobody ever agreed to.
+  */
+  const ceiling =
+    booking.status === "draft" ? ladder.indexOf("arrived") : ladder.length - 1;
+
+  const forward = ladder.slice(at + 1, ceiling + 1);
+
+  return hasCompletedWork(booking) ? forward : [...forward, "cancelled"];
+}
+
+/**
+ * Whether the work is finished — `completed` or anything after it.
+ *
+ * SEPARATE FROM "is it over", and the distinction is the sharpest edge of the
+ * wider ladder. `completed` fires commission and the money is usually taken;
+ * what happens afterwards is about the ANIMAL. So anything touching money — the
+ * edit form, re-crewing a session — closes here, while a note or a belonging
+ * stays open until the animal actually goes home.
+ */
+export function hasCompletedWork(booking: BookingLike): boolean {
+  const ladder = ladderFor(booking);
+  const at = ladder.indexOf(booking.status);
+
+  return at !== -1 && at >= ladder.indexOf("completed");
+}
 
 /**
  * What each move is CALLED as an action, which is not what the status is called
  * as a state.
  *
- * A menu row is something somebody does — "Check-in", "Batalkan" — while a badge
- * is a fact about the booking ("Sudah check-in"). `BOOKING_STATUS_LABELS` names
- * the state and this names the act; using one for both is how a menu ends up
- * reading like a list of adjectives.
+ * A menu row is something somebody does — "Terima booking", "Batalkan" — while a
+ * badge is a fact about the booking ("Sudah datang"). `BOOKING_STATUS_LABELS`
+ * names the state and this names the act; using one for both is how a menu ends
+ * up reading like a list of adjectives.
  */
 export const BOOKING_STATUS_ACTIONS: Record<BookingStatus, string> = {
   draft: "Kembalikan ke draf",
-  confirmed: "Konfirmasi",
-  check_in: "Check-in",
+  requested: "Ajukan booking",
+  confirmed: "Konfirmasi booking",
+  pickup: "Mulai penjemputan",
+  arrived: "Hewan sudah datang",
   in_progress: "Mulai dikerjakan",
-  completed: "Tandai selesai",
+  completed: "Tandai selesai dikerjakan",
+  delivery: "Mulai pengantaran",
+  return_to_pawrents: "Serahkan ke pemilik",
   cancelled: "Batalkan booking",
+  /* Never offered as a move — rescheduling has its own dialog and its own date. */
+  rescheduled: "Jadwalkan ulang",
 };
 
 /**
- * The forward moves offered for a booking in `status`, in ladder order.
+ * The forward moves offered for a booking, in ladder order.
  *
  * CANCELLATION IS NOT HERE. It is not a step forward, it needs its own
  * permission (`bookings:cancel`, not `update`), and it asks for a reason — so
  * the caller renders it separately rather than having to filter it back out of
  * this list every time.
  */
-export function forwardStatuses(status: BookingStatus): BookingStatus[] {
-  return BOOKING_TRANSITIONS[status].filter((next) => next !== "cancelled");
+export function forwardStatuses(booking: BookingLike): BookingStatus[] {
+  return transitionsFor(booking).filter((next) => next !== "cancelled");
 }
 
 /** Whether a booking may still be called off. */
-export function canCancel(status: BookingStatus): boolean {
-  return BOOKING_TRANSITIONS[status].includes("cancelled");
+export function canCancel(booking: BookingLike): boolean {
+  return transitionsFor(booking).includes("cancelled");
+}
+
+/**
+ * Whether the appointment may still be moved to another day.
+ *
+ * MIRRORS `BookingService#reschedule`. Not a draft — its date is edited on the
+ * form, and landing it on `confirmed` through a button labelled "reschedule"
+ * would confirm an appointment nobody agreed to. Not once the animal is here:
+ * moving the date of a visit that is happening describes nothing, and that is a
+ * new booking.
+ */
+export function canReschedule(booking: BookingLike): boolean {
+  if (booking.status === "draft") return false;
+
+  const ladder = ladderFor(booking);
+  const at = ladder.indexOf(booking.status);
+
+  return at !== -1 && at < ladder.indexOf("arrived");
 }
 
 /**
@@ -67,18 +165,11 @@ export function canCancel(status: BookingStatus): boolean {
  * Returns only the IMPLIED rungs; the move itself is what the caller asked for.
  */
 export function impliedStatuses(
-  from: BookingStatus,
+  booking: BookingLike,
   to: BookingStatus,
 ): BookingStatus[] {
-  const ladder: BookingStatus[] = [
-    "draft",
-    "confirmed",
-    "check_in",
-    "in_progress",
-    "completed",
-  ];
-
-  const start = ladder.indexOf(from);
+  const ladder = ladderFor(booking);
+  const start = ladder.indexOf(booking.status);
   const end = ladder.indexOf(to);
 
   // `cancelled` is off the ladder — it fills in nothing behind it.

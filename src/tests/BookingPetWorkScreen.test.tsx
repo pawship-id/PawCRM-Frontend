@@ -86,7 +86,7 @@ const booking = (over: Record<string, unknown> = {}): Booking =>
     createdAt: "2026-08-30T04:52:00.000Z",
     createdByName: "Fitria",
     createdByRoleName: "Staff",
-    status: "check_in",
+    status: "arrived",
     statusHistory: [],
     billingState: "unbilled",
     petCount: 2,
@@ -463,7 +463,7 @@ describe("BookingPetWorkScreen", () => {
  */
 describe("BookingPetWorkScreen — the header's booking-level controls", () => {
   it("offers the very next rung as the primary action", async () => {
-    // `check_in`'s next rung is `in_progress` — "Mulai dikerjakan".
+    // `arrived`'s next rung is `in_progress` — "Mulai dikerjakan".
     renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
       isSuperAdmin: false,
       permissions: [{ feature: "bookings", actions: ["read", "update"] }] as never,

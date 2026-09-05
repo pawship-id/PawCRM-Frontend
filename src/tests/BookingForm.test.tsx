@@ -202,7 +202,14 @@ describe("BookingForm", () => {
         pickupRequested: false,
         deliveryRequested: false,
         tripAddress: null,
-        status: "confirmed",
+        /*
+          `requested`, NOT `confirmed`, and the default changed on 5 Sep 2026.
+          Saving the form ASKS for an appointment; the shop agreeing to it is a
+          separate act with a rung of its own. Defaulting to `confirmed` made
+          every booking self-approving, which is exactly the distinction
+          `requested` exists to draw.
+        */
+        status: "requested",
         notes: null,
       }),
     );
@@ -489,17 +496,73 @@ describe("BookingForm", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("offers only the two states a booking can start in", async () => {
-    renderWithAuth(
-      <BookingForm />,
+  it("asks no status at all — the button decides it", async () => {
+    /*
+      THE SELECT IS GONE, replaced by the two buttons in the action bar.
+
+      "Which status should this start in" is not what a receptionist writing
+      down a phone call is deciding; what they are deciding is whether they are
+      FINISHED. A field that has to be read and understood before every save is
+      one people leave on whatever it happened to say last — and it was a second
+      door into the state machine, able to put a booking straight into
+      `confirmed` with nobody at the shop having agreed to it.
+    */
+    renderWithAuth(<BookingForm />);
+
+    await screen.findByRole("button", { name: /simpan booking/i });
+
+    expect(
+      screen.queryByRole("combobox", { name: /^status$/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("saves as `requested` from the ordinary button", async () => {
+    // Saving ASKS for an appointment; the shop agreeing is its own act, with a
+    // rung and a button of its own on the booking page.
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+    await choose(/^layanan$/i, /grooming full service/i);
+
+    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+    await waitFor(() => expect(bookings.create).toHaveBeenCalled());
+    expect(bookings.create.mock.calls[0][0].status).toBe("requested");
+  });
+
+  it("saves a draft from the draft button, whatever else is on the form", async () => {
+    /*
+      SOMEBODY PRESSING IT IS TELLING YOU THEY HAVE NOT FINISHED. A phone rings
+      mid-booking, a customer is not sure which day — the button has to mean
+      draft outright, not "draft unless something else on the form disagrees".
+    */
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+    await choose(/^layanan$/i, /grooming full service/i);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /simpan sebagai draf/i }),
     );
 
-    await userEvent.click(screen.getByRole("combobox", { name: /status/i }));
+    await waitFor(() => expect(bookings.create).toHaveBeenCalled());
+    expect(bookings.create.mock.calls[0][0].status).toBe("draft");
+  });
 
-    const listbox = await screen.findByRole("listbox");
-    expect(within(listbox).getByRole("option", { name: "Dikonfirmasi" })).toBeInTheDocument();
-    expect(within(listbox).getByRole("option", { name: "Draft" })).toBeInTheDocument();
-    expect(within(listbox).queryByRole("option", { name: /selesai|batal/i })).toBeNull();
+  it("offers the draft button while Simpan is still blocked", async () => {
+    /*
+      THE ONE SITUATION IT EXISTS FOR. The bar greys Simpan out until the
+      required fields are answered; a draft is exactly what you save when they
+      are not, so gating it on the same rule would make it useless.
+    */
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+
+    expect(screen.getByRole("button", { name: /simpan booking/i })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /simpan sebagai draf/i }),
+    ).toBeEnabled();
   });
 
   /*
@@ -1317,6 +1380,21 @@ describe("BookingForm — mengubah booking", () => {
     bookings.getById.mockResolvedValue(existing);
     customers.getById.mockResolvedValue(customer);
     bookings.update.mockResolvedValue(existing);
+  });
+
+  it("does not offer 'simpan sebagai draf' when editing", async () => {
+    /*
+      PUSHING A LIVE BOOKING BACK DOWN TO A DRAFT is a move the ladder does not
+      have, and `PATCH` carries no status at all — a button that looked like it
+      could would be refused every time it was pressed.
+    */
+    renderWithAuth(<BookingForm bookingId="bk-9" />);
+
+    await screen.findByRole("button", { name: /simpan perubahan/i });
+
+    expect(
+      screen.queryByRole("button", { name: /simpan sebagai draf/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("loads the booking into the form and saves through update, not create", async () => {
