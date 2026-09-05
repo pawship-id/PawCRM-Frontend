@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { BookingsScreen } from "@/features/booking";
@@ -660,5 +660,58 @@ describe("BookingsTable — a half-paid booking", () => {
     expect(
       await screen.findByText(/sudah dibayar — belum dikerjakan/i),
     ).toBeInTheDocument();
+  });
+});
+
+/**
+ * ─── THE ACTION COLUMN READS, AND MOVES NOTHING ────────────────────────────
+ *
+ * The status menu used to live here — every forward rung, cancel, reschedule and
+ * the trail, on every row. It was taken out on 5 September 2026.
+ *
+ * WHY IT MATTERS ENOUGH TO PIN: the kebab sat under the pointer at the end of
+ * every row, and "Tandai selesai dikerjakan" on the wrong one fires commission
+ * for the wrong visit. The ladder only runs forward — there is no undo, only a
+ * cancellation and a new booking.
+ */
+describe("BookingsTable — the action column", () => {
+  const openMenu = async () => {
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /aksi untuk/i }));
+    return screen.getByRole("menu");
+  };
+
+  it("keeps the kebab, and holds one thing in it", async () => {
+    /*
+      THE SHAPE OF THE COLUMN DID NOT CHANGE — every other table in this app ends
+      in the same button, and a booking row ending in a bare link would be the
+      one row somebody has to look at twice to find the actions on.
+    */
+    renderWithAuth(<BookingsScreen />);
+
+    const menu = await openMenu();
+    const link = within(menu).getByRole("menuitem", { name: /detail booking/i });
+
+    expect(link).toHaveAttribute("href", "/dashboard/booking/bk-1");
+  });
+
+  it("offers no forward move, no cancel and no reschedule", async () => {
+    /*
+      MOVING A BOOKING FROM A LIST is a decision taken without looking at the
+      thing being decided about — the evidence for "can this be handed over yet"
+      is on the detail page and nowhere near the row. And "Tandai selesai
+      dikerjakan" on the wrong row fires commission for the wrong visit, with no
+      undo behind it.
+    */
+    renderWithAuth(<BookingsScreen />);
+
+    const menu = await openMenu();
+
+    expect(within(menu).getAllByRole("menuitem")).toHaveLength(1);
+    expect(within(menu).queryByText(/hewan sudah datang/i)).toBeNull();
+    expect(within(menu).queryByText(/tandai selesai/i)).toBeNull();
+    expect(within(menu).queryByText(/batalkan booking/i)).toBeNull();
+    expect(within(menu).queryByText(/jadwalkan ulang/i)).toBeNull();
+    expect(within(menu).queryByText(/riwayat status/i)).toBeNull();
   });
 });

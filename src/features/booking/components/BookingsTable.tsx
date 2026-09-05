@@ -10,37 +10,52 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { EllipsisVertical, SquareArrowOutUpRight } from "lucide-react";
+
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { formatMoney, sumDecimals } from "@/utils/decimal";
 import type { Booking } from "@/types/api";
 
 import { formatBookingMoment } from "../format";
-import { BookingStatusActions } from "./BookingStatusActions";
 import { BookingStatusBadge } from "./BookingStatusBadge";
 
 /**
  * The booking list.
  *
- * IT MOVES BOOKINGS NOW, and that is a reversal of how it was first built. The
- * argument for read-only was that every legitimate change ran through the till;
- * what that missed is that the till only ever sees the END of a booking. An
- * animal arriving and a groomer starting are facts nobody was able to record at
- * all, and the person who knows them is the one with this screen open — so the
- * moves live here, behind the same state machine the server enforces (see
- * `BookingStatusActions`).
+ * ─── IT READS, AND IT DOES NOT MOVE ANYTHING ───────────────────────────────
  *
- * THE EDITABLE SURFACE IS STILL NOT HERE. Rescheduling, changing the services or
- * swapping the animal go through `PATCH /bookings/:id` and want a form, not a
- * row; this table moves a booking along and nothing else.
+ * The status menu used to be in the action column — every forward rung, cancel,
+ * reschedule and the trail, on every row. It was taken out on 5 September 2026
+ * and the column is one link to the booking.
+ *
+ * WHY: the ladder outgrew the row. Nine rungs, two of them conditional on the
+ * booking, guards that refuse `completed` until every session is finished — the
+ * menu had grown to seven items and was answering questions ("can this one be
+ * handed over yet?", "which sessions are still open?") whose evidence is on the
+ * detail page and nowhere near the row. Moving a booking from a list is a
+ * decision taken without looking at the thing being decided about.
+ *
+ * IT ALSO MADE THE COMMONEST MISTAKE THE EASIEST ONE. The kebab sits under the
+ * pointer at the end of every row; "Tandai selesai dikerjakan" on the wrong row
+ * fires commission for the wrong visit, and the ladder only runs forward — there
+ * is no undo, only a cancellation and a new booking.
+ *
+ * THE KEBAB ITSELF STAYED. What was wrong was what it held, not that it was
+ * there: every other table in this app ends in the same button, and a booking
+ * row that ended in a bare link would be the one row somebody has to look at
+ * twice to find the actions on. It now holds one item — Detail booking.
+ *
+ * THE EDITABLE SURFACE WAS NEVER HERE EITHER. Changing services or swapping an
+ * animal goes through `PATCH /bookings/:id` and wants a form, not a row.
  */
-export function BookingsTable({
-  bookings,
-  onChanged,
-}: {
-  bookings: Booking[];
-  /** Called after a row action, so the screen can re-ask the server. */
-  onChanged: () => void;
-}) {
+export function BookingsTable({ bookings }: { bookings: Booking[] }) {
   if (bookings.length === 0) {
     return (
       <p className="py-16 text-center text-sm text-muted">
@@ -235,10 +250,50 @@ export function BookingsTable({
 
               <TableCell className="align-top">
                 <div className="flex justify-end">
-                  <BookingStatusActions
-                    booking={booking}
-                    onChanged={onChanged}
-                  />
+                  {/*
+                    THE KEBAB STAYS, AND HOLDS ONE THING.
+
+                    The status moves left this menu (see the header); what did
+                    not change is the SHAPE of the column — every other table in
+                    this app ends in the same button, and a booking row that
+                    ended in a plain link instead would be the one row somebody
+                    has to look at twice to find the actions on.
+
+                    VERTICAL DOTS, matching every other table in this app.
+
+                    THE NUMBER IN THE FIRST COLUMN OPENS THE SAME PAGE, and the
+                    duplication is deliberate: the number is what somebody
+                    reading the row clicks, this is what somebody scanning the
+                    right-hand edge for "what can I do with this" finds.
+                  */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        // The icon carries no name, so the label says which row
+                        // this menu belongs to — twenty identical "Aksi" buttons
+                        // teach a screen-reader user nothing.
+                        aria-label={`Aksi untuk ${booking.bookingNumber ?? "booking draf"}`}
+                      >
+                        <EllipsisVertical className="size-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+
+                    <DropdownMenuContent align="end">
+                      {/*
+                        `asChild`, so the row is a real link: middle-click and
+                        "open in new tab" work, which is how somebody working a
+                        day sheet actually opens three bookings.
+                      */}
+                      <DropdownMenuItem asChild>
+                        <Link href={`/dashboard/booking/${booking._id}`}>
+                          <SquareArrowOutUpRight />
+                          Detail booking
+                        </Link>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </TableCell>
             </TableRow>

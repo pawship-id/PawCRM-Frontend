@@ -115,14 +115,34 @@ the stored answer is the server's.
 
 ---
 
-## Why the list took over the first half of a booking's life
+## Why the list took over the first half of a booking's life — and gave it back
 
 The table was built read-only, on the argument that every legitimate change ran through the
 till. What that missed is that **the till only ever sees the END of a booking**. An animal
 arriving and a groomer starting are facts nobody could record anywhere, and the person who
 knows them is the receptionist watching the door — who has this screen open, not the kasir.
 
-So the moves live here, behind the same state machine the server enforces.
+So the moves went onto the row. **They came off it again on 5 September 2026**: the kebab stays,
+and holds one item — **Detail booking**.
+
+**The ladder outgrew the row.** Nine rungs, two conditional on the booking, and guards that
+refuse `completed` until every session is finished: the kebab had grown to seven items and was
+answering questions — *can this one be handed over yet? which sessions are still open?* — whose
+evidence is on the detail page and nowhere near the row. Moving a booking from a list is a
+decision taken without looking at the thing being decided about.
+
+**It also made the commonest mistake the easiest one.** The kebab sits under the pointer at the
+end of every row, and *"Tandai selesai dikerjakan"* on the wrong row fires commission for the
+wrong visit. The ladder only runs forward — there is no undo, only a cancellation and a new
+booking.
+
+**The kebab itself stayed.** What was wrong was what it held, not that it was there: every other
+table in this app ends in the same button, and a booking row ending in a bare link would be the
+one row somebody has to look at twice to find the actions on, down to the vertical dots every
+other table uses.
+
+The receptionist's need is unchanged and is met one click away: the row's number and the menu's
+**Detail booking** both open the booking, where the moves are, next to what they are about.
 
 ---
 
@@ -422,6 +442,9 @@ The disabled Simpan says which field is still missing, that one included.
 
 ## Moving one
 
+**On the booking's own page, not on the list** — `/dashboard/booking/:id`, and on the animal's
+work page for the per-session moves. See above for why the row gave them up.
+
 The kebab menu offers exactly the transitions the server allows from where the booking stands —
 `statusFlow.ts` mirrors `booking.model.js` so the menu cannot offer a move that comes back a 409.
 
@@ -644,7 +667,7 @@ oldest first. It is drawn **twice**, deliberately differently:
 | Where | Shape | Order |
 | --- | --- | --- |
 | `BookingHistoryCard` — the rail on `/dashboard/booking/:id/hewan/:petId` | A timeline: a dot per entry, a line joining them, the current one ringed | **Newest first** |
-| `BookingHistoryDialog` — `Riwayat status` in the row menu | A list: status badge, mover, time | **Oldest first** |
+| `BookingHistoryDialog` — `Riwayat status` in the booking's own status menu | A list: status badge, mover, time | **Oldest first** |
 
 **The opposite orders are not an oversight.** The card sits open beside the work all day and is
 glanced at for *what just happened*; the dialog is opened on purpose to read the visit as a

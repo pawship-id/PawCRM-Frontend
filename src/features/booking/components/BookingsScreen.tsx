@@ -37,7 +37,6 @@ export function BookingsScreen() {
     loading,
     error,
     setQuery,
-    refetch,
   } = useBookings();
   return (
     <div className="flex flex-col gap-6">
@@ -119,7 +118,14 @@ export function BookingsScreen() {
         </div>
       ) : (
         <>
-          <BookingsTable bookings={bookings} onChanged={refetch} />
+          {/*
+            NO `onChanged`, and `refetch` is no longer pulled off the hook at
+            all: the table reads and nothing else since the status menu left it
+            (see `BookingsTable`), so nothing on this screen writes and there is
+            nothing to re-ask after. `setQuery` still reloads the list, which is
+            the only thing that changes what is on it.
+          */}
+          <BookingsTable bookings={bookings} />
           <Pagination
             page={pagination.page}
             totalPages={pagination.totalPages}
