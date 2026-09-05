@@ -88,20 +88,41 @@ beforeEach(() => {
  * enforces about bookings was invisible to the person who owns the shop.
  */
 describe("BookingsScreen", () => {
-  it("shows who, which animal, what service and how much", async () => {
+  it("shows who, which animal and how much", async () => {
     renderWithAuth(<BookingsScreen />);
 
     expect(await screen.findByText("BK-260826-001")).toBeInTheDocument();
     expect(screen.getByText("Ibu Rina")).toBeInTheDocument();
     expect(screen.getByText("Bruno")).toBeInTheDocument();
-    expect(screen.getByText("Grooming Full Service")).toBeInTheDocument();
     expect(screen.getByText("Rp 150.000")).toBeInTheDocument();
   });
 
-  it("names an unassigned groomer rather than leaving the cell blank", async () => {
+  it("does not list the services on the row", async () => {
+    /*
+      ─── WHY THE COLUMN LEFT ─────────────────────────────────────────────────
+
+      It printed every row of the booking — name over groomer — inside one cell,
+      the only cell whose height depended on the booking. A visit with three
+      services made its row three times as tall and pushed the next booking off
+      the fold; a day sheet showing six bookings is worth more than one showing
+      two and their service lists. It also repeated "Belum ditentukan" once per
+      service, which is the ordinary state of a booking taken over the phone.
+
+      WHAT IT ANSWERED IS STILL ANSWERED: `Hewan` names the animals, `Total` sums
+      exactly these rows, and "which services" is a question about ONE booking —
+      answered on that booking's page, next to the prices and the sessions.
+    */
     renderWithAuth(<BookingsScreen />);
 
-    expect(await screen.findByText("Belum ditentukan")).toBeInTheDocument();
+    await screen.findByText("BK-260826-001");
+
+    expect(screen.queryByText("Grooming Full Service")).not.toBeInTheDocument();
+    expect(screen.queryByText("Belum ditentukan")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("columnheader", { name: /layanan/i }),
+    ).not.toBeInTheDocument();
+    /* The money it added up is still there — the sum is of those same rows. */
+    expect(screen.getByText("Rp 150.000")).toBeInTheDocument();
   });
 
   /*

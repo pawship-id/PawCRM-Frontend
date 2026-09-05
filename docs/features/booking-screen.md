@@ -136,6 +136,14 @@ end of every row, and *"Tandai selesai dikerjakan"* on the wrong row fires commi
 wrong visit. The ladder only runs forward — there is no undo, only a cancellation and a new
 booking.
 
+**The services left the row too.** The `Layanan` column printed every service of the booking —
+name over groomer — inside one cell, and it was the only cell whose height depended on the
+booking: three services made the row three times as tall and pushed the next booking off the
+fold. It also repeated *"Belum ditentukan"* once per service, which is the ordinary state of a
+booking taken over the phone. `Hewan` still names the animals and `Total` is still the sum of
+exactly those rows; **which** services is a question about one booking, and it is answered on
+that booking's page, next to the prices and the sessions it belongs with.
+
 **The kebab itself stayed.** What was wrong was what it held, not that it was there: every other
 table in this app ends in the same button, and a booking row ending in a bare link would be the
 one row somebody has to look at twice to find the actions on, down to the vertical dots every

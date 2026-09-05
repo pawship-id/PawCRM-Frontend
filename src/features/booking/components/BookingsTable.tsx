@@ -52,6 +52,24 @@ import { BookingStatusBadge } from "./BookingStatusBadge";
  * row that ended in a bare link would be the one row somebody has to look at
  * twice to find the actions on. It now holds one item — Detail booking.
  *
+ * ─── AND IT NO LONGER LISTS THE SERVICES ──────────────────────────────────
+ *
+ * The Layanan column printed every row of the booking — name over groomer, one
+ * pair per service — inside a single table cell. It was the only cell whose
+ * height depended on the booking, so a visit with three services made its row
+ * three times as tall and pushed the next booking off the fold; a day sheet
+ * where you can see six bookings is worth more than one where you can see two
+ * and their service lists.
+ *
+ * IT ALSO REPEATED "Belum ditentukan" ONCE PER SERVICE, which is the ordinary
+ * state of a booking taken over the phone — so the column that took the most
+ * vertical space was mostly saying the same three words over and over.
+ *
+ * WHAT IT ANSWERED IS STILL ANSWERED. `Hewan` names the animals and `Total` is
+ * the sum of exactly these rows; "which services" is a question about one
+ * booking, and it is on that booking's page — a click away, next to the prices,
+ * the groomers and the sessions it belongs with.
+ *
  * THE EDITABLE SURFACE WAS NEVER HERE EITHER. Changing services or swapping an
  * animal goes through `PATCH /bookings/:id` and wants a form, not a row.
  */
@@ -73,7 +91,6 @@ export function BookingsTable({ bookings }: { bookings: Booking[] }) {
             <TableHead>Jadwal</TableHead>
             <TableHead>Pelanggan</TableHead>
             <TableHead>Hewan</TableHead>
-            <TableHead>Layanan</TableHead>
             <TableHead className="text-right">Total</TableHead>
             <TableHead>Status</TableHead>
             {/* Never empty: every reader may open a row's trail, whatever else
@@ -147,20 +164,6 @@ export function BookingsTable({ bookings }: { bookings: Booking[] }) {
                     {booking.petCount} hewan
                   </span>
                 )}
-              </TableCell>
-
-              <TableCell className="align-top">
-                {booking.items.map((item) => (
-                  <span key={item._id} className="block">
-                    <span className="block text-sm text-foreground">
-                      {item.name}
-                    </span>
-                    {/* Never blank — the server names an unassigned slot. */}
-                    <span className="block text-xs text-muted">
-                      {item.groomerName}
-                    </span>
-                  </span>
-                ))}
               </TableCell>
 
               <TableCell className="align-top text-right text-sm tabular-nums text-foreground">
