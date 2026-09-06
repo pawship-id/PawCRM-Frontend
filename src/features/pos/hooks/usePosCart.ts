@@ -33,7 +33,16 @@ interface UsePosCartResult {
   open: (cart: PosTransaction | null) => void;
   addItem: (tile: PosCatalogItem) => Promise<void>;
   setQty: (index: number, qty: string) => Promise<void>;
-  removeItem: (index: number) => Promise<void>;
+  /**
+   * Takes lines out of the basket — one, or a run of them in ONE write.
+   *
+   * A LIST, because an add-on has no bin of its own: it is taken off with the
+   * service it hangs off, and both must go in the same request. Calling this
+   * twice in a row would not do it — every mutation here sends the WHOLE basket,
+   * so the second call would be built from a basket the first had not returned
+   * yet, and would put the add-on straight back.
+   */
+  removeItem: (index: number | number[]) => Promise<void>;
   setItemDiscount: (
     index: number,
     discount: UpdateCartInput["cartDiscount"],
@@ -308,8 +317,9 @@ export function usePosCart(): UsePosCartResult {
   );
 
   const removeItem = useCallback(
-    async (index: number) => {
-      const items = itemsAsInput().filter((_, i) => i !== index);
+    async (index: number | number[]) => {
+      const dropped = new Set(Array.isArray(index) ? index : [index]);
+      const items = itemsAsInput().filter((_, i) => !dropped.has(i));
       await send({ items });
     },
     [itemsAsInput, send],

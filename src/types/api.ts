@@ -1230,6 +1230,21 @@ export interface PosItem {
    * back to releasing the whole booking.
    */
   bookingItemId: string | null;
+  /**
+   * THE MAIN SERVICE THIS LINE HANGS OFF — a CATALOGUE service id, matched
+   * against another line's `refId`.
+   *
+   * Null on a main service, on every retail line, and on an add-on sold on its
+   * own at the till. Set on an add-on pulled in with its parent, so the basket
+   * can draw "Extra Handling" underneath the bath instead of as a third thing
+   * the customer bought.
+   *
+   * ⚠️ NOT A LINE ID. A cart line has no stable identity — the server rebuilds
+   * every line from the payload on each write — so the link is by service, and
+   * a booking holds at most one row per (animal, service). Match on
+   * `bookingId` + `petId` + this, never on this alone.
+   */
+  parentServiceId: string | null;
   petId: string | null;
   petName: string | null;
   groomerName: string | null;

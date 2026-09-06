@@ -4,7 +4,7 @@ import { Minus, Plus, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { formatMoney } from "@/utils/decimal";
+import { formatMoney, sumDecimals } from "@/utils/decimal";
 import type { PosItem, PosDiscountMode } from "@/types/api";
 
 import { PosDiscountPopover } from "./PosDiscountPopover";
@@ -24,6 +24,7 @@ import { PosDiscountPopover } from "./PosDiscountPopover";
 export function PosCartLine({
   item,
   index,
+  addons = [],
   onQtyChange,
   onRemove,
   onDiscountChange,
@@ -31,8 +32,30 @@ export function PosCartLine({
 }: {
   item: PosItem;
   index: number;
+  /**
+   * The add-ons attached to THIS service, drawn inside its line rather than
+   * beside it.
+   *
+   * "Extra Handling" is not a third thing the customer bought — it is something
+   * done to the bath — and a basket that lists it as a line of its own asks the
+   * cashier to check three rows against two services. Each still carries its own
+   * price and its own controls, because each is still billed and may still be
+   * taken off.
+   *
+   * EMPTY FOR EVERYTHING ELSE: retail lines, add-ons themselves (nesting is one
+   * deep by construction — see the booking model), and a service nobody attached
+   * anything to.
+   */
+  addons?: Array<{ item: PosItem; index: number }>;
   onQtyChange: (index: number, qty: string) => void;
-  onRemove: (index: number) => void;
+  /**
+   * Takes lines out — a LIST when a service goes, because its add-ons go with
+   * it. They have no bin of their own, so a service removed on its own would
+   * leave them in the basket as lines nothing can reach: `nestAddons` stands an
+   * add-on whose parent is gone back up as a top-level line, and that line has
+   * no way to be removed either.
+   */
+  onRemove: (index: number | number[]) => void;
   onDiscountChange: (
     index: number,
     discount: { mode: PosDiscountMode; value: string } | null,
@@ -41,6 +64,31 @@ export function PosCartLine({
 }) {
   const qty = Number(item.qty);
   const isService = item.kind === "service";
+
+  /**
+   * WHAT THIS SERVICE COMES TO — its own line plus every add-on under it.
+   *
+   * The figure on the right of a line answers "how much for this?", and once the
+   * add-ons moved inside the line, "this" stopped being the bath alone. It read
+   * Rp 120.000 beside a block that plainly totalled 140.000, and the only way to
+   * get the real number was to add two figures the screen had already put next
+   * to each other.
+   *
+   * GROSS, like `lineTotal` itself. Each discount is still shown as its own
+   * subtraction on the line that earned it — netting them off here would make a
+   * discount disappear from the one place it is explained.
+   *
+   * SUMMED IN MINOR UNITS, never with `Number(a) + Number(b)`. Every one of
+   * these figures reached the screen as a decimal string precisely so it never
+   * passed through a float; adding them back up in JavaScript numbers
+   * reintroduces the error at the last possible moment, in the one place a
+   * cashier is guaranteed to look. What is added is what the SERVER priced — no
+   * line's own total is recomputed here.
+   */
+  const subtotal = sumDecimals([
+    item.lineTotal,
+    ...addons.map((addon) => addon.item.lineTotal),
+  ]);
 
   /**
    * Whether this line may still be taken out of the basket (FR-3).
@@ -111,9 +159,54 @@ export function PosCartLine({
         </div>
 
         <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
-          {formatMoney(item.lineTotal)}
+          {formatMoney(subtotal)}
         </span>
       </div>
+
+      {/*
+        UNDER THE SERVICE, INDENTED, and with no border of its own — the whole
+        point is that this does not read as another purchase. The left rule ties
+        the run to the service above it, which is what the cashier is checking:
+        "the bath, plus handling".
+
+        EACH KEEPS ITS PRICE, because the service's figure above is now their
+        sum and a total nobody can break down is a total nobody can check. What
+        each does NOT keep is a control of its own — see below.
+      */}
+      {addons.length > 0 && (
+        <ul className="mt-1.5 ml-1 flex flex-col gap-1 border-l border-border pl-2">
+          {addons.map(({ item: addon, index: addonIndex }) => (
+            <li
+              key={`${addon.refId}-${addonIndex}`}
+              className="flex items-center justify-between gap-2"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-xs text-foreground">
+                  {/* A plus, not a bullet: it says "on top of", which is what an
+                      add-on is and what its price is doing to the total. */}
+                  {`+ ${addon.name}`}
+                </span>
+                {addon.discount && (
+                  <span className="block text-xs tabular-nums text-success">
+                    −{formatMoney(addon.discount.resolvedAmount)}
+                  </span>
+                )}
+              </span>
+
+              {/*
+                NO CONTROLS OF ITS OWN — the discount and the bin belong to the
+                SERVICE, and an add-on is priced and taken off with the thing it
+                is attached to. Two icon buttons per add-on put four controls in
+                a block that sells one grooming, and the two that mattered got
+                harder to find.
+              */}
+              <span className="shrink-0 text-xs tabular-nums text-muted">
+                {formatMoney(addon.lineTotal)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <div className="mt-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1">
@@ -195,7 +288,9 @@ export function PosCartLine({
               className="size-8 text-danger"
               disabled={disabled || locked}
               aria-label={`Hapus ${item.name}`}
-              onClick={() => onRemove(index)}
+              onClick={() =>
+                onRemove([index, ...addons.map((addon) => addon.index)])
+              }
             >
               <Trash2 className="size-4" />
             </Button>
