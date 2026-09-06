@@ -174,6 +174,59 @@ describe("BookingStatusActions", () => {
     records the confirmation too, so the dialog says so before the move rather
     than leaving an entry nobody chose to be discovered in the log.
   */
+  /*
+    ─── THE DIALOG MUST NOT LIE ABOUT SCOPE ───────────────────────────────────
+
+    The move names ONE animal. The confirm dialog used to append
+    `booking.petName` — every animal's name joined — on top of a label that
+    already carried the one being moved, so it read
+    "BK-… · Cici · Cici, Cilang — statusnya menjadi Confirmed" and invited
+    somebody to believe both dogs were about to move.
+
+    THE COPY IS THE ONLY THING THAT WAS WRONG. The request has always sent
+    `petId`, asserted separately below; this is about what the person reading the
+    dialog is told is going to happen.
+  */
+  it("names only the animal being moved, and says the others are not", async () => {
+    const target = booking({
+      /*
+        ⚠️ `petName` IS THE JOINED NAMES, exactly as the API sends them. A
+        fixture that left it as one name would not reproduce the bug at all —
+        the old copy appended THIS field, and with "Bruno" in it the dialog read
+        correctly by accident. Getting this wrong is how the first version of
+        this test passed against the very code it was written to catch.
+      */
+      petName: "Bruno, Coco",
+    });
+    target.pets = [
+      ...target.pets,
+      { ...target.pets[0], petItemId: "pi-2", petId: "pet-2", petName: "Coco" },
+    ];
+
+    render(target);
+    const menu = await openMenu();
+    await userEvent.click(
+      within(menu).getByRole("menuitem", { name: /Arrive/i }),
+    );
+
+    const dialog = screen.getByRole("dialog");
+
+    expect(dialog).toHaveTextContent(/Bruno/);
+    /* The other animal is named ONLY as the thing that is NOT moving. */
+    expect(dialog).not.toHaveTextContent(/Bruno, Coco/);
+    expect(dialog).toHaveTextContent(/hewan lain di booking ini tidak ikut/i);
+  });
+
+  it("says nothing about other animals on a one-animal visit", async () => {
+    render(booking());
+    const menu = await openMenu();
+    await userEvent.click(
+      within(menu).getByRole("menuitem", { name: /Arrive/i }),
+    );
+
+    expect(screen.getByRole("dialog")).not.toHaveTextContent(/hewan lain/i);
+  });
+
   it("says which rung a jump fills in behind it", async () => {
     render(booking({ status: "draft", bookingNumber: null }));
 

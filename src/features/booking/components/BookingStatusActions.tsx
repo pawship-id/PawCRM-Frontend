@@ -291,10 +291,28 @@ export function BookingStatusActions({
             <DialogHeader>
               <DialogTitle>{BOOKING_STATUS_ACTIONS[next]}</DialogTitle>
               <DialogDescription>
-                {label}
-                {booking.petName ? ` · ${booking.petName}` : ""} — statusnya
-                menjadi {BOOKING_STATUS_LABELS[next]}. Perpindahan status tidak
-                bisa dibatalkan.
+                {/*
+                  ⚠️ `booking.petName` USED TO BE APPENDED HERE, and it was a lie
+                  about scope. It is every animal's name joined — "Cici, Cilang" —
+                  left over from when one control moved the whole visit. The move
+                  has named ONE animal since PCR-042, so the dialog read
+                  "BK-… · Cici · Cici, Cilang — statusnya menjadi Confirmed" and
+                  invited somebody to believe both dogs were about to move.
+
+                  `label` ALREADY CARRIES THE NUMBER AND THE ANIMAL, which is
+                  exactly the scope of what is about to happen.
+                */}
+                {label} — statusnya menjadi {BOOKING_STATUS_LABELS[next]}.
+                Perpindahan status tidak bisa dibatalkan.
+                {/*
+                  SAID OUT LOUD ONLY WHEN THERE IS SOMETHING TO SAY. On a
+                  one-animal visit "hewan lain tidak ikut" answers a question
+                  nobody asked; on a visit with two it is the first thing
+                  somebody wants to know before pressing.
+                */}
+                {booking.pets.length > 1 && (
+                  <> Hewan lain di booking ini tidak ikut berubah.</>
+                )}
               </DialogDescription>
             </DialogHeader>
 
