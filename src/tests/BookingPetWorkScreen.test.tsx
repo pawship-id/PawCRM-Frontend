@@ -79,7 +79,11 @@ const petGroup = (
   petItemId: `pi-${petId}`,
   petId,
   petName,
-  status: "arrived",
+  /* ⚠️ `in_progress`, NOT `arrived`. A turn can only be worked once the ANIMAL
+     is on the table — see `canStartWork`. An arrived dog is one nobody has
+     started, and every case below that presses Mulai would be asserting against
+     a disabled button. */
+  status: "in_progress",
   statusHistory: [],
   nextStatuses: [],
   cancelReason: null,
@@ -580,6 +584,16 @@ describe("BookingPetWorkScreen", () => {
  */
 describe("BookingPetWorkScreen — starting and finishing a turn", () => {
   it("starts the turn, and the button becomes the one that finishes it", async () => {
+    /*
+      ⚠️ THE ANSWER, NOT A REMOUNT. `PATCH .../work` returns the same document a
+      GET would, and the screen puts it straight into state — so the button
+      changes IN PLACE. This case used to render the component a second time
+      against a re-mocked `getById`, which proved the fixture and not the page.
+    */
+    bookings.advanceItemWork.mockResolvedValue(
+      booking(withSessions({ status: "in_progress" })),
+    );
+
     renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
       isSuperAdmin: false,
       permissions: FULL as never,
@@ -599,18 +613,12 @@ describe("BookingPetWorkScreen — starting and finishing a turn", () => {
     /* THE SAME BUTTON, ONE RUNG ON. A turn under way offers finishing and
        nothing else — a jump straight to done from not-started would record a
        start that never happened. */
-    bookings.getById.mockResolvedValue(
-      booking(withSessions({ status: "in_progress" })),
-    );
-
-    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
-      isSuperAdmin: false,
-      permissions: FULL as never,
-    });
-
     expect(
       await screen.findByRole("button", { name: /^selesai$/i }),
     ).toBeInTheDocument();
+
+    /* And the page never went back to the server for it. */
+    expect(bookings.getById).toHaveBeenCalledTimes(1);
   });
 
   it("shows the stamps it recorded, and offers no way to type one", async () => {
@@ -714,6 +722,153 @@ describe("BookingPetWorkScreen — removing a session", () => {
   });
 });
 
+/**
+ * ─── WORK CANNOT BEGIN ON A VISIT NOBODY AGREED TO ──────────────────────────
+ *
+ * The server refuses to start a turn while the animal is still Draft or
+ * Requested. This is the screen keeping step: a board full of Mulai buttons
+ * that all answer 409 is worse than a board with none.
+ */
+/**
+ * ─── WHAT STANDS BETWEEN THIS VISIT AND "COMPLETED" ─────────────────────────
+ *
+ * Said in red before the status control is touched, so nobody discovers it as a
+ * 409. It mirrors `BookingService#changeStatus`, and the mirror has to be exact
+ * — a warning that stays quiet for turns the server refuses over is worse than
+ * no warning, because it reads as permission.
+ */
+describe("BookingPetWorkScreen — what blocks completing", () => {
+  const render = (...turns: Record<string, unknown>[]) => {
+    bookings.getById.mockResolvedValue(booking(withSessions(...turns)));
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
+      isSuperAdmin: false,
+      permissions: FULL as never,
+    });
+  };
+
+  it("counts a seeded turn nobody was put on", async () => {
+    /*
+      ⚠️ THE CASE THE OLD MIRROR MISSED. It also required a crew, matching a
+      server exemption since withdrawn — and sessions now arrive SEEDED from the
+      catalogue, so "nobody on it, nothing done" is what an untouched booking of
+      Basic Grooming looks like. Silence here would read as permission.
+    */
+    render({ groomers: [], status: "pending" });
+
+    /*
+      ⚠️ MATCHED ON THE SERVICE NAME, not on "belum selesai" alone. Coco's nail
+      clip is pending too and carries a crew, so a bare match on the sentence
+      passes with the old exemption still in place — green for the one build
+      this case exists to catch.
+    */
+    expect(
+      await screen.findByText(/Grooming Full Service.*belum selesai/i),
+    ).toBeInTheDocument();
+  });
+
+  it("says nothing once every turn on the WHOLE visit is done", async () => {
+    /*
+      ⚠️ COCO'S TURN COUNTS TOO, and that is not an oversight in the fixture.
+      The warning is about the VISIT — the same set the server refuses to
+      complete over — so finishing Mochi's board while Coco's nail clip is still
+      pending must still say so. Building this case is what proves it.
+    */
+    const one = booking(withSessions({ groomers: [], status: "done" }));
+    one.pets = one.pets.map((entry: (typeof one.pets)[number]) => ({
+      ...entry,
+      services: entry.services.map((service) => ({
+        ...service,
+        sessions: service.sessions.map((turn) => ({ ...turn, status: "done" })),
+      })),
+    }));
+    bookings.getById.mockResolvedValue(one);
+
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
+      isSuperAdmin: false,
+      permissions: FULL as never,
+    });
+
+    await screen.findAllByRole("button", { expanded: false });
+
+    expect(screen.queryByText(/belum selesai/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("BookingPetWorkScreen — before the animal is on the table", () => {
+  /** Opens `mandi`, whose crew is Mbak Sari, on a pet at the given rung. */
+  async function openTurnAt(
+    status: string,
+    turn: Record<string, unknown> = {},
+  ) {
+    const one = booking(withSessions(turn));
+    one.pets = one.pets.map((entry) =>
+      entry.petId === MOCHI
+        ? { ...entry, status: status as (typeof entry)["status"] }
+        : entry,
+    );
+    bookings.getById.mockResolvedValue(one);
+
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
+      isSuperAdmin: false,
+      permissions: FULL as never,
+    });
+
+    const toggles = await screen.findAllByRole("button", { expanded: false });
+    const mandi = toggles.find((node) => /mandi/i.test(node.textContent ?? ""));
+    if (mandi) await userEvent.click(mandi);
+  }
+
+  it.each(["draft", "requested", "confirmed", "arrived"])(
+    "shows Mulai DISABLED while the animal is %s",
+    async (status) => {
+      await openTurnAt(status);
+
+      /*
+        ⚠️ PRESENT AND DISABLED, NOT ABSENT. A button that vanishes teaches
+        nothing — somebody looking for "Mulai" and not finding it has no way to
+        learn that the DOG has to be started first.
+      */
+      expect(
+        await screen.findByRole("button", { name: /^mulai$/i }),
+      ).toBeDisabled();
+      expect(await screen.findByText(/sudah In Progress/i)).toBeInTheDocument();
+    },
+  );
+
+  it("names the rung, not the crew, when BOTH would block", async () => {
+    /*
+      ⚠️ A CREWLESS TURN ON A DOG NOBODY HAS STARTED — the case where the two
+      reasons compete. Told about the rung, because sending somebody to fix the
+      crew on an animal still at Arrived changes nothing: the server refuses on
+      the rung either way, and they would come back having done the work for no
+      result.
+    */
+    await openTurnAt("arrived", { groomers: [] });
+
+    expect(await screen.findByText(/sudah In Progress/i)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/tentukan groomernya dulu/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("goes back to naming the crew once the rung is no longer the blocker", async () => {
+    await openTurnAt("in_progress", { groomers: [] });
+
+    expect(
+      await screen.findByText(/tentukan groomernya dulu/i),
+    ).toBeInTheDocument();
+  });
+
+  it("lets Mulai be pressed once the animal is on the table", async () => {
+    await openTurnAt("in_progress");
+
+    expect(
+      await screen.findByRole("button", { name: /^mulai$/i }),
+    ).toBeEnabled();
+    expect(screen.queryByText(/sudah In Progress/i)).not.toBeInTheDocument();
+  });
+});
+
 describe("BookingPetWorkScreen — adding a session", () => {
   it("asks for the name only, and saves it", async () => {
     renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
@@ -787,8 +942,26 @@ describe("BookingPetWorkScreen — adding a session", () => {
 });
 
 describe("BookingPetWorkScreen — the header's booking-level controls", () => {
+  /** Puts Mochi on a named rung, leaving everything else as the fixture has it. */
+  const atRung = (status: string) => {
+    const one = booking();
+    one.pets = one.pets.map((entry) =>
+      entry.petId === MOCHI
+        ? { ...entry, status: status as (typeof entry)["status"] }
+        : entry,
+    );
+    bookings.getById.mockResolvedValue(one);
+  };
+
   it("offers the very next rung as the primary action", async () => {
-    // `arrived`'s next rung is `in_progress` — "Mulai dikerjakan".
+    /*
+      ⚠️ PINNED AT `arrived` RATHER THAN INHERITED. This case is about the
+      header offering the NEXT rung, so it has to own the rung it starts from —
+      the shared fixture sits at `in_progress` (where a groomer can actually
+      work a turn) and inheriting that would silently change what "next" means.
+    */
+    atRung("arrived");
+
     renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
       isSuperAdmin: false,
       permissions: [
@@ -914,7 +1087,23 @@ describe("BookingPetWorkScreen — the header's booking-level controls", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("moving the booking from this page's header re-reads the whole page", async () => {
+  it("moving the booking updates the page from the ANSWER, without re-reading it", async () => {
+    /* Pinned for the same reason as the case above: it presses "Start work",
+       which only exists on an animal that has not been started. */
+    atRung("arrived");
+
+    /*
+      The server answers a status change with the same document a GET would —
+      `#named` builds both — so the screen has everything it needs already.
+    */
+    const moved = booking();
+    moved.pets = moved.pets.map((entry) =>
+      entry.petId === MOCHI
+        ? { ...entry, status: "in_progress" as const }
+        : entry,
+    );
+    bookings.changeStatus.mockResolvedValue(moved);
+
     renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
       isSuperAdmin: false,
       permissions: [
@@ -940,10 +1129,22 @@ describe("BookingPetWorkScreen — the header's booking-level controls", () => {
         MOCHI,
       ),
     );
-    // getById is called once on mount and once more after the nonce bumps.
-    await waitFor(() =>
-      expect(bookings.getById.mock.calls.length).toBeGreaterThan(1),
-    );
+    /*
+      ⚠️ THE BADGE MOVED — proving the page took the answer rather than ignoring
+      it. Asserted BEFORE the request count below, because "no second fetch" is
+      trivially true of a page that also did not update.
+    */
+    expect(await screen.findByText("In Progress")).toBeInTheDocument();
+
+    /*
+      ⚠️ AND EXACTLY ONE READ — the one on mount.
+
+      This case used to assert the OPPOSITE, back when the control rang a
+      doorbell (`setNonce`) and the mount effect re-ran: four requests — booking,
+      animal, customer, branch — to learn a status this response already carried,
+      with `loading` flipping back to true and blanking the page in between.
+    */
+    expect(bookings.getById).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -94,6 +94,37 @@ export function transitionsFor(
 }
 
 /**
+ * Whether a turn on this animal may be worked yet.
+ *
+ * A mirror of the gate in `BookingService#advanceItemWork`: a turn can only move
+ * once the ANIMAL is at `in_progress`. Agreeing an appointment and arriving are
+ * facts about the visit; `in_progress` is somebody saying "we have started on
+ * this dog", and until they have, a turn moving is work recorded against a visit
+ * nobody has begun.
+ *
+ * ⚠️ THE ANIMAL IS PUT ON THE TABLE BY A PERSON, not by starting a turn. The
+ * server also DERIVES `in_progress` from a service leaving `pending`, so read
+ * naively the two rules are a deadlock. What breaks it is the status control —
+ * "Start work" — which is why the message beside the disabled button points
+ * there rather than at the crew.
+ *
+ * ⚠️ READ OFF `LADDER`, NOT `ladderFor(booking)`. The trip rungs come and go
+ * with the booking, and a comparison that moved with them would answer
+ * differently for the same animal depending on whether a van was booked.
+ *
+ * "AT OR PAST", NOT "IS": a dog handed back wet comes off the table again, and
+ * an animal already `completed` must still be able to reopen a turn.
+ *
+ * `cancelled` and `rescheduled` are not on the ladder and fall to -1, which
+ * refuses — the safe answer for a status this function does not recognise.
+ */
+export function canStartWork(pet: PetLike): boolean {
+  const at = LADDER.indexOf(pet.status);
+
+  return at !== -1 && at >= LADDER.indexOf("in_progress");
+}
+
+/**
  * Whether the work is finished — `completed` or anything after it.
  *
  * SEPARATE FROM "is it over", and the distinction is the sharpest edge of the

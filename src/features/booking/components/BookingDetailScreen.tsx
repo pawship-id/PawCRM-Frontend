@@ -88,7 +88,6 @@ export function BookingDetailScreen({ id }: { id: string }) {
   const [pets, setPets] = useState<Pet[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [nonce, setNonce] = useState(0);
 
   const scope = useBranchScope();
 
@@ -139,7 +138,9 @@ export function BookingDetailScreen({ id }: { id: string }) {
     return () => {
       active = false;
     };
-  }, [id, nonce]);
+    /* ⚠️ NO REFETCH NONCE. Every writer on this page hands back the booking it
+       saved, so this runs on mount and on a route change, and nothing else. */
+  }, [id]);
 
   if (loading) {
     return (
@@ -733,7 +734,15 @@ export function BookingDetailScreen({ id }: { id: string }) {
                     <BookingStatusActions
                       booking={booking}
                       pet={group}
-                      onChanged={() => setNonce((n) => n + 1)}
+                      /*
+                        ⚠️ THE ANSWER, NOT A DOORBELL. `PATCH /status` returns
+                        the same document this page's own GET does, so putting
+                        it into state is the whole update. Bumping `nonce` here
+                        re-ran the effect above — the booking AND the owner's
+                        pets, with `loading` flipping back to true and blanking
+                        the page, to learn one animal's new rung.
+                      */
+                      onChanged={setBooking}
                     />
                   </span>
                 </div>

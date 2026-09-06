@@ -86,8 +86,21 @@ export function BookingStatusActions({
    * leaves its neighbours where they are.
    */
   pet: BookingPet;
-  /** Called after a successful move so the list can re-ask the server. */
-  onChanged: () => void;
+  /**
+   * Called after a successful move, WITH THE BOOKING THE SERVER JUST RETURNED.
+   *
+   * ⚠️ THE ARGUMENT IS THE POINT. `PATCH /status` answers with the same document
+   * `GET /bookings/:id` would — `#named` on the server builds both — so a screen
+   * showing one booking can put the answer straight into state instead of
+   * re-asking. A list still ignores it and re-queries; a detail page that
+   * re-queried was re-fetching the customer, the animal and the branch to learn
+   * something it had already been told, and paying for it with a full-page
+   * loading flash on every press.
+   *
+   * A `() => void` handler is still assignable here, so the list call sites are
+   * unchanged.
+   */
+  onChanged: (booking: Booking) => void;
   /**
    * "compact" (default) — the ellipsis menu used on the day sheet and the
    * booking overview, where a whole row of these sits per line.
@@ -151,7 +164,7 @@ export function BookingStatusActions({
     setError(null);
 
     try {
-      await bookingService.changeStatus(
+      const updated = await bookingService.changeStatus(
         booking._id,
         next,
         // Stored only on a cancellation, and only when there was something to
@@ -163,7 +176,7 @@ export function BookingStatusActions({
 
       setNext(null);
       setReason("");
-      onChanged();
+      onChanged(updated);
       swalToast(`${label} · ${BOOKING_STATUS_LABELS[next]}.`);
     } catch (caught) {
       /*

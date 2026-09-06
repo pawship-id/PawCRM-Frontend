@@ -57,7 +57,8 @@ export function BookingRescheduleDialog({
   booking: Booking;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onChanged: () => void;
+  /** ⚠️ Given the booking the server returned — see `BookingStatusActions`. */
+  onChanged: (booking: Booking) => void;
 }) {
   const current = new Date(booking.scheduledAt);
 
@@ -91,13 +92,13 @@ export function BookingRescheduleDialog({
     setError(null);
 
     try {
-      await bookingService.reschedule(booking._id, {
+      const updated = await bookingService.reschedule(booking._id, {
         scheduledAt: at.toISOString(),
         ...(force ? { forceClash: true } : {}),
       });
 
       onOpenChange(false);
-      onChanged();
+      onChanged(updated);
       swalToast(
         `${booking.bookingNumber ?? "Booking"} dipindah ke ${formatBookingMoment(at.toISOString())}.`,
       );
@@ -192,7 +193,11 @@ export function BookingRescheduleDialog({
           >
             Batal
           </Button>
-          <Button type="button" disabled={busy} onClick={() => void submit(Boolean(clash))}>
+          <Button
+            type="button"
+            disabled={busy}
+            onClick={() => void submit(Boolean(clash))}
+          >
             {busy
               ? "Menyimpan…"
               : clash

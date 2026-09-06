@@ -8,6 +8,7 @@ import { Alert, Card, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
 import { BookingBelongingsCard } from "./BookingBelongingsCard";
+import { canStartWork } from "../statusFlow";
 import { bookingActorLabel, finishClock } from "../format";
 import { BookingHistoryCard } from "./BookingHistoryCard";
 import { BookingPetNotesCard } from "./BookingPetNotesCard";
@@ -213,7 +214,6 @@ export function BookingPetWorkScreen({
   const [openRows, setOpenRows] = useState<Record<string, boolean>>({});
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [branchName, setBranchName] = useState<string | null>(null);
-  const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -274,15 +274,41 @@ export function BookingPetWorkScreen({
     return () => {
       active = false;
     };
-  }, [bookingId, petId, nonce]);
+    /*
+      ⚠️ NO REFETCH NONCE ANY MORE. Every writer on this page hands its answer
+      back — `setBooking` — so this effect runs on MOUNT and when the route
+      changes, and nothing else. Re-adding a nonce would bring back the
+      four-request full-page flash it was removed for; if something genuinely
+      cannot return the booking, give it its own narrow refresh rather than
+      re-arming this one.
+    */
+  }, [bookingId, petId]);
 
   async function move(row: WorkRow, to: BookingWorkStatus) {
     if (busy) return;
     setBusy(row._id);
 
     try {
-      await bookingService.advanceItemWork(bookingId, row._id, to);
-      setNonce((n) => n + 1);
+      /*
+        ⚠️ THE ANSWER IS PUT STRAIGHT INTO STATE, NOT USED AS A DOORBELL.
+
+        This used to bump a refetch nonce, re-running the whole mount effect: the
+        booking AND the animal AND the customer AND the branch, four requests to
+        learn one turn's new status, with `loading` flipping back to true in
+        between — the full-page flash on every press of Mulai.
+
+        `PATCH .../work` answers with the same document `GET /bookings/:id`
+        would; `advanceItemWork` literally returns `getBookingById`. Nothing on
+        this page reads a field that response does not carry, and the three
+        neighbouring records cannot have changed because a bath started.
+      */
+      const updated = await bookingService.advanceItemWork(
+        bookingId,
+        row._id,
+        to,
+      );
+
+      setBooking(updated);
 
       /* Chrome must never be able to fail a save — see BookingForm. */
       try {
@@ -438,6 +464,19 @@ export function BookingPetWorkScreen({
   const petName = group?.petName ?? pet?.name ?? "Hewan ini";
 
   /*
+    ⚠️ MAY WORK BEGIN ON THIS ANIMAL AT ALL — asked once, for the whole page.
+
+    A turn cannot be started while the visit is still Draft or Requested; the
+    server refuses it, and a board full of "Mulai" buttons that all answer 409 is
+    worse than a board with none. Mirrors `advanceItemWork`.
+
+    `group` is missing only on the empty-state path above, which returns before
+    this is read; the fallback keeps the type honest rather than describing a
+    case that reaches here.
+  */
+  const startable = group ? canStartWork(group) : false;
+
+  /*
     ⚠️ THE ANIMAL, NOT ONLY ITS SERVICES. The guard used to ask whether there were
     any rows; it has to ask whether this animal is on the visit at all, because
     everything below now reads `group.status` — the ladder lives there since
@@ -518,11 +557,18 @@ export function BookingPetWorkScreen({
     .flatMap((entry) =>
       entry.services.flatMap((service) =>
         service.sessions
-          .filter(
-            (session) =>
-              session.groomers.length > 0 && session.status !== "done",
-          )
-          .map((session) => ({ name: service.name })),
+          /*
+            ⚠️ A TURN WITH NOBODY ON IT COUNTS TOO, and it did not use to.
+
+            The old filter also required a crew, mirroring a server exemption
+            that has since been withdrawn: sessions now arrive SEEDED from the
+            catalogue, so a booking of Basic Grooming opens with "Mandi" and
+            "Blow dry" on it and nobody assigned. Under the old reading this
+            warning stayed silent for exactly the turns that now block the move,
+            and the first anybody heard of it was a 409.
+          */
+          .filter((session) => session.status !== "done")
+          .map(() => ({ name: service.name })),
       ),
     );
 
@@ -687,7 +733,9 @@ export function BookingPetWorkScreen({
           <BookingStatusActions
             booking={booking}
             pet={group}
-            onChanged={() => setNonce((n) => n + 1)}
+            /* Same reasoning as `move` above: the server hands back the whole
+               booking, so there is nothing left to go and ask for. */
+            onChanged={setBooking}
             variant="prominent"
           />
         </div>
@@ -1099,6 +1147,18 @@ export function BookingPetWorkScreen({
                             read against — so the button is absent rather than a
                             400 somebody has to read.
                           */
+                        /*
+                          ⚠️ STILL OFFERED WHEN THE ANIMAL IS NOT ON THE TABLE
+                          YET — DISABLED, not absent. A button that vanishes
+                          teaches nothing: somebody looking for "Mulai" and not
+                          finding it has no way to learn that the DOG has to be
+                          started first. Greyed out with the reason under it,
+                          the screen answers the question it raises.
+
+                          A TURN WITH NOBODY ON IT IS STILL BUTTONLESS. That one
+                          is not about a rung — there is genuinely nothing to
+                          press until somebody is on the turn.
+                        */
                         const next = row.assigned ? NEXT_MOVE[status] : null;
                         const minutes = elapsed(row);
                         const over =
@@ -1290,7 +1350,9 @@ export function BookingPetWorkScreen({
                                     {next && (
                                       <Button
                                         size="sm"
-                                        disabled={busy === row._id}
+                                        disabled={
+                                          busy === row._id || !startable
+                                        }
                                         onClick={() => void move(row, next.to)}
                                       >
                                         {busy === row._id
@@ -1302,7 +1364,12 @@ export function BookingPetWorkScreen({
                                       <Button
                                         variant="secondary"
                                         size="sm"
-                                        disabled={busy === row._id}
+                                        /* Same treatment as Mulai: shown and
+                                           greyed, so the reason below explains
+                                           it rather than a gap. */
+                                        disabled={
+                                          busy === row._id || !startable
+                                        }
                                         onClick={() =>
                                           void move(row, "in_progress")
                                         }
@@ -1310,11 +1377,29 @@ export function BookingPetWorkScreen({
                                         Buka lagi
                                       </Button>
                                     )}
-                                    {!row.assigned && (
+                                    {/*
+                                      ⚠️ TWO REASONS A TURN CANNOT MOVE, AND
+                                      THE RUNG IS SAID FIRST.
+
+                                      "Tentukan groomernya dulu" on a dog
+                                      nobody has started sends somebody to fix
+                                      the crew, which changes nothing: the
+                                      server refuses on the rung either way, so
+                                      they would come back having done the work
+                                      for no result. The nearer blocker wins.
+                                    */}
+                                    {!startable ? (
                                       <p className="text-xs text-muted">
-                                        Tentukan groomernya dulu — sesi tanpa
-                                        groomer tidak bisa dimulai.
+                                        Sesi baru bisa dikerjakan kalau status
+                                        hewannya sudah In Progress.
                                       </p>
+                                    ) : (
+                                      !row.assigned && (
+                                        <p className="text-xs text-muted">
+                                          Tentukan groomernya dulu — sesi tanpa
+                                          groomer tidak bisa dimulai.
+                                        </p>
+                                      )
                                     )}
                                   </Can>
 

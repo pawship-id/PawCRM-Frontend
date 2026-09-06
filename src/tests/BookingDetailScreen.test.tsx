@@ -889,3 +889,53 @@ describe("BookingDetailScreen", () => {
     expect(screen.queryByText("Titipan Owner")).not.toBeInTheDocument();
   });
 });
+
+/**
+ * ─── A SAVE IS NOT A REASON TO RELOAD THE PAGE ──────────────────────────────
+ *
+ * `PATCH /bookings/:id/status` answers with the same document this screen's own
+ * GET does — `#named` on the server builds both — so the answer IS the update.
+ * Ringing a doorbell instead re-ran the whole mount effect: the booking AND the
+ * owner's animals, with `loading` flipping back to true and blanking a page
+ * somebody was reading, to learn one rung this response already carried.
+ */
+describe("BookingDetailScreen — updating in place", () => {
+  it("takes the moved booking from the response and asks for nothing more", async () => {
+    const ready = booking();
+    ready.pets = ready.pets.map((entry) => ({
+      ...entry,
+      nextStatuses: ["arrived"] as BookingStatus[],
+    }));
+    bookings.getById.mockResolvedValue(ready);
+
+    const moved = booking();
+    moved.pets = moved.pets.map((entry) =>
+      entry.petId === MOCHI ? { ...entry, status: "arrived" as const } : entry,
+    );
+    bookings.changeStatus.mockResolvedValue(moved);
+
+    renderWithAuth(<BookingDetailScreen id="bk-1" />, {
+      isSuperAdmin: false,
+      permissions: [
+        { feature: "bookings", actions: ["read", "update"] },
+      ] as never,
+    });
+
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: /Aksi untuk/i }))[0],
+    );
+    await userEvent.click(
+      await screen.findByRole("menuitem", { name: /mark arrived/i }),
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: /^mark arrived$/i }),
+    );
+
+    /* ⚠️ THE BADGE MOVED — asserted first, because "no second fetch" is
+       trivially true of a page that also did not update. */
+    expect(await screen.findByText("Arrived")).toBeInTheDocument();
+
+    /* ⚠️ AND EXACTLY ONE READ — the one on mount. */
+    expect(bookings.getById).toHaveBeenCalledTimes(1);
+  });
+});
