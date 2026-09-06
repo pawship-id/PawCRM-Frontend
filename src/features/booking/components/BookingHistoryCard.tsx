@@ -38,8 +38,30 @@ import { BOOKING_STATUS_LABELS } from "./BookingStatusBadge";
 export function BookingHistoryCard({ booking }: { booking: Booking }) {
   const entries = [
     ...[...(booking.statusHistory ?? [])].reverse().map((event) => ({
-      key: `${event.status}-${event.at}`,
-      title: `Status → ${BOOKING_STATUS_LABELS[event.status] ?? event.status}`,
+      /*
+        ⚠️ THE ANIMAL IS PART OF THE KEY, and leaving it out was a real bug.
+
+        The trail is MERGED across the visit's animals since PCR-042 — one entry
+        per animal per move — and two dogs handed over together are created in
+        the same write, at the same instant, in the same status. `status-at`
+        alone was therefore identical for both, and React refused the list.
+
+        `petId` MAKES IT UNIQUE because one animal cannot reach one status twice
+        in the same millisecond. `rescheduled` is the only status that repeats at
+        all, and not within a tick.
+      */
+      key: `${event.petId ?? "visit"}-${event.status}-${event.at}`,
+      /*
+        AND THE ANIMAL IS IN THE TITLE, for the same reason. Two lines reading
+        "Status → Requested" a second apart look like one visit changing its mind
+        twice; "Cici → Requested" and "Cilang → Requested" say what actually
+        happened — both dogs were written down at once.
+
+        THE OLD WORDING SURVIVES FOR A TRAIL WITH NO ANIMAL ON IT: entries
+        written before the merge carry no `petName`, and inventing one would be a
+        guess about which dog moved.
+      */
+      title: `${event.petName ?? "Status"} → ${BOOKING_STATUS_LABELS[event.status] ?? event.status}`,
       at: event.at,
       who: bookingActorLabel(event.byName, event.byRoleName),
       /*

@@ -38,7 +38,11 @@ describe("BookingHistoryCard", () => {
       NAMES are English by decision (ui-rules §12, the one sanctioned exception)
       — but a raw enum with an underscore in it is not a name in any language.
     */
-    render(<BookingHistoryCard booking={booking({ statusHistory: [event({ status: "in_progress" })] })} />);
+    render(
+      <BookingHistoryCard
+        booking={booking({ statusHistory: [event({ status: "in_progress" })] })}
+      />,
+    );
 
     expect(screen.getByText(/In Progress/)).toBeInTheDocument();
     expect(screen.queryByText(/in_progress/)).not.toBeInTheDocument();
@@ -140,7 +144,9 @@ describe("BookingHistoryCard", () => {
       entry.textContent?.includes("Confirmed"),
     );
 
-    expect(within(confirmed as HTMLElement).getByText(/otomatis/)).toBeInTheDocument();
+    expect(
+      within(confirmed as HTMLElement).getByText(/otomatis/),
+    ).toBeInTheDocument();
     expect(entries[0]).not.toHaveTextContent("otomatis");
   });
 
@@ -148,7 +154,10 @@ describe("BookingHistoryCard", () => {
     render(
       <BookingHistoryCard
         booking={booking({
-          statusHistory: [event({ status: "confirmed" }), event({ status: "arrived" })],
+          statusHistory: [
+            event({ status: "confirmed" }),
+            event({ status: "arrived" }),
+          ],
         })}
       />,
     );
@@ -200,5 +209,88 @@ describe("BookingHistoryCard", () => {
 
     expect(screen.getByText("Booking dibuat")).toBeInTheDocument();
     expect(screen.getByText("1 aktivitas")).toBeInTheDocument();
+  });
+});
+
+/**
+ * ─── THE TRAIL IS MERGED ACROSS THE VISIT'S ANIMALS ─────────────────────────
+ *
+ * One entry per animal per move since PCR-042. Two dogs handed over together are
+ * written in the same request, at the same instant, in the same status — so the
+ * two entries differ ONLY by which animal they belong to.
+ *
+ * THAT BROKE THE LIST. The key was `status-at`, identical for both, and React
+ * refused to render duplicate keys. It also read as one visit changing its mind
+ * twice, because nothing on the line said which dog had moved.
+ */
+describe("BookingHistoryCard — two animals, one instant", () => {
+  const sameMoment = "2026-09-06T02:14:13.848Z";
+
+  const twoPets = () =>
+    booking({
+      statusHistory: [
+        event({
+          status: "requested",
+          at: sameMoment,
+          petId: "p1",
+          petName: "Cici",
+        }),
+        event({
+          status: "requested",
+          at: sameMoment,
+          petId: "p2",
+          petName: "Cilang",
+        }),
+      ],
+    });
+
+  it("gives the two entries different keys", () => {
+    /*
+      ⚠️ ASSERTED THROUGH REACT'S OWN WARNING, and that is not laziness — it is
+      the only thing that can see this.
+
+      A duplicate key does NOT drop a child: React renders both and logs. So a
+      count of `<li>` elements passes with the bug present, which is exactly what
+      the first version of this test did. Keys are not in the DOM either, so
+      there is nothing else to look at.
+
+      A `console.error` SPY IS THE GUARD. If the key ever collapses back to
+      `status-at`, this fails with the message a developer would otherwise only
+      notice in a browser console they were not watching.
+    */
+    const spy = jest.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      const { container } = render(<BookingHistoryCard booking={twoPets()} />);
+
+      /* Two moves plus the synthesised "Booking dibuat". */
+      expect(container.querySelectorAll("ol > li")).toHaveLength(3);
+
+      expect(spy.mock.calls.flat().join(" ")).not.toMatch(/same key/i);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("names the animal on each line, so the two are told apart", () => {
+    render(<BookingHistoryCard booking={twoPets()} />);
+
+    expect(screen.getByText(/Cici → Requested/i)).toBeInTheDocument();
+    expect(screen.getByText(/Cilang → Requested/i)).toBeInTheDocument();
+  });
+
+  /*
+    A TRAIL WITH NO ANIMAL ON IT still reads correctly: entries written before
+    the merge carry no `petName`, and inventing one would be a guess about which
+    dog moved.
+  */
+  it("falls back to 'Status' when the entry names no animal", () => {
+    render(
+      <BookingHistoryCard
+        booking={booking({ statusHistory: [event({ status: "confirmed" })] })}
+      />,
+    );
+
+    expect(screen.getByText(/Status → Confirmed/i)).toBeInTheDocument();
   });
 });
