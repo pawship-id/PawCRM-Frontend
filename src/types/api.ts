@@ -2031,6 +2031,14 @@ export interface BookingItem {
 export type BookingWorkStatus = "pending" | "in_progress" | "done";
 
 export interface BookingStatusEvent {
+  /**
+   * ⚠️ WHICH ANIMAL MOVED — present on `Booking["statusHistory"]` since PCR-042,
+   * absent on `BookingPet["statusHistory"]` where it would only repeat the
+   * document it already sits in. Two animals move separately, so an untagged
+   * merged trail reads as one visit changing its mind twice.
+   */
+  petId?: string;
+  petName?: string | null;
   status: BookingStatus;
   /** When it happened. ISO instant. */
   at: string;
@@ -2173,58 +2181,98 @@ export interface Booking {
   updatedAt: string;
 }
 
-/** One animal on a booking, for the header's `pets` list. */
-/** One service on a visit, with its add-ons under it — see `BookingPet`. */
+/**
+ * ONE PERSON'S TURN AT A SERVICE — PCR-042.
+ *
+ * A "Full Grooming" is not one act by one person: the bath is Sinta's, the blow
+ * dry is Rio's, the nail clip happens after lunch. Each is a session, with its
+ * own clock, its own notes and its own photos.
+ *
+ * ⚠️ THIS IS THE ONLY PLACE A GROOMER IS NAMED. The `groomerUserId` /
+ * `assistantGroomers` pair that used to sit on the service is gone — it existed
+ * because commission was unique per service, so a second person could not be
+ * paid. Every session earns.
+ */
+export interface BookingSession {
+  sessionId: string;
+  /** "mandi", "blow dry". Free text the shop chooses — not an enum yet. */
+  type: string;
+  groomerUserId: string | null;
+  /** "Belum ditentukan" when nobody is assigned — never an empty string. */
+  groomerName: string;
+  /** Set when the person on this turn cannot work the day it is booked for. */
+  groomerOffReason: string | null;
+  status: BookingWorkStatus;
+  startedAt: string | null;
+  finishedAt: string | null;
+  /** What the shop is willing to show the owner about this turn. */
+  notesSession: string | null;
+  /** For whoever handles the animal next. Never shown to a customer. */
+  notesInternalSession: string | null;
+  media: MediaAsset[];
+}
+
+/** One service on a visit, with its sessions and add-ons under it. */
 export interface BookingPetService {
-  /** The stored row's id: what an invoice line or a POS line points at. */
+  /** The stored sub-document's id. */
   itemId: string;
   serviceId: string;
   name: string;
-  /** The kind of work — "Grooming", "Hotel". Not main/addon. */
+  /** The kind of work — "Grooming", "Hotel". Not main/addon, and not a session type. */
   serviceType: string | null;
   price: string;
   durationMin: number | null;
-  groomerUserId: string | null;
-  groomerName: string | null;
-  /** Set when the person named cannot work the day this is booked for. */
-  groomerOffReason: string | null;
-  assistantGroomers: { _id: string; name: string }[];
-  workStatus: BookingWorkStatus;
+  /**
+   * ⚠️ `workStatus` RENAMED TO `status` IN PCR-042, and the sessions beneath it
+   * carry one of their own. This one is the whole service; theirs is one turn.
+   */
+  status: BookingWorkStatus;
+  statusHistory: { status: BookingWorkStatus; at: string; by: string | null }[];
+  /** A summary across every session — first to start, last to finish. */
   startedAt: string | null;
   finishedAt: string | null;
-  /** See `BookingItem` — two notes, kept apart all the way to the screen. */
-  internalNotes: string | null;
-  customerNotes: string | null;
-  pulledToCartAt: string | null;
-  pulledToInvoiceAt: string | null;
+  /** Who is doing it, in how many turns. Empty means nobody is assigned yet. */
+  sessions: BookingSession[];
   addons: {
     itemId: string;
     serviceId: string;
     name: string;
     price: string;
     durationMin: number | null;
-    pulledToCartAt: string | null;
-    pulledToInvoiceAt: string | null;
   }[];
 }
 
 /**
- * ONE ANIMAL ON THE VISIT, WITH WHAT IS BEING DONE TO IT.
+ * ONE ANIMAL ON THE VISIT — and since PCR-042, the visit itself for that animal.
  *
- * ─── A VIEW, NOT THE STORED SHAPE ──────────────────────────────────────────
+ * ─── THE STATUS LIVES HERE NOW ─────────────────────────────────────────────
  *
- * The API stores one document per sellable line — that is what an invoice line
- * and a POS line each point at, what `commissionrecords` is unique per, and what
- * the calendar, the clash check and the pet timeline find by index. This is the
- * same rows grouped the way every screen reads them, built on the way out.
+ * "Mochi sudah datang, Coco belum" was a sentence the API could not express: a
+ * booking is one arrival TIME but it is not one arrival. `Booking["status"]` is
+ * still sent, but it is a SUMMARY derived from these — draw a badge from it,
+ * never decide from it. Anything that acts on one animal reads this.
  *
- * `petId` / `petName` HAVE ALWAYS BEEN HERE and are unchanged; `services` is
- * added beside them, so a day sheet that wants only the names keeps working.
- * The flat `Booking["items"]` is also untouched.
+ * `nextStatuses` IS THE SERVER'S ANSWER, not a list the client filters. The two
+ * trip rungs depend on the booking's own van, and a client that recomputed the
+ * ladder would offer "Dijemput" on a visit with no pickup booked.
  */
 export interface BookingPet {
   petId: string;
   petName: string | null;
+  status: BookingStatus;
+  statusHistory: BookingStatusEvent[];
+  /** Where this animal may go next — computed against the booking's trip legs. */
+  nextStatuses: BookingStatus[];
+  cancelReason: string | null;
+  /** Two audiences, about the ANIMAL on this visit. */
+  internalNotes: string | null;
+  customerNotes: string | null;
+  /** About THIS APPOINTMENT, not about the animal. */
+  notes: string | null;
+  belongings: Omit<BookingBelonging, "petId">[];
+  /** Per animal — you bill Mochi, not Mochi's bath. */
+  pulledToCartAt: string | null;
+  pulledToInvoiceAt: string | null;
   services: BookingPetService[];
 }
 
@@ -3100,7 +3148,8 @@ export interface UpdatePetPreferencesInput {
  * two apart.
  */
 export interface UpdatePetMedicalInput {
-  allergies?: Omit<PetAllergy, "note"> & { note?: string | null }[] | PetAllergy[];
+  allergies?:
+    (Omit<PetAllergy, "note"> & { note?: string | null }[]) | PetAllergy[];
   conditions?: PetCondition[];
   medications?: PetMedication[];
   vaccinations?: PetVaccination[];
@@ -4776,8 +4825,10 @@ export interface CustomerInvoiceListRow {
 }
 
 /** GET /api/customer-invoices/:id — the row, plus its payments and labels. */
-export interface CustomerInvoiceDetail
-  extends Omit<CustomerInvoiceListRow, "paymentCount"> {
+export interface CustomerInvoiceDetail extends Omit<
+  CustomerInvoiceListRow,
+  "paymentCount"
+> {
   /** Who raised it. Null for a till-born invoice, or a user deleted since. */
   createdByName: string | null;
   payments: CustomerInvoicePayment[];

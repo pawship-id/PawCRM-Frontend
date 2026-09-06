@@ -166,7 +166,10 @@ export function BookingDetailScreen({ id }: { id: string }) {
           </p>
           <p className="mt-0.5 text-xs tabular-nums text-muted">
             Dibuat {moment(booking.createdAt)} ·{" "}
-            {bookingActorLabel(booking.createdByName, booking.createdByRoleName)}
+            {bookingActorLabel(
+              booking.createdByName,
+              booking.createdByRoleName,
+            )}
           </p>
         </div>
 
@@ -184,11 +187,16 @@ export function BookingDetailScreen({ id }: { id: string }) {
           {booking.status !== "completed" && booking.status !== "cancelled" && (
             <Can feature="bookings" action="update">
               <Button asChild variant="secondary" size="sm">
-                <Link href={`/dashboard/booking/${booking._id}/edit`}>Ubah</Link>
+                <Link href={`/dashboard/booking/${booking._id}/edit`}>
+                  Ubah
+                </Link>
               </Button>
             </Can>
           )}
-          <BookingStatusActions booking={booking} onChanged={() => setNonce((n) => n + 1)} />
+          <BookingStatusActions
+            booking={booking}
+            onChanged={() => setNonce((n) => n + 1)}
+          />
         </div>
       </div>
 
@@ -360,8 +368,15 @@ export function BookingDetailScreen({ id }: { id: string }) {
 
                 <ul className="mt-3 flex flex-col gap-2">
                   {group.services.map((service) => {
+                    /*
+                      ⚠️ THE CLAIM IS THE ANIMAL'S SINCE PCR-042, not the
+                      service's. You bill Mochi, not Mochi's bath — so this line
+                      reads the same answer for every service under her, and
+                      that is correct rather than a shortcut. A visit is still
+                      billable in halves; the half is now a dog.
+                    */
                     const claimed =
-                      service.pulledToCartAt ?? service.pulledToInvoiceAt;
+                      group.pulledToCartAt ?? group.pulledToInvoiceAt;
 
                     return (
                       <li
@@ -383,16 +398,40 @@ export function BookingDetailScreen({ id }: { id: string }) {
                                 </span>
                               )}
                             </span>
-                            <span className="block text-xs text-muted">
-                              {service.groomerName}
-                              {service.assistantGroomers.length > 0 &&
-                                ` + ${service.assistantGroomers
-                                  .map((one) => one.name)
-                                  .join(", ")}`}
-                              {service.durationMin
-                                ? ` · ${service.durationMin} menit`
-                                : " · durasi belum diisi"}
-                            </span>
+                            {/*
+                              ─── WHO IS DOING IT, ONE LINE PER TURN ──────────
+
+                              This used to read "Sinta + Rio" — a lead and their
+                              assistants, which was a shape forced by commission
+                              being unique per service: only the lead could be
+                              paid. Sessions removed that, and the screen says so
+                              plainly now. Two people on one bath are two turns,
+                              each with its own clock and its own pay.
+
+                              NOBODY ASSIGNED IS A REAL STATE and says so in
+                              words. An empty list is a bath nobody has been told
+                              to do, which is exactly what a receptionist
+                              scanning this page needs to notice.
+                            */}
+                            {service.sessions.length === 0 ? (
+                              <span className="block text-xs text-muted">
+                                Belum ada sesi
+                                {service.durationMin
+                                  ? ` · ${service.durationMin} menit`
+                                  : " · durasi belum diisi"}
+                              </span>
+                            ) : (
+                              <span className="block text-xs text-muted">
+                                {service.sessions
+                                  .map(
+                                    (one) => `${one.type}: ${one.groomerName}`,
+                                  )
+                                  .join(" · ")}
+                                {service.durationMin
+                                  ? ` · ${service.durationMin} menit`
+                                  : " · durasi belum diisi"}
+                              </span>
+                            )}
 
                             {/*
                               ─── THE GROOMER WENT ON LEAVE AFTER THIS WAS
@@ -413,16 +452,19 @@ export function BookingDetailScreen({ id }: { id: string }) {
                               "this is wrong" leaves the reader to invent the
                               remedy; there are exactly two here.
                             */}
-                            {service.groomerOffReason && (
-                              <span
-                                role="alert"
-                                className="mt-1 block rounded border border-danger/40 bg-danger/5 px-2 py-1 text-xs font-semibold text-danger"
-                              >
-                                {service.groomerName}{" "}
-                                {service.groomerOffReason.toLowerCase()} — ganti
-                                groomer atau hubungi pelanggan.
-                              </span>
-                            )}
+                            {service.sessions
+                              .filter((one) => one.groomerOffReason)
+                              .map((one) => (
+                                <span
+                                  key={one.sessionId}
+                                  role="alert"
+                                  className="mt-1 block rounded border border-danger/40 bg-danger/5 px-2 py-1 text-xs font-semibold text-danger"
+                                >
+                                  {one.groomerName}{" "}
+                                  {one.groomerOffReason?.toLowerCase()} — ganti
+                                  groomer atau hubungi pelanggan.
+                                </span>
+                              ))}
                           </div>
 
                           <div className="text-right">
@@ -430,15 +472,15 @@ export function BookingDetailScreen({ id }: { id: string }) {
                               {formatMoney(service.price)}
                             </span>
                             {/*
-                              PER ROW, because that is where the marker lives
-                              since K3 — and it is what makes a half-billed visit
-                              legible instead of merely possible. An add-on is its
-                              own row and carries its own, which is why it is
-                              stated again below rather than assumed.
+                              PER ANIMAL since PCR-042 — see `claimed` above.
+                              Repeated on every service of the animal because a
+                              reader scanning a long list should not have to
+                              scroll back to the group header to find out whether
+                              this line has been paid for.
                             */}
                             <span className="block text-xs text-muted">
                               {claimed
-                                ? service.pulledToInvoiceAt
+                                ? group.pulledToInvoiceAt
                                   ? "Sudah difakturkan"
                                   : "Sudah di kasir"
                                 : "Belum ditagih"}
@@ -466,16 +508,17 @@ export function BookingDetailScreen({ id }: { id: string }) {
                                     ? ` · ${addon.durationMin} mnt`
                                     : ""}
                                 </span>
+                                {/* An add-on carries no claim of its own any
+                                    more: it is billed with the animal, like
+                                    everything else under her. */}
                                 <span className="tabular-nums text-muted">
                                   {formatMoney(addon.price)}
-                                  {(addon.pulledToCartAt ??
-                                    addon.pulledToInvoiceAt) && " · ditagih"}
+                                  {claimed && " · ditagih"}
                                 </span>
                               </li>
                             ))}
                           </ul>
                         )}
-
                       </li>
                     );
                   })}

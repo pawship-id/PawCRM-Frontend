@@ -60,25 +60,24 @@ export function BookingPetNotesCard({
   onChanged: (booking: Booking) => void;
 }) {
   /*
-    BOTH NOTES ARE PER ANIMAL AND STORED PER ROW, so every one of this animal's
-    services carries the same words. The first that has any is the answer — the
-    same collapse `groupsFromBooking` does, and for the same reason.
-  */
-  const services = booking.pets.find((entry) => entry.petId === petId)?.services;
+    ─── READ OFF THE ANIMAL, NOT OFF ITS SERVICES ─────────────────────────────
 
-  /*
-    READ PER FIELD, NOT PER ROW. A booking whose rows disagree — one written
-    before the notes were split, or an edit that reached only some — must still
-    show both halves; taking both from whichever row matched first would drop
-    whichever that row happened to lack.
+    Both notes are about the ANIMAL on this visit, and the form asks each once.
+    Until PCR-042 there was no per-animal record to put them in, so each was
+    written onto EVERY service of that animal and this card had to go hunting:
+    "the first service that has any is the answer", per field, because rows could
+    disagree if an edit reached only some of them.
+
+    They have one home now. The hunt is gone, and with it the class of bug it was
+    working around.
 
     HELD AS TWO STRINGS rather than an object, because they are what the reseed
     below compares: a fresh object every render is never equal to the last one.
   */
-  const storedCustomer =
-    services?.find((service) => service.customerNotes)?.customerNotes ?? "";
-  const storedInternal =
-    services?.find((service) => service.internalNotes)?.internalNotes ?? "";
+  const pet = booking.pets.find((entry) => entry.petId === petId);
+
+  const storedCustomer = pet?.customerNotes ?? "";
+  const storedInternal = pet?.internalNotes ?? "";
 
   const [draft, setDraft] = useState({
     customerNotes: storedCustomer,
@@ -115,8 +114,7 @@ export function BookingPetNotesCard({
 
   async function save(field: Field) {
     const value = draft[field].trim();
-    const current =
-      field === "customerNotes" ? storedCustomer : storedInternal;
+    const current = field === "customerNotes" ? storedCustomer : storedInternal;
 
     // Tabbing through is the commonest thing that happens to this card.
     if (value === current.trim()) return;
@@ -242,9 +240,7 @@ function NoteField({
           onBlur={onCommit}
           className="mt-1 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:opacity-60"
         />
-        <p className="mt-1 text-xs text-muted">
-          {busy ? "Menyimpan…" : hint}
-        </p>
+        <p className="mt-1 text-xs text-muted">{busy ? "Menyimpan…" : hint}</p>
       </Can>
     </div>
   );
