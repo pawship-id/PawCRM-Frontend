@@ -12,7 +12,9 @@ import type {
   CreateBookingInput,
   UpdateBookingInput,
   PageResult,
+  SessionMediaKind,
 } from "@/types/api";
+import type { MediaAsset } from "@/types/inventory";
 
 /**
  * Booking calls against /api/bookings.
@@ -288,6 +290,35 @@ export const bookingService = {
     apiClient.patch<Booking>(`/bookings/${bookingId}/items/${sessionId}/work`, {
       workStatus,
     }),
+
+  /**
+   * PATCH /bookings/:id/sessions/:sessionId/record — what happened on one turn.
+   *
+   * ⚠️ SEPARATE FROM `setSessionCrew`, and not a fourth shape on it. The crew is
+   * ARRANGED and closes when the turn finishes; the notes and the photographs
+   * are WRITTEN DOWN, and the "after" shot is taken after that.
+   *
+   * ⚠️ EVERY FIELD IS OPTIONAL AND ABSENCE MEANS "LEAVE IT" — so a screen
+   * editing one note does not have to send the gallery back to avoid clearing
+   * it. `null` on a note is a real value and clears one.
+   *
+   * `media` IS SENT WHOLESALE when sent at all: the gallery is edited as a list.
+   * Each asset must be one `mediaService.upload` returned, `token` included —
+   * the API refuses anything else.
+   */
+  setSessionRecord: (
+    id: string,
+    sessionId: string,
+    patch: {
+      notesSession?: string | null;
+      notesInternalSession?: string | null;
+      media?: (MediaAsset & { kind?: SessionMediaKind })[];
+    },
+  ) =>
+    apiClient.patch<Booking>(
+      `/bookings/${id}/sessions/${sessionId}/record`,
+      patch,
+    ),
 
   /**
    * PATCH /bookings/:id/items/:itemId/times — correcting the clock.

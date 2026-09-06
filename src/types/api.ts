@@ -2236,7 +2236,34 @@ export interface BookingSession {
   notesSession: string | null;
   /** For whoever handles the animal next. Never shown to a customer. */
   notesInternalSession: string | null;
-  media: MediaAsset[];
+  media: SessionMedia[];
+}
+
+/**
+ * WHEN IN THE WORK A PHOTO WAS TAKEN.
+ *
+ * ⚠️ NOT `mediaType`, which is image/video. This is the axis a grooming gallery
+ * is actually read on — the matted coat, the finished cut, everything else.
+ *
+ * `other` IS THE DEFAULT AND THE HONEST ONE. A shot taken mid-groom is neither a
+ * before nor an after, and forcing a choice while somebody is holding a wet dog
+ * produces a gallery where half the labels are wrong.
+ */
+export type SessionMediaKind = "before" | "after" | "other";
+
+/**
+ * A photo or clip on one turn: the shared asset, plus the two things a gallery
+ * of grooming work is read for beyond the picture itself.
+ *
+ * ⚠️ `uploadedByName` IS RESOLVED BY THE API, and `uploadedBy` — an id — is not
+ * what any screen should draw. The pair travels together for the same reason
+ * `groomers[]` carries `_id` and `name`.
+ */
+export interface SessionMedia extends MediaAsset {
+  kind: SessionMediaKind;
+  uploadedBy?: string | null;
+  uploadedByName: string | null;
+  uploadedAt?: string | null;
 }
 
 /** One service on a visit, with its sessions and add-ons under it. */

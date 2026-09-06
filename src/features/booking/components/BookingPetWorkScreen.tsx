@@ -17,6 +17,7 @@ import {
   RemoveSessionButton,
   SessionCrew,
 } from "./SessionGroomers";
+import { SessionRecord } from "./SessionRecord";
 import {
   furTypeLabel,
   PetSummaryCard,
@@ -1406,6 +1407,25 @@ export function BookingPetWorkScreen({
                                     the thing that was estimated.
                                   */}
                                 </dl>
+
+                                {/*
+                                  ⚠️ ABOVE THE ACTION ROW, not inside it. The
+                                  notes and the photographs are what HAPPENED;
+                                  Mulai/Selesai are what happens NEXT, and a
+                                  gallery wedged between a groomer and the
+                                  button they press puts the record in the way
+                                  of the work.
+                                */}
+                                {/* `mt-3`, the same step the action row below
+                                    takes — the notes were sitting flush under
+                                    the clock, reading as part of it. */}
+                                <div className="mt-3">
+                                  <SessionRecord
+                                    bookingId={bookingId}
+                                    session={row.session}
+                                    onChanged={setBooking}
+                                  />
+                                </div>
 
                                 <div className="mt-3 flex flex-wrap gap-2">
                                   <Can
