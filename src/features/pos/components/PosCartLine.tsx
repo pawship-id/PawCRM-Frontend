@@ -4,7 +4,7 @@ import { Minus, Plus, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { formatMoney, sumDecimals } from "@/utils/decimal";
+import { formatMoney } from "@/utils/decimal";
 import type { PosItem, PosDiscountMode } from "@/types/api";
 
 import { PosDiscountPopover } from "./PosDiscountPopover";
@@ -66,31 +66,6 @@ export function PosCartLine({
   const isService = item.kind === "service";
 
   /**
-   * WHAT THIS SERVICE COMES TO — its own line plus every add-on under it.
-   *
-   * The figure on the right of a line answers "how much for this?", and once the
-   * add-ons moved inside the line, "this" stopped being the bath alone. It read
-   * Rp 120.000 beside a block that plainly totalled 140.000, and the only way to
-   * get the real number was to add two figures the screen had already put next
-   * to each other.
-   *
-   * GROSS, like `lineTotal` itself. Each discount is still shown as its own
-   * subtraction on the line that earned it — netting them off here would make a
-   * discount disappear from the one place it is explained.
-   *
-   * SUMMED IN MINOR UNITS, never with `Number(a) + Number(b)`. Every one of
-   * these figures reached the screen as a decimal string precisely so it never
-   * passed through a float; adding them back up in JavaScript numbers
-   * reintroduces the error at the last possible moment, in the one place a
-   * cashier is guaranteed to look. What is added is what the SERVER priced — no
-   * line's own total is recomputed here.
-   */
-  const subtotal = sumDecimals([
-    item.lineTotal,
-    ...addons.map((addon) => addon.item.lineTotal),
-  ]);
-
-  /**
    * Whether this line may still be taken out of the basket (FR-3).
    *
    * ONLY A BOOKING THIS BASKET RAISED CAN LOCK IT. Removing such a line DELETES
@@ -116,21 +91,33 @@ export function PosCartLine({
     <div className="border-b border-border px-3 py-2 last:border-b-0">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
+          {/*
+            THE ANIMAL IN THE TITLE — "Cici - Basic Grooming", the same as the
+            printed sheet.
+
+            It was a sub-line of its own, so on a two-dog visit the two things a
+            cashier pairs up — whose grooming, and how much — sat a row apart.
+            Named here, the top row answers both, and the basket and the struk
+            read the same way.
+
+            A RETAIL LINE HAS NO ANIMAL and keeps its own name.
+          */}
           <span className="block truncate text-sm font-medium text-foreground">
-            {item.name}
+            {item.petName ? `${item.petName} - ${item.name}` : item.name}
           </span>
 
           {/*
-            The animal and the groomer, when the line carries them. This is the
-            traceability the PRD asks for made visible at the till: a cashier who
-            can see "Bruno · Rina" on the line can catch the wrong pet before the
-            receipt prints, which is the only moment it is cheap to catch.
+            NO GROOMER HERE. Who is doing the work lives on the booking's detail
+            screen, which is where it is decided and where it can be changed; a
+            till line is what is being CHARGED for, and the animal is the only
+            part of the attribution a cashier has to check against the customer
+            in front of them.
+
+            THE NAME IS STILL ON THE LINE — `groomerName` is snapshotted onto
+            the sale and travels with it, so commission and attribution are
+            untouched. This is the basket's rendering only, and the receipt drops
+            it too.
           */}
-          {(item.petName || item.groomerName) && (
-            <span className="mt-0.5 block truncate text-xs text-muted">
-              {[item.petName, item.groomerName].filter(Boolean).join(" · ")}
-            </span>
-          )}
 
           {/*
             SAID OUT LOUD, not only on hover. A till is touched, not pointed at,
@@ -159,7 +146,14 @@ export function PosCartLine({
         </div>
 
         <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
-          {formatMoney(subtotal)}
+          {/*
+            ITS OWN PRICE, NOT THE PAIR'S — the same rule as the struk. The
+            add-on carries its own figure directly below, so adding it in here
+            would show the same 20.000 twice: once inside this number and once
+            under it. The two screens now agree, and both add up to the same
+            subtotal.
+          */}
+          {formatMoney(item.lineTotal)}
         </span>
       </div>
 
@@ -169,9 +163,9 @@ export function PosCartLine({
         the run to the service above it, which is what the cashier is checking:
         "the bath, plus handling".
 
-        EACH KEEPS ITS PRICE, because the service's figure above is now their
-        sum and a total nobody can break down is a total nobody can check. What
-        each does NOT keep is a control of its own — see below.
+        EACH KEEPS ITS PRICE, and that price is not folded into the service's
+        figure above — see there. What each does NOT keep is a control of its
+        own: the discount and the bin belong to the service.
       */}
       {addons.length > 0 && (
         <ul className="mt-1.5 ml-1 flex flex-col gap-1 border-l border-border pl-2">
