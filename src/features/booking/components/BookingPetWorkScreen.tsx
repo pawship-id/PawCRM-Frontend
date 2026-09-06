@@ -1475,7 +1475,7 @@ export function BookingPetWorkScreen({
             onChanged={setBooking}
           />
 
-          <BookingHistoryCard booking={booking} />
+          <BookingHistoryCard booking={booking} pet={group} />
 
           {/*
             THE REFERENCE'S OWN NOTE, and it is right: this page is open at the

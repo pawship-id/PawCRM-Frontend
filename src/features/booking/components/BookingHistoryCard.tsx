@@ -1,11 +1,11 @@
 import { Card } from "@/components";
-import type { Booking } from "@/types/api";
+import type { Booking, BookingPet } from "@/types/api";
 
 import { bookingActorLabel } from "../format";
 import { BOOKING_STATUS_LABELS } from "./BookingStatusBadge";
 
 /**
- * WHAT HAS HAPPENED TO THIS BOOKING, newest first.
+ * WHAT HAS HAPPENED TO THIS ANIMAL, newest first.
  *
  * ─── A TIMELINE, NOT A LIST ────────────────────────────────────────────────
  *
@@ -35,33 +35,49 @@ import { BOOKING_STATUS_LABELS } from "./BookingStatusBadge";
  * recorded data, not an invention — and it is why a booking whose trail predates
  * the feature still has one honest line instead of an empty card.
  */
-export function BookingHistoryCard({ booking }: { booking: Booking }) {
+export function BookingHistoryCard({
+  booking,
+  pet,
+}: {
+  booking: Booking;
+  /**
+   * ⚠️ ONE ANIMAL'S TRAIL, AND THE PROP IS REQUIRED.
+   *
+   * This card used to read `booking.statusHistory`, the trail MERGED across the
+   * visit — so opening Cici showed Cilang's moves interleaved with hers. On a
+   * page that is about one dog, half the lines were about a different dog, and
+   * the only thing separating them was a name at the front of each title.
+   *
+   * `pets[].statusHistory` IS THE STORED TRUTH, not a filter over the merged
+   * one. It is what `bookingitems` holds; the merged array is assembled on read
+   * by tagging each animal's entries with its id. Reading the animal's own
+   * document means no filter to get wrong, and it stays right if the merge ever
+   * changes shape.
+   *
+   * REQUIRED, not optional-with-a-merged-default, because there is exactly one
+   * call site and it is a per-animal page. A booking-wide reading of the same
+   * events already exists — `BookingHistoryDialog` — so a default here would
+   * only be a second way to get the behaviour that was just removed.
+   */
+  pet: BookingPet;
+}) {
   const entries = [
-    ...[...(booking.statusHistory ?? [])].reverse().map((event) => ({
+    ...[...(pet.statusHistory ?? [])].reverse().map((event) => ({
       /*
-        ⚠️ THE ANIMAL IS PART OF THE KEY, and leaving it out was a real bug.
-
-        The trail is MERGED across the visit's animals since PCR-042 — one entry
-        per animal per move — and two dogs handed over together are created in
-        the same write, at the same instant, in the same status. `status-at`
-        alone was therefore identical for both, and React refused the list.
-
-        `petId` MAKES IT UNIQUE because one animal cannot reach one status twice
-        in the same millisecond. `rescheduled` is the only status that repeats at
-        all, and not within a tick.
+        NO `petId` IN THE KEY ANY MORE, and it is no longer needed: these events
+        all belong to one animal, and one animal cannot reach one status twice in
+        the same millisecond. It was there to separate two dogs created in the
+        same write, at the same instant, in the same status — which React refused
+        as a duplicate key. That collision cannot arise in a single animal's own
+        trail.
       */
-      key: `${event.petId ?? "visit"}-${event.status}-${event.at}`,
+      key: `${event.status}-${event.at}`,
       /*
-        AND THE ANIMAL IS IN THE TITLE, for the same reason. Two lines reading
-        "Status → Requested" a second apart look like one visit changing its mind
-        twice; "Cici → Requested" and "Cilang → Requested" say what actually
-        happened — both dogs were written down at once.
-
-        THE OLD WORDING SURVIVES FOR A TRAIL WITH NO ANIMAL ON IT: entries
-        written before the merge carry no `petName`, and inventing one would be a
-        guess about which dog moved.
+        AND NO ANIMAL IN THE TITLE. Naming the dog on every line of a page whose
+        heading is already that dog is noise; it was there to tell two merged
+        trails apart, and there is only one trail now.
       */
-      title: `${event.petName ?? "Status"} → ${BOOKING_STATUS_LABELS[event.status] ?? event.status}`,
+      title: `Status → ${BOOKING_STATUS_LABELS[event.status] ?? event.status}`,
       at: event.at,
       who: bookingActorLabel(event.byName, event.byRoleName),
       /*
