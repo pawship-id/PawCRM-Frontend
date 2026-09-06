@@ -45,14 +45,50 @@ const row = (over: Record<string, unknown> = {}) => ({
 });
 
 /** One animal's entry in the API's grouped view — see `Booking["pets"]`. */
+/**
+ * ONE ANIMAL, WITH ITS SERVICES AND THE TURNS INSIDE THEM.
+ *
+ * ⚠️ `sessions` IS THE UNIT THE WORK SCREEN RENDERS. A service is a card; each
+ * turn inside it is a row. The shorthand below still says `groomerName: "Sinta"`
+ * because that is how a test describes its case — it is turned into the
+ * one-person crew the API sends.
+ *
+ * A SERVICE WITH `sessions: []` IS A REAL CASE and the screen must still draw
+ * its card, with "belum ada sesi" inside it: work nobody has been told to do is
+ * what a groomer opening this page most needs to see.
+ */
+const session = (over: Record<string, unknown> = {}) => ({
+  sessionId: "se-1",
+  sessionName: "mandi",
+  groomers: [{ _id: "user-1", name: "Mbak Sari", offReason: null }],
+  status: "pending",
+  startedAt: null,
+  finishedAt: null,
+  notesSession: null,
+  notesInternalSession: null,
+  media: [],
+  ...over,
+});
+
 const petGroup = (
   petId: string,
   petName: string,
   services: Record<string, unknown>[] = [{}],
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): any => ({
+  petItemId: `pi-${petId}`,
   petId,
   petName,
+  status: "arrived",
+  statusHistory: [],
+  nextStatuses: [],
+  cancelReason: null,
+  internalNotes: null,
+  customerNotes: null,
+  notes: null,
+  belongings: [],
+  pulledToCartAt: null,
+  pulledToInvoiceAt: null,
   services: services.map((service) => ({
     itemId: "row-mochi",
     serviceId: "svc-1",
@@ -60,19 +96,31 @@ const petGroup = (
     serviceType: "Grooming",
     price: "150000.0000",
     durationMin: 90,
-    groomerUserId: "user-1",
-    groomerName: "Mbak Sari",
-    groomerOffReason: null,
-    assistantGroomers: [],
-    workStatus: "pending",
+    status: "pending",
+    statusHistory: [],
     startedAt: null,
     finishedAt: null,
-    notes: null,
-    pulledToCartAt: null,
-    pulledToInvoiceAt: null,
+    sessions: [session()],
     addons: [],
     ...service,
   })),
+});
+
+/**
+ * ONE ANIMAL WHOSE SERVICE HAS THE TURNS GIVEN.
+ *
+ * ⚠️ THE WORK ROWS READ `pets[].services[].sessions[]`, NOT `items[]`. The flat
+ * array is the compatibility view the till and the invoice still use; setting a
+ * `workStatus` there moves nothing on this screen, which is what several of
+ * these tests used to do before the turns existed.
+ */
+const withSessions = (...sessions: Record<string, unknown>[]) => ({
+  pets: [
+    petGroup(MOCHI, "Mochi", [
+      { sessions: sessions.map((one) => session(one)) },
+    ]),
+    petGroup(COCO, "Coco", [{ itemId: "row-coco", name: "Potong Kuku" }]),
+  ],
 });
 
 const booking = (over: Record<string, unknown> = {}): Booking =>
@@ -86,13 +134,17 @@ const booking = (over: Record<string, unknown> = {}): Booking =>
     createdAt: "2026-08-30T04:52:00.000Z",
     createdByName: "Fitria",
     createdByRoleName: "Staff",
-    status: "arrived",
     statusHistory: [],
     billingState: "unbilled",
     petCount: 2,
     items: [
       row(),
-      row({ _id: "row-coco", petId: COCO, petName: "Coco", name: "Potong Kuku" }),
+      row({
+        _id: "row-coco",
+        petId: COCO,
+        petName: "Coco",
+        name: "Potong Kuku",
+      }),
     ],
     /*
       THE SAME ROWS GROUPED, the way the API hands them over: one entry per
@@ -115,13 +167,19 @@ const booking = (over: Record<string, unknown> = {}): Booking =>
  * answers who, where, and how many minutes. Opening is for what you change.
  */
 async function openSession() {
-  await userEvent.click(
-    await screen.findByRole("button", { name: /grooming full service/i }),
-  );
+  /*
+    ⚠️ THE ROW IS NAMED BY ITS TURN, NOT BY ITS SERVICE. The service names the
+    CARD above it; the row inside names the turn — "mandi", "blow dry". A turn
+    carrying the service's own name reads as "Sesi" rather than printing
+    "Grooming Full Service" twice on one block.
+  */
+  await userEvent.click(await screen.findByRole("button", { name: /mandi/i }));
 }
 
 const FULL = [{ feature: "bookings", actions: ["read", "update"] }];
-const LADDER_ONLY = [{ feature: "bookings", actions: ["read", "advanceStatus"] }];
+const LADDER_ONLY = [
+  { feature: "bookings", actions: ["read", "advanceStatus"] },
+];
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -137,13 +195,16 @@ beforeEach(() => {
   bookings.availability.mockResolvedValue([
     { _id: "user-1", fullName: "Mbak Sari", offReason: null },
   ] as never);
-  bookings.setItemGroomers.mockResolvedValue(booking());
+  bookings.setSessionCrew.mockResolvedValue(booking());
   customers.getById.mockResolvedValue({
     _id: "cust-1",
     name: "Bu Lisa",
     phone: "0812-3456-7890",
   } as never);
-  branches.getById.mockResolvedValue({ _id: "branch-1", name: "Cibubur" } as never);
+  branches.getById.mockResolvedValue({
+    _id: "branch-1",
+    name: "Cibubur",
+  } as never);
   pets.getById.mockResolvedValue({
     _id: MOCHI,
     name: "Mochi",
@@ -220,9 +281,11 @@ describe("BookingPetWorkScreen", () => {
     );
 
     await waitFor(() => expect(bookings.advanceItemWork).toHaveBeenCalled());
+    /* ⚠️ THE SESSION'S ID, NOT THE SERVICE'S. The work verbs address one TURN;
+       sending a service id gets a 404 naming a session nobody mentioned. */
     expect(bookings.advanceItemWork).toHaveBeenCalledWith(
       "bk-1",
-      "row-mochi",
+      "se-1",
       "in_progress",
     );
   });
@@ -233,9 +296,13 @@ describe("BookingPetWorkScreen", () => {
       correction onto paper, where nothing can read it.
     */
     bookings.getById.mockResolvedValue(
-      booking({
-        items: [row({ workStatus: "done", startedAt: "2026-09-03T02:00:00.000Z", finishedAt: "2026-09-03T03:30:00.000Z" })],
-      }),
+      booking(
+        withSessions({
+          status: "done",
+          startedAt: "2026-09-03T02:00:00.000Z",
+          finishedAt: "2026-09-03T03:30:00.000Z",
+        }),
+      ),
     );
 
     renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
@@ -249,7 +316,7 @@ describe("BookingPetWorkScreen", () => {
     await waitFor(() =>
       expect(bookings.advanceItemWork).toHaveBeenCalledWith(
         "bk-1",
-        "row-mochi",
+        "se-1",
         "in_progress",
       ),
     );
@@ -262,9 +329,12 @@ describe("BookingPetWorkScreen", () => {
       wrong day as well as the wrong hour.
     */
     bookings.getById.mockResolvedValue(
-      booking({
-        items: [row({ workStatus: "in_progress", startedAt: new Date("2026-09-03T09:05:00").toISOString() })],
-      }),
+      booking(
+        withSessions({
+          status: "in_progress",
+          startedAt: new Date("2026-09-03T09:05:00").toISOString(),
+        }),
+      ),
     );
 
     renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
@@ -320,8 +390,31 @@ describe("BookingPetWorkScreen", () => {
 
   it("carries the leave warning onto this page too", async () => {
     bookings.getById.mockResolvedValue(
+      /*
+        ⚠️ THE WARNING TRAVELS WITH THE PERSON, not with the row. Two people on
+        one turn can be off on different days, so it hangs off each groomer in
+        the crew — `items[]` is the flat compatibility view and the screen does
+        not read it for this.
+      */
       booking({
-        items: [row({ groomerOffReason: "Libur setiap Kamis" })],
+        pets: [
+          petGroup(MOCHI, "Mochi", [
+            {
+              sessions: [
+                session({
+                  groomers: [
+                    {
+                      _id: "user-1",
+                      name: "Mbak Sari",
+                      offReason: "Libur setiap Kamis",
+                    },
+                  ],
+                }),
+              ],
+            },
+          ]),
+          petGroup(COCO, "Coco", [{ itemId: "row-coco", name: "Potong Kuku" }]),
+        ],
       }),
     );
 
@@ -379,17 +472,19 @@ describe("BookingPetWorkScreen", () => {
   */
   it("keeps sessions folded, and opens the one being worked on", async () => {
     bookings.getById.mockResolvedValue(
-      booking({
-        items: [
-          row({ _id: "row-a", name: "Mandi" }),
-          row({
-            _id: "row-b",
-            name: "Blow Dry",
-            workStatus: "in_progress",
+      /* TWO TURNS OF ONE SERVICE — which is what folding is for: the one being
+         worked on opens itself, the rest stay shut. */
+      booking(
+        withSessions(
+          { sessionId: "se-a", sessionName: "Mandi" },
+          {
+            sessionId: "se-b",
+            sessionName: "Blow Dry",
+            status: "in_progress",
             startedAt: "2026-09-03T03:00:00.000Z",
-          }),
-        ],
-      }),
+          },
+        ),
+      ),
     );
 
     renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
@@ -397,8 +492,18 @@ describe("BookingPetWorkScreen", () => {
       permissions: FULL as never,
     });
 
-    const mandi = await screen.findByRole("button", { name: /mandi/i });
-    const blow = screen.getByRole("button", { name: /blow dry/i });
+    /*
+      ⚠️ NAMED BY `aria-expanded`, NOT BY TEXT ALONE. The turn's own controls —
+      "Hapus sesi", the crew's remove buttons — carry its name too, so a bare
+      text match finds several. The toggle is the one that folds.
+    */
+    const toggles = await screen.findAllByRole("button", { expanded: false });
+    const mandi = toggles.find((node) =>
+      /mandi/i.test(node.textContent ?? ""),
+    )!;
+    const [blow] = screen
+      .getAllByRole("button", { expanded: true })
+      .filter((node) => /blow dry/i.test(node.textContent ?? ""));
 
     expect(mandi).toHaveAttribute("aria-expanded", "false");
     expect(blow).toHaveAttribute("aria-expanded", "true");
@@ -461,12 +566,94 @@ describe("BookingPetWorkScreen", () => {
  * per-session progress track, which this page keeps because a fixed six-rung
  * bar would summarise several animals' different work into one line.
  */
+/**
+ * ─── ADDING A TURN: NAME, SAVE, AND THE BUTTON COMES BACK ───────────────────
+ *
+ * It used to ask for a GROOMER in the same breath, and the select was what
+ * saved — so adding a turn meant answering a question the person adding it
+ * usually cannot yet. The roster is read when the dog is on the table, not while
+ * somebody is writing down that a blow dry is needed.
+ */
+describe("BookingPetWorkScreen — adding a session", () => {
+  it("asks for the name only, and saves it", async () => {
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
+      isSuperAdmin: false,
+      permissions: FULL as never,
+    });
+
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: /tambah sesi/i }))[0],
+    );
+
+    /* NOTHING ELSE IS ASKED FOR. A groomer select here would be the old flow. */
+    expect(
+      screen.queryByRole("combobox", { name: /groomer/i }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.type(
+      screen.getByRole("textbox", { name: /nama sesi baru/i }),
+      "blow dry",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() =>
+      expect(bookings.setSessionCrew).toHaveBeenCalledWith("bk-1", {
+        serviceItemId: "row-mochi",
+        sessionName: "blow dry",
+      }),
+    );
+  });
+
+  it("refuses to save an empty name", async () => {
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
+      isSuperAdmin: false,
+      permissions: FULL as never,
+    });
+
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: /tambah sesi/i }))[0],
+    );
+
+    /* A turn nobody can name is a row the work screen cannot label. */
+    expect(screen.getByRole("button", { name: /^simpan$/i })).toBeDisabled();
+  });
+
+  it("closes afterwards, so another turn is a deliberate click", async () => {
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
+      isSuperAdmin: false,
+      permissions: FULL as never,
+    });
+
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: /tambah sesi/i }))[0],
+    );
+    await userEvent.type(
+      screen.getByRole("textbox", { name: /nama sesi baru/i }),
+      "kuku",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    /* The box goes, the button returns — adding a second turn is a click, not
+       something that happens by carrying on typing. */
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("textbox", { name: /nama sesi baru/i }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(
+      await screen.findAllByRole("button", { name: /tambah sesi/i }),
+    ).not.toHaveLength(0);
+  });
+});
+
 describe("BookingPetWorkScreen — the header's booking-level controls", () => {
   it("offers the very next rung as the primary action", async () => {
     // `arrived`'s next rung is `in_progress` — "Mulai dikerjakan".
     renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
       isSuperAdmin: false,
-      permissions: [{ feature: "bookings", actions: ["read", "update"] }] as never,
+      permissions: [
+        { feature: "bookings", actions: ["read", "update"] },
+      ] as never,
     });
 
     expect(
@@ -481,35 +668,63 @@ describe("BookingPetWorkScreen — the header's booking-level controls", () => {
       somebody has to interpret afterwards.
     */
     bookings.getById.mockResolvedValue(
+      /*
+        ⚠️ THE WARNING READS `pets[].services[].sessions[]`, NOT `items[]`. It
+        names the work somebody is standing at and has not finished — which is a
+        fact about a TURN, and the flat array has no turns in it.
+      */
       booking({
-        items: [
-          row({ workStatus: "done", startedAt: "x", finishedAt: "y" }),
-          row({ _id: "row-coco", petId: COCO, petName: "Coco", name: "Potong Kuku" }),
+        pets: [
+          petGroup(MOCHI, "Mochi", [
+            { sessions: [session({ status: "done" })] },
+          ]),
+          petGroup(COCO, "Coco", [
+            {
+              itemId: "row-coco",
+              name: "Potong Kuku",
+              sessions: [session({ sessionId: "se-coco" })],
+            },
+          ]),
         ],
       }),
     );
 
     renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
       isSuperAdmin: false,
-      permissions: [{ feature: "bookings", actions: ["read", "update"] }] as never,
+      permissions: [
+        { feature: "bookings", actions: ["read", "update"] },
+      ] as never,
     });
 
-    expect(await screen.findByText(/potong kuku.*belum selesai/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/potong kuku.*belum selesai/i),
+    ).toBeInTheDocument();
   });
 
   it("says nothing is blocking once every assigned row is done", async () => {
     bookings.getById.mockResolvedValue(
+      /* EVERY TURN, ON BOTH ANIMALS, DONE — the warning reads the turns. */
       booking({
-        items: [
-          row({ workStatus: "done", startedAt: "x", finishedAt: "y" }),
-          row({ _id: "row-coco", petId: COCO, petName: "Coco", workStatus: "done", startedAt: "x", finishedAt: "y" }),
+        pets: [
+          petGroup(MOCHI, "Mochi", [
+            { sessions: [session({ status: "done" })] },
+          ]),
+          petGroup(COCO, "Coco", [
+            {
+              itemId: "row-coco",
+              name: "Potong Kuku",
+              sessions: [session({ sessionId: "se-coco", status: "done" })],
+            },
+          ]),
         ],
       }),
     );
 
     renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
       isSuperAdmin: false,
-      permissions: [{ feature: "bookings", actions: ["read", "update"] }] as never,
+      permissions: [
+        { feature: "bookings", actions: ["read", "update"] },
+      ] as never,
     });
 
     await screen.findByRole("heading", { name: "Mochi" });
@@ -523,7 +738,10 @@ describe("BookingPetWorkScreen — the header's booking-level controls", () => {
     });
 
     const link = await screen.findByRole("link", { name: /cetak/i });
-    expect(link).toHaveAttribute("href", `/dashboard/master/pets/${MOCHI}/print`);
+    expect(link).toHaveAttribute(
+      "href",
+      `/dashboard/master/pets/${MOCHI}/print`,
+    );
   });
 
   it("builds a working wa.me link from a locally-formatted number", async () => {
@@ -559,7 +777,9 @@ describe("BookingPetWorkScreen — the header's booking-level controls", () => {
   it("moving the booking from this page's header re-reads the whole page", async () => {
     renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
       isSuperAdmin: false,
-      permissions: [{ feature: "bookings", actions: ["read", "update"] }] as never,
+      permissions: [
+        { feature: "bookings", actions: ["read", "update"] },
+      ] as never,
     });
 
     await userEvent.click(
@@ -569,13 +789,21 @@ describe("BookingPetWorkScreen — the header's booking-level controls", () => {
       screen.getByRole("button", { name: "Start work", hidden: false }),
     );
 
-    await waitFor(() => expect(bookings.changeStatus).toHaveBeenCalledWith(
-      "bk-1",
-      "in_progress",
-      null,
-    ));
+    await waitFor(() =>
+      /* ⚠️ THE ANIMAL IS NAMED. The ladder is the animal's since PCR-042, and
+         this page is about one dog — the header's control moves that dog and
+         leaves its neighbours where they are. */
+      expect(bookings.changeStatus).toHaveBeenCalledWith(
+        "bk-1",
+        "in_progress",
+        null,
+        MOCHI,
+      ),
+    );
     // getById is called once on mount and once more after the nonce bumps.
-    await waitFor(() => expect(bookings.getById.mock.calls.length).toBeGreaterThan(1));
+    await waitFor(() =>
+      expect(bookings.getById.mock.calls.length).toBeGreaterThan(1),
+    );
   });
 });
 
@@ -626,7 +854,11 @@ describe("BookingPetWorkScreen — the Detail Appointment card", () => {
           ]),
         ],
         items: [
-          row({ name: "Basic Grooming", price: "199000.0000", durationMin: 110 }),
+          row({
+            name: "Basic Grooming",
+            price: "199000.0000",
+            durationMin: 110,
+          }),
           row({
             _id: "row-detangle",
             name: "Minor Full Body Detangling",
@@ -686,7 +918,9 @@ describe("BookingPetWorkScreen — the Detail Appointment card", () => {
 
     renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />);
 
-    expect(await screen.findByText(/jemput & antar pulang/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/jemput & antar pulang/i),
+    ).toBeInTheDocument();
   });
 
   it("offers the way to correct the price, on the card that states it", async () => {
@@ -786,9 +1020,7 @@ describe("BookingPetWorkScreen — the Hewan & Pelanggan card", () => {
     renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />);
 
     expect(await screen.findByText(/catatan penanganan/i)).toBeInTheDocument();
-    expect(
-      screen.getByText(/dryer jangan dekat telinga/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/dryer jangan dekat telinga/i)).toBeInTheDocument();
   });
 
   it("still works the booking when the profile cannot be read", async () => {
@@ -867,12 +1099,8 @@ describe("BookingPetWorkScreen — the header's audit line", () => {
     });
 
     await screen.findByRole("heading", { name: "Mochi" });
-    expect(
-      screen.queryByRole("link", { name: "←" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "←" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "←" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "←" })).not.toBeInTheDocument();
   });
 });
 

@@ -128,15 +128,23 @@ export const bookingService = {
    * assistant" is "add a session".
    *
    * THREE SHAPES, ONE CALL, matching the one card that does all three:
-   *   { serviceItemId, type?, groomerUserId? }  add a turn
-   *   { sessionId, groomerUserId }              put somebody on one, or take off
-   *   { sessionId, remove: true }               take the turn off
+   *   { serviceItemId, sessionName?, groomerUserIds? }  add a turn
+   *   { sessionId, groomerUserIds }                    set who is on it
+   *   { sessionId, remove: true }                      take the turn off
+   *
+   * ⚠️ THE CREW IS SENT WHOLESALE, never as a delta. The screen edits it as a
+   * list — a groomer is picked or unpicked from a set — and add/remove verbs
+   * would leave a moment where a running turn has nobody on it.
    */
   setSessionCrew: (
     bookingId: string,
     patch:
-      | { serviceItemId: string; type?: string; groomerUserId?: string | null }
-      | { sessionId: string; groomerUserId: string | null }
+      | {
+          serviceItemId: string;
+          sessionName?: string;
+          groomerUserIds?: string[];
+        }
+      | { sessionId: string; groomerUserIds: string[] }
       | { sessionId: string; remove: true },
   ) => apiClient.patch<Booking>(`/bookings/${bookingId}/sessions`, patch),
 

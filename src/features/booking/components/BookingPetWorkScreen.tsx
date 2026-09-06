@@ -11,7 +11,7 @@ import { BookingBelongingsCard } from "./BookingBelongingsCard";
 import { bookingActorLabel, finishClock } from "../format";
 import { BookingHistoryCard } from "./BookingHistoryCard";
 import { BookingPetNotesCard } from "./BookingPetNotesCard";
-import { SessionGroomers } from "./SessionGroomers";
+import { AddSessionButton, SessionCrew } from "./SessionGroomers";
 import {
   furTypeLabel,
   PetSummaryCard,
@@ -29,6 +29,7 @@ import type {
   Booking,
   Customer,
   BookingItem,
+  BookingSession,
   BookingWorkStatus,
   Pet,
 } from "@/types/api";
@@ -138,6 +139,9 @@ type WorkRow = {
   finishedAt: string | null;
   price: string;
   assigned: boolean;
+  /* THE TURN ITSELF, carried through so the row can render its crew control
+     without the screen looking it up again by id. */
+  session: BookingSession;
 };
 
 function elapsed(row: WorkRow): number | null {
@@ -436,50 +440,65 @@ export function BookingPetWorkScreen({
     to do is the thing a groomer opening this page most needs to see; dropping it
     would leave a bath invisible on the one screen that is open at the table.
   */
-  const rows = services.flatMap((service) =>
-    service.sessions.length > 0
-      ? service.sessions.map((session) => ({
-          _id: session.sessionId,
-          serviceItemId: service.itemId,
-          /* "Full Grooming — mandi", unless the turn carries the service's own
-             name, which is what a booking made through the form produces. */
-          name:
-            session.type && session.type !== service.name
-              ? `${service.name} — ${session.type}`
-              : service.name,
-          workStatus: session.status,
-          groomerName: session.groomerName,
-          groomerOffReason: session.groomerOffReason,
-          /*
-            THE SERVICE'S DURATION, because a turn has none of its own. Splitting
-            a 90-minute bath into three turns does not make each of them 90
-            minutes — but nothing records what it does make them, and dividing
-            would be inventing a number nobody chose.
-          */
-          durationMin: service.durationMin,
-          startedAt: session.startedAt,
-          finishedAt: session.finishedAt,
-          price: service.price,
-          assigned: true,
-        }))
-      : [
-          {
-            _id: service.itemId,
-            serviceItemId: service.itemId,
-            name: service.name,
-            workStatus: service.status,
-            groomerName: "Belum ditentukan",
-            groomerOffReason: null,
-            durationMin: service.durationMin,
-            startedAt: service.startedAt,
-            finishedAt: service.finishedAt,
-            price: service.price,
-            /* NOTHING TO PRESS. There is no session to move, and the server
-               refuses work with nobody on it anyway — said here first. */
-            assigned: false,
-          },
-        ],
-  );
+  /*
+    ─── ONE GROUP PER SERVICE, AND THE TURNS INSIDE IT ─────────────────────────
+
+    A visit's work is "Full Grooming, and Hotel" — two things being done, each
+    with its own turns. This used to be ONE FLAT LIST that mixed a service's
+    sessions with a stand-in row for services that had none, so a dog booked for
+    two services showed four unrelated rows and nothing said which belonged to
+    which.
+
+    A SERVICE WITH NO TURNS IS STILL A GROUP, and that is the point of grouping
+    rather than filtering: work nobody has been told to do is what a groomer
+    opening this page most needs to see, and its card is where the turn gets
+    added.
+  */
+  const groups = services.map((service) => ({
+    service,
+    rows: service.sessions.map((session): WorkRow => ({
+      _id: session.sessionId,
+      serviceItemId: service.itemId,
+      /* THE TURN'S OWN NAME. The service names the card above it, so repeating
+         it here would put "Full Grooming" twice on one block. */
+      name:
+        session.sessionName && session.sessionName !== service.name
+          ? session.sessionName
+          : "Sesi",
+      workStatus: session.status,
+      /*
+        THE WHOLE CREW ON ONE LINE — "Sinta + Rio". A turn may be worked by
+        several people, and naming one of them would put the wrong person on the
+        board for the other's work.
+      */
+      groomerName:
+        session.groomers.length > 0
+          ? session.groomers.map((who) => who.name).join(" + ")
+          : "Belum ditentukan",
+      /* THE FIRST PERSON WHO IS OFF, if any — the row has one line for it. Each
+         person's own warning is on the crew control inside the row. */
+      groomerOffReason:
+        session.groomers.find((who) => who.offReason)?.offReason ?? null,
+      /*
+        THE SERVICE'S DURATION, because a turn has none of its own. Splitting a
+        90-minute bath into three turns does not make each of them 90 minutes —
+        but nothing records what it does make them, and dividing would be
+        inventing a number nobody chose.
+      */
+      durationMin: service.durationMin,
+      startedAt: session.startedAt,
+      finishedAt: session.finishedAt,
+      price: service.price,
+      /* A TURN WITH NOBODY ON IT CANNOT BE STARTED — the server refuses it, and
+         the row says so instead of offering a button that 400s. */
+      assigned: session.groomers.length > 0,
+      session,
+    })),
+  }));
+
+  /* Every turn across every service — what the totals and the progress track
+     count, and what the completion warning reads. */
+  const rows = groups.flatMap((group) => group.rows);
 
   const petName = group?.petName ?? pet?.name ?? "Hewan ini";
 
@@ -518,8 +537,21 @@ export function BookingPetWorkScreen({
       ...service.addons.map((addon) => addon.price),
     ]),
   );
+  /*
+    ⚠️ ADD-ONS ARE IN THE ESTIMATE, and dropping them was a real regression when
+    this sum moved off the flat rows. "+30 menit detangling" lengthens the visit
+    exactly as the catalogue says it does — an estimate without it promises the
+    owner an earlier finish than the shop can manage, which is the one direction
+    this number must never be wrong in.
+  */
   const estimate = services.reduce(
-    (sum, service) => sum + (service.durationMin ?? 0),
+    (sum, service) =>
+      sum +
+      (service.durationMin ?? 0) +
+      service.addons.reduce(
+        (extra, addon) => extra + (addon.durationMin ?? 0),
+        0,
+      ),
     0,
   );
   const actual = rows.reduce((sum, row) => sum + (elapsed(row) ?? 0), 0);
@@ -552,7 +584,8 @@ export function BookingPetWorkScreen({
       entry.services.flatMap((service) =>
         service.sessions
           .filter(
-            (session) => session.groomerUserId && session.status !== "done",
+            (session) =>
+              session.groomers.length > 0 && session.status !== "done",
           )
           .map((session) => ({ name: service.name })),
       ),
@@ -1061,234 +1094,321 @@ export function BookingPetWorkScreen({
             title="Sesi Grooming"
             description={`aktual ${actual} / est ${estimate} mnt`}
           >
-            <ul className="flex flex-col gap-2">
-              {rows.map((row) => {
-                const status = row.workStatus ?? "pending";
-                /*
-                  ⚠️ NOTHING TO PRESS ON AN UNASSIGNED SERVICE. There is no turn
-                  to move — the row is standing in for one — and the server
-                  refuses work with nobody on it anyway. Said here first, so the
-                  button is absent rather than a 400 somebody has to read.
-                */
-                const next = row.assigned ? NEXT_MOVE[status] : null;
-                const minutes = elapsed(row);
-                const over =
-                  minutes !== null &&
-                  row.durationMin !== null &&
-                  row.durationMin !== undefined &&
-                  minutes > row.durationMin;
-                const open = openRows[row._id] ?? status === "in_progress";
+            {/*
+              ─── ONE CARD PER SERVICE, TURNS INSIDE IT ────────────────────────────
+            
+              "Full Grooming" and "Hotel" are two things being done, each with its own
+              turns. This was one flat list that mixed them, so a dog booked for two
+              services showed four unrelated rows with nothing saying which belonged to
+              which — and the add-on hanging off a service had no visible parent at all.
+            
+              A SERVICE WITH NO TURNS STILL GETS ITS CARD. Work nobody has been told to
+              do is what a groomer opening this page most needs to see, and the card is
+              where the turn gets added.
+            */}
+            <ul className="flex flex-col gap-4">
+              {groups.map(({ service, rows: sessionRows }) => (
+                <li
+                  key={service.itemId}
+                  className="rounded-xl border border-border p-3"
+                >
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-bold text-foreground">
+                        {service.name}
+                      </span>
+                      {/* THE KIND OF WORK, from the service's own snapshot — not read
+                          through the catalogue, so a renamed line does not rewrite what
+                          this visit says it was. */}
+                      {service.serviceType && (
+                        <span className="rounded-full bg-tint-neutral px-2 py-0.5 text-xs text-muted">
+                          {service.serviceType}
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-xs text-muted">
+                      {service.durationMin
+                        ? `est ${service.durationMin} mnt`
+                        : "durasi belum diisi"}
+                    </span>
+                  </div>
 
-                return (
-                  <li
-                    key={row._id}
-                    className={`overflow-hidden rounded-xl border ${
-                      status === "in_progress"
-                        ? "border-warning"
-                        : status === "done"
-                          ? "border-success/40"
-                          : "border-border"
-                    }`}
-                  >
-                    {/*
-                      ─── THE CLOSED ROW ALREADY ANSWERS THE COMMON QUESTIONS ──
-                      Who is on it, where it stands, and how many minutes — the
-                      reference's own reasoning, and the reason folding is worth
-                      having at all. Opening is for the things you change.
-                    */}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setOpenRows((prev) => ({ ...prev, [row._id]: !open }))
-                      }
-                      aria-expanded={open}
-                      className={`flex w-full items-center gap-2 px-3 py-2 text-left ${
-                        status === "in_progress"
-                          ? "bg-warning/10"
-                          : status === "done"
-                            ? "bg-success/5"
-                            : "bg-surface"
-                      }`}
-                    >
-                      <span className="min-w-0 flex-1 truncate text-sm font-bold text-foreground">
-                        {row.name}
-                      </span>
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${WORK_TONE[status]}`}
-                      >
-                        {WORK_LABELS[status]}
-                      </span>
-                      <span className="hidden whitespace-nowrap text-xs text-muted sm:inline">
-                        {row.groomerName}
-                      </span>
-                      <span className="whitespace-nowrap font-mono text-xs text-foreground">
-                        {minutes === null ? "—" : `${minutes}'`}
-                        {over && (
-                          <span className="text-danger">
-                            {" "}
-                            +{minutes! - row.durationMin!}
-                          </span>
-                        )}
-                      </span>
-                      <span className="text-xs text-muted">
-                        {open ? "▲" : "▼"}
-                      </span>
-                    </button>
+                  {/* THE ADD-ONS, UNDER THE SERVICE THEY WERE ADDED TO. Nobody chooses
+                      "Parfum" by itself, and showing it beside a bath made it look as
+                      though somebody had. */}
+                  {service.addons.length > 0 && (
+                    <ul className="mt-1 flex flex-col gap-0.5 border-l-2 border-border pl-2.5">
+                      {service.addons.map((addon) => (
+                        <li key={addon.itemId} className="text-xs text-muted">
+                          + {addon.name}
+                          {addon.durationMin
+                            ? ` · ${addon.durationMin} mnt`
+                            : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
 
-                    {open && (
-                      <div className="border-t border-border p-3">
-                        {row.groomerOffReason && (
-                          <p
-                            role="alert"
-                            className="mb-3 rounded border border-danger/40 bg-danger/5 px-2 py-1 text-xs font-semibold text-danger"
+                  {sessionRows.length === 0 ? (
+                    <p className="mt-3 text-sm text-muted">
+                      Belum ada sesi — tambahkan satu untuk menugaskan groomer.
+                    </p>
+                  ) : (
+                    <ul className="mt-3 flex flex-col gap-2">
+                      {sessionRows.map((row) => {
+                        const status = row.workStatus ?? "pending";
+                        /*
+                            ⚠️ NOTHING TO PRESS ON A TURN WITH NOBODY ON IT. The
+                            server refuses to start work with no groomer — "who
+                            did this" is what the duration and the pay are both
+                            read against — so the button is absent rather than a
+                            400 somebody has to read.
+                          */
+                        const next = row.assigned ? NEXT_MOVE[status] : null;
+                        const minutes = elapsed(row);
+                        const over =
+                          minutes !== null &&
+                          row.durationMin !== null &&
+                          row.durationMin !== undefined &&
+                          minutes > row.durationMin;
+                        const open =
+                          openRows[row._id] ?? status === "in_progress";
+
+                        return (
+                          <li
+                            key={row._id}
+                            className={`overflow-hidden rounded-xl border ${
+                              status === "in_progress"
+                                ? "border-warning"
+                                : status === "done"
+                                  ? "border-success/40"
+                                  : "border-border"
+                            }`}
                           >
-                            {row.groomerName}{" "}
-                            {row.groomerOffReason.toLowerCase()} — ganti groomer
-                            atau hubungi pelanggan.
-                          </p>
-                        )}
-
-                        {/*
-                          WHO IS ON THIS SERVICE — the booking form set one
-                          default per animal; this is where the day disagrees
-                          with it. Above the clock fields, because who is doing
-                          it is decided before how long it took.
-
-                          ⚠️ ONCE PER SERVICE, NOT PER TURN. The card edits the
-                          whole crew — every turn of this service, and the button
-                          that adds another — so opening a second turn of the same
-                          bath must not show a second copy of the same control
-                          with the same rows in it.
-                        */}
-                        {rows.findIndex(
-                          (other) => other.serviceItemId === row.serviceItemId,
-                        ) === rows.indexOf(row) &&
-                          (() => {
-                            const owner = services.find(
-                              (one) => one.itemId === row.serviceItemId,
-                            );
-
-                            return owner ? (
-                              <div className="mb-3">
-                                <SessionGroomers
-                                  bookingId={bookingId}
-                                  service={owner}
-                                  groomers={groomers}
-                                  onChanged={setBooking}
-                                />
-                              </div>
-                            ) : null;
-                          })()}
-
-                        <Can feature="bookings" action="update">
-                          <div className="flex flex-wrap items-end gap-3">
-                            <TextField
-                              label="Jam mulai"
-                              name={`start-${row._id}`}
-                              value={
-                                draftTimes[`${row._id}|startedAt`] ??
-                                clock(row.startedAt)
-                              }
-                              placeholder="09.05"
-                              disabled={busy === row._id}
-                              onChange={(event) =>
-                                setDraftTimes((prev) => ({
+                            {/*
+                                ─── THE CLOSED ROW ALREADY ANSWERS THE COMMON QUESTIONS ──
+                                Who is on it, where it stands, and how many minutes — the
+                                reference's own reasoning, and the reason folding is worth
+                                having at all. Opening is for the things you change.
+                              */}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setOpenRows((prev) => ({
                                   ...prev,
-                                  [`${row._id}|startedAt`]: event.target.value,
+                                  [row._id]: !open,
                                 }))
                               }
-                              onBlur={(event) =>
-                                void correct(
-                                  row,
-                                  "startedAt",
-                                  event.target.value,
-                                )
-                              }
-                            />
-                            <TextField
-                              label="Jam selesai"
-                              name={`finish-${row._id}`}
-                              value={
-                                draftTimes[`${row._id}|finishedAt`] ??
-                                clock(row.finishedAt)
-                              }
-                              placeholder="10.35"
-                              disabled={busy === row._id}
-                              onChange={(event) =>
-                                setDraftTimes((prev) => ({
-                                  ...prev,
-                                  [`${row._id}|finishedAt`]: event.target.value,
-                                }))
-                              }
-                              onBlur={(event) =>
-                                void correct(
-                                  row,
-                                  "finishedAt",
-                                  event.target.value,
-                                )
-                              }
-                            />
-                            <div className="pb-2">
-                              <p className="text-[10px] font-bold uppercase tracking-wide text-muted">
-                                Aktual
-                              </p>
-                              <p className="font-mono text-sm font-semibold text-foreground">
-                                {minutes === null ? "—" : `${minutes} mnt`}
+                              aria-expanded={open}
+                              className={`flex w-full items-center gap-2 px-3 py-2 text-left ${
+                                status === "in_progress"
+                                  ? "bg-warning/10"
+                                  : status === "done"
+                                    ? "bg-success/5"
+                                    : "bg-surface"
+                              }`}
+                            >
+                              <span className="min-w-0 flex-1 truncate text-sm font-bold text-foreground">
+                                {row.name}
+                              </span>
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-xs font-semibold ${WORK_TONE[status]}`}
+                              >
+                                {WORK_LABELS[status]}
+                              </span>
+                              <span className="hidden whitespace-nowrap text-xs text-muted sm:inline">
+                                {row.groomerName}
+                              </span>
+                              <span className="whitespace-nowrap font-mono text-xs text-foreground">
+                                {minutes === null ? "—" : `${minutes}'`}
                                 {over && (
-                                  <span className="ml-1 text-danger">
+                                  <span className="text-danger">
+                                    {" "}
                                     +{minutes! - row.durationMin!}
                                   </span>
                                 )}
-                              </p>
-                            </div>
-                            <div className="pb-2">
-                              <p className="text-[10px] font-bold uppercase tracking-wide text-muted">
-                                Estimasi
-                              </p>
-                              <p className="font-mono text-sm text-muted">
-                                {row.durationMin ?? "—"} mnt
-                              </p>
-                            </div>
-                          </div>
-                        </Can>
+                              </span>
+                              <span className="text-xs text-muted">
+                                {open ? "▲" : "▼"}
+                              </span>
+                            </button>
 
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <Can
-                            feature="bookings"
-                            action={["advanceStatus", "update"]}
-                          >
-                            {next && (
-                              <Button
-                                size="sm"
-                                disabled={busy === row._id}
-                                onClick={() => void move(row, next.to)}
-                              >
-                                {busy === row._id ? "Menyimpan…" : next.label}
-                              </Button>
+                            {open && (
+                              <div className="border-t border-border p-3">
+                                {row.groomerOffReason && (
+                                  <p
+                                    role="alert"
+                                    className="mb-3 rounded border border-danger/40 bg-danger/5 px-2 py-1 text-xs font-semibold text-danger"
+                                  >
+                                    {row.groomerName}{" "}
+                                    {row.groomerOffReason.toLowerCase()} — ganti
+                                    groomer atau hubungi pelanggan.
+                                  </p>
+                                )}
+
+                                {/*
+                                    WHO IS ON THIS SERVICE — the booking form set one
+                                    default per animal; this is where the day disagrees
+                                    with it. Above the clock fields, because who is doing
+                                    it is decided before how long it took.
+
+                                    ⚠️ ONCE PER SERVICE, NOT PER TURN. The card edits the
+                                    whole crew — every turn of this service, and the button
+                                    that adds another — so opening a second turn of the same
+                                    bath must not show a second copy of the same control
+                                    with the same rows in it.
+                                  */}
+                                {/*
+                                    WHO IS ON THIS TURN — inside the turn's own row, under
+                                    the name it acts on.
+
+                                    IT USED TO BE RENDERED ONCE PER SERVICE, with a
+                                    `findIndex` trick to pick the first row, because the
+                                    control drew every session of the service at once. That
+                                    put a second list of the same turns beside the one the
+                                    rows already draw — two lists of one thing, and two
+                                    places for it to disagree.
+                                  */}
+                                <div className="mb-3">
+                                  <SessionCrew
+                                    bookingId={bookingId}
+                                    session={row.session}
+                                    groomers={groomers}
+                                    onChanged={setBooking}
+                                  />
+                                </div>
+
+                                <Can feature="bookings" action="update">
+                                  <div className="flex flex-wrap items-end gap-3">
+                                    <TextField
+                                      label="Jam mulai"
+                                      name={`start-${row._id}`}
+                                      value={
+                                        draftTimes[`${row._id}|startedAt`] ??
+                                        clock(row.startedAt)
+                                      }
+                                      placeholder="09.05"
+                                      disabled={busy === row._id}
+                                      onChange={(event) =>
+                                        setDraftTimes((prev) => ({
+                                          ...prev,
+                                          [`${row._id}|startedAt`]:
+                                            event.target.value,
+                                        }))
+                                      }
+                                      onBlur={(event) =>
+                                        void correct(
+                                          row,
+                                          "startedAt",
+                                          event.target.value,
+                                        )
+                                      }
+                                    />
+                                    <TextField
+                                      label="Jam selesai"
+                                      name={`finish-${row._id}`}
+                                      value={
+                                        draftTimes[`${row._id}|finishedAt`] ??
+                                        clock(row.finishedAt)
+                                      }
+                                      placeholder="10.35"
+                                      disabled={busy === row._id}
+                                      onChange={(event) =>
+                                        setDraftTimes((prev) => ({
+                                          ...prev,
+                                          [`${row._id}|finishedAt`]:
+                                            event.target.value,
+                                        }))
+                                      }
+                                      onBlur={(event) =>
+                                        void correct(
+                                          row,
+                                          "finishedAt",
+                                          event.target.value,
+                                        )
+                                      }
+                                    />
+                                    <div className="pb-2">
+                                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted">
+                                        Aktual
+                                      </p>
+                                      <p className="font-mono text-sm font-semibold text-foreground">
+                                        {minutes === null
+                                          ? "—"
+                                          : `${minutes} mnt`}
+                                        {over && (
+                                          <span className="ml-1 text-danger">
+                                            +{minutes! - row.durationMin!}
+                                          </span>
+                                        )}
+                                      </p>
+                                    </div>
+                                    <div className="pb-2">
+                                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted">
+                                        Estimasi
+                                      </p>
+                                      <p className="font-mono text-sm text-muted">
+                                        {row.durationMin ?? "—"} mnt
+                                      </p>
+                                    </div>
+                                  </div>
+                                </Can>
+
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  <Can
+                                    feature="bookings"
+                                    action={["advanceStatus", "update"]}
+                                  >
+                                    {next && (
+                                      <Button
+                                        size="sm"
+                                        disabled={busy === row._id}
+                                        onClick={() => void move(row, next.to)}
+                                      >
+                                        {busy === row._id
+                                          ? "Menyimpan…"
+                                          : next.label}
+                                      </Button>
+                                    )}
+                                    {status === "done" && row.assigned && (
+                                      <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        disabled={busy === row._id}
+                                        onClick={() =>
+                                          void move(row, "in_progress")
+                                        }
+                                      >
+                                        Buka lagi
+                                      </Button>
+                                    )}
+                                    {!row.assigned && (
+                                      <p className="text-xs text-muted">
+                                        Tentukan groomernya dulu — layanan ini
+                                        belum punya sesi.
+                                      </p>
+                                    )}
+                                  </Can>
+                                </div>
+                              </div>
                             )}
-                            {status === "done" && row.assigned && (
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                disabled={busy === row._id}
-                                onClick={() => void move(row, "in_progress")}
-                              >
-                                Buka lagi
-                              </Button>
-                            )}
-                            {!row.assigned && (
-                              <p className="text-xs text-muted">
-                                Tentukan groomernya dulu — layanan ini belum
-                                punya sesi.
-                              </p>
-                            )}
-                          </Can>
-                        </div>
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+
+                  <div className="mt-3">
+                    {/* NO `groomers` — adding a turn asks for its NAME only;
+                        who works it is set in the turn's own row. */}
+                    <AddSessionButton
+                      bookingId={bookingId}
+                      service={service}
+                      onChanged={setBooking}
+                    />
+                  </div>
+                </li>
+              ))}
             </ul>
 
             {/*

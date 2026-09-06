@@ -134,10 +134,20 @@ const petGroup = (
             : [
                 {
                   sessionId: `se-${petId}`,
-                  type: "Full Grooming",
-                  groomerUserId: groomerUserId ?? "user-1",
-                  groomerName: groomerName ?? "Sinta",
-                  groomerOffReason: groomerOffReason ?? null,
+                  sessionName: "Full Grooming",
+                  /*
+                    THE CREW IS A LIST NOW. The shorthand still says
+                    `groomerName: "Sinta"` because that is how a test describes
+                    its case; it is turned into the one-person crew the API
+                    sends.
+                  */
+                  groomers: [
+                    {
+                      _id: groomerUserId ?? "user-1",
+                      name: groomerName ?? "Sinta",
+                      offReason: groomerOffReason ?? null,
+                    },
+                  ],
                   status: workStatus ?? "pending",
                   startedAt: null,
                   finishedAt: null,

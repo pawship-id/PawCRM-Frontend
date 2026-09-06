@@ -2210,12 +2210,25 @@ export interface Booking {
 export interface BookingSession {
   sessionId: string;
   /** "mandi", "blow dry". Free text the shop chooses — not an enum yet. */
-  type: string;
-  groomerUserId: string | null;
-  /** "Belum ditentukan" when nobody is assigned — never an empty string. */
-  groomerName: string;
-  /** Set when the person on this turn cannot work the day it is booked for. */
-  groomerOffReason: string | null;
+  sessionName: string;
+  /**
+   * WHO IS ON THIS TURN — everybody standing at the table for it.
+   *
+   * ⚠️ A LIST, AND THE TRAP CAME WITH IT. A turn used to name one person, and the
+   * scalar was load-bearing: `commissionrecords` is unique per payable unit, so a
+   * second earner is refused by the database and swallowed as success — the
+   * second person is never paid, silently. The array does not fix that; it moves
+   * it. Nothing computes commission from a session yet, deliberately.
+   *
+   * WHAT IT IS SAFE FOR TODAY is scheduling: everybody here is counted busy by
+   * the clash check. Empty is a real state — such a turn cannot be started.
+   *
+   * `offReason` IS PER PERSON and computed on read: leave changes after a
+   * booking is made, so a stamped-at-write flag would be stale exactly when it
+   * matters. It refuses nothing — the shop decides whether to move the groomer
+   * or ring the customer.
+   */
+  groomers: { _id: string; name: string; offReason: string | null }[];
   status: BookingWorkStatus;
   startedAt: string | null;
   finishedAt: string | null;

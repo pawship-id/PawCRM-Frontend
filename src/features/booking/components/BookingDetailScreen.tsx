@@ -536,11 +536,22 @@ export function BookingDetailScreen({ id }: { id: string }) {
                                   the heading does not.
                                 */}
                                 {service.sessions
-                                  .map((one) =>
-                                    one.type && one.type !== service.name
-                                      ? `${one.type}: ${one.groomerName}`
-                                      : one.groomerName,
-                                  )
+                                  .map((one) => {
+                                    /* THE WHOLE CREW ON THE TURN — "cuci: Sinta
+                                       + Rio". Everybody standing at the table is
+                                       named; the clash check counts them all. */
+                                    const crew =
+                                      one.groomers.length > 0
+                                        ? one.groomers
+                                            .map((who) => who.name)
+                                            .join(" + ")
+                                        : "Belum ditentukan";
+
+                                    return one.sessionName &&
+                                      one.sessionName !== service.name
+                                      ? `${one.sessionName}: ${crew}`
+                                      : crew;
+                                  })
                                   .join(" · ")}
                                 {service.durationMin
                                   ? ` · ${service.durationMin} menit`
@@ -567,17 +578,26 @@ export function BookingDetailScreen({ id }: { id: string }) {
                               "this is wrong" leaves the reader to invent the
                               remedy; there are exactly two here.
                             */}
+                            {/* ONE WARNING PER PERSON, not per turn: two people
+                                on one bath can be off on different days, and a
+                                turn-level warning could only name one of them. */}
                             {service.sessions
-                              .filter((one) => one.groomerOffReason)
-                              .map((one) => (
+                              .flatMap((one) =>
+                                one.groomers
+                                  .filter((who) => who.offReason)
+                                  .map((who) => ({
+                                    key: `${one.sessionId}-${who._id}`,
+                                    ...who,
+                                  })),
+                              )
+                              .map((who) => (
                                 <span
-                                  key={one.sessionId}
+                                  key={who.key}
                                   role="alert"
                                   className="mt-1 block rounded border border-danger/40 bg-danger/5 px-2 py-1 text-xs font-semibold text-danger"
                                 >
-                                  {one.groomerName}{" "}
-                                  {one.groomerOffReason?.toLowerCase()} — ganti
-                                  groomer atau hubungi pelanggan.
+                                  {who.name} {who.offReason?.toLowerCase()} —
+                                  ganti groomer atau hubungi pelanggan.
                                 </span>
                               ))}
                           </div>
