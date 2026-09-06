@@ -1056,6 +1056,182 @@ describe("BookingPetWorkScreen — Status sejak", () => {
   });
 });
 
+/**
+ * ─── A FINISHED TURN'S CREW IS A RECORD ─────────────────────────────────────
+ *
+ * The server refuses to change it (409). This is the screen not offering what
+ * would be refused — and, just as important, still SHOWING who did the work.
+ */
+describe("BookingPetWorkScreen — the crew on a finished turn", () => {
+  const openFinished = async () => {
+    bookings.getById.mockResolvedValue(
+      booking(
+        withSessions({
+          status: "done",
+          startedAt: "2026-09-03T02:00:00.000Z",
+          finishedAt: "2026-09-03T03:30:00.000Z",
+        }),
+      ),
+    );
+    bookings.availability.mockResolvedValue([
+      { _id: "user-1", fullName: "Mbak Sari", offReason: null },
+      { _id: "user-2", fullName: "Mas Beni", offReason: null },
+    ] as never);
+
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
+      isSuperAdmin: false,
+      permissions: FULL as never,
+    });
+
+    const toggles = await screen.findAllByRole("button", { expanded: false });
+    await userEvent.click(
+      toggles.find((node) => /mandi/i.test(node.textContent ?? ""))!,
+    );
+  };
+
+  it("still names who did the work", async () => {
+    /*
+      ⚠️ ASSERTED FIRST, and it is the point of the whole case. Hiding the crew
+      along with its controls would satisfy every other assertion here while
+      losing the one thing a finished turn is read for.
+    */
+    await openFinished();
+
+    /* Her name also sits on the folded row's summary line, so this counts
+       rather than expecting exactly one. */
+    expect((await screen.findAllByText("Mbak Sari")).length).toBeGreaterThan(0);
+  });
+
+  it("offers no way to add another", async () => {
+    /* Mas Beni is free and unassigned, so the picker WOULD render on a turn
+       that was not finished — see the sibling case below. */
+    await openFinished();
+
+    /*
+      ⚠️ `combobox`, NOT `button`. The picker is a `SelectField` labelled
+      "Tambah groomer"; querying for a button finds nothing whether the control
+      is hidden or not, so this case would have been green either way.
+    */
+    expect(
+      screen.queryByRole("combobox", { name: /tambah groomer/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers no way to take one off", async () => {
+    await openFinished();
+
+    expect(
+      screen.queryByRole("button", { name: /hapus mbak sari dari/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers no way to throw the turn away either", async () => {
+    /*
+      Same reasoning as the crew controls: a finished turn is a record of work
+      somebody did, and its stamps and crew are what a payslip is reconciled
+      against.
+
+      ⚠️ THE SERVER STILL ALLOWS THE REMOVAL — it has its own guard, refusing
+      once a commission record points at the turn — so this asserts on the
+      BUTTON, not on the verb. The way back is the status.
+    */
+    await openFinished();
+
+    expect(
+      screen.queryByRole("button", { name: /hapus sesi/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("still offers both on a turn that is not finished", async () => {
+    /*
+      ⚠️ THE OTHER HALF, so the three cases above cannot be satisfied by hiding
+      the crew controls always. The line is `done` — not "has started" and not
+      "has a crew" — and somebody joining a bath halfway through stays ordinary.
+    */
+    bookings.availability.mockResolvedValue([
+      { _id: "user-1", fullName: "Mbak Sari", offReason: null },
+      { _id: "user-2", fullName: "Mas Beni", offReason: null },
+    ] as never);
+
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
+      isSuperAdmin: false,
+      permissions: FULL as never,
+    });
+
+    const toggles = await screen.findAllByRole("button", { expanded: false });
+    await userEvent.click(
+      toggles.find((node) => /mandi/i.test(node.textContent ?? ""))!,
+    );
+
+    expect(
+      await screen.findByRole("combobox", { name: /tambah groomer/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /hapus mbak sari dari/i }),
+    ).toBeInTheDocument();
+    /* And the turn can still be thrown away while it is not finished. */
+    expect(
+      screen.getByRole("button", { name: /hapus sesi/i }),
+    ).toBeInTheDocument();
+  });
+});
+
+/**
+ * ─── NOTHING MORE IS ARRANGED ONCE THE WORK IS OVER ─────────────────────────
+ *
+ * The far end of the ladder, and the mirror of "before the animal is on the
+ * table". A new turn on a finished service is work that was never done — and it
+ * REOPENS the service, dragging the animal back off `completed` after its
+ * commission has been computed. The server refuses it; this is the screen not
+ * offering it.
+ */
+describe("BookingPetWorkScreen — after the animal's work is over", () => {
+  const at = (status: string) => {
+    const one = booking();
+    one.pets = one.pets.map((entry) =>
+      entry.petId === MOCHI
+        ? { ...entry, status: status as (typeof entry)["status"] }
+        : entry,
+    );
+    bookings.getById.mockResolvedValue(one);
+
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
+      isSuperAdmin: false,
+      permissions: FULL as never,
+    });
+  };
+
+  it.each(["completed", "return_to_pawrents"])(
+    "offers no Tambah sesi while the animal is %s",
+    async (status) => {
+      at(status);
+
+      /* The service card is on screen — this is not passing because the page
+         failed to render. */
+      expect(
+        (await screen.findAllByText(/Grooming Full Service/)).length,
+      ).toBeGreaterThan(0);
+
+      expect(
+        screen.queryByRole("button", { name: /tambah sesi/i }),
+      ).not.toBeInTheDocument();
+    },
+  );
+
+  it("still offers it while the animal is on the table", async () => {
+    /*
+      ⚠️ AT OR PAST `completed`, NOT "has any finished turn". The whole working
+      day sits between the two gates, and a screen that hid this button as soon
+      as one bath was done would stop a groomer arranging the blow dry.
+    */
+    at("in_progress");
+
+    expect(
+      (await screen.findAllByRole("button", { name: /tambah sesi/i })).length,
+    ).toBeGreaterThan(0);
+  });
+});
+
 describe("BookingPetWorkScreen — adding a session", () => {
   it("asks for the name only, and saves it", async () => {
     renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {

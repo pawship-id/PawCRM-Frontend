@@ -95,6 +95,23 @@ export function SessionCrew({
 }) {
   const { busy, error, save } = useSave(bookingId, onChanged);
 
+  /*
+    ─── A FINISHED TURN IS READ-ONLY ──────────────────────────────────────────
+
+    Who stood at the table for work that is OVER is a matter of record, not a
+    setting: adding somebody claims they did work they were not there for, and
+    removing somebody erases work they did. The server refuses both (409); this
+    is the screen not offering what would be refused.
+
+    ⚠️ THE NAMES STAY VISIBLE. Only the controls go — the crew is exactly what
+    somebody reads back off a finished turn.
+
+    THE WAY BACK IS THE STATUS. A turn crewed by mistake is corrected by moving
+    it off `done` first, which is one deliberate act rather than a silent rewrite
+    of finished work.
+  */
+  const settled = session.status === "done";
+
   /* Nobody already on THIS turn is offered for it again: one person doing one
      turn twice is a slip, not a way of working. */
   const taken = new Set(session.groomers.map((who) => who._id));
@@ -139,43 +156,47 @@ export function SessionCrew({
                     ({who.offReason.toLowerCase()})
                   </span>
                 )}
-                <button
-                  type="button"
-                  aria-label={`Hapus ${who.name} dari ${session.sessionName}`}
-                  className="rounded-full p-0.5 text-muted transition hover:text-danger focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                  disabled={busy}
-                  onClick={() =>
-                    void save({
-                      sessionId: session.sessionId,
-                      groomerUserIds: crewWithout(who._id),
-                    })
-                  }
-                >
-                  <X className="size-3.5" aria-hidden />
-                </button>
+                {!settled && (
+                  <button
+                    type="button"
+                    aria-label={`Hapus ${who.name} dari ${session.sessionName}`}
+                    className="rounded-full p-0.5 text-muted transition hover:text-danger focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                    disabled={busy}
+                    onClick={() =>
+                      void save({
+                        sessionId: session.sessionId,
+                        groomerUserIds: crewWithout(who._id),
+                      })
+                    }
+                  >
+                    <X className="size-3.5" aria-hidden />
+                  </button>
+                )}
               </li>
             ))}
           </ul>
         )}
 
-        {session.groomers.length < MAX_GROOMERS && free.length > 0 && (
-          <SelectField
-            label="Tambah groomer"
-            value={PICK}
-            onChange={(value) =>
-              value !== PICK &&
-              void save({
-                sessionId: session.sessionId,
-                groomerUserIds: [
-                  ...session.groomers.map((who) => who._id),
-                  value,
-                ],
-              })
-            }
-            options={[{ value: PICK, label: "Pilih orangnya…" }, ...free]}
-            disabled={busy}
-          />
-        )}
+        {!settled &&
+          session.groomers.length < MAX_GROOMERS &&
+          free.length > 0 && (
+            <SelectField
+              label="Tambah groomer"
+              value={PICK}
+              onChange={(value) =>
+                value !== PICK &&
+                void save({
+                  sessionId: session.sessionId,
+                  groomerUserIds: [
+                    ...session.groomers.map((who) => who._id),
+                    value,
+                  ],
+                })
+              }
+              options={[{ value: PICK, label: "Pilih orangnya…" }, ...free]}
+              disabled={busy}
+            />
+          )}
       </Can>
     </div>
   );
@@ -206,6 +227,23 @@ export function RemoveSessionButton({
 }) {
   const { busy, error, save } = useSave(bookingId, onChanged);
   const [asking, setAsking] = useState(false);
+
+  /*
+    ─── NOT ON A FINISHED TURN ────────────────────────────────────────────────
+
+    Same reasoning as the crew controls beside it: a turn that is over is a
+    record of work somebody did, and the stamps, the duration and the crew on it
+    are what a payslip is reconciled against. Throwing that away is not one of
+    the arranging steps.
+
+    ⚠️ THE SERVER STILL ALLOWS IT, and that is not an oversight. Removal has its
+    own guard there — refused once a `commissionrecords` row points at the turn,
+    which is the question that actually matters for deleting finished work — and
+    a turn marked done by mistake still has to be removable. As with "Buka lagi",
+    what went is the affordance, not the move: put the turn back to `in_progress`
+    first and the button returns.
+  */
+  if (session.status === "done") return null;
 
   return (
     <Can feature="bookings" action="update">

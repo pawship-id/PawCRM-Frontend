@@ -8,7 +8,7 @@ import { Alert, Card, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
 import { BookingBelongingsCard } from "./BookingBelongingsCard";
-import { canStartWork, ladderFor } from "../statusFlow";
+import { canStartWork, hasCompletedWork, ladderFor } from "../statusFlow";
 import { bookingActorLabel, finishClock } from "../format";
 import { BookingHistoryCard } from "./BookingHistoryCard";
 import { BookingPetNotesCard } from "./BookingPetNotesCard";
@@ -479,6 +479,13 @@ export function BookingPetWorkScreen({
     case that reaches here.
   */
   const startable = group ? canStartWork(group) : false;
+
+  /*
+    THE OTHER END OF THE LADDER — at or past `completed`, where the work is over
+    and its commission is computed. Mirrors `hasCompletedWork` on the server, the
+    same helper `#assertCrewEditable` reads.
+  */
+  const finished = group ? hasCompletedWork(group, booking) : false;
 
   /*
     THE RUNGS THIS ANIMAL WALKS, AND HOW FAR IT HAS COME.
@@ -1482,15 +1489,31 @@ export function BookingPetWorkScreen({
                     </ul>
                   )}
 
-                  <div className="mt-3">
-                    {/* NO `groomers` — adding a turn asks for its NAME only;
-                        who works it is set in the turn's own row. */}
-                    <AddSessionButton
-                      bookingId={bookingId}
-                      service={service}
-                      onChanged={setBooking}
-                    />
-                  </div>
+                  {/*
+                    ⚠️ NOT ONCE THE ANIMAL'S WORK IS OVER. A new turn on a
+                    finished service is work that was never done, and adding one
+                    REOPENS the service (`refreshServiceWork`) — which drags the
+                    animal back off `completed` after its commission has already
+                    been computed. The server refuses it (409); this is the
+                    screen not offering what would be refused.
+
+                    `finished`, NOT `!startable`. The two gates are different
+                    ends of the same ladder: work cannot BEGIN before
+                    `in_progress`, and cannot be ADDED TO at or past
+                    `completed`. In between — the whole working day — both are
+                    open.
+                  */}
+                  {!finished && (
+                    <div className="mt-3">
+                      {/* NO `groomers` — adding a turn asks for its NAME only;
+                          who works it is set in the turn's own row. */}
+                      <AddSessionButton
+                        bookingId={bookingId}
+                        service={service}
+                        onChanged={setBooking}
+                      />
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
