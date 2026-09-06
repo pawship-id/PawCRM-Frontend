@@ -1418,23 +1418,22 @@ export function BookingPetWorkScreen({
                                           : next.label}
                                       </Button>
                                     )}
-                                    {status === "done" && row.assigned && (
-                                      <Button
-                                        variant="secondary"
-                                        size="sm"
-                                        /* Same treatment as Mulai: shown and
-                                           greyed, so the reason below explains
-                                           it rather than a gap. */
-                                        disabled={
-                                          busy === row._id || !startable
-                                        }
-                                        onClick={() =>
-                                          void move(row, "in_progress")
-                                        }
-                                      >
-                                        Buka lagi
-                                      </Button>
-                                    )}
+                                    {/*
+                                      ⚠️ NO "Buka lagi". A finished turn stays
+                                      finished from this screen — the shop's
+                                      decision: work marked done is done, and a
+                                      button to undo it sitting beside the one
+                                      that finishes it invited the pair to be
+                                      pressed as a toggle.
+
+                                      `WORK_TRANSITIONS` on the server still
+                                      allows `done → in_progress`, deliberately
+                                      and NOT as an oversight: a correction has
+                                      to stay possible through the API when a dog
+                                      genuinely comes back off the table. What
+                                      was removed is the affordance, not the
+                                      move.
+                                    */}
                                     {/*
                                       ⚠️ TWO REASONS A TURN CANNOT MOVE, AND
                                       THE RUNG IS SAID FIRST.

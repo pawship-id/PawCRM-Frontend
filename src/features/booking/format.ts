@@ -49,7 +49,7 @@ export function formatBookingMoment(value: string | null | undefined): string {
  * "Sistem" says so; a blank reads as a field that failed to load.
  *
  * ONE FORMATTER, because the trail is drawn twice — the card on the animal's
- * work page and `BookingHistoryDialog` — and two would drift.
+ * work page and the history card — and two would drift.
  */
 export function bookingActorLabel(
   name: string | null | undefined,

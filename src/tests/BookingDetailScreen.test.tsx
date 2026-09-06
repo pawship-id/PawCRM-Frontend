@@ -660,9 +660,10 @@ describe("BookingDetailScreen", () => {
     ).not.toBeInTheDocument();
 
     /*
-      AND THE LADDER IS STILL THEIRS — asserted on a FORWARD MOVE, not on
-      "Status history", which is ungated and would pass even if the split had
-      hidden every action a groomer needs.
+      AND THE LADDER IS STILL THEIRS — asserted on a FORWARD MOVE, which is the
+      thing the permission split actually gates. (It used to say "not on Status
+      history, which is ungated"; that row is gone, and with it the only
+      always-present item in this menu.)
     */
     /*
       ⚠️ NAMED BY THE ANIMAL. There is one status control PER ANIMAL since

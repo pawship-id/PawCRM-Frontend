@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarClock, EllipsisVertical, History } from "lucide-react";
+import { CalendarClock, EllipsisVertical } from "lucide-react";
 
 import { Alert, TextareaField } from "@/components";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Can } from "@/features/permissions";
+import { Can, usePermissions } from "@/features/permissions";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
@@ -34,7 +34,6 @@ import {
   impliedStatuses,
 } from "../statusFlow";
 import { BOOKING_STATUS_LABELS } from "./BookingStatusBadge";
-import { BookingHistoryDialog } from "./BookingHistoryDialog";
 import { BookingRescheduleDialog } from "./BookingRescheduleDialog";
 
 /** Mirrors NOTES_MAX_LENGTH in booking.model.js. */
@@ -122,7 +121,6 @@ export function BookingStatusActions({
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [historyOpen, setHistoryOpen] = useState(false);
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
 
   /*
@@ -132,6 +130,9 @@ export function BookingStatusActions({
   */
   const forward = forwardStatuses(pet, booking);
   const cancellable = canCancel(pet, booking);
+  /* Read here as well as through `Can`, and only to decide whether the trigger
+     that OPENS the menu is worth drawing — see `hasMenu`. */
+  const { can, canAny } = usePermissions();
   /*
     MOVING THE DATE IS NOT A RUNG, so it is not in `forward`. It sits beside
     cancellation as the other thing that can happen to an appointment which is
@@ -209,6 +210,30 @@ export function BookingStatusActions({
   const [primaryMove, ...laterMoves] = forward;
   const menuMoves = variant === "prominent" ? laterMoves : forward;
 
+  /*
+    ─── NO TRIGGER FOR AN EMPTY MENU ───────────────────────────────────────────
+
+    An animal that has finished has no rungs left — `transitionsFor` returns
+    nothing past the end of the ladder — and cannot be rescheduled, so
+    "Other statuses ▾" opened onto nothing at all. A control that answers a
+    click with a blank panel reads as broken, and it invited the press twice:
+    once to find out, once to be sure.
+
+    ⚠️ IT ASKS THE PERMISSIONS TOO, not just the ladder. Both groups inside the
+    menu are wrapped in `Can`, so a role that may only READ saw a trigger with
+    moves behind it that never rendered. Counting the rows the LADDER offers
+    would have left that case exactly as it was — which is the whole reason this
+    reads `usePermissions` rather than the arrays alone.
+
+    THE "Status history" ROW USED TO PAPER OVER THIS. It was ungated and always
+    present, so the menu was never empty; removing it is what made an empty one
+    reachable.
+  */
+  const hasMenu =
+    (menuMoves.length > 0 && canAny("bookings", ["advanceStatus", "update"])) ||
+    (reschedulable && can("bookings", "update")) ||
+    (cancellable && can("bookings", "cancel"));
+
   return (
     <>
       <div className="flex flex-wrap items-center gap-2">
@@ -220,82 +245,77 @@ export function BookingStatusActions({
           </Can>
         )}
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            {variant === "prominent" ? (
-              <Button variant="secondary" size="lg">
-                Other statuses ▾
-              </Button>
-            ) : (
-              <Button
-                variant="ghost"
-                size="sm"
-                // The icon carries no name, so the label says which row this
-                // menu belongs to — twenty identical "Aksi" buttons teach a
-                // screen-reader user nothing.
-                aria-label={`Aksi untuk ${label}`}
-              >
-                <EllipsisVertical className="size-4" />
-              </Button>
-            )}
-          </DropdownMenuTrigger>
+        {hasMenu && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              {variant === "prominent" ? (
+                <Button variant="secondary" size="lg">
+                  Other statuses ▾
+                </Button>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  // The icon carries no name, so the label says which row this
+                  // menu belongs to — twenty identical "Aksi" buttons teach a
+                  // screen-reader user nothing.
+                  aria-label={`Aksi untuk ${label}`}
+                >
+                  <EllipsisVertical className="size-4" />
+                </Button>
+              )}
+            </DropdownMenuTrigger>
 
-          <DropdownMenuContent align="end">
-            {menuMoves.length > 0 && (
-              /*
+            <DropdownMenuContent align="end">
+              {menuMoves.length > 0 && (
+                /*
                 EITHER GRANT, matching the API. `advanceStatus` is the
                 groomer's — check a dog in, mark it done — and `update` is the
                 stronger one a receptionist already holds. Gating on the
                 narrow one alone would have hidden these items from every role
                 that has only ever had `update`.
               */
-              <Can feature="bookings" action={["advanceStatus", "update"]}>
-                {menuMoves.map((status) => (
-                  <DropdownMenuItem
-                    key={status}
-                    onSelect={() => setNext(status)}
-                  >
-                    {BOOKING_STATUS_ACTIONS[status]}
-                  </DropdownMenuItem>
-                ))}
-                <DropdownMenuSeparator />
-              </Can>
-            )}
+                <Can feature="bookings" action={["advanceStatus", "update"]}>
+                  {menuMoves.map((status) => (
+                    <DropdownMenuItem
+                      key={status}
+                      onSelect={() => setNext(status)}
+                    >
+                      {BOOKING_STATUS_ACTIONS[status]}
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                </Can>
+              )}
 
-            {/* Ungated: the trail is a read, and seeing the row is the only grant
-              reading its history needs. */}
-            <DropdownMenuItem onSelect={() => setHistoryOpen(true)}>
-              <History />
-              Status history
-            </DropdownMenuItem>
-
-            {/*
+              {/*
             `update`, NOT `cancel`. Rearranging a day is an edit to what was
             agreed; gating it on the cancel grant would mean a receptionist who
             may move bookings cannot, while one who may only end them can.
           */}
-            {reschedulable && (
-              <Can feature="bookings" action="update">
-                <DropdownMenuItem onSelect={() => setRescheduleOpen(true)}>
-                  <CalendarClock />
-                  Reschedule
-                </DropdownMenuItem>
-              </Can>
-            )}
+              {reschedulable && (
+                <Can feature="bookings" action="update">
+                  <DropdownMenuItem onSelect={() => setRescheduleOpen(true)}>
+                    <CalendarClock />
+                    Reschedule
+                  </DropdownMenuItem>
+                </Can>
+              )}
 
-            {cancellable && (
-              <Can feature="bookings" action="cancel">
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  variant="destructive"
-                  onSelect={() => setNext("cancelled")}
-                >
-                  {BOOKING_STATUS_ACTIONS.cancelled}
-                </DropdownMenuItem>
-              </Can>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+              {cancellable && (
+                <Can feature="bookings" action="cancel">
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onSelect={() => setNext("cancelled")}
+                  >
+                    {BOOKING_STATUS_ACTIONS.cancelled}
+                  </DropdownMenuItem>
+                </Can>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
 
       {next && (
@@ -400,17 +420,11 @@ export function BookingStatusActions({
         </Dialog>
       )}
 
-      <BookingHistoryDialog
-        booking={booking}
-        open={historyOpen}
-        onOpenChange={setHistoryOpen}
-      />
-
       {/*
-        MOUNTED ONLY WHILE OPEN, unlike the history dialog beside it. It seeds
-        its two fields from `booking.scheduledAt` on first render, so a dialog
-        that stayed mounted would keep showing the old date after a reschedule
-        until the whole screen remounted.
+        MOUNTED ONLY WHILE OPEN. It seeds its two fields from
+        `booking.scheduledAt` on first render, so a dialog that stayed mounted
+        would keep showing the old date after a reschedule until the whole
+        screen remounted.
       */}
       {rescheduleOpen && (
         <BookingRescheduleDialog

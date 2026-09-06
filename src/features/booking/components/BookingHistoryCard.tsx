@@ -13,12 +13,15 @@ import { BOOKING_STATUS_LABELS } from "./BookingStatusBadge";
  * word. It replaced a flat list of `Status → in_progress` lines that read as
  * four unrelated facts and printed the API's own values at a shop.
  *
- * ─── NEWEST FIRST, AND THE DIALOG IS OLDEST FIRST ──────────────────────────
+ * ─── NEWEST FIRST ──────────────────────────────────────────────────────────
  *
- * Deliberately opposite, because the two answer different questions. This card
- * sits open beside the work all day and is glanced at for "what just happened";
- * `BookingHistoryDialog` is opened on purpose to read the visit as a story, and
- * a story starts at the beginning.
+ * The card sits open beside the work all day and is glanced at for "what just
+ * happened", so the answer is at the top.
+ *
+ * There used to be a `BookingHistoryDialog` behind a "Status history" menu row,
+ * ordered oldest-first on the argument that a dialog opened on purpose is read
+ * as a story. It was removed: two readings of one trail, one of them behind two
+ * clicks, on a page where the other is already open.
  *
  * ─── THE CURRENT ENTRY IS MARKED IN NAVY, NOT ORANGE ───────────────────────
  *
@@ -55,9 +58,8 @@ export function BookingHistoryCard({
    * changes shape.
    *
    * REQUIRED, not optional-with-a-merged-default, because there is exactly one
-   * call site and it is a per-animal page. A booking-wide reading of the same
-   * events already exists — `BookingHistoryDialog` — so a default here would
-   * only be a second way to get the behaviour that was just removed.
+   * call site and it is a per-animal page. A default would only be a second way
+   * to get the merged behaviour that was deliberately removed.
    */
   pet: BookingPet;
 }) {

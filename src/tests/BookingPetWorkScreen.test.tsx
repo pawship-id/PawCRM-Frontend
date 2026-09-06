@@ -292,10 +292,16 @@ describe("BookingPetWorkScreen", () => {
     );
   });
 
-  it("lets finished work be reopened", async () => {
+  it("offers no way to reopen finished work", async () => {
     /*
-      A dog handed back wet comes off the table again. Refusing it would send the
-      correction onto paper, where nothing can read it.
+      ⚠️ THIS CASE USED TO ASSERT THE OPPOSITE — that "Buka lagi" reopened a
+      finished turn. The button was removed on the shop's request: work marked
+      done is done, and an undo sitting beside the button that finishes it
+      invited the pair to be pressed as a toggle.
+
+      THE SERVER STILL ALLOWS THE MOVE (`WORK_TRANSITIONS`: done → in_progress),
+      so a real correction remains possible through the API. What went is the
+      affordance, which is why this asserts on the BUTTON and not on the verb.
     */
     bookings.getById.mockResolvedValue(
       booking(
@@ -313,15 +319,15 @@ describe("BookingPetWorkScreen", () => {
     });
 
     await openSession();
-    await userEvent.click(screen.getByRole("button", { name: /buka lagi/i }));
 
-    await waitFor(() =>
-      expect(bookings.advanceItemWork).toHaveBeenCalledWith(
-        "bk-1",
-        "se-1",
-        "in_progress",
-      ),
-    );
+    /* The stamps are there — the turn IS finished and open, so this is not
+       passing because the row failed to render. */
+    expect(screen.getByText(/09\.00\s*–\s*10\.30/)).toBeInTheDocument();
+
+    expect(
+      screen.queryByRole("button", { name: /buka lagi/i }),
+    ).not.toBeInTheDocument();
+    expect(bookings.advanceItemWork).not.toHaveBeenCalled();
   });
 
   it("shows the clock in the shop's own hours, not UTC", async () => {

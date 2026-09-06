@@ -135,9 +135,11 @@ describe("BookingStatusActions", () => {
 
     const menu = await openMenu();
 
-    expect(
-      within(menu).getByRole("menuitem", { name: /status history/i }),
-    ).toBeInTheDocument();
+    /*
+      ⚠️ THE MENU IS EMPTY OF MOVES, and since the "Status history" row was
+      removed there is nothing ungated left to keep it open — so this asserts on
+      what is ABSENT. A final booking offers no way back and no way on.
+    */
     expect(
       within(menu).queryByRole("menuitem", { name: /batalkan/i }),
     ).toBeNull();
@@ -317,21 +319,29 @@ describe("BookingStatusActions", () => {
     ).toBeNull();
   });
 
-  /* The trail is a read: seeing the row is the only grant it needs. */
-  it("still offers the history to a role that may move nothing", async () => {
+  it("offers no menu at all to a role that may only read", async () => {
+    /*
+      ⚠️ THE TRIGGER ITSELF IS GONE, not just its rows.
+
+      Every group in this menu is wrapped in `Can`, so a read-only role saw a
+      button that opened onto nothing. `hasMenu` therefore asks the PERMISSIONS
+      as well as the ladder — counting the moves the ladder offers would have
+      left this case exactly as it was.
+    */
     render(booking(), {
       isSuperAdmin: false,
       permissions: [{ feature: "bookings", actions: ["read"] }],
     });
 
-    const menu = await openMenu();
-
+    /*
+      NO POSITIVE ANCHOR TO WAIT ON: with nothing granted this component renders
+      an empty row, so there is no text to find first. `render` is synchronous
+      and every other case in this file opens this same trigger successfully, so
+      "it did not render at all" is not a way this can pass by accident.
+    */
     expect(
-      within(menu).getByRole("menuitem", { name: /status history/i }),
-    ).toBeInTheDocument();
-    expect(
-      within(menu).queryByRole("menuitem", { name: "Mark arrived" }),
-    ).toBeNull();
+      screen.queryByRole("button", { name: /Aksi untuk/i }),
+    ).not.toBeInTheDocument();
   });
 
   /*
@@ -357,94 +367,6 @@ describe("BookingStatusActions", () => {
       await screen.findByText(/somebody else changed it first/i),
     ).toBeInTheDocument();
     expect(onChanged).not.toHaveBeenCalled();
-  });
-});
-
-/**
- * `status` says where a booking stands and nothing about how it got there;
- * `updatedAt` answers only the last move, because the next one overwrites it.
- */
-describe("BookingStatusActions — the trail", () => {
-  async function openHistory(target: Booking) {
-    render(target);
-    const menu = await openMenu(target.bookingNumber ?? "booking ini");
-    await userEvent.click(
-      within(menu).getByRole("menuitem", { name: /status history/i }),
-    );
-  }
-
-  it("lists each move with its time and who made it", async () => {
-    await openHistory(
-      booking({
-        statusHistory: [
-          event(),
-          event({ status: "arrived", at: "2026-08-26T03:32:00.000Z" }),
-        ],
-      }),
-    );
-
-    const dialog = await screen.findByRole("dialog", {
-      name: /status history/i,
-    });
-
-    expect(within(dialog).getByText("Confirmed")).toBeInTheDocument();
-    expect(within(dialog).getByText("Arrived")).toBeInTheDocument();
-    expect(within(dialog).getAllByText("Mbak Sari (ops)")).toHaveLength(2);
-  });
-
-  /* Two entries at the same second would otherwise claim two decisions. */
-  it("marks the rung that came along with another move", async () => {
-    await openHistory(
-      booking({
-        statusHistory: [
-          event({ implied: true }),
-          event({ status: "arrived", implied: false }),
-        ],
-      }),
-    );
-
-    const dialog = await screen.findByRole("dialog", {
-      name: /status history/i,
-    });
-
-    expect(within(dialog).getByText(/otomatis/i)).toBeInTheDocument();
-  });
-
-  it("names the mover with the hat they were wearing", async () => {
-    /*
-      A TRAIL IS READ BY SOMEBODY WHO WAS NOT THERE, and a bare name assumes
-      they know who Mbak Sari is. The dialog shares its formatter with the work
-      page's timeline card so the two cannot drift apart.
-    */
-    await openHistory(booking({ statusHistory: [event()] }));
-
-    const dialog = await screen.findByRole("dialog", {
-      name: /status history/i,
-    });
-
-    expect(within(dialog).getByText("Mbak Sari (ops)")).toBeInTheDocument();
-  });
-
-  /* Nothing human moved it — a booking settled by a paid sale. */
-  it("names the mover as the system when there was no person", async () => {
-    await openHistory(
-      booking({
-        statusHistory: [event({ by: null, byName: null, status: "completed" })],
-      }),
-    );
-
-    const dialog = await screen.findByRole("dialog", {
-      name: /status history/i,
-    });
-
-    expect(within(dialog).getByText("Sistem")).toBeInTheDocument();
-  });
-
-  /* An empty trail means "not recorded", never "never moved". */
-  it("says a trail is missing rather than pretending nothing happened", async () => {
-    await openHistory(booking({ statusHistory: [] }));
-
-    expect(await screen.findByText(/tidak tercatat/i)).toBeInTheDocument();
   });
 });
 
@@ -535,7 +457,28 @@ describe("BookingStatusActions — prominent variant", () => {
     renderProminent(booking({ status: "return_to_pawrents" }));
 
     expect(screen.queryByRole("button", { name: /→/ })).not.toBeInTheDocument();
-    // But Status lain — and the trail inside it — is still reachable.
+
+    /*
+      ⚠️ AND NOR IS "Other statuses" — this used to assert the opposite.
+
+      The trigger stayed because the menu behind it was never empty: the ungated
+      "Status history" row was always in it. That row is gone, and an animal at
+      the end of its ladder has no moves, no reschedule and no cancel left — so
+      the button opened onto a blank panel, which reads as broken and invites the
+      press twice.
+    */
+    expect(
+      screen.queryByRole("button", { name: /other statuses/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps Other statuses while there is still one thing behind it", async () => {
+    /*
+      THE OTHER HALF, so the case above cannot be satisfied by hiding the
+      trigger always. A confirmed animal has skip-ahead rungs AND a reschedule.
+    */
+    renderProminent(booking({ status: "confirmed" }));
+
     expect(
       screen.getByRole("button", { name: /other statuses/i }),
     ).toBeInTheDocument();
