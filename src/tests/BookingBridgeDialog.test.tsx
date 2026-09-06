@@ -21,6 +21,17 @@ const CUSTOMER_ID = "5a7f1f77bcf86cd7994390c1";
 const PET_ID = "5a7f1f77bcf86cd7994390d1";
 const SERVICE_ID = "5a7f1f77bcf86cd7994390e1";
 
+const PET_ITEM_ID = "5a7f1f77bcf86cd799439171";
+
+/** The same booking with its ANIMAL standing at `status`. */
+const withPetStatus = (status: Booking["pets"][number]["status"]): Booking => {
+  const base = booking();
+  return {
+    ...base,
+    pets: base.pets.map((pet) => ({ ...pet, status })),
+  };
+};
+
 const booking = (overrides: Partial<Booking> = {}): Booking => ({
   _id: "5a7f1f77bcf86cd799439101",
   tenantId: "507f1f77bcf86cd799439011",
@@ -41,7 +52,30 @@ const booking = (overrides: Partial<Booking> = {}): Booking => ({
     `items` — the group is empty here because the shape, not the contents, is
     what it needs.
   */
-  pets: [{ petId: PET_ID, petName: "Bruno", services: [] }],
+  /*
+    ⚠️ THE STATUS LIVES HERE since PCR-042 — a visit where Mochi has arrived and
+    Coco was sent home is in two states, so the header has none to give. The
+    dialog draws one badge per animal from this.
+  */
+  pets: [
+    {
+      petItemId: PET_ITEM_ID,
+      petId: PET_ID,
+      petName: "Bruno",
+      status: "confirmed",
+      statusHistory: [],
+      nextStatuses: [],
+      cancelReason: null,
+      internalNotes: null,
+      customerNotes: null,
+      notes: null,
+      belongings: [],
+      media: [],
+      pulledToCartAt: null,
+      pulledToInvoiceAt: null,
+      services: [],
+    },
+  ],
   petCount: 1,
   totalAmount: "150000.0000",
   totalDurationMin: null,
@@ -51,12 +85,12 @@ const booking = (overrides: Partial<Booking> = {}): Booking => ({
       _id: "5a7f1f77bcf86cd799439151",
       petId: PET_ID,
       petName: "Bruno",
-    /* Null on a main service — an add-on names the row it hangs off. */
-    parentItemId: null,
-    /* Nobody helping: this row is one groomer's, which is the ordinary case. */
-    assistantGroomers: [],
-    /* The kind of work, snapshotted as text — NOT main/addon. See BookingItem. */
-    serviceType: "Grooming",
+      /* Null on a main service — an add-on names the row it hangs off. */
+      parentItemId: null,
+      /* Nobody helping: this row is one groomer's, which is the ordinary case. */
+      assistantGroomers: [],
+      /* The kind of work, snapshotted as text — NOT main/addon. See BookingItem. */
+      serviceType: "Grooming",
       serviceId: SERVICE_ID,
       name: "Grooming Full Service",
       price: "150000.0000",
@@ -73,7 +107,8 @@ const booking = (overrides: Partial<Booking> = {}): Booking => ({
   petName: "Bruno",
   customerName: "Ibu Rina",
   scheduledAt: "2026-08-24T02:00:00.000Z",
-  status: "confirmed",
+  /* ⚠️ NO `status` HERE — it moved onto the animal in PCR-042. `statusHistory`
+     survived: it is a LOG of what happened on the visit, not a state. */
   statusHistory: [],
   origin: "booking",
   posTransactionId: null,
@@ -218,10 +253,10 @@ describe("BookingBridgeDialog — pulling", () => {
     nobody confirmed — and "Selesai" and "Draft" are different conversations
     across a counter, so the row says which it is.
   */
+  /* ⚠️ ON THE ANIMAL, not on the header — `booking({ status })` sets a field
+     `Booking` no longer has, and the badge is drawn from `pets[]`. */
   it("says what state each booking is in", async () => {
-    mockedBookings.bridge.mockResolvedValue([
-      booking({ status: "in_progress" }),
-    ]);
+    mockedBookings.bridge.mockResolvedValue([withPetStatus("in_progress")]);
     open();
 
     expect(await screen.findByText("In Progress")).toBeVisible();
@@ -233,7 +268,7 @@ describe("BookingBridgeDialog — pulling", () => {
   */
   it("names a draft that has no number yet", async () => {
     mockedBookings.bridge.mockResolvedValue([
-      booking({ status: "draft", bookingNumber: null }),
+      { ...withPetStatus("draft"), bookingNumber: null },
     ]);
     open();
 
@@ -339,10 +374,9 @@ describe("BookingBridgeDialog — the ad-hoc tab", () => {
   it("pre-selects the only pet, removing a click from every walk-in", async () => {
     open();
 
-    expect(await screen.findByRole("button", { name: "Bella" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    expect(
+      await screen.findByRole("button", { name: "Bella" }),
+    ).toHaveAttribute("aria-pressed", "true");
   });
 });
 
@@ -369,7 +403,11 @@ describe("BookingBridgeDialog — several animals in one opening", () => {
     );
     mockedServices.list.mockResolvedValue(
       page([
-        { _id: SERVICE_ID, name: "Grooming Full Service", price: "150000.0000" },
+        {
+          _id: SERVICE_ID,
+          name: "Grooming Full Service",
+          price: "150000.0000",
+        },
         { _id: SERVICE_B, name: "Potong kuku", price: "25000.0000" },
       ]),
     );
@@ -381,7 +419,9 @@ describe("BookingBridgeDialog — several animals in one opening", () => {
     serviceName: RegExp,
   ) => {
     await user.click(await screen.findByRole("button", { name: petName }));
-    await user.click(await screen.findByRole("checkbox", { name: serviceName }));
+    await user.click(
+      await screen.findByRole("checkbox", { name: serviceName }),
+    );
   };
 
   it("hands back one entry per animal, in a single call", async () => {
