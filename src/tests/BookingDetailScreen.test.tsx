@@ -427,6 +427,57 @@ describe("BookingDetailScreen", () => {
     expect(screen.getAllByText("Confirmed")).toHaveLength(2);
   });
 
+  /*
+    ─── THE CONTROL SITS UNDER THE NAME IT ACTS ON ────────────────────────────
+
+    The status menus were in the page header: one per animal, side by side, above
+    a title that named none of them. Two identical kebabs a few pixels apart is a
+    control nobody can aim — the only way to tell which dog you were about to
+    move was to open one and read its label.
+
+    ASSERTED BY CONTAINMENT, not by counting. "There are two triggers" was true
+    before the move as well; what changed is WHICH BLOCK each one lives in, and
+    that is the thing a regression would undo.
+  */
+  it("puts each animal's status menu inside that animal's own card", async () => {
+    const { container } = renderWithAuth(<BookingDetailScreen id="bk-1" />);
+
+    await screen.findAllByText("Mochi");
+
+    const cards = [...container.querySelectorAll("li")].filter((node) =>
+      node.querySelector("a[href*='/hewan/']"),
+    );
+
+    /* Two animals, two cards — and the filter is what identifies a card: the
+       link into that animal's work page, which only a pet block carries. */
+    expect(cards).toHaveLength(2);
+
+    /*
+      ⚠️ AND EXACTLY TWO IN TOTAL — one per card, none anywhere else.
+
+      The first version of this assertion looked for triggers "in the header" by
+      walking up from the `<h1>`, and it PASSED with the menus still up there:
+      the walk landed on the wrong ancestor. A guard that cannot go red guards
+      nothing, so it was replaced with a count that cannot miss — a menu left in
+      the header makes four where there should be two.
+    */
+    expect(
+      container.querySelectorAll('button[aria-label^="Aksi untuk"]'),
+    ).toHaveLength(2);
+
+    for (const [card, name] of [
+      [cards[0], "Mochi"],
+      [cards[1], "Coco"],
+    ] as const) {
+      const trigger = card.querySelector(
+        `button[aria-label*="${name}"]`,
+      ) as HTMLElement | null;
+
+      expect(trigger).not.toBeNull();
+      expect(trigger?.getAttribute("aria-label")).toMatch(/^Aksi untuk/);
+    }
+  });
+
   it("says which ANIMAL has been billed and which has not", async () => {
     bookings.getById.mockResolvedValue(
       booking({

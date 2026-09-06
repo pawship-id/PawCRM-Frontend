@@ -219,21 +219,20 @@ export function BookingDetailScreen({ id }: { id: string }) {
             </Can>
           )}
           {/*
-            ─── ONE CONTROL PER ANIMAL ──────────────────────────────────────
+            ─── THE STATUS MENUS ARE NOT HERE ANY MORE ────────────────────────
 
-            The status is the animal's, so the thing that moves it is too. A
-            single menu for two dogs could only ever be right about one of them —
-            and "the visit has arrived" is still one click on a one-dog booking,
-            which is most of them.
+            There was one per animal, side by side, above a title that named none
+            of them — two identical kebabs a few pixels apart, where the only way
+            to tell which dog you were about to move was to open one and read the
+            label.
+
+            EACH ONE MOVED ONTO ITS ANIMAL'S CARD, into the row that already
+            holds "Pekerjaan" and "Profil". The control now sits under the name
+            it acts on, which is the whole point: the status is the animal's.
+
+            WHAT STAYS HERE IS THE VISIT'S. "Ubah" edits the booking — its
+            services, its date — and there is exactly one of those.
           */}
-          {booking.pets.map((pet) => (
-            <BookingStatusActions
-              key={pet.petItemId}
-              booking={booking}
-              pet={pet}
-              onChanged={() => setNonce((n) => n + 1)}
-            />
-          ))}
         </div>
       </div>
 
@@ -605,7 +604,22 @@ export function BookingDetailScreen({ id }: { id: string }) {
                   is, and what it comes to. The button below is the way to them.
                 */}
 
-                <div className="mt-3 flex flex-wrap gap-2">
+                {/*
+                  ─── THE ACTION ROW, AND WHY THE STATUS MENU LANDS HERE ────────
+
+                  ⚠️ NOT BESIDE THE TOTAL, which was the other candidate. The
+                  card's top line is what somebody SCANS — name, status, claim,
+                  money — and putting a target at the end of it drops a button
+                  into a column of figures that reads down across cards. Money
+                  and buttons want different eyes.
+
+                  SO: THE ROW THAT IS ALREADY THE ACTION ROW. "Pekerjaan" and
+                  "Profil" are the other two things to do with this animal, and
+                  the kebab sits at the RIGHT EDGE — where every table in this app
+                  ends its actions, so somebody scanning for "what can I do with
+                  this" finds it where they already look.
+                */}
+                <div className="mt-3 flex flex-wrap items-center gap-2">
                   {/*
                     THE WAY INTO THE WORK, and the primary action on this block.
 
@@ -635,6 +649,19 @@ export function BookingDetailScreen({ id }: { id: string }) {
                       </Link>
                     </Button>
                   )}
+
+                  {/*
+                    `ml-auto` RATHER THAN A SECOND FLEX CONTAINER: the row wraps
+                    on a narrow screen, and a nested "push right" would leave the
+                    kebab stranded on a line of its own with nothing beside it.
+                  */}
+                  <span className="ml-auto">
+                    <BookingStatusActions
+                      booking={booking}
+                      pet={group}
+                      onChanged={() => setNonce((n) => n + 1)}
+                    />
+                  </span>
                 </div>
               </li>
             );
