@@ -1605,6 +1605,19 @@ export interface PosReceiptItem {
   /** FR-8's sub-line, denormalised at sale time so a reprint survives a rename. */
   petName: string | null;
   groomerName: string | null;
+  /**
+   * The add-ons attached to THIS service, printed inside its line rather than
+   * beside it — the same shape the basket shows, so the paper says what the
+   * cashier just checked on screen.
+   *
+   * GROUPED BY THE SERVER, once, because four things render this payload — the
+   * preview, the print sheet, the PDF and the public page — and a receipt that
+   * grouped differently in any of them would be a different document.
+   *
+   * ALWAYS EMPTY ON A NESTED ONE: nesting is one deep by construction (an add-on
+   * has no add-ons — see the booking model), and on every retail line.
+   */
+  addons: PosReceiptItem[];
 }
 
 /**

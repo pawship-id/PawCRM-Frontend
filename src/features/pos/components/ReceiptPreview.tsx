@@ -118,8 +118,31 @@ export function ReceiptPreview({
         {receipt.items.map((item, index) => (
           <li key={`${item.name}-${index}`}>
             <div className="flex justify-between gap-2">
-              <span className="min-w-0 flex-1">{item.name}</span>
+              {/*
+                THE ANIMAL IN THE TITLE — "Cici - Basic Grooming".
+
+                It was a sub-line of its own beneath the price, which on a
+                two-dog visit put the two things a customer pairs up — whose
+                grooming, and how much — two rows apart, with the quantity line
+                between them. Named here, one row answers both.
+
+                A RETAIL LINE HAS NO ANIMAL and simply keeps its own name; a bag
+                of feed belongs to nobody in particular.
+              */}
+              <span className="min-w-0 flex-1">
+                {item.petName ? `${item.petName} - ${item.name}` : item.name}
+              </span>
               <span className="tabular-nums">
+                {/*
+                  ITS OWN PRICE, NOT THE PAIR'S. The add-on prints on a row of
+                  its own directly beneath with its own figure, so adding it in
+                  here would show the customer the same 20.000 twice — once
+                  inside this number and once under it.
+
+                  THE BASKET SUMS AND THIS DOES NOT, on purpose: there the
+                  add-on is detail INSIDE the service's line, here it is a row.
+                  Both add up to the same subtotal.
+                */}
                 {formatMoney(item.lineTotal)}
               </span>
             </div>
@@ -133,12 +156,36 @@ export function ReceiptPreview({
                 </span>
               )}
             </div>
-            {/* FR-8's sub-line: which animal, and who groomed it. */}
-            {(item.petName || item.groomerName) && (
-              <div className="text-xs text-muted">
-                {[item.petName, item.groomerName].filter(Boolean).join(" · ")}
+            {/*
+              THE ADD-ONS, INDENTED UNDER THEIR SERVICE. A row of its own, with
+              its own price — but pushed in, under the bath it was done to,
+              rather than standing level with it. "Extra Handling" read as a
+              third thing bought when it sat flush with the services.
+
+              NO ANIMAL AND NO GROOMER ON IT. An add-on inherits both from its
+              parent by construction, and the title above already names the
+              animal; the groomer is off the printed sheet entirely — FR-8 asks
+              for "hewan + groomer" and the shop asked for the groomer back off
+              it, since who held the clippers is a rostering fact on a slip that
+              travels to whoever the customer forwards it to. The name is still
+              snapshotted on the sale and still shown in the basket.
+            */}
+            {item.addons.map((addon, addonIndex) => (
+              <div
+                key={`${addon.name}-${addonIndex}`}
+                className="flex justify-between gap-2 pl-3 text-xs text-muted"
+              >
+                <span className="min-w-0 flex-1">{`+ ${addon.name}`}</span>
+                {addon.discount && (
+                  <span className="tabular-nums">
+                    −{formatMoney(addon.discount.resolvedAmount)}
+                  </span>
+                )}
+                <span className="tabular-nums">
+                  {formatMoney(addon.lineTotal)}
+                </span>
               </div>
-            )}
+            ))}
           </li>
         ))}
       </ul>

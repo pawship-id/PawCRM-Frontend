@@ -36,6 +36,7 @@ const receipt = (overrides: Partial<PublicReceipt> = {}): PublicReceipt => ({
       discount: null,
       petName: null,
       groomerName: null,
+      addons: [],
     },
   ],
   otherCharges: [],
