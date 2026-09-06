@@ -8,7 +8,7 @@ import { Alert, Card, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
 import { BookingBelongingsCard } from "./BookingBelongingsCard";
-import { canStartWork } from "../statusFlow";
+import { canStartWork, ladderFor } from "../statusFlow";
 import { bookingActorLabel, finishClock } from "../format";
 import { BookingHistoryCard } from "./BookingHistoryCard";
 import { BookingPetNotesCard } from "./BookingPetNotesCard";
@@ -35,12 +35,16 @@ import type {
   Customer,
   BookingItem,
   BookingSession,
+  BookingStatus,
   BookingWorkStatus,
   Pet,
 } from "@/types/api";
 
 import { BookingStatusActions } from "./BookingStatusActions";
-import { BookingStatusBadge } from "./BookingStatusBadge";
+import {
+  BOOKING_STATUS_LABELS,
+  BookingStatusBadge,
+} from "./BookingStatusBadge";
 
 /** What each rung is called, and what the button that reaches it says. */
 const WORK_LABELS: Record<BookingWorkStatus, string> = {
@@ -477,6 +481,25 @@ export function BookingPetWorkScreen({
   const startable = group ? canStartWork(group) : false;
 
   /*
+    THE RUNGS THIS ANIMAL WALKS, AND HOW FAR IT HAS COME.
+
+    `ladderFor` already drops a trip leg nobody booked; `draft` is dropped here
+    because it is where a booking sits before it is an appointment, not a step.
+
+    `reached` IS -1 FOR A STATUS OFF THE TRACK — `draft` itself, and `cancelled`,
+    which is a way out rather than a rung. Both draw an empty track, which is the
+    honest picture: neither has walked any of it.
+  */
+  /* ⚠️ ANNOTATED. TypeScript infers a type predicate from the filter and
+     narrows the element type to "everything but draft", which then refuses
+     `indexOf(group.status)` — a status that CAN be `draft`, and whose honest
+     answer here is -1. */
+  const track: BookingStatus[] = (booking ? ladderFor(booking) : []).filter(
+    (rung) => rung !== "draft",
+  );
+  const reached = group ? track.indexOf(group.status) : -1;
+
+  /*
     ⚠️ THE ANIMAL, NOT ONLY ITS SERVICES. The guard used to ask whether there were
     any rows; it has to ask whether this animal is on the visit at all, because
     everything below now reads `group.status` — the ladder lives there since
@@ -541,10 +564,14 @@ export function BookingPetWorkScreen({
     with it.
   */
   const doneRows = rows.filter((row) => row.workStatus === "done").length;
-  const runningRows = rows.filter(
-    (row) => row.workStatus === "in_progress",
-  ).length;
-  const lastEvent = booking.statusHistory?.[booking.statusHistory.length - 1];
+  /*
+    ⚠️ THIS ANIMAL'S LAST MOVE, not the visit's. Read from the merged trail, the
+    line under "Status sejak" reported whoever moved ANY dog last — so opening
+    Cici could name the person who had just sent Cilang home, at a time Cici
+    never moved. Same source as the Riwayat card beside it.
+  */
+  const petTrail = group?.statusHistory ?? [];
+  const lastEvent = petTrail[petTrail.length - 1];
 
   /*
     THE WHOLE BOOKING'S UNFINISHED WORK, not just this animal's — the same set
@@ -568,7 +595,7 @@ export function BookingPetWorkScreen({
             and the first anybody heard of it was a 409.
           */
           .filter((session) => session.status !== "done")
-          .map(() => ({ name: service.name })),
+          .map(() => service.name),
       ),
     );
 
@@ -672,26 +699,44 @@ export function BookingPetWorkScreen({
             </p>
 
             {/*
-              ONE SEGMENT PER SESSION, not the reference's six fixed rungs. With
-              status on the rows, a six-dot booking track would summarise several
-              different things into one line — see the analysis. This track is
-              about THIS animal, and it has exactly as many segments as it has
-              work.
+              ─── ONE SEGMENT PER RUNG, NOT PER SESSION ────────────────────────
+
+              It used to be one segment per turn, coloured by work status. That
+              made the strip a second, quieter version of the sentence sitting
+              beside it — "0 dari 3 selesai · 1 sedang dikerjakan" — while the
+              thing it sits UNDER is "Status sejak", which is about the ladder.
+              Two readings of two different facts, drawn as one line.
+
+              It now tracks THE ANIMAL'S PATH: Requested → … → Return to
+              Pawrents, filled as far as this dog has come.
+
+              ⚠️ `draft` IS DROPPED, and only that one. A draft is a line in a
+              basket somebody may yet empty — it is where a booking sits before
+              it exists as an appointment, not a step it walks — so the track
+              starts where the visit does. Everything after it is on the ladder,
+              INCLUDING the trip legs, which `ladderFor` puts there only when a
+              van was actually booked.
+
+              ⚠️ NAVY, NOT ORANGE, for a rung that has been passed — ui-rules §4.
+              The status badge above is already orange while the animal is on the
+              table, and two orange things at once means one of them is wrong.
+              "How far along" is not a call to action.
             */}
             <div
               className="mt-1.5 flex items-center gap-1"
               role="img"
-              aria-label={`${doneRows} dari ${rows.length} sesi selesai`}
+              aria-label={
+                reached < 0
+                  ? `Status ${group.status} — di luar alur kunjungan`
+                  : `${reached + 1} dari ${track.length} tahap: ${BOOKING_STATUS_LABELS[group.status] ?? group.status}`
+              }
             >
-              {rows.map((row) => (
+              {track.map((rung, index) => (
                 <span
-                  key={row._id}
+                  key={rung}
+                  title={BOOKING_STATUS_LABELS[rung] ?? rung}
                   className={`h-1 flex-1 rounded-full ${
-                    row.workStatus === "done"
-                      ? "bg-success"
-                      : row.workStatus === "in_progress"
-                        ? "bg-warning"
-                        : "bg-border"
+                    index <= reached ? "bg-primary" : "bg-border"
                   }`}
                 />
               ))}
@@ -700,21 +745,34 @@ export function BookingPetWorkScreen({
 
           {blocking.length > 0 && group.status !== "completed" && (
             /*
-              THE SAME SENTENCE THE SERVER WOULD ANSWER WITH IF THE BUTTON BELOW
-              WERE PRESSED ANYWAY — said first, in red, the reference's own
-              pattern. It is a courtesy, never the gate: the guard lives in
-              `BookingService#changeStatus`, and pressing through still gets a
-              409 rather than a completed booking with a bath nobody finished.
+              THE FACT THE SERVER WOULD ANSWER WITH IF THE BUTTON BELOW WERE
+              PRESSED ANYWAY — said first, in red. It is a courtesy, never the
+              gate: the guard lives in `BookingService#changeStatus`, and
+              pressing through still gets a 409 rather than a completed booking
+              with a bath nobody finished.
+
+              ⚠️ NO SERVICE NAME, AND NO OVERFLOW COUNT. This read
+              &ldquo;Basic Grooming&rdquo; belum selesai · +2 lagi — a name, a
+              tally of the names it could not fit, AND the progress count beside
+              it, three phrases for one fact on a strip that also carries the
+              status, the clock, the track and a button. Naming one of three
+              services is not enough to act on and is too much to skim; WHICH
+              service is unfinished is on the cards below, where the turns are.
+
+              The count beside it says how much is left, which is the part
+              somebody standing at the counter actually reads.
+
+              ⚠️ §13: danger text is 4.38:1, so it must stay ≥14px semibold and
+              paired with a word — `text-xs` here is 13px by this repo's scale,
+              which is the floor and why the weight is not optional.
             */
-            <p className="max-w-xs text-xs font-semibold text-danger">
-              &ldquo;{blocking[0].name}&rdquo; belum selesai
-              {blocking.length > 1 ? ` · +${blocking.length - 1} lagi` : ""}
+            <p className="text-xs font-semibold text-danger">
+              Layanan belum selesai
             </p>
           )}
 
           <p className="text-xs text-muted">
             {doneRows} dari {rows.length} selesai
-            {runningRows > 0 ? ` · ${runningRows} sedang dikerjakan` : ""}
           </p>
 
           {/*

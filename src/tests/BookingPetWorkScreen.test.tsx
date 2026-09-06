@@ -746,6 +746,41 @@ describe("BookingPetWorkScreen — what blocks completing", () => {
     });
   };
 
+  /**
+   * ⚠️ EVERY CREWED TURN ON THE WHOLE VISIT IS FINISHED, and one crewless turn
+   * is not. That is the ONLY arrangement that can tell the two builds apart.
+   *
+   * The warning no longer names a service, so it is one string either way — the
+   * only observable is whether it appears at all. Coco's nail clip has a crew
+   * and is pending in the shared fixture, which would keep the warning on the
+   * screen under EITHER reading; so it has to be finished here for Mochi's
+   * unattended turn to be the only thing left.
+   */
+  const onlyCrewlessLeft = () => {
+    const one = booking(withSessions({ groomers: [], status: "pending" }));
+
+    one.pets = one.pets.map((entry) =>
+      entry.petId === MOCHI
+        ? entry
+        : {
+            ...entry,
+            services: entry.services.map((service) => ({
+              ...service,
+              sessions: service.sessions.map((turn) => ({
+                ...turn,
+                status: "done" as const,
+              })),
+            })),
+          },
+    );
+
+    bookings.getById.mockResolvedValue(one);
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
+      isSuperAdmin: false,
+      permissions: FULL as never,
+    });
+  };
+
   it("counts a seeded turn nobody was put on", async () => {
     /*
       ⚠️ THE CASE THE OLD MIRROR MISSED. It also required a crew, matching a
@@ -753,16 +788,10 @@ describe("BookingPetWorkScreen — what blocks completing", () => {
       catalogue, so "nobody on it, nothing done" is what an untouched booking of
       Basic Grooming looks like. Silence here would read as permission.
     */
-    render({ groomers: [], status: "pending" });
+    onlyCrewlessLeft();
 
-    /*
-      ⚠️ MATCHED ON THE SERVICE NAME, not on "belum selesai" alone. Coco's nail
-      clip is pending too and carries a crew, so a bare match on the sentence
-      passes with the old exemption still in place — green for the one build
-      this case exists to catch.
-    */
     expect(
-      await screen.findByText(/Grooming Full Service.*belum selesai/i),
+      await screen.findByText(/^Layanan belum selesai$/i),
     ).toBeInTheDocument();
   });
 
@@ -866,6 +895,158 @@ describe("BookingPetWorkScreen — before the animal is on the table", () => {
       await screen.findByRole("button", { name: /^mulai$/i }),
     ).toBeEnabled();
     expect(screen.queryByText(/sudah In Progress/i)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * ─── THE TRACK UNDER "STATUS SEJAK" ─────────────────────────────────────────
+ *
+ * It used to be one segment per SESSION, coloured by work status — which made it
+ * a second, quieter version of the sentence beside it ("0 dari 3 selesai"),
+ * sitting under a heading about the ladder. It now draws the animal's PATH.
+ */
+describe("BookingPetWorkScreen — the status track", () => {
+  const show = (over: Record<string, unknown> = {}, status?: string) => {
+    const one = booking(over);
+    if (status) {
+      one.pets = one.pets.map((entry) =>
+        entry.petId === MOCHI
+          ? { ...entry, status: status as (typeof entry)["status"] }
+          : entry,
+      );
+    }
+    bookings.getById.mockResolvedValue(one);
+
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
+      isSuperAdmin: false,
+      permissions: FULL as never,
+    });
+  };
+
+  /** The track's own segments — it is the one `role="img"` on the page. */
+  const segments = async () =>
+    Array.from(
+      (await screen.findByRole("img", { name: /tahap|alur kunjungan/i }))
+        .children,
+    );
+
+  it("has one segment per rung of the visit, and none for draft", async () => {
+    /* No van, so no trip legs: requested · confirmed · arrived · in progress ·
+       completed · return to pawrents. `draft` is not a step somebody walks. */
+    show({}, "in_progress");
+
+    expect(await segments()).toHaveLength(6);
+  });
+
+  it("grows the track when a van was booked", async () => {
+    /*
+      ⚠️ THE TRIP LEGS ARE THE BOOKING'S, not the animal's — one van fetches both
+      dogs — so a track built off a fixed list would show `pickup` on a visit
+      that never left the shop.
+    */
+    show({ pickupRequested: true, deliveryRequested: true }, "in_progress");
+
+    expect(await segments()).toHaveLength(8);
+  });
+
+  it("fills up to the rung the animal has reached, and no further", async () => {
+    show({}, "arrived");
+
+    const bars = await segments();
+
+    /* requested · confirmed · arrived */
+    expect(
+      bars.slice(0, 3).every((bar) => /bg-primary/.test(bar.className)),
+    ).toBe(true);
+    expect(bars.slice(3).every((bar) => /bg-border/.test(bar.className))).toBe(
+      true,
+    );
+  });
+
+  it("says where the animal is, in words, for a reader who cannot see it", async () => {
+    show({}, "arrived");
+
+    expect(
+      await screen.findByRole("img", { name: /3 dari 6 tahap: Arrived/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("draws an empty track for a status that is not a rung", async () => {
+    /*
+      `cancelled` is a way OUT, not a step along the way, and `draft` is where a
+      booking sits before it is an appointment. Neither has walked any of this,
+      and inventing a position for them would be a guess.
+    */
+    show({}, "cancelled");
+
+    const bars = await segments();
+
+    expect(bars.every((bar) => /bg-border/.test(bar.className))).toBe(true);
+  });
+});
+
+/**
+ * ─── WHO MOVED THIS ANIMAL LAST ─────────────────────────────────────────────
+ */
+describe("BookingPetWorkScreen — Status sejak", () => {
+  it("names the last move of THIS animal, not of the visit", async () => {
+    /*
+      ⚠️ THE MERGED TRAIL IS A DECOY HERE. Read from `booking.statusHistory`,
+      this line reported whoever moved ANY dog last — so opening Mochi could name
+      the person who had just sent Coco home, at a time Mochi never moved.
+    */
+    const one = booking();
+    one.statusHistory = [
+      {
+        petId: COCO,
+        petName: "Coco",
+        status: "return_to_pawrents",
+        at: "2026-09-03T10:26:00.000Z",
+        by: "u-2",
+        byName: "Jess",
+        byRoleName: null,
+        implied: false,
+      },
+    ];
+    one.pets = one.pets.map((entry) =>
+      entry.petId === MOCHI
+        ? {
+            ...entry,
+            statusHistory: [
+              {
+                status: "arrived" as const,
+                at: "2026-09-03T02:15:00.000Z",
+                by: "u-1",
+                /* A name that appears NOWHERE ELSE on the page — "Fitria" is
+                   also the fixture's creator, and the created-by line would
+                   have made this pass whatever the strip read. */
+                byName: "Wulan",
+                byRoleName: "Ops",
+                implied: false,
+              },
+            ],
+          }
+        : entry,
+    );
+    bookings.getById.mockResolvedValue(one);
+
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
+      isSuperAdmin: false,
+      permissions: FULL as never,
+    });
+
+    /*
+      SCOPED TO THE "Status sejak" BLOCK. Wulan also appears on the Riwayat card
+      below — correctly, it reads the same animal's trail — so a page-wide match
+      would be ambiguous rather than wrong.
+    */
+    const label = await screen.findByText(/status sejak/i);
+    const block = label.parentElement!;
+
+    expect(within(block).getByText(/Wulan/)).toBeInTheDocument();
+
+    /* And Coco's mover appears NOWHERE on Mochi's page. */
+    expect(screen.queryByText(/Jess/)).not.toBeInTheDocument();
   });
 });
 
@@ -974,7 +1155,7 @@ describe("BookingPetWorkScreen — the header's booking-level controls", () => {
     ).toBeInTheDocument();
   });
 
-  it("warns which animal is blocking completion, before the button is pressed", async () => {
+  it("warns that something is unfinished, before the button is pressed", async () => {
     /*
       THE SAME SENTENCE THE SERVER WOULD ANSWER WITH — said first, so pressing
       through is a decision made with the fact already in view, not a 409
@@ -1009,8 +1190,15 @@ describe("BookingPetWorkScreen — the header's booking-level controls", () => {
       ] as never,
     });
 
+    /*
+      ⚠️ THE FACT, NOT THE NAME. This used to assert the SERVICE was named —
+      "Potong Kuku belum selesai · +2 lagi". Naming one of three is not enough
+      to act on and too much to skim on a strip that also carries the status,
+      the clock, the track and a button; WHICH service is unfinished is on the
+      cards below, where the turns somebody would move actually are.
+    */
     expect(
-      await screen.findByText(/potong kuku.*belum selesai/i),
+      await screen.findByText(/^Layanan belum selesai$/i),
     ).toBeInTheDocument();
   });
 
