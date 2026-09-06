@@ -118,19 +118,27 @@ export const bookingService = {
    * lead and the assistants are checked against the diary, so a `409` here is a
    * clash — send `forceClash` to save it anyway, as the booking form does.
    */
-  setItemGroomers: (
+  /**
+   * PATCH /bookings/:id/sessions — who is on a turn, and how many turns exist.
+   *
+   * ⚠️ IT REPLACED `.../items/:itemId/groomers` and its `assistantGroomerUserIds`
+   * (PCR-042). That field existed because commission was unique per service, so
+   * a second person on one bath could only be recorded as an unpaid helper. Two
+   * people on one bath are two SESSIONS now, and both earn — so "add an
+   * assistant" is "add a session".
+   *
+   * THREE SHAPES, ONE CALL, matching the one card that does all three:
+   *   { serviceItemId, type?, groomerUserId? }  add a turn
+   *   { sessionId, groomerUserId }              put somebody on one, or take off
+   *   { sessionId, remove: true }               take the turn off
+   */
+  setSessionCrew: (
     bookingId: string,
-    itemId: string,
-    patch: {
-      groomerUserId?: string | null;
-      assistantGroomerUserIds?: string[];
-      forceClash?: boolean;
-    },
-  ) =>
-    apiClient.patch<Booking>(
-      `/bookings/${bookingId}/items/${itemId}/groomers`,
-      patch,
-    ),
+    patch:
+      | { serviceItemId: string; type?: string; groomerUserId?: string | null }
+      | { sessionId: string; groomerUserId: string | null }
+      | { sessionId: string; remove: true },
+  ) => apiClient.patch<Booking>(`/bookings/${bookingId}/sessions`, patch),
 
   /**
    * PATCH /bookings/:id/pets/:petId/notes — one animal's two notes.
@@ -238,15 +246,19 @@ export const bookingService = {
    *
    * The BOOKING's own status follows from the rows — nothing here sets it.
    */
+  /**
+   * ⚠️ `sessionId`, NOT A SERVICE ID (PCR-042). The route path still says
+   * `items` — it is the same endpoint — but what it addresses is one TURN.
+   * Sending a service id gets a 404 naming a session the caller never mentioned.
+   */
   advanceItemWork: (
     bookingId: string,
-    itemId: string,
+    sessionId: string,
     workStatus: BookingWorkStatus,
   ) =>
-    apiClient.patch<Booking>(
-      `/bookings/${bookingId}/items/${itemId}/work`,
-      { workStatus },
-    ),
+    apiClient.patch<Booking>(`/bookings/${bookingId}/items/${sessionId}/work`, {
+      workStatus,
+    }),
 
   /**
    * PATCH /bookings/:id/items/:itemId/times — correcting the clock.
@@ -257,13 +269,14 @@ export const bookingService = {
    * to say "this is done" is not, by that fact, trusted to say it took three
    * hours. Every correction is audited with both values.
    */
+  /** ⚠️ `sessionId` — see `advanceItemWork`. */
   correctItemTimes: (
     bookingId: string,
-    itemId: string,
+    sessionId: string,
     times: { startedAt?: string | null; finishedAt?: string | null },
   ) =>
     apiClient.patch<Booking>(
-      `/bookings/${bookingId}/items/${itemId}/times`,
+      `/bookings/${bookingId}/items/${sessionId}/times`,
       times,
     ),
 

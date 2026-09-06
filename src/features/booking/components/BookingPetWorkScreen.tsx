@@ -117,7 +117,30 @@ function waLink(phone: string | null | undefined): string | null {
 }
 
 /** Minutes between two instants, or null while the work is unfinished. */
-function elapsed(row: BookingItem): number | null {
+/**
+ * ONE ROW ON THIS PAGE — a SESSION since PCR-042, or the service standing in for
+ * one when nobody has been assigned yet.
+ *
+ * ⚠️ `_id` IS WHAT THE WORK VERBS ADDRESS. On an assigned row it is the session's
+ * id; on an unassigned one it is the service's, and `assigned: false` is what
+ * stops anything trying to move it — the server would refuse a service id with a
+ * 404 about a session nobody mentioned.
+ */
+type WorkRow = {
+  _id: string;
+  serviceItemId: string;
+  name: string;
+  workStatus: BookingWorkStatus;
+  groomerName: string;
+  groomerOffReason: string | null;
+  durationMin: number | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  price: string;
+  assigned: boolean;
+};
+
+function elapsed(row: WorkRow): number | null {
   if (!row.startedAt) return null;
   const from = new Date(row.startedAt).getTime();
   const to = row.finishedAt ? new Date(row.finishedAt).getTime() : Date.now();
@@ -262,7 +285,7 @@ export function BookingPetWorkScreen({
     };
   }, [bookingId, petId, nonce]);
 
-  async function move(row: BookingItem, to: BookingWorkStatus) {
+  async function move(row: WorkRow, to: BookingWorkStatus) {
     if (busy) return;
     setBusy(row._id);
 
@@ -288,7 +311,7 @@ export function BookingPetWorkScreen({
   }
 
   async function correct(
-    row: BookingItem,
+    row: WorkRow,
     field: "startedAt" | "finishedAt",
     value: string,
   ) {
@@ -394,32 +417,105 @@ export function BookingPetWorkScreen({
 
   if (!booking) return null;
 
-  const rows = booking.items.filter((item) => item.petId === petId);
-  /*
-    THE SAME ROWS, GROUPED — from the API's own per-animal view, so an add-on
-    hangs off the service it was added to instead of being regrouped here. The
-    flat `rows` above still answers the questions that are about rows: how many
-    minutes, how much money, what may be moved along.
-  */
-  const services =
-    booking.pets.find((group) => group.petId === petId)?.services ?? [];
-  const petName = rows[0]?.petName ?? pet?.name ?? "Hewan ini";
+  const group = booking.pets.find((entry) => entry.petId === petId);
+  const services = group?.services ?? [];
 
-  if (rows.length === 0) {
+  /*
+    ─── THE ROWS ON THIS PAGE ARE SESSIONS, AND THAT IS NEW ────────────────────
+
+    This card has been called "Sesi Grooming" since it was built, but until
+    PCR-042 it rendered SERVICES — there was nothing finer to render, and the
+    work verbs addressed a service. Sessions exist now: a Full Grooming worked by
+    Sinta and then Rio is two turns, two clocks and two people to pay.
+
+    ⚠️ `_id` IS THE SESSION'S. `advanceItemWork` and `correctItemTimes` address a
+    session, and sending a service id gets a 404 naming a session the caller
+    never mentioned — which is exactly what this screen did until this was fixed.
+
+    A SERVICE WITH NO SESSIONS STILL APPEARS, disabled. Work nobody has been told
+    to do is the thing a groomer opening this page most needs to see; dropping it
+    would leave a bath invisible on the one screen that is open at the table.
+  */
+  const rows = services.flatMap((service) =>
+    service.sessions.length > 0
+      ? service.sessions.map((session) => ({
+          _id: session.sessionId,
+          serviceItemId: service.itemId,
+          /* "Full Grooming — mandi", unless the turn carries the service's own
+             name, which is what a booking made through the form produces. */
+          name:
+            session.type && session.type !== service.name
+              ? `${service.name} — ${session.type}`
+              : service.name,
+          workStatus: session.status,
+          groomerName: session.groomerName,
+          groomerOffReason: session.groomerOffReason,
+          /*
+            THE SERVICE'S DURATION, because a turn has none of its own. Splitting
+            a 90-minute bath into three turns does not make each of them 90
+            minutes — but nothing records what it does make them, and dividing
+            would be inventing a number nobody chose.
+          */
+          durationMin: service.durationMin,
+          startedAt: session.startedAt,
+          finishedAt: session.finishedAt,
+          price: service.price,
+          assigned: true,
+        }))
+      : [
+          {
+            _id: service.itemId,
+            serviceItemId: service.itemId,
+            name: service.name,
+            workStatus: service.status,
+            groomerName: "Belum ditentukan",
+            groomerOffReason: null,
+            durationMin: service.durationMin,
+            startedAt: service.startedAt,
+            finishedAt: service.finishedAt,
+            price: service.price,
+            /* NOTHING TO PRESS. There is no session to move, and the server
+               refuses work with nobody on it anyway — said here first. */
+            assigned: false,
+          },
+        ],
+  );
+
+  const petName = group?.petName ?? pet?.name ?? "Hewan ini";
+
+  if (services.length === 0) {
     return (
       <div className="flex flex-col gap-4">
         <Alert variant="warning">
-          Hewan ini tidak punya layanan di booking {booking.bookingNumber ?? "ini"}.
+          Hewan ini tidak punya layanan di booking{" "}
+          {booking.bookingNumber ?? "ini"}.
         </Alert>
         <Button variant="secondary" asChild className="self-start">
-          <Link href={`/dashboard/booking/${bookingId}`}>Kembali ke booking</Link>
+          <Link href={`/dashboard/booking/${bookingId}`}>
+            Kembali ke booking
+          </Link>
         </Button>
       </div>
     );
   }
 
-  const total = sumDecimals(rows.map((row) => row.price));
-  const estimate = rows.reduce((sum, row) => sum + (row.durationMin ?? 0), 0);
+  /*
+    ⚠️ MONEY AND ESTIMATE COME OFF THE SERVICES, NOT OFF `rows`. A service split
+    into three turns appears three times in `rows`, and summing those would
+    charge the customer three baths and promise them four and a half hours. The
+    ACTUAL time is the opposite: it is what each person really spent, so it sums
+    over the turns.
+  */
+  const total = sumDecimals(
+    services.flatMap((service) => [
+      service.price,
+      ...service.addons.map((addon) => addon.price),
+    ]),
+  );
+  const estimate = services.reduce(
+    (sum, service) => sum + (service.durationMin ?? 0),
+    0,
+  );
   const actual = rows.reduce((sum, row) => sum + (elapsed(row) ?? 0), 0);
 
   /*
@@ -444,9 +540,17 @@ export function BookingPetWorkScreen({
     rather than discovered as a 409 afterwards, the way the reference's own
     `issues()` warns before "Selesaikan pekerjaan" is even clicked.
   */
-  const blocking = booking.items.filter(
-    (item) => item.groomerUserId && item.workStatus !== "done",
-  );
+  const blocking = (booking.pets ?? [])
+    .filter((entry) => entry.status !== "cancelled")
+    .flatMap((entry) =>
+      entry.services.flatMap((service) =>
+        service.sessions
+          .filter(
+            (session) => session.groomerUserId && session.status !== "done",
+          )
+          .map((session) => ({ name: service.name })),
+      ),
+    );
 
   const whatsapp = waLink(customer?.phone);
 
@@ -662,7 +766,8 @@ export function BookingPetWorkScreen({
                 value={
                   <span className="tabular-nums">
                     {clock(booking.scheduledAt)}
-                    {estimate > 0 && ` – ${finishClock(booking.scheduledAt, estimate)}`}
+                    {estimate > 0 &&
+                      ` – ${finishClock(booking.scheduledAt, estimate)}`}
                   </span>
                 }
               />
@@ -758,7 +863,9 @@ export function BookingPetWorkScreen({
                         >
                           <span className="text-muted">
                             + {addon.name}
-                            {addon.durationMin ? ` · +${addon.durationMin} mnt` : ""}
+                            {addon.durationMin
+                              ? ` · +${addon.durationMin} mnt`
+                              : ""}
                           </span>
                           <span className="font-semibold tabular-nums text-foreground">
                             {formatMoney(addon.price)}
@@ -902,11 +1009,20 @@ export function BookingPetWorkScreen({
           />
 
           {/* ─── Sesi Grooming ──────────────────────────────────────────── */}
-          <Card title="Sesi Grooming" description={`aktual ${actual} / est ${estimate} mnt`}>
+          <Card
+            title="Sesi Grooming"
+            description={`aktual ${actual} / est ${estimate} mnt`}
+          >
             <ul className="flex flex-col gap-2">
               {rows.map((row) => {
                 const status = row.workStatus ?? "pending";
-                const next = NEXT_MOVE[status];
+                /*
+                  ⚠️ NOTHING TO PRESS ON AN UNASSIGNED SERVICE. There is no turn
+                  to move — the row is standing in for one — and the server
+                  refuses work with nobody on it anyway. Said here first, so the
+                  button is absent rather than a 400 somebody has to read.
+                */
+                const next = row.assigned ? NEXT_MOVE[status] : null;
                 const minutes = elapsed(row);
                 const over =
                   minutes !== null &&
@@ -966,7 +1082,9 @@ export function BookingPetWorkScreen({
                           </span>
                         )}
                       </span>
-                      <span className="text-xs text-muted">{open ? "▲" : "▼"}</span>
+                      <span className="text-xs text-muted">
+                        {open ? "▲" : "▼"}
+                      </span>
                     </button>
 
                     {open && (
@@ -983,19 +1101,36 @@ export function BookingPetWorkScreen({
                         )}
 
                         {/*
-                          WHO IS ON THIS SESSION — the booking form set one
+                          WHO IS ON THIS SERVICE — the booking form set one
                           default per animal; this is where the day disagrees
                           with it. Above the clock fields, because who is doing
                           it is decided before how long it took.
+
+                          ⚠️ ONCE PER SERVICE, NOT PER TURN. The card edits the
+                          whole crew — every turn of this service, and the button
+                          that adds another — so opening a second turn of the same
+                          bath must not show a second copy of the same control
+                          with the same rows in it.
                         */}
-                        <div className="mb-3">
-                          <SessionGroomers
-                            bookingId={bookingId}
-                            row={row}
-                            groomers={groomers}
-                            onChanged={setBooking}
-                          />
-                        </div>
+                        {rows.findIndex(
+                          (other) => other.serviceItemId === row.serviceItemId,
+                        ) === rows.indexOf(row) &&
+                          (() => {
+                            const owner = services.find(
+                              (one) => one.itemId === row.serviceItemId,
+                            );
+
+                            return owner ? (
+                              <div className="mb-3">
+                                <SessionGroomers
+                                  bookingId={bookingId}
+                                  service={owner}
+                                  groomers={groomers}
+                                  onChanged={setBooking}
+                                />
+                              </div>
+                            ) : null;
+                          })()}
 
                         <Can feature="bookings" action="update">
                           <div className="flex flex-wrap items-end gap-3">
@@ -1015,7 +1150,11 @@ export function BookingPetWorkScreen({
                                 }))
                               }
                               onBlur={(event) =>
-                                void correct(row, "startedAt", event.target.value)
+                                void correct(
+                                  row,
+                                  "startedAt",
+                                  event.target.value,
+                                )
                               }
                             />
                             <TextField
@@ -1034,7 +1173,11 @@ export function BookingPetWorkScreen({
                                 }))
                               }
                               onBlur={(event) =>
-                                void correct(row, "finishedAt", event.target.value)
+                                void correct(
+                                  row,
+                                  "finishedAt",
+                                  event.target.value,
+                                )
                               }
                             />
                             <div className="pb-2">
@@ -1061,8 +1204,6 @@ export function BookingPetWorkScreen({
                           </div>
                         </Can>
 
-
-
                         <div className="mt-3 flex flex-wrap gap-2">
                           <Can
                             feature="bookings"
@@ -1077,7 +1218,7 @@ export function BookingPetWorkScreen({
                                 {busy === row._id ? "Menyimpan…" : next.label}
                               </Button>
                             )}
-                            {status === "done" && (
+                            {status === "done" && row.assigned && (
                               <Button
                                 variant="secondary"
                                 size="sm"
@@ -1086,6 +1227,12 @@ export function BookingPetWorkScreen({
                               >
                                 Buka lagi
                               </Button>
+                            )}
+                            {!row.assigned && (
+                              <p className="text-xs text-muted">
+                                Tentukan groomernya dulu — layanan ini belum
+                                punya sesi.
+                              </p>
                             )}
                           </Can>
                         </div>
@@ -1104,7 +1251,6 @@ export function BookingPetWorkScreen({
               </Button>
             </div>
           </Card>
-
         </div>
 
         {/* ─── The rail ────────────────────────────────────────────────── */}
@@ -1159,13 +1305,7 @@ export function BookingPetWorkScreen({
 }
 
 /** One label-over-value pair, the reference's `.kv` cell. */
-function Field({
-  label,
-  value,
-}: {
-  label: string;
-  value: React.ReactNode;
-}) {
+function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
       <dt className="text-[10px] font-bold uppercase tracking-wide text-muted">

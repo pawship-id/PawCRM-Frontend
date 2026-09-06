@@ -8,72 +8,78 @@ import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
 import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
-import type { Booking, BookingItem } from "@/types/api";
+import type { Booking, BookingPetService } from "@/types/api";
 
-/** Mirrors MAX_ASSISTANT_GROOMERS in bookingItem.model.js. */
-const MAX_ASSISTANTS = 4;
+/** Mirrors MAX_SESSIONS_PER_SERVICE in bookingItem.model.js. */
+const MAX_SESSIONS = 6;
 
 /** The sentinel the selects use for "nobody yet" — Radix refuses an empty value. */
 const UNASSIGNED = "belum-ditentukan";
 
 /**
- * WHO IS ON ONE SESSION — the lead, and any extra hands.
+ * WHO IS ON THIS SERVICE, ONE ROW PER TURN — PCR-042.
  *
- * ─── WHY IT IS HERE AND NOT ON THE BOOKING FORM ────────────────────────────
+ * ─── WHAT THIS REPLACED, AND WHY IT WAS WRONG ──────────────────────────────
  *
- * The form asks for ONE groomer per animal, as a default written onto every one
- * of that animal's sessions: at booking time a shop says "Sinta is doing Bruno
- * today", not one name per line. This is the other half — the day is running,
- * the bath turned out to need two people, and the person who knows that is
- * standing at the table rather than at the phone.
+ * It used to show a LEAD and a list of ASSISTANTS, with a hint saying out loud
+ * that the assistants were "counted busy but not paid". That was not a product
+ * decision — it was a database constraint leaking onto a screen:
+ * `commissionrecords` is unique per `bookingItemId`, so a second earner on one
+ * service was refused by the database and swallowed as success. The helper had
+ * to be filed as unpaid because there was nowhere to pay them from.
  *
- * ─── THE LEAD IS THE ONE WHO EARNS, AND THAT IS SAID OUT LOUD ──────────────
+ * SESSIONS REMOVE THE CONSTRAINT. A turn is its own payable row, so two people
+ * on one bath are two turns and both earn. "Tambah groomer" now adds a SESSION,
+ * and the hint that had to apologise for the old shape is gone.
  *
- * Commission is computed for `groomerUserId` and nothing else. Somebody added
- * here is a scheduling fact: they are counted busy by the clash check, and they
- * are not paid for it. A screen that let people add "groomers" without saying so
- * would be quietly deciding how a shop splits money.
+ * ─── A TURN WITH NOBODY ON IT IS A REAL STATE ──────────────────────────────
+ *
+ * "Belum ditentukan" is what a booking made before the roster is decided looks
+ * like. Such a turn earns nothing and blocks nobody's day, and the work screen
+ * refuses to start it — the server does too, so this never has to guess.
  */
 export function SessionGroomers({
   bookingId,
-  row,
+  service,
   groomers,
   onChanged,
 }: {
   bookingId: string;
-  row: BookingItem;
+  /** The service whose turns these are — `sessions[]` is what is edited here. */
+  service: BookingPetService;
   /** Who may be booked that day — `disabled` carries the reason (FR-4). */
   groomers: { value: string; label: string; disabled?: boolean }[];
   onChanged: (booking: Booking) => void;
 }) {
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
-  const assistants = row.assistantGroomers ?? [];
-  const taken = new Set([
-    row.groomerUserId,
-    ...assistants.map((one) => one._id),
-  ]);
+  const sessions = service.sessions;
 
-  /* Nobody already on this session is offered again. */
+  /*
+    NOBODY ALREADY ON THIS SERVICE IS OFFERED FOR A NEW TURN. One person doing
+    two turns of one bath is a data-entry slip, not a way of working — and it
+    would earn them two commissions for one stretch of work.
+  */
+  const taken = new Set(sessions.map((one) => one.groomerUserId));
   const free = groomers.filter((option) => !taken.has(option.value));
 
-  async function save(patch: {
-    groomerUserId?: string | null;
-    assistantGroomerUserIds?: string[];
-  }) {
-    setBusy(true);
+  async function save(
+    key: string,
+    patch: Parameters<typeof bookingService.setSessionCrew>[1],
+  ) {
+    setBusy(key);
     setError(null);
 
     try {
-      onChanged(await bookingService.setItemGroomers(bookingId, row._id, patch));
+      onChanged(await bookingService.setSessionCrew(bookingId, patch));
       setAdding(false);
     } catch (err) {
       /*
         A 409 IS A CLASH, and it is reported rather than forced. The booking form
         offers "save anyway" because it is making the appointment; moving one
-        session onto somebody who is already busy is a smaller act with a bigger
+        turn onto somebody who is already busy is a smaller act with a bigger
         chance of being a mistake, so this one says no and leaves the choice of
         who to the person reading it.
       */
@@ -83,7 +89,7 @@ export function SessionGroomers({
           : "Tidak bisa disimpan. Coba lagi.",
       );
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
@@ -97,92 +103,104 @@ export function SessionGroomers({
         fallback={
           <p className="text-sm text-muted">
             <UserRound className="mr-1 inline size-4" aria-hidden />
-            {row.groomerName}
-            {assistants.length > 0 &&
-              ` + ${assistants.map((one) => one.name).join(", ")}`}
+            {sessions.length === 0
+              ? "Belum ada sesi"
+              : sessions.map((one) => one.groomerName).join(", ")}
           </p>
         }
       >
-        <SelectField
-          label="Groomer utama"
-          value={row.groomerUserId ?? UNASSIGNED}
-          onChange={(value) =>
-            void save({ groomerUserId: value === UNASSIGNED ? null : value })
-          }
-          options={[
-            { value: UNASSIGNED, label: "Belum ditentukan" },
-            ...groomers,
-          ]}
-          disabled={busy}
-          hint="Yang dihitung komisinya. Groomer tambahan di bawah tidak."
-        />
-
-        {assistants.length > 0 && (
-          <ul className="flex flex-wrap gap-2">
-            {assistants.map((one) => (
-              <li
-                key={one._id}
-                className="flex items-center gap-1.5 rounded-full bg-surface-hover px-3 py-1.5 text-sm"
-              >
-                {one.name}
-                <button
-                  type="button"
-                  aria-label={`Hapus ${one.name} dari sesi ini`}
-                  className="rounded-full p-0.5 text-muted transition hover:text-danger focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                  disabled={busy}
-                  onClick={() =>
-                    void save({
-                      assistantGroomerUserIds: assistants
-                        .filter((other) => other._id !== one._id)
-                        .map((other) => other._id),
-                    })
-                  }
-                >
-                  <X className="size-3.5" aria-hidden />
-                </button>
-              </li>
-            ))}
-          </ul>
+        {sessions.length === 0 && (
+          <p className="text-sm text-muted">
+            Belum ada sesi — tambahkan satu untuk menugaskan groomer.
+          </p>
         )}
+
+        {sessions.map((one, position) => (
+          <div key={one.sessionId} className="flex items-end gap-2">
+            <div className="min-w-0 flex-1">
+              <SelectField
+                label={
+                  sessions.length > 1
+                    ? `Sesi ${position + 1} — ${one.type}`
+                    : "Groomer"
+                }
+                value={one.groomerUserId ?? UNASSIGNED}
+                onChange={(value) =>
+                  void save(one.sessionId, {
+                    sessionId: one.sessionId,
+                    groomerUserId: value === UNASSIGNED ? null : value,
+                  })
+                }
+                options={[
+                  { value: UNASSIGNED, label: "Belum ditentukan" },
+                  /* Whoever is on THIS turn stays selectable, or the select
+                     would have no option matching its own value. */
+                  ...groomers.filter(
+                    (option) =>
+                      !taken.has(option.value) ||
+                      option.value === one.groomerUserId,
+                  ),
+                ]}
+                disabled={busy !== null}
+                hint={
+                  position === 0 && sessions.length === 1
+                    ? "Setiap sesi dihitung komisinya sendiri."
+                    : undefined
+                }
+              />
+            </div>
+
+            {/*
+              A TURN CAN BE TAKEN OFF, unless it has already earned — the server
+              refuses that one, because a payroll line whose work cannot be found
+              is a payment nobody can defend.
+            */}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-label={`Hapus sesi ${one.type}`}
+              disabled={busy !== null}
+              onClick={() =>
+                void save(one.sessionId, {
+                  sessionId: one.sessionId,
+                  remove: true,
+                })
+              }
+            >
+              <X className="size-4" aria-hidden />
+            </Button>
+          </div>
+        ))}
 
         {adding ? (
           <SelectField
-            label="Groomer tambahan"
+            label="Sesi baru"
             value=""
             onChange={(value) =>
-              void save({
-                assistantGroomerUserIds: [
-                  ...assistants.map((one) => one._id),
-                  value,
-                ],
+              void save("add", {
+                serviceItemId: service.itemId,
+                groomerUserId: value,
               })
             }
             options={free}
             placeholder="Pilih orangnya…"
-            disabled={busy}
-            hint="Ikut dihitung sibuk saat cek bentrok, tapi tidak dapat komisi."
+            disabled={busy !== null}
+            hint="Sesi kedua untuk layanan ini — ikut dihitung komisinya."
           />
         ) : (
-          /*
-            ONLY WHEN THERE IS A LEAD. An assistant with nobody responsible is a
-            row the work screen could never start — `advanceItemWork` refuses to
-            move a session with no `groomerUserId` — so it would look staffed and
-            behave unstaffed. The server refuses it too; this keeps anybody from
-            reaching that refusal.
-          */
-          row.groomerUserId &&
-          assistants.length < MAX_ASSISTANTS &&
+          sessions.length < MAX_SESSIONS &&
           free.length > 0 && (
             <div>
               <Button
                 type="button"
                 variant="secondary"
                 size="sm"
-                disabled={busy}
+                disabled={busy !== null}
                 onClick={() => setAdding(true)}
               >
                 <Plus className="size-4" aria-hidden />
-                Tambah groomer
+                {sessions.length === 0 ? "Tambah sesi" : "Tambah groomer"}
               </Button>
             </div>
           )
