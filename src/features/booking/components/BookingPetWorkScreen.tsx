@@ -910,51 +910,89 @@ export function BookingPetWorkScreen({
                   this draws the same shape from the icon set everything else
                   uses.
                 */}
-                <div className="flex items-start gap-3">
-                  <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-secondary/20 text-secondary-foreground">
-                    {pet.species === "cat" ? (
-                      <Cat className="size-6" aria-hidden />
-                    ) : (
-                      <Dog className="size-6" aria-hidden />
-                    )}
-                  </span>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-secondary/20 text-secondary-foreground">
+                      {pet.species === "cat" ? (
+                        <Cat className="size-6" aria-hidden />
+                      ) : (
+                        <Dog className="size-6" aria-hidden />
+                      )}
+                    </span>
 
-                  <div className="min-w-0">
-                    <p className="text-base font-extrabold text-foreground">
-                      {pet.name}
-                    </p>
-                    <p className="text-xs text-muted">
-                      {[
-                        pet.breed,
-                        pet.weightKg ? `${pet.weightKg} kg` : null,
-                        pet.species ? speciesLabel(pet.species) : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ") || "—"}
-                    </p>
+                    <div className="min-w-0">
+                      <p className="text-base font-extrabold text-foreground">
+                        {pet.name}
+                      </p>
+                      <p className="text-xs text-muted">
+                        {[
+                          pet.breed,
+                          pet.weightKg ? `${pet.weightKg} kg` : null,
+                          pet.species ? speciesLabel(pet.species) : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ") || "—"}
+                      </p>
 
-                    {/*
+                      {/*
                       SIZE AND COAT AS CHIPS, because they are the two facts a
                       variant price is quoted from — the same pair the booking
                       form refuses to guess at. Absent rather than shown as a
                       dash when nobody has recorded them: an empty chip is a
                       thing to decode.
                     */}
-                    {(sizeLabel(pet.size) || furTypeLabel(pet.furType)) && (
-                      <ul className="mt-1.5 flex flex-wrap gap-1.5">
-                        {[sizeLabel(pet.size), furTypeLabel(pet.furType)]
-                          .filter((label): label is string => Boolean(label))
-                          .map((label) => (
-                            <li
-                              key={label}
-                              className="rounded-full bg-surface-hover px-2.5 py-1 text-xs font-medium text-foreground"
-                            >
-                              {label}
-                            </li>
-                          ))}
-                      </ul>
-                    )}
+                      {(sizeLabel(pet.size) || furTypeLabel(pet.furType)) && (
+                        <ul className="mt-1.5 flex flex-wrap gap-1.5">
+                          {[sizeLabel(pet.size), furTypeLabel(pet.furType)]
+                            .filter((label): label is string => Boolean(label))
+                            .map((label) => (
+                              <li
+                                key={label}
+                                className="rounded-full bg-surface-hover px-2.5 py-1 text-xs font-medium text-foreground"
+                              >
+                                {label}
+                              </li>
+                            ))}
+                        </ul>
+                      )}
+                    </div>
                   </div>
+
+                  {/*
+                    ─── THE WAY OUT TO THE ANIMAL ITSELF, ON THE NAME'S LINE ────
+
+                    TWO DIFFERENT PAGES, and the wording keeps them apart: this
+                    screen is THIS VISIT, the profile is the animal's whole life
+                    — allergies, every grooming it has ever had. Confusing them
+                    sends somebody looking for today's work in a list of last
+                    year's.
+
+                    BESIDE THE NAME, NOT UNDER THE CARD. It sat at the bottom,
+                    below the customer and the phone, which put a link about the
+                    ANIMAL after two facts about the OWNER — three blocks of
+                    reading between the name and the way to it. On the name's own
+                    line it is where the eye already is.
+
+                    `items-start`, SO IT ALIGNS WITH THE NAME rather than
+                    floating against a block that grows: the chips underneath
+                    make this column two or three lines tall, and a centred
+                    button would drift down as they appear.
+
+                    `secondary`, NOT `ghost` — the house's quiet button, white
+                    with a 1.5px navy border. A ghost button has no edge, so
+                    against a card's own background it read as a link somebody
+                    had left loose.
+                  */}
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    asChild
+                    className="shrink-0"
+                  >
+                    <Link href={`/dashboard/master/pets/${petId}`}>
+                      Profil {petName}
+                    </Link>
+                  </Button>
                 </div>
 
                 {/*
@@ -1253,13 +1291,14 @@ export function BookingPetWorkScreen({
               })}
             </ul>
 
-            <div className="mt-3">
-              <Button variant="ghost" size="sm" asChild>
-                <Link href={`/dashboard/master/pets/${petId}`}>
-                  Profil {petName}
-                </Link>
-              </Button>
-            </div>
+            {/*
+              ⚠️ NO "Profil" LINK HERE ANY MORE. This card is one visit's work —
+              turns, clocks, who is on them — and a way out to the animal's whole
+              life sat at the bottom of it saying nothing about grooming. It
+              moved to "Hewan & Pelanggan", the block that is already about the
+              animal, where it reads as the obvious next step rather than as a
+              stray link under a list of sessions.
+            */}
           </Card>
         </div>
 
