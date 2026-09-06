@@ -150,24 +150,23 @@ export function BookingDetailScreen({ id }: { id: string }) {
               {booking.bookingNumber ?? "Booking (draf)"}
             </h1>
             {/*
-              ─── ONE BADGE PER ANIMAL — PCR-042 ────────────────────────────
+              ─── NO PER-ANIMAL BADGES UP HERE ──────────────────────────────
 
-              There was one here, drawn from `booking.status`. A visit where
-              Mochi has arrived and Coco was cancelled is in two states, and the
-              single word the header used to send hid one of them.
+              There was one badge drawn from `booking.status`, then — when the
+              status moved onto the animal — one per animal, named. They have
+              moved again, down onto each animal's own card, where they sit
+              beside the name and the claim they belong to.
 
-              THE NAME IS ONLY ADDED WHEN THERE ARE SEVERAL, so a one-dog booking
-              reads exactly as it did.
+              REPEATING THEM HERE WOULD BE THE SAME FACT TWICE, a few centimetres
+              apart, on a page where the cards are the first thing under the
+              title. The header keeps what is genuinely the VISIT's.
             */}
-            {booking.pets.map((pet) => (
-              <span key={pet.petItemId} className="flex items-center gap-1">
-                <BookingStatusBadge status={pet.status} />
-                {booking.pets.length > 1 && (
-                  <span className="text-xs text-muted">{pet.petName}</span>
-                )}
-              </span>
-            ))}
             <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted">
+              {/*
+                THE ONE BILLING WORD THAT IS NOT A DUPLICATE. Each card says
+                where ITS animal stands; this says how the visit adds up —
+                "sebagian sudah ditagih" is a sentence no single card can make.
+              */}
               {BILLING_LABELS[booking.billingState] ?? booking.billingState}
             </span>
           </div>
@@ -371,6 +370,32 @@ export function BookingDetailScreen({ id }: { id: string }) {
                       {group.petName ?? "—"}
                     </span>
                     {/*
+                      ─── WHERE THIS ANIMAL STANDS, AND WHETHER IT IS PAID FOR ──
+
+                      Both are facts about the ANIMAL, so both belong on its
+                      card. The claim used to be printed on every service row
+                      underneath — one answer repeated three times, because
+                      billing was per service before PCR-042 and the layout never
+                      caught up. It says the same thing once now, beside the name
+                      it is about.
+                    */}
+                    <BookingStatusBadge status={group.status} />
+                    <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted">
+                      {group.pulledToInvoiceAt
+                        ? "Sudah difakturkan"
+                        : group.pulledToCartAt
+                          ? /*
+                              THE CLAIM SAYS A TILL HOLDS THIS ANIMAL; the sale
+                              id on the header says the till settled. A cart
+                              claim with no sale behind it is a basket still
+                              open.
+                            */
+                            booking.posTransactionId
+                            ? "Sudah dibayar"
+                            : "Ada di keranjang"
+                          : "Belum ditagih"}
+                    </span>
+                    {/*
                       THE COUNT SURVIVES THE MOVE. Ticking a collar back is done
                       on the animal's page now, but "is anything still in the
                       drawer" is a question about the WHOLE VISIT — it is the last
@@ -404,22 +429,26 @@ export function BookingDetailScreen({ id }: { id: string }) {
                 */}
                 {pet && <PetSummaryCard pet={pet} className="mt-2" />}
 
-                <ul className="mt-3 flex flex-col gap-2">
-                  {group.services.map((service) => {
-                    /*
-                      ⚠️ THE CLAIM IS THE ANIMAL'S SINCE PCR-042, not the
-                      service's. You bill Mochi, not Mochi's bath — so this line
-                      reads the same answer for every service under her, and
-                      that is correct rather than a shortcut. A visit is still
-                      billable in halves; the half is now a dog.
-                    */
-                    const claimed =
-                      group.pulledToCartAt ?? group.pulledToInvoiceAt;
+                {/*
+                  ─── THE SERVICES ARE ROWS, NOT CARDS ──────────────────────────
 
+                  There were three levels of box here: the section, a card per
+                  animal, and a card per service inside that. Three nested
+                  borders is a lot of ink to say "these belong to that", and by
+                  the third the shape stopped meaning anything — the eye reads
+                  depth once and then stops counting.
+
+                  ONE LEVEL DOES THE GROUPING (the animal's card) and a hairline
+                  does the separating. `first:` drops the rule above the first
+                  row, so the list opens against the animal's own header rather
+                  than under a line that belongs to nothing.
+                */}
+                <ul className="mt-3 flex flex-col">
+                  {group.services.map((service) => {
                     return (
                       <li
                         key={service.itemId}
-                        className="rounded-md border border-border bg-background p-2.5"
+                        className="border-t border-border py-2.5 first:border-t-0 first:pt-0"
                       >
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div className="min-w-0">
@@ -460,9 +489,24 @@ export function BookingDetailScreen({ id }: { id: string }) {
                               </span>
                             ) : (
                               <span className="block text-xs text-muted">
+                                {/*
+                                  "mandi: Sinta · blow dry: Rio" — the turn and
+                                  who is on it.
+
+                                  ⚠️ THE TYPE IS DROPPED WHEN IT REPEATS THE
+                                  SERVICE. A booking made through the form gets
+                                  one session named after its service, so this
+                                  read "Full Grooming: Sinta" under a heading
+                                  already saying Full Grooming — the same
+                                  duplication the calendar label had. The name
+                                  earns its place only when it says something
+                                  the heading does not.
+                                */}
                                 {service.sessions
-                                  .map(
-                                    (one) => `${one.type}: ${one.groomerName}`,
+                                  .map((one) =>
+                                    one.type && one.type !== service.name
+                                      ? `${one.type}: ${one.groomerName}`
+                                      : one.groomerName,
                                   )
                                   .join(" · ")}
                                 {service.durationMin
@@ -506,22 +550,15 @@ export function BookingDetailScreen({ id }: { id: string }) {
                           </div>
 
                           <div className="text-right">
+                            {/*
+                              THE PRICE, AND NOTHING ABOUT BILLING. The claim
+                              moved to the animal's own header: it is one answer
+                              for every service under her, and printing it on
+                              each row said the same thing three times while
+                              looking like three separate facts.
+                            */}
                             <span className="block text-sm tabular-nums text-foreground">
                               {formatMoney(service.price)}
-                            </span>
-                            {/*
-                              PER ANIMAL since PCR-042 — see `claimed` above.
-                              Repeated on every service of the animal because a
-                              reader scanning a long list should not have to
-                              scroll back to the group header to find out whether
-                              this line has been paid for.
-                            */}
-                            <span className="block text-xs text-muted">
-                              {claimed
-                                ? group.pulledToInvoiceAt
-                                  ? "Sudah difakturkan"
-                                  : "Sudah di kasir"
-                                : "Belum ditagih"}
                             </span>
                           </div>
                         </div>
@@ -546,12 +583,11 @@ export function BookingDetailScreen({ id }: { id: string }) {
                                     ? ` · ${addon.durationMin} mnt`
                                     : ""}
                                 </span>
-                                {/* An add-on carries no claim of its own any
-                                    more: it is billed with the animal, like
-                                    everything else under her. */}
+                                {/* An add-on carries no claim of its own — it
+                                    is billed with the animal, and her card says
+                                    so once. */}
                                 <span className="tabular-nums text-muted">
                                   {formatMoney(addon.price)}
-                                  {claimed && " · ditagih"}
                                 </span>
                               </li>
                             ))}

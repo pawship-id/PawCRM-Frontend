@@ -10,6 +10,8 @@ import type {
   Booking,
   BookingItem,
   BookingPetService,
+  BookingStatus,
+  BookingWorkStatus,
   Pet,
 } from "@/types/api";
 
@@ -50,49 +52,123 @@ const item = (overrides: Partial<BookingItem> = {}): BookingItem =>
  * `items` holds, because that is exactly what the server does: a fixture where
  * the two disagree would test a screen against data the API cannot produce.
  */
+/**
+ * ONE ANIMAL ON A VISIT, BUILT FROM THE WORDS THE TESTS ALREADY USE.
+ *
+ * ─── IT TRANSLATES, AND THAT IS THE POINT ────────────────────────────────────
+ *
+ * PCR-042 moved three things off a service: the GROOMER became a session, the
+ * CLAIM rose to the animal, and so did the two notes. Twenty call sites below
+ * still say `{ groomerOffReason: "Libur" }` or `{ pulledToCartAt: … }`, because
+ * that is how a person describes the case being tested — and rewriting them into
+ * nested `sessions[]` and pet-level fields would bury what each test is about.
+ *
+ * So the shorthand is kept and mapped here, once. A field that moved is written
+ * to where it lives now; a field that stayed is passed through.
+ */
+type ServiceShorthand = Partial<BookingPetService> & {
+  groomerUserId?: string | null;
+  groomerName?: string;
+  groomerOffReason?: string | null;
+  workStatus?: BookingWorkStatus;
+  internalNotes?: string | null;
+  customerNotes?: string | null;
+  pulledToCartAt?: string | null;
+  pulledToInvoiceAt?: string | null;
+};
+
 const petGroup = (
   petId: string,
   petName: string,
-  services: Partial<BookingPetService>[] = [{}],
-) =>
-  ({
+  services: ServiceShorthand[] = [{}],
+  petOverrides: Record<string, unknown> = {},
+) => {
+  const first = services[0] ?? {};
+
+  return {
+    petItemId: `pi-${petId}`,
     petId,
     petName,
-    services: services.map((service) => ({
-      itemId: "row-mochi",
-      serviceId: "svc-1",
-      name: "Full Grooming",
-      serviceType: "Grooming",
-      price: "150000.0000",
-      durationMin: 90,
-      groomerUserId: "user-1",
-      groomerName: "Sinta",
-      groomerOffReason: null,
-      assistantGroomers: [],
-      workStatus: "pending",
-      startedAt: null,
-      finishedAt: null,
-      internalNotes: null,
-      customerNotes: null,
-      pulledToCartAt: null,
-      pulledToInvoiceAt: null,
-      addons: [],
-      ...service,
-    })),
+    status: "confirmed",
+    statusHistory: [],
+    nextStatuses: [],
+    cancelReason: null,
+    /* THE NOTES AND THE CLAIM ARE THE ANIMAL'S NOW — taken from the first
+       service's shorthand, which is where the tests still write them. */
+    internalNotes: first.internalNotes ?? null,
+    customerNotes: first.customerNotes ?? null,
+    notes: null,
+    belongings: [],
+    pulledToCartAt: first.pulledToCartAt ?? null,
+    pulledToInvoiceAt: first.pulledToInvoiceAt ?? null,
+    services: services.map(
+      ({
+        groomerUserId,
+        groomerName,
+        groomerOffReason,
+        workStatus,
+        internalNotes: _internalNotes,
+        customerNotes: _customerNotes,
+        pulledToCartAt: _cart,
+        pulledToInvoiceAt: _invoice,
+        ...service
+      }) => ({
+        itemId: "row-mochi",
+        serviceId: "svc-1",
+        name: "Full Grooming",
+        serviceType: "Grooming",
+        price: "150000.0000",
+        durationMin: 90,
+        status: workStatus ?? "pending",
+        statusHistory: [],
+        startedAt: null,
+        finishedAt: null,
+        /*
+          THE GROOMER IS A SESSION. `groomerUserId: null` in a test means
+          "nobody assigned", which is NO SESSION at all rather than a turn with
+          an empty name on it — the same thing the create path writes.
+        */
+        sessions:
+          groomerUserId === null
+            ? []
+            : [
+                {
+                  sessionId: `se-${petId}`,
+                  type: "Full Grooming",
+                  groomerUserId: groomerUserId ?? "user-1",
+                  groomerName: groomerName ?? "Sinta",
+                  groomerOffReason: groomerOffReason ?? null,
+                  status: workStatus ?? "pending",
+                  startedAt: null,
+                  finishedAt: null,
+                  notesSession: null,
+                  notesInternalSession: null,
+                  media: [],
+                },
+              ],
+        addons: [],
+        ...service,
+      }),
+    ),
+    ...petOverrides,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  }) as any;
+  } as any;
+};
 
-const booking = (overrides: Partial<Booking> = {}): Booking =>
+const BASE_PETS = () => [
+  petGroup(MOCHI, "Mochi"),
+  petGroup(COCO, "Coco", [{ itemId: "row-coco" }]),
+];
+
+const booking = (
+  overrides: Partial<Omit<Booking, "status">> & { status?: BookingStatus } = {},
+): Booking =>
   ({
     _id: "bk-1",
     bookingNumber: "BK-260902-001",
     branchId: "b1",
     customerId: "cust-1",
     customerName: "Bu Lisa",
-    pets: [
-      petGroup(MOCHI, "Mochi"),
-      petGroup(COCO, "Coco", [{ itemId: "row-coco" }]),
-    ],
     petName: "Mochi, Coco",
     petCount: 2,
     items: [item(), item({ _id: "row-coco", petId: COCO, petName: "Coco" })],
@@ -100,7 +176,6 @@ const booking = (overrides: Partial<Booking> = {}): Booking =>
     createdAt: "2026-09-01T04:52:00.000Z",
     createdByName: "Fitria",
     createdByRoleName: "Ops",
-    status: "confirmed",
     statusHistory: [],
     origin: "booking",
     posTransactionId: null,
@@ -110,6 +185,16 @@ const booking = (overrides: Partial<Booking> = {}): Booking =>
     notes: null,
     cancelReason: null,
     ...overrides,
+    /*
+      ⚠️ `status` MOVED ONTO THE ANIMAL (PCR-042), and the tests below still say
+      `booking({ status: "completed" })` because that is how a person describes
+      the case. Translated here, once, onto every animal — the same arrangement
+      `BookingsScreen.test.tsx` uses, and for the same reason.
+    */
+    pets: (overrides.pets ?? BASE_PETS()).map((group) => ({
+      ...group,
+      status: (overrides as { status?: BookingStatus }).status ?? group.status,
+    })),
   }) as Booking;
 
 const pet = (id: string, name: string, overrides: Partial<Pet> = {}): Pet =>
@@ -202,7 +287,9 @@ describe("BookingDetailScreen", () => {
     // "Siapa yang bikin booking ini" had no answer on this page at all.
     renderWithAuth(<BookingDetailScreen id="bk-1" />);
 
-    expect(await screen.findByText(/dibuat .* Fitria \(ops\)/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/dibuat .* Fitria \(ops\)/i),
+    ).toBeInTheDocument();
   });
 
   it("has exactly one h1, and it is the booking number", async () => {
@@ -234,8 +321,23 @@ describe("BookingDetailScreen", () => {
   it("shows one block per animal", async () => {
     renderWithAuth(<BookingDetailScreen id="bk-1" />);
 
-    expect(await screen.findByText("Mochi")).toBeInTheDocument();
-    expect(screen.getByText("Coco")).toBeInTheDocument();
+    /*
+      ⚠️ `getAllBy`, NOT `getBy`. Since the status moved onto the animal the
+      header carries one badge per animal, each named when a visit brings more
+      than one — so an animal's name legitimately appears twice: once beside its
+      badge and once heading its block. `getBy` would fail on the very shape this
+      screen exists to show.
+    */
+    expect(await screen.findAllByText("Mochi")).not.toHaveLength(0);
+    expect(screen.getAllByText("Coco")).not.toHaveLength(0);
+
+    /* The blocks themselves — one per animal, each with its own total. */
+    expect(
+      screen.getByRole("link", { name: /pekerjaan mochi/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /pekerjaan coco/i }),
+    ).toBeInTheDocument();
   });
 
   /*
@@ -262,8 +364,8 @@ describe("BookingDetailScreen", () => {
                   name: "Parfum",
                   price: "20000.0000",
                   durationMin: 10,
-                  pulledToCartAt: null,
-                  pulledToInvoiceAt: null,
+                  /* AN ADD-ON CARRIES NO CLAIM OF ITS OWN since PCR-042 — it is
+                     billed with the animal, like everything else under her. */
                 },
               ],
             },
@@ -293,8 +395,8 @@ describe("BookingDetailScreen", () => {
                   name: "Parfum",
                   price: "20000.0000",
                   durationMin: 10,
-                  pulledToCartAt: null,
-                  pulledToInvoiceAt: null,
+                  /* AN ADD-ON CARRIES NO CLAIM OF ITS OWN since PCR-042 — it is
+                     billed with the animal, like everything else under her. */
                 },
               ],
             },
@@ -309,12 +411,32 @@ describe("BookingDetailScreen", () => {
     expect(await screen.findByText(/Rp\s?170[.,]000/)).toBeInTheDocument();
   });
 
-  it("says which rows have been billed and which have not", async () => {
+  /*
+    ─── THE ANIMAL'S CARD CARRIES ITS OWN STATE, AND THE HEADER DOES NOT ───────
+    Name, status and claim sit together on the card because all three are facts
+    about the ANIMAL. The page header used to repeat the status a few
+    centimetres above, which is the same fact twice on a page where the cards are
+    the first thing under the title.
+  */
+  it("puts the status on the animal's card, not in the page header", async () => {
+    renderWithAuth(<BookingDetailScreen id="bk-1" />);
+
+    await screen.findAllByText("Mochi");
+
+    /* Two animals, two badges — one per card, and none beside the number. */
+    expect(screen.getAllByText("Confirmed")).toHaveLength(2);
+  });
+
+  it("says which ANIMAL has been billed and which has not", async () => {
     bookings.getById.mockResolvedValue(
       booking({
         billingState: "partial",
-        /* The claim lives on the ROW (K3), and the screen reads it through the
-           grouped view the API builds from those same rows. */
+        /*
+          ⚠️ THE CLAIM IS THE ANIMAL'S SINCE PCR-042 — you bill Mochi, not
+          Mochi's bath — so it is read once per animal and printed on her card,
+          beside her name and her status. It used to be repeated on every service
+          row underneath: one answer, said three times, looking like three facts.
+        */
         pets: [
           petGroup(MOCHI, "Mochi", [
             { pulledToCartAt: "2026-09-02T04:00:00.000Z" },
@@ -330,8 +452,22 @@ describe("BookingDetailScreen", () => {
 
     renderWithAuth(<BookingDetailScreen id="bk-1" />);
 
-    expect(await screen.findByText(/sudah di kasir/i)).toBeInTheDocument();
-    expect(screen.getByText(/belum ditagih/i)).toBeInTheDocument();
+    /*
+      "ADA DI KERANJANG", NOT "SUDAH DIBAYAR". The claim says a till HOLDS this
+      animal; the booking's `posTransactionId` is what says the till settled, and
+      this fixture has none — so the basket is still open, and the label must not
+      claim money that has not arrived.
+    */
+    expect(await screen.findByText(/ada di keranjang/i)).toBeInTheDocument();
+
+    /*
+      ONE EACH, ON THE TWO CARDS. `getAllByText` because the booking-level pill
+      in the page header says "Belum ditagih" too when nothing is claimed — here
+      it says "Sebagian sudah ditagih", so the only match is Coco's card. Asserted
+      as a count so a regression that reprints the claim on every service row
+      fails here rather than merely looking noisy.
+    */
+    expect(screen.getAllByText(/^belum ditagih$/i)).toHaveLength(1);
     expect(screen.getByText(/sebagian sudah ditagih/i)).toBeInTheDocument();
   });
 
@@ -422,7 +558,9 @@ describe("BookingDetailScreen", () => {
     */
     renderWithAuth(<BookingDetailScreen id="bk-1" />, {
       isSuperAdmin: false,
-      permissions: [{ feature: "bookings", actions: ["read", "advanceStatus"] }],
+      permissions: [
+        { feature: "bookings", actions: ["read", "advanceStatus"] },
+      ],
     });
 
     await screen.findByText(/BK-260902-001/);
@@ -436,8 +574,14 @@ describe("BookingDetailScreen", () => {
       "Status history", which is ungated and would pass even if the split had
       hidden every action a groomer needs.
     */
+    /*
+      ⚠️ NAMED BY THE ANIMAL. There is one status control PER ANIMAL since
+      PCR-042 — the ladder is the animal's, and a single menu for two dogs could
+      only ever be right about one of them — so a bare /aksi/ matches both. The
+      trigger's label carries the number and the name for exactly this reason.
+    */
     await userEvent.click(
-      screen.getByRole("button", { name: /tindakan|aksi|status/i }),
+      screen.getByRole("button", { name: /aksi untuk .*mochi/i }),
     );
     expect(await screen.findByText(/mark arrived/i)).toBeInTheDocument();
     expect(screen.queryByText(/cancel booking/i)).not.toBeInTheDocument();
@@ -461,7 +605,7 @@ describe("BookingDetailScreen", () => {
 
     renderWithAuth(<BookingDetailScreen id="bk-1" />);
 
-    expect(await screen.findByText("Mochi")).toBeInTheDocument();
+    expect(await screen.findAllByText("Mochi")).not.toHaveLength(0);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
@@ -609,7 +753,7 @@ describe("BookingDetailScreen", () => {
 
     renderWithAuth(<BookingDetailScreen id="bk-1" />);
 
-    await screen.findByText("Mochi");
+    await screen.findAllByText("Mochi");
     expect(screen.queryByText(/titipan belum kembali/)).not.toBeInTheDocument();
   });
 
@@ -634,7 +778,7 @@ describe("BookingDetailScreen", () => {
 
     renderWithAuth(<BookingDetailScreen id="bk-1" />);
 
-    await screen.findByText("Mochi");
+    await screen.findAllByText("Mochi");
     expect(screen.queryByText("Takut hairdryer")).not.toBeInTheDocument();
     expect(
       screen.queryByText("Sarankan 3 minggu sekali"),
@@ -651,7 +795,7 @@ describe("BookingDetailScreen", () => {
   it("does not carry the titipan list itself any more", async () => {
     renderWithAuth(<BookingDetailScreen id="bk-1" />);
 
-    await screen.findByText("Mochi");
+    await screen.findAllByText("Mochi");
     expect(screen.queryByText("Titipan Owner")).not.toBeInTheDocument();
   });
 });
