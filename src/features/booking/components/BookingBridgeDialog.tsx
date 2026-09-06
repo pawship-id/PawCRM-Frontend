@@ -165,9 +165,7 @@ export function BookingBridgeDialog({
   const [ticked, setTicked] = useState<Set<string>>(new Set());
 
   const activeTab: Tab =
-    tab ??
-    initialTab ??
-    (!loading && bookings.length === 0 ? "adhoc" : "pull");
+    tab ?? initialTab ?? (!loading && bookings.length === 0 ? "adhoc" : "pull");
 
   /** Closing forgets everything — the next customer starts clean. */
   function handleOpenChange(next: boolean) {
@@ -196,10 +194,12 @@ export function BookingBridgeDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Layanan untuk {customerName ?? "pelanggan ini"}</DialogTitle>
+          <DialogTitle>
+            Layanan untuk {customerName ?? "pelanggan ini"}
+          </DialogTitle>
           <DialogDescription>
-            Tarik booking yang sudah ada, atau tambahkan layanan baru langsung di
-            sini.
+            Tarik booking yang sudah ada, atau tambahkan layanan baru langsung
+            di sini.
           </DialogDescription>
         </DialogHeader>
 
@@ -292,7 +292,26 @@ export function BookingBridgeDialog({
                                 <span className="text-xs tabular-nums text-warning">
                                   {booking.bookingNumber ?? "Belum bernomor"}
                                 </span>
-                                <BookingStatusBadge status={booking.status} />
+                                {/*
+                                  ONE PER ANIMAL — PCR-042. The bridge offers a
+                                  visit whose animals may stand in different
+                                  states, and a single badge could only be right
+                                  about one of them. The name is added only when
+                                  there is more than one to tell apart.
+                                */}
+                                {booking.pets.map((pet) => (
+                                  <span
+                                    key={pet.petItemId}
+                                    className="flex items-center gap-1"
+                                  >
+                                    <BookingStatusBadge status={pet.status} />
+                                    {booking.pets.length > 1 && (
+                                      <span className="text-xs text-muted">
+                                        {pet.petName}
+                                      </span>
+                                    )}
+                                  </span>
+                                ))}
                               </span>
                               <span className="mt-1 block">
                                 {booking.items.map((item) => (

@@ -210,8 +210,29 @@ export const bookingService = {
    * illegal one is a 409 whose `reason` says what state the server actually
    * found. `reason` here is the CANCELLATION reason, stored only on a cancel.
    */
-  changeStatus: (id: string, status: BookingStatus, reason?: string | null) =>
-    apiClient.patch<Booking>(`/bookings/${id}/status`, { status, reason }),
+  /**
+   * PATCH /bookings/:id/status — moves an animal along the visit ladder.
+   *
+   * ⚠️ `petId` NAMES ONE ANIMAL; OMITTING IT MOVES EVERY LIVE ONE (PCR-042). The
+   * whole-visit form is what the counter means by "they have arrived" when a
+   * customer hands over two dogs at once; the per-animal one is for when the two
+   * diverge — Coco sent home, Mochi groomed.
+   *
+   * THE SERVER REFUSES THE WHOLE MOVE if any named animal cannot make it, rather
+   * than moving some and skipping others: half a visit advanced with nothing on
+   * screen to say so is worse than a refusal that names the animal.
+   */
+  changeStatus: (
+    id: string,
+    status: BookingStatus,
+    reason?: string | null,
+    petId?: string | null,
+  ) =>
+    apiClient.patch<Booking>(`/bookings/${id}/status`, {
+      status,
+      reason,
+      ...(petId ? { petId } : {}),
+    }),
 
   /**
    * POST /bookings/:id/reschedule — the appointment moves to another time.

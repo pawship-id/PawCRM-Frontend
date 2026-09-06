@@ -483,7 +483,13 @@ export function BookingPetWorkScreen({
 
   const petName = group?.petName ?? pet?.name ?? "Hewan ini";
 
-  if (services.length === 0) {
+  /*
+    ⚠️ THE ANIMAL, NOT ONLY ITS SERVICES. The guard used to ask whether there were
+    any rows; it has to ask whether this animal is on the visit at all, because
+    everything below now reads `group.status` — the ladder lives there since
+    PCR-042, and an absent animal would take the page down rather than show this.
+  */
+  if (!group || services.length === 0) {
     return (
       <div className="flex flex-col gap-4">
         <Alert variant="warning">
@@ -563,7 +569,9 @@ export function BookingPetWorkScreen({
               <h1 className="text-2xl font-extrabold text-foreground">
                 {petName}
               </h1>
-              <BookingStatusBadge status={booking.status} />
+              {/* THIS ANIMAL'S, and this page is about one — PCR-042. The header
+                  never had a single answer to give. */}
+              <BookingStatusBadge status={group.status} />
             </div>
             {/*
               ─── WHO MADE THIS, AND WHEN — the reference's own subtitle ────────
@@ -676,7 +684,7 @@ export function BookingPetWorkScreen({
             </div>
           </div>
 
-          {blocking.length > 0 && booking.status !== "completed" && (
+          {blocking.length > 0 && group.status !== "completed" && (
             /*
               THE SAME SENTENCE THE SERVER WOULD ANSWER WITH IF THE BUTTON BELOW
               WERE PRESSED ANYWAY — said first, in red, the reference's own
@@ -707,8 +715,10 @@ export function BookingPetWorkScreen({
             visible regardless, so wrapping the whole thing in another `Can`
             would hide the trail from somebody who can only read.
           */}
+          {/* ONE ANIMAL, ONE CONTROL — the page is already about this dog. */}
           <BookingStatusActions
             booking={booking}
+            pet={group}
             onChanged={() => setNonce((n) => n + 1)}
             variant="prominent"
           />

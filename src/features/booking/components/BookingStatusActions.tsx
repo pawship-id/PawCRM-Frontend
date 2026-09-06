@@ -24,7 +24,7 @@ import { Can } from "@/features/permissions";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
-import type { Booking, BookingStatus } from "@/types/api";
+import type { Booking, BookingPet, BookingStatus } from "@/types/api";
 
 import {
   BOOKING_STATUS_ACTIONS,
@@ -68,10 +68,24 @@ const REASON_MAX_LENGTH = 500;
  */
 export function BookingStatusActions({
   booking,
+  pet,
   onChanged,
   variant = "compact",
 }: {
   booking: Booking;
+  /**
+   * THE ANIMAL THIS CONTROL MOVES — PCR-042.
+   *
+   * The status is a fact about one animal: a visit where Mochi has arrived and
+   * Coco has not is in two states, and a single control for the pair could only
+   * be right about one of them. Every screen that shows this now shows one per
+   * animal.
+   *
+   * ⚠️ IT DECIDES BOTH WHAT IS OFFERED AND WHAT IS SENT. `pet.status` builds the
+   * menu; `pet.petId` goes on the wire, so the server moves this animal and
+   * leaves its neighbours where they are.
+   */
+  pet: BookingPet;
   /** Called after a successful move so the list can re-ask the server. */
   onChanged: () => void;
   /**
@@ -103,18 +117,24 @@ export function BookingStatusActions({
     asked to be fetched or driven home — a menu built from the status alone would
     offer "Mulai penjemputan" on a visit with no van booked.
   */
-  const forward = forwardStatuses(booking);
-  const cancellable = canCancel(booking);
+  const forward = forwardStatuses(pet, booking);
+  const cancellable = canCancel(pet, booking);
   /*
     MOVING THE DATE IS NOT A RUNG, so it is not in `forward`. It sits beside
     cancellation as the other thing that can happen to an appointment which is
     not it advancing — and like cancellation it needs a second piece of
     information, so it opens a dialog rather than firing on click.
   */
-  const reschedulable = canReschedule(booking);
+  const reschedulable = canReschedule(pet, booking);
 
-  /** What a human calls this row. A draft has no number yet. */
-  const label = booking.bookingNumber ?? "booking ini";
+  /*
+    WHAT A HUMAN CALLS THIS ROW — the ANIMAL, since one visit now carries several
+    of these controls. "BK-260910-001 · Mochi" is what a toast has to say for
+    somebody to know which of the two dogs just moved.
+  */
+  const label =
+    [booking.bookingNumber, pet.petName].filter(Boolean).join(" · ") ||
+    "booking ini";
 
   function close() {
     // Never close mid-write: nobody would be told whether the move landed.
@@ -137,6 +157,8 @@ export function BookingStatusActions({
         // Stored only on a cancellation, and only when there was something to
         // say — a mandatory field with nothing in it gets filled with "-".
         next === "cancelled" && reason.trim() !== "" ? reason.trim() : null,
+        /* THIS ANIMAL, never the whole visit — see the `pet` prop. */
+        pet.petId,
       );
 
       setNext(null);
@@ -159,7 +181,7 @@ export function BookingStatusActions({
     }
   }
 
-  const implied = next ? impliedStatuses(booking, next) : [];
+  const implied = next ? impliedStatuses(pet, booking, next) : [];
 
   /*
     THE VERY NEXT RUNG, for the prominent variant's primary button.
@@ -229,37 +251,37 @@ export function BookingStatusActions({
 
             {/* Ungated: the trail is a read, and seeing the row is the only grant
               reading its history needs. */}
-          <DropdownMenuItem onSelect={() => setHistoryOpen(true)}>
-            <History />
-            Status history
-          </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setHistoryOpen(true)}>
+              <History />
+              Status history
+            </DropdownMenuItem>
 
-          {/*
+            {/*
             `update`, NOT `cancel`. Rearranging a day is an edit to what was
             agreed; gating it on the cancel grant would mean a receptionist who
             may move bookings cannot, while one who may only end them can.
           */}
-          {reschedulable && (
-            <Can feature="bookings" action="update">
-              <DropdownMenuItem onSelect={() => setRescheduleOpen(true)}>
-                <CalendarClock />
-                Reschedule
-              </DropdownMenuItem>
-            </Can>
-          )}
+            {reschedulable && (
+              <Can feature="bookings" action="update">
+                <DropdownMenuItem onSelect={() => setRescheduleOpen(true)}>
+                  <CalendarClock />
+                  Reschedule
+                </DropdownMenuItem>
+              </Can>
+            )}
 
-          {cancellable && (
-            <Can feature="bookings" action="cancel">
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                variant="destructive"
-                onSelect={() => setNext("cancelled")}
-              >
-                {BOOKING_STATUS_ACTIONS.cancelled}
-              </DropdownMenuItem>
-            </Can>
-          )}
-        </DropdownMenuContent>
+            {cancellable && (
+              <Can feature="bookings" action="cancel">
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  variant="destructive"
+                  onSelect={() => setNext("cancelled")}
+                >
+                  {BOOKING_STATUS_ACTIONS.cancelled}
+                </DropdownMenuItem>
+              </Can>
+            )}
+          </DropdownMenuContent>
         </DropdownMenu>
       </div>
 

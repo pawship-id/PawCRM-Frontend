@@ -2141,9 +2141,23 @@ export interface Booking {
   createdByRoleName: string | null;
   items: BookingItem[];
   scheduledAt: string;
-  status: BookingStatus;
+  /*
+    ⚠️ THERE IS NO `status` HERE. It moved onto the animal in PCR-042, and a
+    derived one is NOT sent in its place — a visit where Mochi has arrived and
+    Coco was cancelled is in two states, and one word that hides that is a word
+    somebody eventually decides by.
+
+    READ `pets[].status`, and draw one badge per animal. `pets[].nextStatuses` is
+    what an action reads: the server computes it against this booking's own trip
+    legs, so a client cannot offer "Dijemput" on a visit with no van booked.
+  */
   /**
-   * Every status it has reached, oldest first.
+   * Every status ANY of its animals has reached, oldest first, each entry
+   * naming the animal it happened to.
+   *
+   * ⚠️ A LOG, NOT A STATUS, which is why it survives where `status` did not.
+   * Nothing decides from it; it answers "what happened on this visit". One
+   * animal's own trail is `pets[].statusHistory`.
    *
    * EMPTY ON BOOKINGS MADE BEFORE THE TRAIL EXISTED, and left that way on
    * purpose — back-filling one invented instant per booking would be worse than
@@ -2257,6 +2271,18 @@ export interface BookingPetService {
  * ladder would offer "Dijemput" on a visit with no pickup booked.
  */
 export interface BookingPet {
+  /**
+   * THE `bookingitems` DOCUMENT'S OWN ID — the animal ON THIS VISIT.
+   *
+   * ⚠️ KEY REACT LISTS ON THIS, NOT ON `petId`. The invariant is one document per
+   * animal per booking, but a booking taken before the PCR-041 migration still
+   * holds one per SERVICE — so Mochi with a bath and a nail trim appears twice
+   * with the same `petId`, and a list keyed on it duplicates and crashes.
+   *
+   * It is also what a new invoice or POS line points at (`bookingItemId`), and
+   * what a claim is written against.
+   */
+  petItemId: string;
   petId: string;
   petName: string | null;
   status: BookingStatus;
@@ -4954,7 +4980,10 @@ export interface CustomerInvoiceDetail extends Omit<
 export interface InvoiceBooking {
   _id: string;
   bookingNumber: string | null;
-  status: BookingStatus;
+  /*
+    ⚠️ NO `status` — it moved onto the animal in PCR-042 and `pets[]` carries it.
+    A visit where Mochi was groomed and Coco was sent home is in two states.
+  */
   /**
    * `invoice_adhoc` means the invoice RAISED it — the service was typed in and
    * nobody had booked it. `booking` means it existed first and was billed here.
@@ -4970,6 +4999,20 @@ export interface InvoiceBooking {
    * is a record of what was agreed.
    */
   petName: string | null;
+  /**
+   * The animals on this visit, each with its own place in the ladder.
+   *
+   * ⚠️ `petItemId` IS THE KEY, NOT `petId`. It is the `bookingitems` document's
+   * own id — the animal ON THIS VISIT — and it is what stays unique when a
+   * pre-migration booking still holds several documents for one animal. Keying a
+   * React list on `petId` there duplicates and crashes.
+   */
+  pets: {
+    petItemId: string;
+    petId: string;
+    petName: string | null;
+    status: BookingStatus;
+  }[];
   items: InvoiceBookingItem[];
 }
 

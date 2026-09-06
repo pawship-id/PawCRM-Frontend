@@ -1,4 +1,4 @@
-import type { Booking, BookingStatus } from "@/types/api";
+import type { Booking, BookingPet, BookingStatus } from "@/types/api";
 
 /**
  * Every rung, in order — the shape of a visit with BOTH trip legs.
@@ -32,8 +32,19 @@ const LADDER: BookingStatus[] = [
  */
 export type BookingLike = Pick<
   Booking,
-  "status" | "pickupRequested" | "deliveryRequested"
+  "pickupRequested" | "deliveryRequested"
 >;
+
+/**
+ * THE ANIMAL, WHICH IS WHERE THE STATUS LIVES SINCE PCR-042.
+ *
+ * ⚠️ EVERY FUNCTION BELOW TAKES BOTH, and neither is optional. The status is the
+ * ANIMAL's; the two trip rungs are the BOOKING's, because a van goes to an
+ * address and both of one customer's dogs ride in it. Passing only the animal
+ * would build a ladder with no trip legs — which does not throw, and quietly
+ * stops the menu offering "Dijemput" on a visit that has a van booked.
+ */
+export type PetLike = Pick<BookingPet, "status">;
 
 /**
  * The path THIS booking walks — a mirror of `ladderFor` on the server.
@@ -59,9 +70,12 @@ export function ladderFor(booking: BookingLike): BookingStatus[] {
  *
  * KEEP IT IN STEP WITH THE MODEL. Both files change together.
  */
-export function transitionsFor(booking: BookingLike): BookingStatus[] {
+export function transitionsFor(
+  pet: PetLike,
+  booking: BookingLike,
+): BookingStatus[] {
   const ladder = ladderFor(booking);
-  const at = ladder.indexOf(booking.status);
+  const at = ladder.indexOf(pet.status);
 
   /* `rescheduled` is never a stored status; an unknown value moves nowhere. */
   if (at === -1) return [];
@@ -72,11 +86,11 @@ export function transitionsFor(booking: BookingLike): BookingStatus[] {
     commissioned visit out of something nobody ever agreed to.
   */
   const ceiling =
-    booking.status === "draft" ? ladder.indexOf("arrived") : ladder.length - 1;
+    pet.status === "draft" ? ladder.indexOf("arrived") : ladder.length - 1;
 
   const forward = ladder.slice(at + 1, ceiling + 1);
 
-  return hasCompletedWork(booking) ? forward : [...forward, "cancelled"];
+  return hasCompletedWork(pet, booking) ? forward : [...forward, "cancelled"];
 }
 
 /**
@@ -88,9 +102,9 @@ export function transitionsFor(booking: BookingLike): BookingStatus[] {
  * edit form, re-crewing a session — closes here, while a note or a belonging
  * stays open until the animal actually goes home.
  */
-export function hasCompletedWork(booking: BookingLike): boolean {
+export function hasCompletedWork(pet: PetLike, booking: BookingLike): boolean {
   const ladder = ladderFor(booking);
-  const at = ladder.indexOf(booking.status);
+  const at = ladder.indexOf(pet.status);
 
   return at !== -1 && at >= ladder.indexOf("completed");
 }
@@ -140,13 +154,16 @@ export const BOOKING_STATUS_ACTIONS: Record<BookingStatus, string> = {
  * the caller renders it separately rather than having to filter it back out of
  * this list every time.
  */
-export function forwardStatuses(booking: BookingLike): BookingStatus[] {
-  return transitionsFor(booking).filter((next) => next !== "cancelled");
+export function forwardStatuses(
+  pet: PetLike,
+  booking: BookingLike,
+): BookingStatus[] {
+  return transitionsFor(pet, booking).filter((next) => next !== "cancelled");
 }
 
 /** Whether a booking may still be called off. */
-export function canCancel(booking: BookingLike): boolean {
-  return transitionsFor(booking).includes("cancelled");
+export function canCancel(pet: PetLike, booking: BookingLike): boolean {
+  return transitionsFor(pet, booking).includes("cancelled");
 }
 
 /**
@@ -158,11 +175,11 @@ export function canCancel(booking: BookingLike): boolean {
  * moving the date of a visit that is happening describes nothing, and that is a
  * new booking.
  */
-export function canReschedule(booking: BookingLike): boolean {
-  if (booking.status === "draft") return false;
+export function canReschedule(pet: PetLike, booking: BookingLike): boolean {
+  if (pet.status === "draft") return false;
 
   const ladder = ladderFor(booking);
-  const at = ladder.indexOf(booking.status);
+  const at = ladder.indexOf(pet.status);
 
   return at !== -1 && at < ladder.indexOf("arrived");
 }
@@ -178,11 +195,12 @@ export function canReschedule(booking: BookingLike): boolean {
  * Returns only the IMPLIED rungs; the move itself is what the caller asked for.
  */
 export function impliedStatuses(
+  pet: PetLike,
   booking: BookingLike,
   to: BookingStatus,
 ): BookingStatus[] {
   const ladder = ladderFor(booking);
-  const start = ladder.indexOf(booking.status);
+  const start = ladder.indexOf(pet.status);
   const end = ladder.indexOf(to);
 
   // `cancelled` is off the ladder — it fills in nothing behind it.

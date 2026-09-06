@@ -149,7 +149,24 @@ export function BookingDetailScreen({ id }: { id: string }) {
               {/* A DRAFT HAS NO NUMBER — see the model. Saying so beats a blank. */}
               {booking.bookingNumber ?? "Booking (draf)"}
             </h1>
-            <BookingStatusBadge status={booking.status} />
+            {/*
+              ─── ONE BADGE PER ANIMAL — PCR-042 ────────────────────────────
+
+              There was one here, drawn from `booking.status`. A visit where
+              Mochi has arrived and Coco was cancelled is in two states, and the
+              single word the header used to send hid one of them.
+
+              THE NAME IS ONLY ADDED WHEN THERE ARE SEVERAL, so a one-dog booking
+              reads exactly as it did.
+            */}
+            {booking.pets.map((pet) => (
+              <span key={pet.petItemId} className="flex items-center gap-1">
+                <BookingStatusBadge status={pet.status} />
+                {booking.pets.length > 1 && (
+                  <span className="text-xs text-muted">{pet.petName}</span>
+                )}
+              </span>
+            ))}
             <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted">
               {BILLING_LABELS[booking.billingState] ?? booking.billingState}
             </span>
@@ -184,7 +201,16 @@ export function BookingDetailScreen({ id }: { id: string }) {
             beside it, which is why both live here and neither is inside the
             other.
           */}
-          {booking.status !== "completed" && booking.status !== "cancelled" && (
+          {/*
+            ⚠️ "ANY ANIMAL STILL OPEN", NOT "THE BOOKING". The server refuses a
+            PATCH once work is completed, and it asks the same way — any animal
+            past `completed` closes the form. Offering the button on a visit
+            where one dog is finished would send somebody to a form that answers
+            409.
+          */}
+          {booking.pets.some(
+            (pet) => pet.status !== "completed" && pet.status !== "cancelled",
+          ) && (
             <Can feature="bookings" action="update">
               <Button asChild variant="secondary" size="sm">
                 <Link href={`/dashboard/booking/${booking._id}/edit`}>
@@ -193,10 +219,22 @@ export function BookingDetailScreen({ id }: { id: string }) {
               </Button>
             </Can>
           )}
-          <BookingStatusActions
-            booking={booking}
-            onChanged={() => setNonce((n) => n + 1)}
-          />
+          {/*
+            ─── ONE CONTROL PER ANIMAL ──────────────────────────────────────
+
+            The status is the animal's, so the thing that moves it is too. A
+            single menu for two dogs could only ever be right about one of them —
+            and "the visit has arrived" is still one click on a one-dog booking,
+            which is most of them.
+          */}
+          {booking.pets.map((pet) => (
+            <BookingStatusActions
+              key={pet.petItemId}
+              booking={booking}
+              pet={pet}
+              onChanged={() => setNonce((n) => n + 1)}
+            />
+          ))}
         </div>
       </div>
 
