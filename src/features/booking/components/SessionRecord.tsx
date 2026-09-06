@@ -28,13 +28,26 @@ const MAX_MEDIA = 9;
  * "bookingnya masih requested". Nobody says "kindnya other"; they say sebelum
  * and sesudah. So this is an ordinary enum with ordinary Bahasa labels.
  */
-const KIND_LABELS: Record<SessionMediaKind, string> = {
+const ALBUM_LABELS: Record<string, string> = {
   before: "Sebelum",
   after: "Sesudah",
   other: "Lainnya",
 };
 
-const KIND_TONES: Record<SessionMediaKind, string> = {
+/**
+ * WHAT A TILE SAYS THIS PHOTO IS.
+ *
+ * A `session_<nama>` kind reads back as the turn's own name — the value carries
+ * it, and "Mandi" on a photo taken during the bath says more than "Sesi" would.
+ * Anything else is one of the Album's three.
+ */
+function kindLabel(kind: SessionMediaKind): string {
+  return kind.startsWith("session_")
+    ? kind.slice("session_".length)
+    : (ALBUM_LABELS[kind] ?? kind);
+}
+
+const KIND_TONES: Record<string, string> = {
   before: "bg-tint-info text-info",
   after: "bg-tint-success text-success",
   other: "bg-tint-neutral text-muted",
@@ -123,12 +136,21 @@ export function SessionRecord({
       const asset = await mediaService.upload(chosen, { purpose: "booking" });
 
       /*
-        ⚠️ `other` ON ARRIVAL, never a guess. A shot taken mid-groom is neither
-        a before nor an after, and picking one for somebody produces a gallery
-        whose labels are wrong. It is re-labelled in one click below.
+        ⚠️ FILED UNDER THIS TURN, not under `other`.
+
+        A photo taken from a session's own card is evidence for that stretch of
+        work, so it carries the turn's name — `session_Mandi`. The Album then
+        leaves it alone: its three sections are about the VISIT, and nine working
+        shots would bury the three that answer "what did the dog look like".
+
+        NOBODY IS ASKED TO CLASSIFY IT. The turn is already known here, which is
+        the whole reason this upload needs no question and the Album's does.
       */
       await save({
-        media: [...asPayload(media), { ...asset, kind: "other" as const }],
+        media: [
+          ...asPayload(media),
+          { ...asset, kind: `session_${session.sessionName}` as const },
+        ],
       });
     } catch (caught) {
       setError(
@@ -223,7 +245,7 @@ export function SessionRecord({
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={row.thumbUrl ?? row.mediumUrl ?? row.url}
-                  alt={row.alt ?? `Foto ${KIND_LABELS[row.kind]}`}
+                  alt={row.alt ?? `Foto ${kindLabel(row.kind)}`}
                   className="h-32 w-full rounded-lg object-cover"
                 />
 
@@ -253,9 +275,9 @@ export function SessionRecord({
                     before this decision, and if another screen ever sets them.
                   */}
                   <span
-                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${KIND_TONES[row.kind]}`}
+                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${KIND_TONES[row.kind] ?? "bg-tint-neutral text-muted"}`}
                   >
-                    {KIND_LABELS[row.kind]}
+                    {kindLabel(row.kind)}
                   </span>
 
                   {/*
@@ -330,11 +352,11 @@ function Gallery({ media }: { media: SessionMedia[] }) {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={row.thumbUrl ?? row.mediumUrl ?? row.url}
-            alt={row.alt ?? `Foto ${KIND_LABELS[row.kind]}`}
+            alt={row.alt ?? `Foto ${kindLabel(row.kind)}`}
             className="h-24 w-full rounded-lg object-cover"
           />
           <span className="text-xs text-muted">
-            {KIND_LABELS[row.kind]}
+            {kindLabel(row.kind)}
             {row.uploadedByName ? ` · ${row.uploadedByName}` : ""}
           </span>
         </li>

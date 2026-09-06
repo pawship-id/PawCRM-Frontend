@@ -163,7 +163,7 @@ describe("SessionRecord — the gallery", () => {
 });
 
 describe("SessionRecord — adding a photo", () => {
-  it("files it under `booking` and labels it `other`", async () => {
+  it("files it under `booking`, and under THIS TURN's name", async () => {
     /*
       ⚠️ TWO SEPARATE TRAPS IN ONE ACT.
 
@@ -171,8 +171,12 @@ describe("SessionRecord — adding a photo", () => {
       `sweepOrphanMedia` reads — a session photo filed under `product` is
       checked against the product collection, found nowhere, and deleted.
 
-      `kind: "other"` because a shot taken mid-groom is neither a before nor an
-      after, and guessing produces a gallery whose labels are wrong.
+      `kind: "session_Mandi"` because a photo taken from a turn's own card is
+      evidence for that stretch of work. It is NOT `other`: the Album's three
+      sections are about the VISIT, and nine working shots would bury the three
+      that answer "what did the dog look like". Nobody is asked to classify it —
+      the turn is already known here, which is why this upload needs no question
+      and the Album's does.
     */
     media.upload.mockResolvedValue({
       mediaType: "image",
@@ -206,7 +210,7 @@ describe("SessionRecord — adding a photo", () => {
           expect.objectContaining({ storageKey: "t/a.jpg" }),
           expect.objectContaining({
             storageKey: "t/booking/new.jpg",
-            kind: "other",
+            kind: "session_Mandi",
             token: "tok",
           }),
         ],

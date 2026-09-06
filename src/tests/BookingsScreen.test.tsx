@@ -29,6 +29,8 @@ const BASE_PETS: BookingPet[] = [
     customerNotes: null,
     notes: null,
     belongings: [],
+    /* The animal's own album — a different array from its turns' evidence. */
+    media: [],
     pulledToCartAt: null,
     pulledToInvoiceAt: null,
     services: [

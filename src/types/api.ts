@@ -2249,7 +2249,25 @@ export interface BookingSession {
  * before nor an after, and forcing a choice while somebody is holding a wet dog
  * produces a gallery where half the labels are wrong.
  */
-export type SessionMediaKind = "before" | "after" | "other";
+export type SessionMediaKind =
+  | "before"
+  | "after"
+  | "other"
+  /**
+   * ⚠️ ONE PER TURN — `session_Mandi`. A photo uploaded from a session's own
+   * card is filed under its turn, and the Album IGNORES these: they are working
+   * evidence for that stretch of work, not the visit's gallery, and mixing them
+   * in would bury three visit photos under nine working ones.
+   *
+   * THE TURN'S NAME IS SNAPSHOTTED INTO THE VALUE. Renaming a turn afterwards
+   * does not retitle photos already filed under the old name.
+   */
+  | `session_${string}`;
+
+/** The three the Album is made of — everything else is a turn's own evidence. */
+export const ALBUM_MEDIA_KINDS = ["before", "after", "other"] as const;
+
+export type AlbumMediaKind = (typeof ALBUM_MEDIA_KINDS)[number];
 
 /**
  * A photo or clip on one turn: the shared asset, plus the two things a gallery
@@ -2336,6 +2354,19 @@ export interface BookingPet {
   /** About THIS APPOINTMENT, not about the animal. */
   notes: string | null;
   belongings: Omit<BookingBelonging, "petId">[];
+  /**
+   * ⚠️ THE ANIMAL'S OWN ALBUM — a DIFFERENT array from
+   * `services[].sessions[].media[]`, not a view of it.
+   *
+   * A turn's photos are evidence for that stretch of work and live beside its
+   * clock and its crew; these are about the VISIT — what the dog came in like,
+   * what it left like. Which button somebody pressed decides where one lands,
+   * and the Album card reads only this one.
+   *
+   * `kind` here is only `before` / `after` / `other`: a `session_<nama>` value
+   * cannot occur, because a photo filed under a turn is stored IN that turn.
+   */
+  media: SessionMedia[];
   /** Per animal — you bill Mochi, not Mochi's bath. */
   pulledToCartAt: string | null;
   pulledToInvoiceAt: string | null;

@@ -40,6 +40,8 @@ const petOf = (status: BookingStatus = "confirmed") =>
     customerNotes: null,
     notes: null,
     belongings: [],
+    /* The animal's own album — a different array from its turns' evidence. */
+    media: [],
     pulledToCartAt: null,
     pulledToInvoiceAt: null,
     services: [],

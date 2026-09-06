@@ -33,6 +33,8 @@ const pet = (over: Partial<BookingPet>): BookingPet =>
     customerNotes: null,
     notes: null,
     belongings: [],
+    /* The animal's own album — a different array from its turns' evidence. */
+    media: [],
     pulledToCartAt: over.pulledToCartAt ?? null,
     pulledToInvoiceAt: over.pulledToInvoiceAt ?? null,
     services: over.services ?? [],

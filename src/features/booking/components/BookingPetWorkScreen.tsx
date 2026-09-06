@@ -17,6 +17,7 @@ import {
   RemoveSessionButton,
   SessionCrew,
 } from "./SessionGroomers";
+import { SessionAlbum } from "./SessionAlbum";
 import { SessionRecord } from "./SessionRecord";
 import {
   furTypeLabel,
@@ -1547,6 +1548,21 @@ export function BookingPetWorkScreen({
               stray link under a list of sessions.
             */}
           </Card>
+
+          {/* ─── Album ─────────────────────────────────────────────────────
+              THE SAME PHOTOS, READ THE OTHER WAY ROUND. The card above is
+              organised by WORK — which turn, who, how long — and its gallery
+              sits inside the turn it belongs to. This one is organised by the
+              VISIT: what the dog came in like and what it left like, which is
+              how somebody looks a grooming back over.
+
+              A VIEW OVER `pets[].services[].sessions[].media[]`, storing
+              nothing of its own — see the component. */}
+          <SessionAlbum
+            bookingId={bookingId}
+            pet={group}
+            onChanged={setBooking}
+          />
         </div>
 
         {/* ─── The rail ────────────────────────────────────────────────── */}

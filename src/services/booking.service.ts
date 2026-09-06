@@ -292,6 +292,23 @@ export const bookingService = {
     }),
 
   /**
+   * PATCH /bookings/:id/pets/:petId/media — the ANIMAL's own album.
+   *
+   * ⚠️ A DIFFERENT ARRAY FROM `setSessionRecord`'s `media`, not a different view
+   * of it. A turn's photos are evidence for that stretch of work; these are
+   * about the visit. Which button somebody pressed decides where one lands.
+   *
+   * SENT WHOLESALE. An asset already in the album carries no `token` — the API
+   * never stores one — and the server tells stored from new by `storageKey`.
+   */
+  setPetMedia: (
+    id: string,
+    petId: string,
+    media: (MediaAsset & { kind?: SessionMediaKind })[],
+  ) =>
+    apiClient.patch<Booking>(`/bookings/${id}/pets/${petId}/media`, { media }),
+
+  /**
    * PATCH /bookings/:id/sessions/:sessionId/record — what happened on one turn.
    *
    * ⚠️ SEPARATE FROM `setSessionCrew`, and not a fourth shape on it. The crew is
