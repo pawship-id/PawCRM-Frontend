@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { BookingPetWorkScreen } from "@/features/booking";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Pekerjaan Hewan · Buloo" };
+export const metadata: Metadata = { title: "Lembar Kerja Hewan · Buloo" };
 
 /**
  * ONE ANIMAL'S WORK IN ONE VISIT.

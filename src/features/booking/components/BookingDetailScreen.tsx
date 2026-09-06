@@ -36,6 +36,34 @@ function moment(iso: string): string {
 }
 
 /**
+ * THE DAY, WITHOUT THE CLOCK — "Minggu, 6 September 2026".
+ *
+ * SPLIT OUT OF `moment` FOR THE VISIT CARD, where the two were one cell and wrapped
+ * onto a second line on any laptop: "…pukul 09.30 –" then "11.31" underneath, so
+ * the one figure somebody scans for was the orphan at the bottom.
+ *
+ * `moment` KEEPS BOTH and is still what the audit line uses — "Dibuat Minggu,
+ * 6 September 2026 pukul 09.14" is a sentence, and a sentence wants its clock
+ * inline.
+ */
+function dayOf(iso: string): string {
+  return new Date(iso).toLocaleDateString("id-ID", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+/** The clock alone — "09.30". Pairs with `dayOf`. */
+function clockOf(iso: string): string {
+  return new Date(iso).toLocaleTimeString("id-ID", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/**
  * One booking, whole — the screen the module was missing.
  *
  * WHAT IT IS FOR. The list answers "did that grooming get recorded"; the
@@ -227,7 +255,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
             label.
 
             EACH ONE MOVED ONTO ITS ANIMAL'S CARD, into the row that already
-            holds "Pekerjaan" and "Profil". The control now sits under the name
+            holds "Lembar kerja" and "Profil". The control now sits under the name
             it acts on, which is the whole point: the status is the animal's.
 
             WHAT STAYS HERE IS THE VISIT'S. "Ubah" edits the booking — its
@@ -238,20 +266,26 @@ export function BookingDetailScreen({ id }: { id: string }) {
 
       <Card title="Kunjungan">
         {/*
-          ─── FOUR FACTS ON ONE LINE, NOT FOUR ROWS OF A TWO-COLUMN LIST ───────
+          ─── FIVE FACTS ON ONE LINE, NOT FIVE ROWS OF A TWO-COLUMN LIST ──────
 
-          These are the numbers somebody scans, not prose they read: when, how
-          long, how many animals, how much. A `sm:grid-cols-2` definition list
-          made four short answers occupy four rows and half the card's width
-          each, so the eye travelled down and back for facts that belong in one
-          glance. Four columns on a laptop, two on a phone.
+          These are the numbers somebody scans, not prose they read: which day,
+          what time, how long, how many animals, how much. A definition list made
+          each short answer occupy a row and half the card's width, so the eye
+          travelled down and back for facts that belong in one glance.
+
+          ⚠️ THE DAY AND THE CLOCK ARE TWO COLUMNS, NOT ONE. They were one cell,
+          and "Minggu, 6 September 2026 pukul 09.30 – 11.31" is too long for a
+          quarter of a card: it wrapped, leaving "11.31" alone on a second line —
+          the one figure somebody scans for, orphaned at the bottom of the cell.
+          Split, each fits its column and neither wraps.
         */}
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-4 lg:grid-cols-4">
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-4 lg:grid-cols-5">
+          <Row label="Tanggal" value={dayOf(booking.scheduledAt)} />
           <Row
             label="Waktu"
             value={
               <>
-                {moment(booking.scheduledAt)}
+                {clockOf(booking.scheduledAt)}
                 {/*
                   THE FINISH TIME BELONGS BESIDE THE START. The old card had a
                   field labelled "Perkiraan selesai" whose value was "121 menit"
@@ -613,7 +647,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
                   into a column of figures that reads down across cards. Money
                   and buttons want different eyes.
 
-                  SO: THE ROW THAT IS ALREADY THE ACTION ROW. "Pekerjaan" and
+                  SO: THE ROW THAT IS ALREADY THE ACTION ROW. "Lembar kerja" and
                   "Profil" are the other two things to do with this animal, and
                   the kebab sits at the RIGHT EDGE — where every table in this app
                   ends its actions, so somebody scanning for "what can I do with
@@ -630,20 +664,40 @@ export function BookingDetailScreen({ id }: { id: string }) {
                     what it comes to.
 
                     TWO DIFFERENT PAGES, and the wording keeps them apart.
-                    "Pekerjaan" is this visit; "profil" is the animal's whole
+                    "Lembar kerja" is THIS VISIT; "profil" is the animal's whole
                     life, and confusing them would send somebody looking for
                     today's grooming in a list of last year's.
+
+                    ⚠️ IT SAID "Pekerjaan Cici", AND THAT READ WRONG. In Indonesian
+                    "pekerjaan <nama>" is most naturally somebody's OCCUPATION —
+                    the dog's job — which is not what the page is. "Lembar kerja"
+                    names the thing itself: the sheet this visit's work is
+                    recorded on, the way a workshop or a salon already says it.
+
+                    A NOUN, TO PAIR WITH "Profil". Both buttons now read
+                    "<thing> <name>", so the two are obviously two views of one
+                    animal rather than a verb beside a noun.
                   */}
                   <Button asChild size="sm">
                     <Link
                       href={`/dashboard/booking/${booking._id}/hewan/${group.petId}`}
                     >
-                      Pekerjaan {group.petName ?? "hewan ini"}
+                      Lembar kerja {group.petName ?? "hewan ini"}
                     </Link>
                   </Button>
 
                   {pet && (
-                    <Button asChild variant="ghost" size="sm">
+                    /*
+                      `secondary`, NOT `ghost` — the house's quiet button, white
+                      with a 1.5px navy border, and what "Ubah" in the page header
+                      already uses.
+
+                      A GHOST BUTTON HAS NO EDGE, so beside the filled
+                      "Lembar kerja" it read as a link somebody had left loose in the
+                      card rather than as the second of two actions. The pair is
+                      primary and secondary, and now it looks like one.
+                    */
+                    <Button asChild variant="secondary" size="sm">
                       <Link href={`/dashboard/master/pets/${pet._id}`}>
                         Profil {pet.name}
                       </Link>

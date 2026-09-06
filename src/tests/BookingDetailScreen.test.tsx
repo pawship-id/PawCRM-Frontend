@@ -333,10 +333,10 @@ describe("BookingDetailScreen", () => {
 
     /* The blocks themselves — one per animal, each with its own total. */
     expect(
-      screen.getByRole("link", { name: /pekerjaan mochi/i }),
+      screen.getByRole("link", { name: /lembar kerja mochi/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: /pekerjaan coco/i }),
+      screen.getByRole("link", { name: /lembar kerja coco/i }),
     ).toBeInTheDocument();
   });
 
@@ -439,6 +439,35 @@ describe("BookingDetailScreen", () => {
     before the move as well; what changed is WHICH BLOCK each one lives in, and
     that is the thing a regression would undo.
   */
+  /*
+    ─── THE DAY AND THE CLOCK ARE TWO COLUMNS ─────────────────────────────────
+
+    They were one cell, and "Minggu, 6 September 2026 pukul 09.30 – 11.31" is too
+    long for a quarter of a card: it wrapped, leaving "11.31" alone on a second
+    line — the one figure somebody scans for, orphaned at the bottom.
+
+    ASSERTED AS SEPARATE CELLS, not by matching the joined string: a regression
+    that merges them back would still contain both texts, and only the structure
+    says whether they wrap.
+  */
+  it("splits the visit's date and clock into their own columns", async () => {
+    const { container } = renderWithAuth(<BookingDetailScreen id="bk-1" />);
+
+    await screen.findAllByText("Mochi");
+
+    const cells = [...(container.querySelector("dl")?.children ?? [])].map(
+      (cell) => (cell.textContent ?? "").replace(/\s+/g, " ").trim(),
+    );
+
+    expect(cells).toEqual([
+      "TanggalRabu, 2 September 2026",
+      "Waktu10.00 – 11.30",
+      "Perkiraan durasi90 menit",
+      "Hewan2Mochi, Coco",
+      "TotalRp 300.000",
+    ]);
+  });
+
   it("puts each animal's status menu inside that animal's own card", async () => {
     const { container } = renderWithAuth(<BookingDetailScreen id="bk-1" />);
 
@@ -713,7 +742,7 @@ describe("BookingDetailScreen", () => {
     renderWithAuth(<BookingDetailScreen id="bk-1" />);
 
     /* ONE PER ANIMAL — the fixture has two, and so must the links. */
-    const links = await screen.findAllByRole("link", { name: /pekerjaan/i });
+    const links = await screen.findAllByRole("link", { name: /lembar kerja/i });
     expect(links.length).toBeGreaterThan(1);
 
     const targets = links.map((link) => link.getAttribute("href"));
@@ -725,13 +754,13 @@ describe("BookingDetailScreen", () => {
 
   it("keeps the profile link, and keeps the two apart in words", async () => {
     /*
-      TWO DIFFERENT PAGES: "pekerjaan" is this visit, "profil" is the animal's
+      TWO DIFFERENT PAGES: "lembar kerja" is this visit, "profil" is the animal's
       whole life. Confusing them sends somebody looking for today's grooming in
       a list of last year's.
     */
     renderWithAuth(<BookingDetailScreen id="bk-1" />);
 
-    await screen.findAllByRole("link", { name: /pekerjaan/i });
+    await screen.findAllByRole("link", { name: /lembar kerja/i });
     expect(
       screen.getAllByRole("link", { name: /^profil/i }).length,
     ).toBeGreaterThan(0);
