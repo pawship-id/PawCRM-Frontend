@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Cat, Dog, Pencil } from "lucide-react";
 
-import { Alert, Card, Spinner, TextField } from "@/components";
+import { Alert, Card, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
 import { BookingBelongingsCard } from "./BookingBelongingsCard";
@@ -60,8 +60,13 @@ const WORK_TONE: Record<BookingWorkStatus, string> = {
 const NEXT_MOVE: Partial<
   Record<BookingWorkStatus, { to: BookingWorkStatus; label: string }>
 > = {
-  pending: { to: "in_progress", label: "Mulai kerjakan" },
-  in_progress: { to: "done", label: "Tandai selesai" },
+  /*
+    THE LABELS NAME THE ACT, AND THE ACT STAMPS THE CLOCK. Pressing "Mulai"
+    records `startedAt`; "Selesai" records `finishedAt`. Nobody types a time on
+    this screen any more — see the row body.
+  */
+  pending: { to: "in_progress", label: "Mulai" },
+  in_progress: { to: "done", label: "Selesai" },
 };
 
 /** "09.05" from an instant, in the shop's own clock — never through UTC. */
@@ -70,28 +75,6 @@ function clock(iso: string | null | undefined): string {
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return "";
   return `${String(at.getHours()).padStart(2, "0")}.${String(at.getMinutes()).padStart(2, "0")}`;
-}
-
-/**
- * An edited "09.05" back onto the row's own day.
- *
- * ANCHORED TO THE DATE ALREADY ON THE ROW, or to the booking's day when there is
- * none. A bare time has no date, and taking today's would move a correction made
- * on Thursday onto Thursday when the work happened on Wednesday.
- */
-function toInstant(value: string, anchor: string): string | null {
-  const parts = value.trim().match(/^(\d{1,2})[.:]?(\d{2})$/);
-  if (!parts) return null;
-
-  const hours = Number(parts[1]);
-  const minutes = Number(parts[2]);
-  if (hours > 23 || minutes > 59) return null;
-
-  const at = new Date(anchor);
-  if (Number.isNaN(at.getTime())) return null;
-
-  at.setHours(hours, minutes, 0, 0);
-  return at.toISOString();
 }
 
 /**
@@ -314,58 +297,6 @@ export function BookingPetWorkScreen({
     }
   }
 
-  async function correct(
-    row: WorkRow,
-    field: "startedAt" | "finishedAt",
-    value: string,
-  ) {
-    const anchor = row.startedAt ?? booking?.scheduledAt;
-    if (!anchor) return;
-
-    /* Clearing a time is a correction too — a start pressed by mistake. */
-    const next = value.trim() === "" ? null : toInstant(value, anchor);
-
-    if (value.trim() !== "" && next === null) {
-      setError("Format jam: 09.05");
-      return;
-    }
-
-    setBusy(row._id);
-    setError(null);
-
-    try {
-      await bookingService.correctItemTimes(bookingId, row._id, {
-        [field]: next,
-      });
-
-      /*
-        THE DRAFT STEPS ASIDE once the server has it, so the field goes back to
-        showing what was actually stored. Leaving it would let a rejected or
-        rounded value sit on screen looking saved.
-      */
-      setDraftTimes((prev) => {
-        const next_ = { ...prev };
-        delete next_[`${row._id}|${field}`];
-        return next_;
-      });
-      setNonce((n) => n + 1);
-
-      try {
-        swalToast("Koreksi jam tercatat di riwayat.");
-      } catch {
-        /* The page re-reads and shows it. */
-      }
-    } catch (err) {
-      setError(
-        err instanceof ApiError
-          ? err.fullMessage
-          : "Jam tidak bisa dikoreksi. Coba lagi.",
-      );
-    } finally {
-      setBusy(null);
-    }
-  }
-
   useEffect(() => {
     if (!booking?.scheduledAt) return;
 
@@ -432,7 +363,7 @@ export function BookingPetWorkScreen({
     work verbs addressed a service. Sessions exist now: a Full Grooming worked by
     Sinta and then Rio is two turns, two clocks and two people to pay.
 
-    ⚠️ `_id` IS THE SESSION'S. `advanceItemWork` and `correctItemTimes` address a
+    ⚠️ `_id` IS THE SESSION'S. `advanceItemWork` addresses a
     session, and sending a service id gets a 404 naming a session the caller
     never mentioned — which is exactly what this screen did until this was fixed.
 
@@ -1278,81 +1209,74 @@ export function BookingPetWorkScreen({
                                   />
                                 </div>
 
-                                <Can feature="bookings" action="update">
-                                  <div className="flex flex-wrap items-end gap-3">
-                                    <TextField
-                                      label="Jam mulai"
-                                      name={`start-${row._id}`}
-                                      value={
-                                        draftTimes[`${row._id}|startedAt`] ??
-                                        clock(row.startedAt)
-                                      }
-                                      placeholder="09.05"
-                                      disabled={busy === row._id}
-                                      onChange={(event) =>
-                                        setDraftTimes((prev) => ({
-                                          ...prev,
-                                          [`${row._id}|startedAt`]:
-                                            event.target.value,
-                                        }))
-                                      }
-                                      onBlur={(event) =>
-                                        void correct(
-                                          row,
-                                          "startedAt",
-                                          event.target.value,
-                                        )
-                                      }
-                                    />
-                                    <TextField
-                                      label="Jam selesai"
-                                      name={`finish-${row._id}`}
-                                      value={
-                                        draftTimes[`${row._id}|finishedAt`] ??
-                                        clock(row.finishedAt)
-                                      }
-                                      placeholder="10.35"
-                                      disabled={busy === row._id}
-                                      onChange={(event) =>
-                                        setDraftTimes((prev) => ({
-                                          ...prev,
-                                          [`${row._id}|finishedAt`]:
-                                            event.target.value,
-                                        }))
-                                      }
-                                      onBlur={(event) =>
-                                        void correct(
-                                          row,
-                                          "finishedAt",
-                                          event.target.value,
-                                        )
-                                      }
-                                    />
-                                    <div className="pb-2">
-                                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted">
-                                        Aktual
-                                      </p>
-                                      <p className="font-mono text-sm font-semibold text-foreground">
-                                        {minutes === null
-                                          ? "—"
-                                          : `${minutes} mnt`}
-                                        {over && (
-                                          <span className="ml-1 text-danger">
-                                            +{minutes! - row.durationMin!}
-                                          </span>
-                                        )}
-                                      </p>
-                                    </div>
-                                    <div className="pb-2">
-                                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted">
-                                        Estimasi
-                                      </p>
-                                      <p className="font-mono text-sm text-muted">
-                                        {row.durationMin ?? "—"} mnt
-                                      </p>
-                                    </div>
+                                {/*
+                                  ─── THE CLOCK IS READ, NOT TYPED ────────────
+
+                                  There were two text fields here — "Jam mulai"
+                                  and "Jam selesai" — and they asked somebody to
+                                  write down a time they had just lived through.
+                                  The buttons below record it: starting a turn
+                                  stamps `startedAt`, finishing it stamps
+                                  `finishedAt`, both server-side, both to the
+                                  second the button was pressed.
+
+                                  ⚠️ CORRECTING A STAMP IS NO LONGER REACHABLE
+                                  FROM THIS SCREEN. `PATCH .../times` still
+                                  exists and is still audited — a groomer with
+                                  wet hands presses the button late, and that
+                                  correction decides the duration a commission
+                                  matrix is read against. It needs an edit
+                                  affordance of its own; until it has one, a
+                                  wrong stamp can only be fixed through the API.
+                                */}
+                                <dl className="flex flex-wrap gap-x-6 gap-y-2">
+                                  <div>
+                                    <dt className="text-[10px] font-bold uppercase tracking-wide text-muted">
+                                      Mulai
+                                    </dt>
+                                    <dd className="font-mono text-sm text-foreground">
+                                      {clock(row.startedAt) || "—"}
+                                    </dd>
                                   </div>
-                                </Can>
+                                  <div>
+                                    <dt className="text-[10px] font-bold uppercase tracking-wide text-muted">
+                                      Selesai
+                                    </dt>
+                                    <dd className="font-mono text-sm text-foreground">
+                                      {clock(row.finishedAt) || "—"}
+                                    </dd>
+                                  </div>
+                                  <div>
+                                    <dt className="text-[10px] font-bold uppercase tracking-wide text-muted">
+                                      Aktual
+                                    </dt>
+                                    <dd className="font-mono text-sm font-semibold text-foreground">
+                                      {minutes === null
+                                        ? "—"
+                                        : `${minutes} mnt`}
+                                      {over && (
+                                        <span className="ml-1 text-danger">
+                                          +{minutes! - row.durationMin!}
+                                        </span>
+                                      )}
+                                    </dd>
+                                  </div>
+                                  {/*
+                                    ⚠️ NO "ESTIMASI" HERE, and its absence is
+                                    the honest reading.
+
+                                    The estimate is the SERVICE's — 60 minutes
+                                    for a bath — and a bath split into three
+                                    turns does not take 60 minutes EACH. Printing
+                                    it on every row read as a target for each
+                                    one, and the over-run beside it as three
+                                    separate failures to hit a number nobody set.
+
+                                    IT IS SHOWN ONCE, ON THE SERVICE'S CARD
+                                    HEADER, where it belongs: one estimate for
+                                    the thing that was estimated.
+                                  */}
+                                </dl>
 
                                 <div className="mt-3 flex flex-wrap gap-2">
                                   <Can
@@ -1384,8 +1308,8 @@ export function BookingPetWorkScreen({
                                     )}
                                     {!row.assigned && (
                                       <p className="text-xs text-muted">
-                                        Tentukan groomernya dulu — layanan ini
-                                        belum punya sesi.
+                                        Tentukan groomernya dulu — sesi tanpa
+                                        groomer tidak bisa dimulai.
                                       </p>
                                     )}
                                   </Can>

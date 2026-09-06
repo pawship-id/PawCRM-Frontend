@@ -262,10 +262,10 @@ describe("BookingPetWorkScreen", () => {
 
     await openSession();
     expect(
-      screen.getByRole("button", { name: /mulai kerjakan/i }),
+      screen.getByRole("button", { name: /^mulai$/i }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /tandai selesai/i }),
+      screen.queryByRole("button", { name: /^selesai$/i }),
     ).not.toBeInTheDocument();
   });
 
@@ -276,9 +276,7 @@ describe("BookingPetWorkScreen", () => {
     });
 
     await openSession();
-    await userEvent.click(
-      screen.getByRole("button", { name: /mulai kerjakan/i }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: /^mulai$/i }));
 
     await waitFor(() => expect(bookings.advanceItemWork).toHaveBeenCalled());
     /* ⚠️ THE SESSION'S ID, NOT THE SERVICE'S. The work verbs address one TURN;
@@ -342,15 +340,26 @@ describe("BookingPetWorkScreen", () => {
       permissions: FULL as never,
     });
 
-    expect(await screen.findByLabelText(/jam mulai/i)).toHaveValue("09.05");
+    /*
+      ⚠️ READ, NOT TYPED. There were two text fields here and they asked somebody
+      to write down a time they had just lived through; the buttons record it
+      instead. What still matters is the TIMEZONE: 09.05 in Jakarta is 02.05 UTC,
+      and reading it through UTC would put the work on the wrong hour and, near
+      midnight, the wrong day.
+    */
+    expect(await screen.findByText("09.05")).toBeInTheDocument();
   });
 
-  it("hides the clock from somebody who may only move the work", async () => {
+  it("still offers the ladder to somebody who may only move the work", async () => {
     /*
-      CORRECTING THE CLOCK IS `update`, NOT `advanceStatus`, and the difference
-      is money: these times decide duration, and duration is what a commission
-      matrix is read against. The server refuses it either way; hiding the field
-      stops somebody filling one in and being told no afterwards.
+      ⚠️ THIS USED TO BE "hides the clock from…". The clock was two editable
+      fields, and editing them is `update` while moving the work is
+      `advanceStatus` — so the fields were hidden from a groomer and the buttons
+      were not.
+
+      THE FIELDS ARE GONE: the buttons stamp the time, and stamping it IS moving
+      the work. What survives of the old test is the half that still means
+      something — a groomer who may only advance the ladder still can.
     */
     renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
       isSuperAdmin: false,
@@ -359,34 +368,21 @@ describe("BookingPetWorkScreen", () => {
 
     await openSession();
     expect(screen.queryByLabelText(/jam mulai/i)).not.toBeInTheDocument();
-    /* But the ladder is still theirs. */
     expect(
-      screen.getByRole("button", { name: /mulai kerjakan/i }),
+      screen.getByRole("button", { name: /^mulai$/i }),
     ).toBeInTheDocument();
   });
 
-  it("sends a corrected time back on the row's own day", async () => {
-    /*
-      ANCHORED TO THE ROW'S DATE. A bare time has no date, and taking today's
-      would move a correction made on Thursday onto Thursday when the work
-      happened on Wednesday.
-    */
-    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
-      isSuperAdmin: false,
-      permissions: FULL as never,
-    });
+  /*
+    ⚠️ "sends a corrected time back on the row's own day" WAS HERE AND IS GONE.
 
-    await openSession();
-    const field = screen.getByLabelText(/jam mulai/i);
-    await userEvent.type(field, "09.05");
-    await userEvent.tab();
-
-    await waitFor(() => expect(bookings.correctItemTimes).toHaveBeenCalled());
-    const [, , times] = bookings.correctItemTimes.mock.calls[0];
-    expect(new Date(times.startedAt!).getDate()).toBe(
-      new Date("2026-09-03T02:00:00.000Z").getDate(),
-    );
-  });
+    It drove two text fields that no longer exist — the clock is stamped by the
+    buttons now. `PATCH .../times` still exists on the server and is still
+    audited, because a groomer with wet hands presses the button late and that
+    correction decides the duration a commission matrix is read against. It has
+    no way in from this screen until somebody builds one, and this note is here
+    so that gap is a known one rather than a discovery.
+  */
 
   it("carries the leave warning onto this page too", async () => {
     bookings.getById.mockResolvedValue(
@@ -574,6 +570,86 @@ describe("BookingPetWorkScreen", () => {
  * usually cannot yet. The roster is read when the dog is on the table, not while
  * somebody is writing down that a blow dry is needed.
  */
+/**
+ * ─── THE BUTTON IS THE CLOCK ────────────────────────────────────────────────
+ *
+ * "Mulai" moves the turn to `in_progress` and the SERVER stamps `startedAt`;
+ * "Selesai" moves it to `done` and stamps `finishedAt`. Nobody types a time on
+ * this screen — the two text fields that used to ask for one were asking
+ * somebody to write down a moment they had just lived through.
+ */
+describe("BookingPetWorkScreen — starting and finishing a turn", () => {
+  it("starts the turn, and the button becomes the one that finishes it", async () => {
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
+      isSuperAdmin: false,
+      permissions: FULL as never,
+    });
+
+    await openSession();
+    await userEvent.click(screen.getByRole("button", { name: /^mulai$/i }));
+
+    await waitFor(() =>
+      expect(bookings.advanceItemWork).toHaveBeenCalledWith(
+        "bk-1",
+        "se-1",
+        "in_progress",
+      ),
+    );
+
+    /* THE SAME BUTTON, ONE RUNG ON. A turn under way offers finishing and
+       nothing else — a jump straight to done from not-started would record a
+       start that never happened. */
+    bookings.getById.mockResolvedValue(
+      booking(withSessions({ status: "in_progress" })),
+    );
+
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
+      isSuperAdmin: false,
+      permissions: FULL as never,
+    });
+
+    expect(
+      await screen.findByRole("button", { name: /^selesai$/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the stamps it recorded, and offers no way to type one", async () => {
+    bookings.getById.mockResolvedValue(
+      booking(
+        withSessions({
+          status: "done",
+          startedAt: new Date("2026-09-03T09:05:00").toISOString(),
+          finishedAt: new Date("2026-09-03T10:35:00").toISOString(),
+        }),
+      ),
+    );
+
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
+      isSuperAdmin: false,
+      permissions: FULL as never,
+    });
+
+    await openSession();
+
+    expect(screen.getByText("09.05")).toBeInTheDocument();
+    expect(screen.getByText("10.35")).toBeInTheDocument();
+    /* ⚠️ NO EDITABLE CLOCK. A regression that puts the fields back fails here. */
+    expect(screen.queryByLabelText(/jam mulai/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/jam selesai/i)).not.toBeInTheDocument();
+
+    /*
+      ⚠️ AND NO "ESTIMASI" COLUMN ON THE TURN. It is the SERVICE's number — a
+      bath split into three turns does not take 60 minutes EACH — so it is shown
+      once, on the card heading this row.
+
+      ASSERTED ON THE COLUMN LABEL, not on the figure: "est 90 mnt" also appears
+      in the card's own description, and matching the number would pass with the
+      column still there.
+    */
+    expect(screen.queryByText(/^estimasi$/i)).not.toBeInTheDocument();
+  });
+});
+
 describe("BookingPetWorkScreen — adding a session", () => {
   it("asks for the name only, and saves it", async () => {
     renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
