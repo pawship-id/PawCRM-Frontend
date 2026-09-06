@@ -11,7 +11,11 @@ import { BookingBelongingsCard } from "./BookingBelongingsCard";
 import { bookingActorLabel, finishClock } from "../format";
 import { BookingHistoryCard } from "./BookingHistoryCard";
 import { BookingPetNotesCard } from "./BookingPetNotesCard";
-import { AddSessionButton, SessionCrew } from "./SessionGroomers";
+import {
+  AddSessionButton,
+  RemoveSessionButton,
+  SessionCrew,
+} from "./SessionGroomers";
 import {
   furTypeLabel,
   PetSummaryCard,
@@ -1313,6 +1317,20 @@ export function BookingPetWorkScreen({
                                       </p>
                                     )}
                                   </Can>
+
+                                  {/*
+                                    ⚠️ LAST, AND PUSHED RIGHT (`ml-auto`), not
+                                    up among the crew controls where it used to
+                                    sit. Mulai and Selesai are pressed several
+                                    times a day; this one is pressed almost
+                                    never and cannot be undone, so it keeps its
+                                    distance from the thumb that presses them.
+                                  */}
+                                  <RemoveSessionButton
+                                    bookingId={bookingId}
+                                    session={row.session}
+                                    onChanged={setBooking}
+                                  />
                                 </div>
                               </div>
                             )}

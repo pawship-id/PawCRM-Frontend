@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { BookingPetWorkScreen } from "@/features/booking";
@@ -647,6 +647,70 @@ describe("BookingPetWorkScreen — starting and finishing a turn", () => {
       column still there.
     */
     expect(screen.queryByText(/^estimasi$/i)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * ─── THROWING A TURN AWAY ───────────────────────────────────────────────────
+ *
+ * Nothing guarded this before, which is how the button lived in the middle of
+ * the crew controls, firing on one click, for as long as it did. Both halves
+ * matter: that it ASKS, and that saying no leaves the turn alone.
+ */
+describe("BookingPetWorkScreen — removing a session", () => {
+  /** Opens `mandi`, the turn the fixture crews. */
+  async function openTurn() {
+    const toggles = await screen.findAllByRole("button", { expanded: false });
+    await userEvent.click(
+      toggles.find((node) => /mandi/i.test(node.textContent ?? ""))!,
+    );
+  }
+
+  it("asks before it throws the turn away", async () => {
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
+      isSuperAdmin: false,
+      permissions: FULL as never,
+    });
+
+    await openTurn();
+    await userEvent.click(
+      screen.getAllByRole("button", { name: /hapus sesi/i })[0],
+    );
+
+    /* ⚠️ NOTHING HAS BEEN SENT YET. A red trash beside the button a groomer
+       presses every time they finish is one slip from an unrecoverable one. */
+    expect(bookings.setSessionCrew).not.toHaveBeenCalled();
+
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: /hapus sesi/i }),
+    );
+
+    await waitFor(() =>
+      expect(bookings.setSessionCrew).toHaveBeenCalledWith("bk-1", {
+        sessionId: "se-1",
+        remove: true,
+      }),
+    );
+  });
+
+  it("leaves the turn alone when the answer is no", async () => {
+    renderWithAuth(<BookingPetWorkScreen bookingId="bk-1" petId={MOCHI} />, {
+      isSuperAdmin: false,
+      permissions: FULL as never,
+    });
+
+    await openTurn();
+    await userEvent.click(
+      screen.getAllByRole("button", { name: /hapus sesi/i })[0],
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: /batal/i }),
+    );
+
+    expect(bookings.setSessionCrew).not.toHaveBeenCalled();
   });
 });
 

@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, UserRound, X } from "lucide-react";
+import { Plus, Trash2, UserRound, X } from "lucide-react";
 
-import { Alert, SelectField } from "@/components";
+import { Alert, ConfirmDialog, SelectField } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
 import { ApiError } from "@/services/api-error";
@@ -176,23 +176,72 @@ export function SessionCrew({
             disabled={busy}
           />
         )}
-
-        <div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={busy}
-            onClick={() =>
-              void save({ sessionId: session.sessionId, remove: true })
-            }
-          >
-            <X className="size-4" aria-hidden />
-            Hapus sesi
-          </Button>
-        </div>
       </Can>
     </div>
+  );
+}
+
+/**
+ * ─── THROWING A TURN AWAY ───────────────────────────────────────────────────
+ *
+ * It used to sit INSIDE `SessionCrew`, between the groomer picker and the
+ * clock — in the middle of the controls for arranging a turn, where the eye
+ * passes over it on the way to something else. Deleting is not one of the
+ * arranging steps; it is the end of the turn, so it renders LAST, in the same
+ * action row as Mulai and Selesai, pushed to the far right.
+ *
+ * ⚠️ IT ASKS FIRST. `docs/ui-rules.md` §9: destructive and irreversible needs
+ * an explicit yes. A red trash on one click, sitting beside the button a
+ * groomer presses every time they finish, is one slip away from losing a turn's
+ * stamps and its crew with nothing to undo it.
+ */
+export function RemoveSessionButton({
+  bookingId,
+  session,
+  onChanged,
+}: {
+  bookingId: string;
+  session: BookingSession;
+  onChanged: (booking: Booking) => void;
+}) {
+  const { busy, error, save } = useSave(bookingId, onChanged);
+  const [asking, setAsking] = useState(false);
+
+  return (
+    <Can feature="bookings" action="update">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        disabled={busy}
+        onClick={() => setAsking(true)}
+        /* §13: danger text is 4.38:1, so it must be ≥14px and semibold, and
+           never colour alone — hence the word beside the icon. */
+        className="ml-auto font-semibold text-danger hover:bg-danger/10 hover:text-danger"
+      >
+        <Trash2 className="size-4" aria-hidden />
+        Hapus sesi
+      </Button>
+
+      {asking && (
+        <ConfirmDialog
+          title={`Hapus sesi "${session.sessionName}"?`}
+          confirmLabel="Hapus sesi"
+          destructive
+          busy={busy}
+          error={error ?? undefined}
+          onCancel={() => setAsking(false)}
+          onConfirm={() =>
+            void save({ sessionId: session.sessionId, remove: true }).then(
+              (ok) => ok && setAsking(false),
+            )
+          }
+        >
+          Groomer dan jam yang sudah tercatat di sesi ini ikut hilang. Sesi lain
+          di layanan yang sama tidak terpengaruh.
+        </ConfirmDialog>
+      )}
+    </Can>
   );
 }
 
