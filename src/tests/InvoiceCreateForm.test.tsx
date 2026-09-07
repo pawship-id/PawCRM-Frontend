@@ -40,20 +40,46 @@ const page = <T,>(items: T[]) => ({
 });
 
 const BRANCH = { _id: "br1", name: "Cabang Pusat", code: "PST" };
-const WAREHOUSE = { _id: "wh1", name: "Gudang Pusat", defaultBranchId: "br1", isActive: true };
-const CENTRAL = { _id: "wh0", name: "Gudang Pusat Bersama", defaultBranchId: null, isActive: true };
-const OTHER = { _id: "wh2", name: "Gudang Cabang Lain", defaultBranchId: "br2", isActive: true };
-const PRODUCT = { _id: "p1", name: "Kalung Nylon", sku: "KLG", sellPrice: "100000" };
+const WAREHOUSE = {
+  _id: "wh1",
+  name: "Gudang Pusat",
+  defaultBranchId: "br1",
+  isActive: true,
+};
+const CENTRAL = {
+  _id: "wh0",
+  name: "Gudang Pusat Bersama",
+  defaultBranchId: null,
+  isActive: true,
+};
+const OTHER = {
+  _id: "wh2",
+  name: "Gudang Cabang Lain",
+  defaultBranchId: "br2",
+  isActive: true,
+};
+const PRODUCT = {
+  _id: "p1",
+  name: "Kalung Nylon",
+  sku: "KLG",
+  sellPrice: "100000",
+};
 const SERVICE = { _id: "s1", name: "Grooming", price: "150000" };
 
 function mockLookups(overrides: { warehouses?: unknown[] } = {}) {
-  jest.spyOn(customerService, "list").mockResolvedValue(page([{ _id: "c1", name: "Bu Sari" }]) as never);
+  jest
+    .spyOn(customerService, "list")
+    .mockResolvedValue(page([{ _id: "c1", name: "Bu Sari" }]) as never);
   jest.spyOn(branchService, "list").mockResolvedValue(page([BRANCH]) as never);
   jest
     .spyOn(warehouseService, "list")
     .mockResolvedValue(page(overrides.warehouses ?? [WAREHOUSE]) as never);
-  jest.spyOn(productService, "list").mockResolvedValue(page([PRODUCT]) as never);
-  jest.spyOn(serviceService, "list").mockResolvedValue(page([SERVICE]) as never);
+  jest
+    .spyOn(productService, "list")
+    .mockResolvedValue(page([PRODUCT]) as never);
+  jest
+    .spyOn(serviceService, "list")
+    .mockResolvedValue(page([SERVICE]) as never);
   // The booking panel mounts as soon as a customer is chosen. Stubbed empty so
   // these cases stay about the form rather than about the bridge.
   jest.spyOn(bookingService, "bridge").mockResolvedValue([] as never);
@@ -63,7 +89,9 @@ function mockLookups(overrides: { warehouses?: unknown[] } = {}) {
     .mockResolvedValue(page([{ _id: "pet1", name: "Miko" }]) as never);
   jest
     .spyOn(tenantService, "me")
-    .mockResolvedValue({ settings: { taxRate: 11, priceIncludesTax: true } } as never);
+    .mockResolvedValue({
+      settings: { taxRate: 11, priceIncludesTax: true },
+    } as never);
 }
 
 /**
@@ -99,7 +127,10 @@ beforeEach(() => {
   mockLookups();
   jest
     .spyOn(customerInvoiceService, "create")
-    .mockResolvedValue({ _id: "inv1", invoiceNumber: "INV/PST/2608/0001" } as never);
+    .mockResolvedValue({
+      _id: "inv1",
+      invoiceNumber: "INV/PST/2608/0001",
+    } as never);
 });
 
 afterEach(() => jest.restoreAllMocks());
@@ -118,7 +149,9 @@ describe("the animal a service is for", () => {
     await pick(/^Pelanggan$/i, /Bu Sari/);
     await pick(/^Cabang$/i, /Cabang Pusat/);
     await pick(/tambah barang atau jasa/i, /Grooming/);
-    await userEvent.click(screen.getByRole("button", { name: /tambah baris/i }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /tambah baris/i }),
+    );
   }
 
   it("sends the pet on the service line", async () => {
@@ -146,9 +179,7 @@ describe("the animal a service is for", () => {
     expect(
       screen.getByRole("button", { name: /terbitkan faktur/i }),
     ).toBeDisabled();
-    expect(
-      screen.getByText(/belum dipilih hewannya/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/belum dipilih hewannya/i)).toBeInTheDocument();
     expect(customerInvoiceService.create).not.toHaveBeenCalled();
   });
 
@@ -163,6 +194,92 @@ describe("the animal a service is for", () => {
   });
 
   /*
+    ─── A SERVICE PRICED BY THE ANIMAL, ON A FORM THAT PICKS ONE SECOND ───────
+
+    The line snapshotted `service.price` when it was ADDED, and a variant-priced
+    service has none — the axes it varies by are the pet's own facts, and the
+    animal is chosen afterwards. So the row read Rp 0 and the save came back
+    `items[0].unitPrice is not a valid amount`, about a field the person filling
+    the form never touched. The figure has to be re-derived when the pet changes.
+  */
+  it("prices a variant service once the animal is chosen", async () => {
+    jest.spyOn(serviceService, "list").mockResolvedValue(
+      page([
+        {
+          _id: "s1",
+          name: "Grooming",
+          price: null,
+          hasVariants: true,
+          variantAxes: ["sizeCategory"],
+          variants: [
+            { sizeCategory: "small", price: "120000" },
+            { sizeCategory: "large", price: "140000" },
+          ],
+        },
+      ]) as never,
+    );
+    jest
+      .spyOn(petService, "list")
+      .mockResolvedValue(
+        page([{ _id: "pet1", name: "Miko", size: "large" }]) as never,
+      );
+
+    render(<InvoiceCreateForm />);
+    await fillService();
+
+    /* No animal yet — a dash, not "Rp 0", which reads as free. */
+    expect(await screen.findByText("—")).toBeInTheDocument();
+
+    await pick(/^Hewan untuk Grooming$/i, /Miko/);
+
+    /*
+      Miko is large — 140.000, not the 120.000 of the first variant. It appears
+      in the row and again in the recap below, which is the point: the total is
+      built from the same figure.
+    */
+    expect(await screen.findAllByText("Rp 140.000")).not.toHaveLength(0);
+    expect(screen.queryByText("Rp 120.000")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /terbitkan faktur/i }),
+    ).toBeEnabled();
+  });
+
+  /*
+    AND IT BLOCKS BY NAMING THE MISSING FACT, rather than letting the save come
+    back with a message about `unitPrice`.
+  */
+  it("blocks, naming the animal's missing fact, when it cannot be priced", async () => {
+    jest.spyOn(serviceService, "list").mockResolvedValue(
+      page([
+        {
+          _id: "s1",
+          name: "Grooming",
+          price: null,
+          hasVariants: true,
+          variantAxes: ["sizeCategory"],
+          variants: [{ sizeCategory: "small", price: "120000" }],
+        },
+      ]) as never,
+    );
+    jest
+      .spyOn(petService, "list")
+      .mockResolvedValue(
+        page([{ _id: "pet1", name: "Miko", size: null }]) as never,
+      );
+
+    render(<InvoiceCreateForm />);
+    await fillService();
+    await pick(/^Hewan untuk Grooming$/i, /Miko/);
+
+    expect(
+      screen.getByRole("button", { name: /terbitkan faktur/i }),
+    ).toBeDisabled();
+    expect(
+      await screen.findByText(/lengkapi ukuran miko/i),
+    ).toBeInTheDocument();
+  });
+
+  /*
     A DIFFERENT JOB, SAID DIFFERENTLY. "Ada baris jasa yang belum dipilih
     hewannya" in front of an empty dropdown is an instruction nobody can follow —
     the pet has to be registered first, which is a different screen.
@@ -173,9 +290,7 @@ describe("the animal a service is for", () => {
     render(<InvoiceCreateForm />);
     await fillService();
 
-    expect(
-      await screen.findByText(/belum punya hewan/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/belum punya hewan/i)).toBeInTheDocument();
   });
 
   /*
@@ -223,14 +338,12 @@ describe("the animal a service is for", () => {
     form was filled in.
   */
   it("drops the animal when the customer changes", async () => {
-    jest
-      .spyOn(customerService, "list")
-      .mockResolvedValue(
-        page([
-          { _id: "c1", name: "Bu Sari" },
-          { _id: "c2", name: "Pak Budi" },
-        ]) as never,
-      );
+    jest.spyOn(customerService, "list").mockResolvedValue(
+      page([
+        { _id: "c1", name: "Bu Sari" },
+        { _id: "c2", name: "Pak Budi" },
+      ]) as never,
+    );
 
     render(<InvoiceCreateForm />);
     await fillService();
@@ -275,7 +388,9 @@ describe("what the form sends", () => {
     await fillMinimal();
     await submit();
 
-    await waitFor(() => expect(customerInvoiceService.create).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(customerInvoiceService.create).toHaveBeenCalled(),
+    );
     expect(sent().items).toEqual([
       { kind: "product", refId: "p1", qty: "1", discount: null },
     ]);
@@ -289,7 +404,9 @@ describe("what the form sends", () => {
     await fillMinimal();
     await submit();
 
-    await waitFor(() => expect(push).toHaveBeenCalledWith("/dashboard/sales/inv1"));
+    await waitFor(() =>
+      expect(push).toHaveBeenCalledWith("/dashboard/sales/inv1"),
+    );
   });
 
   it("sends a line discount as typed, not as resolved", async () => {
@@ -298,7 +415,9 @@ describe("what the form sends", () => {
     await userEvent.type(screen.getByLabelText(/^Diskon Kalung Nylon$/i), "10");
     await submit();
 
-    await waitFor(() => expect(customerInvoiceService.create).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(customerInvoiceService.create).toHaveBeenCalled(),
+    );
     expect(sent().items[0].discount).toEqual({ mode: "percent", value: "10" });
     expect(sent().items[0].discount).not.toHaveProperty("resolvedAmount");
   });
@@ -324,7 +443,12 @@ describe("what the form sends", () => {
         bookingNumber: "BK-260828-001",
         petName: "Miko",
         items: [
-          { serviceId: "svc1", name: "Grooming", price: "150000", groomerName: "Rina" },
+          {
+            serviceId: "svc1",
+            name: "Grooming",
+            price: "150000",
+            groomerName: "Rina",
+          },
         ],
       },
     ] as never);
@@ -335,7 +459,9 @@ describe("what the form sends", () => {
     await userEvent.click(await screen.findByRole("checkbox"));
     await submit();
 
-    await waitFor(() => expect(customerInvoiceService.create).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(customerInvoiceService.create).toHaveBeenCalled(),
+    );
     expect(sent().bookingIds).toEqual(["bk1"]);
     // No prices, no names, no pet ids — only which bookings.
     expect(sent().items).toEqual([]);
@@ -346,7 +472,9 @@ describe("what the form sends", () => {
     await fillMinimal();
     await submit();
 
-    await waitFor(() => expect(customerInvoiceService.create).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(customerInvoiceService.create).toHaveBeenCalled(),
+    );
     expect(sent()).not.toHaveProperty("bookingIds");
   });
 
@@ -355,7 +483,9 @@ describe("what the form sends", () => {
     await fillMinimal();
     await submit();
 
-    await waitFor(() => expect(customerInvoiceService.create).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(customerInvoiceService.create).toHaveBeenCalled(),
+    );
     expect(sent().channel).toBe("manual");
   });
 
@@ -364,12 +494,16 @@ describe("what the form sends", () => {
     await pick(/^Pelanggan$/i, /Bu Sari/);
     await pick(/^Cabang$/i, /Cabang Pusat/);
     await pick(/tambah barang atau jasa/i, /Grooming/);
-    await userEvent.click(screen.getByRole("button", { name: /tambah baris/i }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /tambah baris/i }),
+    );
     // A service names its animal (PCR-035), or the form will not submit at all.
     await pick(/^Hewan untuk Grooming$/i, /Miko/);
     await submit();
 
-    await waitFor(() => expect(customerInvoiceService.create).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(customerInvoiceService.create).toHaveBeenCalled(),
+    );
     expect(sent()).not.toHaveProperty("warehouseId");
   });
 });
@@ -430,13 +564,27 @@ describe("what the form shows", () => {
         _id: "bk1",
         bookingNumber: "BK-260828-001",
         petName: "Cici",
-        items: [{ serviceId: "svc1", name: "Grooming", price: "120000.0000", groomerName: "Rina" }],
+        items: [
+          {
+            serviceId: "svc1",
+            name: "Grooming",
+            price: "120000.0000",
+            groomerName: "Rina",
+          },
+        ],
       },
       {
         _id: "bk2",
         bookingNumber: "BK-260828-002",
         petName: "Cilang",
-        items: [{ serviceId: "svc1", name: "Grooming", price: "120000.0000", groomerName: "Rina" }],
+        items: [
+          {
+            serviceId: "svc1",
+            name: "Grooming",
+            price: "120000.0000",
+            groomerName: "Rina",
+          },
+        ],
       },
     ] as never);
 
@@ -464,7 +612,14 @@ describe("what the form shows", () => {
         _id: "bk1",
         bookingNumber: "BK-260828-001",
         petName: "Cici",
-        items: [{ serviceId: "svc1", name: "Grooming", price: "100000.0000", groomerName: "Rina" }],
+        items: [
+          {
+            serviceId: "svc1",
+            name: "Grooming",
+            price: "100000.0000",
+            groomerName: "Rina",
+          },
+        ],
       },
     ] as never);
 
@@ -480,9 +635,7 @@ describe("what the form shows", () => {
 
   it("says the price already includes tax when the tenant prices that way", async () => {
     render(<InvoiceCreateForm />);
-    expect(
-      await screen.findByText(/sudah termasuk PPN/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/sudah termasuk PPN/i)).toBeInTheDocument();
   });
 
   /*
@@ -494,7 +647,9 @@ describe("what the form shows", () => {
   it("shows the tax as its own row when it is added on top", async () => {
     jest
       .spyOn(tenantService, "me")
-      .mockResolvedValue({ settings: { taxRate: 11, priceIncludesTax: false } } as never);
+      .mockResolvedValue({
+        settings: { taxRate: 11, priceIncludesTax: false },
+      } as never);
 
     render(<InvoiceCreateForm />);
     await fillMinimal();
@@ -536,7 +691,9 @@ describe("what the form refuses to submit", () => {
     render(<InvoiceCreateForm />);
     await screen.findByRole("button", { name: /terbitkan faktur/i });
 
-    expect(screen.getByRole("button", { name: /terbitkan faktur/i })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /terbitkan faktur/i }),
+    ).toBeDisabled();
     expect(screen.getByText(/belum bisa disimpan/i)).toHaveTextContent(
       /pilih pelanggan dulu/i,
     );
@@ -557,7 +714,14 @@ describe("what the form refuses to submit", () => {
         _id: "bk1",
         bookingNumber: "BK-260828-001",
         petName: "Miko",
-        items: [{ serviceId: "svc1", name: "Grooming", price: "150000", groomerName: "Rina" }],
+        items: [
+          {
+            serviceId: "svc1",
+            name: "Grooming",
+            price: "150000",
+            groomerName: "Rina",
+          },
+        ],
       },
     ] as never);
 
@@ -576,12 +740,16 @@ describe("what the form refuses to submit", () => {
     await pick(/^Pelanggan$/i, /Bu Sari/);
     await pick(/^Cabang$/i, /Cabang Pusat/);
     await pick(/tambah barang atau jasa/i, /Kalung Nylon/);
-    await userEvent.click(screen.getByRole("button", { name: /tambah baris/i }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /tambah baris/i }),
+    );
 
     expect(screen.getByText(/belum bisa disimpan/i)).toHaveTextContent(
       /pilih gudang/i,
     );
-    expect(screen.getByRole("button", { name: /terbitkan faktur/i })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /terbitkan faktur/i }),
+    ).toBeDisabled();
   });
 });
 
@@ -598,9 +766,13 @@ describe("the warehouse list", () => {
     await pick(/^Cabang$/i, /Cabang Pusat/);
     await userEvent.click(screen.getByRole("button", { name: /^Gudang$/i }));
 
-    expect(await screen.findByRole("option", { name: /Gudang Pusat$/ })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("option", { name: /Gudang Pusat$/ }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("option", { name: /Bersama/ })).toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: /Cabang Lain/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: /Cabang Lain/ }),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -614,7 +786,9 @@ describe("when the server refuses", () => {
   it("toasts the reason, and keeps the form", async () => {
     jest
       .spyOn(customerInvoiceService, "create")
-      .mockRejectedValue(new ApiError("Branch 'Cabang Pusat' has no code yet", 400));
+      .mockRejectedValue(
+        new ApiError("Branch 'Cabang Pusat' has no code yet", 400),
+      );
 
     render(<InvoiceCreateForm />);
     await fillMinimal();
@@ -643,7 +817,9 @@ describe("when the server refuses", () => {
     await submit();
 
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /terbitkan faktur/i })).toBeEnabled(),
+      expect(
+        screen.getByRole("button", { name: /terbitkan faktur/i }),
+      ).toBeEnabled(),
     );
   });
 });
