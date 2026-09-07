@@ -758,16 +758,28 @@ export function PosScreen() {
         onOpenChange={(next) => {
           if (!next) setPendingService(null);
         }}
-        onPick={(pet) => {
+        onPick={(pet, addonServiceIds) => {
           const tile = pendingService;
           if (!tile) return;
 
           setPendingService(null);
 
+          /*
+            THE SERVICE FIRST, THEN ITS ADD-ONS — one patch, one line each.
+            `addServices` already takes several per animal, so nothing here has
+            to know that an add-on is a different kind of line: the server reads
+            the catalogue and files each one under the service it hangs off.
+          */
           void cart
-            .addServices([{ petId: pet._id, serviceIds: [tile._id] }])
+            .addServices([
+              { petId: pet._id, serviceIds: [tile._id, ...addonServiceIds] },
+            ])
             .then(() =>
-              swalToast(`${tile.name} untuk ${pet.name} ditambahkan.`),
+              swalToast(
+                addonServiceIds.length > 0
+                  ? `${tile.name} untuk ${pet.name} ditambahkan, dengan ${addonServiceIds.length} tambahan.`
+                  : `${tile.name} untuk ${pet.name} ditambahkan.`,
+              ),
             );
         }}
       />

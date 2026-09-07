@@ -1160,6 +1160,168 @@ describe("PosScreen — a service tapped in the grid", () => {
     );
   });
 
+  /*
+    ─── A SERVICE PRICED BY THE ANIMAL SHOWS ITS PRICE ONCE THERE IS ONE ──────
+
+    A service in variant mode carries no price of its own, so the tile drew an
+    em-dash and the cashier could not find out what a grooming cost until it was
+    already in the basket. The figure lands the moment an animal is chosen,
+    because that is the moment the question has an answer.
+
+    A PREVIEW, NOT THE CHARGE — the server re-resolves it from the same pet on
+    every cart write. What it buys is knowing before you tap.
+  */
+  it("prices a variant service for the animal that was chosen", async () => {
+    mockedPos.catalog.mockResolvedValue({
+      items: [
+        {
+          ...SERVICE_TILE,
+          price: null,
+          hasVariants: true,
+          variantAxes: ["sizeCategory"],
+          variants: [
+            {
+              petType: null,
+              sizeCategory: "small",
+              furType: null,
+              price: "120000.0000",
+            },
+            {
+              petType: null,
+              sizeCategory: "large",
+              furType: null,
+              price: "140000.0000",
+            },
+          ],
+        },
+      ],
+      pagination: { page: 1, limit: 8, total: 1, totalPages: 1 },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (petService as any).list.mockResolvedValue({
+      items: [{ _id: PET_ID, name: "Bruno", size: "large" }],
+      pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+    });
+
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await pickCustomer(user);
+    await tapTile(user);
+    await screen.findByRole("heading", { name: /untuk hewan yang mana/i });
+
+    /* Bruno is large — 140.000, not the 120.000 of the first variant. */
+    expect(await screen.findByText("Rp 140.000")).toBeInTheDocument();
+    /*
+      AND WHICH VARIANT IT CAME FROM. The number alone cannot be checked: a
+      cashier looking at 140.000 has no way to tell whether the till read Bruno
+      as large or as medium, and the first time that matters is when a customer
+      disputes the bill.
+    */
+    expect(screen.getByText("Besar")).toBeInTheDocument();
+  });
+
+  /*
+    IT SAYS WHICH FACT IS MISSING, and refuses rather than sending a basket the
+    server is about to reject. "Belum ada harga" is a dead end; "Lengkapi ukuran
+    Bruno dulu" is the next step.
+  */
+  it("refuses, naming the missing fact, when the animal cannot be priced", async () => {
+    mockedPos.catalog.mockResolvedValue({
+      items: [
+        {
+          ...SERVICE_TILE,
+          price: null,
+          hasVariants: true,
+          variantAxes: ["sizeCategory"],
+          variants: [
+            {
+              petType: null,
+              sizeCategory: "small",
+              furType: null,
+              price: "120000.0000",
+            },
+          ],
+        },
+      ],
+      pagination: { page: 1, limit: 8, total: 1, totalPages: 1 },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (petService as any).list.mockResolvedValue({
+      /* No size recorded — the one fact this service is priced by. */
+      items: [{ _id: PET_ID, name: "Bruno", size: null }],
+      pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+    });
+
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await pickCustomer(user);
+    await tapTile(user);
+    await screen.findByRole("heading", { name: /untuk hewan yang mana/i });
+
+    expect(
+      await screen.findByText(/lengkapi ukuran bruno/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /tambah ke keranjang/i }),
+    ).toBeDisabled();
+  });
+
+  /*
+    ─── AN ADD-ON IS ASKED FOR WHERE IT IS CHEAP TO ASK ───────────────────────
+
+    "Extra Handling" is done to the bath in front of the cashier. Tapping it
+    separately off the grid is a second trip through this dialog for something
+    that is not a second purchase.
+  */
+  it("offers the service's add-ons and sends the ticked ones with it", async () => {
+    mockedPos.catalog.mockResolvedValue({
+      items: [
+        {
+          ...SERVICE_TILE,
+          addons: [
+            {
+              _id: "svc-addon",
+              name: "Extra Handling",
+              price: "20000.0000",
+              hasVariants: false,
+              variantAxes: [],
+              variants: [],
+            },
+          ],
+        },
+      ],
+      pagination: { page: 1, limit: 8, total: 1, totalPages: 1 },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await pickCustomer(user);
+    await tapTile(user);
+    await screen.findByRole("heading", { name: /untuk hewan yang mana/i });
+
+    await user.click(await screen.findByRole("checkbox"));
+
+    mockedPos.updateCart.mockClear();
+    await user.click(
+      screen.getByRole("button", { name: /tambah ke keranjang/i }),
+    );
+
+    await waitFor(() => expect(mockedPos.updateCart).toHaveBeenCalled());
+    const [, body] = mockedPos.updateCart.mock.calls[0];
+
+    /* Two lines, the service first — the server files the second under it. */
+    expect(body.items.map((item: { refId: string }) => item.refId)).toEqual([
+      "svc-1",
+      "svc-addon",
+    ]);
+  });
+
   it("adds the line with the animal on it once answered", async () => {
     const user = userEvent.setup();
     renderWithAuth(<PosScreen />);

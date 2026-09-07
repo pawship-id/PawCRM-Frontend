@@ -15,7 +15,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PetSummaryCard } from "@/features/pets";
 import { formatMoney } from "@/utils/decimal";
-import { AXIS_LABEL, priceForPet, variantLabelForPet } from "@/utils/serviceVariant";
+/* The vocabulary moved to the util when the till became the second screen
+   naming a variant — see VARIANT_VALUE_LABELS there. */
+import {
+  AXIS_LABEL,
+  priceForPet,
+  variantLabelForPet,
+  VARIANT_VALUE_LABELS,
+} from "@/utils/serviceVariant";
 import type { BusinessLine } from "@/services/businessLine.service";
 import type { Pet, Service, ServiceVariantAxis } from "@/types/api";
 import { blankService, UNASSIGNED } from "../bookingDraft";
@@ -24,13 +31,6 @@ import type { PetGroupDraft, ServiceDraft } from "../bookingDraft";
 /** Mirrors NOTES_MAX_LENGTH / BELONGING_NAME_MAX_LENGTH in the models. */
 const NOTES_MAX_LENGTH = 500;
 const BELONGING_NAME_MAX_LENGTH = 120;
-
-/** The pet vocabulary, for naming which variant an animal falls into. */
-const VARIANT_VALUE_LABELS: Record<string, Record<string, string>> = {
-  petType: { cat: "Kucing", dog: "Anjing" },
-  sizeCategory: { small: "Kecil", medium: "Sedang", large: "Besar" },
-  furType: { "long hair": "Bulu panjang", "short hair": "Bulu pendek" },
-};
 
 /**
  * ONE ANIMAL ON THE BOOKING — its services, its add-ons, its note and what it
@@ -181,7 +181,10 @@ export function BookingPetGroupCard({
             label="Hewan"
             value={group.petId}
             onChange={(value) => onChange({ petId: value })}
-            options={pets.map((item) => ({ value: item._id, label: item.name }))}
+            options={pets.map((item) => ({
+              value: item._id,
+              label: item.name,
+            }))}
             placeholder="Pilih hewan…"
             disabled={disabled || hasBilled}
             required
@@ -583,7 +586,9 @@ function ServiceLine({
               max={1440}
               className={`w-28 ${FIELD_HEIGHT}`}
               value={line.durationMin}
-              onChange={(event) => onChange({ durationMin: event.target.value })}
+              onChange={(event) =>
+                onChange({ durationMin: event.target.value })
+              }
               placeholder={catalogueDuration ? String(catalogueDuration) : "—"}
               disabled={disabled || locked}
             />
