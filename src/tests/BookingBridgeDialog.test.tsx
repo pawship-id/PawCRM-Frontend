@@ -300,6 +300,8 @@ describe("BookingBridgeDialog — pulling", () => {
 });
 
 describe("BookingBridgeDialog — the ad-hoc tab", () => {
+  const SECOND_PET_ID = "5a7f1f77bcf86cd7994390d9";
+
   beforeEach(() => {
     mockedBookings.bridge.mockResolvedValue([]);
   });
@@ -334,6 +336,170 @@ describe("BookingBridgeDialog — the ad-hoc tab", () => {
       { petId: PET_ID, petName: "Bella", serviceIds: [SERVICE_ID] },
     ]);
     expect(mockedBookings.create).not.toHaveBeenCalled();
+  });
+
+  /*
+    ─── A SERVICE PRICED BY THE ANIMAL SHOWED NOTHING AT ALL ──────────────────
+
+    The list read `service.price`, which a variant-priced service does not have —
+    the axes it varies by are the pet's own facts. So every row of one showed an
+    em-dash, and `Number(null ?? 0)` made the running total read Rp 0 with two
+    groomings ticked. The tab was unusable for exactly the shop that prices by
+    size.
+  */
+  it("prices each service for the animal the list is for", async () => {
+    mockedPets.list.mockResolvedValue(
+      page([
+        { _id: PET_ID, name: "Bella", customerId: CUSTOMER_ID, size: "large" },
+      ]),
+    );
+    mockedServices.list.mockResolvedValue(
+      page([
+        {
+          _id: SERVICE_ID,
+          name: "Grooming Full Service",
+          price: null,
+          hasVariants: true,
+          variantAxes: ["sizeCategory"],
+          variants: [
+            {
+              petType: null,
+              sizeCategory: "small",
+              furType: null,
+              price: "120000.0000",
+            },
+            {
+              petType: null,
+              sizeCategory: "large",
+              furType: null,
+              price: "150000.0000",
+            },
+          ],
+        },
+      ]),
+    );
+
+    openAdhoc();
+
+    /* Bella is large — 150.000, not the 120.000 of the first variant. */
+    expect(await screen.findByText("Rp 150.000")).toBeInTheDocument();
+    /*
+      AND IT COUNTS, in all three places the figure appears: the row, the
+      summary beside the animal's name, and the running total. It read Rp 0 with
+      the service ticked.
+    */
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: /grooming full service/i }),
+    );
+    expect(screen.getAllByText("Rp 150.000")).toHaveLength(3);
+  });
+
+  /*
+    ─── THE SUMMARY BREAKS THE TOTAL DOWN ─────────────────────────────────────
+
+    It named what each animal was having and left every figure on the rows above,
+    so on a two-dog visit the only number in sight was the total — and Rp 260.000
+    for two groomings of the SAME NAME could not be checked by anybody reading
+    it. The same service costs a different amount for a small dog and a large
+    one, which is exactly what this box is for.
+  */
+  it("prices each animal's line in the summary, so the total can be checked", async () => {
+    mockedPets.list.mockResolvedValue(
+      page([
+        { _id: PET_ID, name: "Cici", customerId: CUSTOMER_ID, size: "small" },
+        {
+          _id: SECOND_PET_ID,
+          name: "Cilang",
+          customerId: CUSTOMER_ID,
+          size: "large",
+        },
+      ]),
+    );
+    mockedServices.list.mockResolvedValue(
+      page([
+        {
+          _id: SERVICE_ID,
+          name: "Basic Grooming",
+          price: null,
+          hasVariants: true,
+          variantAxes: ["sizeCategory"],
+          variants: [
+            {
+              petType: null,
+              sizeCategory: "small",
+              furType: null,
+              price: "120000.0000",
+            },
+            {
+              petType: null,
+              sizeCategory: "large",
+              furType: null,
+              price: "140000.0000",
+            },
+          ],
+        },
+      ]),
+    );
+
+    openAdhoc();
+
+    /* With two animals none is pre-selected — the question is which one. */
+    await userEvent.click(await screen.findByRole("button", { name: "Cici" }));
+    await userEvent.click(
+      await screen.findByRole("checkbox", { name: /basic grooming/i }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Cilang" }));
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: /basic grooming/i }),
+    );
+
+    /* THE SAME NAME, TWO FIGURES — which is the whole point of showing them. */
+    expect(screen.getByText("Rp 120.000")).toBeInTheDocument();
+    /* 140.000 twice: Cilang's summary line and the row she is looking at. */
+    expect(screen.getAllByText("Rp 140.000").length).toBeGreaterThan(1);
+    /* And they add up to what the button quotes. */
+    expect(screen.getByText("Rp 260.000")).toBeInTheDocument();
+  });
+
+  /*
+    AND IT REFUSES, NAMING THE MISSING FACT, rather than offering a tick the
+    server is about to reject with a message about an axis nobody was asked
+    about.
+  */
+  it("cannot tick a service the animal cannot be priced for", async () => {
+    mockedPets.list.mockResolvedValue(
+      page([
+        { _id: PET_ID, name: "Bella", customerId: CUSTOMER_ID, size: null },
+      ]),
+    );
+    mockedServices.list.mockResolvedValue(
+      page([
+        {
+          _id: SERVICE_ID,
+          name: "Grooming Full Service",
+          price: null,
+          hasVariants: true,
+          variantAxes: ["sizeCategory"],
+          variants: [
+            {
+              petType: null,
+              sizeCategory: "small",
+              furType: null,
+              price: "120000.0000",
+            },
+          ],
+        },
+      ]),
+    );
+
+    openAdhoc();
+
+    expect(
+      await screen.findByRole("checkbox", { name: /grooming full service/i }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("link", { name: /lengkapi ukuran bella/i }),
+    ).toHaveAttribute("href", `/dashboard/master/pets/${PET_ID}/edit`);
   });
 
   it("sends no price — the server prices the line", async () => {

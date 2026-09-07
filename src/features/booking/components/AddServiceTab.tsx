@@ -7,10 +7,11 @@ import { Alert, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { PetQuickAddDialog } from "@/features/pets";
+import { PetFixLink, PetQuickAddDialog } from "@/features/pets";
 import { petService } from "@/services/pet.service";
 import { serviceService } from "@/services/service.service";
-import { formatMoney } from "@/utils/decimal";
+import { formatMoney, sumDecimals } from "@/utils/decimal";
+import { priceForPet, variantLabelForPet } from "@/utils/serviceVariant";
 import type { Pet, Service } from "@/types/api";
 
 /** The API's page cap. Asking for more is a 400, not a bigger page. */
@@ -194,25 +195,75 @@ export function AddServiceTab({
     return <Alert variant="error">{loadError}</Alert>;
   }
 
-  const priceOf = (serviceId: string) =>
-    Number(services.find((service) => service._id === serviceId)?.price ?? 0);
+  /**
+   * What a service costs FOR ONE ANIMAL.
+   *
+   * ─── IT READ `service.price`, WHICH A VARIANT SERVICE DOES NOT HAVE ────────
+   *
+   * A service priced by size carries no price of its own — the axes it varies by
+   * are the pet's own facts. So every row of one showed an em-dash, and
+   * `Number(null ?? 0)` made the running total read Rp 0 with two groomings
+   * ticked. The list was unusable for exactly the shop that prices by size.
+   *
+   * A PREVIEW, like everywhere else: the server re-resolves it from the same pet
+   * when it prices the cart, and no figure here is ever sent.
+   */
+  const priceFor = (petId: string, serviceId: string) =>
+    priceForPet(
+      services.find((service) => service._id === serviceId),
+      pets.find((pet) => pet._id === petId),
+    );
 
-  /** Everything ticked, for every animal — what the basket is about to gain. */
-  const total = [...ticked.values()]
-    .flatMap((set) => [...set])
-    .reduce((sum, serviceId) => sum + priceOf(serviceId), 0)
-    .toFixed(4);
+  /**
+   * Everything ticked, for every animal — what the basket is about to gain.
+   *
+   * SUMMED PER ANIMAL, because the same grooming costs a different amount for a
+   * small dog and a large one; a total that priced the service once would be
+   * wrong on every multi-pet visit this tab exists for.
+   *
+   * IN MINOR UNITS. These figures reached the screen as decimal strings so they
+   * would never pass through a float; adding them back up with `Number` — which
+   * is what this did — reintroduces the error in the one place somebody checks.
+   */
+  const total = sumDecimals(
+    [...ticked.entries()].flatMap(([petId, set]) =>
+      [...set].map((serviceId) => priceFor(petId, serviceId).price),
+    ),
+  );
+
+  /** The animal the list below is for, and what it is priced as. */
+  const activePet = pets.find((pet) => pet._id === petId) ?? null;
+  const activeVariant = activePet
+    ? variantLabelForPet(
+        services.find((service) => service.hasVariants) ?? null,
+        activePet,
+      )
+    : null;
 
   /** One line per animal, so nothing chosen is out of sight behind a pill. */
   const summary = [...ticked.entries()].map(([id, set]) => ({
     petId: id,
     petName: pets.find((pet) => pet._id === id)?.name ?? "—",
+    /*
+      ⚠️ THE NAME AND THE PRICE TOGETHER, and the price is the ANIMAL'S.
+
+      The summary named what each animal was having and left the figures on the
+      rows above — so on a two-dog visit the only number in sight was the total,
+      and Rp 260.000 for two groomings of the same name could not be broken down
+      by anybody reading it. The same service costs a different amount for a
+      small dog and a large one, which is exactly what this box is for.
+    */
     services: [...set]
-      .map(
-        (serviceId) =>
-          services.find((service) => service._id === serviceId)?.name ?? "",
-      )
-      .filter(Boolean),
+      .map((serviceId) => ({
+        name: services.find((service) => service._id === serviceId)?.name ?? "",
+        price: priceFor(id, serviceId).price,
+      }))
+      .filter((one) => one.name !== ""),
+    /* What this animal comes to, so the total below can be checked against its
+       parts rather than taken on trust. */
+    total: sumDecimals(
+      [...set].map((serviceId) => priceFor(id, serviceId).price),
+    ),
   }));
 
   return (
@@ -278,7 +329,18 @@ export function AddServiceTab({
 
       <div className="flex flex-col gap-2">
         <Label>
-          Layanan{petId && ` untuk ${pets.find((pet) => pet._id === petId)?.name ?? ""}`}
+          Layanan{activePet && ` untuk ${activePet.name}`}
+          {/*
+            WHICH VARIANT THE FIGURES BELOW ARE, said once for the whole list
+            rather than on every row. A number nobody can trace to a size is a
+            number nobody can check, and the first time that matters is when a
+            customer disputes the bill.
+          */}
+          {activeVariant && (
+            <span className="ml-2 text-xs font-normal text-muted">
+              {activeVariant}
+            </span>
+          )}
         </Label>
         {services.length === 0 ? (
           <p className="text-sm text-muted">
@@ -287,23 +349,46 @@ export function AddServiceTab({
           </p>
         ) : (
           <ul className="flex max-h-64 flex-col gap-1 overflow-y-auto">
-            {services.map((service) => (
-              <li key={service._id}>
-                <label className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-surface-hover">
-                  <Checkbox
-                    checked={forActivePet.has(service._id)}
-                    onCheckedChange={() => toggle(service._id)}
-                    aria-label={service.name}
-                  />
-                  <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-                    {service.name}
-                  </span>
-                  <span className="shrink-0 text-sm tabular-nums text-muted">
-                    {formatMoney(service.price)}
-                  </span>
-                </label>
-              </li>
-            ))}
+            {services.map((service) => {
+              const quote = petId
+                ? priceFor(petId, service._id)
+                : { price: service.price, missingAxis: null };
+
+              return (
+                <li key={service._id}>
+                  <label className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-surface-hover">
+                    <Checkbox
+                      checked={forActivePet.has(service._id)}
+                      /*
+                        A SERVICE NOBODY CAN PRICE CANNOT BE TICKED. The server
+                        refuses the whole patch on it, and the refusal names an
+                        axis the receptionist was never asked about.
+                      */
+                      disabled={!quote.price}
+                      onCheckedChange={() => toggle(service._id)}
+                      aria-label={service.name}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm text-foreground">
+                        {service.name}
+                      </span>
+                      {/* The way out, named: which fact is missing, on whom. */}
+                      {!quote.price && quote.missingAxis && activePet && (
+                        <span className="block text-xs text-warning">
+                          <PetFixLink
+                            pet={activePet}
+                            axis={quote.missingAxis}
+                          />
+                        </span>
+                      )}
+                    </span>
+                    <span className="shrink-0 text-sm tabular-nums text-muted">
+                      {quote.price ? formatMoney(quote.price) : "—"}
+                    </span>
+                  </label>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
@@ -323,8 +408,31 @@ export function AddServiceTab({
               <dt className="shrink-0 font-medium text-foreground">
                 {row.petName}
               </dt>
-              <dd className="min-w-0 flex-1 text-muted">
-                {row.services.join(", ")}
+              <dd className="min-w-0 flex-1">
+                {row.services.map((one) => (
+                  <span
+                    key={one.name}
+                    className="flex items-baseline justify-between gap-2"
+                  >
+                    <span className="min-w-0 truncate text-muted">
+                      {one.name}
+                    </span>
+                    <span className="shrink-0 tabular-nums text-muted">
+                      {one.price ? formatMoney(one.price) : "—"}
+                    </span>
+                  </span>
+                ))}
+
+                {/* ONE ANIMAL'S SUBTOTAL, only when it has more than one service
+                    — over a single line it would print the same figure twice. */}
+                {row.services.length > 1 && (
+                  <span className="flex items-baseline justify-between gap-2 border-t border-border pt-0.5">
+                    <span className="text-xs text-muted">Subtotal</span>
+                    <span className="shrink-0 tabular-nums text-foreground">
+                      {formatMoney(row.total)}
+                    </span>
+                  </span>
+                )}
               </dd>
             </div>
           ))}
