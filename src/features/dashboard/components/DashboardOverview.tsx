@@ -1,12 +1,13 @@
 "use client";
 
+import { useMemo } from "react";
 import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/features/auth";
 import { usePermissions } from "@/features/permissions";
 import { useExpiringAlert, useLowStockAlert } from "@/features/inventory";
-import { NAV_ITEMS, type NavItem } from "../nav";
+import { NAV_SECTIONS, filterNavSections, type NavSection } from "../nav";
 
 /**
  * The admin landing view — the screen somebody opens first every morning.
@@ -33,12 +34,43 @@ const PENDING_KPIS = [
   { label: "Penjualan hari ini", href: "/dashboard/pos", blockedBy: "Menunggu modul kasir" },
 ];
 
-// The section shortcuts are the top-level leaf sections (a direct href, and not
-// the dashboard home itself). Groups like Master Data are excluded.
-type LeafItem = NavItem & { href: string };
-const SHORTCUTS = NAV_ITEMS.filter(
-  (item): item is LeafItem => Boolean(item.href) && !item.exact,
-);
+/**
+ * The section shortcuts, derived from the rail so this page can never drift from
+ * it. One card per module: a leaf contributes itself, a GROUP contributes its
+ * own label and icon pointing at its first child — the destination that group
+ * opens on (the Inventori hub, the booking list, the invoice list).
+ *
+ * TWO SECTIONS ARE SKIPPED. "Utama" holds Beranda, which is this page, and
+ * Kasir, whose card would be a shortcut to a till from a summary screen; and
+ * "Sistem" is settings, which nobody needs a shortcut to. The old version
+ * excluded groups wholesale for the same reason it excluded Master Data —
+ * except that under the section rail almost everything is a group now, which
+ * would have left two cards on the page.
+ *
+ * COMPUTED AGAINST `can`, unlike the old module-scope constant: a shortcut to a
+ * module the role may not read is a card that only ever opens an access-denied
+ * panel.
+ */
+const SHORTCUT_SECTIONS = ["Operasional", "Transaksi", "Keuangan"];
+
+interface Shortcut {
+  label: string;
+  href: string;
+  icon: NavSection["items"][number]["icon"];
+}
+
+function shortcutsOf(sections: NavSection[]): Shortcut[] {
+  return sections
+    .filter((section) => SHORTCUT_SECTIONS.includes(section.label))
+    .flatMap((section) => section.items)
+    .flatMap((item) => {
+      const href = item.href ?? item.children?.[0]?.href;
+      // A group filtered down to nothing never reaches here (filterNavSections
+      // drops it), but a group with no children at all would — guard anyway.
+      if (!href) return [];
+      return [{ label: item.label, href, icon: item.icon }];
+    });
+}
 
 export function DashboardOverview() {
   const { user } = useAuth();
@@ -49,6 +81,11 @@ export function DashboardOverview() {
 
   const lowStock = useLowStockAlert(mayReadProducts);
   const expiring = useExpiringAlert(mayReadBatches);
+
+  const shortcuts = useMemo(
+    () => shortcutsOf(filterNavSections(NAV_SECTIONS, can)),
+    [can],
+  );
 
   return (
     <div className="flex flex-col gap-8">
@@ -108,7 +145,7 @@ export function DashboardOverview() {
           Quick access
         </h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {SHORTCUTS.map((item) => {
+          {shortcuts.map((item) => {
             const Icon = item.icon;
             return (
               <Link

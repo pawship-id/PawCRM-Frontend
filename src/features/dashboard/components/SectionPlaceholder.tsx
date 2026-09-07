@@ -1,9 +1,12 @@
 import type { ComponentType, SVGProps } from "react";
 
 /**
- * A "coming soon" scaffold for sections whose UI has not been built yet.
+ * A "belum tersedia" scaffold for sections whose UI has not been built yet.
  * Keeps the sidebar links functional and the frame consistent, and states
  * plainly that the feature is not implemented rather than faking content.
+ *
+ * Copy is Bahasa per ui-rules §12 — it was English until the rail rebuild gave
+ * it four more call sites, which made it worth the one-file fix.
  */
 export function SectionPlaceholder({
   title,
@@ -27,11 +30,10 @@ export function SectionPlaceholder({
         </span>
         <div>
           <p className="text-base font-medium text-foreground">
-            {title} is coming soon
+            {title} belum tersedia
           </p>
           <p className="mt-1 text-sm text-muted">
-            This section is not built yet. The navigation and layout are ready
-            for it.
+            Bagian ini belum dibangun. Menunya sudah siap menampung.
           </p>
         </div>
       </div>
