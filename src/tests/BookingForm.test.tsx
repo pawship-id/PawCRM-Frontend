@@ -189,7 +189,9 @@ describe("BookingForm", () => {
             addonServiceIds: [],
             groomerUserId: null,
             durationMin: undefined,
-            notes: null,
+            /* Two notes, and the key is always sent — same reason as above. */
+            internalNotes: null,
+            customerNotes: null,
           },
         ],
         belongings: [],
@@ -200,7 +202,14 @@ describe("BookingForm", () => {
         pickupRequested: false,
         deliveryRequested: false,
         tripAddress: null,
-        status: "confirmed",
+        /*
+          `requested`, NOT `confirmed`, and the default changed on 5 Sep 2026.
+          Saving the form ASKS for an appointment; the shop agreeing to it is a
+          separate act with a rung of its own. Defaulting to `confirmed` made
+          every booking self-approving, which is exactly the distinction
+          `requested` exists to draw.
+        */
+        status: "requested",
         notes: null,
       }),
     );
@@ -487,17 +496,73 @@ describe("BookingForm", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("offers only the two states a booking can start in", async () => {
-    renderWithAuth(
-      <BookingForm />,
+  it("asks no status at all — the button decides it", async () => {
+    /*
+      THE SELECT IS GONE, replaced by the two buttons in the action bar.
+
+      "Which status should this start in" is not what a receptionist writing
+      down a phone call is deciding; what they are deciding is whether they are
+      FINISHED. A field that has to be read and understood before every save is
+      one people leave on whatever it happened to say last — and it was a second
+      door into the state machine, able to put a booking straight into
+      `confirmed` with nobody at the shop having agreed to it.
+    */
+    renderWithAuth(<BookingForm />);
+
+    await screen.findByRole("button", { name: /simpan booking/i });
+
+    expect(
+      screen.queryByRole("combobox", { name: /^status$/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("saves as `requested` from the ordinary button", async () => {
+    // Saving ASKS for an appointment; the shop agreeing is its own act, with a
+    // rung and a button of its own on the booking page.
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+    await choose(/^layanan$/i, /grooming full service/i);
+
+    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+    await waitFor(() => expect(bookings.create).toHaveBeenCalled());
+    expect(bookings.create.mock.calls[0][0].status).toBe("requested");
+  });
+
+  it("saves a draft from the draft button, whatever else is on the form", async () => {
+    /*
+      SOMEBODY PRESSING IT IS TELLING YOU THEY HAVE NOT FINISHED. A phone rings
+      mid-booking, a customer is not sure which day — the button has to mean
+      draft outright, not "draft unless something else on the form disagrees".
+    */
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+    await choose(/^layanan$/i, /grooming full service/i);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /simpan sebagai draf/i }),
     );
 
-    await userEvent.click(screen.getByRole("combobox", { name: /status/i }));
+    await waitFor(() => expect(bookings.create).toHaveBeenCalled());
+    expect(bookings.create.mock.calls[0][0].status).toBe("draft");
+  });
 
-    const listbox = await screen.findByRole("listbox");
-    expect(within(listbox).getByRole("option", { name: "Dikonfirmasi" })).toBeInTheDocument();
-    expect(within(listbox).getByRole("option", { name: "Draft" })).toBeInTheDocument();
-    expect(within(listbox).queryByRole("option", { name: /selesai|batal/i })).toBeNull();
+  it("offers the draft button while Simpan is still blocked", async () => {
+    /*
+      THE ONE SITUATION IT EXISTS FOR. The bar greys Simpan out until the
+      required fields are answered; a draft is exactly what you save when they
+      are not, so gating it on the same rule would make it useless.
+    */
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+
+    expect(screen.getByRole("button", { name: /simpan booking/i })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /simpan sebagai draf/i }),
+    ).toBeEnabled();
   });
 
   /*
@@ -985,8 +1050,11 @@ describe("BookingForm — telling one animal's card from another's", () => {
     await pickCustomer();
     await screen.findByRole("combobox", { name: /^hewan$/i });
 
-    /* The booking's own Catatan is always there; the ANIMAL's is not, yet. */
+    /* The booking's own Catatan is always there; the ANIMAL's two are not. */
     expect(screen.getAllByLabelText(/^catatan$/i)).toHaveLength(1);
+    expect(
+      screen.queryByLabelText(/catatan internal/i),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByLabelText(/tambah barang bawaan/i),
     ).not.toBeInTheDocument();
@@ -995,7 +1063,14 @@ describe("BookingForm — telling one animal's card from another's", () => {
       screen.getAllByRole("button", { name: /catatan & barang bawaan/i })[0],
     );
 
-    expect(screen.getAllByLabelText(/^catatan$/i)).toHaveLength(2);
+    /*
+      TWO BOXES, EACH NAMING ITS AUDIENCE. The split is worth nothing if the
+      person typing cannot tell from the label which one the owner reads.
+    */
+    expect(screen.getByLabelText(/catatan internal/i)).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(/catatan untuk pelanggan/i),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText(/tambah barang bawaan/i)).toBeInTheDocument();
   });
 
@@ -1022,7 +1097,8 @@ describe("BookingForm — telling one animal's card from another's", () => {
           name: "Grooming Full Service",
           price: "150000.0000",
           durationMin: 90,
-          notes: "Takut hairdryer",
+          internalNotes: "Takut hairdryer",
+          customerNotes: null,
           groomerUserId: null,
           pulledToCartAt: null,
           pulledToInvoiceAt: null,
@@ -1196,11 +1272,11 @@ describe("BookingForm — lokasi, antar-jemput dan barang bawaan", () => {
     ]);
   });
 
-  it("writes the animal's one note onto each of its services", async () => {
+  it("writes both of the animal's notes onto each of its services", async () => {
     /*
-      `bookingitems.notes` is "anything special about THIS animal on THIS visit"
-      — a per-animal fact stored per row. The card asks once; the payload fans it
-      out, rather than putting the same box in front of somebody twice.
+      Both notes are "anything special about THIS animal on THIS visit" — a
+      per-animal fact stored per row. The card asks once; the payload fans them
+      out, rather than putting the same boxes in front of somebody twice.
     */
     services.list.mockResolvedValue(
       page([service(), service({ _id: "svc-2", name: "Potong Kuku" })]),
@@ -1222,15 +1298,53 @@ describe("BookingForm — lokasi, antar-jemput dan barang bawaan", () => {
       screen.getByRole("button", { name: /catatan & barang bawaan/i }),
     );
     await userEvent.type(
-      screen.getAllByLabelText(/^catatan$/i)[0],
+      screen.getByLabelText(/catatan internal/i),
       "Takut hairdryer",
+    );
+    await userEvent.type(
+      screen.getByLabelText(/catatan untuk pelanggan/i),
+      "Sarankan 3 minggu sekali",
     );
     await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
 
     await waitFor(() => expect(bookings.create).toHaveBeenCalled());
-    expect(
-      bookings.create.mock.calls[0][0].items.map((item) => item.notes),
-    ).toEqual(["Takut hairdryer", "Takut hairdryer"]);
+
+    const items = bookings.create.mock.calls[0][0].items;
+    expect(items.map((item) => item.internalNotes)).toEqual([
+      "Takut hairdryer",
+      "Takut hairdryer",
+    ]);
+    expect(items.map((item) => item.customerNotes)).toEqual([
+      "Sarankan 3 minggu sekali",
+      "Sarankan 3 minggu sekali",
+    ]);
+  });
+
+  it("keeps the two apart in the payload", async () => {
+    /*
+      THE ONE FAILURE THAT WOULD MATTER. If the card wired both boxes to one
+      field, or crossed them, an internal remark would be stored in the half the
+      product intends to show an owner — and nothing downstream could tell.
+    */
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+    await choose(/^layanan$/i, /grooming full service/i);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /catatan & barang bawaan/i }),
+    );
+    await userEvent.type(
+      screen.getByLabelText(/catatan internal/i),
+      "Pemiliknya suka ngeyel soal harga",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+    await waitFor(() => expect(bookings.create).toHaveBeenCalled());
+    expect(bookings.create.mock.calls[0][0].items[0]).toMatchObject({
+      internalNotes: "Pemiliknya suka ngeyel soal harga",
+      customerNotes: null,
+    });
   });
 });
 
@@ -1252,7 +1366,8 @@ describe("BookingForm — mengubah booking", () => {
         name: "Grooming Full Service",
         price: "150000.0000",
         durationMin: 90,
-        notes: null,
+        internalNotes: null,
+        customerNotes: null,
         groomerUserId: null,
         groomerName: "Belum ditentukan",
         pulledToCartAt: null,
@@ -1265,6 +1380,21 @@ describe("BookingForm — mengubah booking", () => {
     bookings.getById.mockResolvedValue(existing);
     customers.getById.mockResolvedValue(customer);
     bookings.update.mockResolvedValue(existing);
+  });
+
+  it("does not offer 'simpan sebagai draf' when editing", async () => {
+    /*
+      PUSHING A LIVE BOOKING BACK DOWN TO A DRAFT is a move the ladder does not
+      have, and `PATCH` carries no status at all — a button that looked like it
+      could would be refused every time it was pressed.
+    */
+    renderWithAuth(<BookingForm bookingId="bk-9" />);
+
+    await screen.findByRole("button", { name: /simpan perubahan/i });
+
+    expect(
+      screen.queryByRole("button", { name: /simpan sebagai draf/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("loads the booking into the form and saves through update, not create", async () => {
@@ -1304,7 +1434,8 @@ describe("BookingForm — mengubah booking", () => {
         addonServiceIds: [],
         groomerUserId: null,
         durationMin: 90,
-        notes: null,
+        internalNotes: null,
+        customerNotes: null,
       },
     ]);
     /*

@@ -115,14 +115,42 @@ the stored answer is the server's.
 
 ---
 
-## Why the list took over the first half of a booking's life
+## Why the list took over the first half of a booking's life — and gave it back
 
 The table was built read-only, on the argument that every legitimate change ran through the
 till. What that missed is that **the till only ever sees the END of a booking**. An animal
 arriving and a groomer starting are facts nobody could record anywhere, and the person who
 knows them is the receptionist watching the door — who has this screen open, not the kasir.
 
-So the moves live here, behind the same state machine the server enforces.
+So the moves went onto the row. **They came off it again on 5 September 2026**: the kebab stays,
+and holds one item — **Detail booking**.
+
+**The ladder outgrew the row.** Nine rungs, two conditional on the booking, and guards that
+refuse `completed` until every session is finished: the kebab had grown to seven items and was
+answering questions — *can this one be handed over yet? which sessions are still open?* — whose
+evidence is on the detail page and nowhere near the row. Moving a booking from a list is a
+decision taken without looking at the thing being decided about.
+
+**It also made the commonest mistake the easiest one.** The kebab sits under the pointer at the
+end of every row, and *"Tandai selesai dikerjakan"* on the wrong row fires commission for the
+wrong visit. The ladder only runs forward — there is no undo, only a cancellation and a new
+booking.
+
+**The services left the row too.** The `Layanan` column printed every service of the booking —
+name over groomer — inside one cell, and it was the only cell whose height depended on the
+booking: three services made the row three times as tall and pushed the next booking off the
+fold. It also repeated *"Belum ditentukan"* once per service, which is the ordinary state of a
+booking taken over the phone. `Hewan` still names the animals and `Total` is still the sum of
+exactly those rows; **which** services is a question about one booking, and it is answered on
+that booking's page, next to the prices and the sessions it belongs with.
+
+**The kebab itself stayed.** What was wrong was what it held, not that it was there: every other
+table in this app ends in the same button, and a booking row ending in a bare link would be the
+one row somebody has to look at twice to find the actions on, down to the vertical dots every
+other table uses.
+
+The receptionist's need is unchanged and is met one click away: the row's number and the menu's
+**Detail booking** both open the booking, where the moves are, next to what they are about.
 
 ---
 
@@ -130,12 +158,13 @@ So the moves live here, behind the same state machine the server enforces.
 
 `BookingForm` asks in §16's field order, and since the per-animal flow landed that order is:
 **kapan** (tanggal + jam) → **di mana** (cabang, lokasi layanan) → antar-jemput → **dengan
-siapa** (pelanggan) → a card per animal → the status → catatan last.
+siapa** (pelanggan) → a card per animal → catatan last. **There is no status field** — see
+below.
 
 ### The page is four cards and one list
 
 `Jadwal & lokasi` · `Antar-jemput` (only for a salon visit) · `Pelanggan` · **the animals** ·
-`Status & catatan`. Each card is a `<Card>` — white `bg-surface` on the page's tint — so a form
+`Catatan`. Each card is a `<Card>` — white `bg-surface` on the page's tint — so a form
 with two dozen controls has somewhere for the eye to stop.
 
 **The animals are the one group NOT wrapped in a card**, and that is deliberate: the ANIMAL's
@@ -166,6 +195,35 @@ What answers it now:
 | The services sit behind a **left rail** | The indent says "these belong to the animal named above" without repeating it on every row |
 | **Tipe layanan** moved down beside the service list | Next to *Hewan* it read as another property of the animal, and was half the confusion |
 
+### The status is the button, and there is no field for it
+
+The form had a **Status** select — `requested` / `confirmed` / `draft`. Two buttons replaced it
+on 5 September 2026, and it is worth stating because it REMOVES a control:
+
+| Button | Saves as | Blocked while required fields are empty |
+| --- | --- | --- |
+| **Simpan booking** (primary) | `requested` | Yes — with `blockedReason` saying which field |
+| **Simpan sebagai draf** (secondary, left of Batal) | `draft`, always | **No** |
+
+**A select asked the wrong question.** "Which status should this start in" is not what somebody
+writing down a phone call is deciding; what they are deciding is **whether they are finished**.
+That is what a button answers, and a field that must be read and understood before every save is
+one people leave on whatever it happened to say last.
+
+**It was also a third place for one fact.** The ladder is enforced by the server and offered by
+the booking's own status menu; a select at creation time was a second door into the same
+machine — one that could put a booking into `confirmed` with nobody at the shop agreeing to it.
+
+**The draft button is not blocked by `blockedReason`, and Simpan is.** A draft is exactly what
+you save when the required fields are NOT answered — a phone rings mid-booking, a customer is
+not sure which day — so gating it on the same rule would make it useless in the one situation it
+exists for. It is off only while nothing could be sent at all (no customer picked); the server
+still refuses a booking with no animal on it, because a draft is unfinished, not unfounded.
+
+**It is not offered when editing.** `PATCH` carries no status, and pushing a live booking back
+down to a draft is a move the ladder does not have. An existing draft stays a draft on save and
+is promoted from the booking's own status menu.
+
 ### Three things are folded away
 
 A visit is usually one animal, one service, the catalogue's duration, no note and nothing
@@ -177,7 +235,10 @@ fold says when it holds something:
   booking that agreed with it.
 - **Catatan & barang bawaan** is one disclosure per animal, with a count when it holds
   anything, and it **opens by itself** when the booking already has something in it — editing
-  must not hide what was written last time behind a fold nobody knows to open.
+  must not hide what was written last time behind a fold nobody knows to open. It holds the
+  animal's **two** notes since 5 Sep 2026, and **each counts as one** in the badge: counting the
+  pair as a single item would hide that a customer note was written and an internal one was
+  not, which is exactly the distinction the fold must not obscure.
 
 Nothing was removed. It stopped being in the way.
 
@@ -293,13 +354,81 @@ groomer doing it.
 | --- | --- | --- |
 | Lokasi layanan | `in_store` / `in_home` | Narrows the catalogue: a service that cannot be done at home is refused for a house call |
 | Antar-jemput | Two check-rows + an optional address | **One trip per visit, not per animal** — a van goes to an address, and two of one customer's dogs ride in the same one. The question **disappears** on a house call rather than being asked and ignored; the server forces both off |
-| Barang bawaan | Add-and-remove chips, per animal | What the owner says they will bring. **Nothing here ticks anything in** — the counter confirms arrival on the booking's own page, and a visit cannot be completed while something handed over is still here |
+| Barang bawaan | Add-and-remove chips, per animal | What the owner says they will bring. **Nothing here ticks anything in** — the counter confirms arrival on the animal's work page, and a visit cannot be completed while something handed over is still here |
 
-**The animal's note is written onto each of its rows.** `bookingitems.notes` is documented as
-"anything special about THIS animal on THIS visit" — a per-animal fact that happens to be
-stored per row, because the row is the only thing a visit has one of per animal per service.
-Asking once and fanning it out is what makes the screen match the field's own meaning; asking
-once per service would put the same sentence in front of somebody three times.
+### Two notes per animal, and one for the whole visit
+
+Inside each animal's fold there are **two** boxes, added 5 September 2026:
+
+| Field | Label | Who reads it |
+| --- | --- | --- |
+| `internalNotes` | **Catatan internal** | Staff only, never the customer — "takut hairdryer, mandi duluan". This is the old `notes`, renamed |
+| `customerNotes` | **Catatan untuk pelanggan** | The owner — "bulunya kusut parah, disarankan grooming tiap 3 minggu" |
+
+**One box could not serve both.** Everything went into a single "Catatan": handling
+instructions next to whatever somebody wanted the owner to know. Whichever way that box is then
+treated it is wrong — shown to the customer, "pemiliknya suka ngeyel soal harga" leaks; hidden
+from them, the advice never arrives.
+
+**The labels are the feature, not the storage.** Splitting the fields without saying which is
+which on screen would change nothing: the person typing decides where a sentence lands, so the
+label has to answer *who reads this* before the cursor gets there. The internal one is first
+because almost every visit has one and the customer's is the exception. The customer box's hint
+says out loud that **nothing prints it on a struk or sends it over WhatsApp yet** — a field
+that looks like it reaches the owner but does not is worse than one that is honest, because
+somebody would write "sudah kami hubungi" in it and assume the customer had been.
+
+**Both are written onto each of the animal's rows.** They are per-animal facts that happen to
+be stored per row, because the row is the only thing a visit has one of per animal per service.
+Asking once and fanning them out is what makes the screen match the fields' own meaning; asking
+once per service would put the same sentences in front of somebody three times. `groupsFromBooking`
+collapses them back, and it tests each **independently**: a booking whose rows disagree — one
+written before the split, or an edit that reached only some rows — must show both halves, and
+testing them together would silently drop whichever the first row happened to lack.
+
+**The booking's own Catatan is unchanged** — one note for the whole visit, `bookings.notes`,
+still a single box at the end of the form.
+
+**Where they are read back:** on the **animal's own work page**, in the card that also edits
+them (below), and nowhere else on the booking. The overview carried a read-only copy per animal
+block for a day and it was dropped: a second place to look for words that can only be changed
+in the first is a place somebody reads and then wonders why they cannot correct. The calendar
+block and the pet timeline show the **internal one only** — a day sheet and a handling history
+are staff surfaces, and the API does not send the customer's note to either.
+
+`BookingNotes`, the read-only labelled pair, was deleted with its last call site rather than
+left as a component nothing renders.
+
+### Editing them from the animal's work page
+
+`BookingPetNotesCard` sits at the head of the rail on `/dashboard/booking/:id/hewan/:petId` —
+"Catatan booking", with **Untuk pelanggan** above **Internal**, both editable in place.
+
+**Why they are editable there and not only on the form.** The booking form captures what was
+known when the appointment was taken. Everything else is learned afterwards: the coat is worse
+than it looked, the dog panics at the dryer, the owner says something at drop-off. All of that
+happens on this page, and the alternative was sending a groomer with wet hands to the edit
+form — which reprices the visit on save.
+
+**It is `PATCH /bookings/:id/pets/:petId/notes`, never `PATCH /bookings/:id`.** The wholesale
+edit re-snapshots every unbilled row at today's catalogue price, so saving a note through it
+would reprice a visit nobody meant to reprice. This is the one thing about this card worth
+remembering.
+
+**Saved on blur, one field at a time**, matching the time fields on the same page — no save
+button. Each box sends only itself: the other may be half-typed, and a patch carrying both
+would write a stale value over live editing. A blur that changed nothing sends nothing, because
+tabbing through a card is the commonest thing that happens to it.
+
+**The draft is local and reseeds when the stored value moves.** A textarea driven straight off
+`booking` fights the person typing; without the reseed a save from another tab would never
+show. It is also what makes a refusal recoverable — the box keeps the words and the error says
+why they are not saved yet.
+
+**In the rail, and read-only without `bookings:update`.** It is consulted while something else
+is being done — during the work, and again at hand-over — so it stays in view beside the
+sessions instead of scrolling away above them. Somebody without the grant sees the text, not
+disabled boxes: they are reading the page, not being stopped mid-act.
 
 | Decision | Why |
 | --- | --- |
@@ -319,17 +448,80 @@ The disabled Simpan says which field is still missing, that one included.
 
 ---
 
+## The detail page's head
+
+**One heading block, and the booking NUMBER is the title.** The page renders the breadcrumb and
+nothing else; `BookingDetailScreen` owns the `<h1>`. It used to sit under a `PageHeading` saying
+*"Detail booking"* over a sentence, which made **two `<h1>`s** and put the document's own
+identity on the fourth line. §16: a document says what it is, what its number is, and what can
+be done with it at its head. "Detail booking" stops adding anything the moment the number is on
+screen, and the breadcrumb already says which module this is.
+
+Under it: customer · branch, then *"Dibuat … · Fitria (ops)"*. The audit line is new — *"siapa
+yang bikin booking ini"* had no answer on this page at all.
+
+**The Kunjungan card is a four-up strip**, not a two-column definition list. Waktu · Perkiraan
+durasi · Hewan · Total are numbers somebody scans, and four short answers in a 2-column list
+took four rows and half the card's width each, so the eye travelled down and back for facts that
+belong in one glance.
+
+**Two things it was getting wrong:**
+
+- **`Perkiraan selesai` showed `121 menit`** — a duration under a label promising a clock, so
+  the reader still did the arithmetic the label claimed to have done. The label is now
+  `Perkiraan durasi`, and the finish TIME sits beside the start: *"…pukul 20.30 – 22.31"*.
+- **`Total —` on a visit with two animals.** `bookings.totalAmount` is Decimal128 and reached
+  the client as `{ "$numberDecimal": "274000" }` — an object, where the type promises a string —
+  so `formatMoney` could not parse it. **The same bug as `items[].price`**, which was fixed one
+  field over and left this one behind; fixed now in `BookingService#withNames`, where the
+  promise is made. A booking whose summary has never run still carries `null`, and the screen
+  sums the rows itself rather than showing nothing.
+
+---
+
 ## Moving one
 
-The kebab menu offers exactly the transitions `BOOKING_TRANSITIONS` allows from where the
-booking stands — `statusFlow.ts` mirrors the server's map so the menu cannot offer a move
-that comes back a 409.
+**On the booking's own page, not on the list** — `/dashboard/booking/:id`, and on the animal's
+work page for the per-session moves. See above for why the row gave them up.
+
+The kebab menu offers exactly the transitions the server allows from where the booking stands —
+`statusFlow.ts` mirrors `booking.model.js` so the menu cannot offer a move that comes back a 409.
 
 ```
-draft ──► confirmed ──► check_in ──► in_progress ──► completed
-  │           │             │             │
-  └───────────┴─────────────┴─────────────┴───────────► cancelled
+draft ─► requested ─► confirmed ─► [pickup] ─► arrived ─► in_progress ─► completed ─► [delivery] ─► return_to_pawrents
+  │          │            │           │           │            │
+  └──────────┴────────────┴───────────┴───────────┴────────────┴──► cancelled
 ```
+
+**The status names are shown in ENGLISH** — `Draft` · `Requested` · `Confirmed` · `Pickup` ·
+`Arrived` · `In Progress` · `Completed` · `Delivery` · `Return to Pawrents` · `Cancelled` ·
+`Rescheduled`. It is the one place this product does, a deliberate exception recorded in
+[ui-rules §12](../ui-rules.md): they are the names of rungs rather than sentences, the shop
+already says them in English (*"bookingnya masih requested"*), and they match the stored values
+word for word so an export and a badge read the same.
+
+**The status CONTROL followed** — the menu rows ("Confirm booking", "Mark arrived", "Start
+work"), its "Other statuses" trigger, "Status history" and "Reschedule". The first pass kept
+those in Bahasa, and a menu of Indonesian verbs whose only purpose is to reach English-named
+rungs made every row a translation step. **It stops at the control**: the dialogs behind those
+rows, the cancel reason, and every toast are sentences and stay Bahasa.
+
+**The ladder is a function of the BOOKING, not a constant** — `ladderFor(booking)`. The two
+bracketed rungs exist only on a visit that asked to be fetched or driven home, so a menu built
+from the status alone would offer *"Mulai penjemputan"* on a booking with no van, and the
+server would refuse it one 409 at a time. Everything that reasons about order — the menu, the
+implied-rungs warning, the primary button — takes the booking.
+
+**`requested` is where a saved form lands, and `confirmed` is a separate act.** A booking that
+confirmed itself was one nobody had checked: a receptionist writing down a phone call has not
+yet asked whether the shop can take it. Confirming has a rung and a button of its own on the
+booking page. The walk-in standing at the counter is one click further away than before, and
+that is the trade.
+
+**`completed` is no longer the end**, and the split it created is the thing to remember on this
+screen. Money closes at `completed` — the edit form and the groomer pickers refuse from there,
+because commission is computed at that rung. The animal's own things — its two notes, its
+belongings — stay editable until `return_to_pawrents`, because that is when the visit ends.
 
 **Every move confirms, including the ordinary ones**, because none of them can be undone:
 the ladder only runs forward, so a mis-tapped "Tandai selesai" is not a click somebody takes
@@ -338,11 +530,35 @@ cancelled and made again.
 
 The dialog is also where the two things worth saying fit:
 
-- **Which rungs the jump fills in behind it.** Straight to check-in also records
-  *Dikonfirmasi*, at the same minute — see below.
+- **Which rungs the jump fills in behind it.** Straight to arrival also records *Requested* and
+  *Confirmed*, at the same minute — see below. A trip leg the booking never booked is never
+  filled in.
 - **That completing here is not being paid.** The till stamps the sale when money lands;
   marking it done only says the work is finished, and a completed booking stops being offered
   to the kasir.
+
+### Jadwalkan ulang
+
+`BookingRescheduleDialog`, in the same kebab menu, offered while the animal has not arrived and
+the booking is not a draft.
+
+**It is not the edit form.** Saving that RE-PRICES every unbilled row at today's catalogue
+price — changing what is being done is a new quote — so moving a date through it would bill a
+shop's price rise to a customer who only rang to say Thursday is off. This calls
+`POST /bookings/:id/reschedule`, which writes two fields.
+
+**The booking comes back `confirmed`, and `rescheduled` goes to the trail.** Agreeing a new
+time is a confirmation; a booking parked in a status of its own is one somebody has to remember
+to un-park. It is the one trail entry that can appear twice.
+
+**A clash offers an override, and only after the diary has refused.** A checkbox that is always
+there is one people tick out of habit. The warning says what the override costs — *"groomer itu
+akan punya dua pekerjaan di jam yang sama"* — and changing the time clears it, because a stale
+warning turns the next save into an override nobody meant to make.
+
+**Gated on `bookings:update`, not `cancel`.** Rearranging a day is an edit to what was agreed;
+gating it on the cancel grant would mean a receptionist who may move bookings cannot, while one
+who may only end them can.
 
 **Cancelling asks for a reason and does not require one.** A receptionist calling off an
 appointment at the customer's request has nothing to add, and a mandatory field with nothing
@@ -365,14 +581,15 @@ the detail page. Added 3 September 2026, from the shop: **"Mochi sudah selesai m
 Coco belum" was a sentence the booking-level status alone could not hold.**
 
 **`bookingitems` gained `workStatus` (`pending → in_progress → done`), `startedAt` and
-`finishedAt`.** Three rungs, not the booking's five — `draft` and `check_in` are facts about
+`finishedAt`.** Three rungs, not the booking's nine — `draft` and `arrived` are facts about
 the VISIT (an appointment agreed, an animal arriving), not about one service, and copying the
 booking's ladder onto every row would mark an animal "arrived" twice because it is having two
 things done.
 
 **The booking's own `in_progress`/`completed` now follow the rows rather than being set
 directly** — `BookingService#deriveBookingStatus`, fired every time a row moves. `draft`,
-`confirmed`, `check_in` and `cancelled` stay the booking's own, manual as before.
+`confirmed`, `arrived`, the two trip legs, `return_to_pawrents` and `cancelled` stay the
+booking's own, manual as before.
 
 ### The header carries the one booking-level action on the page
 
@@ -411,10 +628,35 @@ subtitle is now a link back to `/dashboard/booking/:id` — the page's only way 
 
 ---
 
-## Barang bawaan — centang masuk dan keluar
+## Titipan owner — centang masuk dan keluar
 
-The card sits on the booking's own page, above the work, grouped by animal. Two checkboxes per
-item: **Masuk** when it is handed over at the counter, **Keluar** when it goes home.
+**The card lives on the animal's page**, `/dashboard/booking/:id/hewan/:petId`, in the left
+column **above Sesi Grooming**. What the owner handed over is checked at the two moments that
+bracket the work — arrival and collection — so it is read before the sessions and again after,
+while the sessions in between are worked through once. Sessions are also the longest card on
+the page, and anything under them is found only by scrolling past everything. A three-column
+table — **Barang / Masuk / Keluar** — showing only
+that animal's things, with a `N belum kembali` badge in the card header and **Tambah barang**
+underneath. Two checkboxes per item: **Masuk** when it is handed over at the counter,
+**Keluar** when it goes home.
+
+**It used to be on the booking overview, grouped by animal, and moved on 5 September 2026.**
+Handing a collar back happens at the table next to the animal it belongs to and the person
+holding it; the overview is about what the whole visit is and what it comes to. One card
+covering three animals meant scrolling past two others' things to tick one.
+
+**The count stayed behind.** Each animal's block on `/dashboard/booking/:id` carries
+`N titipan belum kembali` and the button through to the page. "Is anything still in the
+drawer" is the last question asked before a visit closes — a whole-visit question — so the
+answer must be readable without opening three pages. The **list** moved; the **number** did
+not. There is deliberately only one place to tick: two copies of the same checkbox is how an
+item gets recorded as returned and then quietly un-returned.
+
+**Tambah barang defaults to checked in.** Somebody arrives with more than they said they
+would, and an item written down at the counter arrived in the same movement that recorded it.
+It is `POST /api/bookings/:id/belongings`, which appends server-side — not the wholesale
+`PATCH` of the whole array, for the same reason the ticks are per-item. A refusal leaves the
+typed name in the field: making somebody retype it is where the typo goes in.
 
 **Two ticks, not one.** A single "sudah dikembalikan" cannot tell apart the two states that
 matter — something written down when the booking was taken and never actually handed over, and
@@ -471,22 +713,55 @@ decision that belongs to the shop.
 
 ## The trail
 
-`statusHistory[]` comes back on every booking: `{ status, at, by, byName, implied }`, oldest
-first. `Riwayat status` in the row menu draws it.
+`statusHistory[]` comes back on every booking: `{ status, at, by, byName, byRoleName, implied }`,
+oldest first. It is drawn **twice**, deliberately differently:
+
+| Where | Shape | Order |
+| --- | --- | --- |
+| `BookingHistoryCard` — the rail on `/dashboard/booking/:id/hewan/:petId` | A timeline: a dot per entry, a line joining them, the current one ringed | **Newest first** |
+| `BookingHistoryDialog` — `Riwayat status` in the booking's own status menu | A list: status badge, mover, time | **Oldest first** |
+
+**The opposite orders are not an oversight.** The card sits open beside the work all day and is
+glanced at for *what just happened*; the dialog is opened on purpose to read the visit as a
+story, and a story starts at the beginning.
 
 **Why it exists.** `status` says where a booking stands and nothing about how it got there,
 and `updatedAt` answers only the last move because the next one overwrites it. *"Jam berapa
-hewannya datang"*, *"sudah dikonfirmasi sebelum datang atau langsung check-in"* and *"siapa
+hewannya datang"*, *"sudah dikonfirmasi sebelum datang atau langsung datang"* and *"siapa
 yang membatalkan"* have nowhere else to come from.
 
 **A skipped rung is still a rung the booking passed through.** Nobody hands over a dog for an
-appointment that was never agreed, so `draft → check_in` records *both*, stamped with the
+appointment that was never agreed, so `draft → arrived` records *all of them*, stamped with the
 same instant. The filled-in entry carries `implied: true` and the dialog draws it as
 *otomatis* — two entries at the same second would otherwise claim two separate decisions, and
 this says which one somebody actually made.
 
-**`byName` is null when nothing human moved it** — a booking settled by a paid sale — and the
-dialog says "Sistem" rather than leaving a blank that reads as a field that failed to load.
+**`byName` is null when nothing human moved it** — a booking settled by a paid sale — and both
+renderers say "Sistem" rather than leaving a blank that reads as a field that failed to load.
+
+**Whoever moved it is named with the hat they were wearing** — "Fitria (ops)", "Sinta
+(groomer)". A trail is read after the fact by somebody who was not there, and a bare name
+assumes they know who Fitria is; the question actually being asked is whether the person was at
+the counter or at the table. `bookingActorLabel` in `features/booking/format.ts` is the single
+formatter — the card, the dialog and the work page's own audit line all go through it, because
+three renderings of one label is how "Fitria (Staff)" and "Fitria (staff)" ended up a few
+centimetres apart. **`byRoleName` can be null when the name is not**: the seeded Owner reaches
+every permission by bypass rather than an assigned role, and the name alone is honest where
+"(admin)" would be a guess.
+
+**The card's first line is `Booking dibuat`, and it is not a status.** It comes from
+`createdAt` / `createdByName`, because `statusHistory` records only MOVES — without it the
+trail begins at "Dikonfirmasi" and reads as though the booking sprang into existence already
+confirmed. It is also why a booking whose trail predates the feature still shows one honest
+line instead of an empty card.
+
+**The current entry is ringed in navy, not orange.** The reference draws it orange; ui-rules §4
+spends orange on one meaning — a human must act — and on that page it is already spent on the
+status badge while an animal is on the table. Two orange things at once means one of them is
+wrong, and "this is the most recent line" is not a call to action.
+
+**The statuses are shown in Indonesian**, through `BOOKING_STATUS_LABELS`. The card used to
+print the API's own values — `Status → in_progress` — at a shop.
 
 **An empty trail means *not recorded*, never *never moved*.** Bookings made before the field
 existed carry one, and the empty state says so rather than implying the booking sat still.
@@ -501,7 +776,7 @@ filtered to a day they have not thought about reads as "no". "Hari ini" is the d
 first preset.
 
 The status filter, the badge labels and the menu all run in **ladder order** — confirmed
-before check-in. A picker that lists a booking's life out of order is one people read twice.
+before arrival. A picker that lists a booking's life out of order is one people read twice.
 
 ---
 

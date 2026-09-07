@@ -34,7 +34,8 @@ const item = (overrides: Partial<BookingItem>): BookingItem =>
     name: "Full Grooming",
     price: "150000.0000",
     durationMin: 90,
-    notes: null,
+    internalNotes: null,
+    customerNotes: null,
     pulledToCartAt: null,
     pulledToInvoiceAt: null,
     groomerUserId: null,
@@ -124,17 +125,52 @@ describe("groupsFromBooking", () => {
     expect(groups[0].services.map((line) => line.locked)).toEqual([true, true]);
   });
 
-  it("shows the animal's note once, from its rows", () => {
+  it("shows each of the animal's notes once, from its rows", () => {
     const groups = groupsFromBooking(
       booking({
         items: [
-          item({ _id: "a", notes: "Takut hairdryer" }),
-          item({ _id: "b", serviceId: OTHER_MAIN, notes: "Takut hairdryer" }),
+          item({
+            _id: "a",
+            internalNotes: "Takut hairdryer",
+            customerNotes: "Sarankan 3 minggu sekali",
+          }),
+          item({
+            _id: "b",
+            serviceId: OTHER_MAIN,
+            internalNotes: "Takut hairdryer",
+            customerNotes: "Sarankan 3 minggu sekali",
+          }),
         ],
       }),
     );
 
-    expect(groups[0].notes).toBe("Takut hairdryer");
+    expect(groups[0].internalNotes).toBe("Takut hairdryer");
+    expect(groups[0].customerNotes).toBe("Sarankan 3 minggu sekali");
+  });
+
+  it("collapses the two notes independently of each other", () => {
+    /*
+      A BOOKING WHOSE ROWS DISAGREE — one written before the split, one after,
+      or an edit that reached only some rows. Testing the pair together would
+      take whichever the FIRST non-empty row happened to carry and silently drop
+      the other half, which the reader would then re-save as deleted.
+    */
+    const groups = groupsFromBooking(
+      booking({
+        items: [
+          item({ _id: "a", internalNotes: "Takut hairdryer", customerNotes: null }),
+          item({
+            _id: "b",
+            serviceId: OTHER_MAIN,
+            internalNotes: null,
+            customerNotes: "Sarankan 3 minggu sekali",
+          }),
+        ],
+      }),
+    );
+
+    expect(groups[0].internalNotes).toBe("Takut hairdryer");
+    expect(groups[0].customerNotes).toBe("Sarankan 3 minggu sekali");
   });
 
   it("files each belonging under its own animal", () => {
@@ -175,21 +211,45 @@ describe("groupsToItems", () => {
     ]);
   });
 
-  it("writes the animal's one note onto each of its rows", () => {
-    // `bookingitems.notes` is "anything special about THIS animal on THIS
-    // visit" — a per-animal fact stored per row. Asking once and fanning it out
-    // is what makes the screen match the field's meaning.
+  it("writes both of the animal's notes onto each of its rows", () => {
+    // Both are "anything special about THIS animal on THIS visit" — per-animal
+    // facts stored per row. Asking once and fanning them out is what makes the
+    // screen match the fields' meaning.
     const group = blankGroup(PET_A);
-    group.notes = "  Takut hairdryer  ";
+    group.internalNotes = "  Takut hairdryer  ";
+    group.customerNotes = "  Sarankan 3 minggu sekali  ";
     group.services = [
       { ...blankService(), serviceId: MAIN },
       { ...blankService(), serviceId: OTHER_MAIN },
     ];
 
-    expect(groupsToItems([group]).map((row) => row.notes)).toEqual([
+    const rows = groupsToItems([group]);
+
+    expect(rows.map((row) => row.internalNotes)).toEqual([
       "Takut hairdryer",
       "Takut hairdryer",
     ]);
+    expect(rows.map((row) => row.customerNotes)).toEqual([
+      "Sarankan 3 minggu sekali",
+      "Sarankan 3 minggu sekali",
+    ]);
+  });
+
+  it("sends null for a note nobody typed, never an empty string", () => {
+    /*
+      NULL IS THE ABSENCE OF A NOTE; "" is a note somebody wrote nothing in. The
+      screens test truthiness so the two look alike there, but a shop exporting
+      its bookings would find blanks where it expected nothing.
+    */
+    const group = blankGroup(PET_A);
+    group.internalNotes = "Takut hairdryer";
+    group.customerNotes = "   ";
+    group.services = [{ ...blankService(), serviceId: MAIN }];
+
+    expect(groupsToItems([group])[0]).toMatchObject({
+      internalNotes: "Takut hairdryer",
+      customerNotes: null,
+    });
   });
 
   it("drops a line nobody chose a service for", () => {

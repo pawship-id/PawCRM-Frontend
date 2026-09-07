@@ -21,7 +21,7 @@ import type {
   Booking,
   CustomerInvoiceDetail,
   InvoiceBookingItem,
-  BookingStatus,
+  InvoiceBooking,
 } from "@/types/api";
 
 /**
@@ -92,7 +92,9 @@ export function InvoiceExecutionPanel({
    */
   onChanged: (
     id: string,
-    patch: { status: BookingStatus; items: InvoiceBookingItem[] },
+    /* `pets` RATHER THAN `status` — the header has none since PCR-042, and the
+       badges here are drawn per animal. */
+    patch: { pets: InvoiceBooking["pets"]; items: InvoiceBookingItem[] },
   ) => void;
 }) {
   const { can } = usePermissions();
@@ -155,7 +157,11 @@ export function InvoiceExecutionPanel({
 
     try {
       const updated = await work();
-      onChanged(id, { status: updated.status, items: updated.items });
+      /*
+        `pets` RATHER THAN `status` — the header has none since PCR-042, and the
+        panel's badges are drawn per animal.
+      */
+      onChanged(id, { pets: updated.pets, items: updated.items });
     } catch (error: unknown) {
       swalToast(
         error instanceof ApiError
@@ -189,8 +195,15 @@ export function InvoiceExecutionPanel({
           go, and the server refuses both actions on one — offering them would be
           two buttons that only ever answer 409.
         */
-        const open =
-          booking.status !== "completed" && booking.status !== "cancelled";
+        /*
+          ⚠️ "ANY ANIMAL STILL OPEN" — PCR-042. The status is the animal's, and a
+          visit with one dog finished still has the other to move. Asking a
+          single summary would grey out the buttons on exactly the visit that
+          needs them.
+        */
+        const open = booking.pets.some(
+          (pet) => pet.status !== "completed" && pet.status !== "cancelled",
+        );
         const groomerId = booking.items[0]?.groomerUserId ?? null;
 
         return (
@@ -221,7 +234,15 @@ export function InvoiceExecutionPanel({
                     Dari faktur ini
                   </span>
                 )}
-                <BookingStatusBadge status={booking.status} />
+                {/* ONE PER ANIMAL, named when there is more than one. */}
+                {booking.pets.map((pet) => (
+                  <span key={pet.petItemId} className="flex items-center gap-1">
+                    <BookingStatusBadge status={pet.status} />
+                    {booking.pets.length > 1 && (
+                      <span className="text-xs text-muted">{pet.petName}</span>
+                    )}
+                  </span>
+                ))}
               </div>
             </div>
 

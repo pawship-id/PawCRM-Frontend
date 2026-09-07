@@ -78,6 +78,31 @@ function groupByPet(
   return groups;
 }
 
+/**
+ * The rows of a booking that belong to ONE animal.
+ *
+ * The list is grouped per animal (FR-3), so a group headed "Cilang" that lists
+ * Cici's bath is a heading that lies: the cashier reads the price under the name
+ * and bills the wrong dog. `BookingItem.petId` is what says whose row it is
+ * — since PCR-040 the animal lives on the row, not on the booking.
+ *
+ * FALLS BACK TO THE WHOLE BOOKING when nothing matches, rather than drawing an
+ * empty card. That happens on the synthetic group `groupByPet` invents for a
+ * booking with no `pets[]` at all, and on any row written before the animal moved
+ * onto it; in both cases which animal owns what is genuinely unknown, and showing
+ * every row is the honest answer where showing none hides the booking entirely.
+ */
+function itemsForPet(booking: Booking, petId: string) {
+  const own = booking.items.filter((item) => item.petId === petId);
+  return own.length > 0 ? own : booking.items;
+}
+
+/** The same rule as `itemsForPet`, for the animal's own status badge. */
+function petsForGroup(booking: Booking, petId: string) {
+  const own = booking.pets.filter((pet) => pet.petId === petId);
+  return own.length > 0 ? own : booking.pets;
+}
+
 /** The sum of a booking's items, as a decimal string the formatter can read. */
 function bookingTotal(booking: Booking): string {
   return booking.items
@@ -165,9 +190,7 @@ export function BookingBridgeDialog({
   const [ticked, setTicked] = useState<Set<string>>(new Set());
 
   const activeTab: Tab =
-    tab ??
-    initialTab ??
-    (!loading && bookings.length === 0 ? "adhoc" : "pull");
+    tab ?? initialTab ?? (!loading && bookings.length === 0 ? "adhoc" : "pull");
 
   /** Closing forgets everything — the next customer starts clean. */
   function handleOpenChange(next: boolean) {
@@ -196,10 +219,12 @@ export function BookingBridgeDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Layanan untuk {customerName ?? "pelanggan ini"}</DialogTitle>
+          <DialogTitle>
+            Layanan untuk {customerName ?? "pelanggan ini"}
+          </DialogTitle>
           <DialogDescription>
-            Tarik booking yang sudah ada, atau tambahkan layanan baru langsung di
-            sini.
+            Tarik booking yang sudah ada, atau tambahkan layanan baru langsung
+            di sini.
           </DialogDescription>
         </DialogHeader>
 
@@ -292,10 +317,47 @@ export function BookingBridgeDialog({
                                 <span className="text-xs tabular-nums text-warning">
                                   {booking.bookingNumber ?? "Belum bernomor"}
                                 </span>
-                                <BookingStatusBadge status={booking.status} />
+                                {/*
+                                  ONE PER ANIMAL — PCR-042 — AND HERE, ONLY THIS
+                                  GROUP'S ANIMAL. The bridge offers a visit whose
+                                  animals may stand in different states, so a
+                                  single badge for the booking could only be right
+                                  about one of them; under a heading that already
+                                  names one animal, the OTHERS' badges are the
+                                  ones that mislead. Cici's card said "Return to
+                                  Pawrents · Cilang" beside it, and a cashier
+                                  reading down the column bills against the wrong
+                                  state.
+
+                                  NAMED NOWHERE — the heading above is the name.
+
+                                  Falls back to every badge for the same reason
+                                  `itemsForPet` falls back to every row: a booking
+                                  whose `pets[]` does not contain this group's
+                                  animal is one where nothing here is known to be
+                                  wrong, and a row with no status at all is worse.
+                                */}
+                                {petsForGroup(booking, group.petId).map(
+                                  (pet, _index, shown) => (
+                                    <span
+                                      key={pet.petItemId}
+                                      className="flex items-center gap-1"
+                                    >
+                                      <BookingStatusBadge status={pet.status} />
+                                      {/* Only in the fallback, where more than
+                                          one animal is still on show and the
+                                          heading no longer tells them apart. */}
+                                      {shown.length > 1 && (
+                                        <span className="text-xs text-muted">
+                                          {pet.petName}
+                                        </span>
+                                      )}
+                                    </span>
+                                  ),
+                                )}
                               </span>
                               <span className="mt-1 block">
-                                {booking.items.map((item) => (
+                                {itemsForPet(booking, group.petId).map((item) => (
                                   <span
                                     /*
                                       THE ROW'S OWN ID, not the service's.

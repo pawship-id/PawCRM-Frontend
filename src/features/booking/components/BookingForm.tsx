@@ -70,17 +70,34 @@ const NOTES_MAX_LENGTH = 500;
 const PLACEABLE_FIELDS = ["customerId", "items", "scheduledAt", "notes"];
 
 /**
- * The two states a booking may be CREATED in.
+ * ─── THE STATUS IS THE BUTTON, AND THERE IS NO LONGER A FIELD FOR IT ───────
  *
- * `in_progress`, `completed` and `cancelled` are absent because they are things
- * that HAPPEN to a booking rather than ways one starts, and each has rules the
- * status route enforces — see BOOKING_TRANSITIONS. A form that offered them
- * would be a second door into the state machine with no guard on it.
+ * The form had a Status select offering `requested`, `confirmed` and `draft`.
+ * Two buttons replaced it on 5 September 2026, and the swap is worth stating
+ * because it removes a control rather than adding one.
+ *
+ * A SELECT ASKED THE WRONG QUESTION. "Which status should this start in" is not
+ * something a receptionist writing down a phone call is deciding; what they are
+ * deciding is **whether they are finished**. That is what a button answers, and
+ * a field that has to be read and understood before every save is a field people
+ * leave on whatever it happened to say last.
+ *
+ * IT WAS ALSO A THIRD PLACE FOR ONE FACT. The status ladder is enforced by the
+ * server and offered by the booking's own status menu; a select at creation time
+ * was a second door into the same machine — one that could put a booking
+ * straight into `confirmed` without anybody at the shop agreeing to it.
+ *
+ * ─── `confirmed` IS NO LONGER REACHABLE FROM THIS FORM, ON PURPOSE ─────────
+ *
+ * Saving ASKS for an appointment. Agreeing to it is the shop's separate act, and
+ * it has a rung and a button of its own on the booking page ("Konfirmasi
+ * booking"). A walk-in standing at the counter is one click further away than
+ * before; a booking that confirmed itself was one nobody had checked.
  */
-const STATUS_OPTIONS: { value: BookingStatus; label: string }[] = [
-  { value: "confirmed", label: "Dikonfirmasi" },
-  { value: "draft", label: "Draft" },
-];
+const SAVE_AS: Record<"submit" | "draft", BookingStatus> = {
+  submit: "requested",
+  draft: "draft",
+};
 
 /**
  * Today, in the shop's own clock rather than UTC.
@@ -245,8 +262,6 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
 
   const [date, setDate] = useState(todayValue);
   const [time, setTime] = useState(nextHalfHourValue);
-  /* NOT EDITABLE. Status moves through its own route — see the status ladder. */
-  const [status, setStatus] = useState<BookingStatus>("confirmed");
   const [notes, setNotes] = useState("");
 
   /*
@@ -313,7 +328,6 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
           ),
         );
         setPickedBranch(booking.branchId);
-        setStatus(booking.status);
         setNotes(booking.notes ?? "");
         setLocation(booking.location ?? "in_store");
         setPickupRequested(booking.pickupRequested ?? false);
@@ -549,7 +563,6 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
     setGroups([blankGroup()]);
     setDate(todayValue());
     setTime(nextHalfHourValue());
-    setStatus("confirmed");
     setNotes("");
     setLoadError(null);
     setFormError(null);
@@ -628,8 +641,20 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
     setFieldErrors({});
   }
 
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault();
+  /**
+   * Saves the booking.
+   *
+   * `as` IS WHICH BUTTON WAS PRESSED, and on a create it decides the status
+   * outright — see `SAVE_AS`. "Simpan sebagai draf" means draft whatever else is
+   * on the form, because a draft is the answer to "I am not finished", and a
+   * half-filled form is exactly when somebody presses it.
+   *
+   * IT IS IGNORED WHEN EDITING. `PATCH` carries no `status` at all: a transition
+   * has rules a `$set` cannot express, so it moves through its own route. An
+   * existing draft stays a draft, and is promoted from the booking's own status
+   * menu.
+   */
+  async function save(as: "submit" | "draft") {
     if (saving || !customer) return;
 
     const scheduledAt = toScheduledAt(date, time);
@@ -680,7 +705,7 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
       */
       const booking = editing
         ? await bookingService.update(bookingId, payload)
-        : await bookingService.create({ ...payload, status });
+        : await bookingService.create({ ...payload, status: SAVE_AS[as] });
 
       /*
         BACK TO THE LIST, AND THE LIST RE-ASKS THE SERVER — `router.refresh()`
@@ -862,7 +887,14 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
 
   return (
     <>
-      <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          void save("submit");
+        }}
+        noValidate
+        className="flex flex-col gap-4"
+      >
         {/*
           THE BAR CARRIES THE TOTAL AND THE FINISH TIME as its `meta`, which is
           where read-only identity belongs (§16). In the dialog they sat in the
@@ -886,6 +918,41 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
           disabled={blockedReason !== null || loading}
           blockedReason={blockedReason}
           onCancel={cancel}
+          /*
+            ─── "SIMPAN SEBAGAI DRAF", ON A NEW BOOKING ONLY ──────────────────
+
+            It answers a different question from Simpan: not "is this right" but
+            "am I finished". A phone rings mid-booking, a customer is not sure
+            which day — a draft is where that goes, and without a button for it
+            the only options were to guess or to lose the form.
+
+            IT SAVES A DRAFT WHATEVER THE FORM SAYS, which is the point: somebody
+            pressing it is telling you they have not finished.
+
+            IT IS NOT DISABLED BY `blockedReason`, and Simpan is. The bar greys
+            Simpan out until the required fields are answered; a draft is exactly
+            the thing you save when they are NOT, so gating it on the same rule
+            would make it useless in the one situation it exists for. The server
+            still refuses a booking with no animal on it — a draft is unfinished,
+            not unfounded — so the button is off only while nothing could be sent
+            at all.
+
+            NOT OFFERED WHEN EDITING. `PATCH` carries no status: pushing a live
+            booking back down to a draft is a move the ladder does not have, and
+            a button that looked like it did would be refused every time.
+          */
+          extra={
+            editing ? null : (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={saving || loading || !customer}
+                onClick={() => void save("draft")}
+              >
+                Simpan sebagai draf
+              </Button>
+            )
+          }
         />
 
             {loadError && <Alert variant="error">{loadError}</Alert>}
@@ -1254,26 +1321,13 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
             </div>
 
             {/*
-              STATUS IS ASKED ONLY WHEN THE BOOKING IS BEING MADE. PATCH has no
-              `status` field: a transition has rules a `$set` cannot express, so
-              it moves through `/status` and, on screen, through the buttons on
-              the booking's own page. A select here would offer moves the ladder
-              forbids and be refused one at a time.
+              THE STATUS SELECT USED TO BE HERE, and it is now the two buttons in
+              the action bar — see `SAVE_AS`. What somebody is deciding at this
+              point is whether they are FINISHED, not which rung of a ladder the
+              booking should start on.
             */}
-            <Card title="Status & catatan">
+            <Card title="Catatan">
             <div className="flex flex-col gap-4">
-            {!editing && (
-            <SelectField
-              label="Status"
-              value={status}
-              onChange={(next) => setStatus(next as BookingStatus)}
-              options={STATUS_OPTIONS}
-              disabled={saving}
-              hint="Hanya booking yang dikonfirmasi bisa ditarik ke keranjang di kasir."
-              required
-            />
-            )}
-
             {/*
               §16: Catatan is always last — and this one is about the VISIT.
               Anything about one animal belongs on that animal's card, where the

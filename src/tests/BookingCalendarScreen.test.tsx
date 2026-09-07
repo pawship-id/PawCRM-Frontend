@@ -121,7 +121,7 @@ describe("BookingCalendarScreen", () => {
     renderWithAuth(<BookingCalendarScreen />);
 
     await screen.findByText("Mochi");
-    expect(screen.getAllByText(/dikonfirmasi/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/confirmed/i).length).toBeGreaterThan(0);
   });
 
   /*

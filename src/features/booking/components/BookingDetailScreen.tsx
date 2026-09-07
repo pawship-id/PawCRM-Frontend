@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 import { Alert, Card, Spinner } from "@/components";
-import { BookingBelongingsCard } from "./BookingBelongingsCard";
 import { Button } from "@/components/ui/button";
 import { useBranchScope } from "@/features/inventory/hooks/useBranchScope";
 import { Can } from "@/features/permissions";
@@ -15,6 +14,7 @@ import { petService } from "@/services/pet.service";
 import { formatMoney, sumDecimals } from "@/utils/decimal";
 import type { Booking, Pet } from "@/types/api";
 
+import { bookingActorLabel, finishClock } from "../format";
 import { BookingStatusActions } from "./BookingStatusActions";
 import { BookingStatusBadge } from "./BookingStatusBadge";
 
@@ -30,6 +30,34 @@ function moment(iso: string): string {
     day: "numeric",
     month: "long",
     year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/**
+ * THE DAY, WITHOUT THE CLOCK — "Minggu, 6 September 2026".
+ *
+ * SPLIT OUT OF `moment` FOR THE VISIT CARD, where the two were one cell and wrapped
+ * onto a second line on any laptop: "…pukul 09.30 –" then "11.31" underneath, so
+ * the one figure somebody scans for was the orphan at the bottom.
+ *
+ * `moment` KEEPS BOTH and is still what the audit line uses — "Dibuat Minggu,
+ * 6 September 2026 pukul 09.14" is a sentence, and a sentence wants its clock
+ * inline.
+ */
+function dayOf(iso: string): string {
+  return new Date(iso).toLocaleDateString("id-ID", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+/** The clock alone — "09.30". Pairs with `dayOf`. */
+function clockOf(iso: string): string {
+  return new Date(iso).toLocaleTimeString("id-ID", {
     hour: "2-digit",
     minute: "2-digit",
   });
@@ -60,7 +88,6 @@ export function BookingDetailScreen({ id }: { id: string }) {
   const [pets, setPets] = useState<Pet[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [nonce, setNonce] = useState(0);
 
   const scope = useBranchScope();
 
@@ -111,7 +138,9 @@ export function BookingDetailScreen({ id }: { id: string }) {
     return () => {
       active = false;
     };
-  }, [id, nonce]);
+    /* ⚠️ NO REFETCH NONCE. Every writer on this page hands back the booking it
+       saved, so this runs on mount and on a route change, and nothing else. */
+  }, [id]);
 
   if (loading) {
     return (
@@ -133,21 +162,59 @@ export function BookingDetailScreen({ id }: { id: string }) {
 
   return (
     <div className="flex flex-col gap-6">
+      {/*
+        ─── ONE HEADING BLOCK, AND THE NUMBER IS THE TITLE ────────────────────
+
+        The page above renders the breadcrumb and nothing else now: this used to
+        sit under a `PageHeading` that said "Detail booking" over a sentence,
+        which made two `<h1>`s and put the document's own identity on the fourth
+        line. §16 — a document says what it is, what its number is and what can
+        be done with it AT ITS HEAD.
+      */}
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-extrabold text-foreground">
+            <h1 className="text-2xl font-extrabold tabular-nums text-foreground">
               {/* A DRAFT HAS NO NUMBER — see the model. Saying so beats a blank. */}
               {booking.bookingNumber ?? "Booking (draf)"}
             </h1>
-            <BookingStatusBadge status={booking.status} />
+            {/*
+              ─── NO PER-ANIMAL BADGES UP HERE ──────────────────────────────
+
+              There was one badge drawn from `booking.status`, then — when the
+              status moved onto the animal — one per animal, named. They have
+              moved again, down onto each animal's own card, where they sit
+              beside the name and the claim they belong to.
+
+              REPEATING THEM HERE WOULD BE THE SAME FACT TWICE, a few centimetres
+              apart, on a page where the cards are the first thing under the
+              title. The header keeps what is genuinely the VISIT's.
+            */}
             <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted">
+              {/*
+                THE ONE BILLING WORD THAT IS NOT A DUPLICATE. Each card says
+                where ITS animal stands; this says how the visit adds up —
+                "sebagian sudah ditagih" is a sentence no single card can make.
+              */}
               {BILLING_LABELS[booking.billingState] ?? booking.billingState}
             </span>
           </div>
+          {/*
+            WHOSE, WHERE, AND WHO WROTE IT DOWN — one line, in the order somebody
+            asks. The customer and the branch were already here; the audit half
+            is new, and it is what turns a title into a document header: "siapa
+            yang bikin booking ini" had no answer on this page at all.
+          */}
           <p className="mt-1 text-sm text-muted">
             {booking.customerName ?? "—"}
             {branchName ? ` · ${branchName}` : ""}
+          </p>
+          <p className="mt-0.5 text-xs tabular-nums text-muted">
+            Dibuat {moment(booking.createdAt)} ·{" "}
+            {bookingActorLabel(
+              booking.createdByName,
+              booking.createdByRoleName,
+            )}
           </p>
         </div>
 
@@ -162,41 +229,124 @@ export function BookingDetailScreen({ id }: { id: string }) {
             beside it, which is why both live here and neither is inside the
             other.
           */}
-          {booking.status !== "completed" && booking.status !== "cancelled" && (
+          {/*
+            ⚠️ "ANY ANIMAL STILL OPEN", NOT "THE BOOKING". The server refuses a
+            PATCH once work is completed, and it asks the same way — any animal
+            past `completed` closes the form. Offering the button on a visit
+            where one dog is finished would send somebody to a form that answers
+            409.
+          */}
+          {booking.pets.some(
+            (pet) => pet.status !== "completed" && pet.status !== "cancelled",
+          ) && (
             <Can feature="bookings" action="update">
               <Button asChild variant="secondary" size="sm">
-                <Link href={`/dashboard/booking/${booking._id}/edit`}>Ubah</Link>
+                <Link href={`/dashboard/booking/${booking._id}/edit`}>
+                  Ubah
+                </Link>
               </Button>
             </Can>
           )}
-          <BookingStatusActions booking={booking} onChanged={() => setNonce((n) => n + 1)} />
+          {/*
+            ─── THE STATUS MENUS ARE NOT HERE ANY MORE ────────────────────────
+
+            There was one per animal, side by side, above a title that named none
+            of them — two identical kebabs a few pixels apart, where the only way
+            to tell which dog you were about to move was to open one and read the
+            label.
+
+            EACH ONE MOVED ONTO ITS ANIMAL'S CARD, into the row that already
+            holds "Lembar kerja" and "Profil". The control now sits under the name
+            it acts on, which is the whole point: the status is the animal's.
+
+            WHAT STAYS HERE IS THE VISIT'S. "Ubah" edits the booking — its
+            services, its date — and there is exactly one of those.
+          */}
         </div>
       </div>
 
       <Card title="Kunjungan">
-        <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
-          <Row label="Waktu" value={moment(booking.scheduledAt)} />
+        {/*
+          ─── FIVE FACTS ON ONE LINE, NOT FIVE ROWS OF A TWO-COLUMN LIST ──────
+
+          These are the numbers somebody scans, not prose they read: which day,
+          what time, how long, how many animals, how much. A definition list made
+          each short answer occupy a row and half the card's width, so the eye
+          travelled down and back for facts that belong in one glance.
+
+          ⚠️ THE DAY AND THE CLOCK ARE TWO COLUMNS, NOT ONE. They were one cell,
+          and "Minggu, 6 September 2026 pukul 09.30 – 11.31" is too long for a
+          quarter of a card: it wrapped, leaving "11.31" alone on a second line —
+          the one figure somebody scans for, orphaned at the bottom of the cell.
+          Split, each fits its column and neither wraps.
+        */}
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-4 lg:grid-cols-5">
+          <Row label="Tanggal" value={dayOf(booking.scheduledAt)} />
           <Row
-            label="Perkiraan selesai"
+            label="Waktu"
+            value={
+              <>
+                {clockOf(booking.scheduledAt)}
+                {/*
+                  THE FINISH TIME BELONGS BESIDE THE START. The old card had a
+                  field labelled "Perkiraan selesai" whose value was "121 menit"
+                  — a DURATION under a label promising a CLOCK. Whoever read it
+                  still had to do the arithmetic the label claimed to have done.
+                */}
+                {booking.totalDurationMin ? (
+                  <span className="text-muted">
+                    {" – "}
+                    {finishClock(booking.scheduledAt, booking.totalDurationMin)}
+                  </span>
+                ) : null}
+              </>
+            }
+          />
+          <Row
+            label="Perkiraan durasi"
             value={
               booking.totalDurationMin
                 ? `${booking.totalDurationMin} menit`
-                : "Durasi belum diisi"
+                : "Belum diisi"
             }
           />
           <Row
             label="Hewan"
             value={
-              booking.petCount > 0
-                ? `${booking.petCount} — ${booking.petName ?? "—"}`
-                : "—"
+              booking.petCount > 0 ? (
+                <>
+                  {booking.petCount}
+                  {/*
+                    THE NAMES UNDER THE COUNT, not joined onto it with a dash.
+                    "2 — Mochi, Coco" reads as one long label; the number is what
+                    the column is for and the names are what it means.
+                  */}
+                  <span className="mt-0.5 block text-xs text-muted">
+                    {booking.petName ?? "—"}
+                  </span>
+                </>
+              ) : (
+                "—"
+              )
             }
           />
-          <Row label="Total" value={formatMoney(booking.totalAmount ?? total)} />
+          <Row
+            label="Total"
+            value={
+              <span className="tabular-nums">
+                {/*
+                  THE HEADER'S OWN TOTAL, and the ROWS when nothing has computed
+                  one yet — a booking whose summary has not run has `null` there,
+                  and summing what is on screen beats an em dash.
+                */}
+                {formatMoney(booking.totalAmount ?? total)}
+              </span>
+            }
+          />
         </dl>
 
         {booking.notes && (
-          <div className="mt-3">
+          <div className="mt-5 border-t border-border pt-4">
             <dt className="text-xs text-muted">Catatan kunjungan</dt>
             <dd className="mt-0.5 whitespace-pre-wrap text-sm text-foreground">
               {booking.notes}
@@ -212,21 +362,15 @@ export function BookingDetailScreen({ id }: { id: string }) {
       </Card>
 
       {/*
-        WHAT CAME IN WITH THE ANIMALS — above the work rather than below it.
+        TITIPAN OWNER LIVES ON THE ANIMAL'S PAGE NOW, not here.
 
-        It is the last thing checked before a visit closes and the first thing
-        asked about when something goes missing, so it sits where somebody
-        looking for it will find it without scrolling past every service. The
-        card renders nothing when the booking has no belongings, so a visit
-        where nobody handed anything over is unchanged.
+        It was on this screen, grouped by animal. Handing a collar back happens
+        at the table next to the animal it belongs to, and this screen is about
+        what the whole visit is and what it comes to — so ticking one animal's
+        things meant scrolling past two others'. The count still surfaces here:
+        each block below carries "N titipan belum kembali" and links through, so
+        the question "can this visit close" is still answerable from one screen.
       */}
-      <BookingBelongingsCard
-        booking={booking}
-        petNames={
-          new Map(booking.pets.map((entry) => [entry.petId, entry.petName ?? ""]))
-        }
-        onChanged={setBooking}
-      />
 
       {/*
         ONE BLOCK PER ROW. This is where a visit stops being one thing: Mochi with
@@ -255,8 +399,49 @@ export function BookingDetailScreen({ id }: { id: string }) {
                   add-on as a line somebody had chosen on its own.
                 */}
                 <div className="flex flex-wrap items-start justify-between gap-2">
-                  <span className="text-sm font-semibold text-foreground">
-                    {group.petName ?? "—"}
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground">
+                      {group.petName ?? "—"}
+                    </span>
+                    {/*
+                      ─── WHERE THIS ANIMAL STANDS, AND WHETHER IT IS PAID FOR ──
+
+                      Both are facts about the ANIMAL, so both belong on its
+                      card. The claim used to be printed on every service row
+                      underneath — one answer repeated three times, because
+                      billing was per service before PCR-042 and the layout never
+                      caught up. It says the same thing once now, beside the name
+                      it is about.
+                    */}
+                    <BookingStatusBadge status={group.status} />
+                    <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted">
+                      {group.pulledToInvoiceAt
+                        ? "Sudah difakturkan"
+                        : group.pulledToCartAt
+                          ? /*
+                              THE CLAIM SAYS A TILL HOLDS THIS ANIMAL; the sale
+                              id on the header says the till settled. A cart
+                              claim with no sale behind it is a basket still
+                              open.
+                            */
+                            booking.posTransactionId
+                            ? "Sudah dibayar"
+                            : "Ada di keranjang"
+                          : "Belum ditagih"}
+                    </span>
+                    {/*
+                      THE COUNT SURVIVES THE MOVE. Ticking a collar back is done
+                      on the animal's page now, but "is anything still in the
+                      drawer" is a question about the WHOLE VISIT — it is the last
+                      thing checked before a booking closes. So the number stays
+                      here and the button below is the way to act on it.
+                    */}
+                    {outstandingFor(booking, group.petId) > 0 && (
+                      <span className="rounded-full bg-tint-danger px-2 py-0.5 text-xs font-semibold text-danger">
+                        {outstandingFor(booking, group.petId)} titipan belum
+                        kembali
+                      </span>
+                    )}
                   </span>
                   <span className="text-sm font-semibold tabular-nums text-foreground">
                     {formatMoney(
@@ -278,15 +463,26 @@ export function BookingDetailScreen({ id }: { id: string }) {
                 */}
                 {pet && <PetSummaryCard pet={pet} className="mt-2" />}
 
-                <ul className="mt-3 flex flex-col gap-2">
-                  {group.services.map((service) => {
-                    const claimed =
-                      service.pulledToCartAt ?? service.pulledToInvoiceAt;
+                {/*
+                  ─── THE SERVICES ARE ROWS, NOT CARDS ──────────────────────────
 
+                  There were three levels of box here: the section, a card per
+                  animal, and a card per service inside that. Three nested
+                  borders is a lot of ink to say "these belong to that", and by
+                  the third the shape stopped meaning anything — the eye reads
+                  depth once and then stops counting.
+
+                  ONE LEVEL DOES THE GROUPING (the animal's card) and a hairline
+                  does the separating. `first:` drops the rule above the first
+                  row, so the list opens against the animal's own header rather
+                  than under a line that belongs to nothing.
+                */}
+                <ul className="mt-3 flex flex-col">
+                  {group.services.map((service) => {
                     return (
                       <li
                         key={service.itemId}
-                        className="rounded-md border border-border bg-background p-2.5"
+                        className="border-t border-border py-2.5 first:border-t-0 first:pt-0"
                       >
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div className="min-w-0">
@@ -303,16 +499,66 @@ export function BookingDetailScreen({ id }: { id: string }) {
                                 </span>
                               )}
                             </span>
-                            <span className="block text-xs text-muted">
-                              {service.groomerName}
-                              {service.assistantGroomers.length > 0 &&
-                                ` + ${service.assistantGroomers
-                                  .map((one) => one.name)
-                                  .join(", ")}`}
-                              {service.durationMin
-                                ? ` · ${service.durationMin} menit`
-                                : " · durasi belum diisi"}
-                            </span>
+                            {/*
+                              ─── WHO IS DOING IT, ONE LINE PER TURN ──────────
+
+                              This used to read "Sinta + Rio" — a lead and their
+                              assistants, which was a shape forced by commission
+                              being unique per service: only the lead could be
+                              paid. Sessions removed that, and the screen says so
+                              plainly now. Two people on one bath are two turns,
+                              each with its own clock and its own pay.
+
+                              NOBODY ASSIGNED IS A REAL STATE and says so in
+                              words. An empty list is a bath nobody has been told
+                              to do, which is exactly what a receptionist
+                              scanning this page needs to notice.
+                            */}
+                            {service.sessions.length === 0 ? (
+                              <span className="block text-xs text-muted">
+                                Belum ada sesi
+                                {service.durationMin
+                                  ? ` · ${service.durationMin} menit`
+                                  : " · durasi belum diisi"}
+                              </span>
+                            ) : (
+                              <span className="block text-xs text-muted">
+                                {/*
+                                  "mandi: Sinta · blow dry: Rio" — the turn and
+                                  who is on it.
+
+                                  ⚠️ THE TYPE IS DROPPED WHEN IT REPEATS THE
+                                  SERVICE. A booking made through the form gets
+                                  one session named after its service, so this
+                                  read "Full Grooming: Sinta" under a heading
+                                  already saying Full Grooming — the same
+                                  duplication the calendar label had. The name
+                                  earns its place only when it says something
+                                  the heading does not.
+                                */}
+                                {service.sessions
+                                  .map((one) => {
+                                    /* THE WHOLE CREW ON THE TURN — "cuci: Sinta
+                                       + Rio". Everybody standing at the table is
+                                       named; the clash check counts them all. */
+                                    const crew =
+                                      one.groomers.length > 0
+                                        ? one.groomers
+                                            .map((who) => who.name)
+                                            .join(" + ")
+                                        : "Belum ditentukan";
+
+                                    return one.sessionName &&
+                                      one.sessionName !== service.name
+                                      ? `${one.sessionName}: ${crew}`
+                                      : crew;
+                                  })
+                                  .join(" · ")}
+                                {service.durationMin
+                                  ? ` · ${service.durationMin} menit`
+                                  : " · durasi belum diisi"}
+                              </span>
+                            )}
 
                             {/*
                               ─── THE GROOMER WENT ON LEAVE AFTER THIS WAS
@@ -333,35 +579,40 @@ export function BookingDetailScreen({ id }: { id: string }) {
                               "this is wrong" leaves the reader to invent the
                               remedy; there are exactly two here.
                             */}
-                            {service.groomerOffReason && (
-                              <span
-                                role="alert"
-                                className="mt-1 block rounded border border-danger/40 bg-danger/5 px-2 py-1 text-xs font-semibold text-danger"
-                              >
-                                {service.groomerName}{" "}
-                                {service.groomerOffReason.toLowerCase()} — ganti
-                                groomer atau hubungi pelanggan.
-                              </span>
-                            )}
+                            {/* ONE WARNING PER PERSON, not per turn: two people
+                                on one bath can be off on different days, and a
+                                turn-level warning could only name one of them. */}
+                            {service.sessions
+                              .flatMap((one) =>
+                                one.groomers
+                                  .filter((who) => who.offReason)
+                                  .map((who) => ({
+                                    key: `${one.sessionId}-${who._id}`,
+                                    ...who,
+                                  })),
+                              )
+                              .map((who) => (
+                                <span
+                                  key={who.key}
+                                  role="alert"
+                                  className="mt-1 block rounded border border-danger/40 bg-danger/5 px-2 py-1 text-xs font-semibold text-danger"
+                                >
+                                  {who.name} {who.offReason?.toLowerCase()} —
+                                  ganti groomer atau hubungi pelanggan.
+                                </span>
+                              ))}
                           </div>
 
                           <div className="text-right">
+                            {/*
+                              THE PRICE, AND NOTHING ABOUT BILLING. The claim
+                              moved to the animal's own header: it is one answer
+                              for every service under her, and printing it on
+                              each row said the same thing three times while
+                              looking like three separate facts.
+                            */}
                             <span className="block text-sm tabular-nums text-foreground">
                               {formatMoney(service.price)}
-                            </span>
-                            {/*
-                              PER ROW, because that is where the marker lives
-                              since K3 — and it is what makes a half-billed visit
-                              legible instead of merely possible. An add-on is its
-                              own row and carries its own, which is why it is
-                              stated again below rather than assumed.
-                            */}
-                            <span className="block text-xs text-muted">
-                              {claimed
-                                ? service.pulledToInvoiceAt
-                                  ? "Sudah difakturkan"
-                                  : "Sudah di kasir"
-                                : "Belum ditagih"}
                             </span>
                           </div>
                         </div>
@@ -386,27 +637,44 @@ export function BookingDetailScreen({ id }: { id: string }) {
                                     ? ` · ${addon.durationMin} mnt`
                                     : ""}
                                 </span>
+                                {/* An add-on carries no claim of its own — it
+                                    is billed with the animal, and her card says
+                                    so once. */}
                                 <span className="tabular-nums text-muted">
                                   {formatMoney(addon.price)}
-                                  {(addon.pulledToCartAt ??
-                                    addon.pulledToInvoiceAt) && " · ditagih"}
                                 </span>
                               </li>
                             ))}
                           </ul>
-                        )}
-
-                        {service.notes && (
-                          <p className="mt-2 text-xs text-muted">
-                            {service.notes}
-                          </p>
                         )}
                       </li>
                     );
                   })}
                 </ul>
 
-                <div className="mt-3 flex flex-wrap gap-2">
+                {/*
+                  THE TWO NOTES ARE NOT HERE. They are read and written on the
+                  animal's own work page, where the card that holds them can also
+                  EDIT them — this screen is the overview: what the whole visit
+                  is, and what it comes to. The button below is the way to them.
+                */}
+
+                {/*
+                  ─── THE ACTION ROW, AND WHY THE STATUS MENU LANDS HERE ────────
+
+                  ⚠️ NOT BESIDE THE TOTAL, which was the other candidate. The
+                  card's top line is what somebody SCANS — name, status, claim,
+                  money — and putting a target at the end of it drops a button
+                  into a column of figures that reads down across cards. Money
+                  and buttons want different eyes.
+
+                  SO: THE ROW THAT IS ALREADY THE ACTION ROW. "Lembar kerja" and
+                  "Profil" are the other two things to do with this animal, and
+                  the kebab sits at the RIGHT EDGE — where every table in this app
+                  ends its actions, so somebody scanning for "what can I do with
+                  this" finds it where they already look.
+                */}
+                <div className="mt-3 flex flex-wrap items-center gap-2">
                   {/*
                     THE WAY INTO THE WORK, and the primary action on this block.
 
@@ -417,25 +685,66 @@ export function BookingDetailScreen({ id }: { id: string }) {
                     what it comes to.
 
                     TWO DIFFERENT PAGES, and the wording keeps them apart.
-                    "Pekerjaan" is this visit; "profil" is the animal's whole
+                    "Lembar kerja" is THIS VISIT; "profil" is the animal's whole
                     life, and confusing them would send somebody looking for
                     today's grooming in a list of last year's.
+
+                    ⚠️ IT SAID "Pekerjaan Cici", AND THAT READ WRONG. In Indonesian
+                    "pekerjaan <nama>" is most naturally somebody's OCCUPATION —
+                    the dog's job — which is not what the page is. "Lembar kerja"
+                    names the thing itself: the sheet this visit's work is
+                    recorded on, the way a workshop or a salon already says it.
+
+                    A NOUN, TO PAIR WITH "Profil". Both buttons now read
+                    "<thing> <name>", so the two are obviously two views of one
+                    animal rather than a verb beside a noun.
                   */}
                   <Button asChild size="sm">
                     <Link
                       href={`/dashboard/booking/${booking._id}/hewan/${group.petId}`}
                     >
-                      Pekerjaan {group.petName ?? "hewan ini"}
+                      Lembar kerja {group.petName ?? "hewan ini"}
                     </Link>
                   </Button>
 
                   {pet && (
-                    <Button asChild variant="ghost" size="sm">
+                    /*
+                      `secondary`, NOT `ghost` — the house's quiet button, white
+                      with a 1.5px navy border, and what "Ubah" in the page header
+                      already uses.
+
+                      A GHOST BUTTON HAS NO EDGE, so beside the filled
+                      "Lembar kerja" it read as a link somebody had left loose in the
+                      card rather than as the second of two actions. The pair is
+                      primary and secondary, and now it looks like one.
+                    */
+                    <Button asChild variant="secondary" size="sm">
                       <Link href={`/dashboard/master/pets/${pet._id}`}>
                         Profil {pet.name}
                       </Link>
                     </Button>
                   )}
+
+                  {/*
+                    `ml-auto` RATHER THAN A SECOND FLEX CONTAINER: the row wraps
+                    on a narrow screen, and a nested "push right" would leave the
+                    kebab stranded on a line of its own with nothing beside it.
+                  */}
+                  <span className="ml-auto">
+                    <BookingStatusActions
+                      booking={booking}
+                      pet={group}
+                      /*
+                        ⚠️ THE ANSWER, NOT A DOORBELL. `PATCH /status` returns
+                        the same document this page's own GET does, so putting
+                        it into state is the whole update. Bumping `nonce` here
+                        re-ran the effect above — the booking AND the owner's
+                        pets, with `loading` flipping back to true and blanking
+                        the page, to learn one animal's new rung.
+                      */
+                      onChanged={setBooking}
+                    />
+                  </span>
                 </div>
               </li>
             );
@@ -446,11 +755,36 @@ export function BookingDetailScreen({ id }: { id: string }) {
   );
 }
 
+/**
+ * How many of this animal's things are HANDED OVER AND NOT YET GIVEN BACK.
+ *
+ * Something written down when the booking was taken and never actually handed
+ * over is not outstanding — that is why these are two dates and not one flag,
+ * and counting it would hold a visit open over something nobody brought.
+ */
+function outstandingFor(booking: Booking, petId: string): number {
+  return (booking.belongings ?? []).filter(
+    (belonging) =>
+      belonging.petId === petId &&
+      belonging.checkedInAt &&
+      !belonging.checkedOutAt,
+  ).length;
+}
+
+/**
+ * One fact in the Kunjungan strip: a small caps label over its answer.
+ *
+ * THE LABEL IS UPPERCASE AND THE ANSWER IS NOT. Four of these sit side by side,
+ * and without the case difference the row reads as eight equal lines rather than
+ * four labelled facts. `text-xs` is 13px — the floor, not below it (§1.6).
+ */
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div>
-      <dt className="text-xs text-muted">{label}</dt>
-      <dd className="text-sm text-foreground">{value}</dd>
+    <div className="min-w-0">
+      <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+        {label}
+      </dt>
+      <dd className="mt-1 text-sm text-foreground">{value}</dd>
     </div>
   );
 }

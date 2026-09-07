@@ -445,7 +445,7 @@ describe("PosCart — the pulled lines", () => {
   it("gives a pulled service no quantity stepper", async () => {
     render(pulledCart());
 
-    await screen.findByText("Grooming Full Service");
+    await screen.findByText("Bruno - Grooming Full Service");
     expect(
       screen.queryByRole("button", { name: /kurangi grooming/i }),
     ).not.toBeInTheDocument();
@@ -520,7 +520,9 @@ describe("PosCart — the pulled lines", () => {
       }),
     );
 
-    await screen.findByText("Mandi");
+    /* The line's title carries the animal too, so the two group headers are
+       still the only bare "Bruno" on the screen. */
+    await screen.findByText("Bruno - Mandi");
     // Two headers, not one merged group.
     expect(screen.getAllByText("Bruno")).toHaveLength(2);
   });
@@ -667,7 +669,7 @@ describe("PosCart — a line whose service has already started", () => {
     render(
       line({
         bookingOwned: true,
-        bookingStatus: "check_in",
+        bookingStatus: "arrived",
         bookingNumber: "BK-260826-001",
       }),
     );
@@ -736,7 +738,7 @@ describe("PosCart — a line whose service has already started", () => {
     render(
       line({
         bookingOwned: true,
-        bookingStatus: "check_in",
+        bookingStatus: "arrived",
         bookingNumber: "BK-260826-001",
       }),
     );
@@ -755,7 +757,7 @@ describe("PosCart — a line whose service has already started", () => {
     render(
       line({
         bookingOwned: true,
-        bookingStatus: "check_in",
+        bookingStatus: "arrived",
         bookingNumber: "BK-260826-001",
       }),
     );
@@ -841,7 +843,7 @@ describe("PosScreen — changing who the basket is for", () => {
     withPetLine();
 
     renderWithAuth(<PosScreen />);
-    await screen.findByText("Grooming Full Service");
+    await screen.findByText("Bruno - Grooming Full Service");
 
     await user.click(screen.getByRole("button", { name: /ganti/i }));
     await user.click(await screen.findByText("Ibu Rina"));
@@ -856,7 +858,7 @@ describe("PosScreen — changing who the basket is for", () => {
     withPetLine();
 
     renderWithAuth(<PosScreen />);
-    await screen.findByText("Grooming Full Service");
+    await screen.findByText("Bruno - Grooming Full Service");
 
     await user.click(screen.getByRole("button", { name: /ganti/i }));
     await user.click(await screen.findByText("Ibu Rina"));
@@ -877,7 +879,7 @@ describe("PosScreen — changing who the basket is for", () => {
     withPetLine();
 
     renderWithAuth(<PosScreen />);
-    await screen.findByText("Grooming Full Service");
+    await screen.findByText("Bruno - Grooming Full Service");
 
     await user.click(screen.getByRole("button", { name: /ganti/i }));
     await user.click(await screen.findByText("Ibu Rina"));
@@ -899,7 +901,7 @@ describe("PosScreen — changing who the basket is for", () => {
     withPetLine();
 
     renderWithAuth(<PosScreen />);
-    await screen.findByText("Grooming Full Service");
+    await screen.findByText("Bruno - Grooming Full Service");
 
     await user.click(screen.getByRole("button", { name: /ganti/i }));
     await user.click(await screen.findByText("Ibu Rina"));
@@ -972,7 +974,7 @@ describe("PosScreen — the banner follows the basket", () => {
     mockedPos.updateCart.mockResolvedValue(cart({ items: [] }));
 
     renderWithAuth(<PosScreen />);
-    await screen.findByText("Grooming Full Service");
+    await screen.findByText("Bruno - Grooming Full Service");
 
     const before = mockedBookings.bridge.mock.calls.length;
     await user.click(screen.getByRole("button", { name: /hapus grooming/i }));

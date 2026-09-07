@@ -1,9 +1,14 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { BookingsScreen } from "@/features/booking";
 import { bookingService } from "@/services/booking.service";
-import type { Booking, PageResult } from "@/types/api";
+import type {
+  Booking,
+  BookingPet,
+  BookingStatus,
+  PageResult,
+} from "@/types/api";
 
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
@@ -11,8 +16,60 @@ jest.mock("@/services/booking.service");
 
 const mocked = bookingService as jest.Mocked<typeof bookingService>;
 
-const booking = (overrides: Partial<Booking> = {}): Booking =>
-  ({
+const BASE_PETS: BookingPet[] = [
+  {
+    petItemId: "pi-1",
+    petId: "pet-1",
+    petName: "Bruno",
+    status: "confirmed",
+    statusHistory: [],
+    nextStatuses: [],
+    cancelReason: null,
+    internalNotes: null,
+    customerNotes: null,
+    notes: null,
+    belongings: [],
+    /* The animal's own album — a different array from its turns' evidence. */
+    media: [],
+    pulledToCartAt: null,
+    pulledToInvoiceAt: null,
+    services: [
+      {
+        itemId: "row-1",
+        serviceId: "svc-1",
+        name: "Full Grooming",
+        serviceType: null,
+        price: "150000.0000",
+        durationMin: null,
+        status: "pending",
+        statusHistory: [],
+        startedAt: null,
+        finishedAt: null,
+        sessions: [],
+        addons: [],
+      },
+    ],
+  },
+] as BookingPet[];
+
+/**
+ * ⚠️ `status` IS NOT ON `Booking` ANY MORE, and this type keeps accepting it.
+ *
+ * Every test below describes its case the way a person would — "a draft",
+ * "half-paid" — and PCR-042 moved both facts onto the ANIMAL. Rewriting thirty
+ * call sites into nested `pets[]` literals would bury what each test is about,
+ * so the factory takes the old words and translates them once, at the bottom.
+ */
+type BookingOverrides = Partial<Omit<Booking, "pets">> & {
+  status?: BookingStatus;
+  pets?: BookingPet[];
+};
+
+const booking = (overrides: BookingOverrides = {}): Booking => {
+  const pets: BookingPet[] = overrides.pets ?? BASE_PETS;
+  const translate = translateFactory(overrides);
+
+  return {
     _id: "bk-1",
     tenantId: "t1",
     branchId: "b1",
@@ -20,7 +77,12 @@ const booking = (overrides: Partial<Booking> = {}): Booking =>
     customerId: "cust-1",
     customerName: "Ibu Rina",
     // AFTER PCR-040 the animals are on the rows; the header lists them.
-    pets: [{ petId: "pet-1", petName: "Bruno" }],
+    /*
+      ⚠️ `pets[]` CARRIES THE STATUS AND THE MONEY SINCE PCR-042. It used to be
+      two names for a badge; the row is split per animal now, so each entry needs
+      its own `status` and its own `services[]` — a fixture without them is not a
+      smaller fixture, it is a different shape from what the API sends.
+    */
     petCount: 1,
     totalAmount: "150000.0000",
     totalDurationMin: null,
@@ -51,7 +113,59 @@ const booking = (overrides: Partial<Booking> = {}): Booking =>
     createdAt: "2026-08-26T00:00:00.000Z",
     updatedAt: "2026-08-26T00:00:00.000Z",
     ...overrides,
-  }) as Booking;
+    /*
+      ─── THE OVERRIDES STILL SPEAK THE OLD LANGUAGE, AND THAT IS DELIBERATE ────
+
+      Every test below says `booking({ status: "draft" })` or
+      `booking({ billingState: "partial" })`, because that is how a person
+      describes the case being tested — "a draft", "half-paid". PCR-042 moved
+      both facts onto the ANIMAL, and rewriting thirty call sites into nested
+      `pets[]` literals would bury what each test is actually about.
+
+      SO THE FACTORY TRANSLATES, once, here:
+
+        `status`        → every animal's own status
+        `billingState`  → the animals' claim markers, which is what the row's
+                          "sudah dibayar / ada di keranjang" line now reads
+
+      `partial` PUTS THE CLAIM ON THE FIRST ANIMAL ONLY, which is what partial
+      means since the unit of billing became the animal: Mochi was paid for and
+      Coco was not. With one animal in the fixture, `partial` and `billed` differ
+      only in the header summary — which is exactly the distinction those tests
+      assert, so both are kept.
+    */
+    /*
+      ⚠️ AN EXPLICIT `pets` OVERRIDE WINS, AND THE TRANSLATION IS SKIPPED.
+
+      The shorthand below exists for tests that describe a case in the old words
+      — "a draft", "half-paid" — and let the factory work out what that means for
+      the animals. A test that hands over `pets[]` itself is describing them
+      precisely, usually to make two animals DIFFER; translating over the top of
+      that would stamp the claim onto the very animal the test set up as unpaid.
+    */
+    pets: (overrides.pets ? pets : pets.map(translate)) as BookingPet[],
+  } as Booking;
+};
+
+/** See the `pets` field above. */
+const translateFactory =
+  (overrides: BookingOverrides) =>
+  (pet: BookingPet, index: number): BookingPet => ({
+    ...pet,
+    status: overrides.status ?? pet.status,
+    /*
+        A SALE STAMPS BOTH. `posTransactionId` lands on the header and the claim
+        lands on the animals, in the same write — so a fixture that sets one
+        without the other describes a state the API cannot produce, and the row
+        would read "belum ditagih" over a booking the test calls paid.
+      */
+    pulledToCartAt:
+      overrides.posTransactionId ||
+      overrides.billingState === "billed" ||
+      (overrides.billingState === "partial" && index === 0)
+        ? "2026-08-26T04:00:00.000Z"
+        : (pet.pulledToCartAt ?? null),
+  });
 
 const page = (items: Booking[]): PageResult<Booking> => ({
   items,
@@ -88,31 +202,50 @@ beforeEach(() => {
  * enforces about bookings was invisible to the person who owns the shop.
  */
 describe("BookingsScreen", () => {
-  it("shows who, which animal, what service and how much", async () => {
+  it("shows who, which animal and how much", async () => {
     renderWithAuth(<BookingsScreen />);
 
     expect(await screen.findByText("BK-260826-001")).toBeInTheDocument();
     expect(screen.getByText("Ibu Rina")).toBeInTheDocument();
     expect(screen.getByText("Bruno")).toBeInTheDocument();
-    expect(screen.getByText("Grooming Full Service")).toBeInTheDocument();
     expect(screen.getByText("Rp 150.000")).toBeInTheDocument();
   });
 
-  it("names an unassigned groomer rather than leaving the cell blank", async () => {
+  it("does not list the services on the row", async () => {
+    /*
+      ─── WHY THE COLUMN LEFT ─────────────────────────────────────────────────
+
+      It printed every row of the booking — name over groomer — inside one cell,
+      the only cell whose height depended on the booking. A visit with three
+      services made its row three times as tall and pushed the next booking off
+      the fold; a day sheet showing six bookings is worth more than one showing
+      two and their service lists. It also repeated "Belum ditentukan" once per
+      service, which is the ordinary state of a booking taken over the phone.
+
+      WHAT IT ANSWERED IS STILL ANSWERED: `Hewan` names the animals, `Total` sums
+      exactly these rows, and "which services" is a question about ONE booking —
+      answered on that booking's page, next to the prices and the sessions.
+    */
     renderWithAuth(<BookingsScreen />);
 
-    expect(await screen.findByText("Belum ditentukan")).toBeInTheDocument();
+    await screen.findByText("BK-260826-001");
+
+    expect(screen.queryByText("Grooming Full Service")).not.toBeInTheDocument();
+    expect(screen.queryByText("Belum ditentukan")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("columnheader", { name: /layanan/i }),
+    ).not.toBeInTheDocument();
+    /* The money it added up is still there — the sum is of those same rows. */
+    expect(screen.getByText("Rp 150.000")).toBeInTheDocument();
   });
 
   /*
     A booking sitting in somebody's basket right now is neither
     confirmed-and-waiting nor sold, and the status alone cannot say so. Without
-    this a cashier at the second till reads "Dikonfirmasi" and rings it up again.
+    this a cashier at the second till reads "Confirmed" and rings it up again.
   */
   it("says when a confirmed booking is already in a basket", async () => {
-    mocked.list.mockResolvedValue(
-      page([booking({ billingState: "billed" })]),
-    );
+    mocked.list.mockResolvedValue(page([booking({ billingState: "billed" })]));
 
     renderWithAuth(<BookingsScreen />);
 
@@ -132,7 +265,7 @@ describe("BookingsScreen", () => {
 
     renderWithAuth(<BookingsScreen />);
 
-    await screen.findByText("Selesai");
+    await screen.findByText("Completed");
     expect(screen.queryByText(/ada di keranjang/i)).not.toBeInTheDocument();
   });
 
@@ -144,7 +277,11 @@ describe("BookingsScreen", () => {
     mocked.list.mockResolvedValue(
       page([
         booking({ _id: "bk-1", origin: "pos_adhoc" }),
-        booking({ _id: "bk-2", bookingNumber: "BK-260826-002", origin: "booking" }),
+        booking({
+          _id: "bk-2",
+          bookingNumber: "BK-260826-002",
+          origin: "booking",
+        }),
       ]),
     );
 
@@ -173,8 +310,10 @@ describe("BookingsScreen", () => {
     renderWithAuth(<BookingsScreen />);
 
     await screen.findByText("BK-260826-001");
-    await user.click(screen.getByRole("button", { name: /filter status booking/i }));
-    await user.click(await screen.findByText("Selesai"));
+    await user.click(
+      screen.getByRole("button", { name: /filter status booking/i }),
+    );
+    await user.click(await screen.findByText("Completed"));
 
     await waitFor(() =>
       expect(
@@ -188,7 +327,9 @@ describe("BookingsScreen", () => {
     renderWithAuth(<BookingsScreen />);
 
     await screen.findByText("BK-260826-001");
-    await user.click(screen.getByRole("button", { name: /filter asal booking/i }));
+    await user.click(
+      screen.getByRole("button", { name: /filter asal booking/i }),
+    );
     await user.click(await screen.findByText("Dari kasir"));
 
     await waitFor(() =>
@@ -211,9 +352,7 @@ describe("BookingsScreen", () => {
 
     renderWithAuth(<BookingsScreen />);
 
-    expect(
-      await screen.findByText(/tidak bisa dimuat/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/tidak bisa dimuat/i)).toBeInTheDocument();
   });
 });
 
@@ -233,18 +372,18 @@ describe("BookingsScreen — drafts and the number they have not earned", () => 
 
     renderWithAuth(<BookingsScreen />);
 
-    expect(await screen.findByText("Draf")).toBeInTheDocument();
+    expect(await screen.findByText("Draft")).toBeInTheDocument();
     expect(screen.getByText("—")).toBeInTheDocument();
   });
 
-  it("shows the number once the animal has checked in", async () => {
+  it("shows the number once the animal has arrived", async () => {
     mocked.list.mockResolvedValue(
-      page([booking({ status: "check_in", bookingNumber: "BK-260826-001" })]),
+      page([booking({ status: "arrived", bookingNumber: "BK-260826-001" })]),
     );
 
     renderWithAuth(<BookingsScreen />);
 
-    expect(await screen.findByText("Check-in")).toBeInTheDocument();
+    expect(await screen.findByText("Arrived")).toBeInTheDocument();
     expect(screen.getByText("BK-260826-001")).toBeInTheDocument();
   });
 
@@ -254,8 +393,10 @@ describe("BookingsScreen — drafts and the number they have not earned", () => 
     renderWithAuth(<BookingsScreen />);
     await screen.findByText("BK-260826-001");
 
-    await user.click(screen.getByRole("button", { name: /filter status booking/i }));
-    await user.click(await screen.findByRole("option", { name: "Draf" }));
+    await user.click(
+      screen.getByRole("button", { name: /filter status booking/i }),
+    );
+    await user.click(await screen.findByRole("option", { name: "Draft" }));
 
     await waitFor(() =>
       expect(
@@ -264,16 +405,18 @@ describe("BookingsScreen — drafts and the number they have not earned", () => 
     );
   });
 
-  it("offers check-in as a status of its own", async () => {
+  it("offers arrival as a status of its own", async () => {
     const user = userEvent.setup();
 
     renderWithAuth(<BookingsScreen />);
     await screen.findByText("BK-260826-001");
 
-    await user.click(screen.getByRole("button", { name: /filter status booking/i }));
+    await user.click(
+      screen.getByRole("button", { name: /filter status booking/i }),
+    );
 
     expect(
-      await screen.findByRole("option", { name: "Check-in" }),
+      await screen.findByRole("option", { name: "Arrived" }),
     ).toBeInTheDocument();
   });
 });
@@ -282,7 +425,7 @@ describe("BookingsScreen — drafts and the number they have not earned", () => 
  * WHAT THE STATUS BADGE ALONE CANNOT SAY — and since Amandemen PCR-021/022/023
  * there are two such things rather than one.
  *
- * A paid booking used to read "Selesai", so "Dikonfirmasi" could only mean
+ * A paid booking used to read "Selesai", so "Confirmed" could only mean
  * waiting. Now paying leaves it CONFIRMED — paying is not being groomed — and
  * one badge covers three situations: untouched, in a basket right now, or paid
  * for and still to be done. Reading the wrong one rings a grooming up twice.
@@ -293,7 +436,9 @@ describe("BookingsScreen — what the badge cannot say on its own", () => {
   });
 
   it("says when a confirmed booking has already been paid for", async () => {
-    mocked.list.mockResolvedValue(page([booking({ posTransactionId: "sale-1" })]));
+    mocked.list.mockResolvedValue(
+      page([booking({ posTransactionId: "sale-1" })]),
+    );
 
     renderWithAuth(<BookingsScreen />);
 
@@ -303,9 +448,7 @@ describe("BookingsScreen — what the badge cannot say on its own", () => {
   });
 
   it("says when one is sitting in a basket", async () => {
-    mocked.list.mockResolvedValue(
-      page([booking({ billingState: "billed" })]),
-    );
+    mocked.list.mockResolvedValue(page([booking({ billingState: "billed" })]));
 
     renderWithAuth(<BookingsScreen />);
 
@@ -507,7 +650,6 @@ describe("BookingsScreen — the unbilled lens", () => {
     const pill = await screen.findByRole("button", { name: /belum ditagih/i });
     expect(pill).not.toHaveTextContent("3");
   });
-
 });
 
 /**
@@ -517,7 +659,7 @@ describe("BookingsScreen — the unbilled lens", () => {
  * actually asks — "mana bookingnya Sinta hari ini" — was not answerable at all.
  */
 describe("BookingsScreen — the groomer filter", () => {
-/*
+  /*
     "SIAPA YANG MENGERJAKAN" — the filter a shop asks for first, and the one
     that was missing while status and origin were there from the start.
 
@@ -568,9 +710,7 @@ describe("BookingsScreen — the groomer filter", () => {
     const filter = screen.getByRole("button", { name: /filter groomer/i });
     expect(filter).toBeInTheDocument();
     expect(filter).toBeDisabled();
-    expect(
-      screen.getByText(/ditandai sebagai groomer/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/ditandai sebagai groomer/i)).toBeInTheDocument();
   });
 
   it("says so when the groomer list cannot be loaded at all", async () => {
@@ -583,82 +723,257 @@ describe("BookingsScreen — the groomer filter", () => {
     renderWithAuth(<BookingsScreen />);
     await screen.findByText("BK-260826-001");
 
-    expect(
-      await screen.findByText(/tidak bisa dimuat/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/tidak bisa dimuat/i)).toBeInTheDocument();
   });
 });
 
 /**
- * ─── "SUDAH DIBAYAR" IS NOT ENOUGH SINCE PCR-040 ───────────────────────────
+ * ─── A HALF-PAID VISIT, SAID BY THE ROWS RATHER THAN BY A WORD ──────────────
  *
  * `posTransactionId` is stamped on the header by any sale that touched the
- * booking, and a sale may cover ONE of two animals. The list read "Sudah
+ * booking, and a sale may cover ONE of two animals. The list used to read "Sudah
  * dibayar" over a visit half of which had never been charged for — the screen
- * agreeing with money the shop had lost.
+ * agreeing with money the shop had lost — and the fix at the time was to compose
+ * the word "sebagian" out of the header's `billingState`.
+ *
+ * ─── THAT WORD IS GONE, AND ITS ABSENCE IS THE IMPROVEMENT ──────────────────
+ *
+ * The day sheet draws ONE ROW PER ANIMAL now. "Half-paid" is not a word the
+ * screen has to find any more: Mochi's row says she was paid for and Coco's says
+ * nothing, which is the same fact shown rather than summarised — and it names
+ * WHICH half, which "sebagian" never could.
+ *
+ * The claim is read off the ANIMAL (`pulledToCartAt` / `pulledToInvoiceAt`), so
+ * a sale that touched one dog can no longer speak for the other.
  */
-describe("BookingsTable — a half-paid booking", () => {
-  it("says it was paid in part, not paid", async () => {
-    mocked.list.mockResolvedValue(
-      page([
-        booking({
-          posTransactionId: "sale-1",
-          billingState: "partial",
-          status: "confirmed",
-        }),
-      ]),
-    );
+describe("BookingsTable — a half-paid visit", () => {
+  /** Two animals, one of them already through the till. */
+  const halfPaid = (status: BookingStatus = "confirmed") =>
+    booking({
+      posTransactionId: "sale-1",
+      status,
+      pets: [
+        {
+          ...BASE_PETS[0],
+          petItemId: "pi-1",
+          petId: "pet-1",
+          petName: "Bruno",
+          status,
+          pulledToCartAt: "2026-08-26T04:00:00.000Z",
+        },
+        {
+          ...BASE_PETS[0],
+          petItemId: "pi-2",
+          petId: "pet-2",
+          petName: "Coco",
+          status,
+          pulledToCartAt: null,
+        },
+      ],
+    });
+
+  it("says paid on the animal that was, and nothing on the one that was not", async () => {
+    mocked.list.mockResolvedValue(page([halfPaid()]));
 
     renderWithAuth(<BookingsScreen />);
+    await screen.findByText("Bruno");
 
     /*
-      BOTH HALVES. How much was paid and whether the work has started are
-      independent facts, and the first version folded them into one ladder — so
-      a half-paid booking lost the "belum dikerjakan" that every other row
-      carries, on the one row that needed explaining most.
+      ONE OF EACH, NOT ONE SENTENCE ABOUT BOTH. Two rows, and only one of them
+      carries the paid line — which is what "sebagian" was trying to say.
+    */
+    /*
+      ONE OF EACH, NOT ONE SENTENCE ABOUT BOTH. Two rows, and only the paid one
+      carries the claim — which is what "sebagian" was trying to say, without
+      naming which half.
     */
     expect(
-      await screen.findByText(/sudah dibayar sebagian — belum dikerjakan/i),
-    ).toBeInTheDocument();
+      screen.getAllByText(/sudah dibayar — belum dikerjakan/i),
+    ).toHaveLength(1);
+    expect(screen.getAllByText(/^belum dikerjakan$/i)).toHaveLength(1);
   });
 
-  it("drops the work half once the booking has moved on", async () => {
-    // `confirmed` is the only status that means "paid, nobody has started".
-    mocked.list.mockResolvedValue(
-      page([
-        booking({
-          posTransactionId: "sale-1",
-          billingState: "partial",
-          status: "in_progress",
-        }),
-      ]),
-    );
+  it("still says nobody has started, on both", async () => {
+    /*
+      TWO INDEPENDENT FACTS. How much was paid and whether the work has started
+      do not decide each other, and the first version of this column folded them
+      into one ladder — so the half-paid row lost the "belum dikerjakan" that
+      every other row carried, on the row that needed explaining most.
+    */
+    mocked.list.mockResolvedValue(page([halfPaid("confirmed")]));
 
     renderWithAuth(<BookingsScreen />);
+    await screen.findByText("Bruno");
 
-    expect(
-      await screen.findByText(/sudah dibayar sebagian/i),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText(/belum dikerjakan/i),
-    ).not.toBeInTheDocument();
+    /* BOTH animals: one paid and unstarted, one unpaid and unstarted. */
+    expect(screen.getAllByText(/belum dikerjakan/i)).toHaveLength(2);
   });
 
-  it("still says plainly paid when the whole visit was", async () => {
+  it("drops the work half once the animal has moved on", async () => {
+    // `confirmed` is the only status that means "nobody has started".
+    mocked.list.mockResolvedValue(page([halfPaid("in_progress")]));
+
+    renderWithAuth(<BookingsScreen />);
+    await screen.findByText("Bruno");
+
+    expect(screen.getAllByText(/^sudah dibayar$/i)).toHaveLength(1);
+    expect(screen.queryByText(/belum dikerjakan/i)).not.toBeInTheDocument();
+  });
+
+  it("says it on both animals when the whole visit was paid", async () => {
     mocked.list.mockResolvedValue(
       page([
         booking({
           posTransactionId: "sale-1",
           billingState: "billed",
           status: "confirmed",
+          /* BOTH CLAIMED, stated here rather than left to the factory: this
+             block names its animals, so it owns what is true of them. */
+          pets: [
+            {
+              ...BASE_PETS[0],
+              petItemId: "pi-1",
+              petName: "Bruno",
+              pulledToCartAt: "2026-08-26T04:00:00.000Z",
+            },
+            {
+              ...BASE_PETS[0],
+              petItemId: "pi-2",
+              petName: "Coco",
+              pulledToCartAt: "2026-08-26T04:00:00.000Z",
+            },
+          ],
         }),
       ]),
     );
 
     renderWithAuth(<BookingsScreen />);
+    await screen.findByText("Bruno");
 
     expect(
-      await screen.findByText(/sudah dibayar — belum dikerjakan/i),
-    ).toBeInTheDocument();
+      screen.getAllByText(/sudah dibayar — belum dikerjakan/i),
+    ).toHaveLength(2);
+  });
+});
+
+/**
+ * ─── THE ACTION COLUMN READS, AND MOVES NOTHING ────────────────────────────
+ *
+ * The status menu used to live here — every forward rung, cancel, reschedule and
+ * the trail, on every row. It was taken out on 5 September 2026.
+ *
+ * WHY IT MATTERS ENOUGH TO PIN: the kebab sat under the pointer at the end of
+ * every row, and "Tandai selesai dikerjakan" on the wrong one fires commission
+ * for the wrong visit. The ladder only runs forward — there is no undo, only a
+ * cancellation and a new booking.
+ */
+describe("BookingsTable — a newly saved booking", () => {
+  it("shows `requested` as a badge with a word on it", async () => {
+    /*
+      WHAT A NEW BOOKING LOOKS LIKE. Saving the form sends `requested`, and a row
+      that came back with an EMPTY status cell would mean the value reached the
+      list without a label to draw it with — the failure mode of adding a status
+      to the API and not to `BOOKING_STATUS_LABELS`.
+    */
+    mocked.list.mockResolvedValue(
+      page([booking({ status: "requested", bookingNumber: "BK-260905-004" })]),
+    );
+
+    renderWithAuth(<BookingsScreen />);
+
+    expect(await screen.findByText("Requested")).toBeInTheDocument();
+  });
+
+  it("draws every status the API can send", async () => {
+    /*
+      THE MAP IS EXHAUSTIVE OR THE BADGE IS BLANK. TypeScript enforces this on
+      `Record<BookingStatus, string>` — but only for code that compiles against
+      the current type, which is exactly what a half-deployed frontend is not.
+      Asserting it here makes a missing label a red test rather than an empty
+      cell somebody reports as "the status is gone".
+    */
+    const statuses = [
+      "draft",
+      "requested",
+      "confirmed",
+      "pickup",
+      "arrived",
+      "in_progress",
+      "completed",
+      "delivery",
+      "return_to_pawrents",
+      "cancelled",
+    ] as const;
+
+    mocked.list.mockResolvedValue(
+      page(
+        statuses.map((status, index) =>
+          booking({ _id: `bk-${index}`, status, bookingNumber: `BK-${index}` }),
+        ),
+      ),
+    );
+
+    renderWithAuth(<BookingsScreen />);
+
+    await screen.findByText("Requested");
+    for (const label of [
+      "Draft",
+      "Confirmed",
+      "Pickup",
+      "Arrived",
+      "In Progress",
+      "Completed",
+      "Delivery",
+      "Return to Pawrents",
+      "Cancelled",
+    ]) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
+  });
+});
+
+describe("BookingsTable — the action column", () => {
+  const openMenu = async () => {
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("button", { name: /aksi untuk/i }),
+    );
+    return screen.getByRole("menu");
+  };
+
+  it("keeps the kebab, and holds one thing in it", async () => {
+    /*
+      THE SHAPE OF THE COLUMN DID NOT CHANGE — every other table in this app ends
+      in the same button, and a booking row ending in a bare link would be the
+      one row somebody has to look at twice to find the actions on.
+    */
+    renderWithAuth(<BookingsScreen />);
+
+    const menu = await openMenu();
+    const link = within(menu).getByRole("menuitem", {
+      name: /detail booking/i,
+    });
+
+    expect(link).toHaveAttribute("href", "/dashboard/booking/bk-1");
+  });
+
+  it("offers no forward move, no cancel and no reschedule", async () => {
+    /*
+      MOVING A BOOKING FROM A LIST is a decision taken without looking at the
+      thing being decided about — the evidence for "can this be handed over yet"
+      is on the detail page and nowhere near the row. And "Tandai selesai
+      dikerjakan" on the wrong row fires commission for the wrong visit, with no
+      undo behind it.
+    */
+    renderWithAuth(<BookingsScreen />);
+
+    const menu = await openMenu();
+
+    expect(within(menu).getAllByRole("menuitem")).toHaveLength(1);
+    expect(within(menu).queryByText(/hewan sudah datang/i)).toBeNull();
+    expect(within(menu).queryByText(/tandai selesai/i)).toBeNull();
+    expect(within(menu).queryByText(/cancel booking/i)).toBeNull();
+    expect(within(menu).queryByText(/reschedule/i)).toBeNull();
+    expect(within(menu).queryByText(/status history/i)).toBeNull();
   });
 });

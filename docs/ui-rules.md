@@ -280,6 +280,37 @@ Talk like a colleague at the counter. Don't lecture. Keep it short — their han
 Words we use: kasir · booking · grooming · penitipan · pelanggan · struk · member · supplier · gudang · stok.
 Words we don't: POS · reservasi · user · invoice · modul · platform · solusi terintegrasi · revolusioner · UMKM.
 
+**The one sanctioned English exception: BOOKING STATUS NAMES.** `Draft` · `Requested` ·
+`Confirmed` · `Pickup` · `Arrived` · `In Progress` · `Completed` · `Delivery` ·
+`Return to Pawrents` · `Cancelled` · `Rescheduled` — decided 5 September 2026, on the shop's
+own request. **Do not translate these back as a tidy-up.**
+
+They are the NAMES OF RUNGS, not sentences, and the shop already says them in English —
+*"bookingnya masih requested"*, *"sudah in progress"*. Translating produced labels longer than
+the thing they named (`Sudah dijemput pemilik` for `return_to_pawrents`) that nobody said out
+loud, so the badge and the conversation used different words for one fact. They also match the
+stored values word for word, so a reader looking at `in_progress` in an export and "In Progress"
+on a badge holds no translation table in their head.
+
+**The status CONTROL speaks English too**, widened on the shop's second look: the menu rows
+(`BOOKING_STATUS_ACTIONS` — "Confirm booking", "Mark arrived", "Start work"), its "Other
+statuses" trigger, "Status history" and "Reschedule". The first pass kept these in Bahasa on the
+argument that a menu row is a sentence and a badge is a name — which missed that a menu of
+Indonesian verbs whose only purpose is to reach English-named rungs makes every row a
+translation step ("Serahkan ke pemilik" to arrive at a badge reading "Return to Pawrents"). Half
+a screen in each language is worse than either. They stay **verbs**, not the names repeated:
+"Confirmed" as a menu row reads as a fact rather than something to press.
+
+The history dialog's TITLE goes with them ("Status history"), because it is the same words as
+the row that opens it — a row reading "Status history" opening a dialog titled "Riwayat status"
+is the translation step this exception exists to remove.
+
+**It stops at the control.** The confirm dialog behind those rows, its implied-rungs warning,
+the cancel-reason field, the reschedule dialog's fields, the history dialog's BODY ("Sistem",
+"otomatis", Tutup) and every toast stay in Bahasa — those are sentences. Two maps are covered, both in `features/booking/`:
+`BOOKING_STATUS_LABELS` (`components/BookingStatusBadge.tsx`) and `BOOKING_STATUS_ACTIONS`
+(`statusFlow.ts`). A status word anywhere else is still Bahasa unless it is added here.
+
 **The "any level" rule.** Never describe customers by their size. No "UMKM", no tier language, anywhere in copy. A petshop is a petshop.
 
 **The cute line.** This brand fails in exactly one direction: too cute. No faces on objects, no paw prints as bullets, no diminutives, no mascot. Warmth comes from round shapes and plain language, not decoration. When the choice is between charming and clear, pick clear.

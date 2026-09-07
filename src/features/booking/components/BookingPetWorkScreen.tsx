@@ -2,12 +2,23 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Cat, Dog } from "lucide-react";
+import { Cat, Dog, Pencil } from "lucide-react";
 
-import { Alert, Card, Spinner, TextField } from "@/components";
+import { Alert, Card, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
-import { SessionGroomers } from "./SessionGroomers";
+import { BookingBelongingsCard } from "./BookingBelongingsCard";
+import { canStartWork, hasCompletedWork, ladderFor } from "../statusFlow";
+import { bookingActorLabel, finishClock } from "../format";
+import { BookingHistoryCard } from "./BookingHistoryCard";
+import { BookingPetNotesCard } from "./BookingPetNotesCard";
+import {
+  AddSessionButton,
+  RemoveSessionButton,
+  SessionCrew,
+} from "./SessionGroomers";
+import { SessionAlbum } from "./SessionAlbum";
+import { SessionRecord } from "./SessionRecord";
 import {
   furTypeLabel,
   PetSummaryCard,
@@ -25,12 +36,17 @@ import type {
   Booking,
   Customer,
   BookingItem,
+  BookingSession,
+  BookingStatus,
   BookingWorkStatus,
   Pet,
 } from "@/types/api";
 
 import { BookingStatusActions } from "./BookingStatusActions";
-import { BookingStatusBadge } from "./BookingStatusBadge";
+import {
+  BOOKING_STATUS_LABELS,
+  BookingStatusBadge,
+} from "./BookingStatusBadge";
 
 /** What each rung is called, and what the button that reaches it says. */
 const WORK_LABELS: Record<BookingWorkStatus, string> = {
@@ -55,8 +71,13 @@ const WORK_TONE: Record<BookingWorkStatus, string> = {
 const NEXT_MOVE: Partial<
   Record<BookingWorkStatus, { to: BookingWorkStatus; label: string }>
 > = {
-  pending: { to: "in_progress", label: "Mulai kerjakan" },
-  in_progress: { to: "done", label: "Tandai selesai" },
+  /*
+    THE LABELS NAME THE ACT, AND THE ACT STAMPS THE CLOCK. Pressing "Mulai"
+    records `startedAt`; "Selesai" records `finishedAt`. Nobody types a time on
+    this screen any more — see the row body.
+  */
+  pending: { to: "in_progress", label: "Mulai" },
+  in_progress: { to: "done", label: "Selesai" },
 };
 
 /** "09.05" from an instant, in the shop's own clock — never through UTC. */
@@ -65,28 +86,6 @@ function clock(iso: string | null | undefined): string {
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return "";
   return `${String(at.getHours()).padStart(2, "0")}.${String(at.getMinutes()).padStart(2, "0")}`;
-}
-
-/**
- * An edited "09.05" back onto the row's own day.
- *
- * ANCHORED TO THE DATE ALREADY ON THE ROW, or to the booking's day when there is
- * none. A bare time has no date, and taking today's would move a correction made
- * on Thursday onto Thursday when the work happened on Wednesday.
- */
-function toInstant(value: string, anchor: string): string | null {
-  const parts = value.trim().match(/^(\d{1,2})[.:]?(\d{2})$/);
-  if (!parts) return null;
-
-  const hours = Number(parts[1]);
-  const minutes = Number(parts[2]);
-  if (hours > 23 || minutes > 59) return null;
-
-  const at = new Date(anchor);
-  if (Number.isNaN(at.getTime())) return null;
-
-  at.setHours(hours, minutes, 0, 0);
-  return at.toISOString();
 }
 
 /**
@@ -113,7 +112,33 @@ function waLink(phone: string | null | undefined): string | null {
 }
 
 /** Minutes between two instants, or null while the work is unfinished. */
-function elapsed(row: BookingItem): number | null {
+/**
+ * ONE ROW ON THIS PAGE — a SESSION since PCR-042, or the service standing in for
+ * one when nobody has been assigned yet.
+ *
+ * ⚠️ `_id` IS WHAT THE WORK VERBS ADDRESS. On an assigned row it is the session's
+ * id; on an unassigned one it is the service's, and `assigned: false` is what
+ * stops anything trying to move it — the server would refuse a service id with a
+ * 404 about a session nobody mentioned.
+ */
+type WorkRow = {
+  _id: string;
+  serviceItemId: string;
+  name: string;
+  workStatus: BookingWorkStatus;
+  groomerName: string;
+  groomerOffReason: string | null;
+  durationMin: number | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  price: string;
+  assigned: boolean;
+  /* THE TURN ITSELF, carried through so the row can render its crew control
+     without the screen looking it up again by id. */
+  session: BookingSession;
+};
+
+function elapsed(row: WorkRow): number | null {
   if (!row.startedAt) return null;
   const from = new Date(row.startedAt).getTime();
   const to = row.finishedAt ? new Date(row.finishedAt).getTime() : Date.now();
@@ -142,12 +167,20 @@ function elapsed(row: BookingItem): number | null {
  * preferences, a lifetime of visits. This is about ONE visit's work, which is
  * why it lives under the booking: Coco may be on ten of them.
  *
+ * ─── TITIPAN OWNER LIVES HERE ──────────────────────────────────────────────
+ *
+ * It was one card on the booking overview, grouped by animal, so handing Mochi's
+ * collar back meant scrolling past Coco's things. Ticking it happens at the
+ * table beside the animal it belongs to, which is this page. The overview keeps
+ * the COUNT and links through — "can this visit close" is still a whole-visit
+ * question.
+ *
  * ─── WHAT THE REFERENCE HAS THAT THIS DOES NOT ─────────────────────────────
  *
- * Titipan owner, before/after photos, several groomers sharing one service with
- * a percentage split, and service variants with add-ons. None of them has
- * anywhere to be stored yet, and a card that looks like it works and does not is
- * worse than a card that is absent. See `Analisis-Detail-Booking-v2`.
+ * Before/after photos, several groomers sharing one service with a percentage
+ * split, and service variants with add-ons. None of them has anywhere to be
+ * stored yet, and a card that looks like it works and does not is worse than a
+ * card that is absent. See `Analisis-Detail-Booking-v2`.
  */
 export function BookingPetWorkScreen({
   bookingId,
@@ -187,7 +220,6 @@ export function BookingPetWorkScreen({
   const [openRows, setOpenRows] = useState<Record<string, boolean>>({});
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [branchName, setBranchName] = useState<string | null>(null);
-  const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -248,15 +280,41 @@ export function BookingPetWorkScreen({
     return () => {
       active = false;
     };
-  }, [bookingId, petId, nonce]);
+    /*
+      ⚠️ NO REFETCH NONCE ANY MORE. Every writer on this page hands its answer
+      back — `setBooking` — so this effect runs on MOUNT and when the route
+      changes, and nothing else. Re-adding a nonce would bring back the
+      four-request full-page flash it was removed for; if something genuinely
+      cannot return the booking, give it its own narrow refresh rather than
+      re-arming this one.
+    */
+  }, [bookingId, petId]);
 
-  async function move(row: BookingItem, to: BookingWorkStatus) {
+  async function move(row: WorkRow, to: BookingWorkStatus) {
     if (busy) return;
     setBusy(row._id);
 
     try {
-      await bookingService.advanceItemWork(bookingId, row._id, to);
-      setNonce((n) => n + 1);
+      /*
+        ⚠️ THE ANSWER IS PUT STRAIGHT INTO STATE, NOT USED AS A DOORBELL.
+
+        This used to bump a refetch nonce, re-running the whole mount effect: the
+        booking AND the animal AND the customer AND the branch, four requests to
+        learn one turn's new status, with `loading` flipping back to true in
+        between — the full-page flash on every press of Mulai.
+
+        `PATCH .../work` answers with the same document `GET /bookings/:id`
+        would; `advanceItemWork` literally returns `getBookingById`. Nothing on
+        this page reads a field that response does not carry, and the three
+        neighbouring records cannot have changed because a bath started.
+      */
+      const updated = await bookingService.advanceItemWork(
+        bookingId,
+        row._id,
+        to,
+      );
+
+      setBooking(updated);
 
       /* Chrome must never be able to fail a save — see BookingForm. */
       try {
@@ -269,58 +327,6 @@ export function BookingPetWorkScreen({
         err instanceof ApiError
           ? err.fullMessage
           : "Tidak bisa mengubah status pekerjaan. Coba lagi.",
-      );
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function correct(
-    row: BookingItem,
-    field: "startedAt" | "finishedAt",
-    value: string,
-  ) {
-    const anchor = row.startedAt ?? booking?.scheduledAt;
-    if (!anchor) return;
-
-    /* Clearing a time is a correction too — a start pressed by mistake. */
-    const next = value.trim() === "" ? null : toInstant(value, anchor);
-
-    if (value.trim() !== "" && next === null) {
-      setError("Format jam: 09.05");
-      return;
-    }
-
-    setBusy(row._id);
-    setError(null);
-
-    try {
-      await bookingService.correctItemTimes(bookingId, row._id, {
-        [field]: next,
-      });
-
-      /*
-        THE DRAFT STEPS ASIDE once the server has it, so the field goes back to
-        showing what was actually stored. Leaving it would let a rejected or
-        rounded value sit on screen looking saved.
-      */
-      setDraftTimes((prev) => {
-        const next_ = { ...prev };
-        delete next_[`${row._id}|${field}`];
-        return next_;
-      });
-      setNonce((n) => n + 1);
-
-      try {
-        swalToast("Koreksi jam tercatat di riwayat.");
-      } catch {
-        /* The page re-reads and shows it. */
-      }
-    } catch (err) {
-      setError(
-        err instanceof ApiError
-          ? err.fullMessage
-          : "Jam tidak bisa dikoreksi. Coba lagi.",
       );
     } finally {
       setBusy(null);
@@ -382,24 +388,178 @@ export function BookingPetWorkScreen({
 
   if (!booking) return null;
 
-  const rows = booking.items.filter((item) => item.petId === petId);
-  const petName = rows[0]?.petName ?? pet?.name ?? "Hewan ini";
+  const group = booking.pets.find((entry) => entry.petId === petId);
+  const services = group?.services ?? [];
 
-  if (rows.length === 0) {
+  /*
+    ─── THE ROWS ON THIS PAGE ARE SESSIONS, AND THAT IS NEW ────────────────────
+
+    This card has been called "Sesi Grooming" since it was built, but until
+    PCR-042 it rendered SERVICES — there was nothing finer to render, and the
+    work verbs addressed a service. Sessions exist now: a Full Grooming worked by
+    Sinta and then Rio is two turns, two clocks and two people to pay.
+
+    ⚠️ `_id` IS THE SESSION'S. `advanceItemWork` addresses a
+    session, and sending a service id gets a 404 naming a session the caller
+    never mentioned — which is exactly what this screen did until this was fixed.
+
+    A SERVICE WITH NO SESSIONS STILL APPEARS, disabled. Work nobody has been told
+    to do is the thing a groomer opening this page most needs to see; dropping it
+    would leave a bath invisible on the one screen that is open at the table.
+  */
+  /*
+    ─── ONE GROUP PER SERVICE, AND THE TURNS INSIDE IT ─────────────────────────
+
+    A visit's work is "Full Grooming, and Hotel" — two things being done, each
+    with its own turns. This used to be ONE FLAT LIST that mixed a service's
+    sessions with a stand-in row for services that had none, so a dog booked for
+    two services showed four unrelated rows and nothing said which belonged to
+    which.
+
+    A SERVICE WITH NO TURNS IS STILL A GROUP, and that is the point of grouping
+    rather than filtering: work nobody has been told to do is what a groomer
+    opening this page most needs to see, and its card is where the turn gets
+    added.
+  */
+  const groups = services.map((service) => ({
+    service,
+    rows: service.sessions.map((session): WorkRow => ({
+      _id: session.sessionId,
+      serviceItemId: service.itemId,
+      /* THE TURN'S OWN NAME. The service names the card above it, so repeating
+         it here would put "Full Grooming" twice on one block. */
+      name:
+        session.sessionName && session.sessionName !== service.name
+          ? session.sessionName
+          : "Sesi",
+      workStatus: session.status,
+      /*
+        THE WHOLE CREW ON ONE LINE — "Sinta + Rio". A turn may be worked by
+        several people, and naming one of them would put the wrong person on the
+        board for the other's work.
+      */
+      groomerName:
+        session.groomers.length > 0
+          ? session.groomers.map((who) => who.name).join(" + ")
+          : "Belum ditentukan",
+      /* THE FIRST PERSON WHO IS OFF, if any — the row has one line for it. Each
+         person's own warning is on the crew control inside the row. */
+      groomerOffReason:
+        session.groomers.find((who) => who.offReason)?.offReason ?? null,
+      /*
+        THE SERVICE'S DURATION, because a turn has none of its own. Splitting a
+        90-minute bath into three turns does not make each of them 90 minutes —
+        but nothing records what it does make them, and dividing would be
+        inventing a number nobody chose.
+      */
+      durationMin: service.durationMin,
+      startedAt: session.startedAt,
+      finishedAt: session.finishedAt,
+      price: service.price,
+      /* A TURN WITH NOBODY ON IT CANNOT BE STARTED — the server refuses it, and
+         the row says so instead of offering a button that 400s. */
+      assigned: session.groomers.length > 0,
+      session,
+    })),
+  }));
+
+  /* Every turn across every service — what the totals and the progress track
+     count, and what the completion warning reads. */
+  const rows = groups.flatMap((group) => group.rows);
+
+  const petName = group?.petName ?? pet?.name ?? "Hewan ini";
+
+  /*
+    ⚠️ MAY WORK BEGIN ON THIS ANIMAL AT ALL — asked once, for the whole page.
+
+    A turn cannot be started while the visit is still Draft or Requested; the
+    server refuses it, and a board full of "Mulai" buttons that all answer 409 is
+    worse than a board with none. Mirrors `advanceItemWork`.
+
+    `group` is missing only on the empty-state path above, which returns before
+    this is read; the fallback keeps the type honest rather than describing a
+    case that reaches here.
+  */
+  const startable = group ? canStartWork(group) : false;
+
+  /*
+    THE OTHER END OF THE LADDER — at or past `completed`, where the work is over
+    and its commission is computed. Mirrors `hasCompletedWork` on the server, the
+    same helper `#assertCrewEditable` reads.
+  */
+  const finished = group ? hasCompletedWork(group, booking) : false;
+
+  /*
+    THE RUNGS THIS ANIMAL WALKS, AND HOW FAR IT HAS COME.
+
+    `ladderFor` already drops a trip leg nobody booked; `draft` is dropped here
+    because it is where a booking sits before it is an appointment, not a step.
+
+    `reached` IS -1 FOR A STATUS OFF THE TRACK — `draft` itself, and `cancelled`,
+    which is a way out rather than a rung. Both draw an empty track, which is the
+    honest picture: neither has walked any of it.
+  */
+  /* ⚠️ ANNOTATED. TypeScript infers a type predicate from the filter and
+     narrows the element type to "everything but draft", which then refuses
+     `indexOf(group.status)` — a status that CAN be `draft`, and whose honest
+     answer here is -1. */
+  const track: BookingStatus[] = (booking ? ladderFor(booking) : []).filter(
+    (rung) => rung !== "draft",
+  );
+  const reached = group ? track.indexOf(group.status) : -1;
+
+  /*
+    ⚠️ THE ANIMAL, NOT ONLY ITS SERVICES. The guard used to ask whether there were
+    any rows; it has to ask whether this animal is on the visit at all, because
+    everything below now reads `group.status` — the ladder lives there since
+    PCR-042, and an absent animal would take the page down rather than show this.
+  */
+  if (!group || services.length === 0) {
     return (
       <div className="flex flex-col gap-4">
         <Alert variant="warning">
-          Hewan ini tidak punya layanan di booking {booking.bookingNumber ?? "ini"}.
+          Hewan ini tidak punya layanan di booking{" "}
+          {booking.bookingNumber ?? "ini"}.
         </Alert>
         <Button variant="secondary" asChild className="self-start">
-          <Link href={`/dashboard/booking/${bookingId}`}>Kembali ke booking</Link>
+          <Link href={`/dashboard/booking/${bookingId}`}>
+            Kembali ke booking
+          </Link>
         </Button>
       </div>
     );
   }
 
-  const total = sumDecimals(rows.map((row) => row.price));
-  const estimate = rows.reduce((sum, row) => sum + (row.durationMin ?? 0), 0);
+  /*
+    ⚠️ MONEY AND ESTIMATE COME OFF THE SERVICES, NOT OFF `rows`. A service split
+    into three turns appears three times in `rows`, and summing those would
+    charge the customer three baths and promise them four and a half hours. The
+    ACTUAL time is the opposite: it is what each person really spent, so it sums
+    over the turns.
+  */
+  const total = sumDecimals(
+    services.flatMap((service) => [
+      service.price,
+      ...service.addons.map((addon) => addon.price),
+    ]),
+  );
+  /*
+    ⚠️ ADD-ONS ARE IN THE ESTIMATE, and dropping them was a real regression when
+    this sum moved off the flat rows. "+30 menit detangling" lengthens the visit
+    exactly as the catalogue says it does — an estimate without it promises the
+    owner an earlier finish than the shop can manage, which is the one direction
+    this number must never be wrong in.
+  */
+  const estimate = services.reduce(
+    (sum, service) =>
+      sum +
+      (service.durationMin ?? 0) +
+      service.addons.reduce(
+        (extra, addon) => extra + (addon.durationMin ?? 0),
+        0,
+      ),
+    0,
+  );
   const actual = rows.reduce((sum, row) => sum + (elapsed(row) ?? 0), 0);
 
   /*
@@ -413,10 +573,14 @@ export function BookingPetWorkScreen({
     with it.
   */
   const doneRows = rows.filter((row) => row.workStatus === "done").length;
-  const runningRows = rows.filter(
-    (row) => row.workStatus === "in_progress",
-  ).length;
-  const lastEvent = booking.statusHistory?.[booking.statusHistory.length - 1];
+  /*
+    ⚠️ THIS ANIMAL'S LAST MOVE, not the visit's. Read from the merged trail, the
+    line under "Status sejak" reported whoever moved ANY dog last — so opening
+    Cici could name the person who had just sent Cilang home, at a time Cici
+    never moved. Same source as the Riwayat card beside it.
+  */
+  const petTrail = group?.statusHistory ?? [];
+  const lastEvent = petTrail[petTrail.length - 1];
 
   /*
     THE WHOLE BOOKING'S UNFINISHED WORK, not just this animal's — the same set
@@ -424,9 +588,25 @@ export function BookingPetWorkScreen({
     rather than discovered as a 409 afterwards, the way the reference's own
     `issues()` warns before "Selesaikan pekerjaan" is even clicked.
   */
-  const blocking = booking.items.filter(
-    (item) => item.groomerUserId && item.workStatus !== "done",
-  );
+  const blocking = (booking.pets ?? [])
+    .filter((entry) => entry.status !== "cancelled")
+    .flatMap((entry) =>
+      entry.services.flatMap((service) =>
+        service.sessions
+          /*
+            ⚠️ A TURN WITH NOBODY ON IT COUNTS TOO, and it did not use to.
+
+            The old filter also required a crew, mirroring a server exemption
+            that has since been withdrawn: sessions now arrive SEEDED from the
+            catalogue, so a booking of Basic Grooming opens with "Mandi" and
+            "Blow dry" on it and nobody assigned. Under the old reading this
+            warning stayed silent for exactly the turns that now block the move,
+            and the first anybody heard of it was a 409.
+          */
+          .filter((session) => session.status !== "done")
+          .map(() => service.name),
+      ),
+    );
 
   const whatsapp = waLink(customer?.phone);
 
@@ -439,7 +619,9 @@ export function BookingPetWorkScreen({
               <h1 className="text-2xl font-extrabold text-foreground">
                 {petName}
               </h1>
-              <BookingStatusBadge status={booking.status} />
+              {/* THIS ANIMAL'S, and this page is about one — PCR-042. The header
+                  never had a single answer to give. */}
+              <BookingStatusBadge status={group.status} />
             </div>
             {/*
               ─── WHO MADE THIS, AND WHEN — the reference's own subtitle ────────
@@ -455,7 +637,17 @@ export function BookingPetWorkScreen({
               this app's other identifier-links are decorative; an id that goes
               nowhere is worse than no id.
             */}
-            <p className="mt-1 font-mono text-xs text-muted">
+            {/*
+              `tabular-nums`, NOT `font-mono` — ui-rules §5: there are two
+              typefaces in this product and mono is not one of them. Inter's
+              tabular figures do the digit-alignment job it was reached for.
+
+              THE NAME AND ROLE GO THROUGH `bookingActorLabel`, the same
+              formatter the trail below uses. Written out by hand here, this line
+              said "Fitria (Staff)" while the trail said "Fitria (staff)" — two
+              renderings of one fact, a few centimetres apart.
+            */}
+            <p className="mt-1 text-xs tabular-nums text-muted">
               Dibuat{" "}
               {new Date(booking.createdAt).toLocaleString("id-ID", {
                 day: "numeric",
@@ -464,10 +656,11 @@ export function BookingPetWorkScreen({
                 hour: "2-digit",
                 minute: "2-digit",
               })}{" "}
-              · {booking.createdByName ?? "sistem"}
-              {booking.createdByRoleName
-                ? ` (${booking.createdByRoleName})`
-                : ""}{" "}
+              ·{" "}
+              {bookingActorLabel(
+                booking.createdByName,
+                booking.createdByRoleName,
+              )}{" "}
               ·{" "}
               <Link
                 href={`/dashboard/booking/${bookingId}`}
@@ -515,49 +708,80 @@ export function BookingPetWorkScreen({
             </p>
 
             {/*
-              ONE SEGMENT PER SESSION, not the reference's six fixed rungs. With
-              status on the rows, a six-dot booking track would summarise several
-              different things into one line — see the analysis. This track is
-              about THIS animal, and it has exactly as many segments as it has
-              work.
+              ─── ONE SEGMENT PER RUNG, NOT PER SESSION ────────────────────────
+
+              It used to be one segment per turn, coloured by work status. That
+              made the strip a second, quieter version of the sentence sitting
+              beside it — "0 dari 3 selesai · 1 sedang dikerjakan" — while the
+              thing it sits UNDER is "Status sejak", which is about the ladder.
+              Two readings of two different facts, drawn as one line.
+
+              It now tracks THE ANIMAL'S PATH: Requested → … → Return to
+              Pawrents, filled as far as this dog has come.
+
+              ⚠️ `draft` IS DROPPED, and only that one. A draft is a line in a
+              basket somebody may yet empty — it is where a booking sits before
+              it exists as an appointment, not a step it walks — so the track
+              starts where the visit does. Everything after it is on the ladder,
+              INCLUDING the trip legs, which `ladderFor` puts there only when a
+              van was actually booked.
+
+              ⚠️ NAVY, NOT ORANGE, for a rung that has been passed — ui-rules §4.
+              The status badge above is already orange while the animal is on the
+              table, and two orange things at once means one of them is wrong.
+              "How far along" is not a call to action.
             */}
             <div
               className="mt-1.5 flex items-center gap-1"
               role="img"
-              aria-label={`${doneRows} dari ${rows.length} sesi selesai`}
+              aria-label={
+                reached < 0
+                  ? `Status ${group.status} — di luar alur kunjungan`
+                  : `${reached + 1} dari ${track.length} tahap: ${BOOKING_STATUS_LABELS[group.status] ?? group.status}`
+              }
             >
-              {rows.map((row) => (
+              {track.map((rung, index) => (
                 <span
-                  key={row._id}
+                  key={rung}
+                  title={BOOKING_STATUS_LABELS[rung] ?? rung}
                   className={`h-1 flex-1 rounded-full ${
-                    row.workStatus === "done"
-                      ? "bg-success"
-                      : row.workStatus === "in_progress"
-                        ? "bg-warning"
-                        : "bg-border"
+                    index <= reached ? "bg-primary" : "bg-border"
                   }`}
                 />
               ))}
             </div>
           </div>
 
-          {blocking.length > 0 && booking.status !== "completed" && (
+          {blocking.length > 0 && group.status !== "completed" && (
             /*
-              THE SAME SENTENCE THE SERVER WOULD ANSWER WITH IF THE BUTTON BELOW
-              WERE PRESSED ANYWAY — said first, in red, the reference's own
-              pattern. It is a courtesy, never the gate: the guard lives in
-              `BookingService#changeStatus`, and pressing through still gets a
-              409 rather than a completed booking with a bath nobody finished.
+              THE FACT THE SERVER WOULD ANSWER WITH IF THE BUTTON BELOW WERE
+              PRESSED ANYWAY — said first, in red. It is a courtesy, never the
+              gate: the guard lives in `BookingService#changeStatus`, and
+              pressing through still gets a 409 rather than a completed booking
+              with a bath nobody finished.
+
+              ⚠️ NO SERVICE NAME, AND NO OVERFLOW COUNT. This read
+              &ldquo;Basic Grooming&rdquo; belum selesai · +2 lagi — a name, a
+              tally of the names it could not fit, AND the progress count beside
+              it, three phrases for one fact on a strip that also carries the
+              status, the clock, the track and a button. Naming one of three
+              services is not enough to act on and is too much to skim; WHICH
+              service is unfinished is on the cards below, where the turns are.
+
+              The count beside it says how much is left, which is the part
+              somebody standing at the counter actually reads.
+
+              ⚠️ §13: danger text is 4.38:1, so it must stay ≥14px semibold and
+              paired with a word — `text-xs` here is 13px by this repo's scale,
+              which is the floor and why the weight is not optional.
             */
-            <p className="max-w-xs text-xs font-semibold text-danger">
-              &ldquo;{blocking[0].name}&rdquo; belum selesai
-              {blocking.length > 1 ? ` · +${blocking.length - 1} lagi` : ""}
+            <p className="text-xs font-semibold text-danger">
+              Layanan belum selesai
             </p>
           )}
 
           <p className="text-xs text-muted">
             {doneRows} dari {rows.length} selesai
-            {runningRows > 0 ? ` · ${runningRows} sedang dikerjakan` : ""}
           </p>
 
           {/*
@@ -572,9 +796,13 @@ export function BookingPetWorkScreen({
             visible regardless, so wrapping the whole thing in another `Can`
             would hide the trail from somebody who can only read.
           */}
+          {/* ONE ANIMAL, ONE CONTROL — the page is already about this dog. */}
           <BookingStatusActions
             booking={booking}
-            onChanged={() => setNonce((n) => n + 1)}
+            pet={group}
+            /* Same reasoning as `move` above: the server hands back the whole
+               booking, so there is nothing left to go and ask for. */
+            onChanged={setBooking}
             variant="prominent"
           />
         </div>
@@ -590,7 +818,26 @@ export function BookingPetWorkScreen({
       <div className="grid items-start gap-4 lg:grid-cols-[1fr_320px]">
         <div className="flex flex-col gap-4">
           {/* ─── Detail Appointment ─────────────────────────────────────── */}
-          <Card title="Detail Appointment">
+          <Card
+            title="Detail Appointment"
+            /*
+              THE WAY TO CORRECT WHAT IS BEING CHARGED, on the card that states
+              it. Somebody who reads a wrong price here has the fix in the same
+              glance rather than having to remember the booking has an edit
+              screen — and `Can` keeps it off the page for whoever may read the
+              work but not reprice it.
+            */
+            action={
+              <Can feature="bookings" action="update">
+                <Button asChild variant="ghost" size="sm">
+                  <Link href={`/dashboard/booking/${bookingId}/edit`}>
+                    <Pencil className="size-4" aria-hidden />
+                    Edit layanan &amp; harga
+                  </Link>
+                </Button>
+              </Can>
+            }
+          >
             <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
               <Field
                 label="Tanggal"
@@ -599,14 +846,56 @@ export function BookingPetWorkScreen({
                   { day: "numeric", month: "long", year: "numeric" },
                 )}
               />
+              {/*
+                A RANGE, NOT A START. "09.00" answers when to be there; "09.00 –
+                12.00" answers when the animal goes home, which is the question
+                the owner actually asks at the counter. The end is the start plus
+                what this visit is ESTIMATED to take — the actual finish is on
+                each session, and a card that mixed the two would promise a time
+                that moves while somebody reads it.
+              */}
               <Field
                 label="Waktu"
-                value={new Date(booking.scheduledAt).toLocaleTimeString(
-                  "id-ID",
-                  { hour: "2-digit", minute: "2-digit" },
-                )}
+                value={
+                  <span className="tabular-nums">
+                    {clock(booking.scheduledAt)}
+                    {estimate > 0 &&
+                      ` – ${finishClock(booking.scheduledAt, estimate)}`}
+                  </span>
+                }
               />
-              <Field label="Cabang" value={branchName ?? "—"} />
+              {/*
+                WHERE THE WORK HAPPENS AND WHICH SHOP — one line, because they
+                are one answer: "Di rumah pelanggan" without the branch says
+                nothing about who is driving.
+              */}
+              <Field
+                label="Tipe"
+                value={[
+                  booking.location === "in_home"
+                    ? "Di rumah pelanggan"
+                    : "Di toko",
+                  branchName,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              />
+              {/*
+                SPELLED OUT RATHER THAN TICKED. "Tidak ada" is a real answer a
+                driver needs; an empty field reads as nobody having decided.
+              */}
+              <Field
+                label="Antar-jemput"
+                value={
+                  booking.pickupRequested && booking.deliveryRequested
+                    ? "Jemput & antar pulang"
+                    : booking.pickupRequested
+                      ? "Jemput saja"
+                      : booking.deliveryRequested
+                        ? "Antar pulang saja"
+                        : "Tidak ada"
+                }
+              />
               <Field
                 label="Durasi aktual"
                 value={
@@ -620,27 +909,69 @@ export function BookingPetWorkScreen({
               />
             </dl>
 
-            <div className="mt-3 border-t border-border pt-2">
-              {rows.map((row) => (
-                <div
-                  key={row._id}
-                  className="flex justify-between gap-3 border-b border-border py-2 text-sm last:border-b-0"
-                >
-                  <span>
-                    {row.name}
-                    <span className="block text-xs text-muted">
-                      {row.durationMin
-                        ? `${row.durationMin} mnt`
-                        : "durasi belum diisi"}
+            {/*
+              WHAT IS BEING CHARGED, AND WHAT IS ADDED TO IT.
+
+              Read from the grouped view the API builds (`booking.pets`), so an
+              add-on hangs off the service it was added to instead of sitting
+              beside it as though somebody had chosen "Parfum" on its own. It is
+              still its own stored row — that is how it bills and prints — and
+              the indent is what says it is not a service in its own right.
+            */}
+            <div className="mt-4 border-t border-border pt-3">
+              {services.map((service) => (
+                <div key={service.itemId} className="py-2">
+                  <div className="flex justify-between gap-3 text-sm">
+                    <span className="font-medium text-foreground">
+                      {service.name}
                     </span>
-                  </span>
-                  <span className="font-bold tabular-nums">
-                    {formatMoney(row.price)}
-                  </span>
+                    <span className="font-semibold tabular-nums text-foreground">
+                      {formatMoney(service.price)}
+                    </span>
+                  </div>
+                  {/*
+                    THE FACTS THE PRICE WAS QUOTED FROM, under the name it was
+                    quoted for: a variant service costs what THIS animal's size
+                    and coat say it costs, and a line that showed only the total
+                    leaves somebody unable to check it.
+                  */}
+                  <p className="text-xs text-muted">
+                    {[
+                      sizeLabel(pet?.size),
+                      furTypeLabel(pet?.furType),
+                      service.durationMin
+                        ? `${service.durationMin} mnt`
+                        : "durasi belum diisi",
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+
+                  {service.addons.length > 0 && (
+                    <ul className="mt-2 border-l-2 border-border pl-3">
+                      {service.addons.map((addon) => (
+                        <li
+                          key={addon.itemId}
+                          className="flex justify-between gap-3 py-1 text-sm"
+                        >
+                          <span className="text-muted">
+                            + {addon.name}
+                            {addon.durationMin
+                              ? ` · +${addon.durationMin} mnt`
+                              : ""}
+                          </span>
+                          <span className="font-semibold tabular-nums text-foreground">
+                            {formatMoney(addon.price)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               ))}
-              <div className="flex justify-between gap-3 border-t-2 border-foreground pt-2 text-sm">
-                <span className="font-extrabold">Total untuk {petName}</span>
+
+              <div className="mt-1 flex justify-between gap-3 border-t-2 border-foreground pt-2 text-sm">
+                <span className="font-extrabold">Total akhir</span>
                 <span className="text-lg font-extrabold tabular-nums">
                   {formatMoney(total)}
                 </span>
@@ -662,51 +993,89 @@ export function BookingPetWorkScreen({
                   this draws the same shape from the icon set everything else
                   uses.
                 */}
-                <div className="flex items-start gap-3">
-                  <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-secondary/20 text-secondary-foreground">
-                    {pet.species === "cat" ? (
-                      <Cat className="size-6" aria-hidden />
-                    ) : (
-                      <Dog className="size-6" aria-hidden />
-                    )}
-                  </span>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-secondary/20 text-secondary-foreground">
+                      {pet.species === "cat" ? (
+                        <Cat className="size-6" aria-hidden />
+                      ) : (
+                        <Dog className="size-6" aria-hidden />
+                      )}
+                    </span>
 
-                  <div className="min-w-0">
-                    <p className="text-base font-extrabold text-foreground">
-                      {pet.name}
-                    </p>
-                    <p className="text-xs text-muted">
-                      {[
-                        pet.breed,
-                        pet.weightKg ? `${pet.weightKg} kg` : null,
-                        pet.species ? speciesLabel(pet.species) : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ") || "—"}
-                    </p>
+                    <div className="min-w-0">
+                      <p className="text-base font-extrabold text-foreground">
+                        {pet.name}
+                      </p>
+                      <p className="text-xs text-muted">
+                        {[
+                          pet.breed,
+                          pet.weightKg ? `${pet.weightKg} kg` : null,
+                          pet.species ? speciesLabel(pet.species) : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ") || "—"}
+                      </p>
 
-                    {/*
+                      {/*
                       SIZE AND COAT AS CHIPS, because they are the two facts a
                       variant price is quoted from — the same pair the booking
                       form refuses to guess at. Absent rather than shown as a
                       dash when nobody has recorded them: an empty chip is a
                       thing to decode.
                     */}
-                    {(sizeLabel(pet.size) || furTypeLabel(pet.furType)) && (
-                      <ul className="mt-1.5 flex flex-wrap gap-1.5">
-                        {[sizeLabel(pet.size), furTypeLabel(pet.furType)]
-                          .filter((label): label is string => Boolean(label))
-                          .map((label) => (
-                            <li
-                              key={label}
-                              className="rounded-full bg-surface-hover px-2.5 py-1 text-xs font-medium text-foreground"
-                            >
-                              {label}
-                            </li>
-                          ))}
-                      </ul>
-                    )}
+                      {(sizeLabel(pet.size) || furTypeLabel(pet.furType)) && (
+                        <ul className="mt-1.5 flex flex-wrap gap-1.5">
+                          {[sizeLabel(pet.size), furTypeLabel(pet.furType)]
+                            .filter((label): label is string => Boolean(label))
+                            .map((label) => (
+                              <li
+                                key={label}
+                                className="rounded-full bg-surface-hover px-2.5 py-1 text-xs font-medium text-foreground"
+                              >
+                                {label}
+                              </li>
+                            ))}
+                        </ul>
+                      )}
+                    </div>
                   </div>
+
+                  {/*
+                    ─── THE WAY OUT TO THE ANIMAL ITSELF, ON THE NAME'S LINE ────
+
+                    TWO DIFFERENT PAGES, and the wording keeps them apart: this
+                    screen is THIS VISIT, the profile is the animal's whole life
+                    — allergies, every grooming it has ever had. Confusing them
+                    sends somebody looking for today's work in a list of last
+                    year's.
+
+                    BESIDE THE NAME, NOT UNDER THE CARD. It sat at the bottom,
+                    below the customer and the phone, which put a link about the
+                    ANIMAL after two facts about the OWNER — three blocks of
+                    reading between the name and the way to it. On the name's own
+                    line it is where the eye already is.
+
+                    `items-start`, SO IT ALIGNS WITH THE NAME rather than
+                    floating against a block that grows: the chips underneath
+                    make this column two or three lines tall, and a centred
+                    button would drift down as they appear.
+
+                    `secondary`, NOT `ghost` — the house's quiet button, white
+                    with a 1.5px navy border. A ghost button has no edge, so
+                    against a card's own background it read as a link somebody
+                    had left loose.
+                  */}
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    asChild
+                    className="shrink-0"
+                  >
+                    <Link href={`/dashboard/master/pets/${petId}`}>
+                      Profil {petName}
+                    </Link>
+                  </Button>
                 </div>
 
                 {/*
@@ -740,244 +1109,489 @@ export function BookingPetWorkScreen({
             </dl>
           </Card>
 
+          {/*
+            WHAT CAME IN WITH THIS ANIMAL — moved here from the booking overview.
+
+            It was one card there, grouped by animal, which meant handing Mochi's
+            collar back involved scrolling past Coco's things and Bruno's. This
+            page is already about one animal and is the page open at the table
+            when the owner comes to collect, so the list belongs beside the work
+            rather than beside the total. The overview keeps the COUNT and links
+            through, because "can this visit close" is still a whole-visit
+            question.
+
+            ABOVE THE SESSIONS, not under them. What the owner handed over is
+            checked at the two moments that bracket the work — arrival and
+            collection — so it is read before the sessions and again after, while
+            the sessions in between are worked through once. Sessions are also
+            the longest card on the page; anything under them is found by
+            scrolling past everything, which is what the overview already did
+            wrong.
+
+            LEFT COLUMN, NOT THE RAIL: the rail is for what is read (the trail,
+            the commission pointer); ticking a box is a thing done, and the three
+            columns want the width.
+          */}
+          <BookingBelongingsCard
+            booking={booking}
+            petId={petId}
+            petName={petName}
+            onChanged={setBooking}
+          />
+
           {/* ─── Sesi Grooming ──────────────────────────────────────────── */}
-          <Card title="Sesi Grooming" description={`aktual ${actual} / est ${estimate} mnt`}>
-            <ul className="flex flex-col gap-2">
-              {rows.map((row) => {
-                const status = row.workStatus ?? "pending";
-                const next = NEXT_MOVE[status];
-                const minutes = elapsed(row);
-                const over =
-                  minutes !== null &&
-                  row.durationMin !== null &&
-                  row.durationMin !== undefined &&
-                  minutes > row.durationMin;
-                const open = openRows[row._id] ?? status === "in_progress";
+          <Card
+            title="Sesi Grooming"
+            description={`aktual ${actual} / est ${estimate} mnt`}
+          >
+            {/*
+              ─── ONE CARD PER SERVICE, TURNS INSIDE IT ────────────────────────────
+            
+              "Full Grooming" and "Hotel" are two things being done, each with its own
+              turns. This was one flat list that mixed them, so a dog booked for two
+              services showed four unrelated rows with nothing saying which belonged to
+              which — and the add-on hanging off a service had no visible parent at all.
+            
+              A SERVICE WITH NO TURNS STILL GETS ITS CARD. Work nobody has been told to
+              do is what a groomer opening this page most needs to see, and the card is
+              where the turn gets added.
+            */}
+            <ul className="flex flex-col gap-4">
+              {groups.map(({ service, rows: sessionRows }) => (
+                <li
+                  key={service.itemId}
+                  className="rounded-xl border border-border p-3"
+                >
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-bold text-foreground">
+                        {service.name}
+                      </span>
+                      {/* THE KIND OF WORK, from the service's own snapshot — not read
+                          through the catalogue, so a renamed line does not rewrite what
+                          this visit says it was. */}
+                      {service.serviceType && (
+                        <span className="rounded-full bg-tint-neutral px-2 py-0.5 text-xs text-muted">
+                          {service.serviceType}
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-xs text-muted">
+                      {service.durationMin
+                        ? `est ${service.durationMin} mnt`
+                        : "durasi belum diisi"}
+                    </span>
+                  </div>
 
-                return (
-                  <li
-                    key={row._id}
-                    className={`overflow-hidden rounded-xl border ${
-                      status === "in_progress"
-                        ? "border-warning"
-                        : status === "done"
-                          ? "border-success/40"
-                          : "border-border"
-                    }`}
-                  >
-                    {/*
-                      ─── THE CLOSED ROW ALREADY ANSWERS THE COMMON QUESTIONS ──
-                      Who is on it, where it stands, and how many minutes — the
-                      reference's own reasoning, and the reason folding is worth
-                      having at all. Opening is for the things you change.
-                    */}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setOpenRows((prev) => ({ ...prev, [row._id]: !open }))
-                      }
-                      aria-expanded={open}
-                      className={`flex w-full items-center gap-2 px-3 py-2 text-left ${
-                        status === "in_progress"
-                          ? "bg-warning/10"
-                          : status === "done"
-                            ? "bg-success/5"
-                            : "bg-surface"
-                      }`}
-                    >
-                      <span className="min-w-0 flex-1 truncate text-sm font-bold text-foreground">
-                        {row.name}
-                      </span>
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${WORK_TONE[status]}`}
-                      >
-                        {WORK_LABELS[status]}
-                      </span>
-                      <span className="hidden whitespace-nowrap text-xs text-muted sm:inline">
-                        {row.groomerName}
-                      </span>
-                      <span className="whitespace-nowrap font-mono text-xs text-foreground">
-                        {minutes === null ? "—" : `${minutes}'`}
-                        {over && (
-                          <span className="text-danger">
-                            {" "}
-                            +{minutes! - row.durationMin!}
-                          </span>
-                        )}
-                      </span>
-                      <span className="text-xs text-muted">{open ? "▲" : "▼"}</span>
-                    </button>
+                  {/* THE ADD-ONS, UNDER THE SERVICE THEY WERE ADDED TO. Nobody chooses
+                      "Parfum" by itself, and showing it beside a bath made it look as
+                      though somebody had. */}
+                  {service.addons.length > 0 && (
+                    <ul className="mt-1 flex flex-col gap-0.5 border-l-2 border-border pl-2.5">
+                      {service.addons.map((addon) => (
+                        <li key={addon.itemId} className="text-xs text-muted">
+                          + {addon.name}
+                          {addon.durationMin
+                            ? ` · ${addon.durationMin} mnt`
+                            : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
 
-                    {open && (
-                      <div className="border-t border-border p-3">
-                        {row.groomerOffReason && (
-                          <p
-                            role="alert"
-                            className="mb-3 rounded border border-danger/40 bg-danger/5 px-2 py-1 text-xs font-semibold text-danger"
+                  {sessionRows.length === 0 ? (
+                    <p className="mt-3 text-sm text-muted">
+                      Belum ada sesi — tambahkan satu untuk menugaskan groomer.
+                    </p>
+                  ) : (
+                    <ul className="mt-3 flex flex-col gap-2">
+                      {sessionRows.map((row) => {
+                        const status = row.workStatus ?? "pending";
+                        /*
+                            ⚠️ NOTHING TO PRESS ON A TURN WITH NOBODY ON IT. The
+                            server refuses to start work with no groomer — "who
+                            did this" is what the duration and the pay are both
+                            read against — so the button is absent rather than a
+                            400 somebody has to read.
+                          */
+                        /*
+                          ⚠️ STILL OFFERED WHEN THE ANIMAL IS NOT ON THE TABLE
+                          YET — DISABLED, not absent. A button that vanishes
+                          teaches nothing: somebody looking for "Mulai" and not
+                          finding it has no way to learn that the DOG has to be
+                          started first. Greyed out with the reason under it,
+                          the screen answers the question it raises.
+
+                          A TURN WITH NOBODY ON IT IS STILL BUTTONLESS. That one
+                          is not about a rung — there is genuinely nothing to
+                          press until somebody is on the turn.
+                        */
+                        const next = row.assigned ? NEXT_MOVE[status] : null;
+                        const minutes = elapsed(row);
+                        const over =
+                          minutes !== null &&
+                          row.durationMin !== null &&
+                          row.durationMin !== undefined &&
+                          minutes > row.durationMin;
+                        const open =
+                          openRows[row._id] ?? status === "in_progress";
+
+                        return (
+                          <li
+                            key={row._id}
+                            className={`overflow-hidden rounded-xl border ${
+                              status === "in_progress"
+                                ? "border-warning"
+                                : status === "done"
+                                  ? "border-success/40"
+                                  : "border-border"
+                            }`}
                           >
-                            {row.groomerName}{" "}
-                            {row.groomerOffReason.toLowerCase()} — ganti groomer
-                            atau hubungi pelanggan.
-                          </p>
-                        )}
-
-                        {/*
-                          WHO IS ON THIS SESSION — the booking form set one
-                          default per animal; this is where the day disagrees
-                          with it. Above the clock fields, because who is doing
-                          it is decided before how long it took.
-                        */}
-                        <div className="mb-3">
-                          <SessionGroomers
-                            bookingId={bookingId}
-                            row={row}
-                            groomers={groomers}
-                            onChanged={setBooking}
-                          />
-                        </div>
-
-                        <Can feature="bookings" action="update">
-                          <div className="flex flex-wrap items-end gap-3">
-                            <TextField
-                              label="Jam mulai"
-                              name={`start-${row._id}`}
-                              value={
-                                draftTimes[`${row._id}|startedAt`] ??
-                                clock(row.startedAt)
-                              }
-                              placeholder="09.05"
-                              disabled={busy === row._id}
-                              onChange={(event) =>
-                                setDraftTimes((prev) => ({
+                            {/*
+                                ─── THE CLOSED ROW ALREADY ANSWERS THE COMMON QUESTIONS ──
+                                Who is on it, where it stands, and how many minutes — the
+                                reference's own reasoning, and the reason folding is worth
+                                having at all. Opening is for the things you change.
+                              */}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setOpenRows((prev) => ({
                                   ...prev,
-                                  [`${row._id}|startedAt`]: event.target.value,
+                                  [row._id]: !open,
                                 }))
                               }
-                              onBlur={(event) =>
-                                void correct(row, "startedAt", event.target.value)
-                              }
-                            />
-                            <TextField
-                              label="Jam selesai"
-                              name={`finish-${row._id}`}
-                              value={
-                                draftTimes[`${row._id}|finishedAt`] ??
-                                clock(row.finishedAt)
-                              }
-                              placeholder="10.35"
-                              disabled={busy === row._id}
-                              onChange={(event) =>
-                                setDraftTimes((prev) => ({
-                                  ...prev,
-                                  [`${row._id}|finishedAt`]: event.target.value,
-                                }))
-                              }
-                              onBlur={(event) =>
-                                void correct(row, "finishedAt", event.target.value)
-                              }
-                            />
-                            <div className="pb-2">
-                              <p className="text-[10px] font-bold uppercase tracking-wide text-muted">
-                                Aktual
-                              </p>
-                              <p className="font-mono text-sm font-semibold text-foreground">
-                                {minutes === null ? "—" : `${minutes} mnt`}
+                              aria-expanded={open}
+                              className={`flex w-full items-center gap-2 px-3 py-2 text-left ${
+                                status === "in_progress"
+                                  ? "bg-warning/10"
+                                  : status === "done"
+                                    ? "bg-success/5"
+                                    : "bg-surface"
+                              }`}
+                            >
+                              <span className="min-w-0 flex-1 truncate text-sm font-bold text-foreground">
+                                {row.name}
+                              </span>
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-xs font-semibold ${WORK_TONE[status]}`}
+                              >
+                                {WORK_LABELS[status]}
+                              </span>
+                              <span className="hidden whitespace-nowrap text-xs text-muted sm:inline">
+                                {row.groomerName}
+                              </span>
+                              <span className="whitespace-nowrap font-mono text-xs text-foreground">
+                                {minutes === null ? "—" : `${minutes}'`}
                                 {over && (
-                                  <span className="ml-1 text-danger">
+                                  <span className="text-danger">
+                                    {" "}
                                     +{minutes! - row.durationMin!}
                                   </span>
                                 )}
-                              </p>
-                            </div>
-                            <div className="pb-2">
-                              <p className="text-[10px] font-bold uppercase tracking-wide text-muted">
-                                Estimasi
-                              </p>
-                              <p className="font-mono text-sm text-muted">
-                                {row.durationMin ?? "—"} mnt
-                              </p>
-                            </div>
-                          </div>
-                        </Can>
+                              </span>
+                              <span className="text-xs text-muted">
+                                {open ? "▲" : "▼"}
+                              </span>
+                            </button>
 
-                        {row.notes && (
-                          <p className="mt-3 rounded bg-tint-neutral px-2 py-1 text-xs text-muted">
-                            {row.notes}
-                          </p>
-                        )}
+                            {open && (
+                              <div className="border-t border-border p-3">
+                                {row.groomerOffReason && (
+                                  <p
+                                    role="alert"
+                                    className="mb-3 rounded border border-danger/40 bg-danger/5 px-2 py-1 text-xs font-semibold text-danger"
+                                  >
+                                    {row.groomerName}{" "}
+                                    {row.groomerOffReason.toLowerCase()} — ganti
+                                    groomer atau hubungi pelanggan.
+                                  </p>
+                                )}
 
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <Can
-                            feature="bookings"
-                            action={["advanceStatus", "update"]}
-                          >
-                            {next && (
-                              <Button
-                                size="sm"
-                                disabled={busy === row._id}
-                                onClick={() => void move(row, next.to)}
-                              >
-                                {busy === row._id ? "Menyimpan…" : next.label}
-                              </Button>
+                                {/*
+                                    WHO IS ON THIS SERVICE — the booking form set one
+                                    default per animal; this is where the day disagrees
+                                    with it. Above the clock fields, because who is doing
+                                    it is decided before how long it took.
+
+                                    ⚠️ ONCE PER SERVICE, NOT PER TURN. The card edits the
+                                    whole crew — every turn of this service, and the button
+                                    that adds another — so opening a second turn of the same
+                                    bath must not show a second copy of the same control
+                                    with the same rows in it.
+                                  */}
+                                {/*
+                                    WHO IS ON THIS TURN — inside the turn's own row, under
+                                    the name it acts on.
+
+                                    IT USED TO BE RENDERED ONCE PER SERVICE, with a
+                                    `findIndex` trick to pick the first row, because the
+                                    control drew every session of the service at once. That
+                                    put a second list of the same turns beside the one the
+                                    rows already draw — two lists of one thing, and two
+                                    places for it to disagree.
+                                  */}
+                                <div className="mb-3">
+                                  <SessionCrew
+                                    bookingId={bookingId}
+                                    session={row.session}
+                                    groomers={groomers}
+                                    onChanged={setBooking}
+                                  />
+                                </div>
+
+                                {/*
+                                  ─── THE CLOCK IS READ, NOT TYPED ────────────
+
+                                  There were two text fields here — "Jam mulai"
+                                  and "Jam selesai" — and they asked somebody to
+                                  write down a time they had just lived through.
+                                  The buttons below record it: starting a turn
+                                  stamps `startedAt`, finishing it stamps
+                                  `finishedAt`, both server-side, both to the
+                                  second the button was pressed.
+
+                                  ⚠️ CORRECTING A STAMP IS NO LONGER REACHABLE
+                                  FROM THIS SCREEN. `PATCH .../times` still
+                                  exists and is still audited — a groomer with
+                                  wet hands presses the button late, and that
+                                  correction decides the duration a commission
+                                  matrix is read against. It needs an edit
+                                  affordance of its own; until it has one, a
+                                  wrong stamp can only be fixed through the API.
+                                */}
+                                <dl className="flex flex-wrap gap-x-6 gap-y-2">
+                                  <div>
+                                    <dt className="text-[10px] font-bold uppercase tracking-wide text-muted">
+                                      Mulai
+                                    </dt>
+                                    <dd className="font-mono text-sm text-foreground">
+                                      {clock(row.startedAt) || "—"}
+                                    </dd>
+                                  </div>
+                                  <div>
+                                    <dt className="text-[10px] font-bold uppercase tracking-wide text-muted">
+                                      Selesai
+                                    </dt>
+                                    <dd className="font-mono text-sm text-foreground">
+                                      {clock(row.finishedAt) || "—"}
+                                    </dd>
+                                  </div>
+                                  <div>
+                                    <dt className="text-[10px] font-bold uppercase tracking-wide text-muted">
+                                      Aktual
+                                    </dt>
+                                    <dd className="font-mono text-sm font-semibold text-foreground">
+                                      {minutes === null
+                                        ? "—"
+                                        : `${minutes} mnt`}
+                                      {over && (
+                                        <span className="ml-1 text-danger">
+                                          +{minutes! - row.durationMin!}
+                                        </span>
+                                      )}
+                                    </dd>
+                                  </div>
+                                  {/*
+                                    ⚠️ NO "ESTIMASI" HERE, and its absence is
+                                    the honest reading.
+
+                                    The estimate is the SERVICE's — 60 minutes
+                                    for a bath — and a bath split into three
+                                    turns does not take 60 minutes EACH. Printing
+                                    it on every row read as a target for each
+                                    one, and the over-run beside it as three
+                                    separate failures to hit a number nobody set.
+
+                                    IT IS SHOWN ONCE, ON THE SERVICE'S CARD
+                                    HEADER, where it belongs: one estimate for
+                                    the thing that was estimated.
+                                  */}
+                                </dl>
+
+                                {/*
+                                  ⚠️ ABOVE THE ACTION ROW, not inside it. The
+                                  notes and the photographs are what HAPPENED;
+                                  Mulai/Selesai are what happens NEXT, and a
+                                  gallery wedged between a groomer and the
+                                  button they press puts the record in the way
+                                  of the work.
+                                */}
+                                {/* `mt-3`, the same step the action row below
+                                    takes — the notes were sitting flush under
+                                    the clock, reading as part of it. */}
+                                <div className="mt-3">
+                                  <SessionRecord
+                                    bookingId={bookingId}
+                                    session={row.session}
+                                    onChanged={setBooking}
+                                  />
+                                </div>
+
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  <Can
+                                    feature="bookings"
+                                    action={["advanceStatus", "update"]}
+                                  >
+                                    {next && (
+                                      <Button
+                                        size="sm"
+                                        disabled={
+                                          busy === row._id || !startable
+                                        }
+                                        onClick={() => void move(row, next.to)}
+                                      >
+                                        {busy === row._id
+                                          ? "Menyimpan…"
+                                          : next.label}
+                                      </Button>
+                                    )}
+                                    {/*
+                                      ⚠️ NO "Buka lagi". A finished turn stays
+                                      finished from this screen — the shop's
+                                      decision: work marked done is done, and a
+                                      button to undo it sitting beside the one
+                                      that finishes it invited the pair to be
+                                      pressed as a toggle.
+
+                                      `WORK_TRANSITIONS` on the server still
+                                      allows `done → in_progress`, deliberately
+                                      and NOT as an oversight: a correction has
+                                      to stay possible through the API when a dog
+                                      genuinely comes back off the table. What
+                                      was removed is the affordance, not the
+                                      move.
+                                    */}
+                                    {/*
+                                      ⚠️ TWO REASONS A TURN CANNOT MOVE, AND
+                                      THE RUNG IS SAID FIRST.
+
+                                      "Tentukan groomernya dulu" on a dog
+                                      nobody has started sends somebody to fix
+                                      the crew, which changes nothing: the
+                                      server refuses on the rung either way, so
+                                      they would come back having done the work
+                                      for no result. The nearer blocker wins.
+                                    */}
+                                    {!startable ? (
+                                      <p className="text-xs text-muted">
+                                        Sesi baru bisa dikerjakan kalau status
+                                        hewannya sudah In Progress.
+                                      </p>
+                                    ) : (
+                                      !row.assigned && (
+                                        <p className="text-xs text-muted">
+                                          Tentukan groomernya dulu — sesi tanpa
+                                          groomer tidak bisa dimulai.
+                                        </p>
+                                      )
+                                    )}
+                                  </Can>
+
+                                  {/*
+                                    ⚠️ LAST, AND PUSHED RIGHT (`ml-auto`), not
+                                    up among the crew controls where it used to
+                                    sit. Mulai and Selesai are pressed several
+                                    times a day; this one is pressed almost
+                                    never and cannot be undone, so it keeps its
+                                    distance from the thumb that presses them.
+                                  */}
+                                  <RemoveSessionButton
+                                    bookingId={bookingId}
+                                    session={row.session}
+                                    onChanged={setBooking}
+                                  />
+                                </div>
+                              </div>
                             )}
-                            {status === "done" && (
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                disabled={busy === row._id}
-                                onClick={() => void move(row, "in_progress")}
-                              >
-                                Buka lagi
-                              </Button>
-                            )}
-                          </Can>
-                        </div>
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+
+                  {/*
+                    ⚠️ NOT ONCE THE ANIMAL'S WORK IS OVER. A new turn on a
+                    finished service is work that was never done, and adding one
+                    REOPENS the service (`refreshServiceWork`) — which drags the
+                    animal back off `completed` after its commission has already
+                    been computed. The server refuses it (409); this is the
+                    screen not offering what would be refused.
+
+                    `finished`, NOT `!startable`. The two gates are different
+                    ends of the same ladder: work cannot BEGIN before
+                    `in_progress`, and cannot be ADDED TO at or past
+                    `completed`. In between — the whole working day — both are
+                    open.
+                  */}
+                  {!finished && (
+                    <div className="mt-3">
+                      {/* NO `groomers` — adding a turn asks for its NAME only;
+                          who works it is set in the turn's own row. */}
+                      <AddSessionButton
+                        bookingId={bookingId}
+                        service={service}
+                        onChanged={setBooking}
+                      />
+                    </div>
+                  )}
+                </li>
+              ))}
             </ul>
 
-            <div className="mt-3">
-              <Button variant="ghost" size="sm" asChild>
-                <Link href={`/dashboard/master/pets/${petId}`}>
-                  Profil {petName}
-                </Link>
-              </Button>
-            </div>
+            {/*
+              ⚠️ NO "Profil" LINK HERE ANY MORE. This card is one visit's work —
+              turns, clocks, who is on them — and a way out to the animal's whole
+              life sat at the bottom of it saying nothing about grooming. It
+              moved to "Hewan & Pelanggan", the block that is already about the
+              animal, where it reads as the obvious next step rather than as a
+              stray link under a list of sessions.
+            */}
           </Card>
+
+          {/* ─── Album ─────────────────────────────────────────────────────
+              THE SAME PHOTOS, READ THE OTHER WAY ROUND. The card above is
+              organised by WORK — which turn, who, how long — and its gallery
+              sits inside the turn it belongs to. This one is organised by the
+              VISIT: what the dog came in like and what it left like, which is
+              how somebody looks a grooming back over.
+
+              A VIEW OVER `pets[].services[].sessions[].media[]`, storing
+              nothing of its own — see the component. */}
+          <SessionAlbum
+            bookingId={bookingId}
+            pet={group}
+            onChanged={setBooking}
+          />
         </div>
 
         {/* ─── The rail ────────────────────────────────────────────────── */}
         <div className="flex flex-col gap-4 lg:sticky lg:top-20">
-          <Card title="Riwayat" description={`${booking.statusHistory?.length ?? 0} aktivitas`}>
-            {(booking.statusHistory ?? []).length === 0 ? (
-              <p className="text-sm text-muted">Belum ada aktivitas.</p>
-            ) : (
-              <ol className="flex flex-col">
-                {[...(booking.statusHistory ?? [])].reverse().map((event) => (
-                  <li
-                    key={`${event.status}-${event.at}`}
-                    className="border-l-2 border-border pb-3 pl-4 last:pb-0"
-                  >
-                    <p className="text-xs font-bold text-foreground">
-                      Status → {event.status}
-                    </p>
-                    <p className="font-mono text-[10px] text-muted">
-                      {new Date(event.at).toLocaleString("id-ID", {
-                        day: "2-digit",
-                        month: "short",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}{" "}
-                      · {event.byName ?? "sistem"}
-                    </p>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </Card>
+          {/*
+            THE ANIMAL'S TWO NOTES, EDITABLE, AT THE HEAD OF THE RAIL.
+
+            THEY USED TO BE READ-ONLY AND ONCE PER SESSION, which printed the
+            same sentence under every service — they are facts about the ANIMAL,
+            and a card with two services showed each note twice. Once per animal
+            is what they are.
+
+            EDITABLE HERE because the form can only capture what was known when
+            the appointment was taken. The coat turns out worse than it looked,
+            the dog panics at the dryer, the owner says something at drop-off —
+            all of it happens on this page, and the alternative was sending
+            somebody to the edit form, which reprices the visit on save.
+
+            IN THE RAIL, not the left column: it is read while something else is
+            being done — during the work, and again at hand-over — so it stays in
+            view beside the sessions rather than scrolling away above them.
+          */}
+          <BookingPetNotesCard
+            booking={booking}
+            petId={petId}
+            onChanged={setBooking}
+          />
+
+          <BookingHistoryCard booking={booking} pet={group} />
 
           {/*
             THE REFERENCE'S OWN NOTE, and it is right: this page is open at the
@@ -1003,13 +1617,7 @@ export function BookingPetWorkScreen({
 }
 
 /** One label-over-value pair, the reference's `.kv` cell. */
-function Field({
-  label,
-  value,
-}: {
-  label: string;
-  value: React.ReactNode;
-}) {
+function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
       <dt className="text-[10px] font-bold uppercase tracking-wide text-muted">

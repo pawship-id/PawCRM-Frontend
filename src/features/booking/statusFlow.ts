@@ -1,59 +1,218 @@
-import type { BookingStatus } from "@/types/api";
+import type { Booking, BookingPet, BookingStatus } from "@/types/api";
 
 /**
- * Which status may follow which — a mirror of `BOOKING_TRANSITIONS` in
- * booking.model.js.
+ * Every rung, in order — the shape of a visit with BOTH trip legs.
+ *
+ * A MIRROR of `BOOKING_LADDER_FULL` in booking.model.js. `frontendEnumParity`
+ * on the server checks that `BookingStatus` knows every value it can send; this
+ * file is the other half — the ORDER, which no test can read off a type.
+ *
+ * `cancelled` and `rescheduled` are absent: neither is a rung. One is a way out,
+ * the other a note about the date.
+ */
+const LADDER: BookingStatus[] = [
+  "draft",
+  "requested",
+  "confirmed",
+  "pickup",
+  "arrived",
+  "in_progress",
+  "completed",
+  "delivery",
+  "return_to_pawrents",
+];
+
+/**
+ * What the booking must carry for any of this to be answerable.
+ *
+ * A STATUS IS NOT ENOUGH ANY MORE, and that is the whole shape of this file
+ * since the trip legs landed: whether `pickup` is the next rung depends on
+ * whether anybody asked to be fetched. Callers that used to pass a bare status
+ * now pass the booking.
+ */
+export type BookingLike = Pick<
+  Booking,
+  "pickupRequested" | "deliveryRequested"
+>;
+
+/**
+ * THE ANIMAL, WHICH IS WHERE THE STATUS LIVES SINCE PCR-042.
+ *
+ * ⚠️ EVERY FUNCTION BELOW TAKES BOTH, and neither is optional. The status is the
+ * ANIMAL's; the two trip rungs are the BOOKING's, because a van goes to an
+ * address and both of one customer's dogs ride in it. Passing only the animal
+ * would build a ladder with no trip legs — which does not throw, and quietly
+ * stops the menu offering "Dijemput" on a visit that has a van booked.
+ */
+export type PetLike = Pick<BookingPet, "status">;
+
+/**
+ * The path THIS booking walks — a mirror of `ladderFor` on the server.
+ *
+ * A booking with no pickup never passes through `pickup`, and offering it would
+ * put a van journey on a trail that never left the shop.
+ */
+export function ladderFor(booking: BookingLike): BookingStatus[] {
+  return LADDER.filter((status) => {
+    if (status === "pickup") return Boolean(booking.pickupRequested);
+    if (status === "delivery") return Boolean(booking.deliveryRequested);
+    return true;
+  });
+}
+
+/**
+ * Which statuses may follow — a mirror of `transitionsFor` in booking.model.js.
  *
  * A COPY, DELIBERATELY, and the server stays the authority: it refuses an
  * illegal move with a 409 whatever this file says. What this buys is a menu that
  * offers only moves that will be accepted — the alternative is a screen that
  * lists five actions and answers "conflict" to three of them.
  *
- * KEEP IT IN STEP WITH THE MODEL. It is small and it changes rarely; when it
- * does, both files change together.
+ * KEEP IT IN STEP WITH THE MODEL. Both files change together.
  */
-const BOOKING_TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
-  draft: ["confirmed", "check_in", "cancelled"],
-  confirmed: ["check_in", "in_progress", "completed", "cancelled"],
-  check_in: ["in_progress", "completed", "cancelled"],
-  in_progress: ["completed", "cancelled"],
-  completed: [],
-  cancelled: [],
-};
+export function transitionsFor(
+  pet: PetLike,
+  booking: BookingLike,
+): BookingStatus[] {
+  const ladder = ladderFor(booking);
+  const at = ladder.indexOf(pet.status);
+
+  /* `rescheduled` is never a stored status; an unknown value moves nowhere. */
+  if (at === -1) return [];
+
+  /*
+    A DRAFT MAY NOT JUMP PAST THE ANIMAL ARRIVING. It is a line in a basket
+    somebody may yet empty, and landing one on `completed` would mint a finished,
+    commissioned visit out of something nobody ever agreed to.
+  */
+  const ceiling =
+    pet.status === "draft" ? ladder.indexOf("arrived") : ladder.length - 1;
+
+  const forward = ladder.slice(at + 1, ceiling + 1);
+
+  return hasCompletedWork(pet, booking) ? forward : [...forward, "cancelled"];
+}
+
+/**
+ * Whether a turn on this animal may be worked yet.
+ *
+ * A mirror of the gate in `BookingService#advanceItemWork`: a turn can only move
+ * once the ANIMAL is at `in_progress`. Agreeing an appointment and arriving are
+ * facts about the visit; `in_progress` is somebody saying "we have started on
+ * this dog", and until they have, a turn moving is work recorded against a visit
+ * nobody has begun.
+ *
+ * ⚠️ THE ANIMAL IS PUT ON THE TABLE BY A PERSON, not by starting a turn. The
+ * server also DERIVES `in_progress` from a service leaving `pending`, so read
+ * naively the two rules are a deadlock. What breaks it is the status control —
+ * "Start work" — which is why the message beside the disabled button points
+ * there rather than at the crew.
+ *
+ * ⚠️ READ OFF `LADDER`, NOT `ladderFor(booking)`. The trip rungs come and go
+ * with the booking, and a comparison that moved with them would answer
+ * differently for the same animal depending on whether a van was booked.
+ *
+ * "AT OR PAST", NOT "IS": a dog handed back wet comes off the table again, and
+ * an animal already `completed` must still be able to reopen a turn.
+ *
+ * `cancelled` and `rescheduled` are not on the ladder and fall to -1, which
+ * refuses — the safe answer for a status this function does not recognise.
+ */
+export function canStartWork(pet: PetLike): boolean {
+  const at = LADDER.indexOf(pet.status);
+
+  return at !== -1 && at >= LADDER.indexOf("in_progress");
+}
+
+/**
+ * Whether the work is finished — `completed` or anything after it.
+ *
+ * SEPARATE FROM "is it over", and the distinction is the sharpest edge of the
+ * wider ladder. `completed` fires commission and the money is usually taken;
+ * what happens afterwards is about the ANIMAL. So anything touching money — the
+ * edit form, re-crewing a session — closes here, while a note or a belonging
+ * stays open until the animal actually goes home.
+ */
+export function hasCompletedWork(pet: PetLike, booking: BookingLike): boolean {
+  const ladder = ladderFor(booking);
+  const at = ladder.indexOf(pet.status);
+
+  return at !== -1 && at >= ladder.indexOf("completed");
+}
 
 /**
  * What each move is CALLED as an action, which is not what the status is called
  * as a state.
  *
- * A menu row is something somebody does — "Check-in", "Batalkan" — while a badge
- * is a fact about the booking ("Sudah check-in"). `BOOKING_STATUS_LABELS` names
- * the state and this names the act; using one for both is how a menu ends up
- * reading like a list of adjectives.
+ * ─── IN ENGLISH, WITH THE STATUS NAMES — ui-rules §12 ──────────────────────
+ *
+ * These were Bahasa and the exception was scoped to the badge alone, on the
+ * argument that a menu row is a SENTENCE (what somebody does) while a badge is a
+ * NAME. The shop looked at the result and asked for the menu too, and they are
+ * right about the thing the argument missed: a menu of Indonesian verbs whose
+ * only purpose is to reach English-named rungs made every row a translation
+ * step — "Serahkan ke pemilik" to arrive at a badge reading "Return to
+ * Pawrents". Half a screen in each language is worse than either.
+ *
+ * STILL VERBS, NOT THE NAMES REPEATED. "Confirmed" as a menu row reads as a
+ * fact about the booking rather than something to press; each row says what
+ * pressing it DOES, and lands on the status it is named after.
+ *
+ * IT STOPS AT THE MENU. The dialog that opens behind these rows, its warnings,
+ * the cancel-reason field and every toast stay in Bahasa — those are sentences,
+ * and §12 is about sentences.
  */
 export const BOOKING_STATUS_ACTIONS: Record<BookingStatus, string> = {
-  draft: "Kembalikan ke draf",
-  confirmed: "Konfirmasi",
-  check_in: "Check-in",
-  in_progress: "Mulai dikerjakan",
-  completed: "Tandai selesai",
-  cancelled: "Batalkan booking",
+  draft: "Move back to draft",
+  requested: "Mark as requested",
+  confirmed: "Confirm booking",
+  pickup: "Start pickup",
+  arrived: "Mark arrived",
+  in_progress: "Start work",
+  completed: "Mark completed",
+  delivery: "Start delivery",
+  return_to_pawrents: "Return to pawrents",
+  cancelled: "Cancel booking",
+  /* Never offered as a move — rescheduling has its own dialog and its own date. */
+  rescheduled: "Reschedule",
 };
 
 /**
- * The forward moves offered for a booking in `status`, in ladder order.
+ * The forward moves offered for a booking, in ladder order.
  *
  * CANCELLATION IS NOT HERE. It is not a step forward, it needs its own
  * permission (`bookings:cancel`, not `update`), and it asks for a reason — so
  * the caller renders it separately rather than having to filter it back out of
  * this list every time.
  */
-export function forwardStatuses(status: BookingStatus): BookingStatus[] {
-  return BOOKING_TRANSITIONS[status].filter((next) => next !== "cancelled");
+export function forwardStatuses(
+  pet: PetLike,
+  booking: BookingLike,
+): BookingStatus[] {
+  return transitionsFor(pet, booking).filter((next) => next !== "cancelled");
 }
 
 /** Whether a booking may still be called off. */
-export function canCancel(status: BookingStatus): boolean {
-  return BOOKING_TRANSITIONS[status].includes("cancelled");
+export function canCancel(pet: PetLike, booking: BookingLike): boolean {
+  return transitionsFor(pet, booking).includes("cancelled");
+}
+
+/**
+ * Whether the appointment may still be moved to another day.
+ *
+ * MIRRORS `BookingService#reschedule`. Not a draft — its date is edited on the
+ * form, and landing it on `confirmed` through a button labelled "reschedule"
+ * would confirm an appointment nobody agreed to. Not once the animal is here:
+ * moving the date of a visit that is happening describes nothing, and that is a
+ * new booking.
+ */
+export function canReschedule(pet: PetLike, booking: BookingLike): boolean {
+  if (pet.status === "draft") return false;
+
+  const ladder = ladderFor(booking);
+  const at = ladder.indexOf(pet.status);
+
+  return at !== -1 && at < ladder.indexOf("arrived");
 }
 
 /**
@@ -67,18 +226,12 @@ export function canCancel(status: BookingStatus): boolean {
  * Returns only the IMPLIED rungs; the move itself is what the caller asked for.
  */
 export function impliedStatuses(
-  from: BookingStatus,
+  pet: PetLike,
+  booking: BookingLike,
   to: BookingStatus,
 ): BookingStatus[] {
-  const ladder: BookingStatus[] = [
-    "draft",
-    "confirmed",
-    "check_in",
-    "in_progress",
-    "completed",
-  ];
-
-  const start = ladder.indexOf(from);
+  const ladder = ladderFor(booking);
+  const start = ladder.indexOf(pet.status);
   const end = ladder.indexOf(to);
 
   // `cancelled` is off the ladder — it fills in nothing behind it.

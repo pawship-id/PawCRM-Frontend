@@ -111,8 +111,16 @@ export function BookingPetGroupCard({
     });
   }
 
+  /*
+    EACH NOTE COUNTS AS ONE. The badge is what tells a reader the fold holds
+    something — counting the pair as one would hide the fact that a customer
+    note was written and an internal one was not, which is exactly the
+    distinction the fold must not obscure.
+  */
   const extrasCount =
-    group.belongings.length + (group.notes.trim() === "" ? 0 : 1);
+    group.belongings.length +
+    (group.internalNotes.trim() === "" ? 0 : 1) +
+    (group.customerNotes.trim() === "" ? 0 : 1);
 
   return (
     /*
@@ -277,14 +285,49 @@ export function BookingPetGroupCard({
           petName={pet?.name ?? `hewan ${index + 1}`}
         >
           <div className="flex flex-col gap-4 pt-3">
+            {/*
+              ─── TWO NOTES, AND THE LABELS ARE THE WHOLE POINT ──────────────
+
+              There used to be one box called "Catatan", and everything went in
+              it: "takut hairdryer" next to whatever somebody wanted the owner
+              to know. Splitting the storage without saying which is which on
+              screen would change nothing — the person typing decides where a
+              sentence lands, so the labels have to answer "who reads this"
+              before the cursor gets there.
+
+              THE INTERNAL ONE IS FIRST because it is the one almost every visit
+              has, and the one a groomer needs. The customer's is the exception.
+            */}
             <TextareaField
-              label="Catatan"
-              name={`pet-notes-${group.key}`}
-              value={group.notes}
-              onChange={(event) => onChange({ notes: event.target.value })}
+              label="Catatan internal"
+              name={`pet-internal-notes-${group.key}`}
+              value={group.internalNotes}
+              onChange={(event) =>
+                onChange({ internalNotes: event.target.value })
+              }
               maxLength={NOTES_MAX_LENGTH}
               placeholder="mis. takut hairdryer, mandi duluan"
-              hint="Berlaku untuk semua layanan hewan ini pada kunjungan ini."
+              hint="Hanya untuk staf — tidak pernah ditampilkan ke pelanggan. Berlaku untuk semua layanan hewan ini pada kunjungan ini."
+              disabled={disabled}
+            />
+
+            <TextareaField
+              label="Catatan untuk pelanggan"
+              name={`pet-customer-notes-${group.key}`}
+              value={group.customerNotes}
+              onChange={(event) =>
+                onChange({ customerNotes: event.target.value })
+              }
+              maxLength={NOTES_MAX_LENGTH}
+              placeholder="mis. bulunya kusut parah, disarankan grooming tiap 3 minggu"
+              /*
+                IT SAYS WHERE THIS DOES *NOT* APPEAR YET. Nothing prints it on a
+                struk or sends it over WhatsApp today, and a field that looks
+                like it reaches the owner but does not is worse than one that is
+                honest about it — somebody would write "sudah kami hubungi" here
+                and assume the customer had been.
+              */
+              hint="Ditulis untuk pemilik hewan. Belum tampil otomatis di struk atau WhatsApp — sampaikan sendiri saat serah terima."
               disabled={disabled}
             />
 

@@ -41,7 +41,16 @@ export type MediaUploadPurpose =
   | "product"
   | "category"
   | "service"
-  | "description";
+  | "description"
+  /*
+    ⚠️ A SEGMENT OF ITS OWN FOR GROOMING PHOTOS, and it is not cosmetic. The
+    server maps `purpose` to a storage-key segment that `sweepOrphanMedia`
+    reads: it deletes what nothing claims, so a session photo filed under
+    `product` would be checked against the product collection, found nowhere,
+    and removed. The claim that keeps them is
+    `bookingItemRepository.existsBySessionMediaKey`.
+  */
+  | "booking";
 
 export interface UploadOptions {
   purpose?: MediaUploadPurpose;
@@ -94,7 +103,9 @@ export const mediaService = {
         try {
           payload = JSON.parse(request.responseText);
         } catch {
-          reject(new ApiError("Server response could not be read", request.status));
+          reject(
+            new ApiError("Server response could not be read", request.status),
+          );
           return;
         }
 

@@ -85,6 +85,59 @@ function groupLines(items: PosItem[]): Array<{
 }
 
 /**
+ * One group's lines with each add-on tucked under the service it hangs off.
+ *
+ * "Extra Handling" arrived in the basket as a line of its own — it has its own
+ * price and it bills as a line — and the cashier read three rows where two
+ * services were sold. It is not a third purchase; it is something done to the
+ * bath.
+ *
+ * MATCHED ON (animal, service), NOT ON A LINE ID. A cart line has no stable
+ * identity — the server rebuilds every line from the payload on each write — so
+ * `parentServiceId` names the CATALOGUE service its parent is for, and a booking
+ * holds at most one row per (animal, service). The booking is already the same
+ * across a group, so the animal and the service settle it.
+ *
+ * AN ORPHAN STAYS A LINE OF ITS OWN, and that is the case this must not lose:
+ * an add-on bought on its own at the till carries no parent at all, and one
+ * whose service was deleted out of the basket has a parent that is no longer
+ * there. Either way it is still billed, and a line that vanished from the screen
+ * while staying on the receipt is the worst outcome available.
+ *
+ * THE ORIGINAL INDEX TRAVELS ON, unchanged — every callback addresses a line by
+ * its position in the cart, and a nested view that renumbered them would delete
+ * the wrong row.
+ */
+function nestAddons(lines: Array<{ item: PosItem; index: number }>): Array<{
+  item: PosItem;
+  index: number;
+  addons: Array<{ item: PosItem; index: number }>;
+}> {
+  const nested = lines.map((line) => ({ ...line, addons: [] as typeof lines }));
+
+  /* Keyed on the PARENT's own service, which is what an add-on points at. */
+  const byPetService = new Map(
+    nested.map((line) => [
+      `${String(line.item.petId ?? "")}|${String(line.item.refId)}`,
+      line,
+    ]),
+  );
+
+  return nested.filter((line) => {
+    if (!line.item.parentServiceId) return true;
+
+    const parent = byPetService.get(
+      `${String(line.item.petId ?? "")}|${String(line.item.parentServiceId)}`,
+    );
+
+    if (!parent || parent === line) return true;
+
+    parent.addons.push({ item: line.item, index: line.index });
+    return false;
+  });
+}
+
+/**
  * The right half of the till: the basket and what it comes to.
  *
  * EVERY FIGURE HERE IS READ, NOT COMPUTED. `runningTotals` comes from the server
@@ -121,7 +174,8 @@ export function PosCart({
   busy: boolean;
   error: string | null;
   onQtyChange: (index: number, qty: string) => void;
-  onRemove: (index: number) => void;
+  /** One line, or a service and the add-ons under it — see `PosCartLine`. */
+  onRemove: (index: number | number[]) => void;
   onItemDiscount: (
     index: number,
     discount: { mode: PosDiscountMode; value: string } | null,
@@ -223,11 +277,12 @@ export function PosCart({
                 </div>
               )}
 
-              {group.lines.map(({ item, index }) => (
+              {nestAddons(group.lines).map(({ item, index, addons }) => (
                 <PosCartLine
                   key={`${item.kind}-${item.refId}-${index}`}
                   item={item}
                   index={index}
+                  addons={addons}
                   disabled={busy}
                   onQtyChange={onQtyChange}
                   onRemove={onRemove}

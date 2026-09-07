@@ -23,11 +23,15 @@ export { BookingPetWorkScreen } from "./components/BookingPetWorkScreen";
 export { BookingCalendarScreen } from "./components/BookingCalendarScreen";
 export { BookingForm } from "./components/BookingForm";
 export { BookingStatusActions } from "./components/BookingStatusActions";
-export { BookingHistoryDialog } from "./components/BookingHistoryDialog";
 export {
   BOOKING_STATUS_ACTIONS,
   canCancel,
+  canReschedule,
   forwardStatuses,
+  hasCompletedWork,
   impliedStatuses,
+  ladderFor,
+  transitionsFor,
+  type BookingLike,
 } from "./statusFlow";
 export { BOOKING_CRUMBS, BOOKINGS_CRUMBS } from "./crumbs";

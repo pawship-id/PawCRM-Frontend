@@ -74,11 +74,19 @@ export interface PetGroupDraft {
   groomerUserId: string;
   services: ServiceDraft[];
   /**
-   * About THIS animal on THIS visit — the exact words `bookingitems.notes` is
-   * documented with. One note per animal, written onto each of that animal's
-   * rows on the way out; see `groupsToItems`.
+   * ─── TWO NOTES, TWO AUDIENCES ─────────────────────────────────────────────
+   *
+   * There was one, and it held operational instructions. A shop wanting to tell
+   * the OWNER something had nowhere to put it but the same box — and whichever
+   * way that box is then treated it is wrong: shown to the customer it leaks,
+   * hidden from them the advice never arrives.
+   *
+   * BOTH ARE PER ANIMAL, asked once on the card and written onto each of that
+   * animal's rows on the way out; see `groupsToItems`.
    */
-  notes: string;
+  internalNotes: string;
+  /** For the owner to read. Staff still write it — see `BookingItem`. */
+  customerNotes: string;
   /** What the owner is handing over with this animal, by name. */
   belongings: string[];
 }
@@ -106,7 +114,8 @@ export function blankGroup(petId = ""): PetGroupDraft {
     petId,
     groomerUserId: UNASSIGNED,
     services: [blankService()],
-    notes: "",
+    internalNotes: "",
+    customerNotes: "",
     belongings: [],
   };
 }
@@ -155,9 +164,19 @@ export function groupsFromBooking(booking: Booking): PetGroupDraft[] {
 
     const group = groupFor(item.petId);
     group.services.push(line);
-    // One note per animal: the rows of one animal carry the same words, so the
-    // first non-empty one is what the card shows.
-    if (!group.notes && item.notes) group.notes = item.notes;
+    /*
+      ONE PAIR PER ANIMAL: the rows of one animal carry the same words, so the
+      first non-empty one of each is what the card shows. The two are collapsed
+      INDEPENDENTLY — a booking whose first row has an internal note and whose
+      second has the customer's must show both, and testing them together would
+      drop whichever the first row happened to lack.
+    */
+    if (!group.internalNotes && item.internalNotes) {
+      group.internalNotes = item.internalNotes;
+    }
+    if (!group.customerNotes && item.customerNotes) {
+      group.customerNotes = item.customerNotes;
+    }
     /*
       THE ANIMAL'S DEFAULT GROOMER, from the first of its rows that names one.
 
@@ -201,13 +220,13 @@ export function groupsFromBooking(booking: Booking): PetGroupDraft[] {
 /**
  * The cards → the flat `items[]` the API takes.
  *
- * THE ANIMAL'S NOTE GOES ON EVERY ROW OF THAT ANIMAL, and that is a real
- * decision rather than a shrug. `bookingitems.notes` is documented as "anything
- * special about THIS animal on THIS visit" — a per-animal fact that happens to
- * be stored per row, because the row is the only thing a visit has one of per
- * animal per service. Asking for it once and writing it to each is what makes
- * the screen match the field's own meaning; asking once per service would put
- * the same sentence in front of somebody three times.
+ * BOTH OF THE ANIMAL'S NOTES GO ON EVERY ROW OF THAT ANIMAL, and that is a real
+ * decision rather than a shrug. They are documented as facts about THIS animal
+ * on THIS visit — per-animal facts that happen to be stored per row, because the
+ * row is the only thing a visit has one of per animal per service. Asking for
+ * each once and writing it to every row is what makes the screen match the
+ * fields' own meaning; asking once per service would put the same sentence in
+ * front of somebody three times.
  *
  * Lines with no service chosen are DROPPED rather than sent empty — a card
  * somebody added and did not fill in is not a row, and the server would refuse
@@ -237,7 +256,10 @@ export function groupsToItems(groups: PetGroupDraft[]): BookingItemInput[] {
         */
         durationMin:
           line.durationMin.trim() === "" ? undefined : Number(line.durationMin),
-        notes: group.notes.trim() === "" ? null : group.notes.trim(),
+        internalNotes:
+          group.internalNotes.trim() === "" ? null : group.internalNotes.trim(),
+        customerNotes:
+          group.customerNotes.trim() === "" ? null : group.customerNotes.trim(),
       })),
   );
 }

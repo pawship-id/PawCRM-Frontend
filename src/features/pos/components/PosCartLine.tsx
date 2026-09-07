@@ -24,6 +24,7 @@ import { PosDiscountPopover } from "./PosDiscountPopover";
 export function PosCartLine({
   item,
   index,
+  addons = [],
   onQtyChange,
   onRemove,
   onDiscountChange,
@@ -31,8 +32,30 @@ export function PosCartLine({
 }: {
   item: PosItem;
   index: number;
+  /**
+   * The add-ons attached to THIS service, drawn inside its line rather than
+   * beside it.
+   *
+   * "Extra Handling" is not a third thing the customer bought — it is something
+   * done to the bath — and a basket that lists it as a line of its own asks the
+   * cashier to check three rows against two services. Each still carries its own
+   * price and its own controls, because each is still billed and may still be
+   * taken off.
+   *
+   * EMPTY FOR EVERYTHING ELSE: retail lines, add-ons themselves (nesting is one
+   * deep by construction — see the booking model), and a service nobody attached
+   * anything to.
+   */
+  addons?: Array<{ item: PosItem; index: number }>;
   onQtyChange: (index: number, qty: string) => void;
-  onRemove: (index: number) => void;
+  /**
+   * Takes lines out — a LIST when a service goes, because its add-ons go with
+   * it. They have no bin of their own, so a service removed on its own would
+   * leave them in the basket as lines nothing can reach: `nestAddons` stands an
+   * add-on whose parent is gone back up as a top-level line, and that line has
+   * no way to be removed either.
+   */
+  onRemove: (index: number | number[]) => void;
   onDiscountChange: (
     index: number,
     discount: { mode: PosDiscountMode; value: string } | null,
@@ -68,21 +91,33 @@ export function PosCartLine({
     <div className="border-b border-border px-3 py-2 last:border-b-0">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
+          {/*
+            THE ANIMAL IN THE TITLE — "Cici - Basic Grooming", the same as the
+            printed sheet.
+
+            It was a sub-line of its own, so on a two-dog visit the two things a
+            cashier pairs up — whose grooming, and how much — sat a row apart.
+            Named here, the top row answers both, and the basket and the struk
+            read the same way.
+
+            A RETAIL LINE HAS NO ANIMAL and keeps its own name.
+          */}
           <span className="block truncate text-sm font-medium text-foreground">
-            {item.name}
+            {item.petName ? `${item.petName} - ${item.name}` : item.name}
           </span>
 
           {/*
-            The animal and the groomer, when the line carries them. This is the
-            traceability the PRD asks for made visible at the till: a cashier who
-            can see "Bruno · Rina" on the line can catch the wrong pet before the
-            receipt prints, which is the only moment it is cheap to catch.
+            NO GROOMER HERE. Who is doing the work lives on the booking's detail
+            screen, which is where it is decided and where it can be changed; a
+            till line is what is being CHARGED for, and the animal is the only
+            part of the attribution a cashier has to check against the customer
+            in front of them.
+
+            THE NAME IS STILL ON THE LINE — `groomerName` is snapshotted onto
+            the sale and travels with it, so commission and attribution are
+            untouched. This is the basket's rendering only, and the receipt drops
+            it too.
           */}
-          {(item.petName || item.groomerName) && (
-            <span className="mt-0.5 block truncate text-xs text-muted">
-              {[item.petName, item.groomerName].filter(Boolean).join(" · ")}
-            </span>
-          )}
 
           {/*
             SAID OUT LOUD, not only on hover. A till is touched, not pointed at,
@@ -111,9 +146,61 @@ export function PosCartLine({
         </div>
 
         <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
+          {/*
+            ITS OWN PRICE, NOT THE PAIR'S — the same rule as the struk. The
+            add-on carries its own figure directly below, so adding it in here
+            would show the same 20.000 twice: once inside this number and once
+            under it. The two screens now agree, and both add up to the same
+            subtotal.
+          */}
           {formatMoney(item.lineTotal)}
         </span>
       </div>
+
+      {/*
+        UNDER THE SERVICE, INDENTED, and with no border of its own — the whole
+        point is that this does not read as another purchase. The left rule ties
+        the run to the service above it, which is what the cashier is checking:
+        "the bath, plus handling".
+
+        EACH KEEPS ITS PRICE, and that price is not folded into the service's
+        figure above — see there. What each does NOT keep is a control of its
+        own: the discount and the bin belong to the service.
+      */}
+      {addons.length > 0 && (
+        <ul className="mt-1.5 ml-1 flex flex-col gap-1 border-l border-border pl-2">
+          {addons.map(({ item: addon, index: addonIndex }) => (
+            <li
+              key={`${addon.refId}-${addonIndex}`}
+              className="flex items-center justify-between gap-2"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-xs text-foreground">
+                  {/* A plus, not a bullet: it says "on top of", which is what an
+                      add-on is and what its price is doing to the total. */}
+                  {`+ ${addon.name}`}
+                </span>
+                {addon.discount && (
+                  <span className="block text-xs tabular-nums text-success">
+                    −{formatMoney(addon.discount.resolvedAmount)}
+                  </span>
+                )}
+              </span>
+
+              {/*
+                NO CONTROLS OF ITS OWN — the discount and the bin belong to the
+                SERVICE, and an add-on is priced and taken off with the thing it
+                is attached to. Two icon buttons per add-on put four controls in
+                a block that sells one grooming, and the two that mattered got
+                harder to find.
+              */}
+              <span className="shrink-0 text-xs tabular-nums text-muted">
+                {formatMoney(addon.lineTotal)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <div className="mt-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1">
@@ -195,7 +282,9 @@ export function PosCartLine({
               className="size-8 text-danger"
               disabled={disabled || locked}
               aria-label={`Hapus ${item.name}`}
-              onClick={() => onRemove(index)}
+              onClick={() =>
+                onRemove([index, ...addons.map((addon) => addon.index)])
+              }
             >
               <Trash2 className="size-4" />
             </Button>

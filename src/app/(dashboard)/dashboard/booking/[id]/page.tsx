@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
+import { Breadcrumb } from "@/components";
 import { BookingDetailScreen, BOOKING_CRUMBS } from "@/features/booking";
-import { PageHeading } from "@/features/purchasing";
 import { RequirePermission } from "@/features/permissions";
 
 export const metadata: Metadata = { title: "Detail Booking · Buloo" };
@@ -30,12 +30,22 @@ export default async function BookingDetailPage({
 
   return (
     <RequirePermission feature="bookings" action="read">
-      <PageHeading
-        crumbs={[...BOOKING_CRUMBS, { label: "Detail" }]}
-        title="Detail booking"
-      >
-        Satu kunjungan, dengan tiap hewan dan status tagihannya masing-masing.
-      </PageHeading>
+      {/*
+        ─── THE CRUMB ONLY. THE SCREEN OWNS THE HEADING ──────────────────────
+
+        This used to be a `PageHeading` titled "Detail booking" with a sentence
+        under it — and the screen rendered its OWN `<h1>` with the booking number
+        below that. Two h1s, and four stacked lines of heading before any content,
+        with the one thing that identifies the document — BK-260905-003 — arriving
+        fourth.
+
+        A DOCUMENT'S TITLE IS ITS NUMBER. "Detail booking" is a category label
+        that stops adding anything the moment the number is on screen, and the
+        breadcrumb already says which module this is. So the crumb stays here,
+        where it is static and server-rendered, and the number is the heading —
+        which only the screen can know, because only the screen has fetched it.
+      */}
+      <Breadcrumb items={[...BOOKING_CRUMBS, { label: "Detail" }]} />
       <BookingDetailScreen id={id} />
     </RequirePermission>
   );
