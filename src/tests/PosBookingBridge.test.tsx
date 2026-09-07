@@ -1397,7 +1397,7 @@ describe("PosScreen — a service tapped in the grid", () => {
     const [, body] = mockedPos.updateCart.mock.calls[0];
 
     /* Two lines, the service first — the server files the second under it. */
-    expect(body.items.map((item: { refId: string }) => item.refId)).toEqual([
+    expect((body.items ?? []).map((item) => item.refId)).toEqual([
       "svc-1",
       "svc-addon",
     ]);
