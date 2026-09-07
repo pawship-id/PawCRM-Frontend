@@ -15,13 +15,26 @@ import {
 } from "@/components/ui/dialog";
 import { ApiError } from "@/services/api-error";
 import { petService } from "@/services/pet.service";
-import type { Pet, PetSpecies } from "@/types/api";
+import type { Pet, PetFurType, PetSize, PetSpecies } from "@/types/api";
 
 const NAME_MAX_LENGTH = 80;
 
 const SPECIES_OPTIONS: { value: PetSpecies; label: string }[] = [
   { value: "cat", label: "Kucing" },
   { value: "dog", label: "Anjing" },
+];
+
+/* The same words and the same order as the full form's — an animal is described
+   one way wherever it is described. See PetForm. */
+const SIZE_OPTIONS: { value: PetSize; label: string }[] = [
+  { value: "small", label: "Kecil" },
+  { value: "medium", label: "Sedang" },
+  { value: "large", label: "Besar" },
+];
+
+const FUR_TYPE_OPTIONS: { value: PetFurType; label: string }[] = [
+  { value: "long hair", label: "Berbulu panjang" },
+  { value: "short hair", label: "Berbulu pendek" },
 ];
 
 /**
@@ -33,11 +46,28 @@ const SPECIES_OPTIONS: { value: PetSpecies; label: string }[] = [
  * half-built cart. It lands in Fase 1 because it belongs to the pets feature and
  * because the customer detail screen wants it too.
  *
- * TWO FIELDS, NOT NINE. Name and species are what the API requires and what
- * somebody at a counter with a dog on the lead can actually answer; everything
- * else — ras, berat, microchip — is filled in later from the full form, exactly
- * as the PRD says a quick-added customer's profile is. A quick-add that asked
- * for a birth date would be the full form wearing a dialog.
+ * FOUR FIELDS, NOT NINE — and it was two until 7 September 2026.
+ *
+ * ─── WHY SIZE AND COAT EARNED THEIR PLACE ──────────────────────────────────
+ *
+ * The rule was "name and species, everything else later", and it was right while
+ * everything else was `ras`, `berat`, `microchip` — facts nobody at a counter
+ * with a dog on the lead needs to answer to ring up a sale.
+ *
+ * SIZE AND COAT ARE NOT THAT. They are what a variant-priced grooming is priced
+ * BY, so a pet quick-added without them cannot be quoted at all: the till adds
+ * the animal, then refuses the service it was added for, and sends the cashier
+ * to the full form anyway — with the customer still standing there. The two
+ * fields that remove that dead end are cheaper on this dialog than the trip they
+ * replace.
+ *
+ * BOTH OPTIONAL, because a shop whose services are flat-priced never needs
+ * either, and a required field with nothing to say is a field that gets filled
+ * in wrong. The screen that DOES need them says so at the moment it needs them —
+ * see `PetFixLink`.
+ *
+ * NOTHING ELSE JOINS THEM without the same argument: a quick-add that asked for
+ * a birth date would be the full form wearing a dialog.
  *
  * THE OWNER IS A PROP, not a picker. Every caller already knows whose animal it
  * is: the POS has a selected pelanggan, and the customer screen IS one. Offering
@@ -63,6 +93,8 @@ export function PetQuickAddDialog({
 }) {
   const [name, setName] = useState("");
   const [species, setSpecies] = useState<PetSpecies | "">("");
+  const [size, setSize] = useState<PetSize | "">("");
+  const [furType, setFurType] = useState<PetFurType | "">("");
   const [nameError, setNameError] = useState<string | null>(null);
   const [speciesError, setSpeciesError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -71,6 +103,8 @@ export function PetQuickAddDialog({
   function reset() {
     setName("");
     setSpecies("");
+    setSize("");
+    setFurType("");
     setNameError(null);
     setSpeciesError(null);
     setFormError(null);
@@ -113,6 +147,10 @@ export function PetQuickAddDialog({
         customerId,
         name: trimmed,
         species: species as PetSpecies,
+        /* NULL, NOT OMITTED, when nothing was chosen — "belum diisi" is a real
+           state the pricing rule reads, and the API says so explicitly. */
+        size: size === "" ? null : size,
+        furType: furType === "" ? null : furType,
       });
 
       onCreated(pet);
@@ -138,7 +176,7 @@ export function PetQuickAddDialog({
             <DialogDescription>
               {customerName
                 ? `Didaftarkan atas nama ${customerName}. Ciri-ciri lainnya bisa dilengkapi nanti.`
-                : "Cukup nama dan jenisnya dulu. Ciri-ciri lainnya bisa dilengkapi nanti."}
+                : "Ciri-ciri lainnya bisa dilengkapi nanti."}
             </DialogDescription>
           </DialogHeader>
 
@@ -173,6 +211,31 @@ export function PetQuickAddDialog({
             disabled={saving}
             required
           />
+
+          {/*
+            SIDE BY SIDE, AND OPTIONAL. They sit under the two required fields
+            because that is the order somebody answers them in — what is it
+            called, what is it, then what is it like — and they are the two the
+            price may depend on. A shop with flat prices leaves both alone.
+          */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <SelectField
+              label="Ukuran"
+              value={size}
+              onChange={(next) => setSize(next as PetSize)}
+              options={SIZE_OPTIONS}
+              placeholder="Pilih ukuran"
+              disabled={saving}
+            />
+            <SelectField
+              label="Jenis bulu"
+              value={furType}
+              onChange={(next) => setFurType(next as PetFurType)}
+              options={FUR_TYPE_OPTIONS}
+              placeholder="Pilih jenis bulu"
+              disabled={saving}
+            />
+          </div>
 
           <DialogFooter>
             <Button

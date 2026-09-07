@@ -32,14 +32,33 @@ const toast = swalToast as jest.MockedFunction<typeof swalToast>;
  *     invoice, so a role that raises bills and does not run the schedule still
  *     sees what is outstanding — only the two actions need the grant.
  */
+/**
+ * ⚠️ THE RUNG IS THE ANIMAL'S — PCR-042. `InvoiceBooking` carries no `status` at
+ * all any more, because a visit where Miko was groomed and Coco was sent home is
+ * in two states at once and a single word cannot say which.
+ *
+ * `petItemId` IS THE KEY, not `petId`: it is the `bookingitems` document's own
+ * id, and it is what stays unique when a pre-migration visit holds two documents
+ * for the same animal.
+ */
+const pet = (
+  overrides: Partial<InvoiceBooking["pets"][number]> = {},
+): InvoiceBooking["pets"][number] => ({
+  petItemId: "bi1",
+  petId: "pet1",
+  petName: "Miko",
+  status: "confirmed",
+  ...overrides,
+});
+
 const booking = (overrides: Partial<InvoiceBooking> = {}): InvoiceBooking => ({
   _id: "bk1",
   bookingNumber: "BK-260830-001",
-  status: "confirmed",
   origin: "invoice_adhoc",
   scheduledAt: "2026-08-30T02:00:00.000Z",
   petId: "pet1",
   petName: "Miko",
+  pets: [pet()],
   items: [
     {
       serviceId: "svc1",
@@ -74,7 +93,7 @@ beforeEach(() => {
     totalPages: 1,
   });
   (bookingService.assignGroomer as jest.Mock).mockResolvedValue({
-    status: "confirmed",
+    pets: [pet()],
     items: [
       {
         serviceId: "svc1",
@@ -86,7 +105,7 @@ beforeEach(() => {
     ],
   });
   (bookingService.changeStatus as jest.Mock).mockResolvedValue({
-    status: "completed",
+    pets: [pet({ status: "completed" })],
     items: [],
   });
 });
@@ -201,7 +220,7 @@ describe("what it lets somebody do", () => {
 
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
     expect(onChanged).toHaveBeenCalledWith("bk1", {
-      status: "completed",
+      pets: [pet({ status: "completed" })],
       items: [],
     });
   });
@@ -300,9 +319,9 @@ describe("what it refuses to offer", () => {
     offering them would be two controls that only ever answer 409.
   */
   it.each(["completed", "cancelled"] as const)(
-    "offers no actions on a %s booking",
+    "offers no actions when every animal is %s",
     async (status) => {
-      open([booking({ status })]);
+      open([booking({ pets: [pet({ status })] })]);
 
       expect(await screen.findByText("Miko")).toBeInTheDocument();
       expect(
@@ -311,6 +330,34 @@ describe("what it refuses to offer", () => {
       expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     },
   );
+
+  /*
+    ⚠️ THE INVERSE, AND THE REASON THIS IS READ PER ANIMAL — PCR-042. Asking one
+    summary word would grey out the buttons on exactly the visit that still needs
+    them: Miko is finished, Coco has not been touched, and somebody has to be
+    able to finish Coco.
+  */
+  it("keeps the actions while any one animal is still open", async () => {
+    open([
+      booking({
+        pets: [
+          pet({ status: "completed" }),
+          pet({
+            petItemId: "bi2",
+            petId: "pet2",
+            petName: "Coco",
+            status: "confirmed",
+          }),
+        ],
+      }),
+    ]);
+
+    expect(
+      await screen.findByRole("button", { name: "Tandai selesai" }),
+    ).toBeInTheDocument();
+    // NAMED, because two badges with no names is two words and no subjects.
+    expect(screen.getByText("Coco")).toBeInTheDocument();
+  });
 
   /*
     THE PANEL STILL DRAWS. Its data rides in with the invoice, so a role holding

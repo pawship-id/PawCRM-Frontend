@@ -174,3 +174,59 @@ describe("the stock badge", () => {
     expect(screen.getByRole("button", { name: /Tambah/ })).toBeEnabled();
   });
 });
+
+/*
+  ─── A SERVICE PRICED BY THE ANIMAL HAS NO SINGLE PRICE ────────────────────
+
+  The grid is drawn before anybody has chosen a dog, so a variant-priced grooming
+  has no figure to show and the tile read "—". Honest and useless: a cashier
+  cannot tell an unpriced service from one that depends on the animal, and has
+  nothing to quote over the counter.
+*/
+describe("PosProductCard — a service priced by the animal", () => {
+  const grooming = (variants: Array<{ price: string }>) =>
+    item({
+      kind: "service",
+      _id: "svc-1",
+      name: "Basic Grooming",
+      code: "GRM-BSC",
+      barcode: null,
+      price: null,
+      stock: null,
+      hasVariants: true,
+      variantAxes: ["sizeCategory"],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      variants: variants as any,
+    });
+
+  it("shows the range its variants span", () => {
+    render(
+      <PosProductCard
+        item={grooming([{ price: "140000.0000" }, { price: "120000.0000" }])}
+        search=""
+        onAdd={jest.fn()}
+        onExpand={jest.fn()}
+      />,
+    );
+
+    /*
+      THE CURRENCY ONCE, and the low end FIRST — sorted in minor units, because
+      "90000.0000" sorts after "120000.0000" as a string and the range would read
+      backwards on exactly the catalogue whose cheapest variant has fewer digits.
+    */
+    expect(screen.getByText("Rp 120.000–140.000")).toBeInTheDocument();
+  });
+
+  it("collapses to one figure when every variant costs the same", () => {
+    render(
+      <PosProductCard
+        item={grooming([{ price: "120000.0000" }, { price: "120000.0000" }])}
+        search=""
+        onAdd={jest.fn()}
+        onExpand={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Rp 120.000")).toBeInTheDocument();
+  });
+});

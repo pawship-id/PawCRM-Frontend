@@ -13,8 +13,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { PetQuickAddDialog } from "@/features/pets";
+import { PetFixLink, PetQuickAddDialog } from "@/features/pets";
+import { Checkbox } from "@/components/ui/checkbox";
 import { petService } from "@/services/pet.service";
+import { formatMoney } from "@/utils/decimal";
+import {
+  AXIS_LABEL,
+  priceForPet,
+  variantLabelForPet,
+} from "@/utils/serviceVariant";
 import type { Pet, PosCatalogItem } from "@/types/api";
 
 /** The API's page cap. Asking for more is a 400, not a bigger page. */
@@ -56,7 +63,14 @@ export function PosServicePetDialog({
   customerName?: string;
   /** True while the cart write this dialog started is still in flight. */
   busy?: boolean;
-  onPick: (pet: Pet) => void;
+  /**
+   * The animal, and the add-ons the cashier ticked for it.
+   *
+   * A LIST, because "Extra Handling" and "Parfum" are two charges on one bath —
+   * the till adds them as their own lines, and the server nests them under the
+   * service they were sold with.
+   */
+  onPick: (pet: Pet, addonServiceIds: string[]) => void;
   onOpenChange: (open: boolean) => void;
 }) {
   const [pets, setPets] = useState<Pet[]>([]);
@@ -65,8 +79,44 @@ export function PosServicePetDialog({
   const [error, setError] = useState<string | null>(null);
   const [addingPet, setAddingPet] = useState(false);
   const [nonce, setNonce] = useState(0);
+  const [addons, setAddons] = useState<Set<string>>(new Set());
 
   const open = service !== null;
+  const chosen = pets.find((candidate) => candidate._id === petId) ?? null;
+  const offered = service?.addons ?? [];
+
+  /*
+    ─── WHAT IT COSTS FOR THIS ANIMAL, BEFORE IT IS ADDED ────────────────────
+
+    A service priced by size has no price of its own, so the tile draws an
+    em-dash and the cashier could not find out what a grooming cost until it was
+    already in the basket. The figure lands the moment an animal is chosen,
+    because that is the moment the question has an answer.
+
+    A PREVIEW, NOT THE CHARGE. The server re-resolves it from the same pet on
+    every cart write and nothing here is ever sent as a price — see
+    `utils/serviceVariant.ts`. What it buys is the cashier knowing before they
+    tap, and a refusal that says WHICH fact is missing instead of a 400 after
+    the fact.
+  */
+  const quote = priceForPet(service, chosen);
+  /*
+    WHICH VARIANT THE FIGURE CAME FROM — "Kucing · Kecil · Bulu pendek".
+
+    The number alone cannot be checked. A cashier looking at Rp 120.000 has no
+    way to tell whether the till read the animal as small or as medium, and the
+    first time that matters is when a customer disputes the bill. Naming the
+    combination makes the price auditable at the counter, in the second it is
+    cheap to catch.
+
+    NULL ON A FLAT-PRICED SERVICE — there is no variant to name, and a caption
+    under every ordinary grooming is noise.
+  */
+  const variantLabel = variantLabelForPet(service, chosen);
+  const addonQuotes = offered.map((addon) => ({
+    addon,
+    quote: priceForPet(addon, chosen),
+  }));
 
   useEffect(() => {
     if (!open) return;
@@ -98,17 +148,85 @@ export function PosServicePetDialog({
     };
   }, [open, customerId, nonce]);
 
+  /*
+    ─── THE FACT THEY JUST WENT AND FILLED IN ─────────────────────────────────
+
+    `PetFixLink` sends the cashier to the animal's form in another tab, and the
+    price here depends on exactly the field they went to fill in. Coming back to
+    a dialog still saying "Lengkapi jenis bulu" — about a coat length they had
+    just typed — reads as the till being broken, and the only way out was to
+    close the dialog and start again.
+
+    RE-ASKED WHEN THE TAB COMES BACK, which is the moment the answer may have
+    changed and the only one worth spending a request on. Polling would ask all
+    day for a fact that changes twice a year.
+
+    QUIETLY. No spinner and no reset: the list is replaced under the cashier's
+    feet, and the animal they had chosen stays chosen. Reusing the effect above
+    would blank the selection every time they tabbed back — including on the
+    ordinary visit where nothing was edited at all.
+
+    A FAILURE IS SWALLOWED, deliberately. What is on screen is still the truth
+    as of a moment ago; replacing it with "tidak bisa dimuat" because a
+    background refresh failed would take a working dialog away from somebody who
+    did not ask for one.
+  */
+  useEffect(() => {
+    if (!open) return;
+
+    let active = true;
+
+    const refresh = () => {
+      if (document.visibilityState !== "visible") return;
+
+      petService
+        .list({ customerId, isActive: true, limit: FETCH_LIMIT })
+        .then((result) => {
+          if (active) setPets(result.items);
+        })
+        .catch(() => {});
+    };
+
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("focus", refresh);
+
+    return () => {
+      active = false;
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [open, customerId]);
+
   function handleOpenChange(next: boolean) {
     if (!next) {
       setPetId("");
       setPets([]);
+      setAddons(new Set());
     }
     onOpenChange(next);
   }
 
+  /*
+    THE TICKS ARE CLEARED WHEN THE ANIMAL CHANGES. An add-on priced by size costs
+    a different amount for the next dog, and a box left ticked across the switch
+    is a charge nobody re-read.
+  */
+  function pickPet(id: string) {
+    setPetId(id);
+    setAddons(new Set());
+  }
+
+  function toggleAddon(id: string) {
+    setAddons((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   function confirm() {
-    const pet = pets.find((candidate) => candidate._id === petId);
-    if (pet) onPick(pet);
+    if (chosen) onPick(chosen, [...addons]);
   }
 
   return (
@@ -152,7 +270,7 @@ export function PosServicePetDialog({
                       variant={petId === pet._id ? "default" : "secondary"}
                       aria-pressed={petId === pet._id}
                       disabled={busy}
-                      onClick={() => setPetId(pet._id)}
+                      onClick={() => pickPet(pet._id)}
                     >
                       {pet.name}
                     </Button>
@@ -172,6 +290,108 @@ export function PosServicePetDialog({
                   Tambah hewan
                 </Button>
               </div>
+
+              {/*
+                THE PRICE, ONCE AN ANIMAL IS CHOSEN. Before that there is nothing
+                to say: a service priced by size costs a different amount for
+                every dog, and a figure shown before the question is answered
+                would be one of them picked at random.
+              */}
+              {chosen && (
+                <div className="rounded-lg border border-border p-3">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="min-w-0 text-sm text-muted">
+                      Harga untuk {chosen.name}
+                    </span>
+                    <span className="shrink-0 text-base font-semibold tabular-nums text-foreground">
+                      {quote.price ? formatMoney(quote.price) : "—"}
+                    </span>
+                  </div>
+
+                  {/* Under the name, not beside the figure: it explains WHICH
+                      animal was read, which is what the name above is about. */}
+                  {variantLabel && (
+                    <p className="mt-0.5 text-xs text-muted">{variantLabel}</p>
+                  )}
+
+                  {/*
+                    IT SAYS WHICH FACT IS MISSING, AND WHERE TO GO AND FIX IT.
+
+                    "Belum ada harga" is a dead end. Naming the fact is better;
+                    naming it and linking to the one form that holds it is the
+                    step after. `PetFixLink` opens the animal in a NEW TAB — the
+                    cashier is mid-basket, and navigating away to fill in a coat
+                    length would throw that away.
+
+                    The server refuses on the same grounds and in the same words,
+                    so meeting it here is one round trip and one screen earlier.
+
+                    A MISSING VARIANT IS NOT THE ANIMAL'S FAULT, so that branch
+                    points at the catalogue instead — there is nothing on the pet
+                    to fix.
+                  */}
+                  {!quote.price && (
+                    <p className="mt-1 text-xs text-warning">
+                      {quote.missingAxis ? (
+                        <>
+                          Harganya ditentukan dari{" "}
+                          {AXIS_LABEL[quote.missingAxis]}.{" "}
+                          <PetFixLink pet={chosen} axis={quote.missingAxis} />
+                        </>
+                      ) : (
+                        "Layanan ini belum punya harga untuk hewan ini. Tambahkan variannya di katalog."
+                      )}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/*
+                THE ADD-ONS THIS SERVICE OFFERS — asked here because this is the
+                only moment the answer is cheap. An add-on tapped separately off
+                the grid is a second trip through this dialog for something that
+                is done to the bath in front of them.
+
+                ONLY AFTER AN ANIMAL IS CHOSEN: an add-on may be priced by size
+                too, so the figures beside these boxes have no meaning until
+                there is a dog to price them for.
+              */}
+              {chosen && addonQuotes.length > 0 && (
+                <fieldset className="flex flex-col gap-2 rounded-lg border border-border p-3">
+                  <legend className="px-1 text-xs font-medium text-muted">
+                    Tambahan (opsional)
+                  </legend>
+
+                  {addonQuotes.map(({ addon, quote: addonQuote }) => (
+                    <label
+                      key={addon._id}
+                      className="flex cursor-pointer items-center gap-3"
+                    >
+                      <Checkbox
+                        checked={addons.has(addon._id)}
+                        /*
+                          AN ADD-ON NOBODY CAN PRICE CANNOT BE TICKED. The server
+                          would refuse the whole basket on it, and the refusal
+                          would name a service the cashier did not think they had
+                          added.
+                        */
+                        disabled={busy || !addonQuote.price}
+                        onCheckedChange={() => toggleAddon(addon._id)}
+                      />
+                      <span className="flex min-w-0 flex-1 items-baseline justify-between gap-2">
+                        <span className="truncate text-sm text-foreground">
+                          {addon.name}
+                        </span>
+                        <span className="shrink-0 text-sm tabular-nums text-muted">
+                          {addonQuote.price
+                            ? `+ ${formatMoney(addonQuote.price)}`
+                            : "—"}
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </fieldset>
+              )}
             </div>
           )}
 
@@ -190,7 +410,13 @@ export function PosServicePetDialog({
                 A SERVICE WITHOUT AN ANIMAL IS WHAT THIS DIALOG EXISTS TO STOP,
                 so there is no way past it but choosing one or backing out.
               */
-              disabled={busy || !petId}
+              /*
+                AND NOT WITHOUT A PRICE. The server refuses a service it cannot
+                price for this animal, so offering the button here would build a
+                basket that fails at the write — with an error naming an axis
+                nobody was asked about.
+              */
+              disabled={busy || !petId || !quote.price}
               onClick={confirm}
             >
               {busy ? "Menambahkan…" : "Tambah ke keranjang"}

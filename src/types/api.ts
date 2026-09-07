@@ -1436,6 +1436,22 @@ export type PosStockState = "ok" | "low" | "out";
  * carry null, because a badge saying "in stock" on a grooming invites the
  * question of how many are left.
  */
+/**
+ * An add-on a service may be sold with, priced the same way the service is.
+ *
+ * ⚠️ THE SAME THREE FIELDS `Service` CARRIES, and deliberately the same types —
+ * `priceForPet` takes either, so the till and the booking form resolve a price
+ * through one function rather than two that can drift.
+ */
+export interface PosCatalogAddon {
+  _id: string;
+  name: string;
+  price: string | null;
+  hasVariants: boolean;
+  variantAxes: ServiceVariantAxis[];
+  variants: ServiceVariant[];
+}
+
 export interface PosCatalogItem {
   kind: PosItemKind;
   _id: string;
@@ -1488,6 +1504,34 @@ export interface PosCatalogItem {
   isConsignment?: boolean;
   /** Null unless this is a parent. */
   variantCount: number | null;
+  /**
+   * ─── WHAT A SERVICE COSTS DEPENDS ON THE ANIMAL ──────────────────────────
+   *
+   * A service in variant mode carries NO top-level `price` — the axes it varies
+   * by are the pet's own facts (species, size, coat), so the figure is looked up
+   * from the animal on the table. Without these the tile drew an em-dash where a
+   * price goes and the cashier could not find out what a grooming cost until it
+   * was already in the basket.
+   *
+   * ⚠️ NOT `variantCount`, which is a PRODUCT parent's count of things to sell. A
+   * service's variants are a pricing axis, not separate items.
+   *
+   * Absent on every product tile and on a server older than this field.
+   */
+  hasVariants?: boolean;
+  variantAxes?: ServiceVariantAxis[];
+  variants?: ServiceVariant[];
+  /**
+   * The add-ons this service may be sold with, resolved to names and prices.
+   *
+   * ONLY THE ONES THAT STILL EXIST AND ARE STILL OFFERED — a service retired
+   * since it was attached is dropped rather than listed and refused, because a
+   * checkbox the server will reject is worse than one that is not there.
+   *
+   * Each is the SAME shape as a main service, so an add-on may itself be priced
+   * by the animal. Empty on a service nobody attached anything to.
+   */
+  addons?: PosCatalogAddon[];
   stock: { qty: string; state: PosStockState } | null;
   /**
    * WHETHER THE TILL MAY ADD THIS RIGHT NOW — which is NOT `stock.state !==

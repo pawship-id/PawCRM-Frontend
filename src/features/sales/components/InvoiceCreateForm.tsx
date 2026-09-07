@@ -29,6 +29,7 @@ import { ApiError } from "@/services/api-error";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
 import { petService } from "@/services/pet.service";
 import { formatMoney } from "@/utils/decimal";
+import { AXIS_LABEL, priceForPet } from "@/utils/serviceVariant";
 import type {
   Booking,
   CreateInvoiceItemInput,
@@ -267,7 +268,13 @@ export function InvoiceCreateForm() {
           : null,
         lookups.tax,
       ),
-    [lines, bookingLines, invoiceDiscountMode, invoiceDiscountValue, lookups.tax],
+    [
+      lines,
+      bookingLines,
+      invoiceDiscountMode,
+      invoiceDiscountValue,
+      lookups.tax,
+    ],
   );
 
   /**
@@ -304,6 +311,31 @@ export function InvoiceCreateForm() {
         ? "Pelanggan ini belum punya hewan — daftarkan dulu di Master Data."
         : "Ada baris jasa yang belum dipilih hewannya.";
     }
+
+    /*
+      A LINE NOBODY CAN PRICE IS BLOCKED HERE, not at the server. The animal is
+      chosen and the service is priced by a fact it does not carry — a size
+      nobody recorded — so the save would come back
+      `items[0].unitPrice is not a valid amount`, about a field the person
+      filling this form never touched. Naming the animal and the fact is the
+      difference between a dead end and a next step.
+    */
+    const unpriced = lines.find(
+      (line) => line.kind === "service" && line.petId && line.unitPrice === "0",
+    );
+
+    if (unpriced) {
+      const pet = pets.items.find((one) => one._id === unpriced.petId);
+      const missing = priceForPet(
+        lookups.services.find((one) => one._id === unpriced.refId),
+        pet,
+      ).missingAxis;
+
+      return missing
+        ? `Lengkapi ${AXIS_LABEL[missing]} ${pet?.name ?? "hewannya"} dulu — harga '${unpriced.name}' ditentukan dari situ.`
+        : `'${unpriced.name}' belum punya harga untuk ${pet?.name ?? "hewan ini"}. Tambahkan variannya di katalog.`;
+    }
+
     return null;
   })();
 
@@ -324,13 +356,16 @@ export function InvoiceCreateForm() {
         kind,
         refId,
         name: found.name,
-        sku: kind === "product" ? ((found as { sku?: string }).sku ?? null) : null,
+        sku:
+          kind === "product" ? ((found as { sku?: string }).sku ?? null) : null,
         // Read from the catalogue and shown read-only — the same figure the
         // server will read again when it prices the invoice.
-        unitPrice:
-          kind === "product"
-            ? String((found as { sellPrice?: string }).sellPrice ?? "0")
-            : String((found as { price?: string }).price ?? "0"),
+        /*
+          NOUGHT UNTIL AN ANIMAL IS CHOSEN, for a service priced by one. The row
+          draws an em-dash rather than "Rp 0" — see the Harga cell — and
+          `patchLine` re-derives this the moment the pet is picked.
+        */
+        unitPrice: priceOfLine({ kind, refId, petId: "" }),
         qty: "1",
         discountMode: "percent",
         discountValue: "",
@@ -340,9 +375,51 @@ export function InvoiceCreateForm() {
     setPicked("");
   }
 
+  /**
+   * What a service costs FOR ONE ANIMAL — flat, or the variant matching its
+   * species, size and coat.
+   *
+   * ─── A PRICE SNAPSHOTTED WHEN THE LINE WAS ADDED CANNOT BE RIGHT ───────────
+   *
+   * A service in variant mode carries no price of its own, and the animal is
+   * chosen AFTER the line is added — so `found.price ?? "0"` wrote nought, the
+   * row read Rp 0, and saving failed with
+   * `items[0].unitPrice is not a valid amount`: a message about a field nobody
+   * filled in. The figure has to be re-derived the moment the pet changes.
+   *
+   * A PREVIEW. The server prices the line again from the same animal, through
+   * the same rule — see `utils/serviceVariant.ts`.
+   */
+  function priceOfLine(line: Pick<DraftLine, "kind" | "refId" | "petId">) {
+    if (line.kind === "product") {
+      const product = lookups.products.find((one) => one._id === line.refId);
+      return String(product?.sellPrice ?? "0");
+    }
+
+    const service = lookups.services.find((one) => one._id === line.refId);
+    const pet = pets.items.find((one) => one._id === line.petId);
+
+    /* "0" KEEPS THE ROW ARITHMETIC HONEST while the answer is unknown — the row
+       shows an em-dash of its own, and the save is blocked below. */
+    return priceForPet(service, pet).price ?? "0";
+  }
+
   function patchLine(index: number, patch: Partial<DraftLine>) {
     setLines((current) =>
-      current.map((line, at) => (at === index ? { ...line, ...patch } : line)),
+      current.map((line, at) => {
+        if (at !== index) return line;
+
+        const next = { ...line, ...patch };
+
+        /*
+          RE-PRICED WHEN THE ANIMAL CHANGES, because for a variant service that
+          IS the price. Products are unaffected — theirs does not depend on a pet
+          and `priceOfLine` reads the catalogue for them either way.
+        */
+        return patch.petId === undefined
+          ? next
+          : { ...next, unitPrice: priceOfLine(next) };
+      }),
     );
   }
 
@@ -621,8 +698,8 @@ export function InvoiceCreateForm() {
 
           {lines.length === 0 ? (
             <p className="rounded-xl border border-border bg-surface px-4 py-6 text-center text-sm text-muted">
-              Belum ada baris. Pilih barang atau jasa di atas untuk menambah yang
-              pertama.
+              Belum ada baris. Pilih barang atau jasa di atas untuk menambah
+              yang pertama.
             </p>
           ) : (
             <div className="overflow-x-auto">
@@ -633,8 +710,20 @@ export function InvoiceCreateForm() {
                     {/* ONLY WHEN THERE IS A SERVICE ON THE BILL. A column of
                         dashes on an invoice for two bags of food is a question
                         the reader never asked. */}
+                    {/*
+                      THE ASTERISK BELONGS TO THE COLUMN, not to each cell.
+
+                      `FilterField` draws it beside a label, and the control in
+                      this row is passed `label=""` — the column header IS its
+                      visible label. So `required` produced a lone red `*`
+                      floating above every pet select, marking nothing. It says
+                      the same thing once, where the name is.
+                    */}
                     {hasServiceLine && (
-                      <TableHead className="w-44">Hewan</TableHead>
+                      <TableHead className="w-44">
+                        Hewan
+                        <span className="text-danger"> *</span>
+                      </TableHead>
                     )}
                     <TableHead className="text-right">Harga</TableHead>
                     <TableHead className="w-28">Jumlah</TableHead>
@@ -677,7 +766,6 @@ export function InvoiceCreateForm() {
                               ariaLabel={`Hewan untuk ${line.name}`}
                               value={line.petId}
                               options={petOptions}
-                              required
                               placeholder={
                                 !customerId
                                   ? "Pilih pelanggan dulu"
@@ -704,7 +792,18 @@ export function InvoiceCreateForm() {
                       {/* READ-ONLY, and it is a rule: a price a client can set is
                           a discount nobody approved. */}
                       <TableCell className="text-right tabular-nums">
-                        {formatMoney(line.unitPrice)}
+                        {/*
+                          AN EM-DASH, NOT "Rp 0", while a variant service has no
+                          animal on its line. Nought is a price somebody could
+                          read as free; the dash says the question has not been
+                          answered yet, and the Hewan cell beside it is the
+                          question.
+                        */}
+                        {line.kind === "service" && line.unitPrice === "0" ? (
+                          <span className="text-muted">—</span>
+                        ) : (
+                          formatMoney(line.unitPrice)
+                        )}
                       </TableCell>
 
                       <TableCell>
@@ -828,7 +927,9 @@ export function InvoiceCreateForm() {
             <dl className="flex flex-col gap-2 text-sm">
               <div className="flex justify-between">
                 <dt className="text-muted">Subtotal</dt>
-                <dd className="tabular-nums">{formatMoney(preview.subtotal)}</dd>
+                <dd className="tabular-nums">
+                  {formatMoney(preview.subtotal)}
+                </dd>
               </div>
               <div className="flex justify-between">
                 <dt className="text-muted">Diskon baris</dt>
