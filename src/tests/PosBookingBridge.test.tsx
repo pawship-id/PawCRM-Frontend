@@ -1262,12 +1262,93 @@ describe("PosScreen — a service tapped in the grid", () => {
     await tapTile(user);
     await screen.findByRole("heading", { name: /untuk hewan yang mana/i });
 
-    expect(
-      await screen.findByText(/lengkapi ukuran bruno/i),
-    ).toBeInTheDocument();
+    /*
+      AND IT IS A WAY OUT, not just a refusal. Naming the fact is better than
+      "belum ada harga"; naming it AND linking to the one form that holds it is
+      the step after — in a NEW TAB, because the cashier is mid-basket and
+      navigating away to fill in a size would throw that away.
+    */
+    const fix = await screen.findByRole("link", {
+      name: /lengkapi ukuran bruno/i,
+    });
+
+    expect(fix).toHaveAttribute(
+      "href",
+      `/dashboard/master/pets/${PET_ID}/edit`,
+    );
+    expect(fix).toHaveAttribute("target", "_blank");
+
     expect(
       screen.getByRole("button", { name: /tambah ke keranjang/i }),
     ).toBeDisabled();
+  });
+
+  /*
+    ─── THE FACT THEY JUST WENT AND FILLED IN ─────────────────────────────────
+
+    The link sends the cashier to the animal's form in another tab, and the price
+    here depends on exactly the field they went to fill in. Coming back to a
+    dialog still saying "Lengkapi ukuran" — about a size they had just typed —
+    reads as the till being broken, and the only way out was to close the dialog
+    and start again.
+
+    RE-ASKED WHEN THE TAB COMES BACK, quietly: the animal that was chosen stays
+    chosen, and nothing about the ordinary visit — where nobody edited anything —
+    changes on screen.
+  */
+  it("picks up the animal's new facts when the tab comes back", async () => {
+    mockedPos.catalog.mockResolvedValue({
+      items: [
+        {
+          ...SERVICE_TILE,
+          price: null,
+          hasVariants: true,
+          variantAxes: ["sizeCategory"],
+          variants: [
+            {
+              petType: null,
+              sizeCategory: "large",
+              furType: null,
+              price: "140000.0000",
+            },
+          ],
+        },
+      ],
+      pagination: { page: 1, limit: 8, total: 1, totalPages: 1 },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (petService as any).list.mockResolvedValue({
+      /* No size yet — the cashier is about to go and record one. */
+      items: [{ _id: PET_ID, name: "Bruno", size: null }],
+      pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+    });
+
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await pickCustomer(user);
+    await tapTile(user);
+    await screen.findByRole("heading", { name: /untuk hewan yang mana/i });
+    await screen.findByRole("link", { name: /lengkapi ukuran bruno/i });
+
+    /* Filled in on the other tab. */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (petService as any).list.mockResolvedValue({
+      items: [{ _id: PET_ID, name: "Bruno", size: "large" }],
+      pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+    });
+
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    expect(await screen.findByText("Rp 140.000")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /lengkapi ukuran bruno/i }),
+    ).not.toBeInTheDocument();
+    /* Still the same animal, still chosen — nothing was reset underneath. */
+    expect(
+      screen.getByRole("button", { name: /tambah ke keranjang/i }),
+    ).toBeEnabled();
   });
 
   /*

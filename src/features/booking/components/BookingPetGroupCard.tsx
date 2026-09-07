@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { ChevronDown, Plus, X } from "lucide-react";
 
 import {
@@ -13,7 +12,7 @@ import {
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { PetSummaryCard } from "@/features/pets";
+import { PetFixLink, PetSummaryCard } from "@/features/pets";
 import { formatMoney } from "@/utils/decimal";
 /* The vocabulary moved to the util when the till became the second screen
    naming a variant — see VARIANT_VALUE_LABELS there. */
@@ -24,7 +23,7 @@ import {
   VARIANT_VALUE_LABELS,
 } from "@/utils/serviceVariant";
 import type { BusinessLine } from "@/services/businessLine.service";
-import type { Pet, Service, ServiceVariantAxis } from "@/types/api";
+import type { Pet, Service } from "@/types/api";
 import { blankService, UNASSIGNED } from "../bookingDraft";
 import type { PetGroupDraft, ServiceDraft } from "../bookingDraft";
 
@@ -635,26 +634,6 @@ function ServiceLine({
  * ABSENT WHEN NO ANIMAL IS CHOSEN. There is nothing to open, and a dead link is
  * worse than a sentence that stops.
  */
-function PetFixLink({
-  pet,
-  axis,
-}: {
-  pet: Pet | null;
-  axis: ServiceVariantAxis;
-}) {
-  if (!pet) return <>Pilih hewannya dulu.</>;
-
-  return (
-    <Link
-      href={`/dashboard/master/pets/${pet._id}/edit`}
-      className="underline underline-offset-2"
-      target="_blank"
-    >
-      Lengkapi {AXIS_LABEL[axis]} {pet.name} →
-    </Link>
-  );
-}
-
 /**
  * One fold, with a summary that says whether anything is inside.
  *

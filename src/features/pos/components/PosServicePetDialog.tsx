@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { PetQuickAddDialog } from "@/features/pets";
+import { PetFixLink, PetQuickAddDialog } from "@/features/pets";
 import { Checkbox } from "@/components/ui/checkbox";
 import { petService } from "@/services/pet.service";
 import { formatMoney } from "@/utils/decimal";
@@ -148,6 +148,55 @@ export function PosServicePetDialog({
     };
   }, [open, customerId, nonce]);
 
+  /*
+    ─── THE FACT THEY JUST WENT AND FILLED IN ─────────────────────────────────
+
+    `PetFixLink` sends the cashier to the animal's form in another tab, and the
+    price here depends on exactly the field they went to fill in. Coming back to
+    a dialog still saying "Lengkapi jenis bulu" — about a coat length they had
+    just typed — reads as the till being broken, and the only way out was to
+    close the dialog and start again.
+
+    RE-ASKED WHEN THE TAB COMES BACK, which is the moment the answer may have
+    changed and the only one worth spending a request on. Polling would ask all
+    day for a fact that changes twice a year.
+
+    QUIETLY. No spinner and no reset: the list is replaced under the cashier's
+    feet, and the animal they had chosen stays chosen. Reusing the effect above
+    would blank the selection every time they tabbed back — including on the
+    ordinary visit where nothing was edited at all.
+
+    A FAILURE IS SWALLOWED, deliberately. What is on screen is still the truth
+    as of a moment ago; replacing it with "tidak bisa dimuat" because a
+    background refresh failed would take a working dialog away from somebody who
+    did not ask for one.
+  */
+  useEffect(() => {
+    if (!open) return;
+
+    let active = true;
+
+    const refresh = () => {
+      if (document.visibilityState !== "visible") return;
+
+      petService
+        .list({ customerId, isActive: true, limit: FETCH_LIMIT })
+        .then((result) => {
+          if (active) setPets(result.items);
+        })
+        .catch(() => {});
+    };
+
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("focus", refresh);
+
+    return () => {
+      active = false;
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [open, customerId]);
+
   function handleOpenChange(next: boolean) {
     if (!next) {
       setPetId("");
@@ -266,17 +315,32 @@ export function PosServicePetDialog({
                   )}
 
                   {/*
-                    IT SAYS WHICH FACT IS MISSING, and the cashier can go and
-                    fill it in. "Belum ada harga" is a dead end; "Lengkapi ukuran
-                    Cici dulu" is the next step. The server refuses on the same
-                    grounds and in the same words, so meeting it here is one
-                    round trip and one screen earlier.
+                    IT SAYS WHICH FACT IS MISSING, AND WHERE TO GO AND FIX IT.
+
+                    "Belum ada harga" is a dead end. Naming the fact is better;
+                    naming it and linking to the one form that holds it is the
+                    step after. `PetFixLink` opens the animal in a NEW TAB — the
+                    cashier is mid-basket, and navigating away to fill in a coat
+                    length would throw that away.
+
+                    The server refuses on the same grounds and in the same words,
+                    so meeting it here is one round trip and one screen earlier.
+
+                    A MISSING VARIANT IS NOT THE ANIMAL'S FAULT, so that branch
+                    points at the catalogue instead — there is nothing on the pet
+                    to fix.
                   */}
                   {!quote.price && (
                     <p className="mt-1 text-xs text-warning">
-                      {quote.missingAxis
-                        ? `Lengkapi ${AXIS_LABEL[quote.missingAxis]} ${chosen.name} dulu — harganya ditentukan dari situ.`
-                        : "Layanan ini belum punya harga untuk hewan ini. Tambahkan variannya di katalog."}
+                      {quote.missingAxis ? (
+                        <>
+                          Harganya ditentukan dari{" "}
+                          {AXIS_LABEL[quote.missingAxis]}.{" "}
+                          <PetFixLink pet={chosen} axis={quote.missingAxis} />
+                        </>
+                      ) : (
+                        "Layanan ini belum punya harga untuk hewan ini. Tambahkan variannya di katalog."
+                      )}
                     </p>
                   )}
                 </div>

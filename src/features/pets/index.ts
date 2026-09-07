@@ -12,6 +12,12 @@
 export { PetsScreen } from "./components/PetsScreen";
 export { PetForm } from "./components/PetForm";
 export { PetQuickAddDialog } from "./components/PetQuickAddDialog";
+/**
+ * `PetFixLink` is exported for the same reason: a service priced by the animal
+ * cannot be quoted while a fact about that animal is missing, and BOTH the
+ * booking form and the till's service picker have to offer the same way out.
+ */
+export { PetFixLink } from "./components/PetFixLink";
 /** One customer's animals — rendered by the customers feature's edit screen. */
 export { CustomerPetsSection } from "./components/CustomerPetsSection";
 export { PetCardPrintScreen } from "./components/PetCardPrintScreen";
