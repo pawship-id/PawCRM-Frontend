@@ -105,9 +105,7 @@ describe("CustomerPetsSection", () => {
 
     renderWithAuth(<CustomerPetsSection customerId={CUSTOMER_ID} />);
 
-    expect(
-      await screen.findByText(/belum ada hewan terdaftar/i),
-    ).toBeVisible();
+    expect(await screen.findByText(/belum ada hewan terdaftar/i)).toBeVisible();
   });
 
   it("states how many are not shown when the owner has more than a page", async () => {
@@ -127,17 +125,27 @@ describe("CustomerPetsSection", () => {
     );
 
     await screen.findByText(/belum ada hewan terdaftar/i);
-    await userEvent.click(screen.getByRole("button", { name: /tambah hewan/i }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /tambah hewan/i }),
+    );
 
     expect(await screen.findByRole("dialog")).toBeVisible();
     // The owner is stated in the dialog, so nobody has to trust it is implied.
     expect(screen.getByText(/ibu rina/i)).toBeVisible();
 
     await userEvent.type(screen.getByLabelText(/nama hewan/i), "Bella");
+    /* ⚠️ ANCHORED. "Jenis bulu" joined the dialog on 7 Sep 2026, so /jenis/i now
+       matches two comboboxes. */
+    await userEvent.click(screen.getByRole("combobox", { name: /^jenis$/i }));
     await userEvent.click(
-      screen.getByRole("combobox", { name: /jenis/i }),
+      await screen.findByRole("option", { name: "Anjing" }),
     );
-    await userEvent.click(await screen.findByRole("option", { name: "Anjing" }));
+
+    /*
+      SIZE AND COAT ARE OPTIONAL, and this case leaves them alone: they reach the
+      API as NULL rather than being omitted, because "belum diisi" is a real
+      state the pricing rule reads.
+    */
     await userEvent.click(
       screen.getByRole("button", { name: /^tambah hewan$/i }),
     );
@@ -148,11 +156,69 @@ describe("CustomerPetsSection", () => {
           customerId: CUSTOMER_ID,
           name: "Bella",
           species: "dog",
+          size: null,
+          furType: null,
         }),
       ),
     );
     // Two calls: the initial load and the one after the create.
     await waitFor(() => expect(mockedPetService.list).toHaveBeenCalledTimes(2));
+  });
+
+  /*
+    ─── THE TWO FIELDS A PRICE MAY DEPEND ON ──────────────────────────────────
+
+    The dialog asked for a name and a species, and everything else was "later" —
+    right while everything else was ras, berat, microchip. Size and coat are not
+    that: they are what a variant-priced grooming is priced BY, so a pet quick-
+    added without them could not be quoted at all. The till added the animal,
+    refused the service it was added for, and sent the cashier to the full form
+    anyway — with the customer still standing there.
+  */
+  it("takes the animal's size and coat, so a variant price can be worked out", async () => {
+    listReturns([]);
+    mockedPetService.create.mockResolvedValue(pet() as never);
+
+    renderWithAuth(
+      <CustomerPetsSection customerId={CUSTOMER_ID} customerName="Ibu Rina" />,
+    );
+
+    await screen.findByText(/belum ada hewan terdaftar/i);
+    await userEvent.click(
+      screen.getByRole("button", { name: /tambah hewan/i }),
+    );
+    await screen.findByRole("dialog");
+
+    await userEvent.type(screen.getByLabelText(/nama hewan/i), "Bella");
+    await userEvent.click(screen.getByRole("combobox", { name: /^jenis$/i }));
+    await userEvent.click(
+      await screen.findByRole("option", { name: "Anjing" }),
+    );
+
+    await userEvent.click(screen.getByRole("combobox", { name: /ukuran/i }));
+    await userEvent.click(await screen.findByRole("option", { name: "Besar" }));
+
+    await userEvent.click(
+      screen.getByRole("combobox", { name: /jenis bulu/i }),
+    );
+    await userEvent.click(
+      await screen.findByRole("option", { name: "Berbulu panjang" }),
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /^tambah hewan$/i }),
+    );
+
+    await waitFor(() =>
+      expect(mockedPetService.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Bella",
+          species: "dog",
+          size: "large",
+          furType: "long hair",
+        }),
+      ),
+    );
   });
 
   it("offers no add button for a deleted customer", async () => {
