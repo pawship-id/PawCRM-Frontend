@@ -4,12 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import {
-  ChevronDownIcon,
-  ProfileIcon,
-  BusinessIcon,
-  LogoutIcon,
-} from "@/components/icons";
+/* lucide only (ui-rules §11) — @/components/icons collides with lucide on
+   ChevronDownIcon, and this file is being touched anyway for the navy bar. */
+import { ChevronDown, LogOut, Store, UserRound } from "lucide-react";
 import { usePermissions } from "@/features/permissions";
 import { useAuth } from "../hooks/useAuth";
 
@@ -21,6 +18,9 @@ import { useAuth } from "../hooks/useAuth";
  * business I am in — which is why the tenant screen lives here rather than in
  * the sidebar: Master Data is where records are maintained, and neither of these
  * is a record this user edits.
+ *
+ * The TRIGGER sits on the navy top bar, so it is styled in reversed ink; the
+ * dropdown it opens is a normal light popover.
  *
  * Accessibility: a proper menu button (aria-haspopup / aria-expanded) over a
  * role="menu" list. It closes on outside click, on Escape, and after any item
@@ -68,21 +68,19 @@ export function UserMenu() {
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="flex items-center gap-2.5 rounded-full py-1 pl-1 pr-2.5 transition-colors hover:bg-primary/5"
+        className="flex min-h-9 items-center gap-2.5 rounded-full py-1 pl-1 pr-2.5 text-primary-foreground/85 transition-colors hover:bg-white/15 hover:text-primary-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60"
       >
         <span
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary"
+          className="flex size-7 items-center justify-center rounded-full bg-white/15 text-sm font-semibold text-primary-foreground"
           aria-hidden="true"
         >
           {user.fullName.charAt(0).toUpperCase()}
         </span>
-        <span className="hidden text-sm font-medium text-foreground sm:inline">
+        <span className="hidden text-sm font-medium sm:inline">
           {user.fullName}
         </span>
-        <ChevronDownIcon
-          width={16}
-          height={16}
-          className={`text-muted transition-transform ${open ? "rotate-180" : ""}`}
+        <ChevronDown
+          className={`size-4 opacity-70 transition-transform ${open ? "rotate-180" : ""}`}
         />
       </button>
 
@@ -105,7 +103,7 @@ export function UserMenu() {
             onClick={() => setOpen(false)}
             className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-foreground transition-colors hover:bg-primary/5"
           >
-            <ProfileIcon width={18} height={18} className="text-muted" />
+            <UserRound className="size-4 text-muted" />
             My profile
           </Link>
 
@@ -121,7 +119,7 @@ export function UserMenu() {
               onClick={() => setOpen(false)}
               className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-foreground transition-colors hover:bg-primary/5"
             >
-              <BusinessIcon width={18} height={18} className="text-muted" />
+              <Store className="size-4 text-muted" />
               Business information
             </Link>
           )}
@@ -132,7 +130,7 @@ export function UserMenu() {
             onClick={handleSignOut}
             className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-danger transition-colors hover:bg-danger/10"
           >
-            <LogoutIcon width={18} height={18} />
+            <LogOut className="size-4" />
             Logout
           </button>
         </div>

@@ -21,8 +21,8 @@ import { Button } from "../ui/button";
  * the screen, and on a laptop the two of them eat a fifth of the viewport before
  * any content appears. `sticky` is left as an opt-in for a screen that earns it.
  *
- * When it IS set: `top-16`, NOT `top-0`. DashboardShell's header is
- * `sticky top-0 z-20` and 64px tall; a second bar at `top-0` sits underneath it
+ * When it IS set: `top-14`, NOT `top-0`. DashboardShell's header is
+ * `fixed top-0 z-50` and 56px tall; a second bar at `top-0` sits underneath it
  * and disappears. `z-10` for the same reason — below the header, above the form.
  *
  * ORDER IS FIXED: Batal (secondary) left, Simpan (primary) right, always. Two
@@ -106,7 +106,7 @@ export function FormActionBar({
         // Translucent only when it is going to have content sliding under it.
         // A solid surface is the honest one for a bar that stays put.
         sticky
-          ? "sticky top-16 z-10 bg-surface/95 backdrop-blur"
+          ? "sticky top-14 z-10 bg-surface/95 backdrop-blur"
           : "bg-surface",
         className,
       )}

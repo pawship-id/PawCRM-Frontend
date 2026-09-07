@@ -438,7 +438,7 @@ number is, and what can be done with it **at its head** — not in a strip of
 buttons discovered after everything else has been read.
 
 
-**One bar, two buttons, always the same places: Batal (secondary) left, Simpan (primary) right**, in a `sticky top-16 z-10` bar at the top of the form. Not `top-0` — DashboardShell's own header is already there.
+**One bar, two buttons, always the same places: Batal (secondary) left, Simpan (primary) right**, in a `sticky top-14 z-10` bar at the top of the form. Not `top-0` — DashboardShell's own header is already there, fixed and 56 px tall.
 
 - **The label names the object.** `Simpan produk`, `Simpan penyesuaian`. Never bare `Simpan`, never `Submit`. §12.
 - **Disabled until the required fields are answered**, with `blockedReason` saying which one. No error banner before anybody has tried to save; per-field errors appear when a field is touched and left empty.
