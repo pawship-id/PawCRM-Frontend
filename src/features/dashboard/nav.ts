@@ -26,7 +26,6 @@ import {
   FileText,
   House,
   Landmark,
-  Layers,
   Network,
   Package,
   PackageCheck,
@@ -387,16 +386,28 @@ export const NAV_SECTIONS: NavSection[] = [
             match: ["/dashboard/inventory/categories"],
           },
           {
-            label: "Kartu Stok",
+            /**
+             * ONE ROW FOR BOTH READINGS OF THE SAME STOCK, as the mockup draws
+             * it. Kartu Stok answers "what happened to this product" and Batch &
+             * Expired answers "what is on the shelf and how long has it got" —
+             * a shop checking one almost always checks the other, and the rail
+             * listed them as two subjects. They are tabs of one screen now (see
+             * StockModuleHeader).
+             *
+             * `match` keeps the row lit on that second tab: /inventory/batches is
+             * a SIBLING of /inventory/stock-card, so no prefix of this href
+             * covers it.
+             *
+             * Gated on `stockMovements:read`, the grant its href enforces. The
+             * seeded roles that hold it also hold `productBatches:read`, so no
+             * role loses its way to the lot report; a hand-made role granted
+             * batches alone reaches /inventory/batches by URL only.
+             */
+            label: "Stok",
             href: "/dashboard/inventory/stock-card",
             icon: ScrollText,
             permission: { feature: "stockMovements", action: "read" },
-          },
-          {
-            label: "Batch & Expired",
-            href: "/dashboard/inventory/batches",
-            icon: Layers,
-            permission: { feature: "productBatches", action: "read" },
+            match: ["/dashboard/inventory/batches"],
           },
           {
             /**

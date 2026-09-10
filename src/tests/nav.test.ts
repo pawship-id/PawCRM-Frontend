@@ -133,12 +133,32 @@ describe("filterNavItems", () => {
       // Neither Kategori nor Penyesuaian Stok is missing — each is a TAB of the
       // row that absorbed it.
       "Produk & Varian",
-      "Kartu Stok",
-      "Batch & Expired",
+      // Kartu Stok and Batch & Expired, folded into one row with two tabs.
+      "Stok",
       "Koreksi Stok",
       "Transfer Stok",
       "Stok Awal",
     ]);
+  });
+
+  /*
+    STOK IS ONE ROW. Kartu Stok reads a product's history, Batch & Expired reads
+    what is on the shelf and how long it has got — two readings of the same
+    stock, so two tabs of one screen.
+  */
+  it("keeps Stok lit on the Batch & Expired tab and on one product's card", () => {
+    const stock = groupOf("Inventori")?.children?.find(
+      (child) => child.label === "Stok",
+    );
+    if (!stock) throw new Error("Stok is missing from the rail");
+
+    expect(isActiveChild(stock, "/dashboard/inventory/stock-card")).toBe(true);
+    // One product's card is what the index exists to open — same tab.
+    expect(isActiveChild(stock, "/dashboard/inventory/stock-card/507f1f")).toBe(
+      true,
+    );
+    expect(isActiveChild(stock, "/dashboard/inventory/batches")).toBe(true);
+    expect(isActiveChild(stock, "/dashboard/inventory/transfers")).toBe(false);
   });
 
   /*
@@ -176,7 +196,7 @@ describe("filterNavItems", () => {
 
     expect(groupChildren(readOnlyStock, "Inventori")).toEqual([
       "Ringkasan",
-      "Kartu Stok",
+      "Stok",
     ]);
   });
 

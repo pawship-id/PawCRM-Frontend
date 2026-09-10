@@ -22,6 +22,11 @@ export { ProductsScreen } from "./components/ProductsScreen";
 export { ProductDetail } from "./components/ProductDetail";
 export { ProductForm } from "./components/ProductForm";
 export { ImportScreen } from "./components/ImportScreen";
+/**
+ * The Stok module's chrome, worn by both its tabs — the stock card index and the
+ * lot report.
+ */
+export { StockModuleHeader } from "./components/StockModuleHeader";
 export { StockProductsScreen } from "./components/StockProductsScreen";
 export { StockCardScreen } from "./components/StockCardScreen";
 export { BatchesScreen } from "./components/BatchesScreen";

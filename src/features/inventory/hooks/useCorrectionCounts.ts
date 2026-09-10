@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { stockEntryService } from "@/services/stockEntry.service";
 import { stockOpnameService } from "@/services/stockOpname.service";
+import { isoDate } from "@/utils/date";
 
 /** One tile's number: how many there are, and whether we know yet. */
 export interface CorrectionCount {
@@ -26,24 +27,18 @@ const FAILED: CorrectionCount = { total: 0, loading: false, error: true };
 /** Not asked for — the caller holds no grant, so its tile is never rendered. */
 const UNGRANTED: CorrectionCount = { total: 0, loading: false, error: false };
 
-const pad = (n: number) => String(n).padStart(2, "0");
-
 /**
  * The first and last day of the month we are in, as the API's `YYYY-MM-DD`.
  *
- * BUILT FROM LOCAL PARTS, never `toISOString()`. A shop in WIB opening the
- * screen before 07:00 would otherwise send yesterday's date — and on the first
- * of the month, last month's — which is the kind of off-by-one nobody notices
- * until a total is quietly short for seven hours a day.
+ * Built from LOCAL parts — see `isoDate`, which says why `toISOString()` is the
+ * wrong tool for a plain calendar day.
  */
 function thisMonth(now = new Date()): { from: string; to: string } {
-  const first = new Date(now.getFullYear(), now.getMonth(), 1);
-  // Day 0 of next month is the last day of this one, leap years included.
-  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  const iso = (d: Date) =>
-    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
-  return { from: iso(first), to: iso(last) };
+  return {
+    from: isoDate(new Date(now.getFullYear(), now.getMonth(), 1)),
+    // Day 0 of next month is the last day of this one, leap years included.
+    to: isoDate(new Date(now.getFullYear(), now.getMonth() + 1, 0)),
+  };
 }
 
 /**

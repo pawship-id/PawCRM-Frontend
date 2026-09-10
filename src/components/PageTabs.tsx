@@ -51,7 +51,14 @@ export interface PageTabsProps {
  * underline is what tells them apart at a glance.
  */
 export function PageTabs({ tabs, ariaLabel, className }: PageTabsProps) {
-  const pathname = usePathname();
+  /**
+   * `?? ""` because this can be null. Next types it `string`, but it returns
+   * null wherever there is no router above the tree — a component test, a
+   * storybook, a page rendered outside the app router. A tab row with nothing
+   * marked current is a small wrong; `null.startsWith` takes the whole page
+   * down.
+   */
+  const pathname = usePathname() ?? "";
 
   const isCurrent = (tab: PageTab) =>
     tab.exact

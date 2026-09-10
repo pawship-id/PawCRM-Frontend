@@ -12,6 +12,18 @@ import type { PageResult, User, Warehouse } from "@/types/api";
 import type { Product } from "@/types/inventory";
 
 /**
+ * The module header — the title and the tab row — is reduced to the one thing
+ * this screen puts INTO it: the Gudang selector, which is a control this suite
+ * is genuinely about. The header's own behaviour has its own suite
+ * (StockModuleHeader.test.tsx), and it needs a router this one has no reason to
+ * stand up.
+ */
+jest.mock("@/features/inventory/components/StockModuleHeader", () => ({
+  StockModuleHeader: ({ action }: { action?: React.ReactNode }) =>
+    action ?? null,
+}));
+
+/**
  * The stock card's index, against mocked services.
  *
  * WHAT THESE TESTS ARE FOR. This screen exists because the card used to fill a
