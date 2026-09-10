@@ -2,6 +2,7 @@ import {
   NAV_SECTIONS,
   filterNavItems,
   filterNavSections,
+  isActive,
   isActiveHref,
   type CanFn,
   type NavItem,
@@ -131,6 +132,36 @@ describe("filterNavItems", () => {
     expect(
       isActiveHref(hub!.href, "/dashboard/inventory/products", hub!.exact),
     ).toBe(false);
+  });
+
+  /*
+    PELANGGAN IS A LEAF AGAIN. It was a two-child group only while the tabbed
+    screen the mockup draws did not exist; that screen exists now, so the rail is
+    back to the single row — and `match` is what keeps it lit while the reader is
+    on the tab that lives outside its own href.
+  */
+  it("carries Pelanggan as one row, not a group", () => {
+    const pelanggan = groupOf("Pelanggan");
+    expect(pelanggan?.children).toBeUndefined();
+    expect(pelanggan?.href).toBe("/dashboard/master/customers");
+  });
+
+  it("keeps the Pelanggan row lit on the Hewan tab and its detail routes", () => {
+    const pelanggan = groupOf("Pelanggan")!;
+    expect(isActive(pelanggan, "/dashboard/master/customers")).toBe(true);
+    expect(isActive(pelanggan, "/dashboard/master/pets")).toBe(true);
+    expect(isActive(pelanggan, "/dashboard/master/pets/507f1f")).toBe(true);
+    // A sibling under the same /master prefix must not borrow the row.
+    expect(isActive(pelanggan, "/dashboard/master/users")).toBe(false);
+  });
+
+  it("hides Pelanggan from a role that cannot read customers", () => {
+    // The row is the customer list's, so it goes with that grant — and with it
+    // goes the menu route to the animal register, which every seeded role that
+    // holds pets:read also holds customers:read for.
+    const onlyPets: CanFn = (feature, action) =>
+      feature === "pets" && action === "read";
+    expect(itemsOf(onlyPets).find((i) => i.label === "Pelanggan")).toBeUndefined();
   });
 
   it("leads Pembelian with its hub, then the order a purchase unfolds", () => {

@@ -115,6 +115,18 @@ export interface NavItem {
    */
   exact?: boolean;
   /**
+   * Extra route prefixes that light this row up as well as `href` does.
+   *
+   * For a leaf whose screen carries TABS THAT ARE ROUTES: Pelanggan's Hewan tab
+   * lives at /dashboard/master/pets, which no amount of prefix-matching on
+   * /dashboard/master/customers will ever cover. Without this the rail would
+   * show nothing selected on a screen the rail itself opened.
+   *
+   * Prefix-matched like `href`, so a tab's own detail routes (…/pets/[id]) keep
+   * the row lit too.
+   */
+  match?: string[];
+  /**
    * The permission a leaf must hold to appear. Omitted means always visible. A
    * GROUP needs no requirement of its own: it shows when it has a visible child.
    */
@@ -130,14 +142,18 @@ export interface NavSection {
 }
 
 /**
- * WHY SOME MOCKUP LEAVES ARE GROUPS HERE.
+ * WHY SOME MOCKUP LEAVES ARE STILL GROUPS HERE.
  *
  * buloo-navbar-v3 draws Pelanggan, Penjualan, Pembelian and Inventori as single
- * rows whose screens carry tabs (Pelanggan / Hewan / Membership / Riwayat…).
- * Those tabbed screens do not exist yet, and collapsing the menu to match would
- * leave the routes that DO exist — /master/pets, /purchasing/receipts, seven
- * inventory screens — reachable only by typing a URL. So each is a group over
- * its real routes today, and shrinks to a leaf when its tabbed screen is built.
+ * rows whose screens carry tabs (Faktur / Piutang / E-commerce / Retur…). Those
+ * tabbed screens do not exist yet, and collapsing the menu to match would leave
+ * the routes that DO exist — /purchasing/receipts, seven inventory screens —
+ * reachable only by typing a URL. So each is a group over its real routes today,
+ * and shrinks to a leaf when its tabbed screen is built.
+ *
+ * PELANGGAN ALREADY MADE THAT TRIP: its screen carries the mockup's tab bar, so
+ * the group collapsed back into the single row the mockup asks for. It is the
+ * worked example the other three follow.
  *
  * Pengaturan is the same bargain: the mockup gives it five hub pages of cards,
  * which is page work rather than chrome. Until those exist it carries the old
@@ -199,25 +215,26 @@ export const NAV_SECTIONS: NavSection[] = [
         ],
       },
       {
+        /**
+         * A LEAF, the way the mockup draws it — the two-child group it used to
+         * be is gone.
+         *
+         * Pelanggan and Hewan are two TABS on one screen now (see
+         * CustomerModuleHeader), so the rail is back to one row and the tab bar
+         * carries the split. `match` is what keeps that row lit while the Hewan
+         * tab is open: the tab is a real route under a different prefix, and
+         * without it the menu would go dark on half of its own module.
+         *
+         * Gated on `customers:read` — the grant its own href enforces. Every
+         * seeded role holding `pets:read` holds it too (Owner, Manager, Staff),
+         * so no role loses its way to the animal register; a hand-made role
+         * granted pets alone would reach /dashboard/master/pets by URL only.
+         */
         label: "Pelanggan",
+        href: "/dashboard/master/customers",
         icon: Users,
-        children: [
-          {
-            label: "Pelanggan",
-            href: "/dashboard/master/customers",
-            icon: Users,
-            permission: { feature: "customers", action: "read" },
-          },
-          {
-            // Directly under Pelanggan, because that is the relationship: every
-            // pet belongs to one, and the register is unreadable without
-            // knowing whose animals you are looking at.
-            label: "Hewan",
-            href: "/dashboard/master/pets",
-            icon: PawPrint,
-            permission: { feature: "pets", action: "read" },
-          },
-        ],
+        permission: { feature: "customers", action: "read" },
+        match: ["/dashboard/master/pets"],
       },
     ],
   },
@@ -645,5 +662,8 @@ export function isActive(item: NavItem, pathname: string): boolean {
       isActiveHref(child.href, pathname, child.exact),
     );
   }
-  return item.href ? isActiveHref(item.href, pathname, item.exact) : false;
+  if (item.href && isActiveHref(item.href, pathname, item.exact)) return true;
+  // The tabbed-screen case — see NavItem.match. Always prefix-matched: a tab's
+  // detail routes belong to the same row as the tab.
+  return (item.match ?? []).some((href) => isActiveHref(href, pathname));
 }
