@@ -23,14 +23,12 @@ import {
   ChartLine,
   ClipboardList,
   FileClock,
-  FileText,
   House,
   Landmark,
   Network,
   Package,
   PackagePlus,
   PawPrint,
-  RefreshCw,
   Rocket,
   Scissors,
   ScrollText,
@@ -259,28 +257,25 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "Transaksi",
     items: [
       {
+        /**
+         * A LEAF, as the mockup draws it, with its four tabs on the screen (see
+         * SalesModuleHeader): Faktur, Piutang, E-commerce, Retur.
+         *
+         * `match` reaches OUT OF ITS OWN PREFIX for exactly one of them.
+         * E-commerce lives at /dashboard/ecommerce-sync — it predates this
+         * module and is not a sales document — so no prefix of this href covers
+         * it, and without the entry the rail would go dark on a tab it opened.
+         *
+         * Gated on `customerInvoices:read`, the grant its href enforces. Who
+         * owes a shop money is among the most commercially sensitive material
+         * here, so the row goes with that grant rather than with the two
+         * ungated placeholder tabs riding along inside it.
+         */
         label: "Penjualan",
+        href: "/dashboard/sales",
         icon: ShoppingCart,
-        children: [
-          {
-            /**
-             * GATED, which the old Sales & Invoice leaf was not until the
-             * screen existed: who owes a shop money is not something every role
-             * should see.
-             */
-            label: "Faktur",
-            href: "/dashboard/sales",
-            icon: FileText,
-            permission: { feature: "customerInvoices", action: "read" },
-          },
-          {
-            // A placeholder screen, and ungated — so it rides along with the
-            // invoice grant rather than keeping this group open by itself.
-            label: "E-commerce",
-            href: "/dashboard/ecommerce-sync",
-            icon: RefreshCw,
-          },
-        ],
+        permission: { feature: "customerInvoices", action: "read" },
+        match: ["/dashboard/ecommerce-sync"],
       },
       /**
        * Pembelian — the supply side, and ONE ROW rather than the six-child group

@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 import { Alert, Pagination, Spinner } from "@/components";
-import { PageHeading } from "@/features/purchasing";
 import { Can } from "@/features/permissions";
 import { Button as UIButton } from "@/components/ui/button";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
@@ -12,8 +11,8 @@ import { cn } from "@/lib/utils";
 import { formatMoney } from "@/utils/decimal";
 import type { CustomerOutstandingSummary } from "@/types/api";
 
-import { INVOICES_CRUMBS } from "../crumbs";
 import { useCustomerInvoices } from "../hooks/useCustomerInvoices";
+import { SalesModuleHeader } from "./SalesModuleHeader";
 import { ReceivablesTable } from "./ReceivablesTable";
 import { ReceivablesToolbar } from "./ReceivablesToolbar";
 
@@ -95,27 +94,31 @@ export function ReceivablesScreen() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <PageHeading crumbs={INVOICES_CRUMBS} title="Faktur Penjualan">
-          Faktur lahir dari dua tempat: terbit otomatis saat kasir menyelesaikan
-          penjualan dengan pembayaran Piutang, atau dibuat sendiri di sini.
-          Penagihan boleh dicicil — DP, cicilan, dan pelunasan semuanya lewat
-          satu tombol yang sama.
-        </PageHeading>
+      <SalesModuleHeader
+        action={
+          /*
+            GATED SEPARATELY FROM THE PAGE. `read` is what opens this list;
+            raising an invoice cuts stock and posts two journal entries, so a
+            collections user sees every bill and no way to create one. The route
+            behind it carries the same gate — a hidden button is a courtesy,
+            never the control.
+          */
+          <Can feature="customerInvoices" action="create">
+            <UIButton asChild size="lg">
+              <Link href="/dashboard/sales/new">Buat faktur</Link>
+            </UIButton>
+          </Can>
+        }
+      />
 
-        {/*
-          GATED SEPARATELY FROM THE PAGE. `read` is what opens this list; raising
-          an invoice cuts stock and posts two journal entries, so a collections
-          user sees every bill and no way to create one. The route behind it
-          carries the same gate — a hidden button is a courtesy, never the
-          control.
-        */}
-        <Can feature="customerInvoices" action="create">
-          <UIButton asChild size="lg">
-            <Link href="/dashboard/sales/new">Buat faktur</Link>
-          </UIButton>
-        </Can>
-      </div>
+      {/* What the module header cannot say, because it is on every tab: what
+          THIS list is. */}
+      <p className="max-w-2xl text-sm text-muted">
+        Faktur lahir dari dua tempat: terbit otomatis saat kasir menyelesaikan
+        penjualan dengan pembayaran Piutang, atau dibuat sendiri di sini.
+        Penagihan boleh dicicil — DP, cicilan, dan pelunasan semuanya lewat satu
+        tombol yang sama.
+      </p>
 
       {/*
         THREE CARDS, AND THEY READ AS ONE SENTENCE: owed, late, collected. That is

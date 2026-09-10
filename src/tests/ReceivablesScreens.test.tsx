@@ -31,6 +31,18 @@ jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn() }),
 }));
 
+/**
+ * The module header — the title and the four-tab row — is reduced to the one
+ * thing this screen puts INTO it: the Buat faktur button, which this suite is
+ * genuinely about. The tab row needs a router this suite has no reason to stand
+ * up, and the header's own behaviour has its own suite
+ * (SalesModuleHeader.test.tsx).
+ */
+jest.mock("@/features/sales/components/SalesModuleHeader", () => ({
+  SalesModuleHeader: ({ action }: { action?: React.ReactNode }) =>
+    action ?? null,
+}));
+
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
 
 /*

@@ -251,6 +251,21 @@ describe("filterNavItems", () => {
   });
 
   /*
+    PENJUALAN IS ONE ROW, and the only one whose tabs reach outside its own
+    prefix: E-commerce predates this module and keeps its route.
+  */
+  it("carries Penjualan as one row, lit on its E-commerce tab too", () => {
+    const sales = itemsOf(allowAll).find((i) => i.label === "Penjualan");
+    expect(sales?.children).toBeUndefined();
+    expect(sales?.href).toBe("/dashboard/sales");
+
+    expect(isActive(sales!, "/dashboard/sales")).toBe(true);
+    // Its own placeholder tabs and detail routes ride on the href's prefix.
+    expect(isActive(sales!, "/dashboard/sales/piutang")).toBe(true);
+    expect(isActive(sales!, "/dashboard/ecommerce-sync")).toBe(true);
+  });
+
+  /*
     PEMBELIAN IS ONE ROW. All six of its screens are tabs of it now, so what the
     rail owes is no longer an order of children — it is a row that survives for
     anyone with ANY purchasing grant, and dies for somebody with none.

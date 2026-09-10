@@ -8,6 +8,11 @@
  * click that answers nothing — and no create form, because there is no
  * `POST /api/customer-invoices` to submit to yet (PCR-030).
  */
+/**
+ * The module's shared chrome — the title and the four-tab row every screen under
+ * Penjualan wears, including its two placeholder tabs.
+ */
+export { SalesModuleHeader } from "./components/SalesModuleHeader";
 export { ReceivablesScreen } from "./components/ReceivablesScreen";
 export { InvoiceDetail } from "./components/InvoiceDetail";
 export { InvoicePrintScreen } from "./components/InvoicePrintScreen";

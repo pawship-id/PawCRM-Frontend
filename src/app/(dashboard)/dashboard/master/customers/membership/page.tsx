@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { IdCard } from "lucide-react";
 
-import { CustomerModulePlaceholder } from "@/features/customers";
+import { CustomerModuleHeader } from "@/features/customers";
+import { ModuleTabPlaceholder } from "@/features/dashboard";
 
 export const metadata: Metadata = {
   title: "Membership · Pelanggan · Buloo",
@@ -14,7 +15,8 @@ export const metadata: Metadata = {
  */
 export default function CustomerMembershipPage() {
   return (
-    <CustomerModulePlaceholder
+    <ModuleTabPlaceholder
+      header={<CustomerModuleHeader />}
       title="Membership"
       note="Paket keanggotaan, masa berlaku, dan pengingat perpanjangan. Untuk sekarang, tier VIP tiap pelanggan ada di tab Pelanggan."
       icon={IdCard}

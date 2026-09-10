@@ -11,8 +11,6 @@ export { CustomersScreen } from "./components/CustomersScreen";
  * `features/pets` but a TAB of this module.
  */
 export { CustomerModuleHeader } from "./components/CustomerModuleHeader";
-/** The two tabs whose screens are not built yet — Membership, Riwayat. */
-export { CustomerModulePlaceholder } from "./components/CustomerModulePlaceholder";
 export { CustomerCreateForm } from "./components/CustomerCreateForm";
 export { CustomerEditForm } from "./components/CustomerEditForm";
 /**

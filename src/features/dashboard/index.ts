@@ -6,3 +6,5 @@ export {
   SectionPlaceholder,
   SectionPlaceholderPanel,
 } from "./components/SectionPlaceholder";
+/** The "belum tersedia" screen for a tab of a tabbed module. */
+export { ModuleTabPlaceholder } from "./components/ModuleTabPlaceholder";
