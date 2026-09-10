@@ -9,9 +9,8 @@ import { ApiError } from "@/services/api-error";
 import { purchaseReturnService } from "@/services/purchaseReturn.service";
 import type { PurchaseReturnListRow } from "@/types/api";
 
-import { PURCHASING_CRUMBS } from "../crumbs";
 import { usePurchaseReturns } from "../hooks/usePurchaseReturns";
-import { PageHeading } from "./PageHeading";
+import { PurchasingModuleHeader } from "./PurchasingModuleHeader";
 import { PurchaseReturnsTable } from "./PurchaseReturnsTable";
 import { PurchaseReturnsToolbar } from "./PurchaseReturnsToolbar";
 
@@ -71,14 +70,15 @@ export function PurchaseReturnsScreen() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeading
-        crumbs={[PURCHASING_CRUMBS.hub, { label: "Retur ke Supplier" }]}
-        title="Retur ke Supplier"
-      >
+      <PurchasingModuleHeader />
+
+      {/* What the module header cannot say, because it is on every tab: what
+          THIS list is. */}
+      <p className="max-w-2xl text-sm text-muted">
         Retur selalu ditarik dari penerimaan aslinya, sehingga harga beli asli
         ikut terbawa — itulah yang membuat perhitungan HPP tetap benar setelah
         barang dikembalikan.
-      </PageHeading>
+      </p>
 
       <PurchaseReturnsToolbar query={query} onChange={setQuery} />
 

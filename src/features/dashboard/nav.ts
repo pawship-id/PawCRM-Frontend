@@ -28,10 +28,8 @@ import {
   Landmark,
   Network,
   Package,
-  PackageCheck,
   PackagePlus,
   PawPrint,
-  Receipt,
   RefreshCw,
   Rocket,
   Scissors,
@@ -40,11 +38,8 @@ import {
   Shield,
   ShoppingCart,
   Split,
-  Store,
-  Tag,
   TrendingUp,
   Truck,
-  Undo2,
   UserCog,
   Users,
   Warehouse,
@@ -137,6 +132,22 @@ export interface NavItem {
    * GROUP needs no requirement of its own: it shows when it has a visible child.
    */
   permission?: PermissionRequirement;
+  /**
+   * ANY ONE of these grants shows the row — for a leaf whose TABS are gated
+   * separately, where no single permission describes the module.
+   *
+   * ONLY LEGAL WHEN `href` IS REACHABLE BY EVERYONE THE ROW IS SHOWN TO, which
+   * in practice means an ungated hub. Pembelian qualifies: its href is the
+   * landing page, which gates each of its own cards and refuses nothing. A row
+   * whose href is itself gated must keep a single `permission` matching that
+   * href — Pelanggan, Produk & Varian, Koreksi Stok and Stok all do — because
+   * "any grant" would otherwise hand somebody a menu row that opens on a
+   * refusal, which is worse than no row at all.
+   *
+   * Mutually exclusive with `permission` in practice; if both are set, both must
+   * pass.
+   */
+  permissionAny?: PermissionRequirement[];
   /** See NavChild.badge — unset for the same reason. */
   badge?: number;
 }
@@ -272,65 +283,39 @@ export const NAV_SECTIONS: NavSection[] = [
         ],
       },
       /**
-       * Purchasing — the supply side, ordered the way a purchase actually
-       * unfolds: you set up a supplier, receive their goods, owe them money, and
-       * sometimes send some of it back.
+       * Pembelian — the supply side, and ONE ROW rather than the six-child group
+       * it used to be. Every screen in the module is a tab of it now (see
+       * PurchasingModuleHeader), in the order a purchase actually unfolds: the
+       * landing page, then the vendor and how they are filed, then their goods
+       * arriving, then what is owed for them, then what goes back.
        *
        * Kept separate from Inventori rather than folded into it, because the two
        * answer different questions and are usually done by different people.
        * Stock screens ask "what do we have"; these ask "who did we buy it from
        * and what do we still owe".
+       *
+       * NO `match` IS NEEDED, unlike the other tabbed rows: every tab lives
+       * under /dashboard/purchasing, so this href's own prefix already covers
+       * them. And no `exact` either, for the same reason — the row should light
+       * up on all six.
+       *
+       * `permissionAny` RATHER THAN ONE `permission`, and this row is the reason
+       * that field exists: five of its six tabs are gated on five different
+       * features, so no single grant describes the module. It is legal here
+       * because the href is the ungated hub — every card on it gates itself, so
+       * whoever the row is shown to lands somewhere they may read. The six
+       * grants below are exactly the five the hub's cards carry.
        */
       {
         label: "Pembelian",
+        href: "/dashboard/purchasing",
         icon: Truck,
-        children: [
-          {
-            /**
-             * The hub, `exact` because its href is the prefix of every
-             * sibling's — prefix matching would light this row up on all four
-             * screens below it. Ungated: the page gates each section itself, and
-             * the group still disappears entirely when no gated child survives.
-             */
-            label: "Ringkasan",
-            href: "/dashboard/purchasing",
-            icon: Truck,
-            exact: true,
-          },
-          {
-            label: "Supplier",
-            href: "/dashboard/purchasing/suppliers",
-            icon: Store,
-            permission: { feature: "suppliers", action: "read" },
-          },
-          {
-            // Directly under Supplier, because it is that list's setup screen —
-            // the same neighbouring Kategori gets under Produk. Gated on its own
-            // feature: a role that may read the vendor list does not
-            // automatically get its taxonomy.
-            label: "Kategori Supplier",
-            href: "/dashboard/purchasing/supplier-categories",
-            icon: Tag,
-            permission: { feature: "supplierCategories", action: "read" },
-          },
-          {
-            label: "Penerimaan Barang",
-            href: "/dashboard/purchasing/receipts",
-            icon: PackageCheck,
-            permission: { feature: "goodsReceipts", action: "read" },
-          },
-          {
-            label: "Faktur Pembelian",
-            href: "/dashboard/purchasing/payables",
-            icon: Receipt,
-            permission: { feature: "purchaseInvoices", action: "read" },
-          },
-          {
-            label: "Retur ke Supplier",
-            href: "/dashboard/purchasing/returns",
-            icon: Undo2,
-            permission: { feature: "purchaseReturns", action: "read" },
-          },
+        permissionAny: [
+          { feature: "suppliers", action: "read" },
+          { feature: "supplierCategories", action: "read" },
+          { feature: "goodsReceipts", action: "read" },
+          { feature: "purchaseInvoices", action: "read" },
+          { feature: "purchaseReturns", action: "read" },
         ],
       },
       /**
@@ -651,6 +636,16 @@ export function filterNavItems(items: NavItem[], can: CanFn): NavItem[] {
   const allowed = (req?: PermissionRequirement) =>
     !req || can(req.feature, req.action);
 
+  /**
+   * A leaf survives when its own `permission` passes AND, if it names a set,
+   * when at least one of `permissionAny` does. An empty set would be read as
+   * "nobody" rather than as "no requirement", which is why the length check is
+   * here rather than a bare `.some()`.
+   */
+  const leafAllowed = (item: NavItem) =>
+    allowed(item.permission) &&
+    (!item.permissionAny?.length || item.permissionAny.some(allowed));
+
   return items.reduce<NavItem[]>((visible, item) => {
     if (item.children) {
       const children = item.children.filter((child) =>
@@ -659,7 +654,7 @@ export function filterNavItems(items: NavItem[], can: CanFn): NavItem[] {
       if (children.some((child) => child.permission)) {
         visible.push({ ...item, children });
       }
-    } else if (allowed(item.permission)) {
+    } else if (leafAllowed(item)) {
       visible.push(item);
     }
     return visible;

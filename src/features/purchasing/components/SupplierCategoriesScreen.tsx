@@ -2,9 +2,8 @@
 
 import { Alert, Pagination, Spinner } from "@/components";
 
-import { PURCHASING_CRUMBS } from "../crumbs";
 import { useSupplierCategories } from "../hooks/useSupplierCategories";
-import { PageHeading } from "./PageHeading";
+import { PurchasingModuleHeader } from "./PurchasingModuleHeader";
 import { SupplierCategoriesTable } from "./SupplierCategoriesTable";
 import { SupplierCategoriesToolbar } from "./SupplierCategoriesToolbar";
 
@@ -26,14 +25,15 @@ export function SupplierCategoriesScreen() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeading
-        crumbs={[PURCHASING_CRUMBS.hub, { label: "Kategori Supplier" }]}
-        title="Kategori Supplier"
-      >
+      <PurchasingModuleHeader />
+
+      {/* What the module header cannot say, because it is on every tab: what
+          THIS list is. */}
+      <p className="max-w-2xl text-sm text-muted">
         Pengelompokan supplier — misalnya distributor, agen, atau peternak
         lokal. Isinya cuma nama; termin, NPWP, dan sisa utang ada di data
         suppliernya.
-      </PageHeading>
+      </p>
 
       <SupplierCategoriesToolbar query={query} onChange={setQuery} />
 

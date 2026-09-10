@@ -38,6 +38,17 @@ jest.mock("next/navigation", () => ({
 }));
 
 /**
+ * The module header — the title and the six-tab row — is reduced to the one
+ * thing this screen puts INTO it: its headline figure, where it has one. The
+ * tab row needs a router this suite has no reason to stand up, and the header's
+ * own behaviour has its own suite (PurchasingModuleHeader.test.tsx).
+ */
+jest.mock("@/features/purchasing/components/PurchasingModuleHeader", () => ({
+  PurchasingModuleHeader: ({ action }: { action?: React.ReactNode }) =>
+    action ?? null,
+}));
+
+/**
  * The purchase-return screens, against mocked services.
  *
  * WHAT THESE TESTS GUARD. These screens replaced a prototype that ran on an

@@ -5,6 +5,11 @@
  * onto the Purchasing dropdown: the hub, then its four sections — suppliers,
  * goods receipts, payables, and returns to supplier.
  */
+/**
+ * The module's shared chrome — the title and the six-tab row every screen under
+ * /dashboard/purchasing wears.
+ */
+export { PurchasingModuleHeader } from "./components/PurchasingModuleHeader";
 export { PurchasingHub } from "./components/PurchasingHub";
 export { SuppliersScreen } from "./components/SuppliersScreen";
 export { SupplierCreateForm } from "./components/SupplierCreateForm";

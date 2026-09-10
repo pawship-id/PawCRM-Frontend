@@ -250,24 +250,40 @@ describe("filterNavItems", () => {
     expect(itemsOf(onlyPets).find((i) => i.label === "Pelanggan")).toBeUndefined();
   });
 
-  it("leads Pembelian with its hub, then the order a purchase unfolds", () => {
-    expect(groupChildren(allowAll, "Pembelian")).toEqual([
-      "Ringkasan",
-      "Supplier",
-      // Directly under Supplier because it is that list's setup screen — the
-      // same place Kategori sits under Produk in the Inventori group. It comes
-      // before Penerimaan Barang rather than after it: nothing about a purchase
-      // starts here, it is what the vendor list is organised with.
-      "Kategori Supplier",
-      "Penerimaan Barang",
-      "Faktur Pembelian",
-      "Retur ke Supplier",
-    ]);
+  /*
+    PEMBELIAN IS ONE ROW. All six of its screens are tabs of it now, so what the
+    rail owes is no longer an order of children — it is a row that survives for
+    anyone with ANY purchasing grant, and dies for somebody with none.
+  */
+  it("carries Pembelian as one row pointing at its hub", () => {
+    const purchasing = itemsOf(allowAll).find((i) => i.label === "Pembelian");
+    expect(purchasing?.children).toBeUndefined();
+    expect(purchasing?.href).toBe("/dashboard/purchasing");
+    // No `match` and no `exact`: every tab lives under this href's own prefix,
+    // so it lights up on all six and on their detail routes.
+    expect(purchasing?.exact).toBeUndefined();
+    expect(purchasing?.match).toBeUndefined();
   });
 
-  it("drops the Pembelian group for a role with no purchasing grant", () => {
-    // The hub link is ungated and survives the child filter, exactly as the
-    // Inventori one does — and must not keep the group open by itself.
+  it("shows Pembelian to a role holding ANY ONE of its grants", () => {
+    // The row's href is the ungated hub, which gates each of its own cards — so
+    // whoever it is shown to lands somewhere they may read. That is the whole
+    // condition `permissionAny` is legal under.
+    const onlyReturns: CanFn = (feature, action) =>
+      feature === "purchaseReturns" && action === "read";
+    const onlySuppliers: CanFn = (feature, action) =>
+      feature === "suppliers" && action === "read";
+
+    expect(itemsOf(onlyReturns).find((i) => i.label === "Pembelian")).toBeDefined();
+    expect(
+      itemsOf(onlySuppliers).find((i) => i.label === "Pembelian"),
+    ).toBeDefined();
+  });
+
+  it("drops Pembelian for a role with no purchasing grant at all", () => {
+    // The hub is ungated, and must not be enough to keep the row on its own: a
+    // role that may read nothing here would get a menu leading to a landing page
+    // that says exactly that, five times over.
     expect(itemsOf(denyAll).find((i) => i.label === "Pembelian")).toBeUndefined();
   });
 
