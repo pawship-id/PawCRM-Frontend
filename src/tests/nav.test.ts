@@ -118,28 +118,53 @@ describe("filterNavItems", () => {
   });
 
   it("lists every Inventori screen, in the order the data flows", () => {
-    // Define a product, watch its card, manage its lots, count it, move it,
-    // correct it. Penyesuaian is LAST on purpose: a real discrepancy is found by
-    // an opname and goods that moved are moved by a transfer, so offering the
-    // by-hand correction above either would offer the shortcut before the
-    // procedure.
+    // Define a product, watch its card, manage its lots, count it, move it.
     //
-    // Stok Awal sits DIRECTLY ABOVE the adjustment, and the adjacency is the
-    // point: these two are the pair somebody chooses between, and the wrong
-    // choice is invisible until a P&L is read. Opening stock credits 3101 Modal
-    // / Saldo Awal; an adjustment credits 5201 Kerugian Persediaan, which turns
-    // a shop's starting inventory into a negative expense.
+    // Stok Awal is LAST and alone, which the mockup's shape cost us: it used to
+    // sit directly above Penyesuaian Stok, and the adjacency was the point —
+    // those two are the pair somebody chooses between, and the wrong choice is
+    // invisible until a P&L is read (opening stock credits 3101 Modal / Saldo
+    // Awal; an adjustment credits 5201 Kerugian Persediaan, which turns a shop's
+    // starting inventory into a negative expense). The adjustment is a tab of
+    // Koreksi Stok now. The mockup does not list Stok Awal here at all — it is a
+    // step of Pengaturan › Data Awal there — so this row is on its way out.
     expect(groupChildren(allowAll, "Inventori")).toEqual([
       "Ringkasan",
-      // Kategori is not missing — it is a TAB of the row above it now.
+      // Neither Kategori nor Penyesuaian Stok is missing — each is a TAB of the
+      // row that absorbed it.
       "Produk & Varian",
       "Kartu Stok",
       "Batch & Expired",
-      "Stok Opname",
+      "Koreksi Stok",
       "Transfer Stok",
       "Stok Awal",
-      "Penyesuaian Stok",
     ]);
+  });
+
+  /*
+    KOREKSI STOK IS ONE ROW. An opname and a hand-typed adjustment end as the
+    same correction in the ledger — one arrives by walking the shelves, the other
+    by somebody typing what broke — so they are two tabs of one screen, and
+    `match` keeps the row lit on the sibling route the second tab points at.
+  */
+  it("keeps Koreksi Stok lit on the Penyesuaian tab and its detail routes", () => {
+    const corrections = groupOf("Inventori")?.children?.find(
+      (child) => child.label === "Koreksi Stok",
+    );
+    if (!corrections) throw new Error("Koreksi Stok is missing from the rail");
+
+    expect(isActiveChild(corrections, "/dashboard/inventory/opname")).toBe(true);
+    expect(isActiveChild(corrections, "/dashboard/inventory/adjustments")).toBe(
+      true,
+    );
+    expect(
+      isActiveChild(corrections, "/dashboard/inventory/adjustments/new"),
+    ).toBe(true);
+    // Stok Awal is the OTHER screen StockEntriesScreen serves, and it keeps its
+    // own row — it must not borrow this one.
+    expect(
+      isActiveChild(corrections, "/dashboard/inventory/opening-stock"),
+    ).toBe(false);
   });
 
   it("hides the three write screens from a read-only stock role", () => {

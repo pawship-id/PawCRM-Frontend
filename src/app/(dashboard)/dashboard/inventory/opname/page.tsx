@@ -1,33 +1,27 @@
 import type { Metadata } from "next";
 
-import { Breadcrumb } from "@/components";
-import { OpnameScreen } from "@/features/inventory";
+import {
+  OpnameScreen,
+  StockCorrectionModuleHeader,
+} from "@/features/inventory";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Stok Opname · Buloo" };
+export const metadata: Metadata = { title: "Opname · Koreksi Stok · Buloo" };
 
+/**
+ * The Opname tab of the Koreksi Stok module.
+ *
+ * THE HEADER SITS OUTSIDE THE PERMISSION GATE, and deliberately: a reader who
+ * may not read count sheets still gets the module's title and its tab row, so
+ * the refusal below reads as "not this tab" rather than as a broken page. The
+ * header draws no Opname tab for them either — it gates each tab itself.
+ */
 export default function OpnamePage() {
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <Breadcrumb
-          items={[
-            { label: "Inventory", href: "/dashboard/inventory" },
-            { label: "Stok Opname" },
-          ]}
-        />
-        <h1 className="mt-1 text-2xl font-extrabold text-foreground">
-          Stok Opname
-        </h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted">
-          Hitung fisik lalu cocokkan dengan catatan sistem. Selisihnya jadi
-          penyesuaian stok dan satu jurnal — kekurangan maupun kelebihan
-          dibukukan ke akun penyesuaian persediaan, sengaja dipisah dari HPP
-          supaya margin tetap terbaca.
-        </p>
-      </div>
+      <StockCorrectionModuleHeader />
 
-      {/* The nav already hides this link from a role without the grant; this
+      {/* The nav already hides this module from a role without the grant; this
           covers direct URL entry. Opening a count and discarding a draft carry
           their own checks inside — reading the list is a different privilege. */}
       <RequirePermission feature="stockOpnames">

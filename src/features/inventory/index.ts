@@ -13,6 +13,11 @@ export { InventoryHub } from "./components/InventoryHub";
  * a route in `features/categories` but a TAB of this module.
  */
 export { CatalogModuleHeader } from "./components/CatalogModuleHeader";
+/**
+ * The Koreksi Stok module's chrome, worn by both its tabs — the count sheets and
+ * the hand-typed adjustments.
+ */
+export { StockCorrectionModuleHeader } from "./components/StockCorrectionModuleHeader";
 export { ProductsScreen } from "./components/ProductsScreen";
 export { ProductDetail } from "./components/ProductDetail";
 export { ProductForm } from "./components/ProductForm";

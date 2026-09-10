@@ -46,6 +46,7 @@ import {
 import { useStockCardLookups } from "../hooks/useStockCardLookups";
 import { useBranchScope, warehousesForBranch } from "../hooks/useBranchScope";
 import { OpeningStockAddProductsDialog } from "./OpeningStockAddProductsDialog";
+import { StockEntryKindHint } from "./StockEntryKindHint";
 
 /**
  * OPENING STOCK for products that were registered without any.
@@ -372,6 +373,11 @@ export function OpeningStockForm() {
         />
 
         {formError && <Alert variant="error">{formError}</Alert>}
+
+        {/* The other document, named before anything is typed — see
+            StockEntryKindHint. The rail used to make this pair legible by
+            standing them next to each other; it no longer does. */}
+        <StockEntryKindHint kind="opening_balance" />
 
         {/* THE ONE PRECONDITION, stated before the first field rather than
             discovered as a refusal after the sheet is full. */}

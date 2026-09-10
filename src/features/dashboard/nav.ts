@@ -40,7 +40,6 @@ import {
   Settings,
   Shield,
   ShoppingCart,
-  SlidersHorizontal,
   Split,
   Store,
   Tag,
@@ -401,19 +400,37 @@ export const NAV_SECTIONS: NavSection[] = [
           },
           {
             /**
-             * Gated on `stockOpnames:read`, NOT on the ledger's `create`.
+             * ONE ROW FOR BOTH WAYS A CORRECTION IS MADE, as the mockup draws it
+             * — and as the mockup explains it: "Opname menghasilkan koreksi.
+             * Keduanya dokumen yang sama, cuma cara membuatnya beda." Penyesuaian
+             * Stok used to be a row of its own at the bottom of this group; it is
+             * a TAB on this screen now (see StockCorrectionModuleHeader).
              *
+             * `match` keeps the row lit on that tab: /inventory/adjustments is a
+             * SIBLING of /inventory/opname, so no prefix of this href covers it.
+             *
+             * Gated on `stockOpnames:read`, NOT on the ledger's `create`.
              * Counting the shelves is Staff work — it is most of the labour an
              * opname costs — and the seeded Staff role deliberately holds
              * create/read/update here while holding only `read` on the ledger.
              * Gating this on `stockMovements:create` would have hidden the whole
              * feature from exactly the people who do it, while showing it to
              * anyone who can post a manual adjustment.
+             *
+             * WHAT THAT COSTS, stated plainly: the old Penyesuaian Stok row was
+             * gated on `stockMovements:create` on purpose — a menu row is an
+             * invitation and that screen's one action is a write. Its tab is
+             * gated on `read` now, so a role holding the ledger's read but no
+             * count grant loses this row entirely and reaches the adjustment list
+             * by URL, while Staff (who holds both) is newly offered a list it was
+             * always allowed to read. The create button inside is still gated on
+             * create.
              */
-            label: "Stok Opname",
+            label: "Koreksi Stok",
             href: "/dashboard/inventory/opname",
             icon: ClipboardList,
             permission: { feature: "stockOpnames", action: "read" },
+            match: ["/dashboard/inventory/adjustments"],
           },
           {
             /**
@@ -430,12 +447,20 @@ export const NAV_SECTIONS: NavSection[] = [
           },
           {
             /**
-             * Day one, and it sits directly above the adjustment for that
-             * reason: these two are the pair somebody chooses between, and the
-             * wrong choice is invisible until a P&L is read. Opening stock posts
-             * `opening_balance` and credits 3101 Modal / Saldo Awal; an
-             * adjustment credits 5201 Kerugian Persediaan, which is right for
-             * goods that vanished and absurd for a shop's starting inventory.
+             * Day one — and it stands alone at the end of the group now, which
+             * is a LOSS worth recording rather than a tidy-up. It used to sit
+             * directly above Penyesuaian Stok because those two are the pair
+             * somebody chooses between and the wrong choice is invisible until a
+             * P&L is read: opening stock posts `opening_balance` and credits
+             * 3101 Modal / Saldo Awal, while an adjustment credits 5201 Kerugian
+             * Persediaan — right for goods that vanished, absurd for a shop's
+             * starting inventory. The adjustment moved into Koreksi Stok, so the
+             * adjacency that made the pair legible is gone and the two forms are
+             * on their own to tell them apart.
+             *
+             * The mockup does not list this screen at all: stock awal is a step
+             * of Pengaturan › Data Awal there. When that hub is built, this row
+             * leaves Inventori and the loss above stops mattering.
              *
              * Gated on `products:create` rather than `stockMovements:create` —
              * the SAME grant that already posts an opening balance inside a
@@ -446,20 +471,6 @@ export const NAV_SECTIONS: NavSection[] = [
             href: "/dashboard/inventory/opening-stock",
             icon: PackagePlus,
             permission: { feature: "products", action: "create" },
-          },
-          {
-            /**
-             * Last, and that is the ordering doing its job rather than an
-             * afterthought. An adjustment is the correction of last resort: a
-             * real discrepancy is found by an opname, and goods that moved are
-             * moved by a transfer. Putting it above either would offer the
-             * shortcut before the procedure. Gated on `create` for the same
-             * reason Transfer Stok is.
-             */
-            label: "Penyesuaian Stok",
-            href: "/dashboard/inventory/adjustments",
-            icon: SlidersHorizontal,
-            permission: { feature: "stockMovements", action: "create" },
           },
         ],
       },
