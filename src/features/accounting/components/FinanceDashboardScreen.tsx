@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import { absDecimal, formatMoney } from "@/utils/decimal";
 
 import { ACCOUNTING_CRUMBS } from "../crumbs";
+import { AccountingModuleHeader } from "./AccountingModuleHeader";
 import {
   cashPosition,
   financeTransactions,
@@ -129,14 +130,15 @@ export function FinanceDashboardScreen({ now }: { now: string }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-extrabold text-foreground">Keuangan</h1>
-        <p className="mt-1 max-w-2xl text-[15px] text-muted">
-          Ringkasan pendapatan, beban, laba, dan posisi kas — dihitung langsung
-          dari jurnal umum. Laporan laba rugi per lini, arus kas, dan daftar
-          transaksi lengkap ada di halamannya masing-masing.
-        </p>
-      </div>
+      <AccountingModuleHeader />
+
+      {/* What the module header cannot say, because it is on every tab: what
+          THIS screen is. */}
+      <p className="max-w-2xl text-[15px] text-muted">
+        Ringkasan pendapatan, beban, laba, dan posisi kas — dihitung langsung
+        dari jurnal umum. Laporan laba rugi per lini, arus kas, dan daftar
+        transaksi lengkap ada di kartu di bawah.
+      </p>
 
       {!readsLedger ? (
         <Card>
@@ -639,11 +641,21 @@ function TransactionRow({
 /* ------------------------------------------------------------------- links */
 
 /**
- * The way into the two modules that exist.
+ * The way into every finance screen that is NOT a tab.
  *
- * Kept from the hub this screen replaced: the sidebar carries the same two
- * links, but somebody who arrived here from a dashboard tile has no reason to
- * have looked at it, and a landing page that leads nowhere is a dead end.
+ * IT USED TO BE A COURTESY AND IS NOW THE ROUTE. The rail carried a row for each
+ * of these until Keuangan took the mockup's four tabs; Daftar Akun, Laba Rugi,
+ * Arus Kas and Lini Bisnis are not among them, and the two homes the mockup
+ * gives them — `Pengaturan › Keuangan` and `Laporan` — do not exist yet. So this
+ * list is where they live in the meantime, and deleting a card from it now
+ * strands a working screen.
+ *
+ * Jurnal Umum stays although it IS a tab: a landing page that describes the
+ * ledger and then does not offer it reads as an omission, and the card says
+ * something the tab label cannot.
+ *
+ * Each card is gated on the grant its own destination enforces — a role that may
+ * not read the ledger is not offered three ways into it.
  */
 const MODULES = [
   {
@@ -660,6 +672,27 @@ const MODULES = [
       "Buku besar tenant. Semua modul mencatat ke sini, dan laporan dibaca dari sini.",
     feature: "journalEntries",
   },
+  {
+    href: ACCOUNTING_CRUMBS.profitLoss.href,
+    title: "Laba Rugi",
+    description:
+      "Pendapatan dikurangi beban untuk satu periode, dipecah per lini bisnis.",
+    feature: "journalEntries",
+  },
+  {
+    href: ACCOUNTING_CRUMBS.cashflow.href,
+    title: "Arus Kas",
+    description:
+      "Uang yang benar-benar masuk dan keluar — beda dari laba, dan ini yang menentukan bisa bayar apa tidak.",
+    feature: "journalEntries",
+  },
+  {
+    href: ACCOUNTING_CRUMBS.businessLines.href,
+    title: "Lini Bisnis",
+    description:
+      "Definisi lini dan cara biaya bersama dibagi ke masing-masing — sumbu yang dipakai laporan laba rugi.",
+    feature: "businessLines",
+  },
 ] as const;
 
 function ModuleLinks() {
@@ -669,7 +702,7 @@ function ModuleLinks() {
   if (!visible.length) return null;
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {visible.map((item) => (
         <Link
           key={item.href}

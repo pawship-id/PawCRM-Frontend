@@ -302,42 +302,46 @@ describe("filterNavItems", () => {
     expect(itemsOf(denyAll).find((i) => i.label === "Pembelian")).toBeUndefined();
   });
 
-  it("orders Keuangan as the accounts the ledger needs, then the ledger", () => {
-    // A journal line has nowhere to land without an account, so the COA comes
-    // first — the menu teaches the dependency.
-    expect(groupChildren(allowAll, "Keuangan")).toEqual([
-      "Ringkasan",
-      "Daftar Akun",
-      // Straight after the chart, because a channel's whole purpose is the
-      // account it points at.
-      "Kas & Bank",
-      "Jurnal Umum",
-      // The two reports read the ledger above them, so they follow it rather
-      // than lead — the menu is in the order the work happens.
-      "Laba Rugi",
-      "Arus Kas",
-      // Last: set up once and revisited when the shop adds a service, where the
-      // rows above it are opened daily.
-      "Lini Bisnis",
-    ]);
+  /*
+    KEUANGAN IS ONE ROW WITH THE MOCKUP'S FOUR TABS — Ringkasan, Kas & Bank,
+    Komisi, Jurnal. Four of its seven old rows are not tabs and are NOT deleted:
+    Daftar Akun, Lini Bisnis, Laba Rugi and Arus Kas keep their routes and are
+    reached from the Ringkasan tab's card list until `Pengaturan › Keuangan` and
+    `Laporan` are built.
+  */
+  it("carries Keuangan as one row pointing at its hub", () => {
+    const finance = itemsOf(allowAll).find((i) => i.label === "Keuangan");
+    expect(finance?.children).toBeUndefined();
+    expect(finance?.href).toBe("/dashboard/keuangan");
+    // Komisi moved INSIDE this prefix (/dashboard/keuangan/komisi), so no
+    // `match` is owed — unlike Penjualan, whose E-commerce tab sits outside.
+    expect(finance?.match).toBeUndefined();
   });
 
-  it("shows Keuangan with only the ledger for a journal-only role", () => {
-    // The hub rides along ungated; the COA link does not, because reading the
-    // ledger says nothing about being allowed to read the chart of accounts.
-    //
-    // The two reports DO come along, and that is the grant working as intended
-    // rather than a leak: a laba rugi is the ledger folded, so anybody who may
-    // page the entries could add them up themselves.
+  it("shows Keuangan to a role holding either of its finance grants", () => {
     const onlyJournal: CanFn = (feature, action) =>
       feature === "journalEntries" && action === "read";
+    const onlyChannels: CanFn = (feature, action) =>
+      feature === "paymentChannels" && action === "read";
 
-    expect(groupChildren(onlyJournal, "Keuangan")).toEqual([
-      "Ringkasan",
-      "Jurnal Umum",
-      "Laba Rugi",
-      "Arus Kas",
-    ]);
+    expect(itemsOf(onlyJournal).find((i) => i.label === "Keuangan")).toBeDefined();
+    expect(
+      itemsOf(onlyChannels).find((i) => i.label === "Keuangan"),
+    ).toBeDefined();
+  });
+
+  it("does not offer Keuangan on the payroll grant alone", () => {
+    // `users:read` opens the Komisi TAB, because the recap is payroll data. It
+    // is deliberately not in the row's own set: an HR account with no finance
+    // grant has no business being handed the whole finance module.
+    const onlyUsers: CanFn = (feature, action) =>
+      feature === "users" && action === "read";
+
+    expect(itemsOf(onlyUsers).find((i) => i.label === "Keuangan")).toBeUndefined();
+  });
+
+  it("drops Keuangan for a role with no finance grant at all", () => {
+    expect(itemsOf(denyAll).find((i) => i.label === "Keuangan")).toBeUndefined();
   });
 
   it("does not mutate the source NAV_SECTIONS", () => {

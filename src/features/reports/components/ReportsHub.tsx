@@ -94,7 +94,10 @@ const CARDS: ReportCard[] = [
     title: "Rekap Komisi",
     description:
       "Komisi groomer per bulan, dihitung dari booking yang selesai. Siap diunduh untuk payroll.",
-    href: "/dashboard/reports/commissions",
+    // Keuangan's Komisi tab — the mockup files commissions under Keuangan, so
+    // the screen moved there and this card follows it. The old address still
+    // redirects; this points at the real one so the hub never costs a hop.
+    href: "/dashboard/keuangan/komisi",
     /*
       `users:read`, NOT a report grant. This is payroll data — it names every
       groomer and what they are owed — so whoever may read the staff register may

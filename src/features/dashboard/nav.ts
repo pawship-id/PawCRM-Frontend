@@ -13,19 +13,15 @@ import type { ComponentType, SVGProps } from "react";
 import {
   ArrowRightLeft,
   Bed,
-  BookText,
   Boxes,
   Building2,
   Calculator,
   CalendarDays,
   Car,
   ChartColumn,
-  ChartLine,
   ClipboardList,
   FileClock,
   House,
-  Landmark,
-  Network,
   Package,
   PackagePlus,
   PawPrint,
@@ -35,8 +31,6 @@ import {
   Settings,
   Shield,
   ShoppingCart,
-  Split,
-  TrendingUp,
   Truck,
   UserCog,
   Users,
@@ -477,63 +471,35 @@ export const NAV_SECTIONS: NavSection[] = [
        * the reports that read it.
        */
       {
+        /**
+         * A LEAF with the mockup's four tabs — Ringkasan, Kas & Bank, Komisi,
+         * Jurnal (see AccountingModuleHeader).
+         *
+         * FOUR OF THE SEVEN OLD ROWS ARE NOT TABS, and their screens are NOT
+         * deleted: Daftar Akun, Lini Bisnis, Laba Rugi and Arus Kas keep their
+         * routes and move to the module's landing page as cards
+         * (FinanceDashboardScreen's ModuleLinks), which is the Ringkasan tab. In
+         * the mockup the first two belong to `Pengaturan › Keuangan` and the
+         * other two to `Laporan`; neither home is built, so the hub holds them
+         * until one is.
+         *
+         * NO `match` NEEDED. Komisi moved to /dashboard/keuangan/komisi, inside
+         * this href's own prefix; its old address under /dashboard/reports
+         * redirects there on the server, so the rail never renders on it.
+         *
+         * `permissionAny` for the same reason Pembelian has it: the href is the
+         * ungated landing page, and no single grant describes a module whose tabs
+         * are gated on three different features. `users:read` is deliberately NOT
+         * among them — it is the payroll grant that opens the Komisi tab, and an
+         * HR account with no finance grant has no business being offered the
+         * whole finance module.
+         */
         label: "Keuangan",
+        href: "/dashboard/keuangan",
         icon: Wallet,
-        children: [
-          {
-            // The hub, `exact` for the same reason the Inventori and Pembelian
-            // ones are. Ungated — the page gates each card itself.
-            label: "Ringkasan",
-            href: "/dashboard/keuangan",
-            icon: Wallet,
-            exact: true,
-          },
-          {
-            label: "Daftar Akun",
-            href: "/dashboard/keuangan/chart-of-accounts",
-            icon: Network,
-            permission: { feature: "chartOfAccounts", action: "read" },
-          },
-          {
-            // Straight after the chart, because a channel's whole purpose is the
-            // account it points at — you cannot map one before the accounts
-            // exist.
-            label: "Kas & Bank",
-            href: "/dashboard/keuangan/kas-bank",
-            icon: Landmark,
-            permission: { feature: "paymentChannels", action: "read" },
-          },
-          {
-            label: "Jurnal Umum",
-            href: "/dashboard/keuangan/journal-entries",
-            icon: BookText,
-            permission: { feature: "journalEntries", action: "read" },
-          },
-          // The two reports sit between the ledger and the setup row, because
-          // that is the order they are used in. Both gated on `journalEntries` —
-          // a report is the ledger folded, so there is no narrower grant that
-          // would make sense.
-          {
-            label: "Laba Rugi",
-            href: "/dashboard/keuangan/laba-rugi",
-            icon: TrendingUp,
-            permission: { feature: "journalEntries", action: "read" },
-          },
-          {
-            label: "Arus Kas",
-            href: "/dashboard/keuangan/arus-kas",
-            icon: ChartLine,
-            permission: { feature: "journalEntries", action: "read" },
-          },
-          {
-            // Last of the group: the chart and the ledger are opened daily,
-            // while the lines of business are set up once and revisited when the
-            // shop adds a service.
-            label: "Lini Bisnis",
-            href: "/dashboard/keuangan/business-lines",
-            icon: Split,
-            permission: { feature: "businessLines", action: "read" },
-          },
+        permissionAny: [
+          { feature: "paymentChannels", action: "read" },
+          { feature: "journalEntries", action: "read" },
         ],
       },
       {

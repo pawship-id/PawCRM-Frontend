@@ -17,6 +17,10 @@
  * Its arithmetic lives in ./financeSummary, exported here because the P&L, arus
  * kas and daftar transaksi screens will fold the same ledger.
  */
+/**
+ * The module's shared chrome — the title and the four-tab row its screens wear.
+ */
+export { AccountingModuleHeader } from "./components/AccountingModuleHeader";
 export { FinanceDashboardScreen } from "./components/FinanceDashboardScreen";
 /**
  * The two report screens, rendering FIXTURES rather than the ledger — see
