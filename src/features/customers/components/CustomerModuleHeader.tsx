@@ -2,8 +2,13 @@
 
 import type { ReactNode } from "react";
 
-import { Breadcrumb, PageTabs, type PageTab } from "@/components";
-import { Badge } from "@/components/ui/badge";
+import {
+  Breadcrumb,
+  PageTabs,
+  PendingStatTile,
+  StatTile,
+  type PageTab,
+} from "@/components";
 import { usePermissions } from "@/features/permissions";
 
 import {
@@ -93,38 +98,35 @@ export function CustomerModuleHeader({
         className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
       >
         {mayReadCustomers && (
-          <CountTile
+          <StatTile
             label="Pelanggan terdaftar"
-            count={counts.customers}
+            value={NUMBER.format(counts.customers.total)}
             caption="tidak termasuk yang dihapus"
+            loading={counts.customers.loading}
+            error={counts.customers.error}
           />
         )}
         {mayReadPets && (
-          <CountTile
+          <StatTile
             label="Hewan terdaftar"
-            count={counts.pets}
+            value={NUMBER.format(counts.pets.total)}
             caption={perOwner(counts.pets, counts.customers)}
+            loading={counts.pets.loading}
+            error={counts.pets.error}
           />
         )}
 
         {/*
-          THE TWO THE MOCKUP ASKS FOR AND THE DATABASE CANNOT ANSWER, drawn as
-          the landing page draws its dead tiles: badged "Segera", with the reason
-          under them. A made-up 23 would be indistinguishable from a real one,
-          and a "—" reads as a number that failed to load.
+          THE TWO THE MOCKUP ASKS FOR AND THE DATABASE CANNOT ANSWER. See
+          PendingStatTile: badged rather than invented, and rather than left
+          showing a dash that would read as a failed load.
         */}
         {PENDING_TILES.map((tile) => (
-          <div
+          <PendingStatTile
             key={tile.label}
-            aria-disabled="true"
-            className="rounded-2xl border border-border bg-surface p-5 opacity-60"
-          >
-            <div className="flex items-start justify-between gap-2">
-              <p className="text-sm text-muted">{tile.label}</p>
-              <Badge variant="outline">Segera</Badge>
-            </div>
-            <p className="mt-2 text-xs text-muted">{tile.blockedBy}</p>
-          </div>
+            label={tile.label}
+            blockedBy={tile.blockedBy}
+          />
         ))}
       </section>
     </div>
@@ -159,31 +161,4 @@ function perOwner(pets: RegistryCount, customers: RegistryCount): string {
     return "";
   if (customers.total === 0) return "";
   return `${ONE_DECIMAL.format(pets.total / customers.total)} per pelanggan`;
-}
-
-/**
- * One counted tile. Three states, the same three the landing page's tiles have:
- * a number, a dash while it is on its way, and a dash that says it failed —
- * never a zero standing in for an error.
- */
-function CountTile({
-  label,
-  count,
-  caption,
-}: {
-  label: string;
-  count: RegistryCount;
-  caption: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-border bg-surface p-5">
-      <p className="text-sm text-muted">{label}</p>
-      <p className="mt-2 text-3xl font-semibold tabular-nums text-foreground">
-        {count.loading || count.error ? "—" : NUMBER.format(count.total)}
-      </p>
-      <p className="mt-1 text-xs text-muted">
-        {count.error ? "gagal dimuat" : caption}
-      </p>
-    </div>
-  );
 }

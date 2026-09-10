@@ -14,6 +14,7 @@ export type {
 export { Alert } from "./Alert";
 export { Breadcrumb } from "./Breadcrumb";
 export { PageTabs } from "./PageTabs";
+export { StatTile, PendingStatTile } from "./StatTile";
 export type { PageTab, PageTabsProps } from "./PageTabs";
 export type { BreadcrumbProps, Crumb } from "./Breadcrumb";
 export { Card } from "./Card";

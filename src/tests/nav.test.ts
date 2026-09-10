@@ -3,6 +3,7 @@ import {
   filterNavItems,
   filterNavSections,
   isActive,
+  isActiveChild,
   isActiveHref,
   type CanFn,
   type NavItem,
@@ -76,6 +77,46 @@ describe("filterNavItems", () => {
     ]);
   });
 
+  /*
+    THE CATALOGUE IS ONE ROW. Kategori was a row of its own directly beneath
+    Produk & Varian; it is a tab on that screen now, so the rail carries one row
+    and `match` keeps it lit on the sibling route the tab points at.
+  */
+  it("carries the catalogue as one row, with Kategori folded into it", () => {
+    const children = groupChildren(allowAll, "Inventori");
+    expect(children).toContain("Produk & Varian");
+    expect(children).not.toContain("Kategori");
+  });
+
+  it("keeps Produk & Varian lit on the Kategori tab and its detail routes", () => {
+    const catalogue = groupOf("Inventori")?.children?.find(
+      (child) => child.label === "Produk & Varian",
+    );
+    if (!catalogue) throw new Error("Produk & Varian is missing from the rail");
+    expect(isActiveChild(catalogue, "/dashboard/inventory/products")).toBe(
+      true,
+    );
+    expect(isActiveChild(catalogue, "/dashboard/inventory/categories")).toBe(
+      true,
+    );
+    expect(
+      isActiveChild(catalogue, "/dashboard/inventory/categories/507f1f"),
+    ).toBe(true);
+    // A sibling under the same /inventory prefix must not borrow the row.
+    expect(isActiveChild(catalogue, "/dashboard/inventory/batches")).toBe(
+      false,
+    );
+  });
+
+  it("hides the catalogue row from a role that cannot read products", () => {
+    // The row is the product list's, so it goes with that grant — and with it
+    // goes the menu route to the category list, which every seeded role holding
+    // categories:read also holds products:read for.
+    const onlyCategories: CanFn = (feature, action) =>
+      feature === "categories" && action === "read";
+    expect(groupChildren(onlyCategories, "Inventori")).toBeUndefined();
+  });
+
   it("lists every Inventori screen, in the order the data flows", () => {
     // Define a product, watch its card, manage its lots, count it, move it,
     // correct it. Penyesuaian is LAST on purpose: a real discrepancy is found by
@@ -90,8 +131,8 @@ describe("filterNavItems", () => {
     // a shop's starting inventory into a negative expense.
     expect(groupChildren(allowAll, "Inventori")).toEqual([
       "Ringkasan",
+      // Kategori is not missing — it is a TAB of the row above it now.
       "Produk & Varian",
-      "Kategori",
       "Kartu Stok",
       "Batch & Expired",
       "Stok Opname",

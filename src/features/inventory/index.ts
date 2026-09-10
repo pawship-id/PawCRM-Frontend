@@ -7,6 +7,12 @@
  * stock opname (list + sheet), the adjustment form and the transfer form.
  */
 export { InventoryHub } from "./components/InventoryHub";
+/**
+ * The catalogue module's shared chrome — the header carrying the title, the tab
+ * row and what the catalogue adds up to. Borrowed by the Kategori tab, which is
+ * a route in `features/categories` but a TAB of this module.
+ */
+export { CatalogModuleHeader } from "./components/CatalogModuleHeader";
 export { ProductsScreen } from "./components/ProductsScreen";
 export { ProductDetail } from "./components/ProductDetail";
 export { ProductForm } from "./components/ProductForm";

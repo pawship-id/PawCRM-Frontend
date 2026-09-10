@@ -87,6 +87,15 @@ export interface NavChild {
    */
   exact?: boolean;
   /**
+   * Extra route prefixes that light this row up as well as `href` does.
+   *
+   * For a row whose screen carries TABS THAT ARE ROUTES and one of those tabs
+   * lives outside its own prefix — Produk & Varian's Kategori tab is
+   * /dashboard/inventory/categories, a sibling of /products rather than a child.
+   * Without this the rail shows nothing selected on a screen it opened itself.
+   */
+  match?: string[];
+  /**
    * The permission a user must hold for this link to appear. Omitted means
    * "always visible" — sections without a catalog feature yet (Kasir…) carry no
    * requirement.
@@ -115,12 +124,11 @@ export interface NavItem {
    */
   exact?: boolean;
   /**
-   * Extra route prefixes that light this row up as well as `href` does.
+   * Extra route prefixes that light this row up as well as `href` does — see
+   * NavChild.match, which is the same field for a submenu row.
    *
-   * For a leaf whose screen carries TABS THAT ARE ROUTES: Pelanggan's Hewan tab
-   * lives at /dashboard/master/pets, which no amount of prefix-matching on
-   * /dashboard/master/customers will ever cover. Without this the rail would
-   * show nothing selected on a screen the rail itself opened.
+   * The leaf case is Pelanggan: its Hewan tab lives at /dashboard/master/pets,
+   * which no amount of prefix-matching on /dashboard/master/customers covers.
    *
    * Prefix-matched like `href`, so a tab's own detail routes (…/pets/[id]) keep
    * the row lit too.
@@ -357,19 +365,27 @@ export const NAV_SECTIONS: NavSection[] = [
             exact: true,
           },
           {
+            /**
+             * ONE ROW FOR THE WHOLE CATALOGUE, as the mockup draws it. Kategori
+             * used to be a row of its own directly beneath this one; it is a TAB
+             * on this screen now (see CatalogModuleHeader), which is the shape
+             * the two always had — you cannot file a product without one, and
+             * neither list is read for long without the other.
+             *
+             * `match` keeps the row lit on that tab: /inventory/categories is a
+             * SIBLING of /inventory/products, not a child, so no prefix of this
+             * href will ever cover it.
+             *
+             * Gated on `products:read`, the grant its href enforces. A role
+             * holding `categories:read` alone now reaches the category list by
+             * URL only — the seeded roles grant the two together (Owner,
+             * Manager, and Staff read both).
+             */
             label: "Produk & Varian",
             href: "/dashboard/inventory/products",
             icon: Boxes,
             permission: { feature: "products", action: "read" },
-          },
-          {
-            // Directly under products, and above the stock screens, because it
-            // is the other half of the catalogue rather than an activity: you
-            // cannot file a product without one.
-            label: "Kategori",
-            href: "/dashboard/inventory/categories",
-            icon: Tag,
-            permission: { feature: "categories", action: "read" },
+            match: ["/dashboard/inventory/categories"],
           },
           {
             label: "Kartu Stok",
@@ -655,15 +671,25 @@ export function isActiveHref(
     : pathname === href || pathname.startsWith(`${href}/`);
 }
 
+/**
+ * Whether a submenu row is the active one — its own href, or any of the extra
+ * prefixes its tabbed screen reaches (NavChild.match).
+ *
+ * The `match` prefixes are never `exact`: a tab's own detail routes belong to
+ * the same row as the tab.
+ */
+export function isActiveChild(child: NavChild, pathname: string): boolean {
+  return (
+    isActiveHref(child.href, pathname, child.exact) ||
+    (child.match ?? []).some((href) => isActiveHref(href, pathname))
+  );
+}
+
 /** Whether a nav item (leaf or group) is active for the given pathname. */
 export function isActive(item: NavItem, pathname: string): boolean {
   if (item.children) {
-    return item.children.some((child) =>
-      isActiveHref(child.href, pathname, child.exact),
-    );
+    return item.children.some((child) => isActiveChild(child, pathname));
   }
   if (item.href && isActiveHref(item.href, pathname, item.exact)) return true;
-  // The tabbed-screen case — see NavItem.match. Always prefix-matched: a tab's
-  // detail routes belong to the same row as the tab.
   return (item.match ?? []).some((href) => isActiveHref(href, pathname));
 }
