@@ -1,107 +1,84 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { customerInvoiceService } from "@/services/customerInvoice.service";
 import { ApiError } from "@/services/api-error";
 import type {
   CustomerInvoiceListQuery,
   CustomerInvoiceListRow,
+  CustomerInvoiceListSummary,
   CustomerInvoiceSource,
-  CustomerInvoiceStatus,
+  CustomerInvoiceStatusFilter,
+  InvoicePeriod,
   PageResult,
 } from "@/types/api";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 
 /**
- * The one filter that is not a plain field.
+ * The Periode field:
  *
- *   all          — every receivable, settled, void or not.
- *   outstanding  — `status ∈ {unpaid, partial}`. What is still collectable.
- *   overdue      — that, plus already past due. Triage: who gets called today.
- *   dueSoon      — that, but NOT yet late and falling due inside the server's
- *                  horizon. What to expect this week.
- *   unpaid /     — an exact status, which the API honours OVER the three
- *   partial /      shorthands above.
- *   paid / void
- *
- * NONE OF THE THREE SHORTHANDS IS EXPRESSIBLE AS A STATUS, and none is computed
- * here: they are the API's own AR definitions, and asking the server for them is
- * what keeps this screen's rows and the pager's total agreeing. A client
- * filtering a page on `isOverdue` would show four rows above a footer claiming
- * twenty.
- *
- * `outstanding` EXCLUDES `void` AS WELL AS `paid`, which is the one place the AR
- * vocabulary departs from the AP one. A supplier's bill is never voided; a sale
- * can be, and the debt it raised goes with it. Counting a voided invoice as
- * collectable would put money on this screen nobody may chase.
+ *   all    — every date. The screen's default; nothing about dates is sent.
+ *   today / week / month — a period the SERVER resolves by name.
+ *   custom — dates somebody typed. With neither end typed it also means every
+ *            date, an honest reading of a range nobody has bounded yet.
  */
-export type ReceivablesView =
-  | "all"
-  | "outstanding"
-  | "overdue"
-  | "dueSoon"
-  | CustomerInvoiceStatus;
+export type InvoicePeriodChoice = InvoicePeriod | "all" | "custom";
 
 /** The orderings the API accepts — CUSTOMER_INVOICE_SORTS in the model. */
-export type CustomerInvoiceSort =
-  | "dueSoonest"
-  | "dueLatest"
-  | "newest"
-  | "oldest"
-  | "totalHighest"
-  | "totalLowest";
+export type CustomerInvoiceSort = NonNullable<CustomerInvoiceListQuery["sort"]>;
 
-/** The query knobs the receivables screen drives (page + the visible filters). */
+/** What the footer's "per halaman" offers. 200 is this list's server ceiling. */
+export const PAGE_SIZES = [25, 50, 100, 200] as const;
+
+/** Everything the Penjualan list screen can set. */
 export interface CustomerInvoicesQuery {
   page: number;
+  pageSize: number;
   search: string;
-  /** "" = any customer, otherwise one debtor's ledger. */
-  customerId: string;
-  /** Whose books carry the debt. "" = every branch. */
+  /**
+   * THE SCOPE — Cabang and Gudang in the filter panel. Unlike the other panel
+   * fields, these also narrow the "Belum lunas" and "Lewat jatuh tempo" cards,
+   * because they change whose books are being read, not which rows are shown.
+   */
   branchId: string;
-  /** "" = both origins. */
-  source: CustomerInvoiceSource | "";
-  view: ReceivablesView;
-  /** `yyyy-mm-dd`, as the date inputs hold them. "" = unbounded. */
+  warehouseId: string;
+  period: InvoicePeriodChoice;
+  /** `yyyy-mm-dd`. Only read when `period` is `custom`; "" = unbounded. */
   dateFrom: string;
   dateTo: string;
+  /** The rest of the filter panel. Each empty array / "" means "not filtering". */
+  createdBy: string[];
+  source: CustomerInvoiceSource | "";
+  statuses: CustomerInvoiceStatusFilter[];
   /**
-   * Which ordering the list is paged through in. Always set — a list with no
-   * ordering is not a thing — so it has no "" and Reset returns it to the
-   * default rather than clearing it.
-   *
-   * INDEPENDENT OF `view`. The lens decides WHICH invoices are on the page and
-   * the ordering decides what the top of it is; "Jatuh tempo" with "Terlama" is
-   * a perfectly ordinary question (the oldest late debts), so neither control
-   * may quietly reach into the other.
+   * Always set — a list with no ordering is not a thing. Driven by the column
+   * headers, independent of every filter.
    */
   sort: CustomerInvoiceSort;
 }
 
-const PAGE_SIZE = 20;
-
-const DEFAULT_QUERY: CustomerInvoicesQuery = {
+export const DEFAULT_QUERY: CustomerInvoicesQuery = {
   page: 1,
+  pageSize: PAGE_SIZES[0],
   search: "",
-  customerId: "",
   branchId: "",
-  source: "",
+  warehouseId: "",
   /*
-    OUTSTANDING, not "all". A receivables screen is opened to answer "who still
-    owes us" — settled and voided invoices are history, and leading with them
-    buries the ten rows that need chasing under a hundred that do not. "Semua" is
-    one click away.
+    EVERY INVOICE, EVERY STATUS, EVERY DATE — asked for on 11 Sep 2026, after a
+    first version opened on "Bulan ini". The table is the whole book until
+    somebody narrows it; the period, like every other filter, is one panel away,
+    and the scope card says "Semua tanggal" so nobody mistakes it for a month.
   */
-  view: "outstanding",
+  period: "all",
   dateFrom: "",
   dateTo: "",
+  createdBy: [],
+  source: "",
+  statuses: [],
   /*
-    SOONEST DUE FIRST, matching the endpoint's own default rather than
-    second-guessing it — and deliberately not the payables screen's "newest". A
-    payables list is read to decide what to pay, which is a question about the
-    bills in hand; this one is read to decide who to chase, which is a question
-    about who has been waiting longest.
+    SOONEST DUE FIRST — who has waited longest. The endpoint's own default, and
+    what the Jatuh tempo header shows as sorted when the screen opens.
   */
   sort: "dueSoonest",
 };
@@ -109,40 +86,43 @@ const DEFAULT_QUERY: CustomerInvoicesQuery = {
 /** Empty page so consumers can render a table shell before the first load. */
 const EMPTY_PAGE: PageResult<CustomerInvoiceListRow>["pagination"] = {
   page: 1,
-  limit: PAGE_SIZE,
+  limit: PAGE_SIZES[0],
   total: 0,
   totalPages: 0,
 };
 
-/**
- * Translates the screen's single `view` knob into the API's four independent
- * ones.
- *
- * A named function rather than inlined in the effect, because it is the one
- * place the vocabulary is mapped and getting it wrong is invisible: sending
- * `status: "overdue"` would 400, but sending `overdue: true` alongside
- * `status: "unpaid"` would quietly drop part-paid invoices that are late — the
- * server takes the explicit status and drops the shorthand.
- */
-function viewFilters(
-  view: ReceivablesView,
-): Pick<
-  CustomerInvoiceListQuery,
-  "status" | "outstanding" | "overdue" | "dueSoon"
-> {
-  if (view === "all") return {};
-  if (view === "outstanding") return { outstanding: true };
-  if (view === "overdue") return { overdue: true };
-  // No window travels with it: the horizon is the server's, the same one the
-  // outstanding summary computes its due-soon figures against. Two places to
-  // state a window are two chances to state it differently.
-  if (view === "dueSoon") return { dueSoon: true };
-  return { status: view };
-}
+const nonEmpty = <T,>(values: T[]) => (values.length > 0 ? values : undefined);
 
-/** Strips the empty string; the server pushes a bare `dateTo` to end of day. */
-function orUndefined(value: string): string | undefined {
-  return value || undefined;
+/**
+ * The screen's query as the API's FILTER — everything but paging and ordering.
+ *
+ * ONE TRANSLATION FOR THE LIST AND THE CARDS. Both requests are built from this,
+ * so a filter the table honours can never be silently ignored by the figures
+ * above it.
+ *
+ * A NAMED PERIOD GOES OVER THE WIRE AS ITS NAME, never as dates the browser
+ * worked out. The month is cut in the tenant's timezone, which is not the
+ * reader's often enough to matter on the first and last day of every month.
+ */
+export function toFilterQuery(
+  query: CustomerInvoicesQuery,
+): Omit<CustomerInvoiceListQuery, "page" | "limit" | "sort"> {
+  return {
+    search: query.search.trim() || undefined,
+    branchId: query.branchId || undefined,
+    warehouseId: query.warehouseId || undefined,
+    createdBy: nonEmpty(query.createdBy),
+    source: query.source || undefined,
+    statuses: nonEmpty(query.statuses),
+    ...(query.period === "all"
+      ? {}
+      : query.period === "custom"
+        ? {
+            dateFrom: query.dateFrom || undefined,
+            dateTo: query.dateTo || undefined,
+          }
+        : { period: query.period }),
+  };
 }
 
 interface UseCustomerInvoicesResult {
@@ -151,26 +131,34 @@ interface UseCustomerInvoicesResult {
   query: CustomerInvoicesQuery;
   loading: boolean;
   error: string | null;
+  /** The four cards. Null while the first answer is on its way, or after a failure. */
+  summary: CustomerInvoiceListSummary | null;
+  summaryFailed: boolean;
+  /**
+   * True while `summary` still answers the PREVIOUS filter — the moment between
+   * a filter change and the new figures arriving. The cards keep the old numbers
+   * rather than flashing dashes; a caption naming the period must not keep the
+   * old period's dates.
+   */
+  summaryStale: boolean;
   /** Merge a partial query change; any change other than `page` resets to page 1. */
   setQuery: (patch: Partial<CustomerInvoicesQuery>) => void;
+  /** Re-asks for both the rows and the cards — after a payment or a void. */
   refetch: () => void;
 }
 
 /**
- * Owns the receivables list query state and fetching.
+ * Owns the Penjualan list: its query, its rows and the cards above them.
  *
- * Mirrors usePurchaseInvoices: local state, a fetch effect keyed on the query,
- * and an explicit `refetch`. Any filter change resets to page 1 so the user is
- * never stranded on a page that no longer exists.
+ * TWO REQUESTS, KEYED DIFFERENTLY. The rows change with paging and ordering; the
+ * cards do not, so the summary is keyed on the FILTER alone and turning a page
+ * does not re-sum a month of invoices.
  *
- * `refetch` MATTERS HERE, the same way it does on the payables list. A row on
- * this screen can change — recording a payment moves an invoice from `unpaid` to
- * `partial` to `paid`, which under the default `outstanding` view removes it from
- * the list entirely. The detail screen is where that happens, so the caller
- * re-asks on return rather than this hook guessing.
+ * `refetch` refreshes BOTH. Recording a payment moves a row's Sisa and the
+ * Tertagih card in the same breath; refreshing one would leave the screen
+ * disagreeing with itself until the next filter change.
  */
 export function useCustomerInvoices(
-  /** Fixes filters the screen does not expose — e.g. one customer's ledger. */
   initial: Partial<CustomerInvoicesQuery> = {},
 ): UseCustomerInvoicesResult {
   const [query, setQueryState] = useState<CustomerInvoicesQuery>({
@@ -182,12 +170,28 @@ export function useCustomerInvoices(
     useState<PageResult<CustomerInvoiceListRow>["pagination"]>(EMPTY_PAGE);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Bumped by refetch() to force the effect to re-run without changing query.
+  const [summary, setSummary] = useState<CustomerInvoiceListSummary | null>(
+    null,
+  );
+  const [summaryFailed, setSummaryFailed] = useState(false);
+  // The filter key the current `summary` was answered for.
+  const [summaryFor, setSummaryFor] = useState<string | null>(null);
+  // Bumped by refetch() to force both effects to re-run without changing query.
   const [nonce, setNonce] = useState(0);
 
   // The toolbar keeps the live query so typing stays responsive; only the
-  // request waits for the search box to settle.
+  // requests wait for the search box to settle.
   const settled = useDebouncedQuery(query);
+
+  /*
+    A STRING, so the summary effect re-runs when the filter's CONTENT changes
+    rather than whenever `settled` is a new object — which it is after every
+    page turn.
+  */
+  const filterKey = useMemo(
+    () => JSON.stringify(toFilterQuery(settled)),
+    [settled],
+  );
 
   const setQuery = useCallback((patch: Partial<CustomerInvoicesQuery>) => {
     setQueryState((prev) => {
@@ -204,27 +208,18 @@ export function useCustomerInvoices(
     let active = true;
     // The query changed (or refetch bumped the nonce): show the loading state,
     // then synchronize with the server. The stale-response guard (`active`)
-    // makes the late setStates safe. Same sanctioned fetch-effect shape as
-    // usePurchaseInvoices, so the heuristic lint rule is disabled here.
+    // makes the late setStates safe.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setError(null);
 
-    const apiQuery: CustomerInvoiceListQuery = {
-      page: settled.page,
-      limit: PAGE_SIZE,
-      search: settled.search.trim() || undefined,
-      customerId: settled.customerId || undefined,
-      branchId: settled.branchId || undefined,
-      source: settled.source || undefined,
-      dateFrom: orUndefined(settled.dateFrom),
-      dateTo: orUndefined(settled.dateTo),
-      sort: settled.sort,
-      ...viewFilters(settled.view),
-    };
-
     customerInvoiceService
-      .list(apiQuery)
+      .list({
+        ...toFilterQuery(settled),
+        page: settled.page,
+        limit: settled.pageSize,
+        sort: settled.sort,
+      })
       .then((result) => {
         if (!active) return;
         setInvoices(result.items);
@@ -236,7 +231,7 @@ export function useCustomerInvoices(
         setError(
           err instanceof ApiError
             ? err.fullMessage
-            : "Gagal memuat data piutang pelanggan. Coba lagi.",
+            : "Gagal memuat daftar faktur. Coba lagi.",
         );
       })
       .finally(() => {
@@ -248,5 +243,45 @@ export function useCustomerInvoices(
     };
   }, [settled, nonce]);
 
-  return { invoices, pagination, query, loading, error, setQuery, refetch };
+  useEffect(() => {
+    let active = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSummaryFailed(false);
+
+    customerInvoiceService
+      .summary(JSON.parse(filterKey))
+      .then((result) => {
+        if (!active) return;
+        setSummary(result);
+        setSummaryFor(filterKey);
+      })
+      .catch(() => {
+        if (!active) return;
+        setSummaryFor(filterKey);
+        /*
+          NULL, NOT ZEROS. A card reading "Rp 0" for a request that never
+          answered is a confident wrong number; the cards render a dash and say
+          the figure did not load. The list itself is unaffected.
+        */
+        setSummary(null);
+        setSummaryFailed(true);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [filterKey, nonce]);
+
+  return {
+    invoices,
+    pagination,
+    query,
+    loading,
+    error,
+    summary,
+    summaryFailed,
+    summaryStale: summaryFor !== filterKey,
+    setQuery,
+    refetch,
+  };
 }

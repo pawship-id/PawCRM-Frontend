@@ -121,7 +121,10 @@ describe("what it refuses to offer", () => {
   it("says where the money can be undone instead", () => {
     render(<PosSettlementCard settlement={settlement()} />);
 
-    expect(screen.getByText(/Void atau Retur di halaman kasir/)).toBeInTheDocument();
+    // The till's button is "Batalkan transaksi" — name it as the till does.
+    expect(
+      screen.getByText(/Batalkan transaksi atau Retur di halaman kasir/),
+    ).toBeInTheDocument();
   });
 });
 

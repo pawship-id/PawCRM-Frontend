@@ -106,7 +106,7 @@ export function PosSettlementCard({
       */}
       <p className="mt-4 border-t border-border pt-3 text-xs text-muted">
         Uang ini diterima di kasir dan sudah masuk jurnal penjualannya. Untuk
-        membatalkannya, gunakan Void atau Retur di halaman kasir — bukan dari
+        membatalkannya, gunakan Batalkan transaksi atau Retur di halaman kasir — bukan dari
         faktur ini.
       </p>
     </Card>

@@ -13,7 +13,6 @@ import type {
   CustomerInvoiceDetail,
   CustomerInvoiceListRow,
   CustomerInvoicePayment,
-  CustomerOutstandingSummary,
 } from "@/types/api";
 
 import { swalToast } from "@/lib/swal";
@@ -83,19 +82,6 @@ const toast = swalToast as jest.MockedFunction<typeof swalToast>;
 const asMock = <T extends (...args: never[]) => unknown>(fn: T) =>
   fn as jest.MockedFunction<T>;
 
-/**
- * Opens the one filter panel and returns it.
- *
- * Pelanggan, cabang, sumber, the date range and the ordering all live inside it.
- * The trigger's text carries a count (`Filter (2)`); its accessible name does
- * not, so it is found by the stable half. The VIEW pills are deliberately not in
- * here — they sit outside the bar.
- */
-async function openFilters(user: UserEvent) {
-  await user.click(screen.getByRole("button", { name: "Filter" }));
-  return screen.findByRole("dialog");
-}
-
 const INVOICE_ID = "inv1";
 const BRANCH_ID = "b1";
 const CUSTOMER_ID = "c1";
@@ -157,29 +143,6 @@ function detail(
   };
 }
 
-function summary(
-  overrides: Partial<CustomerOutstandingSummary> = {},
-): CustomerOutstandingSummary {
-  return {
-    items: [],
-    totalOutstanding: "300000.0000",
-    totalInvoices: 1,
-    totalOverdueOutstanding: "0.0000",
-    totalOverdueInvoices: 0,
-    totalDueSoonOutstanding: "0.0000",
-    totalDueSoonInvoices: 0,
-    horizonDays: 7,
-    collectedThisMonth: {
-      amount: "0.0000",
-      paymentCount: 0,
-      // The server's month, cut in the tenant's zone — 00:00 WIB on 1 August.
-      from: "2026-07-31T17:00:00.000Z",
-      to: "2026-08-31T16:59:59.999Z",
-    },
-    ...overrides,
-  };
-}
-
 const page = (items: CustomerInvoiceListRow[]) => ({
   items,
   pagination: {
@@ -222,9 +185,16 @@ beforeEach(() => {
   } as never);
 
   asMock(customerInvoiceService.list).mockResolvedValue(page([]) as never);
-  asMock(customerInvoiceService.outstanding).mockResolvedValue(
-    summary({ totalOutstanding: "0.0000", totalInvoices: 0 }),
+  // The list screen's cards and filter options — its own suite is
+  // SalesInvoiceList.test.tsx; here they only need to answer.
+  asMock(customerInvoiceService.summary).mockRejectedValue(
+    new ApiError("not under test", 500),
   );
+  asMock(customerInvoiceService.filterOptions).mockResolvedValue({
+    branches: [],
+    warehouses: [],
+    creators: [],
+  });
   asMock(customerInvoiceService.getById).mockResolvedValue(detail());
   asMock(customerService.list).mockResolvedValue(
     optionPage([{ _id: CUSTOMER_ID, name: "Bu Sari" }]),
@@ -236,213 +206,12 @@ beforeEach(() => {
 
 /* ------------------------------------------------------------------- list */
 
-describe("ReceivablesScreen", () => {
-  it("opens on the outstanding view, asked of the server", async () => {
-    // NOT "all". A receivables screen is opened to answer "who still owes us" —
-    // settled and voided invoices are history, and leading with them buries the
-    // rows that need chasing.
-    renderWithAuth(<ReceivablesScreen />);
-
-    await waitFor(() =>
-      expect(customerInvoiceService.list).toHaveBeenCalledWith(
-        expect.objectContaining({ outstanding: true }),
-      ),
-    );
-  });
-
-  it("orders by soonest due — who has waited longest, not what was billed last", async () => {
-    renderWithAuth(<ReceivablesScreen />);
-
-    await waitFor(() =>
-      expect(customerInvoiceService.list).toHaveBeenCalledWith(
-        expect.objectContaining({ sort: "dueSoonest" }),
-      ),
-    );
-  });
-
-  it("sends the overdue lens over the wire rather than filtering the page", async () => {
-    const user = userEvent.setup();
-    renderWithAuth(<ReceivablesScreen />);
-
-    await waitFor(() => expect(customerInvoiceService.list).toHaveBeenCalled());
-    await user.click(screen.getByRole("button", { name: "Jatuh tempo" }));
-
-    await waitFor(() =>
-      expect(customerInvoiceService.list).toHaveBeenLastCalledWith(
-        expect.objectContaining({ overdue: true }),
-      ),
-    );
-  });
-
-  it("sends an exact status when the lens names one", async () => {
-    const user = userEvent.setup();
-    renderWithAuth(<ReceivablesScreen />);
-
-    await waitFor(() => expect(customerInvoiceService.list).toHaveBeenCalled());
-    await user.click(screen.getByRole("button", { name: "Void" }));
-
-    await waitFor(() =>
-      expect(customerInvoiceService.list).toHaveBeenLastCalledWith(
-        expect.objectContaining({ status: "void" }),
-      ),
-    );
-  });
-
-  it("renders the server's outstanding figure, never a sum of the page", async () => {
-    asMock(customerInvoiceService.list).mockResolvedValue(
-      page([listRow(), listRow({ _id: "inv2" })]) as never,
-    );
-    asMock(customerInvoiceService.outstanding).mockResolvedValue(
-      // Deliberately NOT 2 × 300.000: the book is bigger than the page.
-      summary({ totalOutstanding: "9500000.0000", totalInvoices: 31 }),
-    );
-
-    renderWithAuth(<ReceivablesScreen />);
-
-    expect(await screen.findByText(/Rp\s?9\.500\.000/)).toBeInTheDocument();
-    expect(screen.getByText("31 faktur belum lunas")).toBeInTheDocument();
-  });
-
-  it("warns about overdue money with the server's own two figures", async () => {
-    asMock(customerInvoiceService.outstanding).mockResolvedValue(
-      summary({
-        totalOverdueInvoices: 3,
-        totalOverdueOutstanding: "4310000.0000",
-      }),
-    );
-
-    renderWithAuth(<ReceivablesScreen />);
-
-    /*
-      SCOPED TO THE BANNER. The same figure is on the stat card above it — the
-      sheet's AC asks for both, and the two are not redundant in use: the card is
-      always there with the number, the banner appears only when there is
-      something to act on and says what to do.
-    */
-    const banner = (
-      await screen.findByText("3 faktur sudah lewat jatuh tempo")
-    ).closest("div") as HTMLElement;
-
-    expect(banner).toHaveTextContent(/Rp\s?4\.310\.000/);
-  });
-
-  it("captions the due-soon note with the server's window, not a constant", async () => {
-    asMock(customerInvoiceService.outstanding).mockResolvedValue(
-      summary({
-        totalDueSoonInvoices: 4,
-        totalDueSoonOutstanding: "6185000.0000",
-        horizonDays: 14,
-      }),
-    );
-
-    renderWithAuth(<ReceivablesScreen />);
-
-    expect(
-      await screen.findByText("4 faktur jatuh tempo dalam 14 hari"),
-    ).toBeInTheDocument();
-  });
-
-  it("renders the row's lateness from the server's verdict", async () => {
-    asMock(customerInvoiceService.list).mockResolvedValue(
-      page([listRow({ isOverdue: true })]) as never,
-    );
-
-    renderWithAuth(<ReceivablesScreen />);
-
-    expect(await screen.findByText(/telat \d+ hari/)).toBeInTheDocument();
-  });
-
-  /*
-    The one column the payables list does not have. A bridged invoice never
-    passed through a form, and "where did this come from" is asked whenever a
-    figure looks unfamiliar.
-  */
-  it("says which invoices the till raised", async () => {
-    asMock(customerInvoiceService.list).mockResolvedValue(
-      page([
-        listRow({ source: "pos_bridge" }),
-        listRow({ _id: "inv2", source: "manual" }),
-      ]) as never,
-    );
-
-    renderWithAuth(<ReceivablesScreen />);
-
-    expect(await screen.findByText("dari kasir")).toBeInTheDocument();
-    expect(screen.getByText("manual")).toBeInTheDocument();
-  });
-
-  it("shows a voided invoice as owing nothing", async () => {
-    asMock(customerInvoiceService.list).mockResolvedValue(
-      page([listRow({ status: "void", outstandingAmount: "300000.0000" })]) as never,
-    );
-
-    renderWithAuth(<ReceivablesScreen />);
-
-    expect(await screen.findByText("void")).toBeInTheDocument();
-    // The outstanding column is dashed rather than showing a figure somebody
-    // might go and chase.
-    const row = screen.getByRole("row", { name: /INV-2026-0042/ });
-    expect(within(row).getByText("—")).toBeInTheDocument();
-  });
-
-  it("filters by customer through the panel, because search does not match names", async () => {
-    const user = userEvent.setup();
-    renderWithAuth(<ReceivablesScreen />);
-
-    await waitFor(() => expect(customerService.list).toHaveBeenCalled());
-    const panel = await openFilters(user);
-
-    await user.click(
-      within(panel).getByRole("button", { name: /Filter pelanggan/ }),
-    );
-    await user.click(await screen.findByRole("option", { name: "Bu Sari" }));
-    await user.click(within(panel).getByRole("button", { name: /Terapkan/i }));
-
-    await waitFor(() =>
-      expect(customerInvoiceService.list).toHaveBeenLastCalledWith(
-        expect.objectContaining({ customerId: CUSTOMER_ID }),
-      ),
-    );
-  });
-
-  it("says so when the request fails, rather than showing an empty list", async () => {
-    asMock(customerInvoiceService.list).mockRejectedValue(
-      new ApiError("Server error", 500),
-    );
-
-    renderWithAuth(<ReceivablesScreen />);
-
-    expect(await screen.findByRole("alert")).toBeInTheDocument();
-  });
-
-  /**
-   * The create button, and the grant behind it.
-   *
-   * `customerInvoices:create` IS SEPARATE FROM `read` on purpose: opening this
-   * list is what counter staff do, while raising an invoice cuts stock and posts
-   * two journal entries. A tenant grants the first without the second.
-   */
-  it("offers a create button to a role that may raise one", async () => {
-    renderWithAuth(<ReceivablesScreen />);
-
-    await waitFor(() => expect(customerInvoiceService.list).toHaveBeenCalled());
-    expect(
-      screen.getByRole("link", { name: /buat faktur/i }),
-    ).toHaveAttribute("href", "/dashboard/sales/new");
-  });
-
-  it("hides it from a role that may only read", async () => {
-    renderWithAuth(<ReceivablesScreen />, {
-      isSuperAdmin: false,
-      permissions: [{ feature: "customerInvoices", actions: ["read"] }],
-    });
-
-    await waitFor(() => expect(customerInvoiceService.list).toHaveBeenCalled());
-    expect(
-      screen.queryByRole("link", { name: /buat faktur/i }),
-    ).not.toBeInTheDocument();
-  });
-});
+/*
+  THE LIST SCREEN'S OWN SUITE MOVED to SalesInvoiceList.test.tsx with the
+  September 2026 layout — scope bar, four cards, sortable headers, row actions.
+  The walk-in case below stays here because it is about the shared
+  "Pelanggan umum" rule, which the detail screen follows too.
+*/
 
 /* ----------------------------------------------------------------- detail */
 
@@ -530,7 +299,7 @@ describe("InvoiceDetail", () => {
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
 
     expect(
-      await screen.findByText(/sudah di-void/),
+      await screen.findByText(/sudah dibatalkan — tidak ada yang bisa ditagih/),
     ).toBeInTheDocument();
     expect(screen.queryByLabelText("Jumlah diterima")).not.toBeInTheDocument();
   });
@@ -1177,8 +946,13 @@ describe("InvoiceDetail — membatalkan pembayaran", () => {
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
 
     expect(await screen.findByText(/Dobel input/)).toBeInTheDocument();
+    /*
+      THE PAYMENT'S cancel button, not the invoice's. Since the module's word
+      became "batal", the invoice-level "Batalkan faktur" is on this screen too —
+      and correctly so, because the only payment has been cancelled.
+    */
     expect(
-      screen.queryByRole("button", { name: /Batalkan/ }),
+      screen.queryByRole("button", { name: /^Batalkan(?! faktur)/ }),
     ).not.toBeInTheDocument();
   });
 });
@@ -1411,7 +1185,7 @@ describe("InvoiceDetail — the status panel", () => {
 
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
 
-    await screen.findByText(/sudah di-void/);
+    await screen.findByText(/sudah dibatalkan — tidak ada yang bisa ditagih/);
     // There is no progress towards paying something that was never owed.
     expect(screen.queryByText(/terbayar ·/)).not.toBeInTheDocument();
   });
@@ -1516,7 +1290,7 @@ describe("InvoiceDetail — the payment dialog", () => {
 
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
 
-    await screen.findByText(/sudah di-void/);
+    await screen.findByText(/sudah dibatalkan — tidak ada yang bisa ditagih/);
     expect(
       screen.queryByRole("button", { name: /Catat pembayaran/ }),
     ).not.toBeInTheDocument();
@@ -1830,120 +1604,3 @@ describe("PaymentHistory — the ledger reference", () => {
   });
 });
 
-describe("ReceivablesScreen — the three stat cards", () => {
-  /*
-    PCR-033's own list: "Stat cards: Total Piutang, Overdue, Bulan Ini". They read
-    as one sentence — owed, late, collected — and the order is the order the
-    questions are asked in.
-  */
-  it("shows all three, from the server's own figures", async () => {
-    asMock(customerInvoiceService.outstanding).mockResolvedValue(
-      summary({
-        totalOutstanding: "9500000.0000",
-        totalInvoices: 31,
-        totalOverdueOutstanding: "4310000.0000",
-        totalOverdueInvoices: 3,
-        collectedThisMonth: {
-          amount: "22940000.0000",
-          paymentCount: 31,
-          from: "2026-07-31T17:00:00.000Z",
-          to: "2026-08-31T16:59:59.999Z",
-        },
-      }),
-    );
-
-    renderWithAuth(<ReceivablesScreen />);
-
-    expect(await screen.findByText(/Rp\s?9\.500\.000/)).toBeInTheDocument();
-    expect(screen.getAllByText(/Rp\s?4\.310\.000/).length).toBeGreaterThan(0);
-    expect(screen.getByText(/Rp\s?22\.940\.000/)).toBeInTheDocument();
-    expect(screen.getByText("31 pembayaran diterima")).toBeInTheDocument();
-  });
-
-  /*
-    THE CAPTION COMES FROM THE SERVER'S RANGE, not the browser's clock. The month
-    was cut in the TENANT's timezone; deriving it locally would caption one month
-    over a figure computed for another for a few hours either side of every
-    boundary.
-  */
-  it("captions the month from the range the figure was computed over", async () => {
-    asMock(customerInvoiceService.outstanding).mockResolvedValue(
-      summary({
-        collectedThisMonth: {
-          amount: "1000.0000",
-          paymentCount: 1,
-          // 00:00 WIB on 1 August — a UTC reader would call this July.
-          from: "2026-07-31T17:00:00.000Z",
-          to: "2026-08-31T16:59:59.999Z",
-        },
-      }),
-    );
-
-    renderWithAuth(<ReceivablesScreen />);
-
-    expect(await screen.findByText("Tertagih Agustus 2026")).toBeInTheDocument();
-  });
-
-  /*
-    A CARD THAT VANISHES AT ZERO teaches people its absence means "not loaded".
-    Unlike the two notices below them, which appear only when there is something
-    to act on.
-  */
-  it("stays visible at zero", async () => {
-    asMock(customerInvoiceService.outstanding).mockResolvedValue(
-      summary({
-        totalOutstanding: "0.0000",
-        totalInvoices: 0,
-        totalOverdueInvoices: 0,
-      }),
-    );
-
-    renderWithAuth(<ReceivablesScreen />);
-
-    expect(await screen.findByText("Lewat jatuh tempo")).toBeInTheDocument();
-    expect(screen.getByText("0 faktur perlu ditagih")).toBeInTheDocument();
-    // No banner, though — nothing to act on.
-    expect(
-      screen.queryByText(/sudah lewat jatuh tempo/),
-    ).not.toBeInTheDocument();
-  });
-
-  /*
-    NULL IS NOT ZERO. A failed summary read renders an em dash; "Rp 0" would be a
-    confident wrong answer on a screen whose whole point is figures that can be
-    trusted.
-  */
-  it("renders an absence, not a zero, when the summary fails", async () => {
-    asMock(customerInvoiceService.outstanding).mockRejectedValue(
-      new ApiError("boom", 500),
-    );
-
-    renderWithAuth(<ReceivablesScreen />);
-
-    await waitFor(() => expect(customerInvoiceService.list).toHaveBeenCalled());
-    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(3);
-    expect(screen.queryByText(/Rp\s?0/)).not.toBeInTheDocument();
-  });
-});
-
-describe("ReceivablesToolbar — ordering by what was billed", () => {
-  it("sends totalHighest over the wire", async () => {
-    const user = userEvent.setup();
-    renderWithAuth(<ReceivablesScreen />);
-
-    await waitFor(() => expect(customerInvoiceService.list).toHaveBeenCalled());
-    const panel = await openFilters(user);
-
-    await user.click(within(panel).getByRole("button", { name: /Urutkan/ }));
-    await user.click(
-      await screen.findByRole("option", { name: "Tagihan terbesar" }),
-    );
-    await user.click(within(panel).getByRole("button", { name: /Terapkan/i }));
-
-    await waitFor(() =>
-      expect(customerInvoiceService.list).toHaveBeenLastCalledWith(
-        expect.objectContaining({ sort: "totalHighest" }),
-      ),
-    );
-  });
-});

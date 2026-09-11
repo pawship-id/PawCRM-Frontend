@@ -625,7 +625,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
 
               {voided && (
                 <p className="text-sm text-muted">
-                  Faktur ini sudah di-void — tidak ada yang bisa ditagih.
+                  Faktur ini sudah dibatalkan — tidak ada yang bisa ditagih.
                   Nomornya tetap tercatat dan tidak akan dipakai ulang.
                   {invoice.voidReason && (
                     <span className="mt-1 block italic">
@@ -684,10 +684,10 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
                 <Can feature="customerInvoices" action="void">
                   {hasActivePayment ? (
                     <p className="text-xs text-muted">
-                      Void terkunci karena masih ada pembayaran aktif. Batalkan
-                      pembayarannya dulu — masing-masing memposting jurnal
-                      pembaliknya sendiri. Nomor faktur tidak pernah dipakai
-                      ulang.
+                      Faktur belum bisa dibatalkan karena masih ada pembayaran
+                      aktif. Batalkan pembayarannya dulu — masing-masing
+                      memposting jurnal pembaliknya sendiri. Nomor faktur tidak
+                      pernah dipakai ulang.
                     </p>
                   ) : (
                     <Button
@@ -695,7 +695,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
                       className="w-full"
                       onClick={() => setVoidOpen(true)}
                     >
-                      Void faktur
+                      Batalkan faktur
                     </Button>
                   )}
                 </Can>

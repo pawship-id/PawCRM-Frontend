@@ -63,7 +63,7 @@ export function VoidInvoiceDialog({
     const trimmed = reason.trim();
 
     if (!trimmed) {
-      swalToast("Alasan void wajib diisi.", "error");
+      swalToast("Alasan pembatalan wajib diisi.", "error");
       return;
     }
 
@@ -81,7 +81,7 @@ export function VoidInvoiceDialog({
       setReason("");
       onOpenChange(false);
       onVoided(updated);
-      swalToast(`${invoice.invoiceNumber} sudah di-void.`);
+      swalToast(`${invoice.invoiceNumber} sudah dibatalkan.`);
     } catch (error) {
       swalToast(
         error instanceof ApiError
@@ -98,7 +98,7 @@ export function VoidInvoiceDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Void {invoice.invoiceNumber}?</DialogTitle>
+          <DialogTitle>Batalkan {invoice.invoiceNumber}?</DialogTitle>
           <DialogDescription asChild>
             <div className="space-y-2 text-sm">
               <p>
@@ -113,7 +113,7 @@ export function VoidInvoiceDialog({
                 </li>
                 <li>
                   Fakturnya <strong>tidak dihapus</strong>: tetap ada di daftar
-                  bertanda void, dan nomornya tidak dipakai ulang.
+                  bertanda batal, dan nomornya tidak dipakai ulang.
                 </li>
               </ul>
             </div>
@@ -121,7 +121,7 @@ export function VoidInvoiceDialog({
         </DialogHeader>
 
         <TextareaField
-          label="Alasan void"
+          label="Alasan pembatalan"
           name="voidReason"
           value={reason}
           onChange={(event) => setReason(event.target.value)}
@@ -132,19 +132,25 @@ export function VoidInvoiceDialog({
         />
 
         <DialogFooter>
+          {/*
+            "KEMBALI", NOT "BATAL". The module's word for cancelling an invoice is
+            "batal" (decided 11 Sep 2026), so a "Batal" button beside "Batalkan
+            faktur" would be two buttons that sound like the same act and do
+            opposite things.
+          */}
           <Button
             variant="secondary"
             onClick={() => onOpenChange(false)}
             disabled={saving}
           >
-            Batal
+            Kembali
           </Button>
           <Button
             variant="destructive"
             onClick={handleVoid}
             disabled={saving || reason.trim() === ""}
           >
-            {saving ? "Memproses…" : "Void faktur"}
+            {saving ? "Memproses…" : "Batalkan faktur"}
           </Button>
         </DialogFooter>
       </DialogContent>

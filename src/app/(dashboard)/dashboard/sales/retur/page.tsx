@@ -19,7 +19,7 @@ export default function SalesReturnsTabPage() {
     <ModuleTabPlaceholder
       header={<SalesModuleHeader />}
       title="Retur"
-      note="Barang yang dikembalikan pelanggan — stok masuk lagi dan tagihannya ikut berkurang. Untuk sekarang, penjualan yang salah dibatalkan lewat Void di detail fakturnya."
+      note="Barang yang dikembalikan pelanggan — stok masuk lagi dan tagihannya ikut berkurang. Untuk sekarang, penjualan yang salah dibatalkan lewat tombol Batalkan faktur di detail fakturnya."
       icon={Undo2}
     />
   );

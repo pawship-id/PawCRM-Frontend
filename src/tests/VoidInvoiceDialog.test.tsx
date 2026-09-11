@@ -45,8 +45,10 @@ const open = (props = {}) =>
     />,
   );
 
-const reasonField = () => screen.getByLabelText(/alasan void/i);
-const confirm = () => screen.getByRole("button", { name: /^void faktur$/i });
+// The module's word is "batal", not "void" (decided 11 Sep 2026).
+const reasonField = () => screen.getByLabelText(/alasan pembatalan/i);
+const confirm = () =>
+  screen.getByRole("button", { name: /^batalkan faktur$/i });
 
 beforeEach(() => {
   onVoided.mockClear();
@@ -66,7 +68,9 @@ describe("what the dialog says will happen", () => {
   it("names the invoice and what it is worth", () => {
     open();
 
-    expect(screen.getByText(/INV\/CBS\/2608\/0006/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Batalkan INV/CBS/2608/0006?" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Rp 181.000")).toBeInTheDocument();
     expect(screen.getByText(/Bu Sari/)).toBeInTheDocument();
   });
@@ -88,6 +92,20 @@ describe("what the dialog says will happen", () => {
     const body = screen.getByText(/tidak dihapus/i).closest("li")!;
     expect(body).toHaveTextContent(/nomornya tidak dipakai ulang/i);
   });
+});
+
+/*
+  "KEMBALI", NOT "BATAL". With "Batalkan faktur" as the confirm button, a "Batal"
+  beside it would be two buttons that sound like one act and do opposite things.
+*/
+it("backs out with Kembali, never a second 'Batal'", async () => {
+  open();
+
+  await userEvent.click(screen.getByRole("button", { name: "Kembali" }));
+
+  expect(onOpenChange).toHaveBeenCalledWith(false);
+  expect(screen.queryByRole("button", { name: "Batal" })).not.toBeInTheDocument();
+  expect(customerInvoiceService.voidInvoice).not.toHaveBeenCalled();
 });
 
 describe("the reason", () => {

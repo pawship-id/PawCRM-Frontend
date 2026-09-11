@@ -1,8 +1,10 @@
 import { apiClient } from "./api-client";
 import type {
   CustomerInvoiceDetail,
+  CustomerInvoiceFilterOptions,
   CustomerInvoiceListQuery,
   CustomerInvoiceListRow,
+  CustomerInvoiceListSummary,
   CustomerOutstandingSummary,
   PageResult,
   RecordCustomerPaymentInput,
@@ -37,6 +39,35 @@ import type {
  * The tenant scope is derived from the session cookie by the backend, so it is
  * never passed here.
  */
+/**
+ * The filter half of a list query, as query-string entries.
+ *
+ * ONE FUNCTION FOR `list` AND `summary`. A field added to one and forgotten in
+ * the other is a card that silently ignores a filter its table honours.
+ *
+ * Arrays go out as repeated params — see `buildUrl`.
+ */
+function filterParams(query: CustomerInvoiceListQuery) {
+  return {
+    search: query.search,
+    customerId: query.customerId,
+    branchId: query.branchId,
+    branchIds: query.branchIds,
+    warehouseId: query.warehouseId,
+    createdBy: query.createdBy,
+    status: query.status,
+    statuses: query.statuses,
+    source: query.source,
+    outstanding: query.outstanding,
+    overdue: query.overdue,
+    dueSoon: query.dueSoon,
+    horizonDays: query.horizonDays,
+    period: query.period,
+    dateFrom: query.dateFrom,
+    dateTo: query.dateTo,
+  };
+}
+
 export const customerInvoiceService = {
   /**
    * GET /customer-invoices — receivables, soonest due first, filterable.
@@ -59,20 +90,32 @@ export const customerInvoiceService = {
       query: {
         page: query.page,
         limit: query.limit,
-        search: query.search,
-        customerId: query.customerId,
-        branchId: query.branchId,
-        status: query.status,
-        source: query.source,
-        outstanding: query.outstanding,
-        overdue: query.overdue,
-        dueSoon: query.dueSoon,
-        horizonDays: query.horizonDays,
-        dateFrom: query.dateFrom,
-        dateTo: query.dateTo,
         sort: query.sort,
+        ...filterParams(query),
       },
     }),
+
+  /**
+   * GET /customer-invoices/summary — the four cards over the list.
+   *
+   * TAKES THE LIST'S OWN FILTER, through the same `filterParams`, so the cards
+   * and the rows cannot be asked two different questions. Paging and ordering
+   * are not sent: neither changes what the rows add up to.
+   */
+  summary: (query: Omit<CustomerInvoiceListQuery, "page" | "limit" | "sort"> = {}) =>
+    apiClient.get<CustomerInvoiceListSummary>("/customer-invoices/summary", {
+      query: filterParams(query),
+    }),
+
+  /**
+   * GET /customer-invoices/filter-options — the cabang, gudang and kasir that
+   * appear on this tenant's invoices. Needs only `customerInvoices:read`, unlike
+   * the master lists behind `/branches` and `/users`.
+   */
+  filterOptions: () =>
+    apiClient.get<CustomerInvoiceFilterOptions>(
+      "/customer-invoices/filter-options",
+    ),
 
   /**
    * POST /customer-invoices — raise one by hand (PCR-030).

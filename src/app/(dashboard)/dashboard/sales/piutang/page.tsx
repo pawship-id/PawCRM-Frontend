@@ -19,10 +19,9 @@ export const metadata: Metadata = {
  * somebody who cannot open it would be a small leak with no upside.
  *
  * WHAT IT IS WAITING FOR is not an endpoint but a decision: piutang is a LENS on
- * the Faktur tab today (its pill row opens on `outstanding`), so a real screen
- * here means either an aging report the API cannot yet produce, or moving the
- * lens out of Faktur — which would change what every reader sees on the module's
- * main screen. That is a product call, not a layout one.
+ * the Faktur tab today — its "Belum lunas" card drills the list to every unpaid
+ * invoice — so a real screen here means an aging report the API cannot yet
+ * produce. That is a product call, not a layout one.
  */
 export default function ReceivablesTabPage() {
   return (
@@ -30,7 +29,7 @@ export default function ReceivablesTabPage() {
       <ModuleTabPlaceholder
         header={<SalesModuleHeader />}
         title="Piutang"
-        note="Umur piutang, rekap per pelanggan, dan riwayat penagihan. Untuk sekarang, saringan Piutang ada di tab Faktur — daftarnya memang terbuka pada faktur yang belum lunas."
+        note="Umur piutang, rekap per pelanggan, dan riwayat penagihan. Untuk sekarang, klik kartu Belum lunas di tab Faktur — daftarnya langsung menampilkan semua faktur yang belum lunas."
         icon={HandCoins}
       />
     </RequirePermission>

@@ -5397,13 +5397,30 @@ export interface CreateCustomerInvoiceInput {
  */
 export interface CustomerInvoiceListQuery {
   page?: number;
+  /** Up to 200 on this list — twice the API-wide ceiling. */
   limit?: number;
-  /** Free-text over invoice number / notes. NOT the customer's name — that
-   *  lives in another collection; filter by `customerId` instead. */
+  /**
+   * Free text over the invoice number, the notes AND the customer's name. The
+   * name half is resolved server-side into customer ids, not joined per row.
+   */
   search?: string;
   customerId?: string;
+  /** The SCOPE — whose books. Also narrows the belum-lunas / overdue cards. */
   branchId?: string;
+  /** The filter panel's cabang, any of them. ANDed with `branchId`. */
+  branchIds?: string[];
+  /** Where the goods left from. A scope, like `branchId`. */
+  warehouseId?: string;
+  /** Who raised the invoice — the panel's Kasir / Admin. */
+  createdBy?: string[];
   status?: CustomerInvoiceStatus;
+  /** Any of these, OR'd. `overdue` is outstanding AND past due. */
+  statuses?: CustomerInvoiceStatusFilter[];
+  /**
+   * A named period over `invoiceDate`, resolved in the TENANT's timezone. Never
+   * sent beside `dateFrom` / `dateTo` — the server refuses both at once.
+   */
+  period?: InvoicePeriod;
   source?: CustomerInvoiceSource;
   /** `status ∈ {unpaid, partial}` — excludes `void`, which owes nothing. */
   outstanding?: boolean;
@@ -5416,9 +5433,8 @@ export interface CustomerInvoiceListQuery {
   dateFrom?: string;
   dateTo?: string;
   /**
-   * `totalHighest` / `totalLowest` order by what was BILLED, not by what is
-   * still owed: `total` is stored, the outstanding amount is derived per row and
-   * no index can serve it.
+   * `total…` orders by what was BILLED; `outstanding…` by what is still OWED,
+   * derived in the pipeline with a void invoice counted as owing nothing.
    */
   sort?:
     | "dueSoonest"
@@ -5426,7 +5442,71 @@ export interface CustomerInvoiceListQuery {
     | "newest"
     | "oldest"
     | "totalHighest"
-    | "totalLowest";
+    | "totalLowest"
+    | "outstandingHighest"
+    | "outstandingLowest";
+}
+
+/** What the list's Status filter may ask for — a status, or lateness. */
+export type CustomerInvoiceStatusFilter = CustomerInvoiceStatus | "overdue";
+
+/** The periods the server can resolve by name, in the tenant's timezone. */
+export type InvoicePeriod = "today" | "week" | "month";
+
+/** One card: a rupiah figure and how many invoices it came from. */
+export interface CustomerInvoiceSummaryFigure {
+  amount: string;
+  invoiceCount: number;
+}
+
+/**
+ * GET /api/customer-invoices/summary — the four cards over the list.
+ *
+ * TWO HALVES, ANSWERING DIFFERENT QUESTIONS:
+ *
+ *   `revenue`, `collected` — what the TABLE adds up to, under the list's whole
+ *   filter. Void invoices are matched but count as neither. `collected` is
+ *   `paidAmount`, so a cash sale the till booked as paid counts.
+ *
+ *   `outstanding`, `overdue` — what is OWED, narrowed only by the branch and
+ *   warehouse scope. A July debt is still owed while the table shows September.
+ *
+ * `period` IS THE RANGE THE SERVER RESOLVED, in the tenant's timezone — null when
+ * the query had no dates at all. `fromDate` / `toDate` are that range as the
+ * tenant's CALENDAR DAYS (`yyyy-mm-dd`): caption from those, never by formatting
+ * the instants in the browser, which names the wrong day west of the tenant.
+ */
+export interface CustomerInvoiceListSummary {
+  asOf: string;
+  period: {
+    from: string | null;
+    to: string | null;
+    fromDate: string | null;
+    toDate: string | null;
+  } | null;
+  revenue: CustomerInvoiceSummaryFigure;
+  collected: CustomerInvoiceSummaryFigure;
+  outstanding: CustomerInvoiceSummaryFigure;
+  overdue: CustomerInvoiceSummaryFigure;
+}
+
+/**
+ * GET /api/customer-invoices/filter-options — the values that actually appear on
+ * this tenant's invoices, labelled. Gated on `customerInvoices:read` only.
+ */
+export interface CustomerInvoiceFilterOptions {
+  branches: Array<{ _id: string; name: string }>;
+  /**
+   * `branchId` — the gudang's OWN cabang (its master record), null when none is
+   * named. `branchIds` — every cabang it has actually billed under.
+   */
+  warehouses: Array<{
+    _id: string;
+    name: string;
+    branchId: string | null;
+    branchIds: string[];
+  }>;
+  creators: Array<{ _id: string; name: string }>;
 }
 
 /** One customer's debt, from GET /api/customer-invoices/outstanding. */
