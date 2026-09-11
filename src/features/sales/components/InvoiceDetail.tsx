@@ -37,7 +37,6 @@ import { InvoiceItemsTable } from "./InvoiceItemsTable";
 import { InvoiceJournalDialog } from "./InvoiceJournalDialog";
 import { InvoicePaymentTimeline } from "./InvoicePaymentTimeline";
 import { InvoiceSourceBadge, InvoiceStatusBadge } from "./InvoiceStatusBadge";
-import { PosSettlementCard } from "./PosSettlementCard";
 import { RecordPaymentDialog } from "./RecordPaymentDialog";
 import { VoidInvoiceDialog } from "./VoidInvoiceDialog";
 
@@ -426,15 +425,6 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
               />
             </Card>
           )}
-
-          {/*
-            THE COUNTER'S OWN SETTLEMENT, separate from the collection history:
-            "how was this sale paid for" and "what has been collected since" are
-            different questions, and a cash sale only ever has the first.
-          */}
-          {invoice.posSettlement && (
-            <PosSettlementCard settlement={invoice.posSettlement} />
-          )}
         </div>
 
         {/* ─── ITS STATE ─────────────────────────────────────────────────── */}
@@ -528,8 +518,8 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
 
           {/*
             HIDDEN ON A SETTLED TILL SALE WITH NOTHING COLLECTED SINCE: "belum ada
-            pembayaran" under a card that has just shown the counter taking the
-            money would contradict it.
+            pembayaran" beside a status reading Lunas would contradict it — the
+            counter took the money, and there is nothing left to collect.
           */}
           {!(invoice.posSettlement && payments.length === 0 && settled) && (
             <InvoicePaymentTimeline invoiceId={invoiceId} payments={payments} />

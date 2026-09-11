@@ -748,26 +748,26 @@ describe("InvoiceDetail — a sale joined from the till", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("gives the counter's money its own card, with the transaction it settled", async () => {
+  // Removed on request (11 Sep 2026): the page had no need for a card of its own.
+  it("gives the counter's money no card of its own", async () => {
     asMock(customerInvoiceService.getById).mockResolvedValue(withSale());
 
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
 
-    expect(await screen.findByText("Pembayaran di kasir")).toBeInTheDocument();
-    expect(screen.getByText(/TRX-2026-0007/)).toBeInTheDocument();
+    await screen.findByText("Kalung Nylon");
+    expect(screen.queryByText("Pembayaran di kasir")).not.toBeInTheDocument();
   });
 
   /*
-    "Belum ada pembayaran untuk faktur ini" under a card that has just shown the
-    money arriving is a contradiction — and on a settled cash sale there is
-    nothing left to collect.
+    "Belum ada pembayaran tercatat" beside a status reading Lunas is a
+    contradiction — and on a settled cash sale there is nothing left to collect.
   */
   it("drops the collection history on a settled cash sale", async () => {
     asMock(customerInvoiceService.getById).mockResolvedValue(withSale());
 
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
 
-    await screen.findByText("Pembayaran di kasir");
+    await screen.findByText("Kalung Nylon");
     expect(
       screen.queryByText(/belum ada pembayaran tercatat/i),
     ).not.toBeInTheDocument();

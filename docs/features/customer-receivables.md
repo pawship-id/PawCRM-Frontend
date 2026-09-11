@@ -40,7 +40,7 @@ Three things come back beside the joined pair, and each is separate for a reason
 | | What | Why not folded in |
 | --- | --- | --- |
 | `otherCharges[]` | ongkir, packaging | The invoice shape has no field for them, and dropping them leaves a total the rows above do not add up to. **Itemised** — "biaya lain Rp 25.000" explains nothing to the customer who paid it |
-| `posSettlement` | how the counter settled it | Rendered in its own **"Pembayaran di kasir"** card, read-only |
+| `posSettlement` | how the counter settled it | **No card of its own** — the "Pembayaran di kasir" card was removed on request (11 Sep 2026). A part-paid sale still shows the split in the recap ("Dibayar di kasir" · "Sisa jadi piutang") |
 | `items[].dpp` / `.tax` | null on every till line | The tax allocation is decided across every line at once, so `Σ round(part) ≠ round(Σ)` and one line cannot reproduce its own share. The table shows nothing rather than a number it made up |
 
 **Why the settlement is not in "Riwayat pembayaran".** That list means "money
@@ -434,7 +434,7 @@ transaction. Nothing posted changes in place.
 | Where | What |
 | --- | --- |
 | Header | Number, status, customer · branch · source; **Cetak**, **WhatsApp** (disabled with a reason when there is no number, absent on a cancelled invoice), ⋮ **Batalkan faktur** — always clickable; while a payment still counts the dialog lists the active payments, each linked to the page where it is cancelled, instead of the reason form |
-| Left | **Rincian faktur** — info grid, lines grouped per animal (species + booking chip), Pajak column ("PPN 11%" when the rate was frozen), recap with DPP/PPN under a dashed rule; ⋮ **Lihat jurnal**. Then Jadwal & pengerjaan, Pembayaran di kasir |
+| Left | **Rincian faktur** — info grid, lines grouped per animal (species + booking chip), Pajak column ("PPN 11%" when the rate was frozen), recap with DPP/PPN under a dashed rule; ⋮ **Lihat jurnal**. Then Jadwal & pengerjaan |
 | Right (sticky) | Status pembayaran, **Riwayat pembayaran** (each row opens the payment's page), Dampak stok, Piutang pelanggan |
 | Foot | **Riwayat aktivitas**, folded, with the entry count on the fold — read with the page so the count is known; no badge while loading or after a failed read |
 
