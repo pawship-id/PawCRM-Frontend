@@ -59,6 +59,35 @@ export function formatDateRange(from: string | null, to: string | null): string 
 }
 
 /**
+ * A ticked set of cabang or gudang, as the few words the card has room for.
+ *
+ *   none           → `Semua cabang`
+ *   one            → its name
+ *   two            → both names
+ *   three or more  → `3 cabang`, with every name in the tooltip
+ *
+ * A CHOSEN VALUE WHOSE NAME HAS NOT ARRIVED READS "—", never "Semua". The
+ * options load separately, and "Semua cabang" over figures scoped to one cabang
+ * would be a confident wrong caption. Several with a name missing read as their
+ * count, which is true whether or not the names have loaded.
+ */
+function scopeValue(
+  ids: string[],
+  rows: { _id: string; name: string }[],
+  allLabel: string,
+  unit: string,
+): { value: string; title?: string } {
+  if (ids.length === 0) return { value: allLabel };
+
+  const names = ids.map((id) => rows.find((row) => row._id === id)?.name);
+  if (names.some((name) => name === undefined)) {
+    return { value: ids.length === 1 ? "—" : `${ids.length} ${unit}` };
+  }
+  if (names.length <= 2) return { value: names.join(", ") };
+  return { value: `${names.length} ${unit}`, title: names.join(", ") };
+}
+
+/**
  * WHOSE BOOKS AND WHICH DAYS the four cards below are about — read-only.
  *
  * NOT A CONTROL, deliberately. Cabang, Gudang and Periode are changed in the
@@ -84,18 +113,18 @@ export function InvoiceScopeCard({
   summary: CustomerInvoiceListSummary | null;
   summaryStale: boolean;
 }) {
-  /*
-    A CHOSEN VALUE WHOSE NAME HAS NOT ARRIVED READS "—", never "Semua". The
-    options load separately, and "Semua cabang" over figures scoped to one
-    cabang would be a confident wrong caption.
-  */
-  const branch = query.branchId
-    ? (options.branches.find((row) => row._id === query.branchId)?.name ?? "—")
-    : "Semua cabang";
-  const warehouse = query.warehouseId
-    ? (options.warehouses.find((row) => row._id === query.warehouseId)?.name ??
-      "—")
-    : "Semua gudang";
+  const branch = scopeValue(
+    query.branchIds,
+    options.branches,
+    "Semua cabang",
+    "cabang",
+  );
+  const warehouse = scopeValue(
+    query.warehouseIds,
+    options.warehouses,
+    "Semua gudang",
+    "gudang",
+  );
 
   let period: string;
   if (query.period === "all") {
@@ -117,11 +146,17 @@ export function InvoiceScopeCard({
       className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-xl border border-border bg-surface px-5 py-3.5 shadow-sm"
     >
       <dl className="flex flex-wrap items-center gap-x-6 gap-y-3">
-        <ScopeItem icon={<Store className="size-4" />} label="Cabang" value={branch} />
+        <ScopeItem
+          icon={<Store className="size-4" />}
+          label="Cabang"
+          value={branch.value}
+          title={branch.title}
+        />
         <ScopeItem
           icon={<Warehouse className="size-4" />}
           label="Gudang"
-          value={warehouse}
+          value={warehouse.value}
+          title={warehouse.title}
         />
         <ScopeItem
           icon={<CalendarDays className="size-4" />}
@@ -139,10 +174,13 @@ function ScopeItem({
   icon,
   label,
   value,
+  title,
 }: {
   icon: ReactNode;
   label: string;
   value: string;
+  /** The whole list, when `value` is only its count. */
+  title?: string;
 }) {
   return (
     <div className="flex items-center gap-2 sm:border-l sm:border-border sm:pl-6 sm:first:border-l-0 sm:first:pl-0">
@@ -150,7 +188,9 @@ function ScopeItem({
         {icon}
       </span>
       <dt className="text-sm text-muted">{label}</dt>
-      <dd className="text-sm font-bold text-foreground tabular-nums">{value}</dd>
+      <dd className="text-sm font-bold text-foreground tabular-nums" title={title}>
+        {value}
+      </dd>
     </div>
   );
 }

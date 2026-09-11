@@ -154,6 +154,25 @@ async function openFilters(user: ReturnType<typeof userEvent.setup>) {
   return screen.findByRole("dialog");
 }
 
+/**
+ * Opens one of the panel's checkbox menus, toggles the rows named — in order,
+ * in one opening — and closes it again.
+ */
+async function tick(
+  user: ReturnType<typeof userEvent.setup>,
+  panel: HTMLElement,
+  field: string,
+  rows: string[],
+) {
+  await user.click(
+    within(panel).getByRole("button", { name: new RegExp(`^${field}:`) }),
+  );
+  for (const row of rows) {
+    await user.click(await screen.findByRole("menuitemcheckbox", { name: row }));
+  }
+  await user.keyboard("{Escape}");
+}
+
 const lastList = () => asMock(customerInvoiceService.list).mock.calls.at(-1)?.[0];
 const lastSummary = () =>
   asMock(customerInvoiceService.summary).mock.calls.at(-1)?.[0];
@@ -311,14 +330,35 @@ describe("SalesInvoiceList — the scope card", () => {
 
     await screen.findByText("INV-2026-0042");
     const panel = await openFilters(user);
-    await user.click(within(panel).getByRole("button", { name: "Filter gudang" }));
-    await user.click(await screen.findByRole("option", { name: "Gudang Selatan" }));
+    await tick(user, panel, "Gudang", ["Gudang Selatan"]);
     await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
 
     await waitFor(() =>
       expect(scopeCard()).toHaveTextContent(/Cabang\s*Cabang Selatan/),
     );
     expect(scopeCard()).toHaveTextContent(/Gudang\s*Gudang Selatan/);
+  });
+
+  it("names two cabang, and counts three gudang with their names on hover", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<ReceivablesScreen />);
+
+    await screen.findByText("INV-2026-0042");
+    const panel = await openFilters(user);
+    await tick(user, panel, "Cabang", ["Cabang Barat", "Cabang Selatan"]);
+    await tick(user, panel, "Gudang", ["Gudang Barat", "Gudang Selatan", "Etalase Barat"]);
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+    await waitFor(() =>
+      expect(scopeCard()).toHaveTextContent(
+        /Cabang\s*Cabang Barat, Cabang Selatan/,
+      ),
+    );
+    const gudang = within(scopeCard()).getByText("3 gudang");
+    expect(gudang).toHaveAttribute(
+      "title",
+      "Gudang Barat, Gudang Selatan, Etalase Barat",
+    );
   });
 
   it("reads 'Semua tanggal' once a drill has lifted a date bound", async () => {
@@ -393,96 +433,146 @@ describe("formatDateRange", () => {
 });
 
 describe("SalesInvoiceList — cabang and gudang in the panel", () => {
-  it("offers every gudang while no cabang is chosen", async () => {
+  const menuRows = () =>
+    screen.getAllByRole("menuitemcheckbox").map((row) => row.textContent);
+
+  it("offers every gudang while no cabang is ticked", async () => {
     const user = userEvent.setup();
     renderWithAuth(<ReceivablesScreen />);
 
     await screen.findByText("INV-2026-0042");
     const panel = await openFilters(user);
-    await user.click(within(panel).getByRole("button", { name: "Filter gudang" }));
+    await user.click(within(panel).getByRole("button", { name: /^Gudang:/ }));
+    await screen.findByRole("menuitemcheckbox", { name: "Gudang Barat" });
 
-    expect(await screen.findByRole("option", { name: "Gudang Barat" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Gudang Selatan" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Etalase Barat" })).toBeInTheDocument();
+    expect(menuRows()).toEqual([
+      "Semua gudang",
+      "Gudang Barat",
+      "Gudang Selatan",
+      "Etalase Barat",
+    ]);
   });
 
-  it("offers only the chosen cabang's gudang", async () => {
+  it("offers only the ticked cabang's gudang", async () => {
     const user = userEvent.setup();
     renderWithAuth(<ReceivablesScreen />);
 
     await screen.findByText("INV-2026-0042");
     const panel = await openFilters(user);
-    await user.click(within(panel).getByRole("button", { name: "Filter cabang" }));
-    await user.click(await screen.findByRole("option", { name: "Cabang Barat" }));
-    await user.click(within(panel).getByRole("button", { name: "Filter gudang" }));
+    await tick(user, panel, "Cabang", ["Cabang Barat"]);
+    await user.click(within(panel).getByRole("button", { name: /^Gudang:/ }));
+    await screen.findByRole("menuitemcheckbox", { name: "Gudang Barat" });
 
-    expect(await screen.findByRole("option", { name: "Gudang Barat" })).toBeInTheDocument();
-    // Placed under Cabang Barat by where it has billed — its master names none.
-    expect(screen.getByRole("option", { name: "Etalase Barat" })).toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "Gudang Selatan" }),
-    ).not.toBeInTheDocument();
+    // Etalase Barat is placed under Cabang Barat by where it has billed — its
+    // master names none.
+    expect(menuRows()).toEqual(["Semua gudang", "Gudang Barat", "Etalase Barat"]);
   });
 
-  it("fills in the cabang when a gudang is picked first", async () => {
+  it("offers the gudang of every ticked cabang", async () => {
     const user = userEvent.setup();
     renderWithAuth(<ReceivablesScreen />);
 
     await screen.findByText("INV-2026-0042");
     const panel = await openFilters(user);
-    await user.click(within(panel).getByRole("button", { name: "Filter gudang" }));
-    await user.click(await screen.findByRole("option", { name: "Gudang Selatan" }));
+    await tick(user, panel, "Cabang", ["Cabang Barat", "Cabang Selatan"]);
 
     expect(
-      within(panel).getByRole("button", { name: "Filter cabang" }),
+      within(panel).getByRole("button", { name: /^Cabang:/ }),
+    ).toHaveTextContent("2 cabang");
+
+    await user.click(within(panel).getByRole("button", { name: /^Gudang:/ }));
+    await screen.findByRole("menuitemcheckbox", { name: "Gudang Selatan" });
+    expect(menuRows()).toHaveLength(4);
+  });
+
+  it("ticks the cabang when a gudang is picked first", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<ReceivablesScreen />);
+
+    await screen.findByText("INV-2026-0042");
+    const panel = await openFilters(user);
+    await tick(user, panel, "Gudang", ["Gudang Selatan"]);
+
+    expect(
+      within(panel).getByRole("button", { name: /^Cabang:/ }),
     ).toHaveTextContent("Cabang Selatan");
 
     await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
 
     await waitFor(() =>
-      expect(lastList()).toMatchObject({ branchId: "b2", warehouseId: "w2" }),
+      expect(lastList()).toMatchObject({ branchIds: ["b2"], warehouseIds: ["w2"] }),
     );
     // The scope narrows the balance cards too.
     await waitFor(() =>
-      expect(lastSummary()).toMatchObject({ branchId: "b2", warehouseId: "w2" }),
+      expect(lastSummary()).toMatchObject({
+        branchIds: ["b2"],
+        warehouseIds: ["w2"],
+      }),
     );
   });
 
-  it("clears a gudang that does not belong to a newly chosen cabang", async () => {
+  /*
+    TICKING A GUDANG TICKS ITS CABANG, which narrows the gudang on offer. Re-drawn
+    mid-menu, Gudang Barat would vanish from under the pointer the moment Gudang
+    Selatan was ticked.
+  */
+  it("holds the gudang list still while its menu is open", async () => {
     const user = userEvent.setup();
     renderWithAuth(<ReceivablesScreen />);
 
     await screen.findByText("INV-2026-0042");
     const panel = await openFilters(user);
-    await user.click(within(panel).getByRole("button", { name: "Filter gudang" }));
-    await user.click(await screen.findByRole("option", { name: "Gudang Selatan" }));
-    await user.click(within(panel).getByRole("button", { name: "Filter cabang" }));
-    await user.click(await screen.findByRole("option", { name: "Cabang Barat" }));
+    await tick(user, panel, "Gudang", ["Gudang Selatan", "Gudang Barat"]);
 
     expect(
-      within(panel).getByRole("button", { name: "Filter gudang" }),
+      within(panel).getByRole("button", { name: /^Cabang:/ }),
+    ).toHaveTextContent("2 cabang");
+
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+    await waitFor(() =>
+      expect(lastList()).toMatchObject({
+        branchIds: ["b2", "b1"],
+        warehouseIds: ["w2", "w1"],
+      }),
+    );
+  });
+
+  it("unticks a gudang that is under none of the ticked cabang", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<ReceivablesScreen />);
+
+    await screen.findByText("INV-2026-0042");
+    const panel = await openFilters(user);
+    await tick(user, panel, "Gudang", ["Gudang Selatan"]);
+    // Off Selatan, onto Barat — Gudang Selatan now belongs to nothing ticked.
+    await tick(user, panel, "Cabang", ["Cabang Selatan", "Cabang Barat"]);
+
+    expect(
+      within(panel).getByRole("button", { name: /^Gudang:/ }),
     ).toHaveTextContent("Semua gudang");
 
     await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
 
-    await waitFor(() => expect(lastList()).toMatchObject({ branchId: "b1" }));
-    expect(lastList()?.warehouseId).toBeUndefined();
+    await waitFor(() => expect(lastList()).toMatchObject({ branchIds: ["b1"] }));
+    expect(lastList()?.warehouseIds).toBeUndefined();
   });
 
-  it("keeps a gudang that does belong to the newly chosen cabang", async () => {
+  it("keeps a gudang when the cabang go back to Semua", async () => {
     const user = userEvent.setup();
     renderWithAuth(<ReceivablesScreen />);
 
     await screen.findByText("INV-2026-0042");
     const panel = await openFilters(user);
-    await user.click(within(panel).getByRole("button", { name: "Filter gudang" }));
-    await user.click(await screen.findByRole("option", { name: "Gudang Barat" }));
-    await user.click(within(panel).getByRole("button", { name: "Filter cabang" }));
-    await user.click(await screen.findByRole("option", { name: "Semua cabang" }));
+    await tick(user, panel, "Gudang", ["Gudang Barat"]);
+    await tick(user, panel, "Cabang", ["Semua cabang"]);
 
     expect(
-      within(panel).getByRole("button", { name: "Filter gudang" }),
+      within(panel).getByRole("button", { name: /^Gudang:/ }),
     ).toHaveTextContent("Gudang Barat");
+    expect(
+      within(panel).getByRole("button", { name: /^Cabang:/ }),
+    ).toHaveTextContent("Semua cabang");
   });
 
   it("searches by what was typed — names included — once typing settles", async () => {
@@ -816,6 +906,29 @@ describe("SalesInvoiceList — the filter panel", () => {
     await waitFor(() =>
       expect(lastList()).toMatchObject({ statuses: ["overdue"] }),
     );
+    expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
+      "Filter (1)",
+    );
+  });
+
+  it("filters by more than one sumber, counted once on the button", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<ReceivablesScreen />);
+
+    await screen.findByText("INV-2026-0042");
+    const panel = await openFilters(user);
+    await tick(user, panel, "Sumber", ["Kasir", "Manual"]);
+
+    expect(
+      within(panel).getByRole("button", { name: "Sumber: 2 sumber" }),
+    ).toBeInTheDocument();
+
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+    await waitFor(() =>
+      expect(lastList()).toMatchObject({ sources: ["pos_bridge", "manual"] }),
+    );
+    expect(lastSummary()).toMatchObject({ sources: ["pos_bridge", "manual"] });
     expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
       "Filter (1)",
     );

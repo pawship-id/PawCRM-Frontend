@@ -104,7 +104,7 @@ export function ReceivablesScreen() {
       dateTo: "",
       search: "",
       createdBy: [],
-      source: "",
+      sources: [],
     });
     swalToast(`Menampilkan semua faktur ${label}, tanpa batas tanggal.`);
   }

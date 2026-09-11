@@ -40,16 +40,19 @@ export interface CustomerInvoicesQuery {
    * THE SCOPE — Cabang and Gudang in the filter panel. Unlike the other panel
    * fields, these also narrow the "Belum lunas" and "Lewat jatuh tempo" cards,
    * because they change whose books are being read, not which rows are shown.
+   *
+   * SETS, like every option field in the panel — any of them, OR'd. Empty is
+   * every cabang / every gudang.
    */
-  branchId: string;
-  warehouseId: string;
+  branchIds: string[];
+  warehouseIds: string[];
   period: InvoicePeriodChoice;
   /** `yyyy-mm-dd`. Only read when `period` is `custom`; "" = unbounded. */
   dateFrom: string;
   dateTo: string;
-  /** The rest of the filter panel. Each empty array / "" means "not filtering". */
+  /** The rest of the filter panel. Each empty array means "not filtering". */
   createdBy: string[];
-  source: CustomerInvoiceSource | "";
+  sources: CustomerInvoiceSource[];
   statuses: CustomerInvoiceStatusFilter[];
   /**
    * Always set — a list with no ordering is not a thing. Driven by the column
@@ -62,8 +65,8 @@ export const DEFAULT_QUERY: CustomerInvoicesQuery = {
   page: 1,
   pageSize: PAGE_SIZES[0],
   search: "",
-  branchId: "",
-  warehouseId: "",
+  branchIds: [],
+  warehouseIds: [],
   /*
     EVERY INVOICE, EVERY STATUS, EVERY DATE — asked for on 11 Sep 2026, after a
     first version opened on "Bulan ini". The table is the whole book until
@@ -74,7 +77,7 @@ export const DEFAULT_QUERY: CustomerInvoicesQuery = {
   dateFrom: "",
   dateTo: "",
   createdBy: [],
-  source: "",
+  sources: [],
   statuses: [],
   /*
     SOONEST DUE FIRST — who has waited longest. The endpoint's own default, and
@@ -109,10 +112,10 @@ export function toFilterQuery(
 ): Omit<CustomerInvoiceListQuery, "page" | "limit" | "sort"> {
   return {
     search: query.search.trim() || undefined,
-    branchId: query.branchId || undefined,
-    warehouseId: query.warehouseId || undefined,
+    branchIds: nonEmpty(query.branchIds),
+    warehouseIds: nonEmpty(query.warehouseIds),
     createdBy: nonEmpty(query.createdBy),
-    source: query.source || undefined,
+    sources: nonEmpty(query.sources),
     statuses: nonEmpty(query.statuses),
     ...(query.period === "all"
       ? {}

@@ -12,7 +12,6 @@ import {
   FilterSelect,
   FilterTrigger,
   namedOptions,
-  withAll,
   type FilterOption,
 } from "@/components";
 import {
@@ -49,9 +48,8 @@ export const STATUS_FILTERS: FilterOption<CustomerInvoiceStatusFilter>[] = [
   { value: "overdue", label: "Lewat jatuh tempo" },
 ];
 
-/** Who raised the invoice — a filter, never an input. */
-const SOURCES: FilterOption<CustomerInvoiceSource | "">[] = [
-  { value: "", label: "Semua sumber" },
+/** Where the invoice came from — a filter, never an input. Nothing ticked is every source. */
+const SOURCES: FilterOption<CustomerInvoiceSource>[] = [
   { value: "pos_bridge", label: "Kasir" },
   { value: "manual", label: "Manual" },
 ];
@@ -60,6 +58,11 @@ const SOURCES: FilterOption<CustomerInvoiceSource | "">[] = [
  * The periods. "Semua tanggal" is the default and sends nothing; the three named
  * ones go over the wire as their NAME and are cut in the tenant's timezone;
  * "Pilih tanggal" opens the range beneath.
+ *
+ * THE ONE OPTION FIELD THAT STAYS A SINGLE CHOICE. Hari ini sits inside Minggu
+ * ini, which sits inside Bulan ini — ticking two of them would only ever mean
+ * the larger one, and "Pilih tanggal" beside a named period is two ranges with
+ * no rule for combining them.
  */
 export const PERIODS: FilterOption<InvoicePeriodChoice>[] = [
   { value: "all", label: "Semua tanggal" },
@@ -84,6 +87,9 @@ function belongsTo(warehouse: WarehouseOption, branchId: string) {
     : warehouse.branchIds.includes(branchId);
 }
 
+const belongsToAny = (warehouse: WarehouseOption, branchIds: string[]) =>
+  branchIds.some((branchId) => belongsTo(warehouse, branchId));
+
 /**
  * The cabang that picking this gudang fills in — or "" when it cannot be told,
  * in which case the Cabang field is left as it was rather than guessed.
@@ -95,10 +101,10 @@ function homeBranchOf(warehouse: WarehouseOption) {
 
 /** What the panel edits, as one draft. */
 interface PanelDraft {
-  branchId: string;
-  warehouseId: string;
+  branchIds: string[];
+  warehouseIds: string[];
   createdBy: string[];
-  source: CustomerInvoiceSource | "";
+  sources: CustomerInvoiceSource[];
   statuses: CustomerInvoiceStatusFilter[];
   period: InvoicePeriodChoice;
   dateFrom: string;
@@ -106,10 +112,10 @@ interface PanelDraft {
 }
 
 const CLEARED: Partial<CustomerInvoicesQuery> = {
-  branchId: "",
-  warehouseId: "",
+  branchIds: [],
+  warehouseIds: [],
   createdBy: [],
-  source: "",
+  sources: [],
   statuses: [],
   period: "all",
   dateFrom: "",
@@ -164,16 +170,16 @@ export function ReceivablesToolbar({
 /**
  * The panel. Fields wait for Terapkan (§8); Reset clears and applies at once.
  *
+ * EVERY OPTION FIELD IS A SET but Periode (see PERIODS for why). Nothing ticked
+ * is "Semua", and the values ticked in one field are OR'd.
+ *
  * CABANG AND GUDANG ARE LINKED, in both directions:
  *
  *   Semua cabang      → every gudang is offered.
- *   one cabang        → only the gudang under it; a gudang already chosen that
- *                       is not under it is cleared rather than left narrowing
- *                       the list to nothing.
- *   a gudang first    → Cabang fills in with that gudang's own cabang.
- *
- * Both stay single choices, which is what lets the link be stated at all — a
- * gudang "under three of the five ticked cabang" is not a rule anybody can read.
+ *   some cabang       → only the gudang under any of them; a gudang already
+ *                       ticked that is under none of them is unticked rather
+ *                       than left narrowing the list to nothing.
+ *   a gudang first    → its own cabang is ticked too, when it can be told.
  *
  * THE BADGE COUNTS WHAT THE SCREEN DOES NOT OTHERWISE SHOW — kasir, sumber,
  * status. Cabang, Gudang and Periode are edited here but always READ on the
@@ -191,10 +197,10 @@ function ReceivablesFilterPanel({
   onChange: (patch: Partial<CustomerInvoicesQuery>) => void;
 }) {
   const seed = (): PanelDraft => ({
-    branchId: query.branchId,
-    warehouseId: query.warehouseId,
+    branchIds: query.branchIds,
+    warehouseIds: query.warehouseIds,
     createdBy: query.createdBy,
-    source: query.source,
+    sources: query.sources,
     statuses: query.statuses,
     period: query.period,
     dateFrom: query.dateFrom,
@@ -206,36 +212,53 @@ function ReceivablesFilterPanel({
 
   const count = [
     query.createdBy.length > 0,
-    query.source !== "",
+    query.sources.length > 0,
     query.statuses.length > 0,
   ].filter(Boolean).length;
 
-  const visibleWarehouses = draft.branchId
-    ? options.warehouses.filter((warehouse) =>
-        belongsTo(warehouse, draft.branchId),
-      )
-    : options.warehouses;
+  /*
+    A TICKED GUDANG IS ALWAYS OFFERED, even when the cabang ticked beside it do
+    not cover it — a value that cannot be seen cannot be unticked.
+  */
+  const visibleWarehouses =
+    draft.branchIds.length === 0
+      ? options.warehouses
+      : options.warehouses.filter(
+          (warehouse) =>
+            belongsToAny(warehouse, draft.branchIds) ||
+            draft.warehouseIds.includes(warehouse._id),
+        );
 
   function patch(change: Partial<PanelDraft>) {
     setDraft((prev) => ({ ...prev, ...change }));
   }
 
-  function pickBranch(branchId: string) {
-    const current = options.warehouses.find(
-      (warehouse) => warehouse._id === draft.warehouseId,
-    );
-    const keepsWarehouse = !current || !branchId || belongsTo(current, branchId);
+  function pickBranches(branchIds: string[]) {
+    const warehouseIds =
+      branchIds.length === 0
+        ? draft.warehouseIds
+        : draft.warehouseIds.filter((id) => {
+            const warehouse = options.warehouses.find((row) => row._id === id);
+            // A gudang whose options have not loaded is kept, not guessed away.
+            return !warehouse || belongsToAny(warehouse, branchIds);
+          });
 
-    patch({ branchId, ...(keepsWarehouse ? {} : { warehouseId: "" }) });
+    patch({ branchIds, warehouseIds });
   }
 
-  function pickWarehouse(warehouseId: string) {
-    const picked = options.warehouses.find(
-      (warehouse) => warehouse._id === warehouseId,
-    );
-    const home = picked ? homeBranchOf(picked) : "";
+  function pickWarehouses(warehouseIds: string[]) {
+    const homes = warehouseIds
+      .filter((id) => !draft.warehouseIds.includes(id))
+      .map((id) => options.warehouses.find((row) => row._id === id))
+      .map((warehouse) => (warehouse ? homeBranchOf(warehouse) : ""))
+      .filter((home) => home !== "" && !draft.branchIds.includes(home));
 
-    patch({ warehouseId, ...(home ? { branchId: home } : {}) });
+    patch({
+      warehouseIds,
+      ...(homes.length > 0
+        ? { branchIds: [...draft.branchIds, ...new Set(homes)] }
+        : {}),
+    });
   }
 
   function onOpenChange(next: boolean) {
@@ -254,11 +277,13 @@ function ReceivablesFilterPanel({
     const dateFrom = draft.period === "custom" ? draft.dateFrom : "";
     const dateTo = draft.period === "custom" ? draft.dateTo : "";
 
-    if (draft.branchId !== query.branchId) change.branchId = draft.branchId;
-    if (draft.warehouseId !== query.warehouseId) change.warehouseId = draft.warehouseId;
+    if (!sameSet(draft.branchIds, query.branchIds)) change.branchIds = draft.branchIds;
+    if (!sameSet(draft.warehouseIds, query.warehouseIds)) {
+      change.warehouseIds = draft.warehouseIds;
+    }
     if (!sameSet(draft.createdBy, query.createdBy)) change.createdBy = draft.createdBy;
     if (!sameSet(draft.statuses, query.statuses)) change.statuses = draft.statuses;
-    if (draft.source !== query.source) change.source = draft.source;
+    if (!sameSet(draft.sources, query.sources)) change.sources = draft.sources;
     if (draft.period !== query.period) change.period = draft.period;
     if (dateFrom !== query.dateFrom) change.dateFrom = dateFrom;
     if (dateTo !== query.dateTo) change.dateTo = dateTo;
@@ -288,21 +313,21 @@ function ReceivablesFilterPanel({
         onReset={reset}
         onApply={apply}
       >
-        <FilterSelect
-          layout="field"
+        <CheckMenuField
           label="Cabang"
-          ariaLabel="Filter cabang"
-          value={draft.branchId}
-          options={withAll(namedOptions(options.branches), "Semua cabang")}
-          onChange={pickBranch}
+          allLabel="Semua cabang"
+          unit="cabang"
+          options={namedOptions(options.branches)}
+          selected={draft.branchIds}
+          onChange={pickBranches}
         />
-        <FilterSelect
-          layout="field"
+        <CheckMenuField
           label="Gudang"
-          ariaLabel="Filter gudang"
-          value={draft.warehouseId}
-          options={withAll(namedOptions(visibleWarehouses), "Semua gudang")}
-          onChange={pickWarehouse}
+          allLabel="Semua gudang"
+          unit="gudang"
+          options={namedOptions(visibleWarehouses)}
+          selected={draft.warehouseIds}
+          onChange={pickWarehouses}
         />
         <CheckMenuField
           label="Kasir / Admin"
@@ -312,13 +337,13 @@ function ReceivablesFilterPanel({
           selected={draft.createdBy}
           onChange={(createdBy) => patch({ createdBy })}
         />
-        <FilterSelect
-          layout="field"
+        <CheckMenuField
           label="Sumber"
-          ariaLabel="Filter sumber faktur"
-          value={draft.source}
+          allLabel="Semua sumber"
+          unit="sumber"
           options={SOURCES}
-          onChange={(source) => patch({ source })}
+          selected={draft.sources}
+          onChange={(sources) => patch({ sources })}
         />
         <CheckMenuField
           label="Status"
@@ -364,6 +389,11 @@ function ReceivablesFilterPanel({
  *
  * NOTHING TICKED IS "SEMUA", and that row is what the empty state looks like
  * rather than a separate mode.
+ *
+ * THE LIST IS HELD STILL WHILE THE MENU IS OPEN. Ticking a gudang ticks its
+ * cabang, which narrows the gudang on offer; re-drawn mid-menu, the row somebody
+ * was reaching for next would vanish under the pointer. The narrower list shows
+ * the next time the menu opens.
  */
 function CheckMenuField<T extends string>({
   label,
@@ -381,6 +411,11 @@ function CheckMenuField<T extends string>({
   selected: T[];
   onChange: (values: T[]) => void;
 }) {
+  const [heldOptions, setHeldOptions] = useState<FilterOption<T>[] | null>(
+    null,
+  );
+  const shown = heldOptions ?? options;
+
   const names = options
     .filter((option) => selected.includes(option.value))
     .map((option) => option.label);
@@ -402,7 +437,9 @@ function CheckMenuField<T extends string>({
 
   return (
     <FilterField label={label}>
-      <DropdownMenu>
+      <DropdownMenu
+        onOpenChange={(isOpen) => setHeldOptions(isOpen ? options : null)}
+      >
         <DropdownMenuTrigger asChild>
           <FilterTrigger
             layout="field"
@@ -422,12 +459,12 @@ function CheckMenuField<T extends string>({
             {allLabel}
           </DropdownMenuCheckboxItem>
           <DropdownMenuSeparator />
-          {options.length === 0 ? (
+          {shown.length === 0 ? (
             <p className="px-2 py-1.5 text-sm text-muted">
               Belum ada pilihan dari faktur yang ada.
             </p>
           ) : (
-            options.map((option) => (
+            shown.map((option) => (
               <DropdownMenuCheckboxItem
                 key={option.value}
                 checked={selected.includes(option.value)}

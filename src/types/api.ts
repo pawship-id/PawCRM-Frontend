@@ -5503,6 +5503,8 @@ export interface CustomerInvoiceListQuery {
   branchIds?: string[];
   /** Where the goods left from. A scope, like `branchId`. */
   warehouseId?: string;
+  /** The filter panel's gudang, any of them. ANDed with `warehouseId`; also a scope. */
+  warehouseIds?: string[];
   /** Who raised the invoice — the panel's Kasir / Admin. */
   createdBy?: string[];
   status?: CustomerInvoiceStatus;
@@ -5514,6 +5516,8 @@ export interface CustomerInvoiceListQuery {
    */
   period?: InvoicePeriod;
   source?: CustomerInvoiceSource;
+  /** The filter panel's Sumber, any of them, OR'd. ANDed with `source`. */
+  sources?: CustomerInvoiceSource[];
   /** `status ∈ {unpaid, partial}` — excludes `void`, which owes nothing. */
   outstanding?: boolean;
   overdue?: boolean;
