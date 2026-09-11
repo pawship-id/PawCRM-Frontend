@@ -43,6 +43,7 @@ const paymentRow = (
   overrides: Partial<CustomerInvoicePayment> = {},
 ): CustomerInvoicePayment => ({
   paymentId: PAYMENT_ID,
+  paymentNumber: "PMT-2026-0001",
   at: "2026-08-27T00:00:00.000Z",
   amount: "100000.0000",
   method: "transfer",
@@ -115,16 +116,38 @@ beforeEach(() => {
 });
 
 describe("InvoicePaymentDetail — what it shows", () => {
-  it("names the payment, the channel it landed in, and the invoice it belongs to", async () => {
+  it("names the payment by its own number, the channel it landed in, and the invoice it belongs to", async () => {
     renderPage();
 
     expect(
-      await screen.findByRole("heading", { name: "Pembayaran Rp 100.000" }),
+      await screen.findByRole("heading", { name: "PMT-2026-0001" }),
     ).toBeInTheDocument();
+    // The amount moves to the subtitle, beside who recorded it.
+    expect(screen.getByText(/Rp 100\.000 · Dicatat oleh/)).toBeInTheDocument();
     expect(screen.getByText("Transfer — BCA Operasional")).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: /INV-2026-0042 →/ }),
     ).toHaveAttribute("href", "/dashboard/sales/inv1");
+    // The same number, also in the Rincian pembayaran field.
+    expect(screen.getAllByText("PMT-2026-0001").length).toBeGreaterThan(0);
+  });
+
+  /*
+    A PAYMENT RECORDED BEFORE THE SERIES EXISTED carries `paymentNumber: null`.
+    Nothing backfills one, so the heading falls back to the amount rather than
+    printing a blank title.
+  */
+  it("falls back to the amount for a payment with no number", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      detail({ payments: [paymentRow({ paymentNumber: null })] }),
+    );
+
+    renderPage();
+
+    expect(
+      await screen.findByRole("heading", { name: "Rp 100.000" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("—", { exact: true })).toBeInTheDocument();
   });
 
   it("offers nothing to edit — a posted payment is corrected by cancelling it", async () => {
@@ -310,6 +333,24 @@ describe("InvoicePaymentDetail — kwitansi", () => {
     expect(dialog.getByText("Sisa tagihan saat ini")).toBeInTheDocument();
     expect(dialog.queryByText("je-pay1")).not.toBeInTheDocument();
     expect(dialog.queryByText("JE-2026-08-0412")).not.toBeInTheDocument();
+  });
+
+  it("prints the payment's own number beside the KWITANSI heading", async () => {
+    renderPage();
+    const dialog = await openReceipt();
+
+    expect(dialog.getByText("PMT-2026-0001")).toBeInTheDocument();
+  });
+
+  it("says nothing there for a payment recorded before the series existed", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      detail({ payments: [paymentRow({ paymentNumber: null })] }),
+    );
+    renderPage();
+    const dialog = await openReceipt();
+
+    expect(dialog.getByText("KWITANSI")).toBeInTheDocument();
+    expect(dialog.queryByText(/^PMT-/)).not.toBeInTheDocument();
   });
 
   /*

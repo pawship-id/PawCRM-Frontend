@@ -79,6 +79,14 @@ export function PaymentReceipt({
         </div>
         <div className="text-right">
           <p className="text-lg font-bold">KWITANSI</p>
+          {/* Its own number where it has one — null on a payment recorded
+              before the series existed, and the sheet says nothing there
+              rather than inventing a reference nobody quoted. */}
+          {payment.paymentNumber && (
+            <p className="text-sm font-semibold tabular-nums">
+              {payment.paymentNumber}
+            </p>
+          )}
           <p className="text-xs text-muted">Bukti penerimaan pembayaran</p>
         </div>
       </div>

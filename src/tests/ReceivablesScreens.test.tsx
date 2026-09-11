@@ -345,6 +345,7 @@ describe("InvoiceDetail", () => {
         payments: [
           {
             paymentId: "pay1",
+            paymentNumber: "PMT-2026-0001",
             at: "2026-08-27T00:00:00.000Z",
             amount: "100000.0000",
             method: "transfer",
@@ -549,6 +550,7 @@ describe("InvoiceDetail", () => {
         payments: [
           {
             paymentId: "pay1",
+            paymentNumber: "PMT-2026-0001",
             at: "2026-08-27T00:00:00.000Z",
             amount: "100000.0000",
             method: "transfer",
@@ -580,9 +582,54 @@ describe("InvoiceDetail", () => {
       its kwitansi and its cancellation live now — see
       InvoicePaymentDetail.test.tsx.
     */
-    expect(
-      screen.getByRole("link", { name: /Transfer — BCA Operasional/ }),
-    ).toHaveAttribute("href", "/dashboard/sales/inv1/payments/pay1");
+    const row = screen.getByRole("link", {
+      name: /Transfer — BCA Operasional/,
+    });
+    expect(row).toHaveAttribute(
+      "href",
+      "/dashboard/sales/inv1/payments/pay1",
+    );
+    // The payment's own number, above the amount.
+    expect(within(row).getByText("PMT-2026-0001")).toBeInTheDocument();
+  });
+
+  it("falls back to the amount alone on a payment recorded before numbering existed", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      detail({
+        status: "partial",
+        paidAmount: "100000.0000",
+        outstandingAmount: "200000.0000",
+        payments: [
+          {
+            paymentId: "pay1",
+            paymentNumber: null,
+            at: "2026-08-27T00:00:00.000Z",
+            amount: "100000.0000",
+            method: "transfer",
+            channelId: "chan-bca",
+            channelName: "BCA Operasional",
+            ref: null,
+            byUserId: "u1",
+            byUserName: "Rani",
+            journalEntryId: "je-pay1",
+            journalEntryNumber: "JE-2026-08-0412",
+            reversalJournalEntryNumber: null,
+            isVoided: false,
+            voidedAt: null,
+            voidedBy: null,
+            voidReason: null,
+            reversalJournalEntryId: null,
+          },
+        ],
+      }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    const row = await screen.findByRole("link", {
+      name: /Transfer — BCA Operasional/,
+    });
+    expect(within(row).queryByText(/^PMT-/)).not.toBeInTheDocument();
   });
 });
 
@@ -594,6 +641,7 @@ const paymentRow = (
   overrides: Partial<CustomerInvoicePayment> = {},
 ): CustomerInvoicePayment => ({
   paymentId: PAYMENT_ID,
+  paymentNumber: "PMT-2026-0001",
   at: "2026-08-27T00:00:00.000Z",
   amount: "100000.0000",
   method: "transfer",
@@ -1325,6 +1373,7 @@ describe("InvoiceDetail — Batalkan faktur, behind the ⋮", () => {
         payments: [
           {
             paymentId: "pay1",
+            paymentNumber: "PMT-2026-0001",
             at: "2026-08-27T00:00:00.000Z",
             amount: "100000.0000",
             method: "transfer",
@@ -1536,5 +1585,66 @@ describe("InvoiceDetail — Riwayat aktivitas", () => {
       await screen.findByText(/Riwayat aktivitas gagal dimuat/),
     ).toBeInTheDocument();
     expect(badge("0 aktivitas")).not.toBeInTheDocument();
+  });
+
+  /* The payment's own number leads its row, ahead of the amount and channel. */
+  it("names the payment by its own number in the payment-recorded entry", async () => {
+    const user = userEvent.setup();
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      detail({
+        status: "partial",
+        paidAmount: "100000.0000",
+        outstandingAmount: "200000.0000",
+        payments: [
+          {
+            paymentId: "pay1",
+            paymentNumber: "PMT-2026-0001",
+            at: "2026-08-27T00:00:00.000Z",
+            amount: "100000.0000",
+            method: "transfer",
+            channelId: "chan-bca",
+            channelName: "BCA Operasional",
+            ref: null,
+            byUserId: "u1",
+            byUserName: "Rani",
+            journalEntryId: "je-pay1",
+            journalEntryNumber: "JE-2026-08-0412",
+            reversalJournalEntryNumber: null,
+            isVoided: false,
+            voidedAt: null,
+            voidedBy: null,
+            voidReason: null,
+            reversalJournalEntryId: null,
+          },
+        ],
+      }),
+    );
+    asMock(customerInvoiceService.activity).mockResolvedValue({
+      items: [
+        {
+          _id: "a1",
+          action: "invoice_payment_record",
+          at: "2026-08-27T00:00:00.000Z",
+          actorName: "Rani",
+          metadata: {
+            paymentId: "pay1",
+            paymentNumber: "PMT-2026-0001",
+            amount: "100000.0000",
+          },
+          fromDocument: false,
+        },
+      ],
+    });
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await waitFor(() => expect(badge("1 aktivitas")).toBeInTheDocument());
+    await user.click(screen.getByText("Riwayat aktivitas"));
+
+    expect(
+      await screen.findByText(
+        "PMT-2026-0001 · Rp 100.000 · Transfer — BCA Operasional",
+      ),
+    ).toBeInTheDocument();
   });
 });

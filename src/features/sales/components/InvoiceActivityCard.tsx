@@ -75,19 +75,23 @@ function describe(
     case "invoice_payment_record": {
       const payment = payments.find((row) => row.paymentId === meta.paymentId);
       return [
+        text(meta.paymentNumber),
         text(meta.amount) ? formatMoney(text(meta.amount)) : null,
         payment ? paymentChannelLabel(payment) : null,
       ]
         .filter(Boolean)
         .join(" · ");
     }
-    case "invoice_payment_void":
-      return [
+    case "invoice_payment_void": {
+      const headline = [
+        text(meta.paymentNumber),
         text(meta.amount) ? formatMoney(text(meta.amount)) : null,
-        text(meta.reason) ? `alasan: ${text(meta.reason)}` : null,
       ]
         .filter(Boolean)
-        .join(" — ");
+        .join(" · ");
+      const reason = text(meta.reason) ? `alasan: ${text(meta.reason)}` : null;
+      return [headline || null, reason].filter(Boolean).join(" — ");
+    }
     case "invoice_void":
       return text(meta.reason) ? `Alasan: ${text(meta.reason)}` : null;
     default:

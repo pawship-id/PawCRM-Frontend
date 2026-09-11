@@ -64,6 +64,13 @@ export function InvoicePaymentTimeline({
                   )}
                 />
                 <span className="min-w-0 flex-1">
+                  {/* The payment's own number, where it has one — null on a
+                      payment recorded before the series existed. */}
+                  {payment.paymentNumber && (
+                    <span className="block text-xs font-semibold text-primary tabular-nums">
+                      {payment.paymentNumber}
+                    </span>
+                  )}
                   <span
                     className={cn(
                       "block text-sm font-semibold tabular-nums",

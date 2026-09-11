@@ -13,7 +13,7 @@ import { formatMoney } from "@/utils/decimal";
 
 import { SALES_CRUMBS } from "../crumbs";
 import { useCustomerInvoice } from "../hooks/useCustomerInvoice";
-import { paymentChannelLabel } from "../paymentLabels";
+import { paymentChannelLabel, paymentTitle } from "../paymentLabels";
 import { JournalLink } from "./JournalLink";
 import { PaymentReceiptDialog } from "./PaymentReceiptDialog";
 import { VoidPaymentDialog } from "./VoidPaymentDialog";
@@ -124,12 +124,12 @@ export function InvoicePaymentDetail({
           crumbs={[
             ...SALES_CRUMBS,
             { label: invoice.invoiceNumber, href: invoiceHref },
-            { label: "Pembayaran" },
+            { label: paymentTitle(payment) },
           ]}
-          title={`Pembayaran ${formatMoney(payment.amount)}`}
+          title={paymentTitle(payment)}
         >
-          Dicatat oleh {payment.byUserName ?? "pengguna terhapus"} ·{" "}
-          {formatDate(payment.at)}
+          {formatMoney(payment.amount)} · Dicatat oleh{" "}
+          {payment.byUserName ?? "pengguna terhapus"} · {formatDate(payment.at)}
         </PageHeading>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -175,6 +175,11 @@ export function InvoicePaymentDetail({
         description="Pembayaran tidak bisa diubah. Yang salah dibatalkan — sistem memposting jurnal pembalik dan sisa tagihan fakturnya naik kembali — lalu dicatat ulang dari faktur."
       >
         <dl className="grid grid-cols-1 gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
+          <Field label="No. pembayaran">
+            <span className="tabular-nums">
+              {payment.paymentNumber ?? "—"}
+            </span>
+          </Field>
           <Field label="Referensi faktur">
             <Link
               href={invoiceHref}

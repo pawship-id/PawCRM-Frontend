@@ -307,6 +307,35 @@ invoice, so the response is handed straight to `applyInvoice`: it is the exact
 document the write produced rather than whatever a second read happens to see,
 and it costs one round trip instead of two.
 
+## The payment gets its own number
+
+Since September 2026, `POST /:id/payments` also draws `PMT-2026-0001` from a
+`customerPayment` counter series and stores it as `paymentNumber` on the row —
+`paymentId` stays the key (the ledger's idempotency, and what a link is built
+from); the number is the label a shop reads back to a customer or writes on a
+bank reconciliation sheet, the same split every other numbered document here
+keeps.
+
+**Allocated last of everything that can fail** — after the journal entry has
+posted, right before the document write — mirroring how an invoice's own
+number is taken last when one is raised. Yearly reset, no branch qualifier:
+unlike an invoice's number, a payment is filed against the INVOICE it settles
+rather than looked up by branch on its own.
+
+**`null` on every payment recorded before the series existed.** Nothing
+backfills one — inventing a reference for a payment already reconciled under
+none would print something nobody ever quoted. Every screen that shows it
+falls back: the payment's page heads with the amount instead, the kwitansi
+says nothing where the number would go, and the timeline row drops the label.
+`paymentTitle()` in `features/sales/paymentLabels.ts` is the one place that
+fallback is decided.
+
+**Shows up in four places**, all reading the same field: the payment's own
+page (heading + a "No. pembayaran" row), the invoice's Riwayat pembayaran
+timeline (above the amount), the kwitansi (beside the KWITANSI heading), and
+the activity log's "Pembayaran dicatat" / "Pembayaran dibatalkan" entries
+(leading the line, from the audit trail's own `metadata.paymentNumber`).
+
 ## Cancelling a payment
 
 A wrong payment is **cancelled**, not deleted or edited. **Batalkan pembayaran**
@@ -429,6 +458,7 @@ read-only: its channel, amount, date, reference and journal entry, with
 | `features/sales/components/InvoiceItemsTable.tsx`         | Lines per animal + recap          |
 | `features/sales/components/InvoiceEditor.tsx`             | Editing an unpaid invoice         |
 | `features/sales/components/InvoiceJournalDialog.tsx`      | The postings, behind ⋮            |
+| `features/sales/paymentLabels.ts`                          | Channel + number labels, one place |
 | `features/sales/components/InvoicePaymentTimeline.tsx`    | What has arrived, active or not   |
 | `features/sales/components/InvoiceActivityCard.tsx`       | Riwayat aktivitas                 |
 | `features/sales/components/InvoicePaymentDetail.tsx`      | One payment's page                |

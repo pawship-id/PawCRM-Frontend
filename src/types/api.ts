@@ -4900,6 +4900,15 @@ export interface CustomerInvoicePayment {
    * would reject the second instalment as a duplicate of the first.
    */
   paymentId: string;
+  /**
+   * THE HUMAN-FACING NUMBER — `PMT-2026-0001`. `paymentId` is the key a link and
+   * the ledger's idempotency are built from; this is the label a shop reads back
+   * to a customer or writes on a bank reconciliation sheet.
+   *
+   * NULL ON A PAYMENT RECORDED BEFORE THIS FIELD EXISTED. Nothing backfills
+   * one — a screen showing this falls back to the amount for those rows.
+   */
+  paymentNumber: string | null;
   /** The day the money MOVED, which is what dates the journal entry. */
   at: string;
   amount: string;
