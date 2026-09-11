@@ -519,7 +519,7 @@ The box stays `size-4`, the app's one checkbox size; the 44 px target comes from
 
 | Prop | Type | Notes |
 | --- | --- | --- |
-| `title` | `string` | The document being filled in. |
+| `title` | `string?` | The document being filled in. **Omit it when the page heading already names the document** (Faktur baru): the bar drops its card and is only the buttons, right-aligned, with `blockedReason` beside them. `meta` is not rendered without a title. |
 | `meta` | `ReactNode` | Document number, line count, running total. |
 | `submitLabel` | `string` | **`Simpan penyesuaian`, never bare `Simpan`.** §12: the button says what happens. |
 | `submitting` | `boolean` | Spinner + `Menyimpan…`, and blocks a second click *and* Batal. |

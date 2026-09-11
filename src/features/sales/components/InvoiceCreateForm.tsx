@@ -502,12 +502,10 @@ export function InvoiceCreateForm() {
 
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
-      {/* `No. [auto]` sits in the bar, not the grid: the server allocates it on
-          save, so it is not a field anybody fills in — and the first row of a
-          form belongs to what actually needs attention. */}
+      {/* Buttons only, no title card: the page heading already says "Faktur
+          baru", and the number is allocated by the server on save, so the bar
+          has nothing else worth carrying. Decided 11 Sep 2026 — ui-rules §16. */}
       <FormActionBar
-        title="Faktur baru"
-        meta={`No. [auto] · ${lines.length} baris`}
         submitLabel="Simpan faktur"
         submitting={saving}
         disabled={blocking !== null}

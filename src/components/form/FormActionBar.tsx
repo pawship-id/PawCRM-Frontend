@@ -40,8 +40,16 @@ import { Button } from "../ui/button";
  * a component.
  */
 export interface FormActionBarProps {
-  /** The document being filled in: "Penyesuaian baru", "Produk baru". */
-  title: string;
+  /**
+   * The document being filled in: "Penyesuaian baru", "Produk baru".
+   *
+   * OMIT IT when the page heading already names the document — Faktur baru
+   * does. With no title there is nothing for a card to frame, so the bar drops
+   * its border and surface and is only the buttons, right-aligned, with
+   * `blockedReason` beside them. `meta` needs a title to sit under and is not
+   * rendered without one.
+   */
+  title?: string;
   /**
    * Small print beside the title — the document's number, a line count, a
    * running total. This is where read-only identity belongs: `No. [auto]` is not
@@ -97,6 +105,55 @@ export function FormActionBar({
   className,
 }: FormActionBarProps) {
   const blocked = disabled && !submitting && Boolean(blockedReason);
+  const reason = blocked && (
+    <>
+      Belum bisa disimpan: <b className="font-semibold">{blockedReason}</b>
+    </>
+  );
+
+  const actions = (
+    <div className="flex shrink-0 items-center gap-2">
+      {extra}
+
+      {cancelHref ? (
+        <Button asChild variant="secondary" size="lg">
+          <Link href={cancelHref}>{cancelLabel}</Link>
+        </Button>
+      ) : onCancel ? (
+        <Button
+          type="button"
+          variant="secondary"
+          size="lg"
+          onClick={onCancel}
+          disabled={submitting}
+        >
+          {cancelLabel}
+        </Button>
+      ) : null}
+
+      <Button type="submit" size="lg" disabled={disabled || submitting}>
+        {submitting && <Spinner size={16} />}
+        {submitting ? "Menyimpan…" : submitLabel}
+      </Button>
+    </div>
+  );
+
+  // No title, no card — see `title`. The reason moves beside the buttons, so a
+  // disabled Simpan still says why.
+  if (!title) {
+    return (
+      <div
+        className={cn(
+          "flex flex-wrap items-center justify-end gap-3",
+          sticky && "sticky top-14 z-10 bg-background/95 backdrop-blur",
+          className,
+        )}
+      >
+        {reason && <p className="text-xs text-muted">{reason}</p>}
+        {actions}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -115,41 +172,12 @@ export function FormActionBar({
         <h2 className="truncate text-lg font-bold">{title}</h2>
         {(meta || blocked) && (
           <p className="mt-0.5 truncate text-xs text-muted tabular-nums">
-            {blocked ? (
-              <>
-                Belum bisa disimpan: <b className="font-semibold">{blockedReason}</b>
-              </>
-            ) : (
-              meta
-            )}
+            {blocked ? reason : meta}
           </p>
         )}
       </div>
 
-      <div className="flex shrink-0 items-center gap-2">
-        {extra}
-
-        {cancelHref ? (
-          <Button asChild variant="secondary" size="lg">
-            <Link href={cancelHref}>{cancelLabel}</Link>
-          </Button>
-        ) : onCancel ? (
-          <Button
-            type="button"
-            variant="secondary"
-            size="lg"
-            onClick={onCancel}
-            disabled={submitting}
-          >
-            {cancelLabel}
-          </Button>
-        ) : null}
-
-        <Button type="submit" size="lg" disabled={disabled || submitting}>
-          {submitting && <Spinner size={16} />}
-          {submitting ? "Menyimpan…" : submitLabel}
-        </Button>
-      </div>
+      {actions}
     </div>
   );
 }
