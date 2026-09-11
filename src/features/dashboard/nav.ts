@@ -165,8 +165,12 @@ export interface NavSection {
  * worked example the other three follow.
  *
  * Pengaturan is the same bargain: the mockup gives it five hub pages of cards,
- * which is page work rather than chrome. Until those exist it carries the old
- * Master Data children, relabelled into Indonesian per §12.
+ * which is page work rather than chrome. TWO OF THE FIVE EXIST NOW — Umum (a
+ * hub of one-time settings) and Data Awal (the opening-figures checklist) — and
+ * the group still carries the old Master Data children beside them, relabelled
+ * into Indonesian per §12, because the other three hubs are not built and those
+ * routes would otherwise be reachable only by URL. Layanan, Cabang and Gudang
+ * are the rows that leave when `Pengaturan › Layanan` and the rest arrive.
  */
 export const NAV_SECTIONS: NavSection[] = [
   {

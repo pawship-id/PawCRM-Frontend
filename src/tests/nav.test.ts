@@ -68,8 +68,9 @@ describe("filterNavItems", () => {
   it("shows Pengaturan with only the permitted children", () => {
     const onlyUsers: CanFn = (feature, action) =>
       feature === "users" && action === "read";
-    // Umum and Data Awal are ungated placeholders and come along; everything
-    // else in the group needs its own grant.
+    // Umum and Data Awal are ungated — each is a hub whose every card gates
+    // itself on the grant its own destination enforces — so they come along;
+    // everything else in the group needs its own grant.
     expect(groupChildren(onlyUsers, "Pengaturan")).toEqual([
       "Umum",
       "Pengguna",
