@@ -473,7 +473,7 @@ export function InvoiceCreateForm() {
       // and a button locked forever is worse than the error that locked it.
       setSaving(false);
       router.push(`${LIST_PATH}/${created._id}`);
-      swalToast(`Faktur ${created.invoiceNumber} diterbitkan.`);
+      swalToast(`Faktur ${created.invoiceNumber} tersimpan.`);
     } catch (error) {
       // 8 seconds, not the default 3 — every refusal here carries an
       // instruction: which branch has no code, which product is short.
@@ -508,7 +508,7 @@ export function InvoiceCreateForm() {
       <FormActionBar
         title="Faktur baru"
         meta={`No. [auto] · ${lines.length} baris`}
-        submitLabel="Terbitkan faktur"
+        submitLabel="Simpan faktur"
         submitting={saving}
         disabled={blocking !== null}
         blockedReason={blocking ?? undefined}
@@ -886,7 +886,7 @@ export function InvoiceCreateForm() {
 
       <Card
         title="Rekap"
-        description="Dihitung di layar dengan urutan yang sama seperti di server. Angka finalnya ditetapkan saat faktur terbit."
+        description="Dihitung di layar dengan urutan yang sama seperti di server. Angka finalnya ditetapkan saat faktur disimpan."
       >
         <div className="flex flex-col gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
@@ -977,8 +977,8 @@ export function InvoiceCreateForm() {
 
           <p className="text-xs text-muted">
             {lookups.tax.priceIncludesTax
-              ? "Harga katalog sudah termasuk PPN — rincian DPP dan PPN muncul di faktur setelah terbit."
-              : "Rincian DPP-nya muncul di faktur setelah terbit."}
+              ? "Harga katalog sudah termasuk PPN — rincian DPP dan PPN muncul di faktur setelah disimpan."
+              : "Rincian DPP-nya muncul di faktur setelah disimpan."}
           </p>
         </div>
       </Card>

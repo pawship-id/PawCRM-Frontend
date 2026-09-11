@@ -116,7 +116,7 @@ async function fillMinimal() {
 }
 
 const submit = () =>
-  userEvent.click(screen.getByRole("button", { name: /terbitkan faktur/i }));
+  userEvent.click(screen.getByRole("button", { name: /^simpan faktur$/i }));
 
 const sent = () =>
   (customerInvoiceService.create as jest.Mock).mock.calls[0][0];
@@ -177,7 +177,7 @@ describe("the animal a service is for", () => {
     await fillService();
 
     expect(
-      screen.getByRole("button", { name: /terbitkan faktur/i }),
+      screen.getByRole("button", { name: /^simpan faktur$/i }),
     ).toBeDisabled();
     expect(screen.getByText(/belum dipilih hewannya/i)).toBeInTheDocument();
     expect(customerInvoiceService.create).not.toHaveBeenCalled();
@@ -189,7 +189,7 @@ describe("the animal a service is for", () => {
     await pick(/^Hewan untuk Grooming$/i, /Miko/);
 
     expect(
-      screen.getByRole("button", { name: /terbitkan faktur/i }),
+      screen.getByRole("button", { name: /^simpan faktur$/i }),
     ).toBeEnabled();
   });
 
@@ -240,7 +240,7 @@ describe("the animal a service is for", () => {
     expect(await screen.findAllByText("Rp 140.000")).not.toHaveLength(0);
     expect(screen.queryByText("Rp 120.000")).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /terbitkan faktur/i }),
+      screen.getByRole("button", { name: /^simpan faktur$/i }),
     ).toBeEnabled();
   });
 
@@ -272,7 +272,7 @@ describe("the animal a service is for", () => {
     await pick(/^Hewan untuk Grooming$/i, /Miko/);
 
     expect(
-      screen.getByRole("button", { name: /terbitkan faktur/i }),
+      screen.getByRole("button", { name: /^simpan faktur$/i }),
     ).toBeDisabled();
     expect(
       await screen.findByText(/lengkapi ukuran miko/i),
@@ -302,7 +302,7 @@ describe("the animal a service is for", () => {
     await fillMinimal();
 
     expect(
-      screen.getByRole("button", { name: /terbitkan faktur/i }),
+      screen.getByRole("button", { name: /^simpan faktur$/i }),
     ).toBeEnabled();
   });
 
@@ -358,7 +358,7 @@ describe("the animal a service is for", () => {
       rule exists to stop.
     */
     expect(
-      screen.getByRole("button", { name: /terbitkan faktur/i }),
+      screen.getByRole("button", { name: /^simpan faktur$/i }),
     ).toBeDisabled();
     expect(screen.getByText(/belum dipilih hewannya/i)).toBeInTheDocument();
   });
@@ -689,10 +689,10 @@ describe("what the form refuses to submit", () => {
    */
   it("names the first missing answer, and no more", async () => {
     render(<InvoiceCreateForm />);
-    await screen.findByRole("button", { name: /terbitkan faktur/i });
+    await screen.findByRole("button", { name: /^simpan faktur$/i });
 
     expect(
-      screen.getByRole("button", { name: /terbitkan faktur/i }),
+      screen.getByRole("button", { name: /^simpan faktur$/i }),
     ).toBeDisabled();
     expect(screen.getByText(/belum bisa disimpan/i)).toHaveTextContent(
       /pilih pelanggan dulu/i,
@@ -731,7 +731,7 @@ describe("what the form refuses to submit", () => {
     await userEvent.click(await screen.findByRole("checkbox"));
 
     expect(
-      screen.getByRole("button", { name: /terbitkan faktur/i }),
+      screen.getByRole("button", { name: /^simpan faktur$/i }),
     ).toBeEnabled();
   });
 
@@ -748,7 +748,7 @@ describe("what the form refuses to submit", () => {
       /pilih gudang/i,
     );
     expect(
-      screen.getByRole("button", { name: /terbitkan faktur/i }),
+      screen.getByRole("button", { name: /^simpan faktur$/i }),
     ).toBeDisabled();
   });
 });
@@ -818,7 +818,7 @@ describe("when the server refuses", () => {
 
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: /terbitkan faktur/i }),
+        screen.getByRole("button", { name: /^simpan faktur$/i }),
       ).toBeEnabled(),
     );
   });

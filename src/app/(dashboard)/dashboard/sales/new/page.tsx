@@ -27,7 +27,7 @@ export default function NewSalesInvoicePage() {
           and nesting a second produces invalid HTML that React reports as a
           hydration error. The sales list passes plain text for the same reason. */}
       <PageHeading crumbs={INVOICES_CRUMBS} title="Faktur baru">
-        Tagihan yang dibuat sendiri, bukan dari kasir. Menerbitkannya memotong
+        Tagihan yang dibuat sendiri, bukan dari kasir. Menyimpannya memotong
         stok dan mencatat jurnal — dan tidak bisa diubah setelahnya.
       </PageHeading>
       <InvoiceCreateForm />
