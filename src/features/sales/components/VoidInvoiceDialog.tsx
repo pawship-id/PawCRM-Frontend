@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 
 import { TextareaField } from "@/components";
 import { Button } from "@/components/ui/button";
@@ -17,6 +19,16 @@ import { ApiError } from "@/services/api-error";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
 import { formatMoney } from "@/utils/decimal";
 import type { CustomerInvoiceDetail } from "@/types/api";
+
+import { paymentChannelLabel } from "../paymentLabels";
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
 
 /**
  * VOID A WHOLE INVOICE — PCR-031, and a bigger act than cancelling one payment.
@@ -36,10 +48,13 @@ import type { CustomerInvoiceDetail } from "@/types/api";
  * server. Six months later, a pair of reversals in the ledger with no sentence
  * attached is a correction nobody can account for.
  *
- * IT IS NOT OFFERED WHILE MONEY IS ON THE INVOICE. The server refuses it (409),
- * and so does the detail screen — but the reason is explained there rather than
- * here, because a dialog that opens only to say "you cannot do this" is a dialog
- * that should not have opened.
+ * WHILE MONEY IS ON THE INVOICE, IT OPENS ON THE WAY FORWARD instead of the
+ * form. The server refuses a void while any payment still counts (409) — money
+ * that arrived did arrive — and the menu used to be drawn disabled then, which
+ * read as broken: a pale row that did nothing, on exactly the invoice somebody
+ * was trying to cancel. Now the dialog names every active payment, each a link
+ * to the page where it is cancelled. Once none is left, the same menu opens the
+ * form below.
  *
  * REFUSALS ARE TOASTS, the same deliberate departure from `docs/ui-rules.md` §9
  * the rest of this module makes. Server refusals get 8 seconds; they carry an
@@ -58,6 +73,15 @@ export function VoidInvoiceDialog({
 }) {
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
+
+  /*
+    ACTIVE ONLY. A cancelled payment has already posted its own reversal and taken
+    its money back out, so it must not block a void — the server's own definition.
+  */
+  const activePayments = (invoice.payments ?? []).filter(
+    (payment) => !payment.isVoided,
+  );
+  const blocked = activePayments.length > 0;
 
   async function handleVoid() {
     const trimmed = reason.trim();
@@ -97,62 +121,123 @@ export function VoidInvoiceDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Batalkan {invoice.invoiceNumber}?</DialogTitle>
-          <DialogDescription asChild>
-            <div className="space-y-2 text-sm">
-              <p>
-                Tagihan <strong>{formatMoney(invoice.total)}</strong> atas{" "}
-                {invoice.customerName ?? "pelanggan terhapus"} akan dibatalkan.
-              </p>
-              {/* Said plainly, because none of it is guessable from the button */}
-              <ul className="list-disc space-y-1 pl-5 text-muted">
-                <li>Barangnya kembali ke stok gudang.</li>
-                <li>
-                  Dua jurnal pembalik diposting — penerbitan dan HPP-nya.
-                </li>
-                <li>
-                  Fakturnya <strong>tidak dihapus</strong>: tetap ada di daftar
-                  bertanda batal, dan nomornya tidak dipakai ulang.
-                </li>
-              </ul>
-            </div>
-          </DialogDescription>
-        </DialogHeader>
+        {blocked ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>
+                {invoice.invoiceNumber} belum bisa dibatalkan
+              </DialogTitle>
+              <DialogDescription>
+                Masih ada {activePayments.length} pembayaran aktif sebesar{" "}
+                <strong className="tabular-nums">
+                  {formatMoney(invoice.paidAmount)}
+                </strong>
+                . Batalkan pembayarannya dulu satu per satu — masing-masing
+                memposting jurnal pembaliknya sendiri. Setelah tidak ada yang
+                aktif, faktur bisa dibatalkan dari menu yang sama.
+              </DialogDescription>
+            </DialogHeader>
 
-        <TextareaField
-          label="Alasan pembatalan"
-          name="voidReason"
-          value={reason}
-          onChange={(event) => setReason(event.target.value)}
-          hint="Wajib. Enam bulan lagi ini satu-satunya yang menjelaskan sepasang jurnal pembalik di buku besar."
-          placeholder="mis. Salah pelanggan — sudah diterbitkan ulang di INV/CBS/2608/0007"
-          disabled={saving}
-          required
-        />
+            <ul className="flex flex-col rounded-lg border border-border">
+              {activePayments.map((payment) => (
+                <li
+                  key={payment.paymentId}
+                  className="border-b border-border last:border-b-0"
+                >
+                  <Link
+                    href={`/dashboard/sales/${invoice._id}/payments/${payment.paymentId}`}
+                    className="flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 transition hover:bg-surface-hover focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-semibold tabular-nums">
+                        {payment.paymentNumber ?? "Pembayaran"}
+                      </span>
+                      <span className="block text-xs text-muted">
+                        <span className="tabular-nums">
+                          {formatDate(payment.at)}
+                        </span>{" "}
+                        · {paymentChannelLabel(payment)}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-sm font-semibold tabular-nums">
+                      {formatMoney(payment.amount)}
+                    </span>
+                    <ChevronRight
+                      aria-hidden
+                      className="size-4 shrink-0 text-muted"
+                    />
+                  </Link>
+                </li>
+              ))}
+            </ul>
 
-        <DialogFooter>
-          {/*
-            "KEMBALI", NOT "BATAL". The module's word for cancelling an invoice is
-            "batal" (decided 11 Sep 2026), so a "Batal" button beside "Batalkan
-            faktur" would be two buttons that sound like the same act and do
-            opposite things.
-          */}
-          <Button
-            variant="secondary"
-            onClick={() => onOpenChange(false)}
-            disabled={saving}
-          >
-            Kembali
-          </Button>
-          <Button
-            variant="destructive"
-            onClick={handleVoid}
-            disabled={saving || reason.trim() === ""}
-          >
-            {saving ? "Memproses…" : "Batalkan faktur"}
-          </Button>
-        </DialogFooter>
+            <DialogFooter>
+              <Button variant="secondary" onClick={() => onOpenChange(false)}>
+                Kembali
+              </Button>
+            </DialogFooter>
+          </>
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle>Batalkan {invoice.invoiceNumber}?</DialogTitle>
+              <DialogDescription asChild>
+                <div className="space-y-2 text-sm">
+                  <p>
+                    Tagihan <strong>{formatMoney(invoice.total)}</strong> atas{" "}
+                    {invoice.customerName ?? "pelanggan terhapus"} akan
+                    dibatalkan.
+                  </p>
+                  {/* Said plainly, because none of it is guessable from the button */}
+                  <ul className="list-disc space-y-1 pl-5 text-muted">
+                    <li>Barangnya kembali ke stok gudang.</li>
+                    <li>
+                      Dua jurnal pembalik diposting — penerbitan dan HPP-nya.
+                    </li>
+                    <li>
+                      Fakturnya <strong>tidak dihapus</strong>: tetap ada di
+                      daftar bertanda batal, dan nomornya tidak dipakai ulang.
+                    </li>
+                  </ul>
+                </div>
+              </DialogDescription>
+            </DialogHeader>
+
+            <TextareaField
+              label="Alasan pembatalan"
+              name="voidReason"
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              hint="Wajib. Enam bulan lagi ini satu-satunya yang menjelaskan sepasang jurnal pembalik di buku besar."
+              placeholder="mis. Salah pelanggan — sudah diterbitkan ulang di INV/CBS/2608/0007"
+              disabled={saving}
+              required
+            />
+
+            <DialogFooter>
+              {/*
+                "KEMBALI", NOT "BATAL". The module's word for cancelling an invoice
+                is "batal" (decided 11 Sep 2026), so a "Batal" button beside
+                "Batalkan faktur" would be two buttons that sound like the same act
+                and do opposite things.
+              */}
+              <Button
+                variant="secondary"
+                onClick={() => onOpenChange(false)}
+                disabled={saving}
+              >
+                Kembali
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleVoid}
+                disabled={saving || reason.trim() === ""}
+              >
+                {saving ? "Memproses…" : "Batalkan faktur"}
+              </Button>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

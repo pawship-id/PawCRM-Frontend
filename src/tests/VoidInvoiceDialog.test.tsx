@@ -185,3 +185,80 @@ describe("when the server refuses", () => {
     await waitFor(() => expect(confirm()).toBeEnabled());
   });
 });
+
+/**
+ * WHILE MONEY IS STILL ON THE INVOICE. The server refuses a void then (409), and
+ * the menu used to be drawn disabled — a pale row that read as broken. The
+ * dialog now opens on the way forward: which payments to cancel first, each a
+ * link to the page where that is done.
+ */
+describe("while a payment still counts", () => {
+  const payment = (overrides = {}) => ({
+    paymentId: "pay1",
+    paymentNumber: "PMT-2026-0001",
+    at: "2026-09-11T00:00:00.000Z",
+    amount: "46575.0000",
+    method: "transfer",
+    channelName: "BCA Operasional",
+    isVoided: false,
+    ...overrides,
+  });
+
+  const withPayments = () =>
+    open({
+      invoice: invoice({
+        status: "partial",
+        paidAmount: "77625.0000",
+        payments: [
+          payment({ paymentId: "pay0", paymentNumber: null, amount: "62100.0000", isVoided: true }),
+          payment({ paymentId: "pay2", paymentNumber: null, amount: "31050.0000" }),
+          payment(),
+        ],
+      }),
+    });
+
+  it("says it cannot be cancelled yet, and how much is still paid", () => {
+    withPayments();
+
+    expect(
+      screen.getByRole("heading", {
+        name: "INV/CBS/2608/0006 belum bisa dibatalkan",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/2 pembayaran aktif/)).toBeInTheDocument();
+    expect(screen.getByText("Rp 77.625")).toBeInTheDocument();
+  });
+
+  it("links every ACTIVE payment to the page where it is cancelled", () => {
+    withPayments();
+
+    const links = screen.getAllByRole("link");
+    expect(links.map((link) => link.getAttribute("href"))).toEqual([
+      "/dashboard/sales/inv1/payments/pay2",
+      "/dashboard/sales/inv1/payments/pay1",
+    ]);
+    expect(links[1]).toHaveTextContent("PMT-2026-0001");
+    expect(links[1]).toHaveTextContent("Rp 46.575");
+    // A payment recorded before numbering still shows up, by its amount.
+    expect(links[0]).toHaveTextContent("Rp 31.050");
+  });
+
+  it("leaves a cancelled payment off the list — it no longer blocks anything", () => {
+    withPayments();
+
+    expect(screen.queryByText("Rp 62.100")).not.toBeInTheDocument();
+  });
+
+  it("asks for no reason and offers no confirm, only Kembali", async () => {
+    withPayments();
+
+    expect(screen.queryByLabelText(/alasan pembatalan/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /^batalkan faktur$/i }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Kembali" }));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(customerInvoiceService.voidInvoice).not.toHaveBeenCalled();
+  });
+});

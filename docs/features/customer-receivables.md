@@ -433,7 +433,7 @@ transaction. Nothing posted changes in place.
 
 | Where | What |
 | --- | --- |
-| Header | Number, status, customer · branch · source; **Cetak**, **WhatsApp** (disabled with a reason when there is no number, absent on a cancelled invoice), ⋮ **Batalkan faktur** (disabled with a reason while a payment counts) |
+| Header | Number, status, customer · branch · source; **Cetak**, **WhatsApp** (disabled with a reason when there is no number, absent on a cancelled invoice), ⋮ **Batalkan faktur** — always clickable; while a payment still counts the dialog lists the active payments, each linked to the page where it is cancelled, instead of the reason form |
 | Left | **Rincian faktur** — info grid, lines grouped per animal (species + booking chip), Pajak column ("PPN 11%" when the rate was frozen), recap with DPP/PPN under a dashed rule; ⋮ **Lihat jurnal**. Then Jadwal & pengerjaan, Pembayaran di kasir |
 | Right (sticky) | Status pembayaran, **Riwayat pembayaran** (each row opens the payment's page), Dampak stok, Piutang pelanggan |
 | Foot | **Riwayat aktivitas**, folded, with the entry count on the fold — read with the page so the count is known; no badge while loading or after a failed read |

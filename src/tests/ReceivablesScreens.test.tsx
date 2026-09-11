@@ -1360,10 +1360,11 @@ describe("InvoiceDetail — Batalkan faktur, behind the ⋮", () => {
   });
 
   /*
-    A DIALOG THAT OPENS ONLY TO SAY "YOU CANNOT" SHOULD NOT OPEN — but the row
-    saying why is where somebody can act on it.
+    WHILE A PAYMENT STILL COUNTS the server refuses a void, but the menu row stays
+    clickable: it used to be drawn disabled, which read as broken. The dialog
+    opens on the payments to cancel first, each linked to its own page.
   */
-  it("is disabled while a payment still counts, and says what to do", async () => {
+  it("opens on the payments to cancel first while one still counts", async () => {
     const user = userEvent.setup();
     asMock(customerInvoiceService.getById).mockResolvedValue(
       detail({
@@ -1402,8 +1403,19 @@ describe("InvoiceDetail — Batalkan faktur, behind the ⋮", () => {
     );
 
     const item = screen.getByRole("menuitem", { name: /Batalkan faktur/ });
-    expect(item).toHaveAttribute("aria-disabled", "true");
-    expect(item).toHaveTextContent(/Batalkan pembayaran aktifnya dulu/);
+    // Clickable — a pale row that did nothing read as a broken menu.
+    expect(item).not.toHaveAttribute("aria-disabled", "true");
+
+    await user.click(item);
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "INV-2026-0042 belum bisa dibatalkan",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /PMT-2026-0001/ }),
+    ).toHaveAttribute("href", "/dashboard/sales/inv1/payments/pay1");
   });
 
   it("offers no menu to a role that may not cancel", async () => {

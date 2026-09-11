@@ -271,10 +271,12 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
             BATALKAN FAKTUR, behind the ⋮ — the mockup's place, and the right one
             for an act done rarely and deliberately.
 
-            OFFERED DISABLED, WITH ITS REASON, while a payment still counts. The
-            server refuses it (409); a dialog that opens only to say "you cannot"
-            should not open, but the row saying why is where somebody can act on
-            it.
+            ALWAYS CLICKABLE, even while a payment still counts. It used to be
+            drawn disabled then, which read as a broken menu: a pale row that did
+            nothing, on exactly the invoice somebody was trying to cancel. The
+            server still refuses (409) while money is on it, so the dialog opens
+            on the way forward instead — which payments to cancel first, each a
+            link to the page where that is done. See VoidInvoiceDialog.
           */}
           {!voided && can("customerInvoices", "void") && (
             <DropdownMenu>
@@ -287,19 +289,13 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
                   <EllipsisVertical className="size-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuContent align="end">
                 <DropdownMenuItem
-                  disabled={hasActivePayment}
+                  variant="destructive"
                   onSelect={() => setVoidOpen(true)}
-                  className="flex-col items-start gap-0.5 text-danger focus:text-danger"
+                  className="font-semibold"
                 >
-                  <span className="font-semibold">Batalkan faktur</span>
-                  {hasActivePayment && (
-                    <span className="text-xs text-muted">
-                      Batalkan pembayaran aktifnya dulu — masing-masing
-                      memposting jurnal pembaliknya sendiri.
-                    </span>
-                  )}
+                  Batalkan faktur
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
