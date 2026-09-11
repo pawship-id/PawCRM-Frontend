@@ -10,6 +10,8 @@ import type {
   RecordCustomerPaymentInput,
   VoidCustomerPaymentInput,
   CreateCustomerInvoiceInput,
+  InvoiceActivityEntry,
+  UpdateCustomerInvoiceInput,
 } from "@/types/api";
 
 /**
@@ -159,6 +161,34 @@ export const customerInvoiceService = {
     apiClient.post<CustomerInvoiceDetail>(`/customer-invoices/${id}/void`, {
       reason,
     }),
+
+  /**
+   * PATCH /customer-invoices/:id — revise an invoice nobody has paid yet.
+   *
+   * NOTHING POSTED IS EDITED IN PLACE. The server reverses the live revision's
+   * two entries and its stock, then issues the revised lines as a new revision,
+   * in one transaction — so the ledger keeps both versions and the reversal
+   * between them.
+   *
+   * `items` IS THE WHOLE REVISED LIST. A row carrying `fromIndex` continues that
+   * stored line (its price, animal and booking stay); a row without one is new;
+   * a stored line no row names is taken off.
+   *
+   * REFUSED (409) once anything is paid, on a till-born invoice, and on a
+   * cancelled one. Answers with the invoice as it now reads.
+   */
+  update: (id: string, input: UpdateCustomerInvoiceInput) =>
+    apiClient.patch<CustomerInvoiceDetail>(`/customer-invoices/${id}`, input),
+
+  /**
+   * GET /customer-invoices/:id/activity — what happened to this invoice, newest
+   * first. Needs only `customerInvoices:read`: an invoice's own history is part
+   * of the invoice, not the tenant-wide audit screen.
+   */
+  activity: (id: string) =>
+    apiClient.get<{ items: InvoiceActivityEntry[] }>(
+      `/customer-invoices/${id}/activity`,
+    ),
 
   /**
    * GET /customer-invoices/:id — one receivable, with its payments and labels.

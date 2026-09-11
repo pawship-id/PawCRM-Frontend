@@ -646,7 +646,9 @@ describe("SalesInvoiceList — the table", () => {
 
     renderWithAuth(<ReceivablesScreen />);
 
-    expect(await screen.findByText("dari kasir")).toBeInTheDocument();
+    // "Kasir", not "dari kasir" — the origin named, the mockup's word.
+    const row = (await screen.findByText("INV-2026-0042")).closest("tr")!;
+    expect(within(row).getByText("Kasir")).toBeInTheDocument();
   });
 
   it("renders the row's lateness from the server's verdict", async () => {

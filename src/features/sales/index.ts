@@ -15,5 +15,6 @@
 export { SalesModuleHeader } from "./components/SalesModuleHeader";
 export { ReceivablesScreen } from "./components/ReceivablesScreen";
 export { InvoiceDetail } from "./components/InvoiceDetail";
+export { InvoicePaymentDetail } from "./components/InvoicePaymentDetail";
 export { InvoicePrintScreen } from "./components/InvoicePrintScreen";
 export { InvoiceCreateForm } from "./components/InvoiceCreateForm";

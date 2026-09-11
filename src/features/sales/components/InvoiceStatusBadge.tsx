@@ -78,7 +78,9 @@ export function InvoiceSourceBadge({ source }: { source: "manual" | "pos_bridge"
           : "bg-tint-neutral text-muted",
       )}
     >
-      {source === "pos_bridge" ? "dari kasir" : "manual"}
+      {/* The mockup's words: the origin named, not described — "Kasir", not
+          "dari kasir". Same chip on the list and on the detail. */}
+      {source === "pos_bridge" ? "Kasir" : "Manual"}
     </Badge>
   );
 }

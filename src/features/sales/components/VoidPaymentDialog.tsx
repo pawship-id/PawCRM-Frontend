@@ -142,13 +142,16 @@ export function VoidPaymentDialog({
         />
 
         <DialogFooter>
+          {/* "KEMBALI", NOT "BATAL" — beside "Batalkan pembayaran" the two would
+              sound like the same act and do opposite things. The rule
+              VoidInvoiceDialog follows. */}
           <Button
             type="button"
             variant="secondary"
             onClick={close}
             disabled={saving}
           >
-            Batal
+            Kembali
           </Button>
           <Button
             type="button"

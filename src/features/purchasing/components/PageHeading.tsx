@@ -19,17 +19,31 @@ import { Breadcrumb, type Crumb } from "@/components";
 export function PageHeading({
   crumbs,
   title,
+  aside,
   children,
 }: {
   /** Ancestors first, the current page last and WITHOUT an href. */
   crumbs: Crumb[];
   title: string;
+  /**
+   * Something that belongs ON the title line — a document's status beside its
+   * number. Rendered next to the `h1`, not inside it, so the heading's name stays
+   * the title a screen reader and a test both look for.
+   */
+  aside?: ReactNode;
   children?: ReactNode;
 }) {
   return (
     <div>
       <Breadcrumb items={crumbs} />
-      <h1 className="mt-1 text-2xl font-extrabold text-foreground">{title}</h1>
+      {aside ? (
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <h1 className="text-2xl font-extrabold text-foreground">{title}</h1>
+          {aside}
+        </div>
+      ) : (
+        <h1 className="mt-1 text-2xl font-extrabold text-foreground">{title}</h1>
+      )}
       {children && (
         <p className="mt-1 max-w-2xl text-sm text-muted">{children}</p>
       )}

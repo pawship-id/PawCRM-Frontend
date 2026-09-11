@@ -5117,6 +5117,23 @@ export interface CustomerInvoiceDetail extends Omit<
    * Empty on an invoice that bills only goods.
    */
   bookings: InvoiceBooking[];
+  /**
+   * The customer's phone as stored, and the same number in `wa.me` form — the
+   * digits with no `+` — for the WhatsApp button. Both null on a walk-in, a
+   * deleted customer, or a number the server cannot read as one.
+   */
+  customerPhone?: string | null;
+  customerWhatsApp?: string | null;
+  /**
+   * Every edit of this invoice, oldest first. Empty on one never edited — see
+   * `UpdateCustomerInvoiceInput`.
+   */
+  revisions?: Array<{
+    at: string;
+    by: string | null;
+    previousTotal: string;
+    total: string;
+  }>;
 }
 
 /** One appointment an invoice covers, as the execution panel draws it. */
@@ -5306,6 +5323,18 @@ export interface CustomerInvoiceItem {
   petName: string | null;
   /** Who did the work, as at issue. Null when the slot was never filled. */
   groomerName: string | null;
+  /**
+   * The animal's species, RESOLVED ON READ — unlike `petName`, which is the
+   * name as billed. A species is not something a bill agreed to; it labels the
+   * group the line sits in. Null on a product line, or when the pet is gone.
+   */
+  petSpecies?: PetSpecies | null;
+  /**
+   * The booking's number, RESOLVED ON READ for every line with a `bookingId` —
+   * a till sale's too, whose bookings `bookings[]` does not carry. Null on a
+   * line with no booking, or one deleted since.
+   */
+  bookingNumber?: string | null;
 }
 
 /** The money, frozen when the invoice was issued — or when the sale settled. */
@@ -5324,6 +5353,60 @@ export interface CustomerInvoiceTotals {
    * customer paid, so a total without it is one the rows above do not add up to.
    */
   otherCharges?: string | null;
+  /**
+   * The rate `tax` was charged at, as a percentage — frozen at issue so a line
+   * can say "PPN 11%" after the tenant's setting has moved. Null on invoices
+   * issued before it was stored, and on a till sale.
+   */
+  taxRate?: number | null;
+}
+
+/**
+ * PATCH /api/customer-invoices/:id — the whole revised list of lines.
+ *
+ * `fromIndex` MARKS A KEPT LINE: the index of the stored line it continues. A
+ * kept line keeps its frozen price, animal and booking; only `qty` and
+ * `discount` move. A row without it is a new line, priced from the catalogue.
+ * A stored line no row names is taken off.
+ */
+export interface UpdateInvoiceItemInput extends CreateInvoiceItemInput {
+  fromIndex?: number;
+}
+
+export interface UpdateCustomerInvoiceInput {
+  items: UpdateInvoiceItemInput[];
+  /** Absent keeps the typed discount; null removes it. */
+  invoiceDiscount?: TypedDiscountInput | null;
+  dueDate?: string;
+  /** Only read when the invoice shipped nothing before and now does. */
+  warehouseId?: string;
+  notes?: string | null;
+}
+
+/** The actions an invoice's own activity log can hold. */
+export type InvoiceActivityAction =
+  | "invoice_create"
+  | "invoice_update"
+  | "invoice_payment_record"
+  | "invoice_payment_void"
+  | "invoice_void";
+
+/** One entry of GET /api/customer-invoices/:id/activity. */
+export interface InvoiceActivityEntry {
+  _id: string;
+  /** An open vocabulary server-side; unknown values render generically. */
+  action: InvoiceActivityAction | string;
+  at: string;
+  /** Null when the user has since been deleted. */
+  actorName: string | null;
+  /** What the audit row recorded — amounts as decimal strings. */
+  metadata: Record<string, unknown>;
+  /**
+   * True for the one entry read off the DOCUMENT rather than the trail: a till
+   * invoice is never audited as created, so its creation is taken from its own
+   * timestamps.
+   */
+  fromDocument: boolean;
 }
 
 /**

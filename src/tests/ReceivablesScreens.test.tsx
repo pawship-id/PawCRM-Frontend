@@ -196,6 +196,8 @@ beforeEach(() => {
     creators: [],
   });
   asMock(customerInvoiceService.getById).mockResolvedValue(detail());
+  // The activity log is read with the page, for the count on its fold.
+  asMock(customerInvoiceService.activity).mockResolvedValue({ items: [] });
   asMock(customerService.list).mockResolvedValue(
     optionPage([{ _id: CUSTOMER_ID, name: "Bu Sari" }]),
   );
@@ -299,7 +301,7 @@ describe("InvoiceDetail", () => {
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
 
     expect(
-      await screen.findByText(/sudah dibatalkan — tidak ada yang bisa ditagih/),
+      await screen.findByText(/Tidak ada yang bisa ditagih/),
     ).toBeInTheDocument();
     expect(screen.queryByLabelText("Jumlah diterima")).not.toBeInTheDocument();
   });
@@ -386,7 +388,7 @@ describe("InvoiceDetail", () => {
 
     // NOT a refetch: the response IS the new state of the document, rendered
     // straight into the history below.
-    expect(await screen.findByText(/Masuk ke BCA Operasional/)).toBeInTheDocument();
+    expect(await screen.findByText(/Transfer — BCA Operasional/)).toBeInTheDocument();
     expect(customerInvoiceService.getById).toHaveBeenCalledTimes(1);
   });
 
@@ -571,16 +573,16 @@ describe("InvoiceDetail", () => {
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
 
     expect(
-      await screen.findByText(/Masuk ke BCA Operasional/),
+      await screen.findByText(/Transfer — BCA Operasional/),
     ).toBeInTheDocument();
     /*
-      The ledger entry is the only handle on a mistake — a payment cannot be
-      edited or deleted. Named by its NUMBER, which is what the ledger is filed
-      under; the id is the link's address, not the label.
+      THE ROW OPENS THE PAYMENT'S OWN PAGE, which is where its journal entry,
+      its kwitansi and its cancellation live now — see
+      InvoicePaymentDetail.test.tsx.
     */
     expect(
-      screen.getByRole("link", { name: "JE-2026-08-0412" }),
-    ).toBeInTheDocument();
+      screen.getByRole("link", { name: /Transfer — BCA Operasional/ }),
+    ).toHaveAttribute("href", "/dashboard/sales/inv1/payments/pay1");
   });
 });
 
@@ -610,14 +612,6 @@ const paymentRow = (
   reversalJournalEntryNumber: null,
   ...overrides,
 });
-
-const paidDetail = (payments: CustomerInvoicePayment[] = [paymentRow()]) =>
-  detail({
-    status: "partial",
-    paidAmount: "100000.0000",
-    outstandingAmount: "200000.0000",
-    payments,
-  });
 
 /**
  * A WALK-IN'S FAKTUR — the shape every cash till sale now produces.
@@ -727,7 +721,7 @@ describe("InvoiceDetail — a sale joined from the till", () => {
 
     await screen.findByText("Pembayaran di kasir");
     expect(
-      screen.queryByText(/belum ada pembayaran untuk faktur ini/i),
+      screen.queryByText(/belum ada pembayaran tercatat/i),
     ).not.toBeInTheDocument();
   });
 
@@ -754,7 +748,7 @@ describe("InvoiceDetail — a sale joined from the till", () => {
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
 
     expect(
-      await screen.findByText(/belum ada pembayaran untuk faktur ini/i),
+      await screen.findByText(/belum ada pembayaran tercatat/i),
     ).toBeInTheDocument();
   });
 
@@ -809,202 +803,6 @@ describe("a faktur with no customer", () => {
     renderWithAuth(<ReceivablesScreen />);
 
     expect(await screen.findByText("Pelanggan umum")).toBeInTheDocument();
-  });
-});
-
-describe("InvoiceDetail — membatalkan pembayaran", () => {
-  beforeEach(() => {
-    asMock(customerInvoiceService.getById).mockResolvedValue(paidDetail());
-  });
-
-  it("cancels the payment with its reason and renders what the write returned", async () => {
-    const user = userEvent.setup();
-    asMock(customerInvoiceService.voidPayment).mockResolvedValue(
-      detail({
-        status: "unpaid",
-        paidAmount: "0.0000",
-        outstandingAmount: "300000.0000",
-        payments: [
-          paymentRow({
-            isVoided: true,
-            voidedAt: "2026-08-28T00:00:00.000Z",
-            voidReason: "Salah faktur",
-            reversalJournalEntryId: "je-rev1",
-          }),
-        ],
-      }),
-    );
-
-    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
-
-    await user.click(await screen.findByRole("button", { name: /Batalkan/ }));
-    await user.type(await screen.findByLabelText("Alasan"), "Salah faktur");
-    await user.click(
-      screen.getByRole("button", { name: "Batalkan pembayaran" }),
-    );
-
-    await waitFor(() =>
-      expect(customerInvoiceService.voidPayment).toHaveBeenCalledWith(
-        INVOICE_ID,
-        PAYMENT_ID,
-        { reason: "Salah faktur" },
-      ),
-    );
-
-    /*
-      NOT a refetch: the response IS the new state of the document. Asserted on
-      the row's badge rather than the word alone — the card's footnote uses
-      "dibatalkan" too, and matching that would pass with no row rendered.
-    */
-    expect(await screen.findByText("Salah faktur", { exact: false })).toBeInTheDocument();
-    expect(screen.getAllByText("dibatalkan").length).toBeGreaterThan(0);
-    expect(customerInvoiceService.getById).toHaveBeenCalledTimes(1);
-  });
-
-  it("refuses an empty reason before spending a round trip", async () => {
-    const user = userEvent.setup();
-    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
-
-    await user.click(await screen.findByRole("button", { name: /Batalkan/ }));
-    await user.click(
-      screen.getByRole("button", { name: "Batalkan pembayaran" }),
-    );
-
-    await waitFor(() =>
-      expect(toast).toHaveBeenCalledWith(
-        expect.stringMatching(/alasan/i),
-        "error",
-      ),
-    );
-    expect(customerInvoiceService.voidPayment).not.toHaveBeenCalled();
-  });
-
-  it("shows the server's refusal verbatim", async () => {
-    const user = userEvent.setup();
-    asMock(customerInvoiceService.voidPayment).mockRejectedValue(
-      new ApiError("Payment was already cancelled", 409),
-    );
-
-    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
-
-    await user.click(await screen.findByRole("button", { name: /Batalkan/ }));
-    await user.type(await screen.findByLabelText("Alasan"), "x");
-    await user.click(
-      screen.getByRole("button", { name: "Batalkan pembayaran" }),
-    );
-
-    await waitFor(() =>
-      expect(toast).toHaveBeenCalledWith(
-        expect.stringMatching(/already cancelled/),
-        "error",
-        8000,
-      ),
-    );
-  });
-
-  /* --- THE GATE --- */
-
-  it("hides Batalkan from a role that may take money but not undo one", async () => {
-    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />, {
-      isSuperAdmin: false,
-      permissions: [
-        { feature: "customerInvoices", actions: ["read", "pay"] },
-      ],
-    });
-
-    expect(await screen.findByText(/Masuk ke BCA Operasional/)).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /Batalkan/ }),
-    ).not.toBeInTheDocument();
-  });
-
-  /* --- a cancelled row stays visible --- */
-
-  it("keeps a cancelled payment on the timeline, with its reason", async () => {
-    asMock(customerInvoiceService.getById).mockResolvedValue(
-      paidDetail([
-        paymentRow({
-          isVoided: true,
-          voidedAt: "2026-08-28T00:00:00.000Z",
-          voidReason: "Dobel input",
-          reversalJournalEntryId: "je-rev1",
-        }),
-      ]),
-    );
-
-    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
-
-    expect(await screen.findByText(/Dobel input/)).toBeInTheDocument();
-    expect(screen.getAllByText("dibatalkan").length).toBeGreaterThan(0);
-  });
-
-  it("offers no second cancellation on a payment already cancelled", async () => {
-    asMock(customerInvoiceService.getById).mockResolvedValue(
-      paidDetail([paymentRow({ isVoided: true, voidReason: "Dobel input" })]),
-    );
-
-    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
-
-    expect(await screen.findByText(/Dobel input/)).toBeInTheDocument();
-    /*
-      THE PAYMENT'S cancel button, not the invoice's. Since the module's word
-      became "batal", the invoice-level "Batalkan faktur" is on this screen too —
-      and correctly so, because the only payment has been cancelled.
-    */
-    expect(
-      screen.queryByRole("button", { name: /^Batalkan(?! faktur)/ }),
-    ).not.toBeInTheDocument();
-  });
-});
-
-describe("InvoiceDetail — kwitansi", () => {
-  beforeEach(() => {
-    asMock(customerInvoiceService.getById).mockResolvedValue(paidDetail());
-  });
-
-  it("prints one PAYMENT, not the whole invoice", async () => {
-    const user = userEvent.setup();
-    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
-
-    await user.click(await screen.findByRole("button", { name: /Kwitansi/ }));
-
-    const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText("KWITANSI")).toBeInTheDocument();
-    // The amount received, not the invoice total.
-    expect(within(dialog).getByText(/Rp\s?100\.000/)).toBeInTheDocument();
-    expect(within(dialog).getByText("Jumlah diterima")).toBeInTheDocument();
-  });
-
-  it("carries the shop's own header", async () => {
-    const user = userEvent.setup();
-    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
-
-    await user.click(await screen.findByRole("button", { name: /Kwitansi/ }));
-
-    const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText("Buloo Petshop")).toBeInTheDocument();
-  });
-
-  /*
-    Somebody re-printing a cancelled payment is usually doing so BECAUSE it was
-    cancelled. A sheet that silently omitted that would be worse than none.
-  */
-  it("still prints a cancelled payment, marked", async () => {
-    const user = userEvent.setup();
-    asMock(customerInvoiceService.getById).mockResolvedValue(
-      paidDetail([
-        paymentRow({ isVoided: true, voidReason: "Salah faktur" }),
-      ]),
-    );
-
-    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
-
-    await user.click(await screen.findByRole("button", { name: /Kwitansi/ }));
-
-    const dialog = await screen.findByRole("dialog");
-    expect(
-      within(dialog).getByText(/PEMBAYARAN INI DIBATALKAN/),
-    ).toBeInTheDocument();
   });
 });
 
@@ -1081,45 +879,6 @@ describe("InvoiceDetail — the submit lock", () => {
   });
 });
 
-describe("PaymentReceipt — what does NOT go on a customer's sheet", () => {
-  /*
-    The kwitansi used to carry "dicetak dari … · jurnal <ObjectId>". Neither the
-    PRD nor the PCR sheet asks for it, and a database id on a document handed to
-    a customer is noise. The id stays on the staff-facing timeline.
-  */
-  it("carries no ledger id", async () => {
-    const user = userEvent.setup();
-    asMock(customerInvoiceService.getById).mockResolvedValue(paidDetail());
-
-    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
-
-    await user.click(await screen.findByRole("button", { name: /Kwitansi/ }));
-
-    const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).queryByText("je-pay1")).not.toBeInTheDocument();
-    expect(
-      within(dialog).queryByText("JE-2026-08-0412"),
-    ).not.toBeInTheDocument();
-    expect(within(dialog).queryByText(/Dicetak dari/)).not.toBeInTheDocument();
-  });
-
-  it("still names the shop, the customer and what is left", async () => {
-    const user = userEvent.setup();
-    asMock(customerInvoiceService.getById).mockResolvedValue(paidDetail());
-
-    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
-
-    await user.click(await screen.findByRole("button", { name: /Kwitansi/ }));
-
-    const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText("Buloo Petshop")).toBeInTheDocument();
-    expect(within(dialog).getByText("Bu Sari")).toBeInTheDocument();
-    expect(
-      within(dialog).getByText("Sisa tagihan saat ini"),
-    ).toBeInTheDocument();
-  });
-});
-
 /**
  * THE SIDE COLUMN — the STATE of the invoice rather than the document.
  *
@@ -1185,7 +944,7 @@ describe("InvoiceDetail — the status panel", () => {
 
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
 
-    await screen.findByText(/sudah dibatalkan — tidak ada yang bisa ditagih/);
+    await screen.findByText(/Tidak ada yang bisa ditagih/);
     // There is no progress towards paying something that was never owed.
     expect(screen.queryByText(/terbayar ·/)).not.toBeInTheDocument();
   });
@@ -1290,7 +1049,7 @@ describe("InvoiceDetail — the payment dialog", () => {
 
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
 
-    await screen.findByText(/sudah dibatalkan — tidak ada yang bisa ditagih/);
+    await screen.findByText(/Tidak ada yang bisa ditagih/);
     expect(
       screen.queryByRole("button", { name: /Catat pembayaran/ }),
     ).not.toBeInTheDocument();
@@ -1447,81 +1206,141 @@ describe("InvoiceDetail — what the customer owes altogether", () => {
   });
 });
 
-describe("InvoiceDetail — the postings, not just their numbers", () => {
-  const withLines = () =>
-    detail({
-      journalEntries: [
-        {
-          _id: "je1",
-          entryNumber: "JE-2026-08-0411",
-          date: "2026-08-27T00:00:00.000Z",
-          description: "Penerbitan faktur",
-          sourceType: "invoice",
-          isReversal: false,
-          belongsToSale: false,
-          lines: [
-            {
-              accountId: "a1",
-              code: "1103",
-              name: "Piutang Usaha",
-              debit: "1119130.0000",
-              credit: "0.0000",
-              memo: null,
-            },
-            {
-              accountId: "a2",
-              code: "4101",
-              name: "Penjualan",
-              debit: "0.0000",
-              credit: "1119130.0000",
-              memo: null,
-            },
-          ],
-        },
-      ],
+/* ============ the September 2026 layout — `buloo-invoice-detail-v5` ============ */
+
+/**
+ * A HAND-RAISED, UNPAID INVOICE — the only kind an edit is offered on. The
+ * default fixture is a till-born one, whose lines belong to its sale.
+ */
+const manualUnpaid = (overrides: Partial<CustomerInvoiceDetail> = {}) =>
+  detail({
+    source: "manual",
+    posTransactionId: null,
+    status: "unpaid",
+    paidAmount: "0.0000",
+    outstandingAmount: "300000.0000",
+    payments: [],
+    ...overrides,
+  });
+
+describe("InvoiceDetail — the title line", () => {
+  /*
+    THE STATUS BESIDE THE NUMBER IT DESCRIBES, outside the `h1` so the heading's
+    name stays the number. The origin sits on the line below, named "Kasir".
+  */
+  it("puts the status beside the number, and names the till as Kasir", async () => {
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    const heading = await screen.findByRole("heading", {
+      name: "INV-2026-0042",
     });
+    const titleLine = heading.parentElement as HTMLElement;
+    const block = titleLine.parentElement as HTMLElement;
 
-  /*
-    THE ACCOUNTS ARE THE WHOLE REASON THE ENTRIES ARE INTERESTING. The card used
-    to list four numbers, so anybody asking "what did it actually debit" opened
-    the ledger four times.
-  */
-  it("names the accounts it debited and credited", async () => {
-    asMock(customerInvoiceService.getById).mockResolvedValue(withLines());
+    expect(within(titleLine).getByText("belum lunas")).toBeInTheDocument();
+    expect(within(block).getByText("Kasir")).toBeInTheDocument();
+    expect(within(block).queryByText("dari kasir")).not.toBeInTheDocument();
+  });
+
+  it("names a hand-raised invoice Manual", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(manualUnpaid());
 
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
 
-    // Two nodes each — the code and the name sit in one cell as separate spans.
-    expect((await screen.findAllByText(/Piutang Usaha/)).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Penjualan/).length).toBeGreaterThan(0);
-    expect(screen.getByText("1103")).toBeInTheDocument();
+    const heading = await screen.findByRole("heading", {
+      name: "INV-2026-0042",
+    });
+    const block = (heading.parentElement as HTMLElement)
+      .parentElement as HTMLElement;
+    expect(within(block).getByText("Manual")).toBeInTheDocument();
   });
+});
 
-  /* The number is still what somebody quotes. */
-  it("keeps the entry number beside them", async () => {
-    asMock(customerInvoiceService.getById).mockResolvedValue(withLines());
+describe("InvoiceDetail — WhatsApp", () => {
+  it("opens a chat with the customer, carrying the bill's figures", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      detail({ customerWhatsApp: "6281234567890" }),
+    );
 
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
 
-    expect(await screen.findByText("JE-2026-08-0411")).toBeInTheDocument();
+    const link = await screen.findByRole("link", { name: /WhatsApp/ });
+    const href = link.getAttribute("href") ?? "";
+    expect(href.startsWith("https://wa.me/6281234567890?text=")).toBe(true);
+    expect(decodeURIComponent(href)).toContain("INV-2026-0042");
+    expect(decodeURIComponent(href)).toContain("sisa tagihan Rp 300.000");
+  });
+
+  it("is drawn disabled, with its reason, when there is no number", async () => {
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    const button = await screen.findByRole("button", { name: /WhatsApp/ });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute(
+      "title",
+      "Pelanggan ini belum punya nomor WhatsApp.",
+    );
+  });
+
+  it("is not offered on a cancelled invoice", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      detail({ status: "void", customerWhatsApp: "6281234567890" }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await screen.findByText(/Tidak ada yang bisa ditagih/);
+    expect(screen.queryByRole("link", { name: /WhatsApp/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("InvoiceDetail — Batalkan faktur, behind the ⋮", () => {
+  it("opens the cancellation from the menu beside Cetak", async () => {
+    const user = userEvent.setup();
+    asMock(customerInvoiceService.getById).mockResolvedValue(manualUnpaid());
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Aksi lain untuk faktur ini" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: /Batalkan faktur/ }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Batalkan INV-2026-0042?" }),
+    ).toBeInTheDocument();
   });
 
   /*
-    AN ACCOUNT RETIRED SINCE THE POSTING still shows its figures. Dropping the
-    row would make the entry stop balancing on screen, which reads as a broken
-    ledger rather than a retired account.
+    A DIALOG THAT OPENS ONLY TO SAY "YOU CANNOT" SHOULD NOT OPEN — but the row
+    saying why is where somebody can act on it.
   */
-  it("still prints a line whose account was deleted", async () => {
-    const entry = withLines().journalEntries[0];
+  it("is disabled while a payment still counts, and says what to do", async () => {
+    const user = userEvent.setup();
     asMock(customerInvoiceService.getById).mockResolvedValue(
       detail({
-        journalEntries: [
+        status: "partial",
+        paidAmount: "100000.0000",
+        outstandingAmount: "200000.0000",
+        payments: [
           {
-            ...entry,
-            lines: [
-              { ...entry.lines[0], code: null, name: null },
-              entry.lines[1],
-            ],
+            paymentId: "pay1",
+            at: "2026-08-27T00:00:00.000Z",
+            amount: "100000.0000",
+            method: "transfer",
+            channelId: "chan-bca",
+            channelName: "BCA Operasional",
+            ref: null,
+            byUserId: "u1",
+            byUserName: "Rani",
+            journalEntryId: "je-pay1",
+            journalEntryNumber: "JE-2026-08-0412",
+            reversalJournalEntryNumber: null,
+            isVoided: false,
+            voidedAt: null,
+            voidedBy: null,
+            voidReason: null,
+            reversalJournalEntryId: null,
           },
         ],
       }),
@@ -1529,78 +1348,193 @@ describe("InvoiceDetail — the postings, not just their numbers", () => {
 
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
 
-    expect(await screen.findByText("Akun terhapus")).toBeInTheDocument();
-  });
-});
-
-describe("PaymentHistory — the ledger reference", () => {
-  /*
-    The timeline used to render "jurnal 6a903c1a3d3de99c0994134a". An ObjectId is
-    neither something a person can look up nor something they can quote to whoever
-    can — and it was not a link either.
-  */
-  it("shows the entry NUMBER, linked to the entry itself", async () => {
-    asMock(customerInvoiceService.getById).mockResolvedValue(paidDetail());
-
-    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
-
-    const link = await screen.findByRole("link", { name: "JE-2026-08-0412" });
-    expect(link).toHaveAttribute(
-      "href",
-      "/dashboard/keuangan/journal-entries/je-pay1",
-    );
-    // The raw id is not on screen anywhere.
-    expect(screen.queryByText("je-pay1")).not.toBeInTheDocument();
-  });
-
-  it("links the reversing entry too, on a cancelled payment", async () => {
-    asMock(customerInvoiceService.getById).mockResolvedValue(
-      paidDetail([
-        paymentRow({
-          isVoided: true,
-          voidReason: "Dobel input",
-          reversalJournalEntryId: "je-rev1",
-          reversalJournalEntryNumber: "JE-2026-08-0498",
-        }),
-      ]),
+    await user.click(
+      await screen.findByRole("button", { name: "Aksi lain untuk faktur ini" }),
     );
 
-    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
-
-    expect(
-      await screen.findByRole("link", { name: "JE-2026-08-0498" }),
-    ).toHaveAttribute("href", "/dashboard/keuangan/journal-entries/je-rev1");
+    const item = screen.getByRole("menuitem", { name: /Batalkan faktur/ });
+    expect(item).toHaveAttribute("aria-disabled", "true");
+    expect(item).toHaveTextContent(/Batalkan pembayaran aktifnya dulu/);
   });
 
-  /*
-    A link that lands on "Akses ditolak" is worse than plain text — it promises
-    somewhere to go. The number still shows: it is what somebody quotes to
-    whoever can open the ledger.
-  */
-  it("shows the number as plain text without `journalEntries:read`", async () => {
-    asMock(customerInvoiceService.getById).mockResolvedValue(paidDetail());
-
+  it("offers no menu to a role that may not cancel", async () => {
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />, {
       isSuperAdmin: false,
       permissions: [{ feature: "customerInvoices", actions: ["read", "pay"] }],
     });
 
-    expect(await screen.findByText("JE-2026-08-0412")).toBeInTheDocument();
+    await screen.findByText("Rincian faktur");
     expect(
-      screen.queryByRole("link", { name: "JE-2026-08-0412" }),
+      screen.queryByRole("button", { name: "Aksi lain untuk faktur ini" }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("InvoiceDetail — the Rincian card's ⋮", () => {
+  async function openRincianMenu(user: UserEvent) {
+    await user.click(
+      await screen.findByRole("button", { name: "Aksi rincian faktur" }),
+    );
+  }
+
+  it("opens the postings in a dialog", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await openRincianMenu(user);
+    await user.click(screen.getByRole("menuitem", { name: "Lihat jurnal" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Jurnal faktur" }),
+    ).toBeInTheDocument();
+  });
+
+  /**
+   * EDITING IS OFFERED EXACTLY WHERE THE SERVER WILL ACCEPT IT: raised here,
+   * nothing paid, not cancelled, and `update` held. A menu row that 409s is a
+   * row that should not have been drawn. The editor itself has its own suite
+   * (InvoiceEditor.test.tsx).
+   */
+  it("offers Ubah rincian on a hand-raised invoice nobody has paid, and opens the editor", async () => {
+    const user = userEvent.setup();
+    asMock(customerInvoiceService.getById).mockResolvedValue(manualUnpaid());
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findByText(/masih bisa diubah/)).toBeInTheDocument();
+
+    await openRincianMenu(user);
+    await user.click(screen.getByRole("menuitem", { name: /Ubah rincian/ }));
+
+    expect(
+      await screen.findByText(/Sedang diubah — belum tersimpan/),
+    ).toBeInTheDocument();
+  });
+
+  it("does not offer Ubah rincian on an invoice raised at the till, and says why", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(
+      await screen.findByText(/barisnya milik transaksi kasir/),
+    ).toBeInTheDocument();
+    await openRincianMenu(user);
+    expect(
+      screen.queryByRole("menuitem", { name: /Ubah rincian/ }),
     ).not.toBeInTheDocument();
   });
 
-  it("falls back to the id when the number cannot be resolved", async () => {
+  it("locks once a payment is recorded", async () => {
+    const user = userEvent.setup();
     asMock(customerInvoiceService.getById).mockResolvedValue(
-      paidDetail([paymentRow({ journalEntryNumber: null })]),
+      manualUnpaid({
+        status: "partial",
+        paidAmount: "100000.0000",
+        outstandingAmount: "200000.0000",
+      }),
     );
 
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
 
     expect(
-      await screen.findByRole("link", { name: "je-pay1" }),
+      await screen.findByText(/Terkunci sejak ada pembayaran tercatat/),
+    ).toBeInTheDocument();
+    await openRincianMenu(user);
+    expect(
+      screen.queryByRole("menuitem", { name: /Ubah rincian/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not offer Ubah rincian to a role without customerInvoices:update", async () => {
+    const user = userEvent.setup();
+    asMock(customerInvoiceService.getById).mockResolvedValue(manualUnpaid());
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />, {
+      isSuperAdmin: false,
+      permissions: [
+        { feature: "customerInvoices", actions: ["read", "pay", "void"] },
+      ],
+    });
+
+    await openRincianMenu(user);
+    expect(
+      screen.queryByRole("menuitem", { name: /Ubah rincian/ }),
+    ).not.toBeInTheDocument();
+    // The rest of the menu still stands — only the row that 409s is withheld.
+    expect(
+      screen.getByRole("menuitem", { name: "Lihat jurnal" }),
     ).toBeInTheDocument();
   });
 });
 
+describe("InvoiceDetail — Riwayat aktivitas", () => {
+  /* Folded, and not fetched until somebody opens it — most visits never do. */
+  /** The badge on the fold — its number, and the word a screen reader hears. */
+  const badge = (label: string) =>
+    screen.queryByText(
+      (_content, element) =>
+        element?.tagName === "SPAN" && element.textContent === label,
+    );
+
+  /*
+    THE COUNT IS ON THE CLOSED PANEL, the mockup's badge — which is why the log
+    is read with the page rather than when it is opened.
+  */
+  it("counts what happened on the fold, and lists it when opened", async () => {
+    const user = userEvent.setup();
+    asMock(customerInvoiceService.activity).mockResolvedValue({
+      items: [
+        {
+          _id: "a2",
+          action: "invoice_update",
+          at: "2026-09-11T03:10:00.000Z",
+          actorName: "Jess",
+          metadata: {
+            previousTotal: "181000.0000",
+            total: "215000.0000",
+            lineCount: 3,
+          },
+          fromDocument: false,
+        },
+        {
+          _id: "issued-inv1",
+          action: "invoice_create",
+          at: "2026-09-01T02:00:00.000Z",
+          actorName: null,
+          metadata: { source: "pos_bridge" },
+          fromDocument: true,
+        },
+      ],
+    });
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await waitFor(() => expect(badge("2 aktivitas")).toBeInTheDocument());
+    expect(customerInvoiceService.activity).toHaveBeenCalledWith(INVOICE_ID);
+
+    await user.click(screen.getByText("Riwayat aktivitas"));
+
+    expect(await screen.findByText("Faktur diubah")).toBeInTheDocument();
+    expect(
+      screen.getByText("Total Rp 181.000 → Rp 215.000 · 3 baris"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Jess")).toBeInTheDocument();
+  });
+
+  /*
+    NO "0" WHEN THE LOG COULD NOT BE READ. Nought claims nothing happened, and a
+    failed read does not know that — the panel says it failed instead.
+  */
+  it("shows no count when the log cannot be read, and says so inside", async () => {
+    asMock(customerInvoiceService.activity).mockRejectedValue(
+      new ApiError("Riwayat aktivitas gagal dimuat.", 500),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(
+      await screen.findByText(/Riwayat aktivitas gagal dimuat/),
+    ).toBeInTheDocument();
+    expect(badge("0 aktivitas")).not.toBeInTheDocument();
+  });
+});
