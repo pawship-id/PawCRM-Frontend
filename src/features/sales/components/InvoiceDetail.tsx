@@ -195,16 +195,29 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
     will be asked about. The number is the server's `wa.me` form — derived by the
     one module that decides what a WhatsApp number looks like.
 
-    NO LINK TO THE INVOICE: there is no public page for a faktur yet, and a link
-    that opens a login screen is worse than none.
+    WITH A LINK TO THE FAKTUR ITSELF — /faktur/:token, the customer's own copy,
+    opened with no account: the invoice's counterpart of the till's /struk link.
+    Built from `window.location.origin` for the reason `ReceiptDialog` gives: the
+    dashboard and the public page are one app, so whatever host the shop is on is
+    the host the customer must be sent to.
+
+    AN INVOICE WITH NO TOKEN YET — raised before links existed, until the backend
+    backfill runs — sends the figures without a link, rather than a link that
+    leads nowhere.
   */
   const outstanding = toMinor(invoice.outstandingAmount) ?? BigInt(0);
+  const invoiceLink =
+    invoice.publicToken && typeof window !== "undefined"
+      ? `${window.location.origin}/faktur/${invoice.publicToken}`
+      : null;
   const whatsappText = [
     `Halo ${invoice.customerName ?? "Kak"}, berikut faktur ${invoice.invoiceNumber} sebesar ${formatMoney(invoice.total)}`,
     outstanding > BigInt(0)
       ? `, sisa tagihan ${formatMoney(invoice.outstandingAmount)} dengan jatuh tempo ${formatDate(invoice.dueDate)}.`
       : ", sudah lunas.",
-    " Terima kasih.",
+    invoiceLink
+      ? `\n\nLihat fakturnya di sini:\n${invoiceLink}\n\nTerima kasih.`
+      : " Terima kasih.",
   ].join("");
   const whatsappHref = invoice.customerWhatsApp
     ? `https://wa.me/${invoice.customerWhatsApp}?text=${encodeURIComponent(whatsappText)}`

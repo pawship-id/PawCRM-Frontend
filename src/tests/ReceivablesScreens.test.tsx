@@ -1319,6 +1319,41 @@ describe("InvoiceDetail — WhatsApp", () => {
     expect(decodeURIComponent(href)).toContain("sisa tagihan Rp 300.000");
   });
 
+  it("links the customer's own copy of the faktur", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      detail({
+        customerWhatsApp: "6281234567890",
+        publicToken: "Hq3vR8nLpW2kTz6yXb4cZA",
+      }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    const link = await screen.findByRole("link", { name: /WhatsApp/ });
+    const text = decodeURIComponent(link.getAttribute("href") ?? "");
+    expect(text).toContain(
+      `${window.location.origin}/faktur/Hq3vR8nLpW2kTz6yXb4cZA`,
+    );
+    expect(text).toContain("sisa tagihan Rp 300.000");
+  });
+
+  /*
+    AN INVOICE RAISED BEFORE LINKS EXISTED has no token until the backfill runs.
+    Its message still carries the figures — just no link that would lead nowhere.
+  */
+  it("sends the figures without a link on an invoice that has no token yet", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      detail({ customerWhatsApp: "6281234567890", publicToken: null }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    const link = await screen.findByRole("link", { name: /WhatsApp/ });
+    const text = decodeURIComponent(link.getAttribute("href") ?? "");
+    expect(text).not.toContain("/faktur/");
+    expect(text).toContain("Terima kasih.");
+  });
+
   it("is drawn disabled, with its reason, when there is no number", async () => {
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
 

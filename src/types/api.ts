@@ -5134,6 +5134,12 @@ export interface CustomerInvoiceDetail extends Omit<
   customerPhone?: string | null;
   customerWhatsApp?: string | null;
   /**
+   * The unguessable name this invoice answers to at `/faktur/:token` — the
+   * customer's own copy, no login. The WhatsApp button links it. Null on an
+   * invoice raised before links existed, until the backend backfill has run.
+   */
+  publicToken?: string | null;
+  /**
    * Every edit of this invoice, oldest first. Empty on one never edited — see
    * `UpdateCustomerInvoiceInput`.
    */
@@ -5143,6 +5149,43 @@ export interface CustomerInvoiceDetail extends Omit<
     previousTotal: string;
     total: string;
   }>;
+}
+
+/**
+ * GET /public/invoices/:token — one invoice as its CUSTOMER sees it, no session.
+ *
+ * AN ALLOWLIST, not the detail payload: only what the printed faktur shows. No
+ * ids of any kind, no cost of goods, no journal entries, no credit position.
+ * `payments` holds only those that still count, so it carries no `isVoided`.
+ */
+export interface PublicCustomerInvoice {
+  invoiceNumber: string;
+  status: CustomerInvoiceStatus;
+  invoiceDate: string;
+  dueDate: string;
+  customerName: string | null;
+  branchName: string | null;
+  items: Array<
+    Pick<
+      CustomerInvoiceItem,
+      "name" | "sku" | "petName" | "qty" | "unitPrice" | "lineTotal"
+    >
+  >;
+  totals: Pick<
+    CustomerInvoiceTotals,
+    "subtotal" | "itemDiscount" | "invoiceDiscount" | "dpp" | "tax" | "grandTotal"
+  > | null;
+  otherCharges: Array<{ label: string; amount: string }>;
+  total: string;
+  paidAmount: string;
+  outstandingAmount: string;
+  payments: Array<
+    Pick<CustomerInvoicePayment, "paymentNumber" | "at" | "amount" | "channelName">
+  >;
+  notes: string | null;
+  voidReason: string | null;
+  /** The shop's name for the header, and its footer note — usually where to pay. */
+  tenant: { name: string; invoiceFooterNote: string | null };
 }
 
 /** One appointment an invoice covers, as the execution panel draws it. */

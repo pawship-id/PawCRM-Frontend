@@ -18,3 +18,5 @@ export { InvoiceDetail } from "./components/InvoiceDetail";
 export { InvoicePaymentDetail } from "./components/InvoicePaymentDetail";
 export { InvoicePrintScreen } from "./components/InvoicePrintScreen";
 export { InvoiceCreateForm } from "./components/InvoiceCreateForm";
+/** The one screen here a CUSTOMER opens — /faktur/:token, outside the dashboard. */
+export { PublicInvoiceScreen } from "./components/PublicInvoiceScreen";

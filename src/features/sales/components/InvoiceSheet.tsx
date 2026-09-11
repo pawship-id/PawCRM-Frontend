@@ -2,7 +2,57 @@
 
 import { formatMoney, formatQty } from "@/utils/decimal";
 import type { ReceiptSize } from "@/features/pos/deviceSettings";
-import type { CustomerInvoiceDetail, Tenant } from "@/types/api";
+import type {
+  CustomerInvoiceItem,
+  CustomerInvoicePayment,
+  CustomerInvoiceStatus,
+  CustomerInvoiceTotals,
+  Tenant,
+  TenantSettings,
+} from "@/types/api";
+
+/**
+ * WHAT THE SHEET READS, and nothing more.
+ *
+ * NARROWER THAN `CustomerInvoiceDetail` so two readers print through this one
+ * component: the shop's own detail read (Cetak Faktur) and the customer's public
+ * copy (`PublicCustomerInvoice`, /faktur/:token), which carries no ids at all.
+ * A second sheet for the public page would be two documents for one bill.
+ */
+export interface InvoiceSheetInvoice {
+  invoiceNumber: string;
+  status: CustomerInvoiceStatus;
+  invoiceDate: string;
+  dueDate: string;
+  customerName: string | null;
+  branchName: string | null;
+  items?: Array<
+    Pick<
+      CustomerInvoiceItem,
+      "name" | "sku" | "petName" | "qty" | "unitPrice" | "lineTotal"
+    >
+  >;
+  totals: Pick<
+    CustomerInvoiceTotals,
+    "subtotal" | "itemDiscount" | "invoiceDiscount" | "tax"
+  > | null;
+  otherCharges?: Array<{ label: string; amount: string }>;
+  total: string;
+  outstandingAmount: string;
+  /** `isVoided` absent means the payment counts — the public copy sends only those. */
+  payments?: Array<
+    Pick<CustomerInvoicePayment, "at" | "amount" | "channelName"> & {
+      isVoided?: boolean;
+    }
+  >;
+  notes: string | null;
+  voidReason: string | null;
+}
+
+/** The shop, as far as the sheet needs it: its name and its footer note. */
+export type InvoiceSheetTenant = Pick<Tenant, "name"> & {
+  settings?: Pick<TenantSettings, "invoiceFooterNote">;
+};
 
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
@@ -69,9 +119,9 @@ export function InvoiceSheet({
   showSignature = true,
   size = "a4",
 }: {
-  invoice: CustomerInvoiceDetail;
+  invoice: InvoiceSheetInvoice;
   /** Null while the tenant read is in flight or failed — the header degrades. */
-  tenant: Tenant | null;
+  tenant: InvoiceSheetTenant | null;
   /**
    * The print screen's two switches, defaulted ON so every other caller — and
    * the sheet's own tests — get the complete document without asking for it.
@@ -188,7 +238,7 @@ export function InvoiceSheet({
           </thead>
           <tbody>
             {items.map((item, index) => (
-              <tr key={`${item.refId}-${index}`} className="border-b border-border">
+              <tr key={`${item.name}-${index}`} className="border-b border-border">
                 <td className="p-2.5 tabular-nums">{index + 1}</td>
                 <td className="p-2.5">
                   <span className="font-medium">{item.name}</span>
@@ -266,9 +316,9 @@ export function InvoiceSheet({
           ones it covered.
         */}
         {showPayments &&
-          paid.map((payment) => (
+          paid.map((payment, index) => (
           <div
-            key={payment.paymentId}
+            key={`${payment.at}-${index}`}
             className="flex items-baseline justify-between gap-3 py-1"
           >
             {/*
@@ -396,12 +446,12 @@ function ThermalSheet({
   paid,
   voided,
 }: {
-  invoice: CustomerInvoiceDetail;
-  tenant: Tenant | null;
+  invoice: InvoiceSheetInvoice;
+  tenant: InvoiceSheetTenant | null;
   size: "58" | "80";
-  items: CustomerInvoiceDetail["items"];
-  totals: CustomerInvoiceDetail["totals"];
-  paid: NonNullable<CustomerInvoiceDetail["payments"]>;
+  items: NonNullable<InvoiceSheetInvoice["items"]>;
+  totals: InvoiceSheetInvoice["totals"];
+  paid: NonNullable<InvoiceSheetInvoice["payments"]>;
   voided: boolean;
 }) {
   return (
@@ -446,7 +496,7 @@ function ThermalSheet({
           <Rule />
           <div className="text-xs tabular-nums">
             {items.map((item, index) => (
-              <div key={`${item.refId}-${index}`} className="mt-1 first:mt-0">
+              <div key={`${item.name}-${index}`} className="mt-1 first:mt-0">
                 <p>{item.name}</p>
                 {/* The animal on a service line — a bill for three cats has to
                     say which three, on any paper. */}
@@ -488,9 +538,9 @@ function ThermalSheet({
           <TRow label="TOTAL">{formatMoney(invoice.total)}</TRow>
         </div>
 
-        {paid.map((payment) => (
+        {paid.map((payment, index) => (
           <TRow
-            key={payment.paymentId}
+            key={`${payment.at}-${index}`}
             label={`Dibayar ${formatDateShort(payment.at)}`}
           >
             −{formatMoney(payment.amount)}

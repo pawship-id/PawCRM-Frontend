@@ -12,6 +12,7 @@ import type {
   CreateCustomerInvoiceInput,
   InvoiceActivityEntry,
   UpdateCustomerInvoiceInput,
+  PublicCustomerInvoice,
 } from "@/types/api";
 
 /**
@@ -73,6 +74,20 @@ function filterParams(query: CustomerInvoiceListQuery) {
 }
 
 export const customerInvoiceService = {
+  /**
+   * GET /public/invoices/:token — the faktur a CUSTOMER opens from the shop's
+   * WhatsApp message. No session: the token in the URL identifies the invoice
+   * and authorises reading it.
+   *
+   * `credentials: "omit"`, for the reason `posService.publicReceipt` gives: a
+   * shop laptop opening a customer's link must not send the staff session cookie
+   * to a route that has no use for it.
+   */
+  publicInvoice: (token: string) =>
+    apiClient.get<PublicCustomerInvoice>(`/public/invoices/${token}`, {
+      credentials: "omit",
+    }),
+
   /**
    * GET /customer-invoices — receivables, soonest due first, filterable.
    *
