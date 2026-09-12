@@ -13,9 +13,9 @@ import Link from "next/link";
  * a link that 403s on click is worse than plain text, because it promises
  * somewhere to go.
  *
- * PROMOTED OUT OF `PaymentHistory` when the invoice's own entries needed it too
- * — `docs/ui-rules.md` §14: a component moves when a SECOND caller appears, and
- * copy-paste is what that rule exists to prevent.
+ * PROMOTED TWICE, per `docs/ui-rules.md` §14: out of `PaymentHistory` when the
+ * invoice's own entries needed it, and out of `features/sales` when Transaksi
+ * Keuangan — a second feature — needed it for every transaction and revision.
  */
 export function JournalLink({
   id,
@@ -35,7 +35,7 @@ export function JournalLink({
   return (
     <Link
       href={`/dashboard/keuangan/journal-entries/${id}`}
-      className="tabular-nums text-primary-hover underline-offset-2 hover:underline"
+      className="rounded-md tabular-nums text-primary-hover underline-offset-2 hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
     >
       {label}
     </Link>

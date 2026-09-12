@@ -309,6 +309,16 @@ and it costs one round trip instead of two.
 
 ## The payment gets its own number
 
+> **Superseded by Transaksi Keuangan (12 September 2026)** — see
+> [`cash-transactions.md`](./cash-transactions.md). A payment is now a
+> `cashtransactions` document numbered `BKM/…` (cash channel) or `BBM/…` (bank
+> channel), per branch, reset monthly; the invoice's `payments[]` rows are read
+> from that collection (`paymentId` is the document's id). Till sales have payment
+> rows too ("Dicatat di kasir"). Payments can be **edited** ("Ubah pembayaran":
+> reversal + new entry, same number) and cancelled from the payment page or from
+> Keuangan → Transaksi. The ledger's Referensi column shows the payment number.
+> The paragraphs below describe the `PMT-…` numbers that older payments keep.
+
 Since September 2026, `POST /:id/payments` also draws `PMT-2026-0001` from a
 `customerPayment` counter series and stores it as `paymentNumber` on the row —
 `paymentId` stays the key (the ledger's idempotency, and what a link is built

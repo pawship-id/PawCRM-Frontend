@@ -14,6 +14,10 @@ import type { Crumb } from "@/components";
  */
 export const ACCOUNTING_CRUMBS = {
   hub: { label: "Keuangan", href: "/dashboard/keuangan" },
+  transactions: {
+    label: "Transaksi",
+    href: "/dashboard/keuangan/transaksi",
+  },
   profitLoss: {
     label: "Laba Rugi",
     href: "/dashboard/keuangan/laba-rugi",

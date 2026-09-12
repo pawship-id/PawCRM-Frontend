@@ -3,6 +3,8 @@ import userEvent from "@testing-library/user-event";
 
 import { InvoicePaymentDetail } from "@/features/sales";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
+import { cashTransactionService } from "@/services/cashTransaction.service";
+import { paymentChannelService } from "@/services/paymentChannel.service";
 import { tenantService } from "@/services/tenant.service";
 import { ApiError } from "@/services/api-error";
 import { swalToast } from "@/lib/swal";
@@ -11,9 +13,13 @@ import type {
   CustomerInvoicePayment,
 } from "@/types/api";
 
+import { cashTx, channelPage } from "./helpers/cashTransactionFixture";
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
 jest.mock("@/services/customerInvoice.service");
+// "Ubah pembayaran" opens the shared cash-transaction dialog.
+jest.mock("@/services/cashTransaction.service");
+jest.mock("@/services/paymentChannel.service");
 // The kwitansi's header reads the shop's own details.
 jest.mock("@/services/tenant.service");
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
@@ -33,8 +39,9 @@ const toast = swalToast as jest.MockedFunction<typeof swalToast>;
  * the row, it needs its own grant and its own reason, and the kwitansi prints one
  * payment rather than the whole bill.
  *
- * READ-ONLY OTHERWISE, and asserted: a payment's amount and channel are not
- * editable, because the entry they posted is permanent.
+ * EDITING GOES THROUGH TRANSAKSI KEUANGAN'S OWN DIALOG since D4 (11 Sep 2026):
+ * the page holds no form of its own, and the edit reverses and re-posts the
+ * journal under the same number rather than rewriting the entry.
  */
 const INVOICE_ID = "inv1";
 const PAYMENT_ID = "pay1";
@@ -150,7 +157,7 @@ describe("InvoicePaymentDetail — what it shows", () => {
     expect(screen.getByText("—", { exact: true })).toBeInTheDocument();
   });
 
-  it("offers nothing to edit — a posted payment is corrected by cancelling it", async () => {
+  it("holds no form of its own until Ubah pembayaran is opened", async () => {
     renderPage();
 
     await screen.findByText("Rincian pembayaran");
@@ -424,5 +431,115 @@ describe("InvoicePaymentDetail — the ledger reference", () => {
     renderPage();
 
     expect(await screen.findByRole("link", { name: "je-pay1" })).toBeInTheDocument();
+  });
+});
+
+describe("InvoicePaymentDetail — Transaksi Keuangan", () => {
+  it("says the payment was taken at the till", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      detail({ payments: [paymentRow({ recordedVia: "pos" })] }),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText(/Dicatat di kasir/)).toBeInTheDocument();
+  });
+
+  it("says the payment was keyed in the back office", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      detail({ payments: [paymentRow({ recordedVia: "backoffice" })] }),
+    );
+
+    renderPage();
+
+    expect(
+      await screen.findByText(/Dicatat di back office/),
+    ).toBeInTheDocument();
+  });
+
+  it("links the payment to its own cash transaction", async () => {
+    renderPage();
+
+    expect(
+      await screen.findByRole("link", { name: /Lihat di Transaksi Keuangan/ }),
+    ).toHaveAttribute("href", "/dashboard/keuangan/transaksi/pay1");
+  });
+
+  it("opens the shared edit dialog for the transaction and re-reads the invoice after", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    asMock(cashTransactionService.getById).mockResolvedValue(
+      cashTx({
+        _id: PAYMENT_ID,
+        number: "PMT-2026-0001",
+        amount: "100000.0000",
+        channelId: "chan-bca",
+        channelType: "transfer",
+        channelName: "BCA Operasional",
+        ref: "TRF-1",
+      }),
+    );
+    asMock(paymentChannelService.list).mockResolvedValue(channelPage([]));
+    asMock(cashTransactionService.update).mockResolvedValue(
+      cashTx({ _id: PAYMENT_ID, number: "PMT-2026-0001", amount: "90000.0000" }),
+    );
+
+    renderPage();
+    await user.click(
+      await screen.findByRole("button", { name: "Ubah pembayaran" }),
+    );
+
+    const dialog = within(await screen.findByRole("dialog"));
+    const amount = await dialog.findByLabelText(/^Jumlah/);
+    expect(cashTransactionService.getById).toHaveBeenCalledWith(PAYMENT_ID);
+
+    await user.clear(amount);
+    await user.type(amount, "90000");
+    await user.click(dialog.getByRole("button", { name: "Simpan transaksi" }));
+
+    await waitFor(() =>
+      expect(cashTransactionService.update).toHaveBeenCalledWith(PAYMENT_ID, {
+        amount: "90000",
+      }),
+    );
+    // The paid amount may have moved with the edit, so the invoice is read again.
+    await waitFor(() =>
+      expect(customerInvoiceService.getById).toHaveBeenCalledTimes(2),
+    );
+  });
+
+  it("hides Ubah pembayaran from a role without cashTransactions:update", async () => {
+    renderPage({
+      isSuperAdmin: false,
+      permissions: [
+        { feature: "customerInvoices", actions: ["read", "pay", "void"] },
+        { feature: "cashTransactions", actions: ["read"] },
+      ],
+    });
+
+    expect(
+      await screen.findByRole("link", { name: /Lihat di Transaksi Keuangan/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Ubah pembayaran" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers no edit on a cancelled payment, and no link without the grant", async () => {
+    asMock(customerInvoiceService.getById).mockResolvedValue(
+      detail({ payments: [paymentRow({ isVoided: true, voidReason: "x" })] }),
+    );
+
+    renderPage({
+      isSuperAdmin: false,
+      permissions: [{ feature: "customerInvoices", actions: ["read", "pay"] }],
+    });
+
+    await screen.findByText("Rincian pembayaran");
+    expect(
+      screen.queryByRole("button", { name: "Ubah pembayaran" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /Lihat di Transaksi Keuangan/ }),
+    ).not.toBeInTheDocument();
   });
 });

@@ -29,13 +29,19 @@ import { SOURCE_LABEL } from "../labels";
 /** The source types the API accepts, in the order the model declares them. */
 const SOURCES: JournalSourceType[] = [
   "pos",
+  "pos_cogs",
   "invoice",
+  "invoice_cogs",
   "receipt",
   "goods_receipt",
   "purchase_payment",
   "opname",
   "return",
+  "return_cogs",
   "commission",
+  "commission_payment",
+  "expense",
+  "other_income",
   "manual",
 ];
 

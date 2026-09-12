@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 import {
   Alert,
@@ -176,14 +177,18 @@ export function CommissionRecapScreen() {
       });
 
       setPaid(
-        `${result.groomerName ?? "Groomer"} dibayar ${formatMoney(result.amount)} — jurnal ${result.entryNumber}.`,
+        `${result.groomerName ?? "Groomer"} dibayar ${formatMoney(result.amount)}${result.number ? ` — ${result.number}` : ""}, jurnal ${result.entryNumber}.`,
       );
       setPaying(null);
       setNonce((n) => n + 1);
 
       /* Chrome must never be able to fail a post — see BookingForm. */
       try {
-        swalToast(`Jurnal ${result.entryNumber} dibuat.`);
+        swalToast(
+          result.number
+            ? `Pembayaran komisi ${result.number} tersimpan — jurnal ${result.entryNumber}.`
+            : `Jurnal ${result.entryNumber} dibuat.`,
+        );
       } catch {
         /* The panel below already says what happened. */
       }
@@ -352,6 +357,20 @@ export function CommissionRecapScreen() {
             >
               Tutup bulan
             </Button>
+          </Can>
+
+          {/*
+            WHERE A PAYMENT IS CHANGED OR CANCELLED NOW. Every commission
+            payment is a numbered cash transaction, and that list, narrowed to
+            this kind, is its history.
+          */}
+          <Can feature="cashTransactions" action="read">
+            <Link
+              href="/dashboard/keuangan/transaksi?kind=commission_payment"
+              className="ml-auto self-center rounded-md text-sm font-semibold text-primary underline-offset-4 hover:text-primary-hover hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
+              Riwayat pembayaran komisi →
+            </Link>
           </Can>
         </div>
 

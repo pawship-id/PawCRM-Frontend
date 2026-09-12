@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -25,6 +26,7 @@ import { posService } from "@/services/pos.service";
 import { ApiError } from "@/services/api-error";
 import type {
   PaymentChannel,
+  PaymentChannelType,
   PosReturn,
   PosReturnable,
   PosTransaction,
@@ -33,6 +35,15 @@ import type {
 import { ReturnItemsPicker, type ReturnDraftLine } from "./ReturnItemsPicker";
 
 const FETCH_LIMIT = 100;
+
+/*
+  WHAT A TILL CAN HAND MONEY BACK THROUGH: notes from the drawer, or a transfer
+  from the shop's account (BBK, and it leaves the drawer alone). A merchant QRIS
+  or EDC cannot pay out, and a giro is not written at a counter — `usableFor`
+  already drops the first two unless somebody declared otherwise, and this list
+  drops whatever was.
+*/
+const REFUND_TYPES: readonly PaymentChannelType[] = ["cash", "transfer"];
 
 /**
  * Taking goods back (FR-11).
@@ -43,10 +54,11 @@ const FETCH_LIMIT = 100;
  * a number here would mean implementing that arithmetic twice, and the copy that
  * disagreed would be discovered by a customer at the counter.
  *
- * THE REFUND CHANNEL IS CASH-ONLY IN PRACTICE. Store credit is in the API's enum
- * because the PRD asks for it and is refused by the server: a customer has no
- * balance to hold it. This form does not offer it rather than offering something
- * that will be refused.
+ * THE MONEY GOES BACK IN CASH OR BY TRANSFER (12 Sep — it was cash only). A
+ * transfer is a BBK from the shop's account and is not netted out of the drawer
+ * at closing. Store credit is in the API's enum because the PRD asks for it and
+ * is refused by the server: a customer has no balance to hold it. This form does
+ * not offer it rather than offering something that will be refused.
  *
  * IT DOES NOT CHECK THE SHIFT. A return crosses shifts and days freely — that is
  * the whole difference from a void — so there is nothing to check beyond having
@@ -71,6 +83,7 @@ export function ReturnDialog({
   >({ refundMethod: "cash", invoice: null });
   const [channels, setChannels] = useState<PaymentChannel[]>([]);
   const [channelId, setChannelId] = useState("");
+  const [reference, setReference] = useState("");
   const [draft, setDraft] = useState<Record<number, ReturnDraftLine>>({});
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(false);
@@ -90,13 +103,13 @@ export function ReturnDialog({
     setError(null);
     setDraft({});
     setReason("");
+    setReference("");
 
     Promise.all([
       posService.returnable(saleId),
       paymentChannelService.list({
         isActive: true,
-        type: "cash",
-        // A refund LEAVES the drawer, so it needs a channel that can pay out —
+        // A refund LEAVES the shop, so it needs a channel that can pay out —
         // the same direction a supplier payment asks for.
         usableFor: "out",
         branchId: branchId ?? undefined,
@@ -112,10 +125,24 @@ export function ReturnDialog({
           refundMethod: returnable.refundMethod,
           invoice: returnable.invoice,
         });
-        setChannels(channelPage.items);
-        // One drawer is the overwhelming case; pre-selecting it removes a tap.
-        if (channelPage.items.length === 1) {
-          setChannelId(channelPage.items[0]._id);
+        const offered = channelPage.items.filter((channel) =>
+          REFUND_TYPES.includes(channel.type),
+        );
+        setChannels(offered);
+        /*
+          One drawer is the overwhelming case; pre-selecting it removes a tap.
+          Cash, not a lone bank account beside it — handing notes back is what a
+          till does unless somebody chooses otherwise.
+        */
+        const drawers = offered.filter((channel) => channel.type === "cash");
+        const only =
+          drawers.length === 1
+            ? drawers[0]
+            : offered.length === 1
+              ? offered[0]
+              : null;
+        if (only) {
+          setChannelId(only._id);
         }
       })
       .catch(() => {
@@ -145,10 +172,21 @@ export function ReturnDialog({
   /** A credit note needs no drawer, so it needs no choice of drawer. */
   const needsChannel = refund.refundMethod === "cash";
 
+  const chosenChannel =
+    channels.find((channel) => channel._id === channelId) ?? null;
+  const chosenType = chosenChannel?.type ?? null;
+  /*
+    ASKED ONLY WHEN THE CHANNEL ASKS, the same rule as the till's payment lines.
+    The server refuses the gap too; this keeps the button honest about it.
+  */
+  const needsReference =
+    needsChannel && chosenChannel?.requiresReference === true;
+
   const canSubmit =
     chosen.length > 0 &&
     reason.trim().length > 0 &&
-    (!needsChannel || channelId !== "");
+    (!needsChannel || channelId !== "") &&
+    (!needsReference || reference.trim().length > 0);
 
   async function submit() {
     if (!sale || !canSubmit) return;
@@ -167,6 +205,7 @@ export function ReturnDialog({
         */
         refundMethod: "cash",
         refundChannelId: needsChannel ? channelId : undefined,
+        ...(needsReference ? { refundReference: reference.trim() } : {}),
         reason: reason.trim(),
       });
 
@@ -240,13 +279,13 @@ export function ReturnDialog({
                 <Label htmlFor="refund-channel">Uang dikembalikan lewat</Label>
                 {channels.length === 0 ? (
                   <p className="text-sm text-danger">
-                    Belum ada channel tunai di cabang ini. Tambah dulu di Kas
-                    &amp; Bank.
+                    Belum ada channel tunai atau transfer di cabang ini. Tambah
+                    dulu di Kas &amp; Bank.
                   </p>
                 ) : (
                   <Select value={channelId} onValueChange={setChannelId}>
                     <SelectTrigger id="refund-channel" className="h-11">
-                      <SelectValue placeholder="Pilih laci kas" />
+                      <SelectValue placeholder="Pilih laci atau rekening" />
                     </SelectTrigger>
                     <SelectContent>
                       {channels.map((channel) => (
@@ -257,14 +296,30 @@ export function ReturnDialog({
                     </SelectContent>
                   </Select>
                 )}
+                {needsReference && (
+                  <div className="space-y-2 pt-2">
+                    <Label htmlFor="refund-reference">No. referensi</Label>
+                    <Input
+                      id="refund-reference"
+                      value={reference}
+                      onChange={(event) => setReference(event.target.value)}
+                      placeholder="Nomor bukti transfer"
+                      className="h-11 tabular-nums"
+                      disabled={submitting}
+                    />
+                  </div>
+                )}
                 {/*
-                Said here because it changes whose drawer is short tonight: the
-                refund comes out of the till open right now, not the one that
-                made the sale.
+                Said here because it changes whose drawer is short tonight: cash
+                comes out of the till open right now, not the one that made the
+                sale — and a transfer comes out of no drawer at all.
               */}
                 <p className="text-xs text-muted">
-                  Uangnya keluar dari laci yang sedang dibuka sekarang, dan ikut
-                  terhitung di tutup kasir nanti.
+                  {chosenType === "transfer"
+                    ? "Uangnya ditransfer dari rekening ini, bukan dari laci — tidak ikut terhitung di tutup kasir."
+                    : chosenType === "cash"
+                      ? "Uangnya keluar dari laci yang sedang dibuka sekarang, dan ikut terhitung di tutup kasir nanti."
+                      : "Tunai keluar dari laci yang sedang dibuka sekarang; transfer tidak mengurangi laci."}
                 </p>
               </div>
             )}

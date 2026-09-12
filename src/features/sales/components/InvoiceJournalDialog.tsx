@@ -21,7 +21,7 @@ import { usePermissions } from "@/features/permissions";
 import { formatMoney } from "@/utils/decimal";
 import type { CustomerInvoiceDetail } from "@/types/api";
 
-import { JournalLink } from "./JournalLink";
+import { JournalLink } from "@/components";
 
 /**
  * What each entry IS, in the words a shopkeeper reads.

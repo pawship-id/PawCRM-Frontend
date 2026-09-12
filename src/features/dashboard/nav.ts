@@ -476,16 +476,16 @@ export const NAV_SECTIONS: NavSection[] = [
        */
       {
         /**
-         * A LEAF with the mockup's four tabs — Ringkasan, Kas & Bank, Komisi,
-         * Jurnal (see AccountingModuleHeader).
+         * A LEAF with the module's tabs — Ringkasan, Transaksi, Kas & Bank,
+         * Komisi, Daftar Akun, Jurnal (see AccountingModuleHeader).
          *
-         * FOUR OF THE SEVEN OLD ROWS ARE NOT TABS, and their screens are NOT
-         * deleted: Daftar Akun, Lini Bisnis, Laba Rugi and Arus Kas keep their
-         * routes and move to the module's landing page as cards
-         * (FinanceDashboardScreen's ModuleLinks), which is the Ringkasan tab. In
-         * the mockup the first two belong to `Pengaturan › Keuangan` and the
-         * other two to `Laporan`; neither home is built, so the hub holds them
-         * until one is.
+         * THREE OF THE SEVEN OLD ROWS ARE NOT TABS, and their screens are NOT
+         * deleted: Lini Bisnis, Laba Rugi and Arus Kas keep their routes and
+         * move to the module's landing page as cards (FinanceDashboardScreen's
+         * ModuleLinks), which is the Ringkasan tab. In the mockup the first
+         * belongs to `Pengaturan › Keuangan` and the other two to `Laporan`;
+         * neither home is built, so the hub holds them until one is. Daftar Akun
+         * was among them until it became a tab on 12 September 2026.
          *
          * NO `match` NEEDED. Komisi moved to /dashboard/keuangan/komisi, inside
          * this href's own prefix; its old address under /dashboard/reports
@@ -504,6 +504,11 @@ export const NAV_SECTIONS: NavSection[] = [
         permissionAny: [
           { feature: "paymentChannels", action: "read" },
           { feature: "journalEntries", action: "read" },
+          // Transaksi Keuangan — a Staff account that records petty cash and
+          // holds no ledger grant still needs the way in.
+          { feature: "cashTransactions", action: "read" },
+          // Daftar Akun is a tab, so its grant alone is a way in too.
+          { feature: "chartOfAccounts", action: "read" },
         ],
       },
       {

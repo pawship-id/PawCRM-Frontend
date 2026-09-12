@@ -10,7 +10,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 
-import { Alert, Breadcrumb, HighlightText, Spinner } from "@/components";
+import { Alert, HighlightText, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -44,6 +44,7 @@ import {
   ACCOUNT_TYPE_TONE,
 } from "../labels";
 import { ACCOUNTING_CRUMBS } from "../crumbs";
+import { AccountingModuleHeader } from "./AccountingModuleHeader";
 import { ChartOfAccountsToolbar } from "./ChartOfAccountsToolbar";
 
 /**
@@ -156,18 +157,16 @@ export function ChartOfAccountsScreen() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <Breadcrumb items={[ACCOUNTING_CRUMBS.hub, { label: "Daftar Akun" }]} />
-        <h1 className="mt-1 text-2xl font-extrabold text-foreground">
-          Daftar Akun (COA)
-        </h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted">
-          Fondasi pembukuan: setiap baris jurnal — penjualan, HPP, pembelian,
-          selisih opname — menunjuk salah satu akun di sini. Kode akun adalah
-          identitas yang dipakai modul lain, jadi kode akun bawaan tidak bisa
-          diubah.
-        </p>
-      </div>
+      <AccountingModuleHeader />
+
+      {/* What the module header cannot say, because it is on every tab: what
+          THIS list is. */}
+      <p className="max-w-2xl text-[15px] text-muted">
+        Fondasi pembukuan: setiap baris jurnal — penjualan, HPP, pembelian,
+        selisih opname — menunjuk salah satu akun di sini. Kode akun adalah
+        identitas yang dipakai modul lain, jadi kode akun bawaan tidak bisa
+        diubah.
+      </p>
 
       {error && (
         // The retry lives HERE rather than on the toolbar: a chart of accounts

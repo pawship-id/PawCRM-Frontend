@@ -513,7 +513,175 @@ describe("ReturnDialog", () => {
     );
 
     expect(
-      await screen.findByText(/belum ada channel tunai/i),
+      await screen.findByText(/belum ada channel tunai atau transfer/i),
+    ).toBeInTheDocument();
+  });
+});
+
+/**
+ * Money back by transfer (12 Sep). The till used to offer drawers only, though
+ * the server always took a bank channel and books it as a BBK that leaves the
+ * drawer alone at closing.
+ */
+describe("ReturnDialog — refund by transfer", () => {
+  const BCA_ID = "5a7f1f77bcf86cd799439202";
+
+  const channelRow = (overrides: Record<string, unknown>) => ({
+    tenantId: "t1",
+    accountId: "acc-1",
+    mdrPercent: 0,
+    branchId: "b1",
+    requiresReference: false,
+    sortOrder: 0,
+    isActive: true,
+    deletedAt: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  });
+
+  const offering = (items: Record<string, unknown>[]) =>
+    mockedChannels.list.mockResolvedValue({
+      items,
+      pagination: { page: 1, limit: 100, total: items.length, totalPages: 1 },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+  it("asks for every channel that can pay out, not drawers alone", async () => {
+    renderWithAuth(
+      <ReturnDialog
+        sale={sale()}
+        onReturned={jest.fn()}
+        onOpenChange={jest.fn()}
+      />,
+    );
+
+    await screen.findByText("Royal Canin Adult 2kg");
+
+    const [query] = mockedChannels.list.mock.calls[0];
+    expect(query).toMatchObject({ usableFor: "out", isActive: true });
+    expect(query).not.toHaveProperty("type");
+  });
+
+  it("refunds through the bank account, and says the drawer is untouched", async () => {
+    const user = userEvent.setup();
+    offering([channelRow({ _id: BCA_ID, type: "transfer", name: "BCA" })]);
+
+    renderWithAuth(
+      <ReturnDialog
+        sale={sale()}
+        onReturned={jest.fn()}
+        onOpenChange={jest.fn()}
+      />,
+    );
+
+    expect(
+      await screen.findByText(/ditransfer dari rekening ini, bukan dari laci/i),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /tambah royal/i }));
+    await user.type(screen.getByLabelText(/alasan/i), "Salah ukuran");
+    await user.click(screen.getByRole("button", { name: /proses retur/i }));
+
+    await waitFor(() =>
+      expect(mockedPos.createReturn).toHaveBeenCalledWith(
+        expect.objectContaining({ refundChannelId: BCA_ID }),
+      ),
+    );
+  });
+
+  it("still picks the lone drawer when a bank account sits beside it", async () => {
+    offering([
+      channelRow({ _id: CASH_ID, type: "cash", name: "Kas Toko" }),
+      channelRow({ _id: BCA_ID, type: "transfer", name: "BCA" }),
+    ]);
+
+    renderWithAuth(
+      <ReturnDialog
+        sale={sale()}
+        onReturned={jest.fn()}
+        onOpenChange={jest.fn()}
+      />,
+    );
+
+    expect(
+      await screen.findByText(/laci yang sedang dibuka sekarang, dan ikut/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("combobox")).toHaveTextContent("Kas Toko");
+  });
+
+  it("asks for no reference when the channel does not", async () => {
+    offering([channelRow({ _id: BCA_ID, type: "transfer", name: "BCA" })]);
+
+    renderWithAuth(
+      <ReturnDialog
+        sale={sale()}
+        onReturned={jest.fn()}
+        onOpenChange={jest.fn()}
+      />,
+    );
+
+    await screen.findByText(/ditransfer dari rekening ini/i);
+    expect(screen.queryByLabelText(/no\. referensi/i)).not.toBeInTheDocument();
+  });
+
+  it("holds the button until a required reference is typed, then sends it", async () => {
+    const user = userEvent.setup();
+    offering([
+      channelRow({
+        _id: BCA_ID,
+        type: "transfer",
+        name: "BCA",
+        requiresReference: true,
+      }),
+    ]);
+
+    renderWithAuth(
+      <ReturnDialog
+        sale={sale()}
+        onReturned={jest.fn()}
+        onOpenChange={jest.fn()}
+      />,
+    );
+
+    await user.click(await screen.findByRole("button", { name: /tambah royal/i }));
+    await user.type(screen.getByLabelText(/alasan/i), "Salah ukuran");
+
+    const submit = screen.getByRole("button", { name: /proses retur/i });
+    // A transfer nobody can match against the bank statement.
+    expect(submit).toBeDisabled();
+
+    await user.type(screen.getByLabelText(/no\. referensi/i), " TRF-0912-88 ");
+    expect(submit).toBeEnabled();
+    await user.click(submit);
+
+    await waitFor(() =>
+      expect(mockedPos.createReturn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          refundChannelId: BCA_ID,
+          refundReference: "TRF-0912-88",
+        }),
+      ),
+    );
+  });
+
+  it("offers no QRIS, EDC or giro, even one declared able to pay out", async () => {
+    offering([
+      channelRow({ _id: "q1", type: "qris", name: "QRIS BCA" }),
+      channelRow({ _id: "e1", type: "edc", name: "EDC Mandiri" }),
+      channelRow({ _id: "g1", type: "giro", name: "Giro BCA" }),
+    ]);
+
+    renderWithAuth(
+      <ReturnDialog
+        sale={sale()}
+        onReturned={jest.fn()}
+        onOpenChange={jest.fn()}
+      />,
+    );
+
+    expect(
+      await screen.findByText(/belum ada channel tunai atau transfer/i),
     ).toBeInTheDocument();
   });
 });

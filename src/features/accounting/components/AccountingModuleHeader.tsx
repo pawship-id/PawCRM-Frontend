@@ -6,15 +6,18 @@ import { Breadcrumb, PageTabs, type PageTab } from "@/components";
 import { usePermissions } from "@/features/permissions";
 
 /**
- * The head of the Keuangan module, worn by its four tabs.
+ * The head of the Keuangan module, worn by its tabs.
  *
- * THE FOUR ARE THE MOCKUP'S, and the module had seven rows before this: Daftar
- * Akun, Lini Bisnis, Laba Rugi and Arus Kas are not tabs. Their screens are
- * untouched and their routes still work — they are reached from the Ringkasan
- * tab's card list until the two homes the mockup gives them exist (`Pengaturan ›
- * Keuangan` for the first two, `Laporan` for the other two). A tab row that
- * matched the mockup while quietly stranding four screens would be the wrong
- * kind of faithful.
+ * THE MOCKUP HAS FOUR, and the module had seven rows before this: Lini Bisnis,
+ * Laba Rugi and Arus Kas are not tabs. Their screens are untouched and their
+ * routes still work — they are reached from the Ringkasan tab's card list until
+ * the homes the mockup gives them exist (`Pengaturan › Keuangan` for Lini
+ * Bisnis, `Laporan` for the other two). A tab row that matched the mockup while
+ * quietly stranding three screens would be the wrong kind of faithful.
+ *
+ * DAFTAR AKUN IS A TAB, added 12 September 2026 on request. The mockup files it
+ * under `Pengaturan › Keuangan`, which is not built, and a card at the foot of
+ * Ringkasan was too far down for the screen every journal line depends on.
  *
  * KOMISI IS THE ONE TAB THAT MOVED HOUSE. The recap already existed as a card on
  * the reports hub; the mockup files it under Keuangan, so its route moved to
@@ -38,6 +41,14 @@ export function AccountingModuleHeader({
   const tabs: PageTab[] = [
     // EXACT: its href is the prefix of all three siblings.
     { label: "Ringkasan", href: "/dashboard/keuangan", exact: true },
+    /*
+      TRANSAKSI — every numbered movement of money in one list: receipts,
+      supplier and commission payments, till payments, expenses. Second, beside
+      Ringkasan, because it is the tab a shop opens daily.
+    */
+    ...(can("cashTransactions", "read")
+      ? [{ label: "Transaksi", href: "/dashboard/keuangan/transaksi" }]
+      : []),
     ...(can("paymentChannels", "read")
       ? [{ label: "Kas & Bank", href: "/dashboard/keuangan/kas-bank" }]
       : []),
@@ -49,6 +60,11 @@ export function AccountingModuleHeader({
     */
     ...(can("users", "read")
       ? [{ label: "Komisi", href: "/dashboard/keuangan/komisi" }]
+      : []),
+    // Before Jurnal, the order the sidebar's comment gives: a journal line has
+    // nowhere to land without an account.
+    ...(can("chartOfAccounts", "read")
+      ? [{ label: "Daftar Akun", href: "/dashboard/keuangan/chart-of-accounts" }]
       : []),
     ...(can("journalEntries", "read")
       ? [{ label: "Jurnal", href: "/dashboard/keuangan/journal-entries" }]

@@ -462,7 +462,7 @@ describe("FinanceDashboardScreen", () => {
     );
   });
 
-  it("shows at most ten rows and hands off to the ledger for the rest", async () => {
+  it("shows at most ten rows and hands off to Transaksi Keuangan for the rest", async () => {
     renderWithAuth(<FinanceDashboardScreen now={NOW} />);
 
     const table = await screen.findByRole("table");
@@ -470,8 +470,29 @@ describe("FinanceDashboardScreen", () => {
 
     expect(screen.getByRole("link", { name: /Lihat semua/ })).toHaveAttribute(
       "href",
-      "/dashboard/keuangan/journal-entries",
+      "/dashboard/keuangan/transaksi",
     );
+  });
+
+  /*
+    A LEDGER READER WITHOUT `cashTransactions:read` still gets somewhere real to
+    go: the journal, which is what "Lihat semua" meant before the Transaksi
+    screen existed.
+  */
+  it("keeps handing off to the ledger for a role that cannot read transactions", async () => {
+    renderWithAuth(<FinanceDashboardScreen now={NOW} />, {
+      isSuperAdmin: false,
+      permissions: [
+        { feature: "journalEntries", actions: ["read"] },
+        { feature: "chartOfAccounts", actions: ["read"] },
+        { feature: "businessLines", actions: ["read"] },
+        { feature: "branches", actions: ["read"] },
+      ],
+    });
+
+    expect(
+      await screen.findByRole("link", { name: /Lihat semua/ }),
+    ).toHaveAttribute("href", "/dashboard/keuangan/journal-entries");
   });
 
   it("explains itself instead of showing zeroes without ledger access", async () => {
