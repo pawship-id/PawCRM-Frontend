@@ -36,6 +36,17 @@ jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: (href: string) => push(href) }),
 }));
 
+/**
+ * The module header — the title and the four-tab row — is stubbed out. It needs
+ * a router this suite has no reason to stand up, and its own behaviour has its
+ * own suite (AccountingModuleHeader.test.tsx). The `action` slot is rendered so
+ * anything a screen puts INTO the header still reaches these assertions.
+ */
+jest.mock("@/features/accounting/components/AccountingModuleHeader", () => ({
+  AccountingModuleHeader: ({ action }: { action?: React.ReactNode }) =>
+    action ?? null,
+}));
+
 beforeEach(() => push.mockClear());
 
 /**

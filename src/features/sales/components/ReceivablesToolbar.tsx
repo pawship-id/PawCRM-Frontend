@@ -6,278 +6,295 @@ import { ListFilter } from "lucide-react";
 import {
   FilterBar,
   FilterDateRange,
+  FilterField,
   FilterPanel,
-  FilterPills,
   FilterSearch,
   FilterSelect,
   FilterTrigger,
   namedOptions,
-  withAll,
   type FilterOption,
-  type PillOption,
 } from "@/components";
-import type { Branch, Customer, CustomerInvoiceSource } from "@/types/api";
-
-import { useReceivableFilterOptions } from "../hooks/useReceivableFilterOptions";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type {
-  CustomerInvoiceSort,
+  CustomerInvoiceFilterOptions,
+  CustomerInvoiceSource,
+  CustomerInvoiceStatusFilter,
+} from "@/types/api";
+
+import type {
   CustomerInvoicesQuery,
-  ReceivablesView,
+  InvoicePeriodChoice,
 } from "../hooks/useCustomerInvoices";
 
 /**
- * The view lens.
+ * What the Status filter offers. `overdue` is not a status — it rides here
+ * because it is the question most often asked of this field, and the server ORs
+ * it with the rest.
  *
- * ORDERED BY URGENCY, NOT BY THE ENUM. "Jatuh tempo" first because it is the
- * question somebody opens this screen at 9am to answer, then what is about to
- * become that question, then the planning view, then the exact statuses, then
- * everything. The first three entries are the API's AR shorthands; the rest are
- * its statuses — all of them go over the wire, none is computed here.
- *
- * `void` IS ON THE LIST BUT LAST, just before "Semua". It is the one status
- * nobody triages by and the one people occasionally have to go looking for
- * ("which invoices did we cancel last month"). Leaving it out would make those
- * rows reachable only through "Semua", where they sit among everything else.
- *
- * Rendered as a pill row rather than a segmented control: a small-cardinality
- * lens that is the first thing anyone reaches for is what a pill row is for
- * (docs/ui-rules.md §8). `tone` carries the urgency.
+ * THE SAME WORDS AS THE STATUS BADGE, so a reader filtering by "Lunas sebagian"
+ * finds rows labelled that.
  */
-const VIEWS: PillOption<ReceivablesView>[] = [
-  { value: "overdue", label: "Jatuh tempo", tone: "danger" },
-  { value: "dueSoon", label: "Minggu ini" },
-  { value: "outstanding", label: "Belum lunas" },
-  { value: "partial", label: "DP sebagian" },
+export const STATUS_FILTERS: FilterOption<CustomerInvoiceStatusFilter>[] = [
+  { value: "unpaid", label: "Belum lunas" },
+  { value: "partial", label: "Lunas sebagian" },
   { value: "paid", label: "Lunas" },
-  { value: "void", label: "Void" },
-  { value: "all", label: "Semua" },
+  { value: "void", label: "Batal" },
+  { value: "overdue", label: "Lewat jatuh tempo" },
 ];
 
-/**
- * The orderings the API accepts.
- *
- * TWO DATE AXES, which is what makes this list longer than the usual pair, and
- * the labels have to say which is which because the row shows both dates:
- *
- *   Terbaru / Terlama — by `invoiceDate`, the day the debt was raised.
- *   Jatuh tempo …     — by `dueDate`, the day it falls due. The question this
- *                       screen exists for, and therefore the default.
- *
- * THIS IS NOT A SECOND COPY OF THE PILL ROW. "Jatuh tempo" up there narrows to
- * the invoices already late; "Jatuh tempo terdekat" down here orders whatever is
- * on the page by deadline without removing anything. They compose — the late
- * debts, oldest deadline first — which is why one is a lens and the other an
- * ordering.
- *
- * BY TAGIHAN, NEVER BY SISA — and the labels have to be exact about it. `total`
- * is stored, so "Tagihan terbesar" is a real ordering the database can serve;
- * the outstanding amount is `total - paidAmount`, derived per row, and no index
- * reaches it. Labelling these "Sisa terbesar" would be a control that quietly
- * sorted by a different number than the one it named. The per-customer version
- * of the sisa question is what `/customer-invoices/outstanding` answers, and it
- * feeds the cards above this table.
- */
-const SORTS: FilterOption<CustomerInvoiceSort>[] = [
-  { value: "dueSoonest", label: "Jatuh tempo terdekat" },
-  { value: "dueLatest", label: "Jatuh tempo terjauh" },
-  { value: "newest", label: "Terbaru" },
-  { value: "oldest", label: "Terlama" },
-  { value: "totalHighest", label: "Tagihan terbesar" },
-  { value: "totalLowest", label: "Tagihan terkecil" },
-];
-
-/**
- * WHERE THE INVOICE CAME FROM — a filter, never an input.
- *
- * Worth a control of its own because the two sets are read for different
- * reasons: "dari kasir" is every credit sale the till took, which is what an
- * owner checks when the piutang figure moves unexpectedly.
- */
-const SOURCES: FilterOption<CustomerInvoiceSource | "">[] = [
-  { value: "", label: "Semua sumber" },
-  { value: "pos_bridge", label: "Dari kasir" },
+/** Where the invoice came from — a filter, never an input. Nothing ticked is every source. */
+const SOURCES: FilterOption<CustomerInvoiceSource>[] = [
+  { value: "pos_bridge", label: "Kasir" },
   { value: "manual", label: "Manual" },
 ];
 
-/** Everything the panel edits, as one draft. */
-interface ReceivablesFilters {
-  customerId: string;
-  branchId: string;
-  source: CustomerInvoiceSource | "";
-  dateFrom: string;
-  dateTo: string;
-  sort: CustomerInvoiceSort;
+/**
+ * The periods. "Semua tanggal" is the default and sends nothing; the three named
+ * ones go over the wire as their NAME and are cut in the tenant's timezone;
+ * "Pilih tanggal" opens the range beneath.
+ *
+ * THE ONE OPTION FIELD THAT STAYS A SINGLE CHOICE. Hari ini sits inside Minggu
+ * ini, which sits inside Bulan ini — ticking two of them would only ever mean
+ * the larger one, and "Pilih tanggal" beside a named period is two ranges with
+ * no rule for combining them.
+ */
+export const PERIODS: FilterOption<InvoicePeriodChoice>[] = [
+  { value: "all", label: "Semua tanggal" },
+  { value: "today", label: "Hari ini" },
+  { value: "week", label: "Minggu ini" },
+  { value: "month", label: "Bulan ini" },
+  { value: "custom", label: "Pilih tanggal" },
+];
+
+type WarehouseOption = CustomerInvoiceFilterOptions["warehouses"][number];
+
+/**
+ * Whether a gudang sits under a cabang.
+ *
+ * ITS OWN CABANG FIRST — the master record's — and only when that is not named,
+ * the cabang it has actually billed under. A gudang that once served another
+ * branch's sale does not thereby belong to it.
+ */
+function belongsTo(warehouse: WarehouseOption, branchId: string) {
+  return warehouse.branchId
+    ? warehouse.branchId === branchId
+    : warehouse.branchIds.includes(branchId);
 }
 
-/**
- * What Reset returns to — the query's own defaults, not "empty".
- *
- * The ordering is included: a list with no ordering is not a thing, so Reset
- * puts it back to the API's default rather than clearing it to nothing.
- *
- * THE VIEW IS NOT IN HERE, deliberately. Reset clears what the PANEL holds; the
- * lens lives outside it, applies on click, and is the one control here somebody
- * has always set on purpose. A Reset that also threw the screen back to "Belum
- * lunas" would undo a choice the button does not appear to be about.
- */
-const CLEARED: ReceivablesFilters = {
-  customerId: "",
-  branchId: "",
-  source: "",
-  dateFrom: "",
-  dateTo: "",
-  sort: "dueSoonest",
-};
+const belongsToAny = (warehouse: WarehouseOption, branchIds: string[]) =>
+  branchIds.some((branchId) => belongsTo(warehouse, branchId));
 
 /**
- * The receivables list controls: the view lens on its own row, then search and
- * one Filter button — with customer, cabang, sumber, the invoice-date range and
- * the ordering inside the panel.
+ * The cabang that picking this gudang fills in — or "" when it cannot be told,
+ * in which case the Cabang field is left as it was rather than guessed.
+ */
+function homeBranchOf(warehouse: WarehouseOption) {
+  if (warehouse.branchId) return warehouse.branchId;
+  return warehouse.branchIds.length === 1 ? warehouse.branchIds[0] : "";
+}
+
+/** What the panel edits, as one draft. */
+interface PanelDraft {
+  branchIds: string[];
+  warehouseIds: string[];
+  createdBy: string[];
+  sources: CustomerInvoiceSource[];
+  statuses: CustomerInvoiceStatusFilter[];
+  period: InvoicePeriodChoice;
+  dateFrom: string;
+  dateTo: string;
+}
+
+const CLEARED: Partial<CustomerInvoicesQuery> = {
+  branchIds: [],
+  warehouseIds: [],
+  createdBy: [],
+  sources: [],
+  statuses: [],
+  period: "all",
+  dateFrom: "",
+  dateTo: "",
+};
+
+const sameSet = <T,>(a: T[], b: T[]) =>
+  a.length === b.length && a.every((value) => b.includes(value));
+
+/**
+ * Search, and one Filter button holding everything else — Cabang, Gudang,
+ * Kasir / Admin, Sumber, Status and Periode.
  *
- * Purely presentational — it renders the current query and reports changes up to
- * useCustomerInvoices. Mirrors PayablesToolbar.
+ * SEARCH REACHES THE CUSTOMER'S NAME. The server resolves matching customers
+ * into ids first, so the placeholder can promise what people type.
  *
- * THERE IS NO CREATE BUTTON, and its absence is the backend's design rather than
- * an omission here: there is no `POST /api/customer-invoices` yet. Every
- * receivable today is raised by the till when a cashier settles with Piutang.
- * Rendering a button onto a route that does not exist would be worse than the
- * gap it papers over.
- *
- * THE DATE RANGE BOUNDS `invoiceDate` — the day the debt was raised, not when it
- * falls due and not when the row was written. Lateness is the lens's job and the
- * deadline orderings' job, so the three never share a control.
- *
- * NO "TAMPILKAN TERHAPUS" TOGGLE: no route deletes a receivable, so none is ever
- * in a state to reveal. A cancelled one is `void`, which is a pill.
+ * NO ORDERING IN THE PANEL. The table's column headers sort — Tanggal, Jatuh
+ * tempo, Nilai, Sisa — which is where the mockup puts it.
  */
 export function ReceivablesToolbar({
   query,
   onChange,
+  options,
 }: {
   query: CustomerInvoicesQuery;
   onChange: (patch: Partial<CustomerInvoicesQuery>) => void;
+  options: CustomerInvoiceFilterOptions;
 }) {
-  const { customers, branches } = useReceivableFilterOptions();
-
-  const applied: ReceivablesFilters = {
-    customerId: query.customerId,
-    branchId: query.branchId,
-    source: query.source,
-    dateFrom: query.dateFrom,
-    dateTo: query.dateTo,
-    sort: query.sort,
-  };
-
-  /**
-   * Commits the draft — only what actually moved. `setQuery` builds a new object
-   * out of whatever it is passed and the fetch effect keys on it, so posting
-   * every field back would re-query the list after a Terapkan that changed
-   * nothing.
-   */
-  function apply(next: ReceivablesFilters) {
-    const patch: Partial<CustomerInvoicesQuery> = {};
-    if (next.customerId !== query.customerId) patch.customerId = next.customerId;
-    if (next.branchId !== query.branchId) patch.branchId = next.branchId;
-    if (next.source !== query.source) patch.source = next.source;
-    if (next.dateFrom !== query.dateFrom) patch.dateFrom = next.dateFrom;
-    if (next.dateTo !== query.dateTo) patch.dateTo = next.dateTo;
-    if (next.sort !== query.sort) patch.sort = next.sort;
-
-    if (Object.keys(patch).length > 0) onChange(patch);
-  }
-
   return (
-    <div className="flex flex-col gap-3">
-      {/* The lens sits outside the bar: one click, always applied, never
-          something you compose with the filters below it. It wraps onto a second
-          row on a phone rather than scrolling sideways — seven short pills are
-          readable stacked, and a horizontally scrolling row hides the rightmost
-          option, which here is "Semua". */}
-      <FilterPills
-        ariaLabel="Tampilan piutang"
-        value={query.view}
-        options={VIEWS}
-        onChange={(view) => onChange({ view })}
-      />
-
-      <FilterBar
-        searchPlacement="leading"
-        searchClassName="min-w-[12rem] flex-1"
-        search={
-          <FilterSearch
-            value={query.search}
-            onChange={(search) => onChange({ search })}
-            /*
-              NAMES EXACTLY THE TWO FIELDS THE API SEARCHES. The customer's name
-              is NOT one of them — it lives in another collection, and matching it
-              would mean a join on every keystroke. Promising it here would be a
-              bug report waiting to be filed, so the placeholder says what it does
-              and the panel below carries a Pelanggan picker for the other half.
-            */
-            placeholder="Cari nomor faktur atau catatan…"
-            ariaLabel="Cari faktur"
-            fill
-          />
-        }
-      >
-        <ReceivablesFilterPanel
-          applied={applied}
-          customers={customers}
-          branches={branches}
-          onApply={apply}
+    <FilterBar
+      searchPlacement="leading"
+      searchClassName="min-w-[12rem] flex-1"
+      search={
+        <FilterSearch
+          value={query.search}
+          onChange={(search) => onChange({ search })}
+          placeholder="Cari nomor faktur, nama pelanggan, atau catatan…"
+          ariaLabel="Cari faktur"
+          fill
         />
-      </FilterBar>
-    </div>
+      }
+    >
+      <ReceivablesFilterPanel
+        query={query}
+        options={options}
+        onChange={onChange}
+      />
+    </FilterBar>
   );
 }
 
 /**
- * Pelanggan, cabang, sumber, the invoice-date range and the ordering, behind one
- * button.
+ * The panel. Fields wait for Terapkan (§8); Reset clears and applies at once.
  *
- * The fields wait for Terapkan — that is what a panel is (§8). Reset returns the
- * whole set to its defaults and applies at once, because clearing a filter is not
- * a change anyone composes.
+ * EVERY OPTION FIELD IS A SET but Periode (see PERIODS for why). Nothing ticked
+ * is "Semua", and the values ticked in one field are OR'd.
+ *
+ * CABANG AND GUDANG ARE LINKED, in both directions:
+ *
+ *   Semua cabang      → every gudang is offered.
+ *   some cabang       → only the gudang under any of them; a gudang already
+ *                       ticked that is under none of them is unticked rather
+ *                       than left narrowing the list to nothing.
+ *   a gudang first    → its own cabang is ticked too, when it can be told.
+ *
+ * THE BADGE COUNTS WHAT THE SCREEN DOES NOT OTHERWISE SHOW — kasir, sumber,
+ * status. Cabang, Gudang and Periode are edited here but always READ on the
+ * scope card above the figures, and the badge exists to pay back what a panel
+ * conceals (§8). Counting them too would put a standing number over a list
+ * whose scope is already spelled out.
  */
 function ReceivablesFilterPanel({
-  applied,
-  customers,
-  branches,
-  onApply,
+  query,
+  options,
+  onChange,
 }: {
-  applied: ReceivablesFilters;
-  customers: Customer[];
-  branches: Branch[];
-  onApply: (next: ReceivablesFilters) => void;
+  query: CustomerInvoicesQuery;
+  options: CustomerInvoiceFilterOptions;
+  onChange: (patch: Partial<CustomerInvoicesQuery>) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState(applied);
+  const seed = (): PanelDraft => ({
+    branchIds: query.branchIds,
+    warehouseIds: query.warehouseIds,
+    createdBy: query.createdBy,
+    sources: query.sources,
+    statuses: query.statuses,
+    period: query.period,
+    dateFrom: query.dateFrom,
+    dateTo: query.dateTo,
+  });
 
-  /**
-   * How many filters are narrowing the list right now.
-   *
-   * THE RANGE COUNTS ONCE, not twice — one bound or both, it is one question
-   * somebody asked. THE ORDERING IS NOT COUNTED AT ALL: every list has one, so
-   * it is never "on". Neither is the view, because it is not hidden — the badge
-   * exists to pay back what a panel conceals, and the lens is a row of pills
-   * sitting right above the button.
-   */
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<PanelDraft>(seed);
+
   const count = [
-    applied.customerId !== "",
-    applied.branchId !== "",
-    applied.source !== "",
-    applied.dateFrom !== "" || applied.dateTo !== "",
+    query.createdBy.length > 0,
+    query.sources.length > 0,
+    query.statuses.length > 0,
   ].filter(Boolean).length;
 
-  function patch(change: Partial<ReceivablesFilters>) {
+  /*
+    A TICKED GUDANG IS ALWAYS OFFERED, even when the cabang ticked beside it do
+    not cover it — a value that cannot be seen cannot be unticked.
+  */
+  const visibleWarehouses =
+    draft.branchIds.length === 0
+      ? options.warehouses
+      : options.warehouses.filter(
+          (warehouse) =>
+            belongsToAny(warehouse, draft.branchIds) ||
+            draft.warehouseIds.includes(warehouse._id),
+        );
+
+  function patch(change: Partial<PanelDraft>) {
     setDraft((prev) => ({ ...prev, ...change }));
   }
 
+  function pickBranches(branchIds: string[]) {
+    const warehouseIds =
+      branchIds.length === 0
+        ? draft.warehouseIds
+        : draft.warehouseIds.filter((id) => {
+            const warehouse = options.warehouses.find((row) => row._id === id);
+            // A gudang whose options have not loaded is kept, not guessed away.
+            return !warehouse || belongsToAny(warehouse, branchIds);
+          });
+
+    patch({ branchIds, warehouseIds });
+  }
+
+  function pickWarehouses(warehouseIds: string[]) {
+    const homes = warehouseIds
+      .filter((id) => !draft.warehouseIds.includes(id))
+      .map((id) => options.warehouses.find((row) => row._id === id))
+      .map((warehouse) => (warehouse ? homeBranchOf(warehouse) : ""))
+      .filter((home) => home !== "" && !draft.branchIds.includes(home));
+
+    patch({
+      warehouseIds,
+      ...(homes.length > 0
+        ? { branchIds: [...draft.branchIds, ...new Set(homes)] }
+        : {}),
+    });
+  }
+
   function onOpenChange(next: boolean) {
-    // Seeded on every open, so clicking away abandons the draft rather than
-    // leaving it half-edited for the next visit.
-    if (next) setDraft(applied);
+    // Seeded on every open, so clicking away abandons the draft.
+    if (next) setDraft(seed());
     setOpen(next);
+  }
+
+  /**
+   * Commits only what moved: the fetch effects key on the query, and posting
+   * every field back would re-query after a Terapkan that changed nothing.
+   */
+  function apply() {
+    const change: Partial<CustomerInvoicesQuery> = {};
+    // A named period carries no dates of its own.
+    const dateFrom = draft.period === "custom" ? draft.dateFrom : "";
+    const dateTo = draft.period === "custom" ? draft.dateTo : "";
+
+    if (!sameSet(draft.branchIds, query.branchIds)) change.branchIds = draft.branchIds;
+    if (!sameSet(draft.warehouseIds, query.warehouseIds)) {
+      change.warehouseIds = draft.warehouseIds;
+    }
+    if (!sameSet(draft.createdBy, query.createdBy)) change.createdBy = draft.createdBy;
+    if (!sameSet(draft.statuses, query.statuses)) change.statuses = draft.statuses;
+    if (!sameSet(draft.sources, query.sources)) change.sources = draft.sources;
+    if (draft.period !== query.period) change.period = draft.period;
+    if (dateFrom !== query.dateFrom) change.dateFrom = dateFrom;
+    if (dateTo !== query.dateTo) change.dateTo = dateTo;
+
+    if (Object.keys(change).length > 0) onChange(change);
+    setOpen(false);
+  }
+
+  function reset() {
+    onChange(CLEARED);
+    setOpen(false);
   }
 
   return (
@@ -293,58 +310,172 @@ function ReceivablesFilterPanel({
       <FilterPanel
         open={open}
         onOpenChange={onOpenChange}
-        onReset={() => {
-          onApply(CLEARED);
-          setOpen(false);
-        }}
-        onApply={() => {
-          onApply(draft);
-          setOpen(false);
-        }}
+        onReset={reset}
+        onApply={apply}
       >
-        {/* Sort leads: the one field here that is always set, and the only one
-            that changes what the top of the list is rather than what is in it. */}
-        <FilterSelect
-          layout="field"
-          label="Urutkan"
-          ariaLabel="Urutkan"
-          value={draft.sort}
-          options={SORTS}
-          unsetValue="dueSoonest"
-          onChange={(sort) => patch({ sort })}
-        />
-        <FilterSelect
-          layout="field"
-          label="Pelanggan"
-          ariaLabel="Filter pelanggan"
-          value={draft.customerId}
-          options={withAll(namedOptions(customers), "Semua pelanggan")}
-          onChange={(customerId) => patch({ customerId })}
-        />
-        <FilterSelect
-          layout="field"
+        <CheckMenuField
           label="Cabang"
-          ariaLabel="Filter cabang"
-          value={draft.branchId}
-          options={withAll(namedOptions(branches), "Semua cabang")}
-          onChange={(branchId) => patch({ branchId })}
+          allLabel="Semua cabang"
+          unit="cabang"
+          options={namedOptions(options.branches)}
+          selected={draft.branchIds}
+          onChange={pickBranches}
+        />
+        <CheckMenuField
+          label="Gudang"
+          allLabel="Semua gudang"
+          unit="gudang"
+          options={namedOptions(visibleWarehouses)}
+          selected={draft.warehouseIds}
+          onChange={pickWarehouses}
+        />
+        <CheckMenuField
+          label="Kasir / Admin"
+          allLabel="Semua kasir/admin"
+          unit="orang"
+          options={namedOptions(options.creators)}
+          selected={draft.createdBy}
+          onChange={(createdBy) => patch({ createdBy })}
+        />
+        <CheckMenuField
+          label="Sumber"
+          allLabel="Semua sumber"
+          unit="sumber"
+          options={SOURCES}
+          selected={draft.sources}
+          onChange={(sources) => patch({ sources })}
+        />
+        <CheckMenuField
+          label="Status"
+          allLabel="Semua status"
+          unit="status"
+          options={STATUS_FILTERS}
+          selected={draft.statuses}
+          onChange={(statuses) => patch({ statuses })}
         />
         <FilterSelect
           layout="field"
-          label="Sumber"
-          ariaLabel="Filter sumber faktur"
-          value={draft.source}
-          options={SOURCES}
-          onChange={(source) => patch({ source })}
+          label="Periode"
+          ariaLabel="Filter periode"
+          value={draft.period}
+          options={PERIODS}
+          unsetValue="all"
+          onChange={(period) => patch({ period })}
         />
-        <FilterDateRange
-          layout="field"
-          label="Tanggal faktur"
-          from={draft.dateFrom}
-          to={draft.dateTo}
-          onApply={({ from, to }) => patch({ dateFrom: from, dateTo: to })}
-        />
+        {draft.period === "custom" && (
+          <FilterDateRange
+            layout="field"
+            label="Tanggal faktur"
+            from={draft.dateFrom}
+            to={draft.dateTo}
+            // The Periode field above IS the preset list; chips here would be
+            // a second "Bulan ini" cut in the browser's timezone, not the shop's.
+            presets={[]}
+            onApply={({ from, to }) => patch({ dateFrom: from, dateTo: to })}
+          />
+        )}
       </FilterPanel>
     </>
+  );
+}
+
+/**
+ * A many-value field inside the panel, as a menu of checkboxes.
+ *
+ * NOT A FilterMultiSelect, for the reason `ProductsToolbar`'s WarehouseField
+ * gives: that control carries its own Terapkan, and this one sits inside a panel
+ * that already has one. The shell — FilterField and FilterTrigger — is shared,
+ * so it lines up with the selects beside it.
+ *
+ * NOTHING TICKED IS "SEMUA", and that row is what the empty state looks like
+ * rather than a separate mode.
+ *
+ * THE LIST IS HELD STILL WHILE THE MENU IS OPEN. Ticking a gudang ticks its
+ * cabang, which narrows the gudang on offer; re-drawn mid-menu, the row somebody
+ * was reaching for next would vanish under the pointer. The narrower list shows
+ * the next time the menu opens.
+ */
+function CheckMenuField<T extends string>({
+  label,
+  allLabel,
+  unit,
+  options,
+  selected,
+  onChange,
+}: {
+  label: string;
+  allLabel: string;
+  /** The noun a count past one reads as — "2 orang". */
+  unit: string;
+  options: FilterOption<T>[];
+  selected: T[];
+  onChange: (values: T[]) => void;
+}) {
+  const [heldOptions, setHeldOptions] = useState<FilterOption<T>[] | null>(
+    null,
+  );
+  const shown = heldOptions ?? options;
+
+  const names = options
+    .filter((option) => selected.includes(option.value))
+    .map((option) => option.label);
+
+  const value =
+    selected.length === 0
+      ? allLabel
+      : selected.length === 1 && names.length === 1
+        ? names[0]
+        : `${selected.length} ${unit}`;
+
+  function toggle(option: T) {
+    onChange(
+      selected.includes(option)
+        ? selected.filter((current) => current !== option)
+        : [...selected, option],
+    );
+  }
+
+  return (
+    <FilterField label={label}>
+      <DropdownMenu
+        onOpenChange={(isOpen) => setHeldOptions(isOpen ? options : null)}
+      >
+        <DropdownMenuTrigger asChild>
+          <FilterTrigger
+            layout="field"
+            label={label}
+            value={value}
+            active={selected.length > 0}
+            aria-label={`${label}: ${value}`}
+            title={names.length > 1 ? names.join(", ") : undefined}
+          />
+        </DropdownMenuTrigger>
+
+        <DropdownMenuContent align="start" className="w-56">
+          <DropdownMenuCheckboxItem
+            checked={selected.length === 0}
+            onCheckedChange={() => onChange([])}
+          >
+            {allLabel}
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuSeparator />
+          {shown.length === 0 ? (
+            <p className="px-2 py-1.5 text-sm text-muted">
+              Belum ada pilihan dari faktur yang ada.
+            </p>
+          ) : (
+            shown.map((option) => (
+              <DropdownMenuCheckboxItem
+                key={option.value}
+                checked={selected.includes(option.value)}
+                onCheckedChange={() => toggle(option.value)}
+              >
+                {option.label}
+              </DropdownMenuCheckboxItem>
+            ))
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </FilterField>
   );
 }

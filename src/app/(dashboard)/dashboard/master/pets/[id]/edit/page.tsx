@@ -3,7 +3,7 @@ import { PetForm } from "@/features/pets";
 import { RequirePermission } from "@/features/permissions";
 
 export const metadata: Metadata = {
-  title: "Ubah hewan · Master Data · Buloo",
+  title: "Ubah hewan · Pelanggan · Buloo",
 };
 
 /**

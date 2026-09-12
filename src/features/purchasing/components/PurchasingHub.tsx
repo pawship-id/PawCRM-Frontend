@@ -10,6 +10,7 @@ import { daysUntil } from "@/utils/date";
 import { formatMoney } from "@/utils/decimal";
 
 import { useHubCounts } from "../hooks/useHubCounts";
+import { PurchasingModuleHeader } from "./PurchasingModuleHeader";
 import {
   usePayablesPanels,
   type PayablePanelData,
@@ -137,14 +138,15 @@ export function PurchasingHub() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-extrabold text-foreground">Purchasing</h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted">
-          Termin tiap supplier yang menentukan kapan sebuah faktur jatuh tempo.
-          Dua daftar di bawah adalah faktur yang tanggalnya sudah lewat, dan
-          yang lewat minggu ini.
-        </p>
-      </div>
+      <PurchasingModuleHeader />
+
+      {/* What the module header cannot say, because it is on every tab: what
+          THIS screen is. */}
+      <p className="max-w-2xl text-sm text-muted">
+        Termin tiap supplier yang menentukan kapan sebuah faktur jatuh tempo. Dua
+        daftar di bawah adalah faktur yang tanggalnya sudah lewat, dan yang lewat
+        minggu ini.
+      </p>
 
       {/* Five cards now, so the wide row is `lg:grid-cols-3` rather than a
           five-across line of narrow tiles nobody can read the descriptions in.

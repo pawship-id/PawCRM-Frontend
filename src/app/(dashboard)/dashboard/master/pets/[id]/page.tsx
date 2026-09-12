@@ -3,7 +3,7 @@ import { PetProfileScreen } from "@/features/pets";
 import { RequirePermission } from "@/features/permissions";
 
 export const metadata: Metadata = {
-  title: "Profil hewan · Master Data · Buloo",
+  title: "Profil hewan · Pelanggan · Buloo",
 };
 
 /**

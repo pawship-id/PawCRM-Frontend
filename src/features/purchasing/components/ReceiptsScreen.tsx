@@ -7,9 +7,8 @@ import { Alert, Pagination, Spinner } from "@/components";
 import { goodsReceiptService } from "@/services/goodsReceipt.service";
 import { formatMoney } from "@/utils/decimal";
 
-import { PURCHASING_CRUMBS } from "../crumbs";
 import { useGoodsReceipts } from "../hooks/useGoodsReceipts";
-import { PageHeading } from "./PageHeading";
+import { PurchasingModuleHeader } from "./PurchasingModuleHeader";
 import { ReceiptsTable } from "./ReceiptsTable";
 import { ReceiptsToolbar } from "./ReceiptsToolbar";
 
@@ -52,33 +51,30 @@ export function ReceiptsScreen() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <PageHeading
-          crumbs={[PURCHASING_CRUMBS.hub, { label: "Penerimaan Barang" }]}
-          title="Penerimaan Barang"
-        >
-          Setiap penerimaan menaikkan stok dan menghitung ulang HPP rata-rata.
-          Beli putus langsung mencatat utang ke supplier; konsinyasi tidak.
-        </PageHeading>
-
-        {/* Wide: a right-aligned figure beside the heading. Phone: the two have
-            wrapped onto separate lines, and a shrink-to-fit box sitting at the
-            left edge of an empty row reads as a stray caption — so it takes the
-            whole width and puts the label and the number at opposite ends of
-            one line, which is how a total is read everywhere else. The
-            qualifier stays under both, where it belongs to the pair. */}
-        <div className="max-sm:w-full sm:text-right">
-          <div className="flex items-baseline gap-3 max-sm:justify-between sm:block">
-            <p className="text-xs font-medium tracking-wide text-muted uppercase">
-              Total nilai pembelian
-            </p>
-            <p className="text-lg font-semibold tabular-nums">
-              {totalPurchased === null ? "—" : formatMoney(totalPurchased)}
-            </p>
+      {/* The headline figure rides in the header's action slot, which is where
+          it already sat — beside the title, at the top right. */}
+      <PurchasingModuleHeader
+        action={
+          <div className="max-sm:w-full sm:text-right">
+            <div className="flex items-baseline gap-3 max-sm:justify-between sm:block">
+              <p className="text-xs font-medium tracking-wide text-muted uppercase">
+                Total nilai pembelian
+              </p>
+              <p className="text-lg font-semibold tabular-nums">
+                {totalPurchased === null ? "—" : formatMoney(totalPurchased)}
+              </p>
+            </div>
+            <p className="text-xs text-muted">sebelum PPN, seluruh periode</p>
           </div>
-          <p className="text-xs text-muted">sebelum PPN, seluruh periode</p>
-        </div>
-      </div>
+        }
+      />
+
+      {/* What the module header cannot say, because it is on every tab: what
+          THIS list is. */}
+      <p className="max-w-2xl text-sm text-muted">
+        Setiap penerimaan menaikkan stok dan menghitung ulang HPP rata-rata.
+        Beli putus langsung mencatat utang ke supplier; konsinyasi tidak.
+      </p>
 
       <ReceiptsToolbar query={query} onChange={setQuery} />
 

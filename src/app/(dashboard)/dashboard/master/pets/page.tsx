@@ -3,7 +3,7 @@ import { PetsScreen } from "@/features/pets";
 import { RequirePermission } from "@/features/permissions";
 
 export const metadata: Metadata = {
-  title: "Hewan · Master Data · Buloo",
+  title: "Hewan · Pelanggan · Buloo",
 };
 
 export default function MasterPetsPage() {

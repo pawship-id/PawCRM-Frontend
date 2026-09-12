@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { ListFilter, Plus } from "lucide-react";
+import { ListFilter } from "lucide-react";
 
 import {
   FilterBar,
@@ -13,17 +12,19 @@ import {
   FilterTrigger,
   type FilterOption,
 } from "@/components";
-import { Button } from "@/components/ui/button";
-import { Can } from "@/features/permissions";
 import type { CategorySort } from "@/types/api";
 
 import type { CategoriesQuery } from "../hooks/useCategories";
 
 /**
- * The list controls: one row — search, one Filter button, one create button —
- * with the status filter, the deleted toggle and the sort order inside a panel.
+ * The list controls: one row — search and one Filter button — with the status
+ * filter, the deleted toggle and the sort order inside a panel.
  *
  * Purely presentational: it renders the current query and reports changes up.
+ *
+ * NO CREATE BUTTON — it moved up to CatalogModuleHeader when the module grew a
+ * tab bar, because the button belongs to the page rather than to the narrowing
+ * controls, and each tab creates a different thing.
  *
  * THE SAME SHAPE AS THE CATALOGUE'S, deliberately. These two screens sit one
  * click apart in the nav and are two halves of the same job; a filter that is a
@@ -51,11 +52,6 @@ import type { CategoriesQuery } from "../hooks/useCategories";
  * but live or deleted. It does now (`isActive`), and a shop that stops stocking
  * a line wants the first — deleting is refused outright while a live product is
  * still filed under the category.
- *
- * THE CREATE BUTTON IS A LINK, not a callback that opened a dialog. A category
- * outgrew the modal when it gained a description and a picture — see
- * CategoryForm. A real `<a href>` is also what a middle-click and a "buka di tab
- * baru" need, which a button wired to `router.push` never gives them.
  */
 const STATUSES: FilterOption<CategoriesQuery["status"]>[] = [
   { value: "", label: "Semua status" },
@@ -151,9 +147,6 @@ export function CategoriesToolbar({
       // behind one button there is nothing else on the line that grows.
       searchPlacement="leading"
       searchClassName="min-w-[12rem] flex-1"
-      // Below sm the row cannot hold all three, so the create button takes a
-      // line of its own — and takes all of it.
-      actionsClassName="max-sm:w-full"
       search={
         <FilterSearch
           value={query.search}
@@ -162,19 +155,6 @@ export function CategoriesToolbar({
           ariaLabel="Cari kategori"
           fill
         />
-      }
-      actions={
-        <Can feature="categories" action="create">
-          {/* `asChild` so the Link IS the button — nesting an <a> inside a
-              <button> is invalid markup and gives a screen reader two controls
-              where there is one. */}
-          <Button asChild className="w-full">
-            <Link href="/dashboard/inventory/categories/new">
-              <Plus className="size-4" />
-              Kategori baru
-            </Link>
-          </Button>
-        </Can>
       }
     >
       <CategoryFilterPanel applied={applied} onApply={apply} />

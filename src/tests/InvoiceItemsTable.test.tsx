@@ -156,7 +156,7 @@ describe("the totals", () => {
   it("leaves out a discount row that would be zero", () => {
     render(<InvoiceItemsTable invoice={invoice()} />);
 
-    expect(screen.queryByText("Diskon baris")).not.toBeInTheDocument();
+    expect(screen.queryByText("Diskon item")).not.toBeInTheDocument();
     expect(screen.queryByText(/Diskon faktur/)).not.toBeInTheDocument();
   });
 
@@ -186,11 +186,13 @@ describe("the totals", () => {
     expect(screen.getByText("−Rp 20.000")).toBeInTheDocument();
   });
 
-  it("breaks out DPP and PPN when there is tax", () => {
+  it("breaks out the tax base and PPN when there is tax", () => {
     render(<InvoiceItemsTable invoice={invoice()} />);
 
-    expect(screen.getByText("DPP")).toBeInTheDocument();
-    expect(screen.getByText("PPN")).toBeInTheDocument();
+    expect(screen.getByText("Dasar pengenaan pajak")).toBeInTheDocument();
+    // Inclusive pricing — the fixture's grand total is the subtotal — so the
+    // row says the tax is already inside rather than letting the eye add it.
+    expect(screen.getByText(/^PPN/)).toHaveTextContent("PPN (sudah termasuk)");
   });
 
   it("leaves them out for a tenant that charges none", () => {
@@ -359,5 +361,208 @@ describe("a sale joined from the till", () => {
     expect(screen.getByText("Total tagihan")).toBeInTheDocument();
     expect(screen.queryByText("Ongkos kirim")).not.toBeInTheDocument();
     expect(screen.queryByText("Sisa jadi piutang")).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * THE MOCKUP'S COLUMNS — `buloo-invoice-detail-v5`.
+ *
+ * A line's Total is what that line costs the customer: price × quantity, less
+ * its own discount, plus its tax where the tax went on top. Read off the frozen
+ * totals, never off today's setting.
+ */
+describe("the mockup's columns", () => {
+  const exclusive = {
+    subtotal: "100000.0000",
+    itemDiscount: "0.0000",
+    invoiceDiscount: "0.0000",
+    dpp: "100000.0000",
+    tax: "11000.0000",
+    grandTotal: "111000.0000",
+    taxRate: 11,
+  };
+
+  it("labels a line's tax with the rate the invoice froze, and adds it when it went on top", () => {
+    render(
+      <InvoiceItemsTable
+        invoice={invoice({
+          items: [
+            line({
+              qty: "1.0000",
+              lineTotal: "100000.0000",
+              dpp: "100000.0000",
+              tax: "11000.0000",
+            }),
+          ],
+          totals: exclusive,
+        })}
+      />,
+    );
+
+    const row = screen.getByRole("row", { name: /Kalung Nylon/ });
+    expect(within(row).getByText("PPN 11%")).toBeInTheDocument();
+    expect(within(row).getByText("+Rp 11.000")).toBeInTheDocument();
+    expect(within(row).getByText("Rp 111.000")).toBeInTheDocument();
+  });
+
+  it("says the tax was already inside the price on inclusive pricing", () => {
+    render(
+      <InvoiceItemsTable
+        invoice={invoice({
+          items: [line({ dpp: "180180.1802", tax: "19819.8198" })],
+        })}
+      />,
+    );
+
+    const row = screen.getByRole("row", { name: /Kalung Nylon/ });
+    expect(within(row).getByText(/^termasuk Rp/)).toBeInTheDocument();
+    // Nothing added: the two units at Rp 100.000 are the whole of it.
+    expect(within(row).getByText("Rp 200.000")).toBeInTheDocument();
+  });
+
+  it("nets a line's own discount out of its total", () => {
+    render(
+      <InvoiceItemsTable
+        invoice={invoice({
+          items: [
+            line({
+              discount: {
+                mode: "amount",
+                value: "20000.0000",
+                resolvedAmount: "20000.0000",
+              },
+            }),
+          ],
+        })}
+      />,
+    );
+
+    const row = screen.getByRole("row", { name: /Kalung Nylon/ });
+    expect(within(row).getByText("Rp 180.000")).toBeInTheDocument();
+  });
+
+  it("says PPN without a rate on an invoice that never froze one", () => {
+    render(
+      <InvoiceItemsTable
+        invoice={invoice({
+          items: [line({ dpp: "180180.1802", tax: "19819.8198" })],
+        })}
+      />,
+    );
+
+    const row = screen.getByRole("row", { name: /Kalung Nylon/ });
+    // A rate read off today's settings could name one this bill never used.
+    expect(within(row).getByText("PPN")).toBeInTheDocument();
+  });
+
+  /*
+    ONE GROUP PER ANIMAL, not per run of lines: a nail trim typed after the food
+    still sits with the grooming it belongs to. Lines with no animal close the
+    table.
+  */
+  it("groups the lines by animal, with the booking, and puts the goods last", () => {
+    render(
+      <InvoiceItemsTable
+        canOpenBookings
+        invoice={invoice({
+          items: [
+            line({ refId: "p9", name: "Vitamin Kucing", sku: "VIT" }),
+            line({
+              kind: "service",
+              refId: "s1",
+              name: "Grooming Basic",
+              sku: null,
+              petId: "pet1",
+              petName: "Milo",
+              bookingId: "bk1",
+            }),
+            line({
+              kind: "service",
+              refId: "s2",
+              name: "Nail Trim",
+              sku: null,
+              petId: "pet1",
+              petName: "Milo",
+              bookingId: "bk1",
+            }),
+          ],
+          bookings: [{ _id: "bk1", bookingNumber: "BK-2026-0091" }],
+        })}
+      />,
+    );
+
+    const rows = screen
+      .getAllByRole("row")
+      .map((row) => row.textContent ?? "");
+
+    expect(rows[1]).toContain("Milo");
+    expect(rows[2]).toContain("Grooming Basic");
+    expect(rows[3]).toContain("Nail Trim");
+    expect(rows[4]).toContain("Tanpa hewan");
+    expect(rows[5]).toContain("Vitamin Kucing");
+    expect(
+      screen.getByRole("link", { name: /Booking BK-2026-0091/ }),
+    ).toHaveAttribute("href", "/dashboard/booking/bk1");
+  });
+
+  it("names the booking without linking it for a role that cannot open bookings", () => {
+    render(
+      <InvoiceItemsTable
+        invoice={invoice({
+          items: [
+            line({
+              kind: "service",
+              name: "Grooming Basic",
+              sku: null,
+              petId: "pet1",
+              petName: "Milo",
+              bookingId: "bk1",
+            }),
+          ],
+          bookings: [{ _id: "bk1", bookingNumber: "BK-2026-0091" }],
+        })}
+      />,
+    );
+
+    expect(screen.getByText(/Booking BK-2026-0091/)).toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  /*
+    A TILL SALE'S BOOKINGS ARE NOT IN `bookings[]` — that list is built from the
+    invoice's stored lines, and a till invoice stores none. The chip read
+    "Booking" with no number until the server began naming it on the line.
+  */
+  it("takes the booking number from the line when bookings[] does not carry it", () => {
+    render(
+      <InvoiceItemsTable
+        canOpenBookings
+        invoice={invoice({
+          posTransactionId: "pos1",
+          items: [
+            line({
+              kind: "service",
+              name: "Basic Grooming",
+              sku: "GRM-BSC",
+              petId: "pet1",
+              petName: "Cici",
+              bookingId: "bk9",
+              bookingNumber: "BK-260906-003",
+            }),
+          ],
+          bookings: [],
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByRole("link", { name: "Booking BK-260906-003 →" }),
+    ).toHaveAttribute("href", "/dashboard/booking/bk9");
+  });
+
+  it("draws no animal headings on a bill with no animal on it", () => {
+    render(<InvoiceItemsTable invoice={invoice()} />);
+
+    expect(screen.queryByText("Tanpa hewan")).not.toBeInTheDocument();
   });
 });

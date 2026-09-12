@@ -4900,6 +4900,15 @@ export interface CustomerInvoicePayment {
    * would reject the second instalment as a duplicate of the first.
    */
   paymentId: string;
+  /**
+   * THE HUMAN-FACING NUMBER — `PMT-2026-0001`. `paymentId` is the key a link and
+   * the ledger's idempotency are built from; this is the label a shop reads back
+   * to a customer or writes on a bank reconciliation sheet.
+   *
+   * NULL ON A PAYMENT RECORDED BEFORE THIS FIELD EXISTED. Nothing backfills
+   * one — a screen showing this falls back to the amount for those rows.
+   */
+  paymentNumber: string | null;
   /** The day the money MOVED, which is what dates the journal entry. */
   at: string;
   amount: string;
@@ -5117,6 +5126,66 @@ export interface CustomerInvoiceDetail extends Omit<
    * Empty on an invoice that bills only goods.
    */
   bookings: InvoiceBooking[];
+  /**
+   * The customer's phone as stored, and the same number in `wa.me` form — the
+   * digits with no `+` — for the WhatsApp button. Both null on a walk-in, a
+   * deleted customer, or a number the server cannot read as one.
+   */
+  customerPhone?: string | null;
+  customerWhatsApp?: string | null;
+  /**
+   * The unguessable name this invoice answers to at `/faktur/:token` — the
+   * customer's own copy, no login. The WhatsApp button links it. Null on an
+   * invoice raised before links existed, until the backend backfill has run.
+   */
+  publicToken?: string | null;
+  /**
+   * Every edit of this invoice, oldest first. Empty on one never edited — see
+   * `UpdateCustomerInvoiceInput`.
+   */
+  revisions?: Array<{
+    at: string;
+    by: string | null;
+    previousTotal: string;
+    total: string;
+  }>;
+}
+
+/**
+ * GET /public/invoices/:token — one invoice as its CUSTOMER sees it, no session.
+ *
+ * AN ALLOWLIST, not the detail payload: only what the printed faktur shows. No
+ * ids of any kind, no cost of goods, no journal entries, no credit position.
+ * `payments` holds only those that still count, so it carries no `isVoided`.
+ */
+export interface PublicCustomerInvoice {
+  invoiceNumber: string;
+  status: CustomerInvoiceStatus;
+  invoiceDate: string;
+  dueDate: string;
+  customerName: string | null;
+  branchName: string | null;
+  items: Array<
+    Pick<
+      CustomerInvoiceItem,
+      "name" | "sku" | "petName" | "qty" | "unitPrice" | "lineTotal"
+    >
+  >;
+  totals: Pick<
+    CustomerInvoiceTotals,
+    "subtotal" | "itemDiscount" | "invoiceDiscount" | "dpp" | "tax" | "grandTotal"
+  > | null;
+  otherCharges: Array<{ label: string; amount: string }>;
+  total: string;
+  paidAmount: string;
+  outstandingAmount: string;
+  payments: Array<
+    Pick<CustomerInvoicePayment, "paymentNumber" | "at" | "amount" | "channelName">
+  >;
+  notes: string | null;
+  voidReason: string | null;
+  /** The shop's name for the header, and its footer note — usually where to pay. */
+  tenant: { name: string; invoiceFooterNote: string | null };
 }
 
 /** One appointment an invoice covers, as the execution panel draws it. */
@@ -5306,6 +5375,18 @@ export interface CustomerInvoiceItem {
   petName: string | null;
   /** Who did the work, as at issue. Null when the slot was never filled. */
   groomerName: string | null;
+  /**
+   * The animal's species, RESOLVED ON READ — unlike `petName`, which is the
+   * name as billed. A species is not something a bill agreed to; it labels the
+   * group the line sits in. Null on a product line, or when the pet is gone.
+   */
+  petSpecies?: PetSpecies | null;
+  /**
+   * The booking's number, RESOLVED ON READ for every line with a `bookingId` —
+   * a till sale's too, whose bookings `bookings[]` does not carry. Null on a
+   * line with no booking, or one deleted since.
+   */
+  bookingNumber?: string | null;
 }
 
 /** The money, frozen when the invoice was issued — or when the sale settled. */
@@ -5324,6 +5405,60 @@ export interface CustomerInvoiceTotals {
    * customer paid, so a total without it is one the rows above do not add up to.
    */
   otherCharges?: string | null;
+  /**
+   * The rate `tax` was charged at, as a percentage — frozen at issue so a line
+   * can say "PPN 11%" after the tenant's setting has moved. Null on invoices
+   * issued before it was stored, and on a till sale.
+   */
+  taxRate?: number | null;
+}
+
+/**
+ * PATCH /api/customer-invoices/:id — the whole revised list of lines.
+ *
+ * `fromIndex` MARKS A KEPT LINE: the index of the stored line it continues. A
+ * kept line keeps its frozen price, animal and booking; only `qty` and
+ * `discount` move. A row without it is a new line, priced from the catalogue.
+ * A stored line no row names is taken off.
+ */
+export interface UpdateInvoiceItemInput extends CreateInvoiceItemInput {
+  fromIndex?: number;
+}
+
+export interface UpdateCustomerInvoiceInput {
+  items: UpdateInvoiceItemInput[];
+  /** Absent keeps the typed discount; null removes it. */
+  invoiceDiscount?: TypedDiscountInput | null;
+  dueDate?: string;
+  /** Only read when the invoice shipped nothing before and now does. */
+  warehouseId?: string;
+  notes?: string | null;
+}
+
+/** The actions an invoice's own activity log can hold. */
+export type InvoiceActivityAction =
+  | "invoice_create"
+  | "invoice_update"
+  | "invoice_payment_record"
+  | "invoice_payment_void"
+  | "invoice_void";
+
+/** One entry of GET /api/customer-invoices/:id/activity. */
+export interface InvoiceActivityEntry {
+  _id: string;
+  /** An open vocabulary server-side; unknown values render generically. */
+  action: InvoiceActivityAction | string;
+  at: string;
+  /** Null when the user has since been deleted. */
+  actorName: string | null;
+  /** What the audit row recorded — amounts as decimal strings. */
+  metadata: Record<string, unknown>;
+  /**
+   * True for the one entry read off the DOCUMENT rather than the trail: a till
+   * invoice is never audited as created, so its creation is taken from its own
+   * timestamps.
+   */
+  fromDocument: boolean;
 }
 
 /**
@@ -5397,14 +5532,35 @@ export interface CreateCustomerInvoiceInput {
  */
 export interface CustomerInvoiceListQuery {
   page?: number;
+  /** Up to 200 on this list — twice the API-wide ceiling. */
   limit?: number;
-  /** Free-text over invoice number / notes. NOT the customer's name — that
-   *  lives in another collection; filter by `customerId` instead. */
+  /**
+   * Free text over the invoice number, the notes AND the customer's name. The
+   * name half is resolved server-side into customer ids, not joined per row.
+   */
   search?: string;
   customerId?: string;
+  /** The SCOPE — whose books. Also narrows the belum-lunas / overdue cards. */
   branchId?: string;
+  /** The filter panel's cabang, any of them. ANDed with `branchId`. */
+  branchIds?: string[];
+  /** Where the goods left from. A scope, like `branchId`. */
+  warehouseId?: string;
+  /** The filter panel's gudang, any of them. ANDed with `warehouseId`; also a scope. */
+  warehouseIds?: string[];
+  /** Who raised the invoice — the panel's Kasir / Admin. */
+  createdBy?: string[];
   status?: CustomerInvoiceStatus;
+  /** Any of these, OR'd. `overdue` is outstanding AND past due. */
+  statuses?: CustomerInvoiceStatusFilter[];
+  /**
+   * A named period over `invoiceDate`, resolved in the TENANT's timezone. Never
+   * sent beside `dateFrom` / `dateTo` — the server refuses both at once.
+   */
+  period?: InvoicePeriod;
   source?: CustomerInvoiceSource;
+  /** The filter panel's Sumber, any of them, OR'd. ANDed with `source`. */
+  sources?: CustomerInvoiceSource[];
   /** `status ∈ {unpaid, partial}` — excludes `void`, which owes nothing. */
   outstanding?: boolean;
   overdue?: boolean;
@@ -5416,9 +5572,8 @@ export interface CustomerInvoiceListQuery {
   dateFrom?: string;
   dateTo?: string;
   /**
-   * `totalHighest` / `totalLowest` order by what was BILLED, not by what is
-   * still owed: `total` is stored, the outstanding amount is derived per row and
-   * no index can serve it.
+   * `total…` orders by what was BILLED; `outstanding…` by what is still OWED,
+   * derived in the pipeline with a void invoice counted as owing nothing.
    */
   sort?:
     | "dueSoonest"
@@ -5426,7 +5581,71 @@ export interface CustomerInvoiceListQuery {
     | "newest"
     | "oldest"
     | "totalHighest"
-    | "totalLowest";
+    | "totalLowest"
+    | "outstandingHighest"
+    | "outstandingLowest";
+}
+
+/** What the list's Status filter may ask for — a status, or lateness. */
+export type CustomerInvoiceStatusFilter = CustomerInvoiceStatus | "overdue";
+
+/** The periods the server can resolve by name, in the tenant's timezone. */
+export type InvoicePeriod = "today" | "week" | "month";
+
+/** One card: a rupiah figure and how many invoices it came from. */
+export interface CustomerInvoiceSummaryFigure {
+  amount: string;
+  invoiceCount: number;
+}
+
+/**
+ * GET /api/customer-invoices/summary — the four cards over the list.
+ *
+ * TWO HALVES, ANSWERING DIFFERENT QUESTIONS:
+ *
+ *   `revenue`, `collected` — what the TABLE adds up to, under the list's whole
+ *   filter. Void invoices are matched but count as neither. `collected` is
+ *   `paidAmount`, so a cash sale the till booked as paid counts.
+ *
+ *   `outstanding`, `overdue` — what is OWED, narrowed only by the branch and
+ *   warehouse scope. A July debt is still owed while the table shows September.
+ *
+ * `period` IS THE RANGE THE SERVER RESOLVED, in the tenant's timezone — null when
+ * the query had no dates at all. `fromDate` / `toDate` are that range as the
+ * tenant's CALENDAR DAYS (`yyyy-mm-dd`): caption from those, never by formatting
+ * the instants in the browser, which names the wrong day west of the tenant.
+ */
+export interface CustomerInvoiceListSummary {
+  asOf: string;
+  period: {
+    from: string | null;
+    to: string | null;
+    fromDate: string | null;
+    toDate: string | null;
+  } | null;
+  revenue: CustomerInvoiceSummaryFigure;
+  collected: CustomerInvoiceSummaryFigure;
+  outstanding: CustomerInvoiceSummaryFigure;
+  overdue: CustomerInvoiceSummaryFigure;
+}
+
+/**
+ * GET /api/customer-invoices/filter-options — the values that actually appear on
+ * this tenant's invoices, labelled. Gated on `customerInvoices:read` only.
+ */
+export interface CustomerInvoiceFilterOptions {
+  branches: Array<{ _id: string; name: string }>;
+  /**
+   * `branchId` — the gudang's OWN cabang (its master record), null when none is
+   * named. `branchIds` — every cabang it has actually billed under.
+   */
+  warehouses: Array<{
+    _id: string;
+    name: string;
+    branchId: string | null;
+    branchIds: string[];
+  }>;
+  creators: Array<{ _id: string; name: string }>;
 }
 
 /** One customer's debt, from GET /api/customer-invoices/outstanding. */

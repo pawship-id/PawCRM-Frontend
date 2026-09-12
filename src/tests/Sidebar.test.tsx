@@ -56,7 +56,9 @@ describe("Sidebar", () => {
     ).toHaveAttribute("aria-current", "page");
 
     // Its neighbours stay folded — one open submenu, not all of them.
-    expect(screen.getByRole("button", { name: "Pembelian" })).toHaveAttribute(
+    // Pengaturan rather than Pembelian, which is a leaf now: every screen under
+    // it is a tab of one row.
+    expect(screen.getByRole("button", { name: "Pengaturan" })).toHaveAttribute(
       "aria-expanded",
       "false",
     );

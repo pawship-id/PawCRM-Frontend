@@ -1,13 +1,18 @@
 import { apiClient } from "./api-client";
 import type {
   CustomerInvoiceDetail,
+  CustomerInvoiceFilterOptions,
   CustomerInvoiceListQuery,
   CustomerInvoiceListRow,
+  CustomerInvoiceListSummary,
   CustomerOutstandingSummary,
   PageResult,
   RecordCustomerPaymentInput,
   VoidCustomerPaymentInput,
   CreateCustomerInvoiceInput,
+  InvoiceActivityEntry,
+  UpdateCustomerInvoiceInput,
+  PublicCustomerInvoice,
 } from "@/types/api";
 
 /**
@@ -37,7 +42,52 @@ import type {
  * The tenant scope is derived from the session cookie by the backend, so it is
  * never passed here.
  */
+/**
+ * The filter half of a list query, as query-string entries.
+ *
+ * ONE FUNCTION FOR `list` AND `summary`. A field added to one and forgotten in
+ * the other is a card that silently ignores a filter its table honours.
+ *
+ * Arrays go out as repeated params — see `buildUrl`.
+ */
+function filterParams(query: CustomerInvoiceListQuery) {
+  return {
+    search: query.search,
+    customerId: query.customerId,
+    branchId: query.branchId,
+    branchIds: query.branchIds,
+    warehouseId: query.warehouseId,
+    warehouseIds: query.warehouseIds,
+    createdBy: query.createdBy,
+    status: query.status,
+    statuses: query.statuses,
+    source: query.source,
+    sources: query.sources,
+    outstanding: query.outstanding,
+    overdue: query.overdue,
+    dueSoon: query.dueSoon,
+    horizonDays: query.horizonDays,
+    period: query.period,
+    dateFrom: query.dateFrom,
+    dateTo: query.dateTo,
+  };
+}
+
 export const customerInvoiceService = {
+  /**
+   * GET /public/invoices/:token — the faktur a CUSTOMER opens from the shop's
+   * WhatsApp message. No session: the token in the URL identifies the invoice
+   * and authorises reading it.
+   *
+   * `credentials: "omit"`, for the reason `posService.publicReceipt` gives: a
+   * shop laptop opening a customer's link must not send the staff session cookie
+   * to a route that has no use for it.
+   */
+  publicInvoice: (token: string) =>
+    apiClient.get<PublicCustomerInvoice>(`/public/invoices/${token}`, {
+      credentials: "omit",
+    }),
+
   /**
    * GET /customer-invoices — receivables, soonest due first, filterable.
    *
@@ -59,20 +109,32 @@ export const customerInvoiceService = {
       query: {
         page: query.page,
         limit: query.limit,
-        search: query.search,
-        customerId: query.customerId,
-        branchId: query.branchId,
-        status: query.status,
-        source: query.source,
-        outstanding: query.outstanding,
-        overdue: query.overdue,
-        dueSoon: query.dueSoon,
-        horizonDays: query.horizonDays,
-        dateFrom: query.dateFrom,
-        dateTo: query.dateTo,
         sort: query.sort,
+        ...filterParams(query),
       },
     }),
+
+  /**
+   * GET /customer-invoices/summary — the four cards over the list.
+   *
+   * TAKES THE LIST'S OWN FILTER, through the same `filterParams`, so the cards
+   * and the rows cannot be asked two different questions. Paging and ordering
+   * are not sent: neither changes what the rows add up to.
+   */
+  summary: (query: Omit<CustomerInvoiceListQuery, "page" | "limit" | "sort"> = {}) =>
+    apiClient.get<CustomerInvoiceListSummary>("/customer-invoices/summary", {
+      query: filterParams(query),
+    }),
+
+  /**
+   * GET /customer-invoices/filter-options — the cabang, gudang and kasir that
+   * appear on this tenant's invoices. Needs only `customerInvoices:read`, unlike
+   * the master lists behind `/branches` and `/users`.
+   */
+  filterOptions: () =>
+    apiClient.get<CustomerInvoiceFilterOptions>(
+      "/customer-invoices/filter-options",
+    ),
 
   /**
    * POST /customer-invoices — raise one by hand (PCR-030).
@@ -116,6 +178,34 @@ export const customerInvoiceService = {
     apiClient.post<CustomerInvoiceDetail>(`/customer-invoices/${id}/void`, {
       reason,
     }),
+
+  /**
+   * PATCH /customer-invoices/:id — revise an invoice nobody has paid yet.
+   *
+   * NOTHING POSTED IS EDITED IN PLACE. The server reverses the live revision's
+   * two entries and its stock, then issues the revised lines as a new revision,
+   * in one transaction — so the ledger keeps both versions and the reversal
+   * between them.
+   *
+   * `items` IS THE WHOLE REVISED LIST. A row carrying `fromIndex` continues that
+   * stored line (its price, animal and booking stay); a row without one is new;
+   * a stored line no row names is taken off.
+   *
+   * REFUSED (409) once anything is paid, on a till-born invoice, and on a
+   * cancelled one. Answers with the invoice as it now reads.
+   */
+  update: (id: string, input: UpdateCustomerInvoiceInput) =>
+    apiClient.patch<CustomerInvoiceDetail>(`/customer-invoices/${id}`, input),
+
+  /**
+   * GET /customer-invoices/:id/activity — what happened to this invoice, newest
+   * first. Needs only `customerInvoices:read`: an invoice's own history is part
+   * of the invoice, not the tenant-wide audit screen.
+   */
+  activity: (id: string) =>
+    apiClient.get<{ items: InvoiceActivityEntry[] }>(
+      `/customer-invoices/${id}/activity`,
+    ),
 
   /**
    * GET /customer-invoices/:id — one receivable, with its payments and labels.

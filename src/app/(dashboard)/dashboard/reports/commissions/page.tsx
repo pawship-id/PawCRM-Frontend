@@ -1,22 +1,18 @@
-import type { Metadata } from "next";
-
-import { CommissionRecapScreen } from "@/features/reports";
-import { RequirePermission } from "@/features/permissions";
-
-export const metadata: Metadata = { title: "Rekap Komisi · Buloo" };
+import { redirect } from "next/navigation";
 
 /**
- * Rekap Komisi — PCR-045 / FR-6.
+ * The recap's OLD address, kept as a redirect.
  *
- * GATED ON `users:read`, not on a report grant. This IS payroll data: it names
- * every groomer and what they are owed. Whoever may read the staff register may
- * read it; a "reports" grant covering stock on hand and wages alike would hand
- * somebody counting sacks of feed the payroll.
+ * Rekap Komisi is a tab of Keuangan now — the mockup files commissions there —
+ * so the screen lives at /dashboard/keuangan/komisi. This route stays because it
+ * was a real, linkable address: bookmarks, the reports hub as it was, and
+ * anything a shop pasted into a chat. A 404 would be a worse answer than one
+ * more hop.
+ *
+ * NO PERMISSION CHECK HERE, deliberately: the destination carries the same
+ * `users:read` gate it always did, so a refused reader is refused there rather
+ * than being told by a redirect whether the report exists.
  */
-export default function CommissionRecapPage() {
-  return (
-    <RequirePermission feature="users" action="read">
-      <CommissionRecapScreen />
-    </RequirePermission>
-  );
+export default function CommissionRecapRedirect() {
+  redirect("/dashboard/keuangan/komisi");
 }

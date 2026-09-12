@@ -13,6 +13,7 @@ import {
   Spinner,
   withAll,
 } from "@/components";
+import { AccountingModuleHeader } from "@/features/accounting";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
 import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
@@ -91,14 +92,18 @@ export function PaymentChannelsScreen() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-extrabold text-foreground">Kas & Bank</h1>
-        <p className="mt-1 text-sm text-muted">
-          Tempat uang masuk saat kasir menerima pembayaran, dan akun mana yang
-          dicatat. Kasir memilih channel yang spesifik — bukan cuma
-          &ldquo;transfer&rdquo; — supaya jurnalnya mendarat di akun yang benar.
-        </p>
-      </div>
+      {/* The Kas & Bank tab of the Keuangan module. Imported across the feature
+          line the same way PetsScreen borrows the Pelanggan header — the module
+          owns the chrome, and its public surface is where it is borrowed. */}
+      <AccountingModuleHeader />
+
+      {/* What the module header cannot say, because it is on every tab: what
+          THIS list is. */}
+      <p className="max-w-2xl text-sm text-muted">
+        Tempat uang masuk saat kasir menerima pembayaran, dan akun mana yang
+        dicatat. Kasir memilih channel yang spesifik — bukan cuma
+        &ldquo;transfer&rdquo; — supaya jurnalnya mendarat di akun yang benar.
+      </p>
 
       <FilterBar
         search={

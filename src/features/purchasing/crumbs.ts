@@ -18,7 +18,7 @@ import type { Crumb } from "@/components";
  * current one. See components/Breadcrumb.
  */
 export const PURCHASING_CRUMBS = {
-  hub: { label: "Purchasing", href: "/dashboard/purchasing" },
+  hub: { label: "Pembelian", href: "/dashboard/purchasing" },
   suppliers: { label: "Supplier", href: "/dashboard/purchasing/suppliers" },
   supplierCategories: {
     label: "Kategori Supplier",

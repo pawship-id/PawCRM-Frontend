@@ -10,7 +10,7 @@ import {
   NAV_SECTIONS,
   filterNavSections,
   isActive,
-  isActiveHref,
+  isActiveChild,
   type NavChild,
   type NavItem,
 } from "../nav";
@@ -312,7 +312,7 @@ function SubLink({
   pathname: string;
   onNavigate: () => void;
 }) {
-  const active = isActiveHref(child.href, pathname, child.exact);
+  const active = isActiveChild(child, pathname);
   return (
     <Link
       href={child.href}

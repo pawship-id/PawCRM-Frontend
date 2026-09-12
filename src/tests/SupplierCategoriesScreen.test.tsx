@@ -9,6 +9,17 @@ import type { PageResult, SupplierCategory } from "@/types/api";
 
 jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn() }) }));
 
+/**
+ * The module header — the title and the six-tab row — is reduced to the one
+ * thing this screen puts INTO it: its headline figure, where it has one. The
+ * tab row needs a router this suite has no reason to stand up, and the header's
+ * own behaviour has its own suite (PurchasingModuleHeader.test.tsx).
+ */
+jest.mock("@/features/purchasing/components/PurchasingModuleHeader", () => ({
+  PurchasingModuleHeader: ({ action }: { action?: React.ReactNode }) =>
+    action ?? null,
+}));
+
 // Mutations fire a SweetAlert2 toast on success; mock the library so no real
 // dialog is created during the test.
 jest.mock("sweetalert2", () => ({

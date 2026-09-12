@@ -40,7 +40,7 @@ Three things come back beside the joined pair, and each is separate for a reason
 | | What | Why not folded in |
 | --- | --- | --- |
 | `otherCharges[]` | ongkir, packaging | The invoice shape has no field for them, and dropping them leaves a total the rows above do not add up to. **Itemised** — "biaya lain Rp 25.000" explains nothing to the customer who paid it |
-| `posSettlement` | how the counter settled it | Rendered in its own **"Pembayaran di kasir"** card, read-only |
+| `posSettlement` | how the counter settled it | **No card of its own** — the "Pembayaran di kasir" card was removed on request (11 Sep 2026). A part-paid sale still shows the split in the recap ("Dibayar di kasir" · "Sisa jadi piutang") |
 | `items[].dpp` / `.tax` | null on every till line | The tax allocation is decided across every line at once, so `Σ round(part) ≠ round(Σ)` and one line cannot reproduce its own share. The table shows nothing rather than a number it made up |
 
 **Why the settlement is not in "Riwayat pembayaran".** That list means "money
@@ -307,10 +307,40 @@ invoice, so the response is handed straight to `applyInvoice`: it is the exact
 document the write produced rather than whatever a second read happens to see,
 and it costs one round trip instead of two.
 
+## The payment gets its own number
+
+Since September 2026, `POST /:id/payments` also draws `PMT-2026-0001` from a
+`customerPayment` counter series and stores it as `paymentNumber` on the row —
+`paymentId` stays the key (the ledger's idempotency, and what a link is built
+from); the number is the label a shop reads back to a customer or writes on a
+bank reconciliation sheet, the same split every other numbered document here
+keeps.
+
+**Allocated last of everything that can fail** — after the journal entry has
+posted, right before the document write — mirroring how an invoice's own
+number is taken last when one is raised. Yearly reset, no branch qualifier:
+unlike an invoice's number, a payment is filed against the INVOICE it settles
+rather than looked up by branch on its own.
+
+**`null` on every payment recorded before the series existed.** Nothing
+backfills one — inventing a reference for a payment already reconciled under
+none would print something nobody ever quoted. Every screen that shows it
+falls back: the payment's page heads with the amount instead, the kwitansi
+says nothing where the number would go, and the timeline row drops the label.
+`paymentTitle()` in `features/sales/paymentLabels.ts` is the one place that
+fallback is decided.
+
+**Shows up in four places**, all reading the same field: the payment's own
+page (heading + a "No. pembayaran" row), the invoice's Riwayat pembayaran
+timeline (above the amount), the kwitansi (beside the KWITANSI heading), and
+the activity log's "Pembayaran dicatat" / "Pembayaran dibatalkan" entries
+(leading the line, from the audit trail's own `metadata.paymentNumber`).
+
 ## Cancelling a payment
 
-A wrong payment is **cancelled**, not deleted or edited. `Batalkan` on the row
-opens a dialog asking for a reason, and the write:
+A wrong payment is **cancelled**, not deleted or edited. **Batalkan pembayaran**
+on the payment's own page (a row of Riwayat pembayaran opens it) asks for a
+reason, and the write:
 
 - posts a **reversing journal entry** against the one the payment made;
 - marks the row `voidedAt` with who, why, and the reversal's id;
@@ -375,49 +405,74 @@ When the number cannot be resolved (an entry removed by a repair script) the id
 comes back as the label. A poor label, but a blank space where a ledger reference
 belongs is worse, and the link still works.
 
-## No update, no delete, and no way to EDIT a payment
+## Editing an invoice — and still no way to edit a payment
 
-The service has five methods because the API has five endpoints. There is no
-`PATCH`, no `DELETE` and no way to remove or edit a payment: every payment posts
-an immutable journal entry, so changing an amount would restate cash already
-reported and deleting a row would leave the ledger pointing at a document nobody
-can look up. Cancelling (above) is the correction, and it obeys the same rule.
+**A payment is never edited.** It posts an immutable journal entry the moment it
+is recorded, so changing an amount would restate cash already reported.
+Cancelling (above) is the correction.
 
-### Correcting a wrong payment — read the caveat
+**An unpaid, hand-raised invoice CAN be edited** since September 2026 —
+`PATCH /api/customer-invoices/:id`, behind **Ubah rincian** on the Rincian card.
+It does not bend the rule above: the server reverses the live revision's two
+entries and its stock, then issues the revised lines as a new revision, in one
+transaction. Nothing posted changes in place.
 
-The correction is **reversing that payment's journal entry** in Keuangan, which is
-why every row in the history shows its `journalEntryId`. But reversing corrects
-the **books**, not this document: nothing on the backend restores `paidAmount` or
-`status`, so an invoice whose payment was reversed still reads as paid here. The
-footnote under the history says exactly that, and deliberately does not offer
-"batalkan pembayaran" — which would be a lie about what the available action does.
+- **Offered exactly where the server accepts it:** `source: manual`, `status:
+  unpaid`, no active payment, and `customerInvoices:update`. The card's
+  description says which lock applies otherwise.
+- **Prices do not move.** A kept line is sent as `fromIndex` and keeps the price
+  it was billed at; an added line takes the catalogue's. No price input exists.
+- **Customer, branch and date do not move** — the number series and the credit
+  check are bound to them.
+- **Saving an unchanged editor sends nothing.** A save reverses and re-issues two
+  entries whether or not anything changed.
+- **Lookups load on Ubah rincian**, not on every visit: the catalogue, the tax
+  rule and the customer's animals are three requests nobody reading needs.
 
-## What the detail screen does not show
+## What the detail screen shows — `buloo-invoice-detail-v5`
 
-**Line items.** `customerinvoices` stores a total, not an `items[]` — the sale
-that raised it has the lines. They arrive with PCR-030, when an invoice can be
-raised by hand and has lines of its own to store. Until then the screen shows what
-the document actually holds rather than joining a POS transaction to fake them.
+| Where | What |
+| --- | --- |
+| Header | Number, status, customer · branch · source; **Cetak**, **WhatsApp** — a chat with the customer's number carrying the bill's figures and a link to `/faktur/:token`, the customer's own copy with no login (no link on an invoice that has no token yet; disabled with a reason when there is no number, absent on a cancelled invoice), ⋮ **Batalkan faktur** — always clickable; while a payment still counts the dialog lists the active payments, each linked to the page where it is cancelled, instead of the reason form |
+| Left | **Rincian faktur** — info grid, lines grouped per animal (species + booking chip), Pajak column ("PPN 11%" when the rate was frozen), recap with DPP/PPN under a dashed rule; ⋮ **Lihat jurnal**. Then Jadwal & pengerjaan |
+| Right (sticky) | Status pembayaran, **Riwayat pembayaran** (each row opens the payment's page), Dampak stok, Piutang pelanggan |
+| Foot | **Riwayat aktivitas**, folded, with the entry count on the fold — read with the page so the count is known; no badge while loading or after a failed read |
+
+**One payment has its own page** — `/dashboard/sales/[id]/payments/[paymentId]`,
+read-only: its channel, amount, date, reference and journal entry, with
+**Kwitansi** and **Batalkan pembayaran**.
 
 ## Files
 
 | Path                                                     | What                              |
 | -------------------------------------------------------- | --------------------------------- |
-| `services/customerInvoice.service.ts`                     | The four API calls                |
+| `services/customerInvoice.service.ts`                     | The API calls, incl. `update` and `activity` |
 | `features/sales/hooks/useCustomerInvoices.ts`             | List query state + the view lens  |
 | `features/sales/hooks/useCustomerInvoice.ts`              | One invoice, with `notFound`      |
+| `features/sales/hooks/useInvoiceActivity.ts`              | The activity log, read when opened |
 | `features/sales/hooks/useReceivableFilterOptions.ts`      | Customers + branches for the panel |
 | `features/sales/components/ReceivablesScreen.tsx`         | List + headline figures           |
 | `features/sales/components/ReceivablesToolbar.tsx`        | Pills + search + filter panel     |
 | `features/sales/components/ReceivablesTable.tsx`          | The rows                          |
 | `features/sales/components/InvoiceDetail.tsx`             | One invoice                       |
+| `features/sales/components/InvoiceItemsTable.tsx`         | Lines per animal + recap          |
+| `features/sales/components/InvoiceEditor.tsx`             | Editing an unpaid invoice         |
+| `features/sales/components/InvoiceJournalDialog.tsx`      | The postings, behind ⋮            |
+| `features/sales/paymentLabels.ts`                          | Channel + number labels, one place |
+| `features/sales/components/InvoicePaymentTimeline.tsx`    | What has arrived, active or not   |
+| `features/sales/components/InvoiceActivityCard.tsx`       | Riwayat aktivitas                 |
+| `features/sales/components/InvoicePaymentDetail.tsx`      | One payment's page                |
+| `features/sales/components/PublicInvoiceScreen.tsx`       | `/faktur/:token` — the customer's copy, no login |
 | `features/sales/components/RecordPaymentForm.tsx`         | The payment                       |
-| `features/sales/components/PaymentHistory.tsx`            | What has arrived, active or not   |
 | `features/sales/components/VoidPaymentDialog.tsx`         | Cancelling one                    |
 | `features/sales/components/PaymentReceipt.tsx`            | The kwitansi sheet                |
 | `features/sales/components/PaymentReceiptDialog.tsx`      | Preview + print                   |
 | `features/sales/components/InvoiceStatusBadge.tsx`        | Status + source chips             |
-| `tests/ReceivablesScreens.test.tsx`                       | 48 tests over both screens        |
+| `tests/ReceivablesScreens.test.tsx`                       | Both screens                      |
+| `tests/InvoicePaymentDetail.test.tsx`                     | The payment page, kwitansi, cancelling |
+| `tests/PublicInvoiceScreen.test.tsx`                      | The public faktur page            |
+| `tests/InvoiceEditor.test.tsx`                            | The editor                        |
+| `tests/InvoiceJournalDialog.test.tsx`                     | The postings                      |
 
 `PageHeading` is imported from `@/features/purchasing` rather than copied — it is
 on the migration list to be promoted to `@/components` (ui-rules §15), and a

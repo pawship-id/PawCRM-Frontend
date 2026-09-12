@@ -31,3 +31,32 @@ export function expiresWithin(date: string | null, days: number): boolean {
   if (!date) return false;
   return daysUntil(date) <= days;
 }
+
+/**
+ * A date as the API's `YYYY-MM-DD`, read from LOCAL parts.
+ *
+ * NEVER `toISOString().slice(0, 10)`, which is the obvious one-liner and is
+ * wrong east of Greenwich: a shop in WIB asking "what expires today" before
+ * 07:00 would send yesterday, and on the first of a month, last month. The
+ * fields these bound (`expiryDate`, `entryDate`, `opnameDate`) are plain
+ * calendar days with no timezone of their own, so the browser's own calendar is
+ * the right one to read them from.
+ */
+export function isoDate(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/**
+ * The calendar day `days` from now, as `YYYY-MM-DD`. Negative goes backwards.
+ *
+ * Reads the clock, so it lives here beside the other impure helpers rather than
+ * inline in a render body — see the note at the top of this file. Day arithmetic
+ * goes through the Date constructor rather than adding milliseconds, so the two
+ * days a year that are 23 or 25 hours long cannot shift the answer.
+ */
+export function isoDaysFromToday(days: number, from = new Date()): string {
+  return isoDate(
+    new Date(from.getFullYear(), from.getMonth(), from.getDate() + days),
+  );
+}

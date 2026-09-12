@@ -5,7 +5,7 @@ import { CustomerCreateForm } from "@/features/customers";
 import { RequirePermission } from "@/features/permissions";
 
 export const metadata: Metadata = {
-  title: "New customer · Master Data · Buloo",
+  title: "Pelanggan baru · Pelanggan · Buloo",
 };
 
 export default function NewCustomerPage() {

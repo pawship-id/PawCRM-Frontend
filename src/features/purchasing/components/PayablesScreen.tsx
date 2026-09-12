@@ -8,9 +8,8 @@ import { purchaseInvoiceService } from "@/services/purchaseInvoice.service";
 import { formatMoney } from "@/utils/decimal";
 import type { SupplierOutstandingSummary } from "@/types/api";
 
-import { PURCHASING_CRUMBS } from "../crumbs";
 import { usePurchaseInvoices } from "../hooks/usePurchaseInvoices";
-import { PageHeading } from "./PageHeading";
+import { PurchasingModuleHeader } from "./PurchasingModuleHeader";
 import { PayablesTable } from "./PayablesTable";
 import { PayablesToolbar } from "./PayablesToolbar";
 
@@ -72,38 +71,35 @@ export function PayablesScreen() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <PageHeading
-          crumbs={[PURCHASING_CRUMBS.hub, { label: "Faktur Pembelian" }]}
-          title="Faktur Pembelian"
-        >
-          Utang tercatat otomatis saat penerimaan beli putus diposting. Faktur
-          dari supplier dicatat terpisah — itu yang membawa nomor tagihan dan
-          tanggal jatuh temponya. Pembayaran boleh dicicil sampai lunas.
-        </PageHeading>
-
-        {/* Wide: a right-aligned figure beside the heading. Phone: the two have
-            wrapped onto separate lines, and a shrink-to-fit box sitting at the
-            left edge of an empty row reads as a stray caption — so it takes the
-            whole width and puts the label and the number at opposite ends of
-            one line, which is how a total is read everywhere else. The
-            qualifier stays under both, where it belongs to the pair. */}
-        <div className="max-sm:w-full sm:text-right">
-          <div className="flex items-baseline gap-3 max-sm:justify-between sm:block">
-            <p className="text-xs font-medium tracking-wide text-muted uppercase">
-              Total sisa utang
-            </p>
-            <p className="text-lg font-semibold tabular-nums">
-              {summary === null ? "—" : formatMoney(summary.totalOutstanding)}
+      {/* The headline figure rides in the header's action slot, which is where
+          it already sat — beside the title, at the top right. */}
+      <PurchasingModuleHeader
+        action={
+          <div className="max-sm:w-full sm:text-right">
+            <div className="flex items-baseline gap-3 max-sm:justify-between sm:block">
+              <p className="text-xs font-medium tracking-wide text-muted uppercase">
+                Total sisa utang
+              </p>
+              <p className="text-lg font-semibold tabular-nums">
+                {summary === null ? "—" : formatMoney(summary.totalOutstanding)}
+              </p>
+            </div>
+            <p className="text-xs text-muted">
+              {summary === null
+                ? "seluruh supplier"
+                : `${summary.totalInvoices} faktur belum lunas`}
             </p>
           </div>
-          <p className="text-xs text-muted">
-            {summary === null
-              ? "seluruh supplier"
-              : `${summary.totalInvoices} faktur belum lunas`}
-          </p>
-        </div>
-      </div>
+        }
+      />
+
+      {/* What the module header cannot say, because it is on every tab: what
+          THIS list is. */}
+      <p className="max-w-2xl text-sm text-muted">
+        Utang tercatat otomatis saat penerimaan beli putus diposting. Faktur
+        dari supplier dicatat terpisah — itu yang membawa nomor tagihan dan
+        tanggal jatuh temponya. Pembayaran boleh dicicil sampai lunas.
+      </p>
 
       {overdueCount > 0 && summary && (
         <div className="rounded-lg border border-danger/40 bg-danger/5 px-4 py-3 text-sm">

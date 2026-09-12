@@ -437,6 +437,12 @@ What the bar is *for* survives the change: a document says what it is, what its
 number is, and what can be done with it **at its head** — not in a strip of
 buttons discovered after everything else has been read.
 
+**The one form whose bar has no card: Faktur baru** (`InvoiceCreateForm`).
+Decided 11 September 2026 on request: the page heading already says *Faktur
+baru* and `No. [auto]` added nothing, so the bar there is only Batal and Simpan
+faktur — `FormActionBar` with no `title`. Do not put the card back as a tidy-up,
+and do not drop it from other forms without being asked.
+
 
 **One bar, two buttons, always the same places: Batal (secondary) left, Simpan (primary) right**, in a `sticky top-14 z-10` bar at the top of the form. Not `top-0` — DashboardShell's own header is already there, fixed and 56 px tall.
 

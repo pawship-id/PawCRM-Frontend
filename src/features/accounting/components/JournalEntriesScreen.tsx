@@ -4,7 +4,7 @@ import { Fragment } from "react";
 import Link from "next/link";
 import { RotateCcw } from "lucide-react";
 
-import { Alert, Breadcrumb, Pagination, Spinner } from "@/components";
+import { Alert, Pagination, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -19,6 +19,7 @@ import type { JournalEntry } from "@/types/accounting";
 import { formatMoney, sumDecimals } from "@/utils/decimal";
 
 import { ACCOUNTING_CRUMBS } from "../crumbs";
+import { AccountingModuleHeader } from "./AccountingModuleHeader";
 import { useJournalEntries } from "../hooks/useJournalEntries";
 import { formatDate, formatMonth, sourceLabel, SOURCE_TONE } from "../labels";
 import { JournalEntriesToolbar } from "./JournalEntriesToolbar";
@@ -86,18 +87,16 @@ export function JournalEntriesScreen() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <Breadcrumb items={[ACCOUNTING_CRUMBS.hub, { label: "Jurnal Umum" }]} />
-        <h1 className="mt-1 text-2xl font-extrabold text-foreground">
-          Jurnal Umum
-        </h1>
-        <p className="mt-1 max-w-2xl text-[15px] text-muted">
-          Buku besar tenant. Semua modul — POS, faktur, pembelian, opname —
-          mencatat ke sini, dan laporan laba rugi, neraca serta arus kas dibaca
-          dari daftar ini. Entri yang sudah diposting tidak bisa diubah; koreksi
-          dilakukan dengan jurnal pembalik.
-        </p>
-      </div>
+      <AccountingModuleHeader />
+
+      {/* What the module header cannot say, because it is on every tab: what
+          THIS list is. */}
+      <p className="max-w-2xl text-[15px] text-muted">
+        Buku besar tenant. Semua modul — POS, faktur, pembelian, opname —
+        mencatat ke sini, dan laporan laba rugi, neraca serta arus kas dibaca
+        dari daftar ini. Entri yang sudah diposting tidak bisa diubah; koreksi
+        dilakukan dengan jurnal pembalik.
+      </p>
 
       {error && (
         <Alert variant="error">

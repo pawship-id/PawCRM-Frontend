@@ -302,6 +302,25 @@
     @apply font-display tracking-tight;
   }
 
+  /**
+   * Smooth in-page anchors, opted into per page.
+   *
+   * NOT UNCONDITIONAL ON `html`. `scroll-behavior` belongs to the scrolling box,
+   * and the document's is shared by every route — the App Router resets scroll
+   * to the top on navigation, so making this global would animate a slow glide
+   * up the page on every click in the dashboard. A page with anchors in it sets
+   * the attribute while it is mounted; nothing else pays for it.
+   *
+   * `no-preference`, not the `reduce` block below, because that block only
+   * shortens animations and transitions — a smooth scroll is neither, and
+   * somebody who asked for less motion should get the jump.
+   */
+  @media (prefers-reduced-motion: no-preference) {
+    html[data-smooth-scroll] {
+      scroll-behavior: smooth;
+    }
+  }
+
   /* Honoured globally — don't re-implement it per component. */
   @media (prefers-reduced-motion: reduce) {
     *,

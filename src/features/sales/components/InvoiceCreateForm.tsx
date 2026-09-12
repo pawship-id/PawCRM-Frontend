@@ -473,7 +473,7 @@ export function InvoiceCreateForm() {
       // and a button locked forever is worse than the error that locked it.
       setSaving(false);
       router.push(`${LIST_PATH}/${created._id}`);
-      swalToast(`Faktur ${created.invoiceNumber} diterbitkan.`);
+      swalToast(`Faktur ${created.invoiceNumber} tersimpan.`);
     } catch (error) {
       // 8 seconds, not the default 3 — every refusal here carries an
       // instruction: which branch has no code, which product is short.
@@ -502,13 +502,11 @@ export function InvoiceCreateForm() {
 
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
-      {/* `No. [auto]` sits in the bar, not the grid: the server allocates it on
-          save, so it is not a field anybody fills in — and the first row of a
-          form belongs to what actually needs attention. */}
+      {/* Buttons only, no title card: the page heading already says "Faktur
+          baru", and the number is allocated by the server on save, so the bar
+          has nothing else worth carrying. Decided 11 Sep 2026 — ui-rules §16. */}
       <FormActionBar
-        title="Faktur baru"
-        meta={`No. [auto] · ${lines.length} baris`}
-        submitLabel="Terbitkan faktur"
+        submitLabel="Simpan faktur"
         submitting={saving}
         disabled={blocking !== null}
         blockedReason={blocking ?? undefined}
@@ -886,7 +884,7 @@ export function InvoiceCreateForm() {
 
       <Card
         title="Rekap"
-        description="Dihitung di layar dengan urutan yang sama seperti di server. Angka finalnya ditetapkan saat faktur terbit."
+        description="Dihitung di layar dengan urutan yang sama seperti di server. Angka finalnya ditetapkan saat faktur disimpan."
       >
         <div className="flex flex-col gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
@@ -977,8 +975,8 @@ export function InvoiceCreateForm() {
 
           <p className="text-xs text-muted">
             {lookups.tax.priceIncludesTax
-              ? "Harga katalog sudah termasuk PPN — rincian DPP dan PPN muncul di faktur setelah terbit."
-              : "Rincian DPP-nya muncul di faktur setelah terbit."}
+              ? "Harga katalog sudah termasuk PPN — rincian DPP dan PPN muncul di faktur setelah disimpan."
+              : "Rincian DPP-nya muncul di faktur setelah disimpan."}
           </p>
         </div>
       </Card>
