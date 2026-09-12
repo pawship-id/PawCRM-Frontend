@@ -1008,6 +1008,75 @@ describe("InvoiceDetail", () => {
   });
 });
 
+describe("PaymentHistory — each payment is a cash transaction", () => {
+  const payment = {
+    paymentId: "pay1",
+    paymentNumber: "BBK/CBS/2608/0007",
+    at: "2026-08-20T00:00:00.000Z",
+    amount: "66500.0000",
+    method: "transfer" as const,
+    ref: "TRF/998877",
+    byUserId: "u1",
+    byUserName: "Sari",
+    journalEntryId: "je9",
+    isVoided: false,
+    voidedAt: null,
+  };
+
+  it("shows its number and opens it in Transaksi Keuangan", async () => {
+    asMock(purchaseInvoiceService.getById).mockResolvedValue(
+      detail({
+        paidAmount: "66500.0000",
+        outstandingAmount: "100000.0000",
+        status: "partial",
+        payments: [payment],
+      }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findByText("BBK/CBS/2608/0007")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /Buka di Transaksi Keuangan/ }),
+    ).toHaveAttribute("href", "/dashboard/keuangan/transaksi/pay1");
+  });
+
+  it("marks a cancelled payment and strikes its amount through", async () => {
+    asMock(purchaseInvoiceService.getById).mockResolvedValue(
+      detail({
+        payments: [
+          { ...payment, isVoided: true, voidedAt: "2026-08-21T00:00:00.000Z" },
+        ],
+      }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findByText("dibatalkan")).toBeInTheDocument();
+    expect(
+      screen
+        .getAllByText("Rp 66.500")
+        .some((node) => node.classList.contains("line-through")),
+    ).toBe(true);
+  });
+
+  it("does not link a role that cannot read cash transactions", async () => {
+    asMock(purchaseInvoiceService.getById).mockResolvedValue(
+      detail({ payments: [payment] }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />, {
+      isSuperAdmin: false,
+      permissions: [{ feature: "purchaseInvoices", actions: ["read", "pay"] }],
+    });
+
+    expect(await screen.findByText("BBK/CBS/2608/0007")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /Buka di Transaksi Keuangan/ }),
+    ).not.toBeInTheDocument();
+  });
+});
+
 /* ------------------------------------------------------------ file a bill */
 
 describe("FileInvoiceForm", () => {

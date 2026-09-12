@@ -130,6 +130,13 @@ export type JournalSourceType =
    * classified one way, and either choice is wrong half the time.
    */
   | "commission_payment"
+  /**
+   * An operating expense paid from a channel — a numbered Transaksi Keuangan
+   * document (BKK/BBK), not a hand-written manual entry.
+   */
+  | "expense"
+  /** Money in that is not a sale, recorded the same way. */
+  | "other_income"
   | "manual";
 
 /**

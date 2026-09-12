@@ -12,6 +12,7 @@
  * movement and HPP rows verbatim, so redeclaring them here would be a second
  * definition of the same payload that drifts the first time the gateway changes.
  */
+import type { CashflowType } from "./accounting";
 import type { MediaAsset, PreviewHpp, PreviewMovementRow } from "./inventory";
 
 /**
@@ -1288,6 +1289,12 @@ export interface PosPayment {
   amount: string;
   change: string | null;
   reference: string | null;
+  /**
+   * The numbered cash transaction this line became (BKM/BBM…) — "POS hanya
+   * channel". Absent on a settlement recorded before that existed, and on a
+   * store-credit line, which moves no money.
+   */
+  cashTransactionId?: string | null;
 }
 
 /** Every figure, computed once when the basket settles. Null until then. */
@@ -1821,6 +1828,8 @@ export interface CreateReturnInput {
   items: PosReturnItemInput[];
   refundMethod: "cash" | "store_credit";
   refundChannelId?: string;
+  /** Required by the server when the refund channel `requiresReference`. */
+  refundReference?: string;
   reason: string;
 }
 
@@ -2632,7 +2641,13 @@ export interface MyCommission {
 
 /** The result of paying one groomer what the books say is owed. */
 export interface CommissionPaymentResult {
+  /** The cash transaction's id — `/dashboard/keuangan/transaksi/:paymentId`. */
   paymentId: string;
+  /**
+   * The bukti kas/bank number (`BKK/CBS/2609/0003`) — what the person paid can
+   * write on the slip. Optional only because an older backend did not send it.
+   */
+  number?: string | null;
   journalEntryId: string;
   entryNumber: string;
   groomerUserId: string;
@@ -4382,6 +4397,17 @@ export interface PurchaseInvoicePayment {
   /** Null when that user has been deleted since. */
   byUserName: string | null;
   journalEntryId: string;
+  /**
+   * The bukti kas/bank number (`BBK/CBS/2609/0001`). `paymentId` is the cash
+   * transaction's id, so the row opens `/dashboard/keuangan/transaksi/:id` —
+   * which is where a supplier payment is now changed or cancelled.
+   *
+   * Optional (and null on migrated history) because older payloads lack it.
+   */
+  paymentNumber?: string | null;
+  /** Set when the payment was cancelled. The row stays; it no longer counts. */
+  voidedAt?: string | null;
+  isVoided?: boolean;
 }
 
 /**
@@ -4948,6 +4974,18 @@ export interface CustomerInvoicePayment {
   /** The entry that UNDID it, beside the one that made it. */
   reversalJournalEntryId: string | null;
   reversalJournalEntryNumber: string | null;
+  /**
+   * Where the money was taken — at the till or keyed in the back office.
+   *
+   * Since "POS hanya channel" a till sale carries its payments as rows too, so
+   * a settled cash sale no longer has an empty history. Optional because older
+   * payloads lack it.
+   */
+  recordedVia?: CashTransactionRecordedVia;
+  /** The channel's MDR taken off this payment. "0.0000" on cash and transfer. */
+  mdrAmount?: string;
+  /** How many times it was changed (Fase 5). 0 on an untouched payment. */
+  revisionCount?: number;
 }
 
 /**
@@ -5741,4 +5779,229 @@ export interface RecordCustomerPaymentInput {
   /** Defaults to now. The day the money MOVED, which dates the ledger entry. */
   at?: string;
   ref?: string;
+}
+
+/* ============================================================================
+   Cash transactions — Transaksi Keuangan (/api/cash-transactions)
+   ========================================================================== */
+
+/**
+ * WHAT A MOVEMENT OF MONEY WAS FOR. One collection holds every numbered bukti
+ * kas/bank: receipts against an invoice, payments to a supplier or a groomer,
+ * the till's payments, and the two kinds a person records by hand here —
+ * `expense` and `other_income`.
+ *
+ * `pos_refund` is money handed back on a till return. It is read-only on every
+ * screen: the return owns it.
+ */
+export type CashTransactionKind =
+  | "customer_payment"
+  | "supplier_payment"
+  | "commission_payment"
+  | "expense"
+  | "other_income"
+  | "pos_refund";
+
+export type CashTransactionDirection = "in" | "out";
+
+/** `void` is the API's word; every screen says "dibatalkan". */
+export type CashTransactionStatus = "posted" | "void";
+
+/** Where it was keyed in — the till or the back office. Not a kind. */
+export type CashTransactionRecordedVia = "backoffice" | "pos";
+
+export type CashTransactionSort =
+  | "newest"
+  | "oldest"
+  | "amountHighest"
+  | "amountLowest";
+
+export type CashTransactionDocumentType =
+  | "customer_invoice"
+  | "purchase_invoice"
+  | "pos_return";
+
+/**
+ * One account line of an `expense` / `other_income` — what the money became.
+ * Null `businessLineId` is the shared bucket ("Bersama").
+ */
+export interface CashTransactionLine {
+  accountId: string;
+  accountCode: string | null;
+  accountName: string | null;
+  amount: string;
+  businessLineId: string | null;
+  businessLineName: string | null;
+  memo: string | null;
+}
+
+/**
+ * One edit, kept (Fase 5). `before` is what the transaction said until then;
+ * `journalEntryId` is the entry that was current before the edit and
+ * `reversalJournalEntryId` the entry that undid it.
+ */
+export interface CashTransactionRevision {
+  at: string;
+  by: string | null;
+  byName: string | null;
+  reason: string | null;
+  before: {
+    at: string;
+    amount: string;
+    channelId: string | null;
+    channelName: string | null;
+    ref: string | null;
+    note: string | null;
+  };
+  journalEntryId: string | null;
+  journalEntryNumber: string | null;
+  reversalJournalEntryId: string | null;
+  reversalJournalEntryNumber: string | null;
+}
+
+/**
+ * One numbered movement of money — a SOURCE DOCUMENT, not a second ledger.
+ *
+ * Every one posts a journal entry; changing or cancelling one posts a reversal
+ * and never edits the old entry. Money fields are decimal strings.
+ */
+export interface CashTransaction {
+  _id: string;
+  /**
+   * `BKM/CBS/2609/0001` (cash in) · `BKK/…` (cash out) · `BBM/…` (bank in) ·
+   * `BBK/…` (bank out) · legacy `PMT-2026-0001` · null on migrated history.
+   * NEVER CHANGES ON EDIT, which is why an edit may not move cash ↔ bank.
+   */
+  number: string | null;
+  direction: CashTransactionDirection;
+  kind: CashTransactionKind;
+  recordedVia: CashTransactionRecordedVia;
+  status: CashTransactionStatus;
+  isVoided: boolean;
+  branchId: string;
+  branchName: string | null;
+  at: string;
+  amount: string;
+  /** The channel's MDR. Masuk bersih = `netAmount`. */
+  mdrAmount: string;
+  netAmount: string;
+  /**
+   * At the till only: what the customer handed over and the change given back.
+   * `amount` is what stayed. Null on everything recorded in the back office.
+   */
+  tenderedAmount?: string | null;
+  changeAmount?: string | null;
+  channelId: string | null;
+  channelType: PaymentChannelType | null;
+  channelName: string | null;
+  method: string | null;
+  ref: string | null;
+  note: string | null;
+  document: {
+    type: CashTransactionDocumentType;
+    id: string;
+    number: string | null;
+  } | null;
+  party: {
+    type: "customer" | "supplier" | "user" | null;
+    id: string | null;
+    name: string | null;
+  } | null;
+  commission: {
+    groomerUserId: string;
+    periods: string[];
+    recordCount: number;
+  } | null;
+  /** Only `expense` / `other_income`. */
+  lines: CashTransactionLine[] | null;
+  posTransactionId: string | null;
+  shiftId: string | null;
+  journalEntryId: string | null;
+  journalEntryNumber: string | null;
+  voidedAt: string | null;
+  voidedBy: string | null;
+  voidedByName: string | null;
+  voidReason: string | null;
+  reversalJournalEntryId: string | null;
+  reversalJournalEntryNumber: string | null;
+  revisions: CashTransactionRevision[];
+  /** Migrated history whose journal was not rebuilt — read-only. */
+  legacy: boolean;
+  createdBy: string | null;
+  createdByName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Σ of POSTED transactions over the whole filter, not the page. */
+export interface CashTransactionTotals {
+  in: { amount: string; count: number };
+  out: { amount: string; count: number };
+}
+
+export interface CashTransactionListResponse extends PageResult<CashTransaction> {
+  totals: CashTransactionTotals;
+}
+
+/** GET /api/cash-transactions. `kind` goes out comma-joined. */
+export interface CashTransactionListQuery {
+  page?: number;
+  /** ≤ 100; default 20 server-side. */
+  limit?: number;
+  sort?: CashTransactionSort;
+  dateFrom?: string;
+  dateTo?: string;
+  direction?: CashTransactionDirection;
+  kind?: CashTransactionKind | CashTransactionKind[];
+  branchId?: string;
+  channelId?: string;
+  status?: CashTransactionStatus;
+  partyId?: string;
+  documentType?: CashTransactionDocumentType;
+  documentId?: string;
+  recordedVia?: CashTransactionRecordedVia;
+  shiftId?: string;
+  /** Number, party name, ref, note, document number. */
+  search?: string;
+}
+
+export interface CashTransactionLineInput {
+  accountId: string;
+  amount: string;
+  businessLineId?: string | null;
+  memo?: string;
+}
+
+/** POST /api/cash-transactions — the two kinds a person records by hand. */
+export interface CreateCashTransactionInput {
+  kind: "expense" | "other_income";
+  branchId: string;
+  at?: string;
+  channelId: string;
+  ref?: string;
+  note?: string;
+  partyName?: string;
+  cashflowType?: CashflowType;
+  /** 1–20 lines; their sum is the amount. */
+  lines: CashTransactionLineInput[];
+}
+
+/**
+ * PATCH /api/cash-transactions/:id — at least one of at/amount/channelId/ref/
+ * note/lines. `amount` is refused on expense/other_income (send `lines`), and
+ * `lines` on every other kind.
+ */
+export interface UpdateCashTransactionInput {
+  at?: string;
+  amount?: string;
+  channelId?: string;
+  ref?: string;
+  note?: string;
+  lines?: CashTransactionLineInput[];
+  reason?: string;
+}
+
+/** POST /api/cash-transactions/:id/void — 1–200 chars. */
+export interface CancelCashTransactionInput {
+  reason: string;
 }

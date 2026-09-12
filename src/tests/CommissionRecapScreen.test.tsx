@@ -2,6 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { CommissionRecapScreen } from "@/features/reports";
+import { swalToast } from "@/lib/swal";
 import { branchService } from "@/services/branch.service";
 import { paymentChannelService } from "@/services/paymentChannel.service";
 import { reportService } from "@/services/report.service";
@@ -243,6 +244,70 @@ describe("CommissionRecapScreen — paying a groomer", () => {
       paymentChannelId: "ch-1",
     });
     expect(await screen.findByText(/JE-261005-002/)).toBeInTheDocument();
+  });
+
+  /*
+    EVERY COMMISSION PAYMENT IS A NUMBERED CASH TRANSACTION NOW. The bukti number
+    is what the person paid can write on the slip, so the toast and the panel
+    both carry it beside the journal entry.
+  */
+  it("names the payment's own number in the toast and on screen", async () => {
+    reports.payCommissions.mockResolvedValue({
+      paymentId: "cp-1",
+      number: "BKK/CBS/2610/0003",
+      journalEntryId: "je-2",
+      entryNumber: "JE-261005-002",
+      groomerUserId: "user-1",
+      groomerName: "Sinta",
+      periods: ["2026-09"],
+      amount: "300000.0000",
+      recordCount: 12,
+    });
+
+    await open();
+    await screen.findByText(/12 layanan/);
+    await userEvent.click(screen.getByRole("button", { name: /^bayar$/i }));
+
+    await waitFor(() =>
+      expect(swalToast).toHaveBeenCalledWith(
+        "Pembayaran komisi BKK/CBS/2610/0003 tersimpan — jurnal JE-261005-002.",
+      ),
+    );
+    expect(
+      await screen.findByText(/BKK\/CBS\/2610\/0003/),
+    ).toBeInTheDocument();
+  });
+
+  it("links to the history of commission payments for whoever may read it", async () => {
+    renderWithAuth(<CommissionRecapScreen />, {
+      isSuperAdmin: false,
+      permissions: [
+        ...LEDGER,
+        { feature: "cashTransactions", actions: ["read"] },
+      ] as never,
+    });
+
+    await screen.findByText("Sinta");
+
+    expect(
+      screen.getByRole("link", { name: /Riwayat pembayaran komisi/ }),
+    ).toHaveAttribute(
+      "href",
+      "/dashboard/keuangan/transaksi?kind=commission_payment",
+    );
+  });
+
+  it("offers no history link without cashTransactions:read", async () => {
+    renderWithAuth(<CommissionRecapScreen />, {
+      isSuperAdmin: false,
+      permissions: LEDGER as never,
+    });
+
+    await screen.findByText("Sinta");
+
+    expect(
+      screen.queryByRole("link", { name: /Riwayat pembayaran komisi/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("says to close the month first when nothing is payable", async () => {

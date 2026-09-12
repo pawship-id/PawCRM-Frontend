@@ -458,6 +458,13 @@ function RecentTransactions({
   periodFrom: string;
   periodTo: string;
 }) {
+  const { can } = usePermissions();
+  // Transaksi Keuangan is where "every movement of money" lives now; the ledger
+  // stays the answer for a reader who may see entries but not transactions.
+  const allHref = can("cashTransactions", "read")
+    ? ACCOUNTING_CRUMBS.transactions.href
+    : ACCOUNTING_CRUMBS.journal.href;
+
   return (
     <section className="flex flex-col overflow-hidden rounded-xl border border-border bg-surface">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-5 py-3.5">
@@ -469,7 +476,7 @@ function RecentTransactions({
             : ""}
         </p>
         <Link
-          href={ACCOUNTING_CRUMBS.journal.href}
+          href={allHref}
           className="ml-auto inline-flex items-center gap-1 rounded-md text-sm font-semibold text-primary transition hover:text-primary-hover focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
         >
           Lihat semua
@@ -644,15 +651,15 @@ function TransactionRow({
  * The way into every finance screen that is NOT a tab.
  *
  * IT USED TO BE A COURTESY AND IS NOW THE ROUTE. The rail carried a row for each
- * of these until Keuangan took the mockup's four tabs; Daftar Akun, Laba Rugi,
- * Arus Kas and Lini Bisnis are not among them, and the two homes the mockup
- * gives them — `Pengaturan › Keuangan` and `Laporan` — do not exist yet. So this
- * list is where they live in the meantime, and deleting a card from it now
- * strands a working screen.
+ * of these until Keuangan took the mockup's tabs; Laba Rugi, Arus Kas and Lini
+ * Bisnis are not among them, and the two homes the mockup gives them —
+ * `Pengaturan › Keuangan` and `Laporan` — do not exist yet. So this list is
+ * where they live in the meantime, and deleting a card from it now strands a
+ * working screen.
  *
- * Jurnal Umum stays although it IS a tab: a landing page that describes the
- * ledger and then does not offer it reads as an omission, and the card says
- * something the tab label cannot.
+ * Daftar Akun and Jurnal Umum stay although both ARE tabs: a landing page that
+ * describes the ledger and then does not offer it reads as an omission, and the
+ * card says something the tab label cannot.
  *
  * Each card is gated on the grant its own destination enforces — a role that may
  * not read the ledger is not offered three ways into it.

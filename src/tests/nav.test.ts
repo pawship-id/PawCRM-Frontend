@@ -304,9 +304,9 @@ describe("filterNavItems", () => {
   });
 
   /*
-    KEUANGAN IS ONE ROW WITH THE MOCKUP'S FOUR TABS — Ringkasan, Kas & Bank,
-    Komisi, Jurnal. Four of its seven old rows are not tabs and are NOT deleted:
-    Daftar Akun, Lini Bisnis, Laba Rugi and Arus Kas keep their routes and are
+    KEUANGAN IS ONE ROW WITH ITS TABS — Ringkasan, Transaksi, Kas & Bank,
+    Komisi, Daftar Akun, Jurnal. Three of its seven old rows are not tabs and are
+    NOT deleted: Lini Bisnis, Laba Rugi and Arus Kas keep their routes and are
     reached from the Ringkasan tab's card list until `Pengaturan › Keuangan` and
     `Laporan` are built.
   */
@@ -328,6 +328,16 @@ describe("filterNavItems", () => {
     expect(itemsOf(onlyJournal).find((i) => i.label === "Keuangan")).toBeDefined();
     expect(
       itemsOf(onlyChannels).find((i) => i.label === "Keuangan"),
+    ).toBeDefined();
+  });
+
+  it("shows Keuangan on the chart-of-accounts grant alone", () => {
+    // Daftar Akun is a tab, so the role that may read it needs the way in.
+    const onlyAccounts: CanFn = (feature, action) =>
+      feature === "chartOfAccounts" && action === "read";
+
+    expect(
+      itemsOf(onlyAccounts).find((i) => i.label === "Keuangan"),
     ).toBeDefined();
   });
 

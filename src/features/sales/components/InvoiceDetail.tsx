@@ -530,9 +530,11 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
           </Card>
 
           {/*
-            HIDDEN ON A SETTLED TILL SALE WITH NOTHING COLLECTED SINCE: "belum ada
-            pembayaran" beside a status reading Lunas would contradict it — the
-            counter took the money, and there is nothing left to collect.
+            HIDDEN ON A SETTLED TILL SALE WITH NO PAYMENT ROWS: "belum ada
+            pembayaran" beside a status reading Lunas would contradict it. Since
+            "POS hanya channel" a till sale settled at the counter HAS rows
+            (`recordedVia: "pos"`), so this only still bites on sales settled
+            before then, whose counter money never became rows.
           */}
           {!(invoice.posSettlement && payments.length === 0 && settled) && (
             <InvoicePaymentTimeline invoiceId={invoiceId} payments={payments} />

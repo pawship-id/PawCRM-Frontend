@@ -119,6 +119,12 @@ export const PERMISSION_CATALOG = {
    * it posted still has a document behind it.
    */
   customerInvoices: ["create", "read", "update", "pay", "void"],
+  /**
+   * Transaksi Keuangan — every numbered movement of money. `create` records an
+   * expense or other income; `update` and `void` correct and cancel any payment,
+   * and are supervisory.
+   */
+  cashTransactions: ["read", "create", "update", "void"],
   chartOfAccounts: ["create", "read", "update", "delete", "restore"],
   // A posted journal entry is immutable: no delete, no restore. `reverse` is
   // its own action because correcting the ledger is a different privilege from

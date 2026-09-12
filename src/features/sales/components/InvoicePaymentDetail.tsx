@@ -2,10 +2,14 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Printer, Undo2 } from "lucide-react";
+import { Pencil, Printer, Undo2 } from "lucide-react";
 
-import { Alert, Card, Spinner } from "@/components";
+import { Alert, Card, JournalLink, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
+import {
+  CashTransactionEditDialog,
+  cashTransactionHref,
+} from "@/features/cash-transactions";
 import { Can, usePermissions } from "@/features/permissions";
 import { PageHeading } from "@/features/purchasing";
 import { cn } from "@/lib/utils";
@@ -14,7 +18,6 @@ import { formatMoney } from "@/utils/decimal";
 import { SALES_CRUMBS } from "../crumbs";
 import { useCustomerInvoice } from "../hooks/useCustomerInvoice";
 import { paymentChannelLabel, paymentTitle } from "../paymentLabels";
-import { JournalLink } from "./JournalLink";
 import { PaymentReceiptDialog } from "./PaymentReceiptDialog";
 import { VoidPaymentDialog } from "./VoidPaymentDialog";
 
@@ -31,19 +34,20 @@ function formatDate(iso: string | null): string {
 /**
  * ONE PAYMENT, on a page of its own — the mockup's "Detail Pembayaran".
  *
- * READ-ONLY, AND THAT IS THE DECISION, not a gap. The mockup lets the amount and
- * the channel be edited here; a payment posts an immutable journal entry the
- * moment it is recorded, so changing either would restate cash that may already
- * sit on a closed bank statement. What this page offers instead is the
- * correction the ledger allows — cancel it, which posts a reversal — and the
- * receipt somebody came to reprint.
+ * EDITABLE SINCE D4 (11 Sep 2026), and the edit is not a rewrite. "Ubah
+ * pembayaran" opens the same dialog Transaksi Keuangan uses — `paymentId` IS the
+ * cash transaction's id — which reverses the payment's journal entry and posts a
+ * new one under the SAME number. The earlier version stays in the transaction's
+ * Riwayat perubahan, so a figure already on a bank statement never becomes
+ * untraceable. Cancelling stays here too, through the invoice's own route.
  *
  * A URL, NOT A DIALOG, for the same reason the print sheet has one: "send me the
  * link to that transfer" is an ordinary request, and a dialog cannot be linked
  * to or opened in a second tab beside the bank statement it is checked against.
  *
  * ONE REQUEST — the invoice, which already carries its payments with every label
- * resolved. A payment has no document of its own to fetch.
+ * resolved. After an edit the invoice is read again: the paid amount and status
+ * may have moved with it.
  */
 export function InvoicePaymentDetail({
   invoiceId,
@@ -56,6 +60,7 @@ export function InvoicePaymentDetail({
     useCustomerInvoice(invoiceId);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [voidOpen, setVoidOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const { can } = usePermissions();
   const mayReadLedger = can("journalEntries", "read");
   const invoiceHref = `/dashboard/sales/${invoiceId}`;
@@ -111,11 +116,11 @@ export function InvoicePaymentDetail({
   }
 
   /*
-    CANCELLABLE ONLY WHILE IT COUNTS, and never on a cancelled invoice — voiding
-    the invoice already required every payment on it to be cancelled first, so
-    there is nothing left to undo there.
+    CANCELLABLE AND EDITABLE ONLY WHILE IT COUNTS, and never on a cancelled
+    invoice — voiding the invoice already required every payment on it to be
+    cancelled first, so there is nothing left to change there.
   */
-  const cancellable = !payment.isVoided && invoice.status !== "void";
+  const changeable = !payment.isVoided && invoice.status !== "void";
 
   return (
     <div className="flex flex-col gap-6">
@@ -130,6 +135,15 @@ export function InvoicePaymentDetail({
         >
           {formatMoney(payment.amount)} · Dicatat oleh{" "}
           {payment.byUserName ?? "pengguna terhapus"} · {formatDate(payment.at)}
+          {payment.recordedVia && (
+            <>
+              {" "}
+              ·{" "}
+              {payment.recordedVia === "pos"
+                ? "Dicatat di kasir"
+                : "Dicatat di back office"}
+            </>
+          )}
         </PageHeading>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -154,7 +168,20 @@ export function InvoicePaymentDetail({
             <Printer className="size-4" />
             Kwitansi
           </Button>
-          {cancellable && (
+          {changeable && (
+            <Can feature="cashTransactions" action="update">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setEditOpen(true)}
+              >
+                <Pencil className="size-4" />
+                Ubah pembayaran
+              </Button>
+            </Can>
+          )}
+          {changeable && (
             <Can feature="customerInvoices" action="void">
               <Button
                 type="button"
@@ -172,7 +199,7 @@ export function InvoicePaymentDetail({
 
       <Card
         title="Rincian pembayaran"
-        description="Pembayaran tidak bisa diubah. Yang salah dibatalkan — sistem memposting jurnal pembalik dan sisa tagihan fakturnya naik kembali — lalu dicatat ulang dari faktur."
+        description="Yang salah bisa diubah — nomornya tetap, jurnalnya dibalik lalu diposting ulang — atau dibatalkan, dan sisa tagihan fakturnya ikut menyesuaikan."
       >
         <dl className="grid grid-cols-1 gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
           <Field label="No. pembayaran">
@@ -242,6 +269,18 @@ export function InvoicePaymentDetail({
             )}
           </div>
         )}
+
+        {/* Where its revisions, MDR and both journal entries are laid out. */}
+        <Can feature="cashTransactions" action="read">
+          <p className="mt-5 text-sm">
+            <Link
+              href={cashTransactionHref(payment.paymentId)}
+              className="rounded-md font-semibold text-primary underline-offset-4 hover:text-primary-hover hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
+              Lihat di Transaksi Keuangan →
+            </Link>
+          </p>
+        </Can>
       </Card>
 
       <Card title="Faktur ini sekarang">
@@ -275,6 +314,16 @@ export function InvoicePaymentDetail({
         payment={voidOpen ? payment : null}
         onClose={() => setVoidOpen(false)}
         onVoided={applyInvoice}
+      />
+
+      {/* Loads the transaction itself — the invoice row lacks its channel type
+          and revisions — and re-reads the invoice after, since the paid amount
+          may have moved with the edit. */}
+      <CashTransactionEditDialog
+        open={editOpen}
+        transactionId={editOpen ? payment.paymentId : null}
+        onClose={() => setEditOpen(false)}
+        onSaved={() => refetch()}
       />
     </div>
   );
