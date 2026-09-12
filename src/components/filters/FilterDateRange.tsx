@@ -13,6 +13,10 @@ import { cn } from "@/lib/utils";
 import { formatRangeShort } from "./codecs";
 import { FilterField } from "./FilterField";
 import { FilterTrigger } from "./FilterTrigger";
+import {
+  CLEAR_OF_SHELL_HEADER,
+  useCloseBehindShellHeader,
+} from "./popoverPlacement";
 
 /**
  * A date range, rendered as `Tanggal: 1 Ags–14 Ags ⌄`.
@@ -111,6 +115,7 @@ export function FilterDateRange({
   className,
 }: FilterDateRangeProps) {
   const [open, setOpen] = React.useState(false);
+  const triggerRef = useCloseBehindShellHeader(open, setOpen);
   const [draft, setDraft] = React.useState({ from, to });
 
   function onOpenChange(next: boolean) {
@@ -128,8 +133,7 @@ export function FilterDateRange({
     <div className="space-y-3">
       <div className="flex flex-wrap gap-1.5">
         {chips.map((preset) => {
-          const picked =
-            value.from === preset.from && value.to === preset.to;
+          const picked = value.from === preset.from && value.to === preset.to;
           return (
             <button
               key={preset.label}
@@ -167,9 +171,7 @@ export function FilterDateRange({
             type="date"
             value={value.to}
             min={value.from || undefined}
-            onChange={(event) =>
-              onChange({ ...value, to: event.target.value })
-            }
+            onChange={(event) => onChange({ ...value, to: event.target.value })}
             aria-label={`${ariaLabel ?? label} sampai`}
             className="h-10 w-full rounded-md border border-border bg-surface px-2.5 text-sm outline-none focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50"
           />
@@ -193,6 +195,7 @@ export function FilterDateRange({
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
         <FilterTrigger
+          ref={triggerRef}
           label={label}
           value={active ? formatRangeShort(from, to) : "Semua"}
           active={active}
@@ -203,7 +206,11 @@ export function FilterDateRange({
         />
       </PopoverTrigger>
 
-      <PopoverContent align={align} className="w-80 p-0">
+      <PopoverContent
+        align={align}
+        {...CLEAR_OF_SHELL_HEADER}
+        className="w-80 p-0"
+      >
         <div className="p-3.5">{body(draft, setDraft)}</div>
 
         <div className="flex items-center justify-between border-t border-border bg-background px-3 py-2.5">

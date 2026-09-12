@@ -1,4 +1,10 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Swal from "sweetalert2";
 
@@ -87,11 +93,9 @@ function mockLookups(overrides: { warehouses?: unknown[] } = {}) {
   jest
     .spyOn(petService, "list")
     .mockResolvedValue(page([{ _id: "pet1", name: "Miko" }]) as never);
-  jest
-    .spyOn(tenantService, "me")
-    .mockResolvedValue({
-      settings: { taxRate: 11, priceIncludesTax: true },
-    } as never);
+  jest.spyOn(tenantService, "me").mockResolvedValue({
+    settings: { taxRate: 11, priceIncludesTax: true },
+  } as never);
 }
 
 /**
@@ -106,13 +110,30 @@ async function pick(field: RegExp, option: RegExp) {
   await userEvent.click(await screen.findByRole("option", { name: option }));
 }
 
+/**
+ * Opens "+ Tambah barang atau jasa", ticks one item on the tab it lives on, and
+ * adds it — the same dialog the stock documents open.
+ */
+async function addItem(name: RegExp, tab: "Barang" | "Jasa" = "Barang") {
+  await userEvent.click(
+    screen.getByRole("button", { name: /tambah barang atau jasa/i }),
+  );
+  const dialog = await screen.findByRole("dialog");
+  if (tab === "Jasa") {
+    await userEvent.click(within(dialog).getByRole("tab", { name: /^Jasa/ }));
+  }
+  await userEvent.click(await within(dialog).findByRole("checkbox", { name }));
+  await userEvent.click(
+    within(dialog).getByRole("button", { name: /^tambahkan/i }),
+  );
+}
+
 /** Fills the header and adds one product line — the shortest valid invoice. */
 async function fillMinimal() {
   await pick(/^Pelanggan$/i, /Bu Sari/);
   await pick(/^Cabang$/i, /Cabang Pusat/);
   await pick(/^Gudang$/i, /Gudang Pusat/);
-  await pick(/tambah barang atau jasa/i, /Kalung Nylon/);
-  await userEvent.click(screen.getByRole("button", { name: /tambah baris/i }));
+  await addItem(/Kalung Nylon/);
 }
 
 const submit = () =>
@@ -125,15 +146,184 @@ beforeEach(() => {
   push.mockClear();
   (Swal.fire as jest.Mock).mockClear();
   mockLookups();
-  jest
-    .spyOn(customerInvoiceService, "create")
-    .mockResolvedValue({
-      _id: "inv1",
-      invoiceNumber: "INV/PST/2608/0001",
-    } as never);
+  jest.spyOn(customerInvoiceService, "create").mockResolvedValue({
+    _id: "inv1",
+    invoiceNumber: "INV/PST/2608/0001",
+  } as never);
 });
 
 afterEach(() => jest.restoreAllMocks());
+
+/**
+ * The header's customer picker, as the mockup draws it: the phone beside each
+ * name, so two customers called Budi can be told apart before one is billed.
+ */
+describe("the customer picker", () => {
+  beforeEach(() => {
+    jest.spyOn(customerService, "list").mockResolvedValue(
+      page([
+        { _id: "c1", name: "Budi Santoso", phone: "0812-1000-16" },
+        { _id: "c2", name: "Budi Wijaya", phone: "0812-1000-17" },
+      ]) as never,
+    );
+  });
+
+  it("shows each phone, finds a customer by it, and keeps it on the trigger", async () => {
+    render(<InvoiceCreateForm />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /^Pelanggan$/i }),
+    );
+    expect(
+      screen.getByRole("option", { name: /Budi Santoso.*0812-1000-16/ }),
+    ).toBeInTheDocument();
+
+    await userEvent.type(
+      screen.getByRole("textbox", { name: /cari pelanggan/i }),
+      "1000-17",
+    );
+    expect(
+      screen.queryByRole("option", { name: /Budi Santoso/ }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("option", { name: /Budi Wijaya/ }));
+    expect(
+      screen.getByRole("button", { name: /^Pelanggan$/i }),
+    ).toHaveTextContent("Budi Wijaya — 0812-1000-17");
+  });
+
+  /*
+    OPEN, THEN SCROLLED UNTIL THE TRIGGER IS BEHIND DashboardShell's HEADER.
+    The list hangs below the trigger, so from there on it could only be painted
+    over the navbar — it closes instead. jsdom has no layout, so the trigger's
+    position is supplied.
+  */
+  it("closes once the page scrolls its trigger behind the header", async () => {
+    render(<InvoiceCreateForm />);
+
+    const trigger = await screen.findByRole("button", {
+      name: /^Pelanggan$/i,
+    });
+    await userEvent.click(trigger);
+    const rect = jest.spyOn(trigger, "getBoundingClientRect");
+
+    // Still clear of the 56px header: a scroll leaves it open.
+    rect.mockReturnValue({ top: 100, bottom: 144 } as DOMRect);
+    fireEvent.scroll(document);
+    expect(
+      screen.getByRole("option", { name: /Budi Santoso/ }),
+    ).toBeInTheDocument();
+
+    rect.mockReturnValue({ top: 0, bottom: 44 } as DOMRect);
+    fireEvent.scroll(document);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("option", { name: /Budi Santoso/ }),
+      ).not.toBeInTheDocument(),
+    );
+  });
+});
+
+/**
+ * "+ Tambah barang atau jasa" — the dialog the stock documents already open,
+ * with a Jasa tab beside the product picker.
+ */
+/**
+ * The Pajak column beside Diskon — each line's slice of the invoice's PPN, drawn
+ * as the detail page draws it. The lookups here charge 11%, inclusive.
+ */
+describe("the tax column", () => {
+  it("shows the rate and the tax carried inside an inclusive price", async () => {
+    render(<InvoiceCreateForm />);
+    await fillMinimal();
+
+    expect(
+      screen.getByRole("columnheader", { name: "Pajak" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("PPN 11%")).toBeInTheDocument();
+    expect(screen.getByText(/^termasuk /)).toBeInTheDocument();
+  });
+
+  it("reads Non-PPN when the tenant charges no tax", async () => {
+    jest.spyOn(tenantService, "me").mockResolvedValue({
+      settings: { taxRate: 0, priceIncludesTax: true },
+    } as never);
+
+    render(<InvoiceCreateForm />);
+    await fillMinimal();
+
+    expect(screen.getByText("Non-PPN")).toBeInTheDocument();
+    expect(screen.queryByText(/^PPN /)).not.toBeInTheDocument();
+  });
+});
+
+describe("adding lines through the dialog", () => {
+  it("adds a product and a service in one pass", async () => {
+    render(<InvoiceCreateForm />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /tambah barang atau jasa/i }),
+    );
+    const dialog = await screen.findByRole("dialog");
+
+    await userEvent.click(
+      await within(dialog).findByRole("checkbox", { name: /Kalung Nylon/ }),
+    );
+    await userEvent.click(within(dialog).getByRole("tab", { name: /^Jasa/ }));
+    await userEvent.click(
+      within(dialog).getByRole("checkbox", { name: /Grooming/ }),
+    );
+
+    // Ticks on the other tab are kept, and counted on it.
+    expect(
+      within(dialog).getByRole("tab", { name: "Barang (1)" }),
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Tambahkan 2 item" }),
+    );
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Hapus Kalung Nylon/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Hapus Grooming/ }),
+    ).toBeInTheDocument();
+  });
+
+  /*
+    A SECOND ROW OF ONE PRODUCT is a quantity somebody meant to type, so it is
+    not offered again — as on every stock document. A SERVICE is: two cats get
+    two groomings.
+  */
+  it("hides a product already on the bill but offers a service again", async () => {
+    render(<InvoiceCreateForm />);
+    await screen.findByRole("button", { name: /tambah barang atau jasa/i });
+
+    await addItem(/Kalung Nylon/);
+    await addItem(/Grooming/, "Jasa");
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /tambah barang atau jasa/i }),
+    );
+    const dialog = await screen.findByRole("dialog");
+
+    expect(
+      await within(dialog).findByText(
+        /semua produk yang cocok sudah ditambahkan/i,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole("checkbox", { name: /Kalung Nylon/ }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(within(dialog).getByRole("tab", { name: /^Jasa/ }));
+    expect(
+      within(dialog).getByRole("checkbox", { name: /Grooming/ }),
+    ).toBeInTheDocument();
+  });
+});
 
 /**
  * PCR-035 — a service line can name the animal it is for.
@@ -148,10 +338,7 @@ describe("the animal a service is for", () => {
   async function fillService() {
     await pick(/^Pelanggan$/i, /Bu Sari/);
     await pick(/^Cabang$/i, /Cabang Pusat/);
-    await pick(/tambah barang atau jasa/i, /Grooming/);
-    await userEvent.click(
-      screen.getByRole("button", { name: /tambah baris/i }),
-    );
+    await addItem(/Grooming/, "Jasa");
   }
 
   it("sends the pet on the service line", async () => {
@@ -227,8 +414,14 @@ describe("the animal a service is for", () => {
     render(<InvoiceCreateForm />);
     await fillService();
 
-    /* No animal yet — a dash, not "Rp 0", which reads as free. */
-    expect(await screen.findByText("—")).toBeInTheDocument();
+    /* No animal yet — a dash, not "Rp 0", which reads as free. The Pajak cell
+       dashes too while there is no price to tax, so each is named by its
+       column: Item, Hewan, Harga, Jumlah, Diskon, Pajak, Total. */
+    const cells = within(
+      await screen.findByRole("row", { name: /Grooming/ }),
+    ).getAllByRole("cell");
+    expect(cells[2]).toHaveTextContent("—");
+    expect(cells[5]).toHaveTextContent("—");
 
     await pick(/^Hewan untuk Grooming$/i, /Miko/);
 
@@ -493,10 +686,7 @@ describe("what the form sends", () => {
     render(<InvoiceCreateForm />);
     await pick(/^Pelanggan$/i, /Bu Sari/);
     await pick(/^Cabang$/i, /Cabang Pusat/);
-    await pick(/tambah barang atau jasa/i, /Grooming/);
-    await userEvent.click(
-      screen.getByRole("button", { name: /tambah baris/i }),
-    );
+    await addItem(/Grooming/, "Jasa");
     // A service names its animal (PCR-035), or the form will not submit at all.
     await pick(/^Hewan untuk Grooming$/i, /Miko/);
     await submit();
@@ -645,11 +835,9 @@ describe("what the form shows", () => {
     somebody is checking line by line.
   */
   it("shows the tax as its own row when it is added on top", async () => {
-    jest
-      .spyOn(tenantService, "me")
-      .mockResolvedValue({
-        settings: { taxRate: 11, priceIncludesTax: false },
-      } as never);
+    jest.spyOn(tenantService, "me").mockResolvedValue({
+      settings: { taxRate: 11, priceIncludesTax: false },
+    } as never);
 
     render(<InvoiceCreateForm />);
     await fillMinimal();
@@ -739,10 +927,7 @@ describe("what the form refuses to submit", () => {
     render(<InvoiceCreateForm />);
     await pick(/^Pelanggan$/i, /Bu Sari/);
     await pick(/^Cabang$/i, /Cabang Pusat/);
-    await pick(/tambah barang atau jasa/i, /Kalung Nylon/);
-    await userEvent.click(
-      screen.getByRole("button", { name: /tambah baris/i }),
-    );
+    await addItem(/Kalung Nylon/);
 
     expect(screen.getByText(/belum bisa disimpan/i)).toHaveTextContent(
       /pilih gudang/i,

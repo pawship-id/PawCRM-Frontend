@@ -163,6 +163,8 @@ Trigger reads `Gudang: Semua ⌄`. **Not** a native `<select>` — a Radix popov
 
 Options render as a list with a check mark on the selected row (`rounded-full` mark, navy fill when selected).
 
+An option may carry **`meta`** — a second fact, such as a customer's phone — drawn right-aligned in `text-muted tabular-nums`, matched by the search, and appended to the trigger as `Nama — meta` once picked. It exists to tell apart two rows with the same label (Faktur baru's Pelanggan); do not use it to decorate a list.
+
 ## `FilterMultiSelect`
 
 ```ts

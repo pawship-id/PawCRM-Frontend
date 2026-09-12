@@ -21,6 +21,12 @@ export interface FilterOption<T> {
   label: string;
   /** Shown as a trailing count, e.g. on pills. */
   count?: number;
+  /**
+   * A second fact beside the label — a customer's phone — shown right-aligned in
+   * the list, matched by the search, and appended to the trigger once picked.
+   * For telling apart two rows with the same name, not for decoration.
+   */
+  meta?: string;
   disabled?: boolean;
 }
 

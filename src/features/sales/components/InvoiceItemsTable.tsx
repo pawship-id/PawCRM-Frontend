@@ -52,7 +52,7 @@ function taxAddedOnTop(totals: CustomerInvoiceTotals | null): boolean {
 }
 
 /** "11" → "11", "11.5" → "11,5" — the rate as a person writes it. */
-const formatRate = (rate: number) => String(rate).replace(".", ",");
+export const formatRate = (rate: number) => String(rate).replace(".", ",");
 
 /**
  * WHAT WAS BILLED — the lines, and the arithmetic that turned them into a total.

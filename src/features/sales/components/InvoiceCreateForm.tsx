@@ -36,11 +36,15 @@ import type {
   InvoiceChannel,
   InvoiceDiscountMode,
   Pet,
+  Service,
 } from "@/types/api";
+import type { Product } from "@/types/inventory";
 
 import { useInvoiceLookups } from "../hooks/useInvoiceLookups";
 import { previewInvoice } from "../invoicePreview";
+import { InvoiceAddItemsDialog } from "./InvoiceAddItemsDialog";
 import { InvoiceBookingPanel } from "./InvoiceBookingPanel";
+import { formatRate } from "./InvoiceItemsTable";
 
 /**
  * RAISE AN INVOICE — PCR-030's form.
@@ -49,9 +53,9 @@ import { InvoiceBookingPanel } from "./InvoiceBookingPanel";
  * So the header is a two-column grid collapsing to one on a phone, the rows sit
  * below it, and Keterangan closes the header rather than the page.
  *
- * FIELD ORDER IS §16's, and it is the same order every other transaction module
- * asks in — Kapan, Di mana, Dengan siapa, klasifikasi, catatan — so nobody
- * re-scans a screen they have not opened this week.
+ * FIELD ORDER IS THE BO MOCKUP'S, not §16's Kapan-first — Pelanggan, Cabang ·
+ * Gudang, Tanggal · Jatuh tempo, Channel, Catatan. Decided 12 Sep 2026 on
+ * request and recorded in ui-rules §16; do not reorder it as a tidy-up.
  *
  * THE TOTAL IS COMPUTED IN THE BROWSER, by `invoicePreview.ts`, which mirrors the
  * server's order of operations. The server recomputes everything and is the
@@ -126,7 +130,8 @@ export function InvoiceCreateForm() {
   const [notes, setNotes] = useState("");
 
   const [lines, setLines] = useState<DraftLine[]>([]);
-  const [picked, setPicked] = useState("");
+  /** Whether the "+ Tambah barang atau jasa" dialog is open. */
+  const [picking, setPicking] = useState(false);
   /*
     BOOKINGS ARE SENT AS IDS, not as lines. The server reads each booking's own
     frozen prices, its animal and its groomer — a client that could send those
@@ -209,24 +214,17 @@ export function InvoiceCreateForm() {
   const [saving, setSaving] = useState(false);
 
   /**
-   * Everything sellable, in one picker.
-   *
-   * ONE LIST RATHER THAN TWO PICKERS, because the question somebody is answering
-   * is "what am I billing for", not "am I billing for a product or a service".
-   * The kind is carried on the option so the row knows which it is.
+   * Customers with their phone beside the name — the mockup's picker. Two
+   * customers called Budi are one wrong bill apart without it.
    */
-  const catalogue = useMemo(
-    () => [
-      ...lookups.products.map((product) => ({
-        value: `product:${product._id}`,
-        label: product.sku ? `${product.sku} — ${product.name}` : product.name,
+  const customerOptions = useMemo(
+    () =>
+      lookups.customers.map((customer) => ({
+        value: customer._id,
+        label: customer.name,
+        ...(customer.phone ? { meta: customer.phone } : {}),
       })),
-      ...lookups.services.map((service) => ({
-        value: `service:${service._id}`,
-        label: `${service.name} (jasa)`,
-      })),
-    ],
-    [lookups.products, lookups.services],
+    [lookups.customers],
   );
 
   /**
@@ -339,40 +337,48 @@ export function InvoiceCreateForm() {
     return null;
   })();
 
-  function addLine() {
-    if (!picked) return;
-
-    const [kind, refId] = picked.split(":") as ["product" | "service", string];
-    const found =
-      kind === "product"
-        ? lookups.products.find((product) => product._id === refId)
-        : lookups.services.find((service) => service._id === refId);
-
-    if (!found) return;
-
-    setLines((current) => [
-      ...current,
-      {
-        kind,
-        refId,
-        name: found.name,
-        sku:
-          kind === "product" ? ((found as { sku?: string }).sku ?? null) : null,
-        // Read from the catalogue and shown read-only — the same figure the
-        // server will read again when it prices the invoice.
+  /**
+   * What the dialog ticked, as rows — products first, then services, each in
+   * the order it was ticked.
+   *
+   * A PRODUCT'S PRICE COMES FROM THE PICKED PRODUCT, not from `lookups`. The
+   * dialog searches the whole catalogue on the server; the lookups hold only the
+   * first hundred, so a product found past them would have read Rp 0. Shown
+   * read-only — the same figure the server reads again when it prices the
+   * invoice.
+   */
+  function addItems(picked: { products: Product[]; services: Service[] }) {
+    const rows: DraftLine[] = [
+      ...picked.products.map((product) => ({
+        kind: "product" as const,
+        refId: product._id,
+        name: product.name,
+        sku: product.sku,
+        unitPrice: String(product.sellPrice ?? "0"),
+        qty: "1",
+        discountMode: "percent" as const,
+        discountValue: "",
+        petId: "",
+      })),
+      ...picked.services.map((service) => ({
+        kind: "service" as const,
+        refId: service._id,
+        name: service.name,
+        sku: null,
         /*
           NOUGHT UNTIL AN ANIMAL IS CHOSEN, for a service priced by one. The row
           draws an em-dash rather than "Rp 0" — see the Harga cell — and
           `patchLine` re-derives this the moment the pet is picked.
         */
-        unitPrice: priceOfLine({ kind, refId, petId: "" }),
+        unitPrice: priceOfService(service._id, ""),
         qty: "1",
-        discountMode: "percent",
+        discountMode: "percent" as const,
         discountValue: "",
         petId: "",
-      },
-    ]);
-    setPicked("");
+      })),
+    ];
+
+    setLines((current) => [...current, ...rows]);
   }
 
   /**
@@ -390,14 +396,9 @@ export function InvoiceCreateForm() {
    * A PREVIEW. The server prices the line again from the same animal, through
    * the same rule — see `utils/serviceVariant.ts`.
    */
-  function priceOfLine(line: Pick<DraftLine, "kind" | "refId" | "petId">) {
-    if (line.kind === "product") {
-      const product = lookups.products.find((one) => one._id === line.refId);
-      return String(product?.sellPrice ?? "0");
-    }
-
-    const service = lookups.services.find((one) => one._id === line.refId);
-    const pet = pets.items.find((one) => one._id === line.petId);
+  function priceOfService(refId: string, petId: string) {
+    const service = lookups.services.find((one) => one._id === refId);
+    const pet = pets.items.find((one) => one._id === petId);
 
     /* "0" KEEPS THE ROW ARITHMETIC HONEST while the answer is unknown — the row
        shows an em-dash of its own, and the save is blocked below. */
@@ -413,12 +414,12 @@ export function InvoiceCreateForm() {
 
         /*
           RE-PRICED WHEN THE ANIMAL CHANGES, because for a variant service that
-          IS the price. Products are unaffected — theirs does not depend on a pet
-          and `priceOfLine` reads the catalogue for them either way.
+          IS the price. Products are left alone — theirs does not depend on a
+          pet, and was read from the picked product when the row was added.
         */
-        return patch.petId === undefined
+        return patch.petId === undefined || next.kind !== "service"
           ? next
-          : { ...next, unitPrice: priceOfLine(next) };
+          : { ...next, unitPrice: priceOfService(next.refId, next.petId) };
       }),
     );
   }
@@ -518,18 +519,45 @@ export function InvoiceCreateForm() {
         description="Siapa yang ditagih, dari cabang mana, dan kapan jatuh temponya."
       >
         <div className="flex flex-col gap-4">
-          {/* KAPAN then DI MANA on the first row — §16's order, the same one
-              every transaction module opens with. */}
+          {/* THE MOCKUP'S ORDER, not §16's — Pelanggan first, then Cabang ·
+              Gudang, Tanggal · Jatuh tempo, Channel. Decided 12 Sep 2026 on
+              request; recorded in ui-rules §16. */}
           <div className="grid gap-4 sm:grid-cols-2">
-            <TextField
-              label="Tanggal faktur"
-              name="invoiceDate"
-              type="date"
-              value={invoiceDate}
-              onChange={(event) => setInvoiceDate(event.target.value)}
-              hint="Tanggal tagihannya, bukan tanggal form ini dibuka."
-              disabled={saving}
+            {/* Full width on its own — customer names run long, and the phone
+                rides beside each one. */}
+            <FilterSelect
+              layout="form"
+              label="Pelanggan"
+              ariaLabel="Pelanggan"
+              value={customerId}
+              options={customerOptions}
+              active={false}
               required
+              searchable
+              placeholder="Cari nama pelanggan…"
+              searchPlaceholder="Cari nama atau nomor HP…"
+              hint="Cari lalu pilih — nomor HP ditampilkan supaya tidak salah pilih kalau ada nama yang sama."
+              disabled={saving}
+              className="sm:col-span-2"
+              onChange={(value) => {
+                if (value === customerId) return;
+                setCustomerId(value);
+                // Every booking on offer belonged to the previous customer.
+                // Keeping one would bill this person for somebody else's grooming
+                // — which the server refuses, but only after the form was filled
+                // in.
+                setPulledBookings([]);
+                /*
+                AND EVERY ANIMAL NAMED ON A LINE, for the same reason one step
+                further in: a cat picked under the previous customer would raise
+                a booking against somebody else's pet. The server refuses that
+                — it is the check `booking.service.js` calls the one that matters
+                most — but only after the whole form has been filled in.
+              */
+                setLines((current) =>
+                  current.map((line) => ({ ...line, petId: "" })),
+                );
+              }}
             />
 
             <FilterSelect
@@ -550,63 +578,40 @@ export function InvoiceCreateForm() {
                 setWarehouseId("");
               }}
             />
-          </div>
 
-          {/* DENGAN SIAPA, full width on its own — customer names run long. */}
-          <FilterSelect
-            layout="form"
-            label="Pelanggan"
-            ariaLabel="Pelanggan"
-            value={customerId}
-            options={namedOptions(lookups.customers)}
-            active={false}
-            required
-            placeholder="Pilih pelanggan"
-            disabled={saving}
-            onChange={(value) => {
-              if (value === customerId) return;
-              setCustomerId(value);
-              // Every booking on offer belonged to the previous customer.
-              // Keeping one would bill this person for somebody else's grooming
-              // — which the server refuses, but only after the form was filled
-              // in.
-              setPulledBookings([]);
-              /*
-                AND EVERY ANIMAL NAMED ON A LINE, for the same reason one step
-                further in: a cat picked under the previous customer would raise
-                a booking against somebody else's pet. The server refuses that
-                — it is the check `booking.service.js` calls the one that matters
-                most — but only after the whole form has been filled in.
-              */
-              setLines((current) =>
-                current.map((line) => ({ ...line, petId: "" })),
-              );
-            }}
-          />
+            <FilterSelect
+              layout="form"
+              label="Gudang"
+              ariaLabel="Gudang"
+              value={warehouseId}
+              options={namedOptions(warehousesHere)}
+              active={false}
+              // Required only once something ships — a grooming-only bill takes
+              // nothing off a shelf, and the save omits the warehouse for it.
+              required={hasProductLine}
+              placeholder={
+                branchId === "" ? "Pilih cabang dulu" : "Pilih gudang"
+              }
+              hint={
+                hasProductLine
+                  ? undefined
+                  : "Belum perlu — belum ada baris barang."
+              }
+              // Nothing to offer until a branch is named: the list IS that
+              // branch's shelves plus the central ones.
+              disabled={saving || branchId === ""}
+              onChange={setWarehouseId}
+            />
 
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div>
-              <FilterSelect
-                layout="form"
-                label="Gudang"
-                ariaLabel="Gudang"
-                value={warehouseId}
-                options={namedOptions(warehousesHere)}
-                active={false}
-                placeholder={
-                  branchId === "" ? "Pilih cabang dulu" : "Pilih gudang"
-                }
-                // Nothing to offer until a branch is named: the list IS that
-                // branch's shelves plus the central ones.
-                disabled={saving || branchId === ""}
-                onChange={setWarehouseId}
-              />
-              {!hasProductLine && (
-                <p className="mt-1.5 text-xs text-muted">
-                  Belum perlu — belum ada baris barang.
-                </p>
-              )}
-            </div>
+            <TextField
+              label="Tanggal faktur"
+              name="invoiceDate"
+              type="date"
+              value={invoiceDate}
+              onChange={(event) => setInvoiceDate(event.target.value)}
+              disabled={saving}
+              required
+            />
 
             <TextField
               label="Jatuh tempo"
@@ -631,13 +636,13 @@ export function InvoiceCreateForm() {
             />
           </div>
 
-          {/* CATATAN CLOSES THE HEADER, above the rows — §16. */}
+          {/* CATATAN CLOSES THE HEADER, above the rows. */}
           <TextareaField
-            label="Keterangan"
+            label="Catatan"
             name="notes"
             value={notes}
             onChange={(event) => setNotes(event.target.value)}
-            hint="Opsional. Yang perlu diingat soal tagihan ini."
+            placeholder="Opsional…"
             disabled={saving}
           />
         </div>
@@ -669,46 +674,51 @@ export function InvoiceCreateForm() {
         title="Baris faktur"
         description="Harga diambil dari katalog dan tidak bisa diubah di sini."
       >
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="min-w-64 flex-1">
-              <FilterSelect
-                layout="form"
-                label="Tambah barang atau jasa"
-                ariaLabel="Tambah barang atau jasa"
-                value={picked}
-                options={catalogue}
-                active={false}
-                placeholder="Cari nama atau SKU"
-                disabled={saving}
-                onChange={setPicked}
-              />
-            </div>
-            <UIButton
-              type="button"
-              size="lg"
-              onClick={addLine}
-              disabled={saving || !picked}
-            >
-              Tambah baris
-            </UIButton>
-          </div>
+        {/* The same dialog the stock documents and receipts open, with a Jasa
+            tab beside the product picker. Portaled, so none of its buttons
+            sit inside this form's DOM and none can submit it. */}
+        {picking && (
+          <InvoiceAddItemsDialog
+            services={lookups.services}
+            existingProductIds={lines
+              .filter((line) => line.kind === "product")
+              .map((line) => line.refId)}
+            onAdd={addItems}
+            onClose={() => setPicking(false)}
+          />
+        )}
 
+        <div className="flex flex-col gap-4">
           {lines.length === 0 ? (
-            <p className="rounded-xl border border-border bg-surface px-4 py-6 text-center text-sm text-muted">
-              Belum ada baris. Pilih barang atau jasa di atas untuk menambah
-              yang pertama.
-            </p>
+            <div className="flex flex-col items-center gap-4 py-8 text-center">
+              <UIButton
+                type="button"
+                variant="secondary"
+                onClick={() => setPicking(true)}
+                disabled={saving}
+              >
+                + Tambah barang atau jasa
+              </UIButton>
+
+              <div>
+                <p className="font-medium text-foreground">Belum ada baris</p>
+                <p className="mx-auto mt-1 max-w-md text-sm text-muted">
+                  Cari dan centang beberapa barang atau jasa sekaligus —
+                  harganya diambil dari katalog.
+                </p>
+              </div>
+            </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Item</TableHead>
-                    {/* ONLY WHEN THERE IS A SERVICE ON THE BILL. A column of
+            <>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Item</TableHead>
+                      {/* ONLY WHEN THERE IS A SERVICE ON THE BILL. A column of
                         dashes on an invoice for two bags of food is a question
                         the reader never asked. */}
-                    {/*
+                      {/*
                       THE ASTERISK BELONGS TO THE COLUMN, not to each cell.
 
                       `FilterField` draws it beside a label, and the control in
@@ -717,33 +727,34 @@ export function InvoiceCreateForm() {
                       floating above every pet select, marking nothing. It says
                       the same thing once, where the name is.
                     */}
-                    {hasServiceLine && (
-                      <TableHead className="w-44">
-                        Hewan
-                        <span className="text-danger"> *</span>
-                      </TableHead>
-                    )}
-                    <TableHead className="text-right">Harga</TableHead>
-                    <TableHead className="w-28">Jumlah</TableHead>
-                    <TableHead className="w-44">Diskon</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead className="w-12" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {lines.map((line, index) => (
-                    <TableRow key={`${line.refId}-${index}`}>
-                      <TableCell>
-                        <span className="font-medium">{line.name}</span>
-                        <span className="block text-xs text-muted">
-                          {line.sku ?? "Jasa"}
-                        </span>
-                      </TableCell>
-
                       {hasServiceLine && (
+                        <TableHead className="w-44">
+                          Hewan
+                          <span className="text-danger"> *</span>
+                        </TableHead>
+                      )}
+                      <TableHead className="text-right">Harga</TableHead>
+                      <TableHead className="w-28">Jumlah</TableHead>
+                      <TableHead className="w-44">Diskon</TableHead>
+                      <TableHead>Pajak</TableHead>
+                      <TableHead className="text-right">Total</TableHead>
+                      <TableHead className="w-12" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {lines.map((line, index) => (
+                      <TableRow key={`${line.refId}-${index}`}>
                         <TableCell>
-                          {line.kind === "service" ? (
-                            /*
+                          <span className="font-medium">{line.name}</span>
+                          <span className="block text-xs text-muted">
+                            {line.sku ?? "Jasa"}
+                          </span>
+                        </TableCell>
+
+                        {hasServiceLine && (
+                          <TableCell>
+                            {line.kind === "service" ? (
+                              /*
                               WHY IT IS HERE AT ALL — PCR-035. A grooming billed
                               with no animal named reaches no day sheet: nobody
                               is assigned, and the only record that the work is
@@ -751,133 +762,187 @@ export function InvoiceCreateForm() {
                               home. Naming the animal is what lets the server
                               raise a booking for it.
                             */
-                            <FilterSelect
-                              /*
+                              <FilterSelect
+                                /*
                                 `field`, NOT `form` — §16: a control inside a row
                                 table sits among h-9 inputs, and 44px would tower
                                 over the row it belongs to. The column header is
                                 the visible label, so the control carries only an
                                 aria one, naming the line it belongs to.
                               */
-                              layout="field"
-                              label=""
-                              ariaLabel={`Hewan untuk ${line.name}`}
-                              value={line.petId}
-                              options={petOptions}
-                              placeholder={
-                                !customerId
-                                  ? "Pilih pelanggan dulu"
-                                  : petOptions.length === 0
-                                    ? "Belum ada hewan"
-                                    : "Pilih hewan"
-                              }
-                              // Answered fields must not go navy in a form —
-                              // that announces a filter (§16).
-                              active={false}
-                              disabled={!customerId || petOptions.length === 0}
-                              onChange={(value) =>
-                                patchLine(index, { petId: value })
-                              }
-                            />
-                          ) : (
-                            // A collar has no grooming; the server refuses a pet
-                            // on a product line rather than ignoring it.
-                            <span className="text-xs text-muted">—</span>
-                          )}
-                        </TableCell>
-                      )}
+                                layout="field"
+                                label=""
+                                ariaLabel={`Hewan untuk ${line.name}`}
+                                value={line.petId}
+                                options={petOptions}
+                                placeholder={
+                                  !customerId
+                                    ? "Pilih pelanggan dulu"
+                                    : petOptions.length === 0
+                                      ? "Belum ada hewan"
+                                      : "Pilih hewan"
+                                }
+                                // Answered fields must not go navy in a form —
+                                // that announces a filter (§16).
+                                active={false}
+                                disabled={
+                                  !customerId || petOptions.length === 0
+                                }
+                                onChange={(value) =>
+                                  patchLine(index, { petId: value })
+                                }
+                              />
+                            ) : (
+                              // A collar has no grooming; the server refuses a pet
+                              // on a product line rather than ignoring it.
+                              <span className="text-xs text-muted">—</span>
+                            )}
+                          </TableCell>
+                        )}
 
-                      {/* READ-ONLY, and it is a rule: a price a client can set is
+                        {/* READ-ONLY, and it is a rule: a price a client can set is
                           a discount nobody approved. */}
-                      <TableCell className="text-right tabular-nums">
-                        {/*
+                        <TableCell className="text-right tabular-nums">
+                          {/*
                           AN EM-DASH, NOT "Rp 0", while a variant service has no
                           animal on its line. Nought is a price somebody could
                           read as free; the dash says the question has not been
                           answered yet, and the Hewan cell beside it is the
                           question.
                         */}
-                        {line.kind === "service" && line.unitPrice === "0" ? (
-                          <span className="text-muted">—</span>
-                        ) : (
-                          formatMoney(line.unitPrice)
-                        )}
-                      </TableCell>
+                          {line.kind === "service" && line.unitPrice === "0" ? (
+                            <span className="text-muted">—</span>
+                          ) : (
+                            formatMoney(line.unitPrice)
+                          )}
+                        </TableCell>
 
-                      <TableCell>
-                        <Input
-                          aria-label={`Jumlah ${line.name}`}
-                          value={line.qty}
-                          inputMode="decimal"
-                          onChange={(event) =>
-                            patchLine(index, { qty: event.target.value })
-                          }
-                          disabled={saving}
-                        />
-                      </TableCell>
-
-                      <TableCell>
-                        <div className="flex gap-1">
-                          <select
-                            aria-label={`Jenis diskon ${line.name}`}
-                            className="h-9 rounded-md border border-border bg-surface px-2 text-sm"
-                            value={line.discountMode}
-                            onChange={(event) =>
-                              patchLine(index, {
-                                discountMode: event.target
-                                  .value as InvoiceDiscountMode,
-                              })
-                            }
-                            disabled={saving}
-                          >
-                            <option value="percent">%</option>
-                            <option value="amount">Rp</option>
-                          </select>
+                        <TableCell>
                           <Input
-                            aria-label={`Diskon ${line.name}`}
-                            value={line.discountValue}
+                            aria-label={`Jumlah ${line.name}`}
+                            value={line.qty}
                             inputMode="decimal"
-                            placeholder="0"
                             onChange={(event) =>
-                              patchLine(index, {
-                                discountValue: event.target.value,
-                              })
+                              patchLine(index, { qty: event.target.value })
                             }
                             disabled={saving}
                           />
-                        </div>
-                        {preview.lineDiscounts[index] !== "0.0000" && (
-                          <span className="mt-1 block text-xs text-success">
-                            −{formatMoney(preview.lineDiscounts[index])}
-                          </span>
-                        )}
-                      </TableCell>
+                        </TableCell>
 
-                      <TableCell className="text-right tabular-nums">
-                        {formatMoney(preview.lineTotals[index])}
-                      </TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            <select
+                              aria-label={`Jenis diskon ${line.name}`}
+                              className="h-9 rounded-md border border-border bg-surface px-2 text-sm"
+                              value={line.discountMode}
+                              onChange={(event) =>
+                                patchLine(index, {
+                                  discountMode: event.target
+                                    .value as InvoiceDiscountMode,
+                                })
+                              }
+                              disabled={saving}
+                            >
+                              <option value="percent">%</option>
+                              <option value="amount">Rp</option>
+                            </select>
+                            <Input
+                              aria-label={`Diskon ${line.name}`}
+                              value={line.discountValue}
+                              inputMode="decimal"
+                              placeholder="0"
+                              onChange={(event) =>
+                                patchLine(index, {
+                                  discountValue: event.target.value,
+                                })
+                              }
+                              disabled={saving}
+                            />
+                          </div>
+                          {/* OFFSET PAST THE BOOKING LINES, which the preview
+                              prices first — the server's order. Reading
+                              `[index]` put a booking's figures on the first
+                              typed row whenever one was pulled. */}
+                          {preview.lineDiscounts[
+                            bookingLines.length + index
+                          ] !== "0.0000" && (
+                            <span className="mt-1 block text-xs text-success">
+                              −
+                              {formatMoney(
+                                preview.lineDiscounts[
+                                  bookingLines.length + index
+                                ],
+                              )}
+                            </span>
+                          )}
+                        </TableCell>
 
-                      <TableCell>
-                        <UIButton
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          aria-label={`Hapus ${line.name}`}
-                          onClick={() =>
-                            setLines((current) =>
-                              current.filter((_, at) => at !== index),
-                            )
-                          }
-                          disabled={saving}
-                        >
-                          <Trash2 className="size-4 text-danger" />
-                        </UIButton>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                        {/*
+                          THIS LINE'S SLICE OF THE INVOICE'S PPN — the allocation
+                          the server freezes per line, drawn the way the detail
+                          page draws it: the code, then what it adds on top or
+                          carries inside. "Non-PPN" only when the tenant charges
+                          none; a dash while a line has no price yet.
+                        */}
+                        <TableCell className="tabular-nums">
+                          {lookups.tax.taxRate === 0 ? (
+                            <span className="text-xs text-muted">Non-PPN</span>
+                          ) : preview.lineTaxes[bookingLines.length + index] ===
+                            "0.0000" ? (
+                            <span className="text-muted">—</span>
+                          ) : (
+                            <>
+                              <span className="rounded-full bg-tint-brand px-2 py-0.5 text-xs font-semibold text-primary">
+                                {`PPN ${formatRate(lookups.tax.taxRate)}%`}
+                              </span>
+                              <span className="mt-1 block text-xs font-semibold text-success">
+                                {lookups.tax.priceIncludesTax
+                                  ? `termasuk ${formatMoney(preview.lineTaxes[bookingLines.length + index])}`
+                                  : `+${formatMoney(preview.lineTaxes[bookingLines.length + index])}`}
+                              </span>
+                            </>
+                          )}
+                        </TableCell>
+
+                        <TableCell className="text-right tabular-nums">
+                          {formatMoney(
+                            preview.lineTotals[bookingLines.length + index],
+                          )}
+                        </TableCell>
+
+                        <TableCell>
+                          <UIButton
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`Hapus ${line.name}`}
+                            onClick={() =>
+                              setLines((current) =>
+                                current.filter((_, at) => at !== index),
+                              )
+                            }
+                            disabled={saving}
+                          >
+                            <Trash2 className="size-4 text-danger" />
+                          </UIButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              <div className="border-t border-border/60 pt-3">
+                <UIButton
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setPicking(true)}
+                  disabled={saving}
+                >
+                  + Tambah barang atau jasa
+                </UIButton>
+              </div>
+            </>
           )}
         </div>
       </Card>
