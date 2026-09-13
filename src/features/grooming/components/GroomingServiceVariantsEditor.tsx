@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 
-import { Alert, Card, Spinner } from "@/components";
+import { Alert, Card } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -44,6 +44,7 @@ import {
   updateRow,
   type VariantDraft,
 } from "../serviceVariantDraft";
+import { DraftSaveBar } from "./DraftSaveBar";
 
 const PLACES: { value: ServicePlace; label: string; hint: string }[] = [
   { value: "store", label: "Di toko saja", hint: "Tanpa biaya perjalanan" },
@@ -237,33 +238,19 @@ export function GroomingServiceVariantsEditor({
   return (
     <div className="flex flex-col gap-6">
       {mayUpdate && dirty && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/30 bg-surface-selected px-4 py-3">
-          <p className="min-w-0 flex-1 text-sm text-foreground">
-            Ada perubahan yang belum disimpan.
-            {problem && (
+        <DraftSaveBar
+          problem={
+            problem && (
               <>
-                {" "}
                 Belum bisa disimpan: <b className="font-semibold">{problem}</b>.
               </>
-            )}
-          </p>
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={saving}
-            onClick={discard}
-          >
-            Batal
-          </Button>
-          <Button
-            type="button"
-            disabled={saving || problem !== null}
-            onClick={() => void save()}
-          >
-            {saving && <Spinner size={16} />}
-            {saving ? "Menyimpan…" : "Simpan varian & harga"}
-          </Button>
-        </div>
+            )
+          }
+          saving={saving}
+          saveLabel="Simpan varian & harga"
+          onDiscard={discard}
+          onSave={() => void save()}
+        />
       )}
 
       {saveError && <Alert variant="error">{saveError}</Alert>}

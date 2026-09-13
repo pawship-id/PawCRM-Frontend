@@ -348,18 +348,135 @@ describe("GroomingServiceDetailScreen", () => {
     ).not.toBeInTheDocument();
   });
 
+  /*
+    ─── TAHAPAN & BOBOT KOMISI, EDITED IN PLACE (14 September 2026) ────────────
+  */
+  const openSteps = async () =>
+    userEvent.click(await screen.findByRole("tab", { name: "Tahapan & Add-on" }));
+
+  const stepOrder = () =>
+    screen
+      .getAllByLabelText(/^Bobot .+ \(%\)$/)
+      .map((input) => input.getAttribute("aria-label"));
+
   it("lists the tahapan with their weights and the add-ons by name", async () => {
     renderDetail();
+    await openSteps();
 
-    await userEvent.click(
-      await screen.findByRole("tab", { name: "Tahapan & Add-on" }),
-    );
-
-    expect(screen.getByText("70%")).toBeInTheDocument();
-    expect(screen.getByText("30%")).toBeInTheDocument();
+    expect(screen.getByLabelText("Bobot Mandi (%)")).toHaveValue("70");
+    expect(screen.getByLabelText("Bobot Blow dry (%)")).toHaveValue("30");
+    expect(screen.getByText("Total 100%")).toBeInTheDocument();
     expect(await screen.findByText("Spa Aromaterapi")).toBeInTheDocument();
     expect(serviceService.list).toHaveBeenCalledWith(
       expect.objectContaining({ serviceType: "addon", includeDeleted: true }),
+    );
+  });
+
+  it("edits weights and order in place and saves them with one button", async () => {
+    jest.mocked(serviceService.update).mockResolvedValue({
+      ...SERVICE,
+      sessions: ["Blow dry", "Mandi"],
+      sessionWeights: [50, 50],
+    });
+
+    renderDetail();
+    await openSteps();
+
+    const mandi = screen.getByLabelText("Bobot Mandi (%)");
+    await userEvent.clear(mandi);
+    await userEvent.type(mandi, "60");
+
+    // The badge follows what is typed, and a total that is not 100 cannot save.
+    expect(screen.getByText("Total 90%")).toBeInTheDocument();
+    expect(screen.getByText("Total bobotnya 90%, harus pas 100%.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Simpan tahapan" })).toBeDisabled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Bagi rata" }));
+    expect(screen.getByLabelText("Bobot Mandi (%)")).toHaveValue("50");
+
+    // The handle answers the arrow keys, and the weight moves with its tahapan.
+    screen.getByRole("button", { name: "Pindahkan Blow dry" }).focus();
+    await userEvent.keyboard("{ArrowUp}");
+    expect(stepOrder()).toEqual(["Bobot Blow dry (%)", "Bobot Mandi (%)"]);
+
+    await userEvent.click(screen.getByRole("button", { name: "Simpan tahapan" }));
+
+    await waitFor(() =>
+      expect(serviceService.update).toHaveBeenCalledWith("svc-1", {
+        sessions: ["Blow dry", "Mandi"],
+        sessionWeights: [50, 50],
+      }),
+    );
+    expect(
+      await screen.findByRole("tab", { name: "Tahapan & Add-on" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Simpan tahapan" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("adds a tahapan other grooming services use, or a new one typed, and removes one", async () => {
+    jest.mocked(serviceService.list).mockImplementation(async (query) =>
+      page(
+        query?.serviceType === "addon"
+          ? [ADDON]
+          : [
+              SERVICE,
+              { ...SERVICE, _id: "svc-2", sessions: ["mandi", "Gunting"] },
+            ],
+      ),
+    );
+
+    renderDetail();
+    await openSteps();
+
+    await userEvent.click(screen.getByRole("button", { name: /Tambah tahapan/ }));
+    // "mandi" is already on this service, whatever its case.
+    await userEvent.click(await screen.findByRole("button", { name: "Gunting" }));
+    expect(screen.queryByRole("button", { name: "mandi" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Bobot Gunting (%)")).toHaveValue("");
+    expect(
+      screen.getByText(
+        "Isi bobot semua tahapan, atau kosongkan semuanya supaya dibagi rata.",
+      ),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /Tambah tahapan/ }));
+    await userEvent.type(
+      screen.getByLabelText("Cari atau ketik tahapan baru"),
+      "Potong kuku{Enter}",
+    );
+    expect(screen.getByLabelText("Bobot Potong kuku (%)")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Hapus tahapan Mandi" }));
+    expect(stepOrder()).toEqual([
+      "Bobot Blow dry (%)",
+      "Bobot Gunting (%)",
+      "Bobot Potong kuku (%)",
+    ]);
+
+    // Batal throws the draft away.
+    await userEvent.click(screen.getByRole("button", { name: "Batal" }));
+    expect(stepOrder()).toEqual(["Bobot Mandi (%)", "Bobot Blow dry (%)"]);
+  });
+
+  it("lets a role that may only read see the tahapan but change nothing", async () => {
+    renderDetail({
+      isSuperAdmin: false,
+      permissions: [{ feature: "services", actions: ["read"] }],
+    });
+    await openSteps();
+
+    expect(screen.getByLabelText("Bobot Mandi (%)")).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: /Tambah tahapan/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Hapus tahapan Mandi" }),
+    ).not.toBeInTheDocument();
+    // Suggestions are for somebody who may add one.
+    expect(serviceService.list).not.toHaveBeenCalledWith(
+      expect.objectContaining({ businessLineId: "bl-grooming" }),
     );
   });
 

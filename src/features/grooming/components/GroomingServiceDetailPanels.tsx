@@ -32,13 +32,13 @@ import {
 } from "../serviceDisplay";
 
 /**
- * Three of the four tabs of a service's detail page — from
- * `buloo-grooming-v3.html`.
+ * The read-only parts of a service's detail page — from `buloo-grooming-v3.html`:
+ * Ringkasan, the add-on card of Tahapan & Add-on, and Portal.
  *
  * READ-ONLY, where the mockup edits in place: every panel that shows something
- * changeable carries an Ubah into the service form. The fourth tab, Varian &
- * Harga, IS edited in place since 14 September 2026 — see
- * `GroomingServiceVariantsEditor`.
+ * changeable carries an Ubah into the service form. Edited in place since 14
+ * September 2026, and so not here: Varian & Harga (`GroomingServiceVariantsEditor`)
+ * and Tahapan & bobot komisi (`GroomingServiceStepsEditor`).
  */
 
 function EditLink({ serviceId, label = "Ubah" }: { serviceId: string; label?: string }) {
@@ -283,58 +283,21 @@ export function ServiceSummaryPanel({
   );
 }
 
-/** Tahapan & Add-on — the turns and their commission weights, and the add-ons. */
-export function ServiceStepsPanel({
+/**
+ * Tahapan & Add-on — the add-on half. The tahapan half is edited in place since
+ * 14 September 2026 (`GroomingServiceStepsEditor`) and sits above this card.
+ */
+export function ServiceAddonsPanel({
   service,
   addons,
 }: {
   service: Service;
   addons: { items: Service[]; missing: number; loading: boolean; failed: boolean };
 }) {
-  const shares = sessionShares(service);
-  const weighted = shares.some((share) => share.weight !== null);
   const addonCount = (service.addonServiceIds ?? []).length;
 
   return (
     <div className="flex flex-col gap-6">
-      <Card
-        title="Tahapan & bobot komisi"
-        description={
-          weighted
-            ? "Bagian komisi tiap tahapan dari layanan ini."
-            : "Bobot kosong, jadi komisinya dibagi rata ke semua tahapan."
-        }
-        action={<EditLink serviceId={service._id} />}
-      >
-        {shares.length === 0 ? (
-          <p className="text-sm text-muted">Belum ada tahapan.</p>
-        ) : (
-          <>
-            <ol className="flex flex-col gap-2">
-              {shares.map((share, index) => (
-                <li
-                  key={`${index}-${share.name}`}
-                  className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3"
-                >
-                  <span className="flex size-7 flex-none items-center justify-center rounded-full bg-surface-selected text-xs font-semibold tabular-nums text-primary">
-                    {index + 1}
-                  </span>
-                  <span className="min-w-0 flex-1 text-sm font-semibold text-foreground">
-                    {share.name}
-                  </span>
-                  <span className="text-sm tabular-nums text-muted">
-                    {share.weight === null ? "rata" : `${share.weight}%`}
-                  </span>
-                </li>
-              ))}
-            </ol>
-            <p className="mt-3 text-sm text-muted">
-              {weighted ? "Total 100%" : "Dibagi rata"}
-            </p>
-          </>
-        )}
-      </Card>
-
       <Card
         title="Add-on yang boleh dipasang"
         action={

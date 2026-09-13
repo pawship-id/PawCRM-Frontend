@@ -27,3 +27,10 @@ export {
   VARIANT_AXIS_TABLE,
   type VariantCombo,
 } from "./components/ServiceFormFields";
+// The tahapan weight rules, for the detail page that edits tahapan in place.
+export {
+  evenSessionWeights,
+  sessionWeightsError,
+  sessionWeightsPayload,
+  WEIGHTS_MIN_SESSIONS,
+} from "./components/ServiceFormFields";

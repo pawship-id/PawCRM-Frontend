@@ -49,6 +49,23 @@ it; `GroomingServiceVariantsEditor`, rules in `serviceVariantDraft.ts`):
   stays mounted while another is open, so a draft survives a look at Ringkasan.
 - A role without `services:update` sees the same grid, disabled, with no bulk bar.
 
+**Tahapan & bobot komisi is edited in place too** (14 September 2026, on request;
+`GroomingServiceStepsEditor`, rules in `serviceStepsDraft.ts`, sharing `DraftSaveBar` with
+Varian & Harga). The add-on card under it stays read-only.
+
+- Each tahapan is a row: a drag handle (which also answers ArrowUp / ArrowDown), the name,
+  its weight in %, and ✕. The header badge reads **Total N%** (green at 100, red otherwise),
+  **Dibagi rata** while every box is empty, and one tahapan is always 100%.
+- **+ Tambah tahapan…** offers the tahapan other services of the same line already use,
+  most used first, and takes a new name typed. There is **no shop-wide tahapan list** — the
+  mockup picks from one; a name already on the service (any case) is not offered twice.
+- **Bagi rata** fills whole per cents that add up to 100 (`34 · 33 · 33`).
+- **Simpan tahapan** sends one `PATCH { sessions, sessionWeights }` with the form's rules:
+  every box empty splits evenly, otherwise all filled and exactly 100. A booking already
+  made keeps the turns it was made with.
+- A role without `services:update` sees the list with disabled boxes and no handle, ✕,
+  picker or Bagi rata — and the suggestions are not fetched.
+
 **"N booking" and "Dipakai"** come from `GET /api/bookings/service-counts`
 (`bookings:read`; draft and cancelled work not counted, add-ons counted where ticked). A
 role without that grant is asked nothing and sees no figure.

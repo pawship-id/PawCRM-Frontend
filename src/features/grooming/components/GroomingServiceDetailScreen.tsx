@@ -28,11 +28,12 @@ import { useServiceBookingCounts } from "../hooks/useServiceBookingCounts";
 import { GROOMING_CATALOG_PATH, groomingServicePath } from "../paths";
 import { branchesText, serviceEditPath, statusOf } from "../serviceDisplay";
 import {
+  ServiceAddonsPanel,
   ServicePortalPanel,
-  ServiceStepsPanel,
   ServiceSummaryPanel,
 } from "./GroomingServiceDetailPanels";
 import { GroomingModuleHeader } from "./GroomingModuleHeader";
+import { GroomingServiceStepsEditor } from "./GroomingServiceStepsEditor";
 import { GroomingServiceVariantsEditor } from "./GroomingServiceVariantsEditor";
 
 type DetailTab = "ringkasan" | "varian" | "tahapan" | "portal";
@@ -418,11 +419,22 @@ export function GroomingServiceDetailScreen({ serviceId }: { serviceId: string }
             busy={busy}
             onSetActive={(active) => void setActive(active)}
           />
-        ) : tab === "tahapan" ? (
-          <ServiceStepsPanel service={service} addons={addons} />
         ) : tab === "portal" ? (
           <ServicePortalPanel service={service} />
         ) : null}
+
+        {/* Tahapan is edited in place too — mounted and hidden, as below. */}
+        <div hidden={tab !== "tahapan"}>
+          <div className="flex flex-col gap-6">
+            <GroomingServiceStepsEditor
+              key={service._id}
+              service={service}
+              mayUpdate={mayUpdate}
+              onSaved={replace}
+            />
+            <ServiceAddonsPanel service={service} addons={addons} />
+          </div>
+        </div>
 
         {/*
           VARIAN & HARGA IS EDITED IN PLACE (14 September 2026), so it stays
