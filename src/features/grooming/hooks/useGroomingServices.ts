@@ -11,11 +11,18 @@ export interface GroomingServicesQuery {
   search: string;
   /** "" = both. */
   isActive: "" | "true" | "false";
+  /** Deleted services too — the only way to reach one to Pulihkan it. */
+  includeDeleted: boolean;
 }
 
 const PAGE_SIZE = 20;
 
-const DEFAULT_QUERY: GroomingServicesQuery = { page: 1, search: "", isActive: "" };
+const DEFAULT_QUERY: GroomingServicesQuery = {
+  page: 1,
+  search: "",
+  isActive: "",
+  includeDeleted: false,
+};
 
 const EMPTY_PAGE: PageResult<Service>["pagination"] = {
   page: 1,
@@ -34,13 +41,16 @@ interface Loaded {
 /**
  * The Layanan & Harga tab's list — `GET /services` pinned to the Grooming line.
  *
- * MIRRORS `useServices`, minus the line filter (the tab IS the filter) and the
- * deleted toggle (restoring a service is Master Data's job, and this tab only
- * links there).
+ * MIRRORS the catalogue-wide `useServices` it outlived, minus the line filter
+ * (the tab IS the filter). The deleted toggle and `refetch` came across when that
+ * list was removed on 13 September 2026: this tab is where a service is deleted
+ * and restored now, and a row action has to be able to re-read the page.
  */
 export function useGroomingServices(lineId: string | null) {
   const [query, setQueryState] = useState<GroomingServicesQuery>(DEFAULT_QUERY);
   const settled = useDebouncedQuery(query);
+  // Bumped by refetch() so the effect re-runs without the query changing.
+  const [nonce, setNonce] = useState(0);
   const [loaded, setLoaded] = useState<Loaded>({
     key: "",
     services: [],
@@ -56,7 +66,9 @@ export function useGroomingServices(lineId: string | null) {
     });
   }, []);
 
-  const key = JSON.stringify([lineId, settled]);
+  const refetch = useCallback(() => setNonce((n) => n + 1), []);
+
+  const key = JSON.stringify([lineId, settled, nonce]);
 
   useEffect(() => {
     if (!lineId) return;
@@ -70,6 +82,7 @@ export function useGroomingServices(lineId: string | null) {
         limit: PAGE_SIZE,
         search: settled.search.trim() || undefined,
         isActive: settled.isActive === "" ? undefined : settled.isActive === "true",
+        includeDeleted: settled.includeDeleted || undefined,
       })
       .then((result) => {
         if (active) {
@@ -99,6 +112,7 @@ export function useGroomingServices(lineId: string | null) {
     pagination: loaded.pagination,
     query,
     setQuery,
+    refetch,
     loading: lineId !== null && !current,
     error:
       current && loaded.failed

@@ -1,12 +1,15 @@
 "use client";
 
-import Link from "next/link";
-
-import { Badge } from "@/components/ui/badge";
 import { usePermissions } from "@/features/permissions";
 import type { Action, Feature } from "@/features/permissions";
 
-import { useSetupCounts, type SetupCount } from "../hooks/useSetupCounts";
+import { useSetupCounts } from "../hooks/useSetupCounts";
+import {
+  countMeta,
+  HubLinkCard,
+  HubPendingCard,
+  type PendingHubCard,
+} from "./SettingsHubCards";
 
 /**
  * Pengaturan → Umum: the things a shop sets once and then leaves alone.
@@ -42,15 +45,8 @@ interface LiveCard {
   meta?: string;
 }
 
-interface PendingCard {
-  title: string;
-  description: string;
-  /** What it is waiting for, in one line. */
-  blockedBy: string;
-}
-
 /** The mockup's four unbuilt settings, and what each one is waiting for. */
-const PENDING_CARDS: PendingCard[] = [
+const PENDING_CARDS: PendingHubCard[] = [
   {
     title: "Tipe pelanggan",
     description:
@@ -77,11 +73,6 @@ const PENDING_CARDS: PendingCard[] = [
   },
 ];
 
-/** "4 cabang", or nothing at all while the figure is unknown. */
-function meta(count: SetupCount, unit: string): string | undefined {
-  return count.loading || count.error ? undefined : `${count.total} ${unit}`;
-}
-
 export function GeneralSettingsScreen() {
   const { can } = usePermissions();
 
@@ -107,7 +98,7 @@ export function GeneralSettingsScreen() {
         "Alamat yang tercetak di struk, dan set buku tempat tiap transaksi mendarat.",
       href: "/dashboard/master/branches",
       permission: { feature: "branches", action: "read" },
-      meta: meta(counts.branches, "cabang"),
+      meta: countMeta(counts.branches, "cabang"),
     },
     {
       title: "Gudang",
@@ -115,7 +106,7 @@ export function GeneralSettingsScreen() {
         "Tempat stok benar-benar berada. Satu cabang boleh punya lebih dari satu.",
       href: "/dashboard/master/warehouses",
       permission: { feature: "warehouses", action: "read" },
-      meta: meta(counts.warehouses, "gudang"),
+      meta: countMeta(counts.warehouses, "gudang"),
     },
   ];
 
@@ -134,38 +125,17 @@ export function GeneralSettingsScreen() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {visible.map((card) => (
-          <Link
+          <HubLinkCard
             key={card.href}
+            title={card.title}
+            description={card.description}
             href={card.href}
-            className="group rounded-xl border border-border bg-surface p-5 transition hover:border-primary hover:shadow-sm focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <p className="font-semibold text-foreground group-hover:text-primary-hover">
-                {card.title}
-              </p>
-              {card.meta && (
-                <p className="flex-none text-xs tabular-nums text-muted">
-                  {card.meta}
-                </p>
-              )}
-            </div>
-            <p className="mt-1.5 text-sm text-muted">{card.description}</p>
-          </Link>
+            meta={card.meta}
+          />
         ))}
 
         {PENDING_CARDS.map((card) => (
-          <div
-            key={card.title}
-            aria-disabled="true"
-            className="rounded-xl border border-border bg-surface p-5 opacity-60"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <p className="font-semibold text-foreground">{card.title}</p>
-              <Badge variant="outline">Segera</Badge>
-            </div>
-            <p className="mt-1.5 text-sm text-muted">{card.description}</p>
-            <p className="mt-2 text-xs text-muted">{card.blockedBy}</p>
-          </div>
+          <HubPendingCard key={card.title} {...card} />
         ))}
       </div>
     </div>

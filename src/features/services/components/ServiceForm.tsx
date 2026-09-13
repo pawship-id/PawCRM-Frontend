@@ -45,6 +45,8 @@ import {
   sessionWeightsPayload,
   StringListField,
 } from "./ServiceFormFields";
+// Deep, not the barrel: the grooming index imports this feature back.
+import { GROOMING_CATALOG_PATH } from "@/features/grooming/paths";
 
 /** Backend caps — NAME_MAX_LENGTH and friends in service.model.js. */
 const NAME_MAX_LENGTH = 160;
@@ -82,7 +84,12 @@ const SERVICE_LOCATION_ORDER: ServiceLocation[] = ["in_store", "in_home"];
  */
 const WHOLE_RUPIAH = /^\d+$/;
 
-const LIST_PATH = "/dashboard/master/layanan";
+/**
+ * Simpan and Batal land on Grooming › Layanan & Harga — the one list of services
+ * since the catalogue-wide list was removed (13 September 2026), whatever line
+ * the service belongs to.
+ */
+const LIST_PATH = GROOMING_CATALOG_PATH;
 
 /** "150000.0000" → "150000" — a counter should not read past the decimals. */
 function trimStoredPrice(price: string): string {

@@ -1,14 +1,16 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
+import { Plus, RotateCcw, Trash2 } from "lucide-react";
 
 import {
   Alert,
   FilterBar,
   FilterSearch,
   FilterSelect,
+  FilterToggle,
   HighlightText,
   Pagination,
   Spinner,
@@ -25,9 +27,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Can, usePermissions } from "@/features/permissions";
-import { formatDuration, formatServicePrice } from "@/features/services";
+import {
+  formatDuration,
+  formatServicePrice,
+  ServiceLifecycleDialog,
+  type ServiceLifecycleAction,
+} from "@/features/services";
 import { cn } from "@/lib/utils";
-import type { ServiceLocation, ServiceVariantAxis } from "@/types/api";
+import type { Service, ServiceLocation, ServiceVariantAxis } from "@/types/api";
 
 import { useGroomingLine } from "../hooks/useGroomingLine";
 import {
@@ -63,6 +70,19 @@ function placeOf(locations: ServiceLocation[]): {
 }
 
 /**
+ * Deleted wins over inactive when both are true: a record that should not exist
+ * is a more urgent thing to say than one that is merely no longer sold.
+ */
+function statusOf(service: Service): { label: string; className: string } {
+  if (service.deletedAt !== null) {
+    return { label: "Terhapus", className: "bg-tint-neutral text-muted" };
+  }
+  return service.isActive
+    ? { label: "Aktif", className: "bg-tint-success text-success" }
+    : { label: "Nonaktif", className: "bg-tint-neutral text-muted" };
+}
+
+/**
  * Layanan › Grooming › Layanan & Harga — the Grooming line's services.
  *
  * ─── A ROW OPENS THE MASTER DATA FORM ──────────────────────────────────────
@@ -70,6 +90,14 @@ function placeOf(locations: ServiceLocation[]): {
  * Decided 13 September 2026. The mockup draws a detail screen of its own
  * (Ringkasan / Varian & Harga / Tahapan & Add-on / Portal); this tab links to
  * `/dashboard/master/layanan/[id]` instead, so a service keeps ONE editor.
+ *
+ * ─── HAPUS AND PULIHKAN LIVE HERE ──────────────────────────────────────────
+ *
+ * The catalogue-wide list (`/dashboard/master/layanan/katalog`) was removed on
+ * request the same day, and it was the only screen that could delete or restore
+ * a service. Both came here, with its "Tampilkan terhapus" toggle. A deleted row
+ * opens nothing: there is nothing to edit on a record that should not exist
+ * until it is restored.
  *
  * WHAT THE MOCKUP'S TABLE HAS AND THIS DOES NOT: the Portal badge (no such
  * flag), the booking count per service (no such figure), and tahapan weights
@@ -80,11 +108,19 @@ export function GroomingServicesScreen() {
   const { can } = usePermissions();
   const line = useGroomingLine();
   const lineId = line.line?._id ?? null;
-  const { services, pagination, query, setQuery, loading, error } =
+  const { services, pagination, query, setQuery, refetch, loading, error } =
     useGroomingServices(lineId);
+  const [pending, setPending] = useState<ServiceLifecycleAction | null>(null);
 
   const mayEdit = can("services", "update");
-  const narrowed = query.search.trim() !== "" || query.isActive !== "";
+  const mayDelete = can("services", "delete");
+  const mayRestore = can("services", "restore");
+  const narrowed =
+    query.search.trim() !== "" || query.isActive !== "" || query.includeDeleted;
+
+  const rowHasAction = (service: Service) =>
+    service.deletedAt !== null ? mayRestore : mayDelete;
+  const showActions = services.some(rowHasAction);
 
   return (
     <div className="flex flex-col gap-6">
@@ -120,6 +156,11 @@ export function GroomingServicesScreen() {
           value={query.isActive}
           options={STATUS_OPTIONS}
           onChange={(isActive) => setQuery({ isActive })}
+        />
+        <FilterToggle
+          label="Tampilkan terhapus"
+          checked={query.includeDeleted}
+          onChange={(includeDeleted) => setQuery({ includeDeleted })}
         />
       </FilterBar>
 
@@ -163,7 +204,7 @@ export function GroomingServicesScreen() {
       ) : (
         <>
           <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-            <Table className={cn("min-w-[960px]", loading && "opacity-60")}>
+            <Table className={cn("min-w-[1040px]", loading && "opacity-60")}>
               <TableHeader>
                 <TableRow>
                   <TableHead>Layanan</TableHead>
@@ -174,22 +215,28 @@ export function GroomingServicesScreen() {
                   <TableHead>Tahapan</TableHead>
                   <TableHead>Add-on</TableHead>
                   <TableHead>Status</TableHead>
+                  {showActions && (
+                    <TableHead className="text-right">Aksi</TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
 
               <TableBody>
                 {services.map((service) => {
                   const href = `/dashboard/master/layanan/${service._id}`;
+                  const deleted = service.deletedAt !== null;
+                  const opens = mayEdit && !deleted;
                   const place = placeOf(service.serviceLocations ?? []);
                   const sessions = (service.sessions ?? []).length;
                   const addons = (service.addonServiceIds ?? []).length;
+                  const status = statusOf(service);
 
                   return (
                     <TableRow
                       key={service._id}
-                      className={cn(mayEdit && "cursor-pointer")}
+                      className={cn(opens && "cursor-pointer")}
                       onClick={
-                        mayEdit
+                        opens
                           ? (event) => {
                               if ((event.target as HTMLElement).closest("a, button")) {
                                 return;
@@ -200,7 +247,7 @@ export function GroomingServicesScreen() {
                       }
                     >
                       <TableCell className="whitespace-normal">
-                        {mayEdit ? (
+                        {opens ? (
                           <Link
                             href={href}
                             className="rounded text-sm font-semibold text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
@@ -290,16 +337,44 @@ export function GroomingServicesScreen() {
                       <TableCell>
                         <Badge
                           variant="outline"
-                          className={cn(
-                            "border-transparent",
-                            service.isActive
-                              ? "bg-tint-success text-success"
-                              : "bg-tint-neutral text-muted",
-                          )}
+                          className={cn("border-transparent", status.className)}
                         >
-                          {service.isActive ? "Aktif" : "Nonaktif"}
+                          {status.label}
                         </Badge>
                       </TableCell>
+
+                      {showActions && (
+                        <TableCell className="text-right">
+                          {deleted ? (
+                            mayRestore && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  setPending({ kind: "restore", service })
+                                }
+                              >
+                                <RotateCcw className="size-4" />
+                                Pulihkan
+                              </Button>
+                            )
+                          ) : (
+                            mayDelete && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-danger hover:bg-danger/10 hover:text-danger"
+                                onClick={() =>
+                                  setPending({ kind: "delete", service })
+                                }
+                              >
+                                <Trash2 className="size-4" />
+                                Hapus
+                              </Button>
+                            )
+                          )}
+                        </TableCell>
+                      )}
                     </TableRow>
                   );
                 })}
@@ -316,6 +391,15 @@ export function GroomingServicesScreen() {
           />
         </>
       )}
+
+      <ServiceLifecycleDialog
+        action={pending}
+        onCancel={() => setPending(null)}
+        onDone={() => {
+          setPending(null);
+          refetch();
+        }}
+      />
     </div>
   );
 }

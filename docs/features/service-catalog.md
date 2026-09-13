@@ -1,7 +1,7 @@
 # Service Catalog
 
-Master Data → **Layanan**. What a tenant sells the *doing of* — grooming, penitipan,
-vaksinasi.
+The service form, reached from Grooming › **Layanan & Harga**. What a tenant sells the
+*doing of* — grooming, penitipan, vaksinasi.
 
 Backend: `PawCRM-Backend/src/models/service.model.js` and the `/api/services` routes.
 Fase 3 of the POS module.
@@ -12,9 +12,20 @@ Fase 3 of the POS module.
 
 | Route | Component | Permission |
 | --- | --- | --- |
-| `/dashboard/master/layanan` | `ServicesScreen` | `services:read` |
+| `/dashboard/master/layanan` | `ServiceSettingsScreen` (hub, `features/settings`) | `services:read` |
+| `/dashboard/layanan/grooming/katalog` | `GroomingServicesScreen` (`features/grooming`) | `services:read` |
 | `/dashboard/master/layanan/new` | `ServiceForm` | `services:create` |
 | `/dashboard/master/layanan/[id]` | `ServiceForm` (with `serviceId`) | `services:update` |
+
+**There is no catalogue-wide list since 13 September 2026.** `/dashboard/master/layanan`
+used to be one (`ServicesScreen`); that address is now the Pengaturan › Layanan hub of cards
+from the navbar mockup, and the list was removed on request as a duplicate of Grooming ›
+Layanan & Harga. That tab took its **Hapus**, **Pulihkan** and *Tampilkan terhapus*
+(`ServiceLifecycleDialog`), and `ServiceForm` returns there after Simpan and Batal.
+
+**The consequence, accepted:** Layanan & Harga is filtered to the Grooming line, so a
+service on any other line — or on none — appears in no list until its line has a home of
+its own. Its form is still reachable at `/dashboard/master/layanan/[id]`.
 
 Placed beside **Hewan** in Master Data rather than under Inventory → Produk. The split is
 about **who edits**: the groomer who prices a bath is not the person pricing sacks of feed,
@@ -171,7 +182,7 @@ anything, so a service's picture is never swept out from under it.
 | | Meaning | Set from |
 | --- | --- | --- |
 | `isActive: false` | Still exists and every past sale of it stays true, but it is no longer offered at the till | The **Ketersediaan** switch on the edit form |
-| `deletedAt` | The record should never have existed | The row's **Hapus** action |
+| `deletedAt` | The record should never have existed | The row's **Hapus** action on Grooming › Layanan & Harga |
 
 Conflating them would force a shop to *delete* a discontinued service to stop it appearing
 in the POS — taking its name off every historical receipt that sold it.

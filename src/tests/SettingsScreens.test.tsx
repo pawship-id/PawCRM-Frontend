@@ -1,6 +1,10 @@
 import { screen, waitFor } from "@testing-library/react";
 
-import { GeneralSettingsScreen, InitialDataScreen } from "@/features/settings";
+import {
+  GeneralSettingsScreen,
+  InitialDataScreen,
+  ServiceSettingsScreen,
+} from "@/features/settings";
 import { branchService } from "@/services/branch.service";
 import { customerService } from "@/services/customer.service";
 import { productService } from "@/services/product.service";
@@ -13,12 +17,13 @@ import { renderWithAuth } from "./helpers/renderWithAuth";
 jest.mock("@/services/branch.service");
 jest.mock("@/services/customer.service");
 jest.mock("@/services/product.service");
+jest.mock("@/services/service.service");
 jest.mock("@/services/stockEntry.service");
 jest.mock("@/services/supplier.service");
 jest.mock("@/services/warehouse.service");
 
 /**
- * The two Pengaturan screens the mockup asks for.
+ * The three Pengaturan screens the mockup asks for.
  *
  * WHAT THESE TESTS ARE FOR. Both screens are mostly copy, and copy does not earn
  * a suite — but three things here are logic, and each one fails silently:
@@ -164,5 +169,33 @@ describe("InitialDataScreen", () => {
     expect(warehouseService.list).not.toHaveBeenCalled();
     expect(productService.list).not.toHaveBeenCalled();
     expect(customerService.list).not.toHaveBeenCalled();
+  });
+});
+
+describe("ServiceSettingsScreen", () => {
+  it("sends Tahapan and Add-on to Layanan & Harga and badges the three that are not built", () => {
+    renderWithAuth(<ServiceSettingsScreen />);
+
+    for (const name of [/Tahapan/, /Add-on/]) {
+      expect(screen.getByRole("link", { name })).toHaveAttribute(
+        "href",
+        "/dashboard/layanan/grooming/katalog",
+      );
+    }
+    // No catalogue card — the list lives on Grooming › Layanan & Harga.
+    expect(screen.getAllByRole("link")).toHaveLength(2);
+
+    // Ukuran, Ras, Zona — drawn so the module's shape is visible, going nowhere.
+    expect(screen.getAllByText("Segera")).toHaveLength(3);
+  });
+
+  it("links nowhere for a role without the grant", () => {
+    renderWithAuth(<ServiceSettingsScreen />, {
+      isSuperAdmin: false,
+      permissions: [{ feature: "branches", actions: ["read"] }],
+    });
+
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Segera")).toHaveLength(3);
   });
 });
