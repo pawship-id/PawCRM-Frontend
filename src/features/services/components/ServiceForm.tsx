@@ -85,9 +85,10 @@ const SERVICE_LOCATION_ORDER: ServiceLocation[] = ["in_store", "in_home"];
 const WHOLE_RUPIAH = /^\d+$/;
 
 /**
- * Simpan and Batal land on Grooming › Layanan & Harga — the one list of services
- * since the catalogue-wide list was removed (13 September 2026), whatever line
- * the service belongs to.
+ * Grooming › Layanan & Harga — the one list of services since the catalogue-wide
+ * list was removed (13 September 2026), whatever line the service belongs to. A
+ * create lands here; an edit lands on the service's detail page under it — see
+ * `goBack`.
  */
 const LIST_PATH = GROOMING_CATALOG_PATH;
 
@@ -334,8 +335,13 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
     };
   }, [serviceId]);
 
+  /*
+    AN EDIT GOES BACK TO THE SERVICE, a create to the list. Somebody who pressed
+    Ubah on a service's detail page expects to land on that page again, not to
+    go looking for the row they came from.
+  */
   function goBack() {
-    router.push(LIST_PATH);
+    router.push(editing ? `${LIST_PATH}/${serviceId}` : LIST_PATH);
   }
 
   function toggleAxis(axis: ServiceVariantAxis, checked: boolean) {

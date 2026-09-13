@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus, RotateCcw, Trash2 } from "lucide-react";
+import { Plus, RotateCcw } from "lucide-react";
 
 import {
   Alert,
@@ -29,25 +29,27 @@ import {
 import { Can, usePermissions } from "@/features/permissions";
 import {
   formatDuration,
-  formatServicePrice,
   ServiceLifecycleDialog,
   type ServiceLifecycleAction,
 } from "@/features/services";
 import { cn } from "@/lib/utils";
-import type { Service, ServiceLocation, ServiceVariantAxis } from "@/types/api";
 
 import { useGroomingLine } from "../hooks/useGroomingLine";
 import {
   useGroomingServices,
   type GroomingServicesQuery,
 } from "../hooks/useGroomingServices";
+import { useServiceBookingCounts } from "../hooks/useServiceBookingCounts";
+import { groomingServicePath } from "../paths";
+import {
+  axesLabel,
+  PLACE_SHORT,
+  placeOf,
+  priceRangeShort,
+  statusOf,
+  variantCoverage,
+} from "../serviceDisplay";
 import { GroomingModuleHeader } from "./GroomingModuleHeader";
-
-const AXIS_LABELS: Record<ServiceVariantAxis, string> = {
-  petType: "Jenis hewan",
-  sizeCategory: "Ukuran",
-  furType: "Jenis bulu",
-};
 
 const STATUS_OPTIONS = withAll<GroomingServicesQuery["isActive"]>(
   [
@@ -57,51 +59,28 @@ const STATUS_OPTIONS = withAll<GroomingServicesQuery["isActive"]>(
   "Semua status",
 );
 
-/** An old service has no locations stored — it was a shop service. */
-function placeOf(locations: ServiceLocation[]): {
-  label: string;
-  home: boolean;
-} {
-  const home = locations.includes("in_home");
-  const store = locations.length === 0 || locations.includes("in_store");
-
-  if (home && store) return { label: "Toko & rumah", home };
-  return home ? { label: "Di rumah", home } : { label: "Di toko", home };
-}
-
-/**
- * Deleted wins over inactive when both are true: a record that should not exist
- * is a more urgent thing to say than one that is merely no longer sold.
- */
-function statusOf(service: Service): { label: string; className: string } {
-  if (service.deletedAt !== null) {
-    return { label: "Terhapus", className: "bg-tint-neutral text-muted" };
-  }
-  return service.isActive
-    ? { label: "Aktif", className: "bg-tint-success text-success" }
-    : { label: "Nonaktif", className: "bg-tint-neutral text-muted" };
-}
-
 /**
  * Layanan › Grooming › Layanan & Harga — the Grooming line's services.
  *
- * ─── A ROW OPENS THE MASTER DATA FORM ──────────────────────────────────────
+ * ─── THE MOCKUP'S COLUMNS, AND A ROW OPENS THE SERVICE ─────────────────────
  *
- * Decided 13 September 2026. The mockup draws a detail screen of its own
- * (Ringkasan / Varian & Harga / Tahapan & Add-on / Portal); this tab links to
- * `/dashboard/master/layanan/[id]` instead, so a service keeps ONE editor.
+ * Decided 13 September 2026, on request, replacing the same day's decision to
+ * send a row straight to the form: Layanan · Tempat · Varian · Harga · Durasi ·
+ * Tahapan · Status, as `buloo-grooming-v3.html` draws them, and a row opens the
+ * service's detail page (`GroomingServiceDetailScreen`). The form is one Ubah
+ * away from there.
  *
- * ─── HAPUS AND PULIHKAN LIVE HERE ──────────────────────────────────────────
+ * WHERE THE COLUMNS SAY LESS THAN THE MOCKUP: "N booking" appears only for a
+ * role with `bookings:read`; Varian is priced / possible combinations, since a
+ * variant has no on/off of its own; Durasi is one figure, since a variant has no
+ * duration of its own; and Status has no Portal badge, since there is no portal.
  *
- * The catalogue-wide list (`/dashboard/master/layanan/katalog`) was removed on
- * request the same day, and it was the only screen that could delete or restore
- * a service. Both came here, with its "Tampilkan terhapus" toggle. A deleted row
- * opens nothing: there is nothing to edit on a record that should not exist
- * until it is restored.
+ * ─── HAPUS LIVES ON THE DETAIL PAGE, PULIHKAN ON THE ROW ───────────────────
  *
- * WHAT THE MOCKUP'S TABLE HAS AND THIS DOES NOT: the Portal badge (no such
- * flag), the booking count per service (no such figure), and tahapan weights
- * (stored on the service since 13 September 2026, but edited in its form).
+ * The mockup's table has no action column, so deleting moved to the service's
+ * own page. Restoring could not follow it there: `GET /services/:id` does not
+ * return a deleted service, so a deleted row opens nothing and carries its
+ * Pulihkan beside the "Terhapus" badge instead.
  */
 export function GroomingServicesScreen() {
   const router = useRouter();
@@ -110,17 +89,15 @@ export function GroomingServicesScreen() {
   const lineId = line.line?._id ?? null;
   const { services, pagination, query, setQuery, refetch, loading, error } =
     useGroomingServices(lineId);
+  const usage = useServiceBookingCounts(
+    services.map((service) => service._id),
+    can("bookings", "read"),
+  );
   const [pending, setPending] = useState<ServiceLifecycleAction | null>(null);
 
-  const mayEdit = can("services", "update");
-  const mayDelete = can("services", "delete");
   const mayRestore = can("services", "restore");
   const narrowed =
     query.search.trim() !== "" || query.isActive !== "" || query.includeDeleted;
-
-  const rowHasAction = (service: Service) =>
-    service.deletedAt !== null ? mayRestore : mayDelete;
-  const showActions = services.some(rowHasAction);
 
   return (
     <div className="flex flex-col gap-6">
@@ -204,7 +181,7 @@ export function GroomingServicesScreen() {
       ) : (
         <>
           <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-            <Table className={cn("min-w-[1040px]", loading && "opacity-60")}>
+            <Table className={cn("min-w-[960px]", loading && "opacity-60")}>
               <TableHeader>
                 <TableRow>
                   <TableHead>Layanan</TableHead>
@@ -213,55 +190,52 @@ export function GroomingServicesScreen() {
                   <TableHead className="text-right">Harga</TableHead>
                   <TableHead>Durasi</TableHead>
                   <TableHead>Tahapan</TableHead>
-                  <TableHead>Add-on</TableHead>
                   <TableHead>Status</TableHead>
-                  {showActions && (
-                    <TableHead className="text-right">Aksi</TableHead>
-                  )}
                 </TableRow>
               </TableHeader>
 
               <TableBody>
                 {services.map((service) => {
-                  const href = `/dashboard/master/layanan/${service._id}`;
+                  const href = groomingServicePath(service._id);
                   const deleted = service.deletedAt !== null;
-                  const opens = mayEdit && !deleted;
-                  const place = placeOf(service.serviceLocations ?? []);
+                  const place = placeOf(service.serviceLocations);
+                  const coverage = variantCoverage(service);
                   const sessions = (service.sessions ?? []).length;
-                  const addons = (service.addonServiceIds ?? []).length;
                   const status = statusOf(service);
+                  const used = usage.counts?.[service._id];
 
                   return (
                     <TableRow
                       key={service._id}
-                      className={cn(opens && "cursor-pointer")}
+                      className={cn(!deleted && "cursor-pointer")}
                       onClick={
-                        opens
-                          ? (event) => {
+                        deleted
+                          ? undefined
+                          : (event) => {
                               if ((event.target as HTMLElement).closest("a, button")) {
                                 return;
                               }
                               router.push(href);
                             }
-                          : undefined
                       }
                     >
                       <TableCell className="whitespace-normal">
-                        {opens ? (
+                        {deleted ? (
+                          <span className="text-sm font-semibold text-foreground">
+                            <HighlightText text={service.name} query={query.search} />
+                          </span>
+                        ) : (
                           <Link
                             href={href}
                             className="rounded text-sm font-semibold text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                           >
                             <HighlightText text={service.name} query={query.search} />
                           </Link>
-                        ) : (
-                          <span className="text-sm font-semibold text-foreground">
-                            <HighlightText text={service.name} query={query.search} />
-                          </span>
                         )}
                         <span className="block text-xs tabular-nums text-muted">
                           <HighlightText text={service.code ?? ""} query={query.search} />
                           {service.serviceType === "addon" && " · add-on"}
+                          {used !== undefined && ` · ${used} booking`}
                         </span>
                       </TableCell>
 
@@ -270,12 +244,12 @@ export function GroomingServicesScreen() {
                           variant="outline"
                           className={cn(
                             "border-transparent",
-                            place.home
-                              ? "bg-tint-info text-info"
-                              : "bg-tint-neutral text-muted",
+                            place === "store"
+                              ? "bg-tint-neutral text-muted"
+                              : "bg-tint-info text-info",
                           )}
                         >
-                          {place.label}
+                          {PLACE_SHORT[place]}
                         </Badge>
                       </TableCell>
 
@@ -284,14 +258,13 @@ export function GroomingServicesScreen() {
                           <>
                             <Badge
                               variant="outline"
-                              className="border-transparent bg-tint-brand text-primary"
+                              className="border-transparent bg-tint-brand tabular-nums text-primary"
                             >
-                              {(service.variants ?? []).length} varian
+                              {coverage.priced} / {coverage.possible}
+                              <span className="sr-only"> kombinasi berharga</span>
                             </Badge>
                             <span className="mt-0.5 block text-xs text-muted">
-                              {(service.variantAxes ?? [])
-                                .map((axis) => AXIS_LABELS[axis])
-                                .join(" × ")}
+                              {axesLabel(service)}
                             </span>
                           </>
                         ) : (
@@ -299,13 +272,13 @@ export function GroomingServicesScreen() {
                             variant="outline"
                             className="border-transparent bg-tint-neutral text-muted"
                           >
-                            Harga tunggal
+                            Tunggal
                           </Badge>
                         )}
                       </TableCell>
 
                       <TableCell className="text-right text-sm font-semibold tabular-nums text-foreground">
-                        {formatServicePrice(service)}
+                        {priceRangeShort(service)}
                       </TableCell>
 
                       <TableCell className="text-sm tabular-nums">
@@ -326,55 +299,29 @@ export function GroomingServicesScreen() {
                         )}
                       </TableCell>
 
-                      <TableCell className="text-sm tabular-nums">
-                        {service.serviceType !== "addon" && addons ? (
-                          `${addons} add-on`
-                        ) : (
-                          <span className="text-muted">—</span>
-                        )}
-                      </TableCell>
-
                       <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={cn("border-transparent", status.className)}
-                        >
-                          {status.label}
-                        </Badge>
-                      </TableCell>
-
-                      {showActions && (
-                        <TableCell className="text-right">
-                          {deleted ? (
-                            mayRestore && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() =>
-                                  setPending({ kind: "restore", service })
-                                }
-                              >
-                                <RotateCcw className="size-4" />
-                                Pulihkan
-                              </Button>
-                            )
-                          ) : (
-                            mayDelete && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-danger hover:bg-danger/10 hover:text-danger"
-                                onClick={() =>
-                                  setPending({ kind: "delete", service })
-                                }
-                              >
-                                <Trash2 className="size-4" />
-                                Hapus
-                              </Button>
-                            )
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge
+                            variant="outline"
+                            className={cn("border-transparent", status.className)}
+                          >
+                            {status.label}
+                          </Badge>
+                          {deleted && mayRestore && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() =>
+                                setPending({ kind: "restore", service })
+                              }
+                            >
+                              <RotateCcw className="size-4" />
+                              Pulihkan
+                            </Button>
                           )}
-                        </TableCell>
-                      )}
+                        </div>
+                      </TableCell>
                     </TableRow>
                   );
                 })}

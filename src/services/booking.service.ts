@@ -13,6 +13,7 @@ import type {
   CreateBookingInput,
   UpdateBookingInput,
   PageResult,
+  ServiceBookingCounts,
   SessionMediaKind,
 } from "@/types/api";
 import type { MediaAsset } from "@/types/inventory";
@@ -95,6 +96,19 @@ export const bookingService = {
    */
   unbilledSummary: () =>
     apiClient.get<BookingUnbilledSummary>("/bookings/unbilled-summary"),
+
+  /**
+   * GET /bookings/service-counts — how many bookings each service has been on,
+   * for the grooming catalogue's "N booking". Draft and cancelled work is not
+   * counted; every asked id comes back, zero when unused.
+   *
+   * ONE REQUEST FOR A PAGE of the catalogue, ids as repeated params. `bookings:
+   * read` — a caller without it should not ask.
+   */
+  serviceCounts: (serviceIds: string[]) =>
+    apiClient.get<ServiceBookingCounts>("/bookings/service-counts", {
+      query: { serviceIds },
+    }),
 
   /**
    * POST /bookings/:id/belongings — one thing just handed over the counter.

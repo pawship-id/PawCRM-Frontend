@@ -726,7 +726,10 @@ describe("ServiceForm — editing", () => {
         expect.objectContaining({ name: "Mandi" }),
       ),
     );
-    expect(push).toHaveBeenCalledWith("/dashboard/layanan/grooming/katalog");
+    // Back to the service's own detail page, not the list it was found in.
+    expect(push).toHaveBeenCalledWith(
+      `/dashboard/layanan/grooming/katalog/${SERVICE_ID}`,
+    );
   });
 
   /*

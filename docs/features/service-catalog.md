@@ -14,8 +14,29 @@ Fase 3 of the POS module.
 | --- | --- | --- |
 | `/dashboard/master/layanan` | `ServiceSettingsScreen` (hub, `features/settings`) | `services:read` |
 | `/dashboard/layanan/grooming/katalog` | `GroomingServicesScreen` (`features/grooming`) | `services:read` |
+| `/dashboard/layanan/grooming/katalog/[id]` | `GroomingServiceDetailScreen` (`features/grooming`) | `services:read` |
 | `/dashboard/master/layanan/new` | `ServiceForm` | `services:create` |
 | `/dashboard/master/layanan/[id]` | `ServiceForm` (with `serviceId`) | `services:update` |
+
+**A row opens the service's detail page, not the form** (13 September 2026, from
+`buloo-grooming-v3.html`). The table has the mockup's columns — Layanan · Tempat · Varian ·
+Harga · Durasi · Tahapan · Status — and the detail page its four tabs (Ringkasan, Varian &
+Harga, Tahapan & Add-on, Portal). The page is **read-only**; its **Ubah** opens
+`ServiceForm`, which returns to the detail page after an edit and to the list after a
+create. What the page does itself: Aktif / Nonaktif (`PATCH isActive`), **Duplikat** (a new
+inactive service with `-SALIN` on the code, without the photo), and **Hapus**.
+
+**"N booking" and "Dipakai"** come from `GET /api/bookings/service-counts`
+(`bookings:read`; draft and cancelled work not counted, add-ons counted where ticked). A
+role without that grant is asked nothing and sees no figure.
+
+**Not drawn, because the data does not exist:** the Portal / Internal badge and "terbit di
+portal" (shown *Segera*), a duration or on/off per variant (Varian reads *priced / possible
+combinations*), satuan tagihan, and a reason for turning a service off.
+
+**A deleted service has no detail page** — `GET /services/:id` does not return one — so its
+row opens nothing and carries **Pulihkan** beside the *Terhapus* badge. Hapus itself is on
+the detail page.
 
 **There is no catalogue-wide list since 13 September 2026.** `/dashboard/master/layanan`
 used to be one (`ServicesScreen`); that address is now the Pengaturan › Layanan hub of cards

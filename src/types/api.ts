@@ -2803,6 +2803,17 @@ export interface BookingUnbilledSummary {
 }
 
 /**
+ * GET /api/bookings/service-counts — bookings per catalogue service.
+ *
+ * BOOKINGS, not animals: two dogs on one visit having the same bath count once.
+ * An add-on counts where it was ticked. Draft and cancelled work is left out.
+ * Every asked id is a key, `0` when nothing used it.
+ */
+export interface ServiceBookingCounts {
+  counts: Record<string, number>;
+}
+
+/**
  * Body of POST /api/bookings.
  *
  * An item carries NO PRICE: it is read from the catalogue and snapshotted by the

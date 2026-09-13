@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { GroomingServicesScreen } from "@/features/grooming";
+import { bookingService } from "@/services/booking.service";
 import {
   businessLineService,
   type BusinessLine,
@@ -23,16 +24,19 @@ jest.mock("sweetalert2", () => ({
   default: { fire: jest.fn().mockResolvedValue({ isConfirmed: true }) },
 }));
 
+jest.mock("@/services/booking.service");
 jest.mock("@/services/businessLine.service");
 jest.mock("@/services/service.service");
 
 /**
  * Grooming › Layanan & Harga.
  *
- * WHAT IS PINNED HERE: Hapus, Pulihkan and "Tampilkan terhapus", which moved in
- * from the catalogue-wide list when it was removed on 13 September 2026. That
- * list was the only place a service could be deleted or restored, so if these
- * break there is no other screen to do it from.
+ * WHAT IS PINNED HERE:
+ *  - the mockup's seven columns, filled from what the API really holds;
+ *  - a live row opens the service's detail page, a deleted one opens nothing
+ *    (the API does not return it by id) and carries its Pulihkan instead;
+ *  - "N booking" is asked for once per page, and never by a role that may not
+ *    read bookings.
  */
 const GROOMING: BusinessLine = {
   _id: "bl-grooming",
@@ -43,18 +47,19 @@ const GROOMING: BusinessLine = {
 function service(overrides: Partial<Service> = {}): Service {
   return {
     _id: "svc-1",
-    name: "Mandi Full",
+    name: "Express Wash",
     code: "GRM-01",
     price: "150000.0000",
     hasVariants: false,
     variants: [],
     variantAxes: [],
-    durationMin: 60,
+    durationMin: 45,
     isActive: true,
     deletedAt: null,
     serviceType: "main",
     serviceLocations: ["in_store"],
     sessions: [],
+    sessionWeights: [],
     addonServiceIds: [],
     ...overrides,
   } as Service;
@@ -67,6 +72,26 @@ function page<T>(items: T[]): PageResult<T> {
   };
 }
 
+const SIZES = ["small", "medium", "large"] as const;
+const FURS = ["long hair", "short hair"] as const;
+
+/** Six priced combinations, from Rp 89 rb up to Rp 249 rb. */
+const EXPRESS = service({
+  hasVariants: true,
+  price: null,
+  variantAxes: ["sizeCategory", "furType"],
+  variants: SIZES.flatMap((size, i) =>
+    FURS.map((fur, j) => ({
+      petType: null,
+      sizeCategory: size,
+      furType: fur,
+      price: String(89000 + i * 60000 + j * 40000),
+    })),
+  ),
+  serviceLocations: ["in_store", "in_home"],
+  sessions: ["Mandi", "Blow dry"],
+});
+
 const DELETED = service({
   _id: "svc-2",
   name: "Mandi Kutu",
@@ -76,61 +101,84 @@ const DELETED = service({
 
 beforeEach(() => {
   jest.mocked(businessLineService.list).mockResolvedValue(page([GROOMING]));
+  jest
+    .mocked(bookingService.serviceCounts)
+    .mockImplementation(async (ids) => ({
+      counts: Object.fromEntries(ids.map((id) => [id, id === "svc-1" ? 12 : 0])),
+    }));
 });
 
 describe("GroomingServicesScreen", () => {
-  it("deletes a service from its row and re-reads the list", async () => {
-    jest.mocked(serviceService.list).mockResolvedValue(page([service()]));
-    jest
-      .mocked(serviceService.remove)
-      .mockResolvedValue(service({ deletedAt: "2026-09-13T00:00:00.000Z" }));
+  it("draws the mockup's columns and a row opens the service's detail page", async () => {
+    jest.mocked(serviceService.list).mockResolvedValue(page([EXPRESS]));
 
     renderWithAuth(<GroomingServicesScreen />);
 
-    await userEvent.click(await screen.findByRole("button", { name: "Hapus" }));
-    const before = jest.mocked(serviceService.list).mock.calls.length;
+    expect(
+      await screen.findByRole("link", { name: "Express Wash" }),
+    ).toHaveAttribute("href", "/dashboard/layanan/grooming/katalog/svc-1");
 
-    await userEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Hapus" }),
-    );
+    expect(
+      screen.getAllByRole("columnheader").map((header) => header.textContent),
+    ).toEqual(["Layanan", "Tempat", "Varian", "Harga", "Durasi", "Tahapan", "Status"]);
+
+    const row = screen.getByRole("row", { name: /Express Wash/ });
+    expect(within(row).getByText("Keduanya")).toBeInTheDocument();
+    expect(within(row).getByText("6 / 6")).toBeInTheDocument();
+    expect(within(row).getByText("Ukuran × Jenis bulu")).toBeInTheDocument();
+    expect(within(row).getByText("Rp 89 rb – Rp 249 rb")).toBeInTheDocument();
+    expect(within(row).getByText("45 mnt")).toBeInTheDocument();
+    expect(within(row).getByText("2 tahap")).toBeInTheDocument();
+    expect(within(row).getByText("Aktif")).toBeInTheDocument();
 
     await waitFor(() =>
-      expect(serviceService.remove).toHaveBeenCalledWith("svc-1"),
+      expect(
+        within(row).getByText(
+          (_, element) =>
+            element?.tagName === "SPAN" &&
+            element.textContent === "GRM-01 · 12 booking",
+        ),
+      ).toBeInTheDocument(),
     );
-    await waitFor(() =>
-      expect(jest.mocked(serviceService.list).mock.calls.length).toBeGreaterThan(
-        before,
-      ),
-    );
+    expect(bookingService.serviceCounts).toHaveBeenCalledWith(["svc-1"]);
   });
 
-  it("shows deleted services on request, with Pulihkan and no way into the form", async () => {
+  it("asks for no booking count for a role that may not read bookings", async () => {
+    jest.mocked(serviceService.list).mockResolvedValue(page([EXPRESS]));
+
+    renderWithAuth(<GroomingServicesScreen />, {
+      isSuperAdmin: false,
+      permissions: [{ feature: "services", actions: ["read"] }],
+    });
+
+    await screen.findByRole("link", { name: "Express Wash" });
+    expect(bookingService.serviceCounts).not.toHaveBeenCalled();
+    expect(screen.queryByText(/booking/)).not.toBeInTheDocument();
+  });
+
+  it("restores a deleted service from its status cell, and never links it", async () => {
     jest
       .mocked(serviceService.list)
       .mockImplementation(async (query) =>
-        page(query?.includeDeleted ? [service(), DELETED] : [service()]),
+        page(query?.includeDeleted ? [EXPRESS, DELETED] : [EXPRESS]),
       );
-    jest.mocked(serviceService.restore).mockResolvedValue(service({ _id: "svc-2" }));
+    jest
+      .mocked(serviceService.restore)
+      .mockResolvedValue(service({ _id: "svc-2" }));
 
     renderWithAuth(<GroomingServicesScreen />);
 
-    await screen.findByText("Mandi Full");
-    expect(screen.queryByText("Mandi Kutu")).not.toBeInTheDocument();
-
+    await screen.findByRole("link", { name: "Express Wash" });
     await userEvent.click(screen.getByLabelText("Tampilkan terhapus"));
 
     expect(await screen.findByText("Terhapus")).toBeInTheDocument();
-    expect(serviceService.list).toHaveBeenCalledWith(
-      expect.objectContaining({ includeDeleted: true }),
-    );
-    // A deleted row opens nothing; a live one still opens its form.
     expect(
       screen.queryByRole("link", { name: "Mandi Kutu" }),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Mandi Full" })).toHaveAttribute(
-      "href",
-      "/dashboard/master/layanan/svc-1",
-    );
+    // Deleting moved to the detail page; the table has no action column.
+    expect(
+      screen.queryByRole("button", { name: "Hapus" }),
+    ).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Pulihkan" }));
     await userEvent.click(
@@ -142,20 +190,5 @@ describe("GroomingServicesScreen", () => {
     await waitFor(() =>
       expect(serviceService.restore).toHaveBeenCalledWith("svc-2"),
     );
-  });
-
-  it("offers no Hapus to a role that may only read", async () => {
-    jest.mocked(serviceService.list).mockResolvedValue(page([service()]));
-
-    renderWithAuth(<GroomingServicesScreen />, {
-      isSuperAdmin: false,
-      permissions: [{ feature: "services", actions: ["read"] }],
-    });
-
-    await screen.findByText("Mandi Full");
-    expect(
-      screen.queryByRole("button", { name: "Hapus" }),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText("Aksi")).not.toBeInTheDocument();
   });
 });

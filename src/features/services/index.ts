@@ -12,4 +12,14 @@ export {
   ServiceLifecycleDialog,
   type ServiceLifecycleAction,
 } from "./components/ServiceLifecycleDialog";
-export { formatDuration, formatServicePrice } from "./format";
+export {
+  formatDuration,
+  formatServicePrice,
+  servicePriceBounds,
+} from "./format";
+// What a screen that READS a service needs to name its variants the way the
+// form that wrote them does.
+export {
+  buildVariantCombos,
+  VARIANT_AXIS_TABLE,
+} from "./components/ServiceFormFields";

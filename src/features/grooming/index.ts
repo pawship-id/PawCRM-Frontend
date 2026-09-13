@@ -7,6 +7,7 @@
  */
 export { GroomingBookingsScreen } from "./components/GroomingBookingsScreen";
 export { GroomingServicesScreen } from "./components/GroomingServicesScreen";
+export { GroomingServiceDetailScreen } from "./components/GroomingServiceDetailScreen";
 export { GroomingSettingsScreen } from "./components/GroomingSettingsScreen";
 export { GroomingModuleHeader } from "./components/GroomingModuleHeader";
 export { GROOMING_CATALOG_PATH } from "./paths";
