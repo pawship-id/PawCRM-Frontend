@@ -175,6 +175,50 @@ describe("InvoiceEditor", () => {
     expect(customerInvoiceService.update).not.toHaveBeenCalled();
   });
 
+  /*
+    THE SERVER NEVER RE-RESOLVES A STORED LINE (13 September 2026), so a service
+    whose variant was switched off after the invoice was issued must not hold a
+    correction to some other row.
+  */
+  it("does not hold a stored service line whose variant was switched off since", async () => {
+    asMock(serviceService.list).mockResolvedValue(
+      page([
+        {
+          _id: "s1",
+          name: "Grooming Basic",
+          price: null,
+          hasVariants: true,
+          variantAxes: ["sizeCategory"],
+          variants: [
+            {
+              petType: null,
+              sizeCategory: "medium",
+              furType: null,
+              price: "150000.0000",
+              durationMin: 60,
+              isActive: false,
+            },
+          ],
+        },
+      ]),
+    );
+    asMock(petService.list).mockResolvedValue(
+      page([{ _id: "pet1", name: "Miko", species: "dog", size: "medium" }]),
+    );
+    const user = userEvent.setup();
+    renderEditor();
+
+    const qty = await screen.findByLabelText("Jumlah Kalung Nylon");
+    await user.clear(qty);
+    await user.type(qty, "3");
+
+    expect(screen.queryByText(/sedang nonaktif/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Varian nonaktif")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Simpan faktur" }));
+    await waitFor(() => expect(customerInvoiceService.update).toHaveBeenCalled());
+  });
+
   it("keeps a booked service at one per animal", async () => {
     renderEditor();
 

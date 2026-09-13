@@ -18,7 +18,8 @@ import {
 } from "@/components/ui/table";
 import { Can, usePermissions } from "@/features/permissions";
 import {
-  formatDuration,
+  formatDurationRange,
+  serviceDurationBounds,
   ServiceLifecycleDialog,
   type ServiceLifecycleAction,
 } from "@/features/services";
@@ -36,7 +37,7 @@ import {
   placeOf,
   priceRangeShort,
   statusOf,
-  variantCoverage,
+  variantCounts,
 } from "../serviceDisplay";
 import { GroomingModuleHeader } from "./GroomingModuleHeader";
 import { GroomingPeriodBar } from "./GroomingPeriodBar";
@@ -57,10 +58,14 @@ import {
  * service's detail page (`GroomingServiceDetailScreen`). The form is one Ubah
  * away from there.
  *
- * WHERE THE COLUMNS SAY LESS THAN THE MOCKUP: "N booking" appears only for a
- * role with `bookings:read`; Varian is priced / possible combinations, since a
- * variant has no on/off of its own; Durasi is one figure, since a variant has no
- * duration of its own; and Status has no Portal badge, since there is no portal.
+ * VARIAN AND DURASI READ THE VARIANTS (13 September 2026): each variant has its
+ * own on/off and its own length, so Varian is the mockup's "8 / 8" — variants
+ * on, out of variants stored — and Durasi is the range across the variants that
+ * are on ("45–115 mnt"). Harga is likewise the range across the active ones.
+ *
+ * WHERE THE COLUMNS STILL SAY LESS THAN THE MOCKUP: "N booking" appears only for
+ * a role with `bookings:read`, and Status has no Portal badge, since there is no
+ * portal.
  *
  * ─── THE CARD: CABANG AND PERIODE ──────────────────────────────────────────
  *
@@ -258,7 +263,8 @@ export function GroomingServicesScreen() {
                   const href = groomingServicePath(service._id);
                   const deleted = service.deletedAt !== null;
                   const place = placeOf(service.serviceLocations);
-                  const coverage = variantCoverage(service);
+                  const counts = variantCounts(service);
+                  const duration = serviceDurationBounds(service);
                   const sessions = (service.sessions ?? []).length;
                   const status = statusOf(service);
                   const used = usage.counts?.[service._id];
@@ -319,8 +325,8 @@ export function GroomingServicesScreen() {
                               variant="outline"
                               className="border-transparent bg-tint-brand tabular-nums text-primary"
                             >
-                              {coverage.priced} / {coverage.possible}
-                              <span className="sr-only"> kombinasi berharga</span>
+                              {counts.active} / {counts.total}
+                              <span className="sr-only"> varian aktif</span>
                             </Badge>
                             <span className="mt-0.5 block text-xs text-muted">
                               {axesLabel(service)}
@@ -341,12 +347,12 @@ export function GroomingServicesScreen() {
                       </TableCell>
 
                       <TableCell className="text-sm tabular-nums">
-                        {service.durationMin === null ? (
+                        {duration === null ? (
                           <span className="font-semibold text-danger">
                             Belum diisi
                           </span>
                         ) : (
-                          formatDuration(service.durationMin)
+                          formatDurationRange(duration)
                         )}
                       </TableCell>
 

@@ -6,9 +6,17 @@ import {
   groupsToBelongings,
   groupsToItems,
   longestGroomerMinutes,
+  petServiceKey,
+  storedPetServiceKeys,
   UNASSIGNED,
 } from "@/features/booking/bookingDraft";
-import type { Booking, BookingItem, Service } from "@/types/api";
+import type {
+  Booking,
+  BookingItem,
+  Pet,
+  Service,
+  ServiceVariant,
+} from "@/types/api";
 
 /**
  * The one place the form's shape and the API's meet.
@@ -394,6 +402,8 @@ describe("longestGroomerMinutes", () => {
     [ADDON]: { durationMin: 30 } as Service,
   };
   const serviceOf = (id: string) => catalogue[id] ?? null;
+  /* Flat services: the animal does not change how long they take. */
+  const noPet = () => null;
 
   it("takes the longest groomer's chain, never the sum", () => {
     // Mochi with Sinta for 90 and Coco with Rio for 60 means the visit takes 90.
@@ -406,7 +416,7 @@ describe("longestGroomerMinutes", () => {
     b.groomerUserId = "rio";
     b.services = [{ ...blankService(), serviceId: OTHER_MAIN }];
 
-    expect(longestGroomerMinutes([a, b], serviceOf)).toBe(90);
+    expect(longestGroomerMinutes([a, b], serviceOf, noPet)).toBe(90);
   });
 
   it("sums the lines one groomer is doing — nobody does two animals at once", () => {
@@ -419,7 +429,7 @@ describe("longestGroomerMinutes", () => {
     b.groomerUserId = "sinta";
     b.services = [{ ...blankService(), serviceId: OTHER_MAIN }];
 
-    expect(longestGroomerMinutes([a, b], serviceOf)).toBe(150);
+    expect(longestGroomerMinutes([a, b], serviceOf, noPet)).toBe(150);
   });
 
   it("adds an add-on's minutes to the groomer doing it", () => {
@@ -432,7 +442,7 @@ describe("longestGroomerMinutes", () => {
         },
     ];
 
-    expect(longestGroomerMinutes([group], serviceOf)).toBe(120);
+    expect(longestGroomerMinutes([group], serviceOf, noPet)).toBe(120);
   });
 
   it("prefers a typed duration over the catalogue's, for the parent only", () => {
@@ -446,6 +456,87 @@ describe("longestGroomerMinutes", () => {
       },
     ];
 
-    expect(longestGroomerMinutes([group], serviceOf)).toBe(75);
+    expect(longestGroomerMinutes([group], serviceOf, noPet)).toBe(75);
+  });
+
+  /*
+    13 SEPTEMBER 2026: a variant-priced service has no length of its own — each
+    variant carries one. Reading `service.durationMin` would find null and count
+    nothing, so the finish time would promise the customer an earlier pick-up
+    than a large dog's grooming allows.
+  */
+  describe("a service priced by variant", () => {
+    const VARIANT_MAIN = "5a7f1f77bcf86cd7994390e9";
+    const variants: ServiceVariant[] = [
+      {
+        petType: null,
+        sizeCategory: "small",
+        furType: null,
+        price: "100000.0000",
+        durationMin: 60,
+        isActive: true,
+      },
+      {
+        petType: null,
+        sizeCategory: "large",
+        furType: null,
+        price: "180000.0000",
+        durationMin: 120,
+        isActive: true,
+      },
+    ];
+    const byVariant = {
+      price: null,
+      durationMin: null,
+      hasVariants: true,
+      variantAxes: ["sizeCategory"],
+      variants,
+    } as unknown as Service;
+    const withVariant = (id: string) =>
+      id === VARIANT_MAIN ? byVariant : serviceOf(id);
+
+    it("reads the minutes off the animal's own variant", () => {
+      const group = blankGroup(PET_A);
+      group.services = [{ ...blankService(), serviceId: VARIANT_MAIN }];
+      const large = { _id: PET_A, size: "large" } as Pet;
+
+      expect(
+        longestGroomerMinutes([group], withVariant, (id) =>
+          id === PET_A ? large : null,
+        ),
+      ).toBe(120);
+    });
+
+    it("counts nothing when the animal cannot be matched to a variant", () => {
+      // Same as a service with no length before: no guess, no cheapest variant.
+      const group = blankGroup(PET_A);
+      group.services = [{ ...blankService(), serviceId: VARIANT_MAIN }];
+
+      expect(longestGroomerMinutes([group], withVariant, noPet)).toBe(0);
+    });
+  });
+});
+
+describe("storedPetServiceKeys", () => {
+  it("holds every animal-and-service pair on the booking, add-ons included", () => {
+    // What an edit may keep on an inactive variant — the server's own rule.
+    const keys = storedPetServiceKeys(
+      booking({
+        items: [
+          item({ _id: "p1" }),
+          item({ _id: "a1", serviceId: ADDON, parentItemId: "p1" }),
+          item({ _id: "p2", petId: PET_B, serviceId: OTHER_MAIN }),
+        ],
+      }),
+    );
+
+    expect(keys).toEqual(
+      new Set([
+        petServiceKey(PET_A, MAIN),
+        petServiceKey(PET_A, ADDON),
+        petServiceKey(PET_B, OTHER_MAIN),
+      ]),
+    );
+    expect(keys.has(petServiceKey(PET_B, MAIN))).toBe(false);
   });
 });

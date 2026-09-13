@@ -18,7 +18,9 @@ import {
 import { Can } from "@/features/permissions";
 import {
   formatDuration,
+  formatDurationRange,
   formatServicePrice,
+  serviceDurationBounds,
   servicePriceBounds,
 } from "@/features/services";
 import { cn } from "@/lib/utils";
@@ -28,13 +30,14 @@ import type { Service } from "@/types/api";
 import { formatMoneyShort } from "../board";
 import {
   axesLabel,
+  BILLING_UNIT_LABELS,
   missingPieces,
   PLACE_LONG,
   placeOf,
   serviceEditPath,
   sessionShares,
   statusOf,
-  variantCoverage,
+  variantCounts,
   variantRows,
 } from "../serviceDisplay";
 
@@ -131,6 +134,14 @@ export interface BookingUsage {
   failed: boolean;
 }
 
+/** "45" or "45–115" — the stat tile's number, minutes under it. */
+function minutesValue(bounds: { low: number; high: number } | null): string {
+  if (!bounds) return "—";
+  return bounds.low === bounds.high
+    ? String(bounds.low)
+    : `${bounds.low}–${bounds.high}`;
+}
+
 /** Ringkasan — the four figures, availability, the basics, and what is missing. */
 export function ServiceSummaryPanel({
   service,
@@ -151,21 +162,22 @@ export function ServiceSummaryPanel({
   onSetActive: (active: boolean) => void;
 }) {
   const bounds = servicePriceBounds(service);
-  const coverage = variantCoverage(service);
+  const duration = serviceDurationBounds(service);
+  const counts = variantCounts(service);
   const shares = sessionShares(service);
   const weighted = shares.some((share) => share.weight !== null);
   const missing = missingPieces(service, addons);
 
   const priceCaption = !bounds
     ? service.hasVariants
-      ? "belum ada varian berharga"
+      ? "belum ada varian aktif"
       : "belum diisi"
     : service.hasVariants
       ? `${
           formatMoneyShort(bounds.low) !== formatMoneyShort(bounds.high)
             ? `sampai ${formatMoneyShort(bounds.high)} · `
             : ""
-        }${coverage.priced} varian`
+        }${counts.active} varian aktif`
       : "harga tunggal";
 
   return (
@@ -178,8 +190,8 @@ export function ServiceSummaryPanel({
         />
         <StatTile
           label="Durasi"
-          value={service.durationMin === null ? "—" : String(service.durationMin)}
-          caption={service.durationMin === null ? "belum diisi" : "menit per booking"}
+          value={minutesValue(duration)}
+          caption={duration === null ? "belum diisi" : "menit per booking"}
         />
         <StatTile
           label="Tahapan"
@@ -234,12 +246,15 @@ export function ServiceSummaryPanel({
       </Card>
 
       <Card title="Informasi dasar">
-        <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
           <Fact label="Kode" numeric>
             {service.code}
           </Fact>
           <Fact label="Tempat pengerjaan">
             {PLACE_LONG[placeOf(service.serviceLocations)]}
+          </Fact>
+          <Fact label="Satuan tagihan">
+            {BILLING_UNIT_LABELS[service.billingUnit ?? "per_pet"]}
           </Fact>
           <Fact label="Jenis">
             {service.serviceType === "addon" ? "Add-on" : "Layanan utama"}
@@ -254,6 +269,12 @@ export function ServiceSummaryPanel({
               : `${(service.addonServiceIds ?? []).length} terpasang`}
           </Fact>
         </dl>
+        {service.billingUnit === "per_visit" && (
+          <p className="mt-4 text-xs text-muted">
+            Per kunjungan belum mengubah tagihan: sampai fitur antar-jemput
+            tersedia, layanan ini masih ditagih per hewan.
+          </p>
+        )}
       </Card>
 
       <Card title="Yang perlu dilengkapi">
@@ -271,12 +292,13 @@ export function ServiceSummaryPanel({
   );
 }
 
-/** Varian & Harga — where it is done, what the price depends on, and the grid. */
+/**
+ * Varian & Harga — where it is done, what the price depends on, and the grid:
+ * each variant's price, its own length and its own on/off (13 September 2026).
+ */
 export function ServiceVariantsPanel({ service }: { service: Service }) {
   const rows = variantRows(service);
-  const coverage = variantCoverage(service);
-  const duration =
-    service.durationMin === null ? "belum diisi" : formatDuration(service.durationMin);
+  const counts = variantCounts(service);
 
   return (
     <div className="flex flex-col gap-6">
@@ -309,7 +331,7 @@ export function ServiceVariantsPanel({ service }: { service: Service }) {
       {service.hasVariants ? (
         <Card
           title="Daftar varian"
-          description={`${coverage.priced} dari ${coverage.possible} kombinasi sudah berharga · durasi ${duration} untuk semua varian`}
+          description={`${counts.active} dari ${counts.total} varian aktif · varian nonaktif tetap tampil, tapi tidak bisa dipilih di booking maupun kasir`}
           action={<EditLink serviceId={service._id} label="Ubah harga" />}
         >
           <div className="overflow-x-auto rounded-xl border border-border">
@@ -318,12 +340,19 @@ export function ServiceVariantsPanel({ service }: { service: Service }) {
                 <TableRow>
                   <TableHead>Varian</TableHead>
                   <TableHead className="text-right">Harga</TableHead>
+                  <TableHead className="text-right">Durasi</TableHead>
+                  <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {rows.map((row) => (
                   <TableRow key={row.key}>
-                    <TableCell className="text-sm font-semibold text-foreground">
+                    <TableCell
+                      className={cn(
+                        "text-sm font-semibold",
+                        row.isActive ? "text-foreground" : "text-muted",
+                      )}
+                    >
                       {row.label}
                     </TableCell>
                     <TableCell className="text-right text-sm tabular-nums">
@@ -335,15 +364,47 @@ export function ServiceVariantsPanel({ service }: { service: Service }) {
                         formatMoney(row.price)
                       )}
                     </TableCell>
+                    <TableCell className="text-right text-sm tabular-nums">
+                      {!row.stored ? (
+                        <span className="text-muted">—</span>
+                      ) : row.durationMin === null ? (
+                        <span className="font-semibold text-danger">
+                          Belum diisi
+                        </span>
+                      ) : (
+                        formatDuration(row.durationMin)
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {row.stored ? (
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "border-transparent",
+                            row.isActive
+                              ? "bg-tint-success text-success"
+                              : "bg-tint-neutral text-muted",
+                          )}
+                        >
+                          {row.isActive ? "Aktif" : "Nonaktif"}
+                        </Badge>
+                      ) : (
+                        <span className="text-sm text-muted">—</span>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </div>
           <p className="mt-3 text-sm text-muted">
-            Rentang:{" "}
+            Varian aktif:{" "}
             <span className="font-semibold tabular-nums text-foreground">
               {formatServicePrice(service)}
+            </span>
+            {" · "}
+            <span className="font-semibold tabular-nums text-foreground">
+              {formatDurationRange(serviceDurationBounds(service))}
             </span>
           </p>
         </Card>
@@ -446,6 +507,7 @@ export function ServiceStepsPanel({
               {addons.items.map((addon) => {
                 const status = statusOf(addon);
                 const retired = addon.deletedAt !== null || !addon.isActive;
+                const minutes = serviceDurationBounds(addon);
 
                 return (
                   <li
@@ -458,8 +520,7 @@ export function ServiceStepsPanel({
                       </span>
                       <span className="block text-xs text-muted">
                         <span className="tabular-nums">{addon.code}</span>
-                        {addon.durationMin !== null &&
-                          ` · +${formatDuration(addon.durationMin)}`}
+                        {minutes !== null && ` · +${formatDurationRange(minutes)}`}
                       </span>
                     </span>
                     {retired && (

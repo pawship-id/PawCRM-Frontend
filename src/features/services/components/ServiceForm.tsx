@@ -26,6 +26,7 @@ import { swalToast } from "@/lib/swal";
 import type {
   Branch,
   Service,
+  ServiceBillingUnit,
   ServiceLocation,
   ServiceType,
   ServiceVariantAxis,
@@ -92,9 +93,28 @@ const WHOLE_RUPIAH = /^\d+$/;
  */
 const LIST_PATH = GROOMING_CATALOG_PATH;
 
+const BILLING_UNIT_OPTIONS: { value: ServiceBillingUnit; label: string }[] = [
+  { value: "per_pet", label: "Per hewan" },
+  { value: "per_visit", label: "Per kunjungan" },
+];
+
 /** "150000.0000" → "150000" — a counter should not read past the decimals. */
 function trimStoredPrice(price: string): string {
   return price.replace(/\.?0+$/, "");
+}
+
+/**
+ * Minutes as typed → a whole number the API accepts, or the sentence saying why
+ * not. Null input is "not filled in".
+ */
+function durationProblem(value: string): string | null {
+  const trimmed = value.trim();
+  if (trimmed === "") return "empty";
+
+  const minutes = Number(trimmed);
+  return Number.isInteger(minutes) && minutes >= 1 && minutes <= MAX_DURATION_MIN
+    ? null
+    : "range";
 }
 
 /**
@@ -117,8 +137,15 @@ function trimStoredPrice(price: string): string {
  *
  * FLAT OR PER-VARIANT, NEVER BOTH, which is the server's own rule (see
  * `ServiceService.#prepareVariantConfig`). The switch decides which half of the
- * card is shown, and the payload carries only that half: `price` alone, or
- * `variantAxes` + `variants` alone.
+ * card is shown, and the payload carries only that half: `price` + `durationMin`
+ * alone, or `variantAxes` + `variants` alone.
+ *
+ * ─── THE DURATION FOLLOWS THE PRICE (13 September 2026) ────────────────────
+ *
+ * A flat service has one duration. A variant service has none of its own: each
+ * variant row carries its minutes beside its price, and its own Aktif — a
+ * variant switched off stays in the grid but cannot be chosen at booking or at
+ * the till.
  */
 export function ServiceForm({ serviceId }: { serviceId?: string }) {
   const editing = serviceId !== undefined;
@@ -143,12 +170,21 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
   const [image, setImage] = useState<MediaAsset | null>(null);
   const [serviceType, setServiceType] = useState<ServiceType>("main");
   const [durationMin, setDurationMin] = useState("");
+  const [billingUnit, setBillingUnit] = useState<ServiceBillingUnit>("per_pet");
   const [description, setDescription] = useState("");
 
   const [hasVariants, setHasVariants] = useState(false);
   const [price, setPrice] = useState("");
   const [variantAxes, setVariantAxes] = useState<ServiceVariantAxis[]>([]);
   const [variantPrices, setVariantPrices] = useState<Record<string, string>>(
+    {},
+  );
+  /* Combo key → minutes as typed. */
+  const [variantDurations, setVariantDurations] = useState<
+    Record<string, string>
+  >({});
+  /* Combo key → on/off. Absent reads as on. */
+  const [variantActive, setVariantActive] = useState<Record<string, boolean>>(
     {},
   );
 
@@ -274,17 +310,39 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
         // "150000.0000" to see the price they typed.
         setPrice(result.price === null ? "" : trimStoredPrice(result.price));
         setDurationMin(
-          result.durationMin === null ? "" : String(result.durationMin),
+          result.durationMin === null || result.durationMin === undefined
+            ? ""
+            : String(result.durationMin),
         );
+        setBillingUnit(result.billingUnit ?? "per_pet");
         setDescription(result.description ?? "");
         const axes = result.variantAxes ?? [];
+        const storedVariants = result.variants ?? [];
         setHasVariants(result.hasVariants ?? false);
         setVariantAxes(axes);
         setVariantPrices(
           Object.fromEntries(
-            (result.variants ?? []).map((variant) => [
+            storedVariants.map((variant) => [
               comboKey(axes, variant),
               trimStoredPrice(variant.price),
+            ]),
+          ),
+        );
+        setVariantDurations(
+          Object.fromEntries(
+            storedVariants.map((variant) => [
+              comboKey(axes, variant),
+              variant.durationMin === null || variant.durationMin === undefined
+                ? ""
+                : String(variant.durationMin),
+            ]),
+          ),
+        );
+        setVariantActive(
+          Object.fromEntries(
+            storedVariants.map((variant) => [
+              comboKey(axes, variant),
+              variant.isActive !== false,
             ]),
           ),
         );
@@ -400,10 +458,13 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
 
     /*
       FLAT OR PER-VARIANT, NEVER BOTH — the server's rule, checked here so the
-      answer arrives before a round trip. Every generated row must carry a price:
-      a blank one is a combination the till could not quote.
+      answer arrives before a round trip. Every generated row must carry a price
+      and a duration: a blank price is a combination the till could not quote,
+      and a blank duration one the calendar would have to guess.
     */
     let variants: ServiceVariantInput[] = [];
+    let duration: number | null = null;
+
     if (hasVariants) {
       if (variantAxes.length === 0) {
         setVariantError("Pilih minimal satu dasar pembeda harga.");
@@ -422,51 +483,64 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
           "Isi angka saja, tanpa titik atau koma. Contoh: 150000",
         );
         invalid = true;
+      } else if (
+        combos.some(
+          (combo) => durationProblem(variantDurations[combo.key] ?? "") === "empty",
+        )
+      ) {
+        setVariantError(
+          "Semua baris varian harus punya durasi — kalender dan pengecekan bentrok membacanya.",
+        );
+        invalid = true;
+      } else if (
+        combos.some((combo) => durationProblem(variantDurations[combo.key] ?? ""))
+      ) {
+        setVariantError(
+          `Durasi varian diisi menit antara 1 dan ${MAX_DURATION_MIN}.`,
+        );
+        invalid = true;
       } else {
         variants = combos.map((combo) => ({
           petType: combo.petType,
           sizeCategory: combo.sizeCategory,
           furType: combo.furType,
           price: (variantPrices[combo.key] ?? "").trim(),
+          durationMin: Number((variantDurations[combo.key] ?? "").trim()),
+          isActive: variantActive[combo.key] !== false,
         }));
       }
-    } else if (trimmedPrice === "") {
-      setPriceError("Harga wajib diisi.");
-      invalid = true;
-    } else if (!WHOLE_RUPIAH.test(trimmedPrice)) {
-      setPriceError("Isi angka saja, tanpa titik atau koma. Contoh: 150000");
-      invalid = true;
-    }
+    } else {
+      if (trimmedPrice === "") {
+        setPriceError("Harga wajib diisi.");
+        invalid = true;
+      } else if (!WHOLE_RUPIAH.test(trimmedPrice)) {
+        setPriceError("Isi angka saja, tanpa titik atau koma. Contoh: 150000");
+        invalid = true;
+      }
 
-    /*
-      ─── REQUIRED SINCE 3 SEPTEMBER 2026 ───────────────────────────────────────
+      /*
+        ─── REQUIRED SINCE 3 SEPTEMBER 2026 ─────────────────────────────────────
 
-      The calendar has to draw a block, the clash check has to know when somebody
-      is free again, and "selesai sekitar" has to add up. A service with no
-      duration makes all three GUESS at half an hour — and a guess on a calendar
-      is read as fact by everybody downstream.
-
-      IT WAS NULLABLE FOR A GOOD REASON, and that reason expired. The field
-      shipped two phases before the booking module so a duration added later would
-      not mean backfilling every service a tenant had already priced. The module
-      is here; the field has readers.
-    */
-    const duration =
-      durationMin.trim() === "" ? null : Number(durationMin.trim());
-    if (duration === null) {
-      setDurationError(
-        "Wajib diisi — kalender dan pengecekan bentrok membacanya.",
-      );
-      invalid = true;
-    } else if (
-      !Number.isInteger(duration) ||
-      duration < 1 ||
-      duration > MAX_DURATION_MIN
-    ) {
-      setDurationError(
-        `Isi menit antara 1 dan ${MAX_DURATION_MIN}. Lebih dari sehari itu penitipan, dihitung per malam.`,
-      );
-      invalid = true;
+        The calendar has to draw a block, the clash check has to know when
+        somebody is free again, and "selesai sekitar" has to add up. A service
+        with no duration makes all three GUESS at half an hour — and a guess on a
+        calendar is read as fact by everybody downstream. On a variant service
+        each row carries its own, checked above.
+      */
+      const problem = durationProblem(durationMin);
+      if (problem === "empty") {
+        setDurationError(
+          "Wajib diisi — kalender dan pengecekan bentrok membacanya.",
+        );
+        invalid = true;
+      } else if (problem) {
+        setDurationError(
+          `Isi menit antara 1 dan ${MAX_DURATION_MIN}. Lebih dari sehari itu penitipan, dihitung per malam.`,
+        );
+        invalid = true;
+      } else {
+        duration = Number(durationMin.trim());
+      }
     }
 
     if (serviceLocations.length === 0) {
@@ -506,8 +580,8 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
         to create from this screen.
       */
       ...(image || editing ? { image } : {}),
-      durationMin: duration as number,
       description: description.trim() || null,
+      billingUnit,
       hasVariants,
       /*
         EXACTLY ONE HALF OF THE PRICING IS SENT, and the unused half is OMITTED
@@ -516,11 +590,14 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
         first version produced a bare "Validation failed": the refusal named
         `variantAxes`, which this form only draws inside the variant editor, so
         on a flat-priced service nothing appeared at all.
+
+        THE DURATION RIDES WITH ITS HALF: a variant service sends none of its
+        own, because the server refuses one beside per-variant minutes.
       */
       ...(hasVariants
         ? { variantAxes, variants }
         : // Sent exactly as typed. Never Number(price).
-          { price: trimmedPrice }),
+          { price: trimmedPrice, durationMin: duration as number }),
       sessions,
       // `[]` IS AN ANSWER — "split evenly" — and is sent as one.
       sessionWeights: sessionWeightsPayload(sessions, sessionWeights),
@@ -560,6 +637,8 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
           setBranchError(detail.message);
         } else if (detail?.field?.endsWith("sessionWeights")) {
           setWeightError(error.reason ?? detail.message);
+        } else if (detail?.field === "durationMin") {
+          setDurationError(error.reason ?? detail.message);
         } else if (
           detail?.field === "variants" ||
           detail?.field === "variantAxes"
@@ -708,26 +787,25 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
 
       <Card
         title="Harga & durasi"
-        description="Harga bisa satu untuk semua, atau beda-beda per varian. Durasi dibaca kalender dan pengecekan bentrok."
+        description="Harga dan durasi bisa satu untuk semua, atau beda-beda per varian. Durasi dibaca kalender dan pengecekan bentrok."
       >
         <div className="flex flex-col gap-5">
-          <TextField
-            label="Durasi (menit)"
-            name="durationMin"
-            type="number"
-            min={1}
-            max={MAX_DURATION_MIN}
-            value={durationMin}
-            onChange={(event) => {
-              setDurationMin(event.target.value);
-              setDurationError(null);
-            }}
-            error={durationError ?? undefined}
-            placeholder="90"
-            hint="Dipakai kalender dan pengecekan bentrok."
+          {/*
+            ─── PER HEWAN OR PER KUNJUNGAN (13 September 2026) ─────────────────
+
+            STORED, NOT YET BILLED BY. The antar-jemput feature that charges a
+            visit once, however many animals ride along, is still to come; until
+            then every service is charged per animal, and the hint says so rather
+            than letting somebody believe the choice already moves a bill.
+          */}
+          <SelectField
+            label="Ditagih"
+            value={billingUnit}
+            onChange={(next) => setBillingUnit(next as ServiceBillingUnit)}
+            options={BILLING_UNIT_OPTIONS}
+            hint="Per kunjungan: hewan yang datang bareng cuma bayar sekali, mis. antar-jemput. Sampai fitur antar-jemput tersedia, tagihannya masih dihitung per hewan."
             disabled={saving}
             required
-            className="sm:max-w-xs"
           />
 
           <div className="flex items-start justify-between gap-4 border-t border-border pt-4">
@@ -736,8 +814,9 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
                 Harga beda per varian
               </Label>
               <p className="mt-1 max-w-prose text-xs text-muted">
-                Nyalakan kalau harganya tergantung hewannya — tipe, ukuran, atau
-                jenis bulu. Kalau mati, satu harga berlaku untuk semua.
+                Nyalakan kalau harga dan durasinya tergantung hewannya — tipe,
+                ukuran, atau jenis bulu. Kalau mati, satu harga dan satu durasi
+                berlaku untuk semua.
               </p>
             </div>
             <Switch
@@ -746,6 +825,7 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
               onCheckedChange={(next) => {
                 setHasVariants(next);
                 setPriceError(null);
+                setDurationError(null);
                 setVariantError(null);
               }}
               disabled={saving}
@@ -756,6 +836,8 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
             <ServiceVariantEditor
               axes={variantAxes}
               prices={variantPrices}
+              durations={variantDurations}
+              active={variantActive}
               combos={combos}
               error={variantError ?? undefined}
               disabled={saving}
@@ -764,27 +846,52 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
                 setVariantError(null);
                 setVariantPrices((current) => ({ ...current, [key]: value }));
               }}
+              onDurationChange={(key, value) => {
+                setVariantError(null);
+                setVariantDurations((current) => ({ ...current, [key]: value }));
+              }}
+              onActiveChange={(key, next) =>
+                setVariantActive((current) => ({ ...current, [key]: next }))
+              }
             />
           ) : (
-            <TextField
-              label="Harga"
-              name="price"
-              // `inputMode` rather than type=number: a number input in some
-              // browsers silently reformats and loses what was typed, and this
-              // value must reach the API exactly as written.
-              inputMode="numeric"
-              value={price}
-              onChange={(event) => {
-                setPrice(event.target.value);
-                setPriceError(null);
-              }}
-              error={priceError ?? undefined}
-              placeholder="150000"
-              hint="Boleh 0 — layanan gratis itu hal yang nyata."
-              disabled={saving}
-              required
-              className="sm:max-w-xs"
-            />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <TextField
+                label="Harga"
+                name="price"
+                // `inputMode` rather than type=number: a number input in some
+                // browsers silently reformats and loses what was typed, and this
+                // value must reach the API exactly as written.
+                inputMode="numeric"
+                value={price}
+                onChange={(event) => {
+                  setPrice(event.target.value);
+                  setPriceError(null);
+                }}
+                error={priceError ?? undefined}
+                placeholder="150000"
+                hint="Boleh 0 — layanan gratis itu hal yang nyata."
+                disabled={saving}
+                required
+              />
+              <TextField
+                label="Durasi (menit)"
+                name="durationMin"
+                type="number"
+                min={1}
+                max={MAX_DURATION_MIN}
+                value={durationMin}
+                onChange={(event) => {
+                  setDurationMin(event.target.value);
+                  setDurationError(null);
+                }}
+                error={durationError ?? undefined}
+                placeholder="90"
+                hint="Dipakai kalender dan pengecekan bentrok."
+                disabled={saving}
+                required
+              />
+            </div>
           )}
         </div>
       </Card>

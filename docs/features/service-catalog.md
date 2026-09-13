@@ -60,6 +60,32 @@ way — the four pills, and the two dates only behind Custom, with no preset chi
 until Terapkan; it is never counted and Reset leaves it alone. Under the search, "N layanan · X
 aktif dari Y" is what is listed, then the line's whole catalogue.
 
+---
+
+## Each variant its own duration and on/off; a billing unit
+
+Decided 13 September 2026, on request.
+
+- **The duration follows the price.** A flat service has one *Durasi (menit)*. A variant
+  service has none of its own: every row of the variant grid carries its minutes beside its
+  price, and the single box disappears. The server refuses a service-level `durationMin`
+  beside `hasVariants: true`.
+- **Each variant has an Aktif tick**, and the service keeps its own *Masih ditawarkan*. An
+  inactive variant stays in the grid and on the detail page, but cannot be chosen: the
+  booking form, the till dialog and both invoice forms block a **new** line for it with a
+  sentence naming the service and the animal, and the server refuses one. A line already
+  on a booking being edited, or already stored on an invoice, keeps working.
+- **"Ditagih": Per hewan / Per kunjungan** (`billingUnit`). Stored and shown on the detail
+  page; billing still charges per animal until the antar-jemput feature — the form's hint
+  says so.
+- **What reads it:** the catalogue table's Varian is *active / total* and Durasi the range
+  across active variants ("45–115 mnt"); Harga ranges over active variants only; the detail
+  page's variant table has Durasi and Status columns; "selesai sekitar" and a booking's
+  snapshot use the animal's own variant's minutes (`priceForPet(...).durationMin`).
+- **Existing data:** run `node src/seeds/backfillServiceVariantFields.js` in the backend
+  (see its changelog). Until then the API already presents a variant with no duration as
+  the service's old one, and one with no flag as active.
+
 **There is no catalogue-wide list since 13 September 2026.** `/dashboard/master/layanan`
 used to be one (`ServicesScreen`); that address is now the Pengaturan › Layanan hub of cards
 from the navbar mockup, and the list was removed on request as a duplicate of Grooming ›

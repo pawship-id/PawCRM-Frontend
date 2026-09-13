@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import type {
   PetFurType,
   PetSize,
@@ -165,19 +166,29 @@ export function comboKey(
 export function ServiceVariantEditor({
   axes,
   prices,
+  durations,
+  active,
   combos,
   error,
   disabled,
   onToggleAxis,
   onPriceChange,
+  onDurationChange,
+  onActiveChange,
 }: {
   axes: ServiceVariantAxis[];
   prices: Record<string, string>;
+  /** Combo key → minutes as typed. */
+  durations: Record<string, string>;
+  /** Combo key → on/off. A key that is absent reads as on. */
+  active: Record<string, boolean>;
   combos: VariantCombo[];
   error?: string;
   disabled: boolean;
   onToggleAxis: (axis: ServiceVariantAxis, checked: boolean) => void;
   onPriceChange: (key: string, value: string) => void;
+  onDurationChange: (key: string, value: string) => void;
+  onActiveChange: (key: string, active: boolean) => void;
 }) {
   return (
     <div className="flex flex-col gap-4">
@@ -203,38 +214,94 @@ export function ServiceVariantEditor({
 
       {combos.length > 0 && (
         <div className="flex flex-col gap-3 border-t border-border pt-4">
-          <p className="text-sm font-medium">
-            Harga per varian{" "}
-            <span className="font-normal text-muted">
-              ({combos.length} baris)
-            </span>
-          </p>
+          <div>
+            <p className="text-sm font-medium">
+              Harga & durasi per varian{" "}
+              <span className="font-normal text-muted">
+                ({combos.length} baris)
+              </span>
+            </p>
+            {/*
+              ─── EACH VARIANT ITS OWN LENGTH AND ITS OWN ON/OFF ──────────────
+
+              Decided 13 September 2026. A large long-haired dog does not take as
+              long as a small short-haired one, so the minutes sit beside the
+              price rather than once above the grid. A variant switched off stays
+              in the grid — it is still a combination the service has — but the
+              booking form and the till will not let anybody choose it.
+            */}
+            <p className="mt-1 text-xs text-muted">
+              Varian yang tidak dicentang Aktif tetap tampil, tapi tidak bisa
+              dipilih di booking maupun kasir.
+            </p>
+          </div>
+
+          <div
+            aria-hidden
+            className="hidden gap-3 text-xs font-semibold text-muted sm:grid sm:grid-cols-[1fr_160px_120px_72px]"
+          >
+            <span>Varian</span>
+            <span>Harga</span>
+            <span>Durasi (menit)</span>
+            <span>Aktif</span>
+          </div>
 
           <div className="flex flex-col gap-3">
-            {combos.map((combo) => (
-              <div
-                key={combo.key}
-                className="grid items-center gap-3 sm:grid-cols-[1fr_180px]"
-              >
-                <span className="text-sm">{combo.label}</span>
-                {/*
-                  An `aria-label` rather than a `TextField`: the row's own text
-                  IS the label, and repeating it above every box would make a
-                  twelve-row grid read as twelve stacked fields.
-                */}
-                <Input
-                  aria-label={`Harga ${combo.label}`}
-                  inputMode="numeric"
-                  value={prices[combo.key] ?? ""}
-                  onChange={(event) =>
-                    onPriceChange(combo.key, event.target.value)
-                  }
-                  placeholder="150000"
-                  disabled={disabled}
-                  className={FIELD_HEIGHT}
-                />
-              </div>
-            ))}
+            {combos.map((combo) => {
+              const on = active[combo.key] !== false;
+
+              return (
+                <div
+                  key={combo.key}
+                  className="grid items-center gap-3 sm:grid-cols-[1fr_160px_120px_72px]"
+                >
+                  <span className={cn("text-sm", !on && "text-muted")}>
+                    {combo.label}
+                    {!on && <span className="ml-1.5 text-xs">· nonaktif</span>}
+                  </span>
+                  {/*
+                    An `aria-label` rather than a `TextField`: the row's own text
+                    IS the label, and repeating it above every box would make a
+                    twelve-row grid read as twelve stacked fields.
+                  */}
+                  <Input
+                    aria-label={`Harga ${combo.label}`}
+                    inputMode="numeric"
+                    value={prices[combo.key] ?? ""}
+                    onChange={(event) =>
+                      onPriceChange(combo.key, event.target.value)
+                    }
+                    placeholder="150000"
+                    disabled={disabled}
+                    className={FIELD_HEIGHT}
+                  />
+                  <Input
+                    aria-label={`Durasi ${combo.label} (menit)`}
+                    type="number"
+                    min={1}
+                    max={1440}
+                    value={durations[combo.key] ?? ""}
+                    onChange={(event) =>
+                      onDurationChange(combo.key, event.target.value)
+                    }
+                    placeholder="60"
+                    disabled={disabled}
+                    className={FIELD_HEIGHT}
+                  />
+                  <label className="flex min-h-11 items-center gap-2 text-sm">
+                    <Checkbox
+                      aria-label={`${combo.label} aktif`}
+                      checked={on}
+                      onCheckedChange={(next) =>
+                        onActiveChange(combo.key, next === true)
+                      }
+                      disabled={disabled}
+                    />
+                    <span className="sm:sr-only">Aktif</span>
+                  </label>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

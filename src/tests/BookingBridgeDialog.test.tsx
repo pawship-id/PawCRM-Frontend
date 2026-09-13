@@ -503,6 +503,47 @@ describe("BookingBridgeDialog — the ad-hoc tab", () => {
     ).toHaveAttribute("href", `/dashboard/master/pets/${PET_ID}/edit`);
   });
 
+  /*
+    NOR ONE WHOSE VARIANT IS SWITCHED OFF (13 September 2026) — the till refuses
+    a new line for it. The reason is on the row, in words.
+  */
+  it("cannot tick a service whose variant for the animal is switched off", async () => {
+    mockedPets.list.mockResolvedValue(
+      page([
+        { _id: PET_ID, name: "Bella", customerId: CUSTOMER_ID, size: "large" },
+      ]),
+    );
+    mockedServices.list.mockResolvedValue(
+      page([
+        {
+          _id: SERVICE_ID,
+          name: "Grooming Full Service",
+          price: null,
+          hasVariants: true,
+          variantAxes: ["sizeCategory"],
+          variants: [
+            {
+              petType: null,
+              sizeCategory: "large",
+              furType: null,
+              price: "150000.0000",
+              durationMin: 120,
+              isActive: false,
+            },
+          ],
+        },
+      ]),
+    );
+
+    openAdhoc();
+
+    expect(
+      await screen.findByRole("checkbox", { name: /grooming full service/i }),
+    ).toBeDisabled();
+    expect(screen.getByText(/varian nonaktif/i)).toBeInTheDocument();
+    expect(screen.queryByText("Rp 150.000")).not.toBeInTheDocument();
+  });
+
   it("sends no price — the server prices the line", async () => {
     const onAdd = openAdhoc();
 

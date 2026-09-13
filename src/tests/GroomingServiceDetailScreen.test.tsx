@@ -48,14 +48,30 @@ const SERVICE = {
   salesAccountId: null,
   categoryId: null,
   price: null,
-  durationMin: 45,
+  // A variant service has no length of its own — each variant carries one.
+  durationMin: null,
+  billingUnit: "per_pet",
   description: "Mandi cepat untuk anabul yang rutin.",
   hasVariants: true,
   variantAxes: ["sizeCategory"],
   // "large" is deliberately unpriced.
   variants: [
-    { petType: null, sizeCategory: "small", furType: null, price: "89000.0000" },
-    { petType: null, sizeCategory: "medium", furType: null, price: "129000.0000" },
+    {
+      petType: null,
+      sizeCategory: "small",
+      furType: null,
+      price: "89000.0000",
+      durationMin: 45,
+      isActive: true,
+    },
+    {
+      petType: null,
+      sizeCategory: "medium",
+      furType: null,
+      price: "129000.0000",
+      durationMin: 60,
+      isActive: true,
+    },
   ],
   sessions: ["Mandi", "Blow dry"],
   sessionWeights: [70, 30],
@@ -134,7 +150,11 @@ describe("GroomingServiceDetailScreen", () => {
     );
 
     expect(screen.getByText("Rp 89 rb")).toBeInTheDocument();
-    expect(screen.getByText("sampai Rp 129 rb · 2 varian")).toBeInTheDocument();
+    expect(
+      screen.getByText("sampai Rp 129 rb · 2 varian aktif"),
+    ).toBeInTheDocument();
+    // Each variant's own length, shortest to longest.
+    expect(screen.getByText("45–60")).toBeInTheDocument();
     expect(screen.getByText("bobot 100%")).toBeInTheDocument();
     expect(
       screen.getByText("1 kombinasi varian belum diberi harga."),

@@ -268,6 +268,21 @@ export function InvoiceEditor({
     [initialLines, invoice.invoiceDiscount, invoice.dueDate],
   );
 
+  /*
+    A NEW SERVICE LINE ON A SWITCHED-OFF VARIANT (13 September 2026). The server
+    resolves only the rows added in this edit and refuses one of these; a line
+    already stored on the invoice is never re-resolved, so it is never flagged —
+    blocking it would hold the whole correction over a row the server accepts.
+  */
+  const variantInactive = (line: EditLine) =>
+    line.fromIndex === null &&
+    line.kind === "service" &&
+    line.petId !== "" &&
+    priceForPet(
+      lookups.services.find((one) => one._id === line.refId),
+      pets.find((one) => one._id === line.petId),
+    ).inactive;
+
   const blocking = (() => {
     if (lookups.loading) return "Sedang memuat katalog.";
     if (lines.length === 0) return "Faktur butuh minimal satu baris.";
@@ -280,6 +295,15 @@ export function InvoiceEditor({
       return petOptions.length === 0
         ? "Pelanggan ini belum punya hewan — daftarkan dulu di Master Data."
         : "Ada baris jasa yang belum dipilih hewannya.";
+    }
+
+    /* Its own sentence: the price is known, so "belum punya harga" would be
+       wrong — the variant exists and is switched off. */
+    const inactive = lines.find(variantInactive);
+
+    if (inactive) {
+      const pet = pets.find((one) => one._id === inactive.petId);
+      return `Varian ${inactive.name} untuk ${pet?.name ?? "hewan ini"} sedang nonaktif — pilih layanan lain atau aktifkan variannya di katalog.`;
     }
 
     const unpriced = lines.find(
@@ -514,6 +538,12 @@ export function InvoiceEditor({
                     <span className="text-muted">—</span>
                   ) : (
                     formatMoney(line.unitPrice)
+                  )}
+                  {/* The row the blocking sentence is about, marked in words. */}
+                  {variantInactive(line) && (
+                    <span className="block text-xs text-warning">
+                      Varian nonaktif
+                    </span>
                   )}
                 </TableCell>
 

@@ -25,12 +25,15 @@ import {
 } from "@/utils/serviceVariant";
 import type { BusinessLine } from "@/services/businessLine.service";
 import type { Pet, Service } from "@/types/api";
-import { blankService, UNASSIGNED } from "../bookingDraft";
+import { blankService, petServiceKey, UNASSIGNED } from "../bookingDraft";
 import type { PetGroupDraft, ServiceDraft } from "../bookingDraft";
 
 /** Mirrors NOTES_MAX_LENGTH / BELONGING_NAME_MAX_LENGTH in the models. */
 const NOTES_MAX_LENGTH = 500;
 const BELONGING_NAME_MAX_LENGTH = 120;
+
+/** Shared empty set for a card with no stored booking behind it. */
+const NO_STORED_KEYS: ReadonlySet<string> = new Set();
 
 /**
  * ONE ANIMAL ON THE BOOKING — its services, its add-ons, its note and what it
@@ -74,6 +77,7 @@ export function BookingPetGroupCard({
   disabled,
   removable,
   duplicateKeys,
+  storedKeys = NO_STORED_KEYS,
   onChange,
   onRemove,
 }: {
@@ -93,12 +97,20 @@ export function BookingPetGroupCard({
   removable: boolean;
   /** Line keys that repeat an animal-and-service already on the booking. */
   duplicateKeys: Set<string>;
+  /**
+   * The (animal, service) pairs the stored booking already held, by
+   * `petServiceKey` — empty on a new booking. A pair in here may keep an
+   * inactive variant; see `storedPetServiceKeys`.
+   */
+  storedKeys?: ReadonlySet<string>;
   onChange: (next: Partial<PetGroupDraft>) => void;
   onRemove: () => void;
 }) {
   const pet = pets.find((item) => item._id === group.petId) ?? null;
   const serviceOf = (id: string) =>
     services.find((item) => item._id === id) ?? null;
+  const wasStored = (serviceId: string) =>
+    storedKeys.has(petServiceKey(group.petId, serviceId));
 
   /* A billed line may not be removed, and nor may the card holding one. */
   const hasBilled = group.services.some((line) => line.locked);
@@ -272,6 +284,7 @@ export function BookingPetGroupCard({
                 })
               }
               serviceOf={serviceOf}
+              wasStored={wasStored}
             />
           ))}
 
@@ -392,6 +405,7 @@ function ServiceLine({
   onChange,
   onRemove,
   serviceOf,
+  wasStored,
 }: {
   line: ServiceDraft;
   /** Its place in the animal's list, for the numbered caption. */
@@ -405,6 +419,8 @@ function ServiceLine({
   onChange: (patch: Partial<ServiceDraft>) => void;
   onRemove: () => void;
   serviceOf: (id: string) => Service | null;
+  /** Whether this animal already had `serviceId` on the stored booking. */
+  wasStored: (serviceId: string) => boolean;
 }) {
   /* Open when a duration was already typed, so an edit shows what it holds. */
   const [editingDuration, setEditingDuration] = useState(
@@ -413,8 +429,17 @@ function ServiceLine({
 
   const service = serviceOf(line.serviceId);
   const locked = line.locked;
-  const { price, missingAxis } = priceForPet(service, pet);
+  const quote = priceForPet(service, pet);
+  const { price, missingAxis } = quote;
   const variantLabel = variantLabelForPet(service, pet, VARIANT_VALUE_LABELS);
+  /*
+    THE ANIMAL'S VARIANT IS SWITCHED OFF, and this line is new (13 September
+    2026). It is not priceable: the server refuses a new line for it, so the
+    card says so in words instead of showing a figure somebody would quote. A
+    pair already on the stored booking is allowed through by the server, and
+    keeps its price here — with the fact said beside it.
+  */
+  const inactive = quote.inactive && !wasStored(line.serviceId);
 
   /*
     THE ADD-ONS THIS SERVICE OFFERS — its own list, not the whole catalogue. The
@@ -425,7 +450,12 @@ function ServiceLine({
     .map((id) => serviceOf(id))
     .filter((addon): addon is Service => addon !== null);
 
-  const catalogueDuration = service?.durationMin ?? null;
+  /*
+    THE ANIMAL'S LENGTH, not the service's. A variant-priced service has no
+    `durationMin` of its own since 13 September 2026 — each variant carries one
+    — so reading the service would show "Durasi —" on every such line.
+  */
+  const catalogueDuration = quote.durationMin;
 
   /*
     THE MAIN SERVICES ON OFFER, narrowed by THIS line's type.
@@ -528,13 +558,31 @@ function ServiceLine({
       {/* The price sits with the service it belongs to, not in a column of its own. */}
       {service && (
         <p className="mt-2 text-sm">
-          {price ? (
+          {inactive ? (
+            /* A WORD, NOT A COLOUR — §1.3. The blocked Simpan names the
+               service and the animal; this says what to do about it. */
+            <>
+              <span className="rounded-full bg-tint-danger px-2 py-0.5 text-xs font-medium text-danger">
+                Varian nonaktif
+              </span>
+              <span className="text-xs text-muted">
+                {" "}
+                Pilih layanan lain atau aktifkan variannya di katalog.
+              </span>
+            </>
+          ) : price ? (
             <>
               <span className="font-medium tabular-nums text-foreground">
                 {formatMoney(price)}
               </span>
               {variantLabel && (
                 <span className="text-muted"> · varian {variantLabel}</span>
+              )}
+              {quote.inactive && (
+                <span className="text-muted">
+                  {" "}
+                  · varian nonaktif, tetap berlaku di booking ini
+                </span>
               )}
             </>
           ) : missingAxis === "sizeCategory" && pet ? (
@@ -561,14 +609,27 @@ function ServiceLine({
           <CheckRowGroup>
             {offeredAddons.map((addon) => {
               const addonPrice = priceForPet(addon, pet);
+              const checked = line.addonServiceIds.includes(addon._id);
+              /*
+                AN ADD-ON ON A SWITCHED-OFF VARIANT cannot be ticked for a new
+                pair (13 September 2026) — the server refuses it. One already
+                ticked stays UNTICKABLE, though: a disabled box left checked
+                would be a refusal with no way out but removing the service.
+              */
+              const addonInactive =
+                addonPrice.inactive && !wasStored(addon._id);
 
               return (
                 <CheckRow
                   key={addon._id}
                   label={addon.name}
                   description={
-                    addonPrice.price ? (
-                      `${formatMoney(addonPrice.price)}${addon.durationMin ? ` · +${addon.durationMin} mnt` : ""}`
+                    addonInactive ? (
+                      `Varian nonaktif — tidak bisa dipilih untuk ${pet?.name ?? "hewan ini"}.`
+                    ) : addonPrice.price ? (
+                      /* The ANIMAL's minutes — a variant add-on has none of its
+                         own since 13 September 2026. */
+                      `${formatMoney(addonPrice.price)}${addonPrice.durationMin ? ` · +${addonPrice.durationMin} mnt` : ""}`
                     ) : addonPrice.missingAxis === "sizeCategory" && pet ? (
                       `Harganya menunggu ukuran ${pet.name}.`
                     ) : addonPrice.missingAxis ? (
@@ -581,8 +642,8 @@ function ServiceLine({
                       "—"
                     )
                   }
-                  checked={line.addonServiceIds.includes(addon._id)}
-                  disabled={disabled || locked}
+                  checked={checked}
+                  disabled={disabled || locked || (addonInactive && !checked)}
                   onCheckedChange={(checked) =>
                     onChange({
                       addonServiceIds: checked

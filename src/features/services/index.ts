@@ -14,7 +14,9 @@ export {
 } from "./components/ServiceLifecycleDialog";
 export {
   formatDuration,
+  formatDurationRange,
   formatServicePrice,
+  serviceDurationBounds,
   servicePriceBounds,
 } from "./format";
 // What a screen that READS a service needs to name its variants the way the

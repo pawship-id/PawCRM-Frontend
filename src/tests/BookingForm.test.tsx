@@ -1002,6 +1002,79 @@ describe("BookingForm — layanan, add-on dan varian", () => {
     expect(fix).toHaveAttribute("href", "/dashboard/master/pets/pet-1/edit");
     expect(fix).toHaveAttribute("target", "_blank");
   });
+
+  /*
+    ─── A VARIANT SWITCHED OFF, AND ITS OWN LENGTH (13 September 2026) ────────
+
+    The server refuses a NEW line whose variant is inactive, and a variant
+    service has no duration of its own — each variant carries one.
+  */
+  const bySize = (large: { isActive: boolean }) =>
+    service({
+      _id: "svc-1",
+      name: "Full Grooming",
+      price: null,
+      durationMin: null,
+      hasVariants: true,
+      variantAxes: ["sizeCategory"],
+      variants: [
+        {
+          petType: null,
+          sizeCategory: "small",
+          furType: null,
+          price: "100000.0000",
+          durationMin: 60,
+          isActive: true,
+        },
+        {
+          petType: null,
+          sizeCategory: "large",
+          furType: null,
+          price: "180000.0000",
+          durationMin: 120,
+          isActive: large.isActive,
+        },
+      ],
+    } as unknown as Partial<Service>);
+
+  it("refuses a new line on a switched-off variant, naming the service and the animal", async () => {
+    pets.list.mockResolvedValue(
+      page([{ _id: "pet-1", name: "Bruno", size: "large" } as unknown as Pet]),
+    );
+    services.list.mockResolvedValue(page([bySize({ isActive: false })]));
+
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+    await choose(/^layanan$/i, /full grooming/i);
+
+    /* A word on the card, not a colour, and not the figure as a quote. */
+    expect(await screen.findByText("Varian nonaktif")).toBeInTheDocument();
+    expect(screen.queryByText(/Rp\s?180[.,]000/)).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/varian full grooming untuk bruno sedang nonaktif/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /simpan booking/i })).toBeDisabled();
+  });
+
+  it("shows the animal's own variant length, and finishes by it", async () => {
+    pets.list.mockResolvedValue(
+      page([{ _id: "pet-1", name: "Bruno", size: "large" } as unknown as Pet]),
+    );
+    services.list.mockResolvedValue(page([bySize({ isActive: true })]));
+
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+    await choose(/^layanan$/i, /full grooming/i);
+
+    expect(
+      await screen.findByRole("button", { name: /durasi 120 mnt/i }),
+    ).toBeInTheDocument();
+    /* The service itself has no length; without the variant's there is no
+       finish time to show at all. */
+    expect(screen.getByText(/selesai sekitar/i)).toBeInTheDocument();
+  });
 });
 
 /**
@@ -1542,6 +1615,48 @@ describe("BookingForm — mengubah booking", () => {
 
     /* And the owner is pinned: emptying his animals would empty the billed one. */
     expect(screen.getByRole("button", { name: /ganti/i })).toBeDisabled();
+  });
+
+  /*
+    THE SERVER LETS A PAIR ALREADY ON THE BOOKING THROUGH when its variant was
+    switched off since (13 September 2026). Blocking it here would refuse the
+    correction of an old booking's time over a service nobody touched.
+  */
+  it("keeps a service already on the booking whose variant was switched off since", async () => {
+    services.list.mockResolvedValue(
+      page([
+        service({
+          _id: "svc-1",
+          name: "Grooming Full Service",
+          price: null,
+          durationMin: null,
+          hasVariants: true,
+          variantAxes: ["sizeCategory"],
+          variants: [
+            {
+              petType: null,
+              sizeCategory: "medium",
+              furType: null,
+              price: "150000.0000",
+              durationMin: 90,
+              isActive: false,
+            },
+          ],
+        } as unknown as Partial<Service>),
+      ]),
+    );
+
+    renderWithAuth(<BookingForm bookingId="bk-9" />);
+
+    expect(
+      await screen.findByText(/varian nonaktif, tetap berlaku di booking ini/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/sedang nonaktif/i)).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /simpan perubahan/i }),
+      ).toBeEnabled(),
+    );
   });
 
   it("does not ask for a status, which moves through its own route", async () => {

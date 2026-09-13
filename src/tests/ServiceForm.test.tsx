@@ -55,6 +55,7 @@ const serviceFixture: Service = {
   categoryId: null,
   price: "150000.0000",
   durationMin: 90,
+  billingUnit: "per_pet",
   description: null,
   hasVariants: false,
   variantAxes: [],
@@ -446,7 +447,14 @@ describe("ServiceForm — variant pricing", () => {
     ).toBeVisible();
   });
 
-  it("sends the axes and one variant per row, and no flat price", async () => {
+  /*
+    ─── EACH VARIANT ITS OWN MINUTES AND ITS OWN AKTIF (13 September 2026) ────
+
+    A variant service has no single duration: the box above the grid goes away,
+    every row carries its own minutes beside its price, and a row can be switched
+    off without leaving the grid.
+  */
+  it("sends the axes and one variant per row — price, minutes, on/off — and no flat price or duration", async () => {
     mockedServiceService.create.mockResolvedValue(serviceFixture);
     await renderNew();
 
@@ -455,6 +463,15 @@ describe("ServiceForm — variant pricing", () => {
     await userEvent.click(screen.getByLabelText(/kategori bulu/i));
     await userEvent.type(screen.getByLabelText("Harga Bulu panjang"), "180000");
     await userEvent.type(screen.getByLabelText("Harga Bulu pendek"), "150000");
+    await userEvent.type(
+      screen.getByLabelText("Durasi Bulu panjang (menit)"),
+      "120",
+    );
+    await userEvent.type(
+      screen.getByLabelText("Durasi Bulu pendek (menit)"),
+      "90",
+    );
+    await userEvent.click(screen.getByLabelText("Bulu pendek aktif"));
     await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
 
     await waitFor(() => expect(mockedServiceService.create).toHaveBeenCalled());
@@ -463,20 +480,82 @@ describe("ServiceForm — variant pricing", () => {
     expect(payload.hasVariants).toBe(true);
     expect(payload.variantAxes).toEqual(["furType"]);
     expect(payload.price).toBeUndefined();
+    expect(payload.durationMin).toBeUndefined();
     expect(payload.variants).toEqual([
       {
         petType: null,
         sizeCategory: null,
         furType: "long hair",
         price: "180000",
+        durationMin: 120,
+        isActive: true,
       },
       {
         petType: null,
         sizeCategory: null,
         furType: "short hair",
         price: "150000",
+        durationMin: 90,
+        isActive: false,
       },
     ]);
+  });
+
+  it("drops the single duration box while variants are on", async () => {
+    await renderNew();
+
+    expect(
+      screen.getByRole("spinbutton", { name: /^durasi \(menit\)/i }),
+    ).toBeVisible();
+
+    await userEvent.click(screen.getByLabelText(/harga beda per varian/i));
+
+    expect(
+      screen.queryByRole("spinbutton", { name: /^durasi \(menit\)/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("refuses to save while any variant row has no duration", async () => {
+    await renderNew();
+
+    await fillRequiredExceptPrice();
+    await userEvent.click(screen.getByLabelText(/harga beda per varian/i));
+    await userEvent.click(screen.getByLabelText(/kategori bulu/i));
+    await userEvent.type(screen.getByLabelText("Harga Bulu panjang"), "180000");
+    await userEvent.type(screen.getByLabelText("Harga Bulu pendek"), "150000");
+    await userEvent.type(
+      screen.getByLabelText("Durasi Bulu panjang (menit)"),
+      "120",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
+
+    expect(
+      await screen.findByText(/semua baris varian harus punya durasi/i),
+    ).toBeVisible();
+    expect(mockedServiceService.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("ServiceForm — billing unit", () => {
+  /*
+    PER HEWAN OR PER KUNJUNGAN (13 September 2026). Stored and sent; the hint
+    under the field says billing does not act on it yet.
+  */
+  it("sends per_pet unless somebody picks per kunjungan", async () => {
+    mockedServiceService.create.mockResolvedValue(serviceFixture);
+    await renderNew();
+
+    await fillRequiredExceptPrice();
+    await userEvent.type(priceBox(), "25000");
+    await userEvent.click(screen.getByRole("combobox", { name: /ditagih/i }));
+    await userEvent.click(
+      await screen.findByRole("option", { name: "Per kunjungan" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
+
+    await waitFor(() => expect(mockedServiceService.create).toHaveBeenCalled());
+    const [payload] = mockedServiceService.create.mock.calls[0];
+    expect(payload.billingUnit).toBe("per_visit");
   });
 });
 
@@ -676,10 +755,11 @@ describe("ServiceForm — editing", () => {
     expect(screen.getByDisplayValue("90")).toBeVisible();
   });
 
-  it("loads a variant-priced service back into its generated rows", async () => {
+  it("loads a variant-priced service back into its generated rows — price, minutes and on/off", async () => {
     mockedServiceService.getById.mockResolvedValue({
       ...serviceFixture,
       price: null,
+      durationMin: null,
       hasVariants: true,
       variantAxes: ["furType"],
       variants: [
@@ -688,12 +768,16 @@ describe("ServiceForm — editing", () => {
           sizeCategory: null,
           furType: "long hair",
           price: "180000.0000",
+          durationMin: 120,
+          isActive: true,
         },
         {
           petType: null,
           sizeCategory: null,
           furType: "short hair",
           price: "150000.0000",
+          durationMin: 90,
+          isActive: false,
         },
       ],
     });
@@ -702,6 +786,10 @@ describe("ServiceForm — editing", () => {
 
     expect(await screen.findByDisplayValue("180000")).toBeVisible();
     expect(screen.getByDisplayValue("150000")).toBeVisible();
+    expect(screen.getByLabelText("Durasi Bulu panjang (menit)")).toHaveValue(120);
+    expect(screen.getByLabelText("Durasi Bulu pendek (menit)")).toHaveValue(90);
+    expect(screen.getByLabelText("Bulu panjang aktif")).toBeChecked();
+    expect(screen.getByLabelText("Bulu pendek aktif")).not.toBeChecked();
   });
 
   it("offers the availability switch when editing", async () => {

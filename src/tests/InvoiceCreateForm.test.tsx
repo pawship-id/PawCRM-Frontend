@@ -782,6 +782,50 @@ describe("the animal a service is for", () => {
   });
 
   /*
+    A SWITCHED-OFF VARIANT HAS A PRICE, so it never read as unpriced — and the
+    save went out to be refused (13 September 2026). It blocks in its own words.
+  */
+  it("blocks a switched-off variant with its own sentence, not as unpriced", async () => {
+    jest.spyOn(serviceService, "list").mockResolvedValue(
+      page([
+        {
+          _id: "s1",
+          name: "Grooming",
+          price: null,
+          hasVariants: true,
+          variantAxes: ["sizeCategory"],
+          variants: [
+            {
+              sizeCategory: "large",
+              price: "140000",
+              durationMin: 90,
+              isActive: false,
+            },
+          ],
+        },
+      ]) as never,
+    );
+    jest
+      .spyOn(petService, "list")
+      .mockResolvedValue(
+        page([{ _id: "pet1", name: "Miko", size: "large" }]) as never,
+      );
+
+    render(<InvoiceCreateForm />);
+    await fillService();
+    await pick(/^Hewan untuk Grooming$/i, /Miko/);
+
+    expect(
+      screen.getByRole("button", { name: /^simpan faktur$/i }),
+    ).toBeDisabled();
+    expect(
+      await screen.findByText(/varian grooming untuk miko sedang nonaktif/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Varian nonaktif")).toBeInTheDocument();
+    expect(screen.queryByText(/belum punya harga/i)).not.toBeInTheDocument();
+  });
+
+  /*
     A DIFFERENT JOB, SAID DIFFERENTLY. "Ada baris jasa yang belum dipilih
     hewannya" in front of an empty dropdown is an instruction nobody can follow —
     the pet has to be registered first, which is a different screen.

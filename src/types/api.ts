@@ -3103,7 +3103,25 @@ export interface ServiceVariant {
   furType: PetFurType | null;
   /** Decimal as a string, e.g. "120000.0000". */
   price: string;
+  /**
+   * This variant's own length, in minutes (13 September 2026). A variant
+   * service has no service-level `durationMin`. Null only on a variant stored
+   * before the field whose service had no duration either.
+   */
+  durationMin: number | null;
+  /**
+   * Whether this variant may be sold. An inactive one is still SHOWN, but
+   * cannot be chosen — the server refuses a new line for it.
+   */
+  isActive: boolean;
 }
+
+/**
+ * How a service is charged — mirrors BILLING_UNITS in service.model.js.
+ * `per_visit` is stored and shown; billing still charges per animal until the
+ * antar-jemput feature that needs it arrives.
+ */
+export type ServiceBillingUnit = "per_pet" | "per_visit";
 
 export interface Service {
   _id: string;
@@ -3121,7 +3139,14 @@ export interface Service {
    * true, where each variant carries its own price instead.
    */
   price: string | null;
+  /**
+   * A FLAT service's length, in minutes. NULL when `hasVariants` is true — each
+   * variant carries its own (13 September 2026). Read an animal's length with
+   * `priceForPet`, which picks the right one.
+   */
   durationMin: number | null;
+  /** Per animal or per visit — see `ServiceBillingUnit`. */
+  billingUnit: ServiceBillingUnit;
   description: string | null;
   /** Whether the price depends on the pet — see `variants`. */
   hasVariants: boolean;
@@ -3187,22 +3212,30 @@ export interface ServiceVariantInput {
   sizeCategory?: PetSize | null;
   furType?: PetFurType | null;
   price: string;
+  /** Required: a variant service has no service-level duration. */
+  durationMin: number;
+  /** Omitted = on. */
+  isActive?: boolean;
 }
 
 /**
- * Body of POST /api/services. `name`, `code`, `businessLineId`, `durationMin`
- * and `serviceLocations` are required; `tenantId` and `createdBy` come from the
+ * Body of POST /api/services. `name`, `code`, `businessLineId` and
+ * `serviceLocations` are required; `tenantId` and `createdBy` come from the
  * session.
  *
  * `price` MUST be sent as a string. A numeric one is a 400 — see the Service
  * type. It is required unless `hasVariants` is true, and FORBIDDEN when it is:
  * a service is priced flat or per variant, never both.
+ *
+ * `durationMin` FOLLOWS THE PRICE: required on a flat service, forbidden when
+ * `hasVariants` is true — each variant then carries its own.
  */
 export interface CreateServiceInput {
   name: string;
   code: string;
   businessLineId: string;
-  durationMin: number;
+  durationMin?: number;
+  billingUnit?: ServiceBillingUnit;
   serviceLocations: ServiceLocation[];
   price?: string;
   image?: MediaAsset | null;
@@ -3245,7 +3278,9 @@ export interface UpdateServiceInput {
   salesAccountId?: string | null;
   categoryId?: string | null;
   price?: string;
+  /** A flat service's minutes. Refused beside `hasVariants: true`. */
   durationMin?: number;
+  billingUnit?: ServiceBillingUnit;
   description?: string | null;
   hasVariants?: boolean;
   variantAxes?: ServiceVariantAxis[];

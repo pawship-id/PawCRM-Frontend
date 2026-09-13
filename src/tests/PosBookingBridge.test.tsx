@@ -1284,6 +1284,60 @@ describe("PosScreen — a service tapped in the grid", () => {
   });
 
   /*
+    A VARIANT SWITCHED OFF IS NOT A MISSING PRICE (13 September 2026). The till
+    refuses a new line for it, so the button holds — and the sentence says the
+    variant is off, rather than sending the cashier to add one that exists.
+  */
+  it("refuses a variant that is switched off, in its own words", async () => {
+    mockedPos.catalog.mockResolvedValue({
+      items: [
+        {
+          ...SERVICE_TILE,
+          price: null,
+          hasVariants: true,
+          variantAxes: ["sizeCategory"],
+          variants: [
+            {
+              petType: null,
+              sizeCategory: "large",
+              furType: null,
+              price: "140000.0000",
+              durationMin: 120,
+              isActive: false,
+            },
+          ],
+        },
+      ],
+      pagination: { page: 1, limit: 8, total: 1, totalPages: 1 },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (petService as any).list.mockResolvedValue({
+      items: [{ _id: PET_ID, name: "Bruno", size: "large" }],
+      pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+    });
+
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await pickCustomer(user);
+    await tapTile(user);
+    await screen.findByRole("heading", { name: /untuk hewan yang mana/i });
+
+    expect(
+      await screen.findByText(
+        /varian grooming full service untuk bruno sedang nonaktif/i,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Varian nonaktif")).toBeInTheDocument();
+    expect(screen.queryByText("Rp 140.000")).not.toBeInTheDocument();
+    expect(screen.queryByText(/belum punya harga/i)).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /tambah ke keranjang/i }),
+    ).toBeDisabled();
+  });
+
+  /*
     ─── THE FACT THEY JUST WENT AND FILLED IN ─────────────────────────────────
 
     The link sends the cashier to the animal's form in another tab, and the price

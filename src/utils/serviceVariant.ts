@@ -3,13 +3,15 @@ import type { Pet, Service, ServiceVariantAxis } from "@/types/api";
 
 /**
  * ANYTHING PRICED THE WAY A SERVICE IS — the catalogue's own row, one of its
- * add-ons, or the till's tile. The three carry the same four fields by design,
- * so one resolver serves all of them and there is no second rule to drift.
+ * add-ons, or the till's tile. The three carry the same fields by design, so one
+ * resolver serves all of them and there is no second rule to drift.
+ *
+ * `durationMin` is optional because a till tile predating it carries none.
  */
 type Priced = Pick<
   Service,
   "price" | "hasVariants" | "variantAxes" | "variants"
->;
+> & { durationMin?: number | null };
 
 /**
  * What a service costs FOR ONE ANIMAL — the client's mirror of the server's
@@ -59,29 +61,51 @@ export interface PriceLookup {
   price: string | null;
   /** Set when the ANIMAL is why: the axis whose fact is missing. */
   missingAxis: ServiceVariantAxis | null;
+  /**
+   * How long it takes for this animal — the variant's own length, or a flat
+   * service's one. Null when it cannot be said.
+   */
+  durationMin: number | null;
+  /**
+   * The animal's variant exists and is SWITCHED OFF (13 September 2026). Its
+   * price still comes back, so a screen can show what it would have been — but
+   * the line cannot be chosen, and the server refuses a new one.
+   */
+  inactive: boolean;
 }
+
+const NOTHING: PriceLookup = {
+  price: null,
+  missingAxis: null,
+  durationMin: null,
+  inactive: false,
+};
 
 /** What `service` costs for `pet`, or why it cannot be said. */
 export function priceForPet(
   service: Partial<Priced> | null | undefined,
   pet: Pet | null | undefined,
 ): PriceLookup {
-  if (!service) return { price: null, missingAxis: null };
+  if (!service) return NOTHING;
 
   if (!service.hasVariants) {
-    return { price: service.price ?? null, missingAxis: null };
+    return {
+      ...NOTHING,
+      price: service.price ?? null,
+      durationMin: service.durationMin ?? null,
+    };
   }
 
   const axes = service.variantAxes ?? [];
   if (axes.length === 0 || !service.variants?.length) {
-    return { price: null, missingAxis: null };
+    return NOTHING;
   }
 
   const wanted: Partial<Record<ServiceVariantAxis, string>> = {};
 
   for (const axis of axes) {
     const value = pet?.[AXIS_TO_PET_FIELD[axis]] ?? null;
-    if (value === null) return { price: null, missingAxis: axis };
+    if (value === null) return { ...NOTHING, missingAxis: axis };
     wanted[axis] = value as string;
   }
 
@@ -95,7 +119,16 @@ export function priceForPet(
     axes.every((axis) => variant[axis] === wanted[axis]),
   );
 
-  return { price: match?.price ?? null, missingAxis: null };
+  if (!match) return NOTHING;
+
+  return {
+    price: match.price ?? null,
+    missingAxis: null,
+    // A variant stored before variants had lengths reads the service's old one.
+    durationMin: match.durationMin ?? service.durationMin ?? null,
+    // `false` only — a variant stored before the flag existed was being sold.
+    inactive: match.isActive === false,
+  };
 }
 
 /**
@@ -158,9 +191,12 @@ export function variantLabelForPet(
  * When every variant costs the same it collapses to one figure rather than
  * printing it twice.
  *
+ * ONLY ACTIVE VARIANTS COUNT. A variant switched off cannot be sold, and quoting
+ * its price over the phone would promise something the counter then refuses.
+ *
  * NULL WHEN NOTHING CAN BE SAID: a flat-priced service (its own `price` is the
- * answer), or one whose variants carry no prices at all. The caller decides what
- * to draw then — it is not this function's business.
+ * answer), or one with no active priced variant. The caller decides what to draw
+ * then — it is not this function's business.
  */
 export function priceRange(
   service: Partial<Priced> | null | undefined,
@@ -169,6 +205,7 @@ export function priceRange(
   if (!service?.hasVariants) return null;
 
   const prices = (service.variants ?? [])
+    .filter((variant) => variant.isActive !== false)
     .map((variant) => variant.price)
     .filter((price): price is string => Boolean(price));
 

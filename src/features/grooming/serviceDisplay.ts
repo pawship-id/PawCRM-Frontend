@@ -5,6 +5,7 @@ import {
 import type {
   Branch,
   Service,
+  ServiceBillingUnit,
   ServiceLocation,
   ServiceVariantAxis,
 } from "@/types/api";
@@ -48,6 +49,12 @@ export const PLACE_LONG: Record<ServicePlace, string> = {
   both: "Di toko dan di rumah pelanggan",
 };
 
+/** "Per hewan" / "Per kunjungan" — see `ServiceBillingUnit`. */
+export const BILLING_UNIT_LABELS: Record<ServiceBillingUnit, string> = {
+  per_pet: "Per hewan",
+  per_visit: "Per kunjungan",
+};
+
 export const AXIS_LABELS: Record<ServiceVariantAxis, string> = {
   petType: "Jenis hewan",
   sizeCategory: "Ukuran",
@@ -83,10 +90,16 @@ export interface VariantRow {
   label: string;
   /** The stored decimal string, or null for a combination nobody priced. */
   price: string | null;
+  /** This variant's own minutes, or null when none is recorded. */
+  durationMin: number | null;
+  /** Off only when switched off; a combination with no stored row reads as off. */
+  isActive: boolean;
+  /** Whether a variant is stored for this combination at all. */
+  stored: boolean;
 }
 
 /**
- * Every combination the service's axes allow, with the price stored for it.
+ * Every combination the service's axes allow, with what is stored for it.
  *
  * GENERATED FROM THE AXES, not read off `variants`, so a combination nobody
  * priced still shows up — as a gap — instead of silently not existing. The form
@@ -102,22 +115,30 @@ export function variantRows(
       axes.every((axis) => variant[axis] === combo[axis]),
     );
 
-    return { key: combo.key, label: combo.label, price: match?.price ?? null };
+    return {
+      key: combo.key,
+      label: combo.label,
+      price: match?.price ?? null,
+      durationMin: match?.durationMin ?? null,
+      isActive: match ? match.isActive !== false : false,
+      stored: Boolean(match),
+    };
   });
 }
 
 /**
- * "6 / 6" — combinations priced out of combinations possible.
- *
- * NOT THE MOCKUP'S "active / total": a variant here has no on/off of its own,
- * so the honest fraction is how much of the grid carries a price.
+ * The mockup's "8 / 8" — variants on, out of variants stored — plus how much of
+ * the axis grid carries a price, for "Yang perlu dilengkapi".
  */
-export function variantCoverage(
+export function variantCounts(
   service: Pick<Service, "variantAxes" | "variants">,
-): { priced: number; possible: number } {
+): { active: number; total: number; priced: number; possible: number } {
   const rows = variantRows(service);
+  const stored = rows.filter((row) => row.stored);
 
   return {
+    active: stored.filter((row) => row.isActive).length,
+    total: stored.length,
     priced: rows.filter((row) => row.price !== null).length,
     possible: rows.length,
   };
@@ -181,17 +202,32 @@ export function missingPieces(
 ): string[] {
   const missing: string[] = [];
 
-  if (service.durationMin === null) {
+  if (service.hasVariants) {
+    const rows = variantRows(service).filter((row) => row.stored);
+    const untimed = rows.filter((row) => row.durationMin === null).length;
+    const counts = variantCounts(service);
+
+    if (untimed > 0) {
+      missing.push(
+        `${untimed} varian belum punya durasi — kalender menebak setengah jam untuknya.`,
+      );
+    }
+    if (counts.possible > counts.priced) {
+      missing.push(
+        `${counts.possible - counts.priced} kombinasi varian belum diberi harga.`,
+      );
+    }
+    if (counts.total > 0 && counts.active === 0) {
+      missing.push(
+        "Semua varian nonaktif — layanan ini tidak bisa dipilih untuk hewan mana pun.",
+      );
+    }
+  } else if (service.durationMin === null) {
     missing.push("Durasi belum diisi — kalender menebak setengah jam untuk layanan ini.");
   }
+
   if (service.serviceType === "main" && (service.sessions ?? []).length === 0) {
     missing.push("Belum ada tahapan.");
-  }
-  if (service.hasVariants) {
-    const { priced, possible } = variantCoverage(service);
-    if (possible > priced) {
-      missing.push(`${possible - priced} kombinasi varian belum diberi harga.`);
-    }
   }
   if (addons) {
     const retired = addons.filter(

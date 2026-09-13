@@ -82,10 +82,14 @@ function page<T>(items: T[]): PageResult<T> {
 const SIZES = ["small", "medium", "large"] as const;
 const FURS = ["long hair", "short hair"] as const;
 
-/** Six priced combinations, from Rp 89 rb up to Rp 249 rb. */
+/**
+ * Six priced combinations, from Rp 89 rb up to Rp 249 rb, each with its own
+ * length — 45 up to 105 minutes. A variant service has no duration of its own.
+ */
 const EXPRESS = service({
   hasVariants: true,
   price: null,
+  durationMin: null,
   variantAxes: ["sizeCategory", "furType"],
   variants: SIZES.flatMap((size, i) =>
     FURS.map((fur, j) => ({
@@ -93,6 +97,8 @@ const EXPRESS = service({
       sizeCategory: size,
       furType: fur,
       price: String(89000 + i * 60000 + j * 40000),
+      durationMin: 45 + i * 25 + j * 10,
+      isActive: true,
     })),
   ),
   serviceLocations: ["in_store", "in_home"],
@@ -142,7 +148,8 @@ describe("GroomingServicesScreen", () => {
     expect(within(row).getByText("6 / 6")).toBeInTheDocument();
     expect(within(row).getByText("Ukuran × Jenis bulu")).toBeInTheDocument();
     expect(within(row).getByText("Rp 89 rb – Rp 249 rb")).toBeInTheDocument();
-    expect(within(row).getByText("45 mnt")).toBeInTheDocument();
+    // The range across the variants' own lengths.
+    expect(within(row).getByText("45–105 mnt")).toBeInTheDocument();
     expect(within(row).getByText("2 tahap")).toBeInTheDocument();
     expect(within(row).getByText("Aktif")).toBeInTheDocument();
 

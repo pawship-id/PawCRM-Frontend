@@ -1,7 +1,9 @@
+import { priceForPet } from "@/utils/serviceVariant";
 import type {
   Booking,
   BookingBelongingInput,
   BookingItemInput,
+  Pet,
   Service,
 } from "@/types/api";
 
@@ -298,7 +300,7 @@ export function duplicateServiceKeys(groups: PetGroupDraft[]): Set<string> {
       for (const serviceId of [line.serviceId, ...line.addonServiceIds]) {
         if (serviceId === "") continue;
 
-        const pair = `${group.petId}|${serviceId}`;
+        const pair = petServiceKey(group.petId, serviceId);
         if (seen.has(pair)) duplicates.add(line.key);
         else seen.add(pair);
       }
@@ -306,6 +308,34 @@ export function duplicateServiceKeys(groups: PetGroupDraft[]): Set<string> {
   }
 
   return duplicates;
+}
+
+/** One animal and one service, as a key — the unit the server checks by. */
+export function petServiceKey(petId: string, serviceId: string): string {
+  return `${petId}|${serviceId}`;
+}
+
+/**
+ * EVERY (ANIMAL, SERVICE) PAIR A STORED BOOKING ALREADY HOLDS — add-ons
+ * included, by the same key `petServiceKey` makes.
+ *
+ * ─── WHY THE FORM NEEDS TO KNOW (13 September 2026) ───────────────────────
+ *
+ * A variant can be switched off in the catalogue, and the server refuses a NEW
+ * line for one. But a booking taken last week for a variant switched off
+ * yesterday is still that customer's appointment: on an edit the server lets a
+ * pair that was already on the booking through, re-quoting it with the inactive
+ * variant allowed. So the form blocks an inactive variant only for a pair this
+ * set does not hold — otherwise correcting the time of an old booking would be
+ * refused over a service nobody touched.
+ *
+ * BY PAIR, NOT BY LINE KEY, because that is how the server decides: a line
+ * removed and added back for the same animal is the same pair, and is allowed.
+ */
+export function storedPetServiceKeys(booking: Booking): Set<string> {
+  return new Set(
+    booking.items.map((item) => petServiceKey(item.petId, item.serviceId)),
+  );
 }
 
 /**
@@ -326,19 +356,33 @@ export function duplicateServiceKeys(groups: PetGroupDraft[]): Set<string> {
 export function longestGroomerMinutes(
   groups: PetGroupDraft[],
   serviceOf: (id: string) => Service | null,
+  /*
+    THE ANIMAL, BECAUSE THE MINUTES ARE ITS OWN (13 September 2026). A service
+    priced by variant has no service-level `durationMin` any more — a large dog's
+    grooming takes longer than a small one's, and each variant says how long.
+    Reading `service.durationMin` would find null and quietly count nothing, so
+    "selesai sekitar" would promise the customer an earlier finish than the shop
+    can manage. An animal whose variant cannot be found counts nothing, the same
+    as a service with no length did before.
+  */
+  petOf: (id: string) => Pet | null,
 ): number {
   const perGroomer = new Map<string, number>();
 
   for (const group of groups) {
+    const pet = petOf(group.petId);
+    const minutesOf = (id: string) =>
+      priceForPet(serviceOf(id), pet).durationMin ?? 0;
+
     for (const line of group.services) {
       const typed = Number(line.durationMin);
       const own =
         line.durationMin.trim() !== "" && Number.isFinite(typed) && typed > 0
           ? typed
-          : (serviceOf(line.serviceId)?.durationMin ?? 0);
+          : minutesOf(line.serviceId);
 
       const addons = line.addonServiceIds.reduce(
-        (total, id) => total + (serviceOf(id)?.durationMin ?? 0),
+        (total, id) => total + minutesOf(id),
         0,
       );
 

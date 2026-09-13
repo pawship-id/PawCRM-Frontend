@@ -39,6 +39,8 @@ import {
   groupsToBelongings,
   groupsToItems,
   longestGroomerMinutes,
+  petServiceKey,
+  storedPetServiceKeys,
 } from "../bookingDraft";
 import type { PetGroupDraft } from "../bookingDraft";
 import { priceForPet } from "@/utils/serviceVariant";
@@ -221,6 +223,14 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
     paid for, or the total on screen stops matching the total on the bill.
   */
   const [lockedKeys, setLockedKeys] = useState<Set<string>>(new Set());
+  /*
+    THE (ANIMAL, SERVICE) PAIRS THE STORED BOOKING ALREADY HELD, captured once
+    when it loads — empty on a new booking. Since 13 September 2026 a variant can
+    be switched off, and the server refuses a NEW line for one but lets a pair
+    that was already on the booking through. This is how the form tells the two
+    apart; see `storedPetServiceKeys`.
+  */
+  const [storedKeys, setStoredKeys] = useState<Set<string>>(new Set());
 
   /*
     THE BRANCH IS PICKED HERE, NOT INHERITED FROM THE SESSION.
@@ -320,6 +330,7 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
 
         setCustomer(owner);
         setGroups(loaded);
+        setStoredKeys(storedPetServiceKeys(booking));
         setLockedKeys(
           new Set(
             loaded.flatMap((group) =>
@@ -785,18 +796,31 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
   const petOf = (petId: string) => pets.find((pet) => pet._id === petId) ?? null;
 
   /*
+    AN INACTIVE VARIANT ON A LINE THE SERVER WILL REFUSE (13 September 2026) —
+    the animal's variant is switched off, and the pair was not already on the
+    stored booking. A pair that was is allowed through on an edit, so it is not
+    blocked here either; see `storedKeys`.
+  */
+  const refusedInactive = (petId: string, serviceId: string) =>
+    priceForPet(serviceOf(serviceId), petOf(petId)).inactive &&
+    !storedKeys.has(petServiceKey(petId, serviceId));
+
+  /*
     Summed as decimal STRINGS — this is a quote somebody will be charged, and
     `0.1 + 0.2` is why utils/decimal exists.
 
     PRICED FROM THE ANIMAL, not from the catalogue's headline figure: a service
     that varies by size costs what THIS dog's size says it costs. A line whose
     price cannot yet be determined contributes nothing rather than a guess — the
-    card says why, and the save is refused by the server until it can.
+    card says why, and the save is refused by the server until it can. Nor does
+    a new line on an inactive variant: its price comes back, but it is not a
+    charge anybody can save.
   */
   const total = sumDecimals(
     groups.flatMap((group) =>
       group.services.flatMap((line) =>
         [line.serviceId, ...line.addonServiceIds]
+          .filter((serviceId) => !refusedInactive(group.petId, serviceId))
           .map(
             (serviceId) =>
               priceForPet(serviceOf(serviceId), petOf(group.petId)).price,
@@ -814,7 +838,7 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
    * never the sum (PRD 2.9). An add-on's minutes count towards the groomer doing
    * it. See `longestGroomerMinutes`; the stored answer is the server's.
    */
-  const longest = longestGroomerMinutes(groups, serviceOf);
+  const longest = longestGroomerMinutes(groups, serviceOf, petOf);
 
   /** Distinct animals — the same number the server stores as `petCount`. */
   const petCount = new Set(
@@ -870,6 +894,26 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
   );
 
   /*
+    A NEW LINE ON A SWITCHED-OFF VARIANT (13 September 2026) — the server
+    refuses it, so the button names the service and the animal. Its own sentence
+    rather than `unpriceable`'s: the animal's data is complete, and telling
+    somebody to fix the pet would send them to a form with nothing wrong on it.
+  */
+  const inactiveLine = (() => {
+    for (const group of groups) {
+      for (const line of group.services) {
+        const serviceId = [line.serviceId, ...line.addonServiceIds].find(
+          (id) => id !== "" && refusedInactive(group.petId, id),
+        );
+        if (serviceId) {
+          return { service: serviceOf(serviceId), pet: petOf(group.petId) };
+        }
+      }
+    }
+    return null;
+  })();
+
+  /*
     AN ANIMAL WITH NO SIZE CANNOT BE BOOKED AT ALL — since 13 September 2026
     commission is read against it and the server refuses the save. Wider than
     `unpriceable`, which only caught services priced by size; the card says
@@ -893,9 +937,11 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
             ? `Ukuran ${sizeless.name} belum diisi.`
             : unpriceable
               ? `Data ${petOf(unpriceable.petId)?.name ?? "hewan"} belum lengkap, harganya belum bisa dihitung.`
-              : date === "" || time === ""
-                ? "Tanggal dan jamnya belum lengkap."
-                : null;
+              : inactiveLine
+                ? `Varian ${inactiveLine.service?.name ?? "layanan"} untuk ${inactiveLine.pet?.name ?? "hewan ini"} sedang nonaktif — pilih layanan lain atau aktifkan variannya di katalog.`
+                : date === "" || time === ""
+                  ? "Tanggal dan jamnya belum lengkap."
+                  : null;
 
   return (
     <>
@@ -1290,6 +1336,7 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
                         disabled={saving}
                         removable={groups.length > 1}
                         duplicateKeys={duplicateKeys}
+                        storedKeys={storedKeys}
                         onChange={(patch) => updateGroup(group.key, patch)}
                         onRemove={() => removeGroup(group.key)}
                       />

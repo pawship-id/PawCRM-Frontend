@@ -52,8 +52,9 @@ const CODE_MAX_LENGTH = 40;
 const COPY_SUFFIXES = ["-SALIN", "-SALIN2", "-SALIN3"];
 
 /**
- * A new, INACTIVE service carrying this one's prices, variants, tahapan and
- * add-ons — the mockup's Duplikat.
+ * A new, INACTIVE service carrying this one's prices, variants — with each
+ * variant's own length and on/off — tahapan, add-ons and billing unit: the
+ * mockup's Duplikat.
  *
  * THE PHOTO IS NOT COPIED. Two services sharing one stored file is a picture
  * that disappears from both the day one of them replaces it.
@@ -65,7 +66,7 @@ function copyOf(service: Service, suffix: string): CreateServiceInput {
     name: name.slice(0, NAME_MAX_LENGTH),
     code: `${service.code.slice(0, CODE_MAX_LENGTH - suffix.length)}${suffix}`,
     businessLineId: service.businessLineId,
-    durationMin: service.durationMin as number,
+    billingUnit: service.billingUnit ?? "per_pet",
     serviceLocations: service.serviceLocations?.length
       ? service.serviceLocations
       : ["in_store"],
@@ -74,15 +75,21 @@ function copyOf(service: Service, suffix: string): CreateServiceInput {
           hasVariants: true,
           variantAxes: service.variantAxes,
           variants: service.variants.map(
-            ({ petType, sizeCategory, furType, price }) => ({
+            ({ petType, sizeCategory, furType, price, durationMin, isActive }) => ({
               petType,
               sizeCategory,
               furType,
               price,
+              durationMin: durationMin as number,
+              isActive: isActive !== false,
             }),
           ),
         }
-      : { hasVariants: false, price: service.price as string }),
+      : {
+          hasVariants: false,
+          price: service.price as string,
+          durationMin: service.durationMin as number,
+        }),
     ...(service.categoryId ? { categoryId: service.categoryId } : {}),
     ...(service.salesAccountId ? { salesAccountId: service.salesAccountId } : {}),
     description: service.description,
@@ -101,6 +108,21 @@ function copyOf(service: Service, suffix: string): CreateServiceInput {
 }
 
 /**
+ * Why a copy would be refused before anybody presses Duplikat — a copy needs
+ * what a create needs. Null when it can be made.
+ */
+function copyBlockedBy(service: Service): string | null {
+  if (service.hasVariants) {
+    return (service.variants ?? []).some((variant) => variant.durationMin === null)
+      ? "Isi durasi tiap variannya dulu lewat Ubah."
+      : null;
+  }
+  if (service.durationMin === null) return "Isi durasinya dulu lewat Ubah.";
+  if (service.price === null) return "Isi harganya dulu lewat Ubah.";
+  return null;
+}
+
+/**
  * Layanan › Grooming › Layanan & Harga › one service — from
  * `buloo-grooming-v3.html` (decided 13 September 2026).
  *
@@ -110,9 +132,9 @@ function copyOf(service: Service, suffix: string): CreateServiceInput {
  * Aktif / Nonaktif, Duplikat, and Hapus.
  *
  * WHAT THE MOCKUP HAS AND THIS DOES NOT: the Portal/Internal badge and the
- * "terbit di portal" choice (no portal, no flag — drawn "Segera"), durations and
- * on/off per variant (a variant carries a price only), "satuan tagihan" (no such
- * field), and the reason a service was turned off (no such field).
+ * "terbit di portal" choice (no portal, no flag — drawn "Segera"), and the
+ * reason a service was turned off (no such field). Each variant's own duration
+ * and on/off, and the billing unit, are shown since the schema gained them.
  *
  * THE SUB-TABS ARE STATE, NOT ROUTES: they are four readings of one record, and
  * nobody links to the Portal tab of a service.
@@ -257,16 +279,11 @@ export function GroomingServiceDetailScreen({ serviceId }: { serviceId: string }
     .join(" · ");
 
   /*
-    A COPY NEEDS WHAT A CREATE NEEDS. A service priced before duration was
-    required has none, and the API would refuse the copy — so the button says
-    why before anybody presses it.
+    A COPY NEEDS WHAT A CREATE NEEDS. A service or variant priced before
+    durations were required has none, and the API would refuse the copy — so
+    the button says why before anybody presses it.
   */
-  const copyBlockedBy =
-    service.durationMin === null
-      ? "Isi durasinya dulu lewat Ubah."
-      : !service.hasVariants && service.price === null
-        ? "Isi harganya dulu lewat Ubah."
-        : null;
+  const blockedCopy = copyBlockedBy(service);
 
   return (
     <div className="flex flex-col gap-6">
@@ -313,8 +330,8 @@ export function GroomingServiceDetailScreen({ serviceId }: { serviceId: string }
             <Button
               type="button"
               variant="secondary"
-              disabled={busy || copyBlockedBy !== null}
-              title={copyBlockedBy ?? undefined}
+              disabled={busy || blockedCopy !== null}
+              title={blockedCopy ?? undefined}
               onClick={() => void duplicate()}
             >
               <Copy className="size-4" />

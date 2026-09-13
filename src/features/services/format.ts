@@ -17,7 +17,9 @@ import type { Service } from "@/types/api";
  *
  * A flat service's bounds are its one price. A variant-priced one stores
  * `price: null` and carries its amounts on the variants, so the bounds are the
- * lowest and highest of those.
+ * lowest and highest of those — the ACTIVE ones only (13 September 2026): a
+ * variant switched off cannot be sold, and a range quoting it would promise a
+ * price the counter refuses.
  *
  * Compared as integer minor units (`toMinor`), never as Numbers: the ordering
  * of two prices must not depend on what a double can hold.
@@ -33,7 +35,7 @@ export function servicePriceBounds(
 
   // `?? []` — a service stored before `variants` existed has no such key.
   const priced = (service.variants ?? []).filter(
-    (variant) => toMinor(variant.price) !== null,
+    (variant) => variant.isActive !== false && toMinor(variant.price) !== null,
   );
   if (priced.length === 0) return null;
 
@@ -81,4 +83,43 @@ export function formatDuration(minutes: number | null): string {
   const rest = minutes % 60;
 
   return rest === 0 ? `${hours} jam` : `${hours} jam ${rest} mnt`;
+}
+
+/**
+ * The shortest and longest a service takes, in minutes — its one duration when
+ * flat, or across its ACTIVE variants when priced per variant, each of which
+ * carries its own length since 13 September 2026. `null` when none is recorded.
+ */
+export function serviceDurationBounds(
+  service: Pick<Service, "hasVariants" | "durationMin" | "variants">,
+): { low: number; high: number } | null {
+  if (!service.hasVariants) {
+    return service.durationMin === null
+      ? null
+      : { low: service.durationMin, high: service.durationMin };
+  }
+
+  const minutes = (service.variants ?? [])
+    .filter((variant) => variant.isActive !== false)
+    .map((variant) => variant.durationMin)
+    .filter((value): value is number => typeof value === "number");
+
+  if (minutes.length === 0) return null;
+
+  return { low: Math.min(...minutes), high: Math.max(...minutes) };
+}
+
+/**
+ * "45–115 mnt" across variants, "45 mnt" when they agree, "—" with none.
+ *
+ * A RANGE STAYS IN MINUTES, the mockup's own reading: "45 mnt – 1 jam 55 mnt" is
+ * twice the width of a column cell for the same two numbers.
+ */
+export function formatDurationRange(
+  bounds: { low: number; high: number } | null,
+): string {
+  if (!bounds) return "—";
+  if (bounds.low === bounds.high) return formatDuration(bounds.low);
+
+  return `${bounds.low}–${bounds.high} mnt`;
 }

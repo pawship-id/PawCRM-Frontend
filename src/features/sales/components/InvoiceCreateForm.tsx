@@ -276,6 +276,21 @@ export function InvoiceCreateForm() {
     ],
   );
 
+  /*
+    A SERVICE LINE WHOSE ANIMAL'S VARIANT IS SWITCHED OFF (13 September 2026).
+    The resolver still returns its price, so the row does not read as unpriced —
+    which is exactly why it needs its own check: the server refuses a new line
+    for an inactive variant, and without this the save would go out and come
+    back refused.
+  */
+  const variantInactive = (line: DraftLine) =>
+    line.kind === "service" &&
+    line.petId !== "" &&
+    priceForPet(
+      lookups.services.find((one) => one._id === line.refId),
+      pets.items.find((one) => one._id === line.petId),
+    ).inactive;
+
   /**
    * Why Simpan is disabled, in the words of the thing that is missing.
    *
@@ -309,6 +324,15 @@ export function InvoiceCreateForm() {
       return petOptions.length === 0
         ? "Pelanggan ini belum punya hewan — daftarkan dulu di Master Data."
         : "Ada baris jasa yang belum dipilih hewannya.";
+    }
+
+    /* Before `unpriced`, and in its own words: the price is known, the variant
+       is switched off — "tambahkan variannya" would be the wrong instruction. */
+    const inactive = lines.find(variantInactive);
+
+    if (inactive) {
+      const pet = pets.items.find((one) => one._id === inactive.petId);
+      return `Varian ${inactive.name} untuk ${pet?.name ?? "hewan ini"} sedang nonaktif — pilih layanan lain atau aktifkan variannya di katalog.`;
     }
 
     /*
@@ -870,6 +894,12 @@ export function InvoiceCreateForm() {
                             <span className="text-muted">—</span>
                           ) : (
                             formatMoney(line.unitPrice)
+                          )}
+                          {/* The row the blocking sentence is about, in words. */}
+                          {variantInactive(line) && (
+                            <span className="block text-xs text-warning">
+                              Varian nonaktif
+                            </span>
                           )}
                         </TableCell>
 
