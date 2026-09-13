@@ -196,19 +196,45 @@ describe("BatchesScreen", () => {
     ).toBeInTheDocument();
   });
 
-  it("asks the expiring endpoint while a horizon is selected", async () => {
+  /*
+    EVERY BATCH BY DEFAULT — decided 12 Sep 2026. The 30-day alert list hid
+    every lot with a later expiry or none, and read as "this product has no
+    batch".
+  */
+  it("opens on every batch, from the audit endpoint", async () => {
     const { expiringCall, listCall } = mockAll();
 
     renderWithAuth(<BatchesScreen />);
+
+    await waitFor(() =>
+      expect(listCall).toHaveBeenCalledWith(
+        expect.objectContaining({ page: 1, hasRemaining: true }),
+      ),
+    );
+    // The alert list and the audit list answer different questions; only one of
+    // them was asked.
+    expect(expiringCall).not.toHaveBeenCalled();
+  });
+
+  it("asks the expiring endpoint once a horizon is picked", async () => {
+    const { expiringCall } = mockAll();
+
+    const user = userEvent.setup();
+    renderWithAuth(<BatchesScreen />);
+    await screen.findByRole("table");
+
+    const panel = await openFilters(user);
+    await user.click(
+      within(panel).getByRole("button", { name: "Rentang kedaluwarsa" }),
+    );
+    await user.click(screen.getByRole("option", { name: "Perhatian — 30 hari" }));
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
 
     await waitFor(() =>
       expect(expiringCall).toHaveBeenCalledWith(
         expect.objectContaining({ withinDays: 30, page: 1 }),
       ),
     );
-    // The alert list and the audit list answer different questions; only one of
-    // them was asked.
-    expect(listCall).not.toHaveBeenCalled();
   });
 
   it("switches to the whole collection when a batch code is searched", async () => {
@@ -262,31 +288,33 @@ describe("BatchesScreen", () => {
   });
 
   it("offers the exhausted-lot toggle only where it means something", async () => {
-    mockAll();
+    const { expiringCall } = mockAll();
 
     const user = userEvent.setup();
     renderWithAuth(<BatchesScreen />);
 
     await screen.findByRole("table");
 
-    // In alert mode an exhausted lot cannot expire into anything, so the
-    // endpoint has no opinion to offer and the toggle is not in the panel.
+    // Every batch by default — the audit list, where a lot that sold out is a
+    // real answer, so the toggle is in the panel from the start.
     let panel = await openFilters(user);
-    expect(
-      within(panel).queryByLabelText(/Tampilkan batch yang sudah habis/),
-    ).not.toBeInTheDocument();
-    await user.keyboard("{Escape}");
-
-    await user.type(
-      screen.getByLabelText("Cari kode batch, kode supplier, nama produk, atau SKU"),
-      "WSK",
-    );
-    await screen.findByRole("table");
-
-    panel = await openFilters(user);
     expect(
       within(panel).getByLabelText(/Tampilkan batch yang sudah habis/),
     ).toBeInTheDocument();
+
+    // In alert mode an exhausted lot cannot expire into anything, so the
+    // endpoint has no opinion to offer and the toggle leaves the panel.
+    await user.click(
+      within(panel).getByRole("button", { name: "Rentang kedaluwarsa" }),
+    );
+    await user.click(screen.getByRole("option", { name: "Perhatian — 30 hari" }));
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+    await waitFor(() => expect(expiringCall).toHaveBeenCalled());
+
+    panel = await openFilters(user);
+    expect(
+      within(panel).queryByLabelText(/Tampilkan batch yang sudah habis/),
+    ).not.toBeInTheDocument();
   });
 
   it("asks for live lots only until the toggle says otherwise", async () => {
@@ -329,7 +357,7 @@ describe("BatchesScreen", () => {
 
     // Stated rather than omitted: every page of a walk has to agree, and this
     // screen exists to show what goes bad first.
-    expect(expiringCall).toHaveBeenLastCalledWith(
+    expect(listCall).toHaveBeenLastCalledWith(
       expect.objectContaining({ sort: "expirySoonest" }),
     );
 
@@ -339,31 +367,33 @@ describe("BatchesScreen", () => {
     await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
 
     await waitFor(() =>
-      expect(expiringCall).toHaveBeenLastCalledWith(
-        expect.objectContaining({ sort: "newest" }),
-      ),
-    );
-
-    // The ordering SURVIVES the switch to the audit endpoint. A sort that reset
-    // itself when a search flipped the screen would be a control that undoes
-    // its own last click.
-    await user.type(
-      screen.getByLabelText("Cari kode batch, kode supplier, nama produk, atau SKU"),
-      "WSK",
-    );
-
-    await waitFor(() =>
       expect(listCall).toHaveBeenLastCalledWith(
         expect.objectContaining({ sort: "newest" }),
       ),
     );
 
-    // And the badge counts neither the ordering nor the horizon: both are
-    // always set, so a number over an unnarrowed report would be noise. Read
-    // with the panel SHUT — Radix hides the trigger from the accessibility
-    // tree while its own dialog is up.
+    // The ordering SURVIVES the switch to the alert endpoint. A sort that reset
+    // itself when the horizon flipped the screen would be a control that undoes
+    // its own last click.
+    const again = await openFilters(user);
+    await user.click(
+      within(again).getByRole("button", { name: "Rentang kedaluwarsa" }),
+    );
+    await user.click(screen.getByRole("option", { name: "Perhatian — 30 hari" }));
+    await user.click(within(again).getByRole("button", { name: "Terapkan" }));
+
+    await waitFor(() =>
+      expect(expiringCall).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "newest" }),
+      ),
+    );
+
+    // And the badge counts the horizon — moved off its resting "Semua batch" —
+    // but never the ordering, which is always set: one, not two. Read with the
+    // panel SHUT — Radix hides the trigger from the accessibility tree while its
+    // own dialog is up.
     expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
-      /^Filter$/,
+      /^Filter \(1\)$/,
     );
   });
 

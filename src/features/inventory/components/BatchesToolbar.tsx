@@ -93,14 +93,16 @@ interface BatchFilters {
 /**
  * What Reset returns to — the query's own defaults, not "empty".
  *
- * The horizon goes back to 30 days rather than to "Semua lot": this screen is
- * an expiry report, and its unfiltered state is the report, not the archive.
- * The ordering goes back to soonest-first for the same reason.
+ * The horizon goes back to "Semua batch", the screen's own default since
+ * 12 Sep 2026 — see `DEFAULT_BATCHES_QUERY`. A Reset that landed on a narrower
+ * list than the one the page opened on would hide lots somebody had just seen.
+ * The ordering goes back to soonest-first, which still puts what goes bad
+ * first at the top.
  */
 const CLEARED: BatchFilters = {
   branchId: "",
   warehouseId: "",
-  horizon: "30",
+  horizon: "all",
   includeSpent: false,
   sort: "expirySoonest",
   // Reset empties the window as well as leaving the custom horizon. Switching
@@ -306,11 +308,12 @@ function BatchFilterPanel({
   /**
    * How many filters are narrowing the list right now.
    *
-   * NEITHER THE ORDERING NOR THE HORIZON IS COUNTED. Every list has an
-   * ordering, and this screen always has a horizon — 30 days is its resting
-   * state, not a filter somebody applied. Counting either would put a standing
-   * number over an unnarrowed report and teach people to ignore it, which is
-   * the one thing the badge cannot afford now that the controls are hidden.
+   * NEITHER THE ORDERING NOR THE RESTING HORIZON IS COUNTED. Every list has an
+   * ordering, and this screen always has a horizon — "Semua batch" is its
+   * resting state, so only a horizon moved OFF it counts. Counting either
+   * resting value would put a standing number over an unnarrowed list and teach
+   * people to ignore it, which is the one thing the badge cannot afford now
+   * that the controls are hidden.
    */
   const count = [
     applied.branchId !== "",

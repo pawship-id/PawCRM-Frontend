@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -14,6 +15,7 @@ import { customerService } from "@/services/customer.service";
 import { branchService } from "@/services/branch.service";
 import { warehouseService } from "@/services/warehouse.service";
 import { productService } from "@/services/product.service";
+import { productBatchService } from "@/services/productBatch.service";
 import { serviceService } from "@/services/service.service";
 import { tenantService } from "@/services/tenant.service";
 import { bookingService } from "@/services/booking.service";
@@ -254,6 +256,313 @@ describe("the tax column", () => {
 
     expect(screen.getByText("Non-PPN")).toBeInTheDocument();
     expect(screen.queryByText(/^PPN /)).not.toBeInTheDocument();
+  });
+});
+
+/*
+  THE CAMERA DECODER, replaced: jsdom has no camera and no video frames. The
+  stand-in records the callback the dialog hands it, so a test can "show" the
+  camera a code, and records whether the stream was stopped.
+*/
+jest.mock("@zxing/browser", () => ({
+  BrowserMultiFormatReader: class {
+    decodeFromConstraints(...args: unknown[]) {
+      mockCamera.callback = args[2] as MockCameraCallback;
+      return Promise.resolve({
+        stop: () => {
+          mockCamera.stopped = true;
+        },
+      });
+    }
+  },
+}));
+
+type MockCameraCallback = (result?: { getText: () => string }) => void;
+const mockCamera: { callback: MockCameraCallback | null; stopped: boolean } = {
+  callback: null,
+  stopped: false,
+};
+
+/** A product the scanner may put on a bill. */
+const SCANNED = {
+  ...PRODUCT,
+  productType: "standalone",
+  isActive: true,
+  barcode: "8991234500123",
+};
+
+/**
+ * Scanning a barcode straight onto the bill — a counter scanner typing into
+ * the field, or the camera. Decided 12 Sep 2026: both, and no picker between
+ * the scan and the row.
+ */
+describe("scanning a barcode", () => {
+  it("adds the scanned product, and one more of it on a second scan", async () => {
+    jest
+      .spyOn(productService, "getByBarcode")
+      .mockResolvedValue(SCANNED as never);
+    render(<InvoiceCreateForm />);
+
+    const field = await screen.findByRole("textbox", { name: /scan barcode/i });
+
+    // A scanner types the code and ends it with Enter.
+    await userEvent.type(field, "8991234500123{Enter}");
+    expect(
+      await screen.findByRole("button", { name: /Hapus Kalung Nylon/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("textbox", { name: /jumlah kalung nylon/i }),
+    ).toHaveValue("1");
+    expect(field).toHaveValue("");
+
+    await userEvent.type(field, "8991234500123{Enter}");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("textbox", { name: /jumlah kalung nylon/i }),
+      ).toHaveValue("2"),
+    );
+    expect(
+      screen.getAllByRole("button", { name: /Hapus Kalung Nylon/ }),
+    ).toHaveLength(1);
+    expect(productService.getByBarcode).toHaveBeenCalledWith("8991234500123");
+    // The Enter the scanner sends did not submit the invoice.
+    expect(customerInvoiceService.create).not.toHaveBeenCalled();
+  });
+
+  it("says why a code cannot be billed, and adds nothing", async () => {
+    jest
+      .spyOn(productService, "getByBarcode")
+      .mockRejectedValueOnce(new ApiError("No product with barcode '000'", 404))
+      .mockResolvedValueOnce({ ...SCANNED, productType: "bundle" } as never)
+      .mockResolvedValueOnce({ ...SCANNED, isActive: false } as never);
+    // Not a lot code either — both lookups have been asked before "no match".
+    jest
+      .spyOn(productBatchService, "lookup")
+      .mockRejectedValue(new ApiError("No batch carries that code", 404));
+    render(<InvoiceCreateForm />);
+
+    const field = await screen.findByRole("textbox", { name: /scan barcode/i });
+
+    await userEvent.type(field, "000{Enter}");
+    expect(
+      await screen.findByText(
+        "Kode 000 tidak cocok dengan barcode produk maupun kode batch mana pun.",
+      ),
+    ).toBeInTheDocument();
+
+    await userEvent.type(field, "111{Enter}");
+    expect(
+      await screen.findByText(/Kalung Nylon adalah paket \(bundle\)/),
+    ).toBeInTheDocument();
+
+    await userEvent.type(field, "222{Enter}");
+    expect(
+      await screen.findByText(/Kalung Nylon sudah nonaktif/),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.queryByRole("button", { name: /Hapus Kalung Nylon/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  /**
+   * A LOT LABEL — the code Cetak label batch prints. Not a product barcode, so
+   * the field falls through to the lot lookup; the lot names its product, and
+   * that product goes on the bill. Invoices carry no lot: stock is drawn FEFO
+   * when the invoice posts, as at the till.
+   */
+  describe("a batch label", () => {
+    const LOT = {
+      _id: "lot1",
+      productId: "p1",
+      warehouseId: "wh1",
+      warehouseName: "Gudang Pusat",
+      batchCode: "KLG-B26-0001",
+      qtyRemaining: "5",
+      expiryDate: null,
+    };
+
+    beforeEach(() => {
+      jest
+        .spyOn(productService, "getByBarcode")
+        .mockRejectedValue(new ApiError("No product with barcode", 404));
+      jest.spyOn(productService, "getById").mockResolvedValue(SCANNED as never);
+    });
+
+    /** The header a lot has to agree with: Cabang Pusat, Gudang Pusat. */
+    async function chooseWarehouse() {
+      await pick(/^Cabang$/i, /Cabang Pusat/);
+      await pick(/^Gudang$/i, /Gudang Pusat/);
+    }
+
+    it("adds the lot's product when the invoice's warehouse holds it", async () => {
+      jest.spyOn(productBatchService, "lookup").mockResolvedValue(LOT as never);
+      render(<InvoiceCreateForm />);
+      await chooseWarehouse();
+
+      await userEvent.type(
+        screen.getByRole("textbox", { name: /scan barcode/i }),
+        "KLG-B26-0001{Enter}",
+      );
+
+      expect(
+        await screen.findByRole("button", { name: /Hapus Kalung Nylon/ }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Kalung Nylon (batch KLG-B26-0001) masuk ke faktur."),
+      ).toBeInTheDocument();
+      expect(productBatchService.lookup).toHaveBeenCalledWith("KLG-B26-0001");
+      expect(productService.getById).toHaveBeenCalledWith("p1");
+    });
+
+    /*
+      A LOT LIVES AT ONE WAREHOUSE. With none chosen there is nothing to compare
+      it with; with another chosen, billing it would cut stock from a shelf the
+      carton never left.
+    */
+    it("refuses a lot with no warehouse chosen, or from another one", async () => {
+      jest.spyOn(productBatchService, "lookup").mockResolvedValue({
+        ...LOT,
+        warehouseId: "wh2",
+        warehouseName: "Gudang Cabang Lain",
+      } as never);
+      render(<InvoiceCreateForm />);
+
+      const field = await screen.findByRole("textbox", {
+        name: /scan barcode/i,
+      });
+      await userEvent.type(field, "KLG-B26-0001{Enter}");
+      expect(await screen.findByText(/^Pilih gudang dulu/)).toBeInTheDocument();
+
+      await chooseWarehouse();
+      await userEvent.type(field, "KLG-B26-0001{Enter}");
+      expect(
+        await screen.findByText(
+          "Batch KLG-B26-0001 ada di Gudang Cabang Lain, bukan di Gudang Pusat.",
+        ),
+      ).toBeInTheDocument();
+
+      expect(productService.getById).not.toHaveBeenCalled();
+      expect(
+        screen.queryByRole("button", { name: /Hapus Kalung Nylon/ }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("refuses an expired lot", async () => {
+      jest.spyOn(productBatchService, "lookup").mockResolvedValue({
+        ...LOT,
+        expiryDate: "2020-01-31T00:00:00.000Z",
+      } as never);
+      render(<InvoiceCreateForm />);
+      await chooseWarehouse();
+
+      await userEvent.type(
+        screen.getByRole("textbox", { name: /scan barcode/i }),
+        "KLG-B26-0001{Enter}",
+      );
+
+      expect(
+        await screen.findByText(/Batch KLG-B26-0001 sudah kedaluwarsa/),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /Hapus Kalung Nylon/ }),
+      ).not.toBeInTheDocument();
+    });
+
+    /*
+      THE CARTON IS IN SOMEBODY'S HAND, so a lot the books call empty still puts
+      its product on — and says so, because the shelf and the books disagree.
+    */
+    it("still adds the product from a lot recorded empty, and says so", async () => {
+      jest
+        .spyOn(productBatchService, "lookup")
+        .mockResolvedValue({ ...LOT, qtyRemaining: "0" } as never);
+      render(<InvoiceCreateForm />);
+      await chooseWarehouse();
+
+      await userEvent.type(
+        screen.getByRole("textbox", { name: /scan barcode/i }),
+        "KLG-B26-0001{Enter}",
+      );
+
+      expect(
+        await screen.findByRole("button", { name: /Hapus Kalung Nylon/ }),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/tercatat habis/)).toBeInTheDocument();
+    });
+  });
+
+  describe("with the camera", () => {
+    beforeEach(() => {
+      mockCamera.callback = null;
+      mockCamera.stopped = false;
+      // jsdom has no `mediaDevices`; a secure browser context does.
+      Object.defineProperty(window.navigator, "mediaDevices", {
+        configurable: true,
+        value: { getUserMedia: jest.fn() },
+      });
+    });
+
+    afterEach(() => {
+      Object.defineProperty(window.navigator, "mediaDevices", {
+        configurable: true,
+        value: undefined,
+      });
+    });
+
+    /*
+      THE DECODER REPORTS A CODE ON EVERY FRAME it can see it. Two frames of one
+      barcode in a row are one scan, not two bags.
+    */
+    it("adds what the camera reads once, and stops the camera on close", async () => {
+      jest
+        .spyOn(productService, "getByBarcode")
+        .mockResolvedValue(SCANNED as never);
+      render(<InvoiceCreateForm />);
+
+      await userEvent.click(
+        await screen.findByRole("button", { name: /scan pakai kamera/i }),
+      );
+      const dialog = await screen.findByRole("dialog");
+      await waitFor(() => expect(mockCamera.callback).not.toBeNull());
+
+      act(() => {
+        mockCamera.callback?.({ getText: () => "8991234500123" });
+        mockCamera.callback?.({ getText: () => "8991234500123" });
+      });
+
+      expect(
+        await within(dialog).findByText("Kalung Nylon masuk ke faktur."),
+      ).toBeInTheDocument();
+      expect(productService.getByBarcode).toHaveBeenCalledTimes(1);
+
+      await userEvent.click(
+        within(dialog).getByRole("button", { name: "Selesai" }),
+      );
+
+      expect(mockCamera.stopped).toBe(true);
+      expect(
+        screen.getByRole("textbox", { name: /jumlah kalung nylon/i }),
+      ).toHaveValue("1");
+    });
+
+    it("explains when the browser cannot open a camera", async () => {
+      Object.defineProperty(window.navigator, "mediaDevices", {
+        configurable: true,
+        value: undefined,
+      });
+      render(<InvoiceCreateForm />);
+
+      await userEvent.click(
+        await screen.findByRole("button", { name: /scan pakai kamera/i }),
+      );
+
+      expect(
+        await within(await screen.findByRole("dialog")).findByText(
+          /lewat HTTPS/,
+        ),
+      ).toBeInTheDocument();
+    });
   });
 });
 

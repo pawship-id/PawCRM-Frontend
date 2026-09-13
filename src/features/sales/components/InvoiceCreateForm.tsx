@@ -43,6 +43,7 @@ import type { Product } from "@/types/inventory";
 import { useInvoiceLookups } from "../hooks/useInvoiceLookups";
 import { previewInvoice } from "../invoicePreview";
 import { InvoiceAddItemsDialog } from "./InvoiceAddItemsDialog";
+import { InvoiceBarcodeScan } from "./InvoiceBarcodeScan";
 import { InvoiceBookingPanel } from "./InvoiceBookingPanel";
 import { formatRate } from "./InvoiceItemsTable";
 
@@ -336,6 +337,48 @@ export function InvoiceCreateForm() {
 
     return null;
   })();
+
+  /**
+   * A scanned product, as a row — or one more of it.
+   *
+   * ONE MORE ON THE ROW ALREADY THERE, not a second row: scanning the same bag
+   * twice means two bags, which is the till's rule too, and the add dialog
+   * hides a product the bill already carries for the same reason.
+   *
+   * A FUNCTIONAL UPDATE, because a scanner fires faster than React renders —
+   * two scans reading one stale `lines` would both find the product missing and
+   * add it twice.
+   */
+  function addScannedProduct(product: Product) {
+    setLines((current) => {
+      const at = current.findIndex(
+        (line) => line.kind === "product" && line.refId === product._id,
+      );
+
+      if (at === -1) {
+        return [
+          ...current,
+          {
+            kind: "product",
+            refId: product._id,
+            name: product.name,
+            sku: product.sku,
+            unitPrice: String(product.sellPrice ?? "0"),
+            qty: "1",
+            discountMode: "percent",
+            discountValue: "",
+            petId: "",
+          },
+        ];
+      }
+
+      return current.map((line, index) =>
+        index === at
+          ? { ...line, qty: String((Number(line.qty) || 0) + 1) }
+          : line,
+      );
+    });
+  }
 
   /**
    * What the dialog ticked, as rows — products first, then services, each in
@@ -689,6 +732,19 @@ export function InvoiceCreateForm() {
         )}
 
         <div className="flex flex-col gap-4">
+          {/* Scanned products — by their own barcode or a lot's label — land
+              straight on the bill. A counter scanner types into the field, the
+              camera opens beside it. The warehouse goes along because a lot
+              lives in one, and must live in this invoice's. */}
+          <InvoiceBarcodeScan
+            onProduct={addScannedProduct}
+            warehouseId={warehouseId}
+            warehouseName={
+              lookups.warehouses.find((one) => one._id === warehouseId)?.name
+            }
+            disabled={saving}
+          />
+
           {lines.length === 0 ? (
             <div className="flex flex-col items-center gap-4 py-8 text-center">
               <UIButton
