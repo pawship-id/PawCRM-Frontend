@@ -60,6 +60,7 @@ const serviceFixture: Service = {
   variantAxes: [],
   variants: [],
   sessions: [],
+  sessionWeights: [],
   allBranches: true,
   branchIds: [],
   serviceType: "main",
@@ -531,6 +532,123 @@ describe("ServiceForm — add-ons", () => {
     await userEvent.click(await screen.findByRole("option", { name: "Add-on" }));
 
     expect(screen.queryByLabelText(/parfum/i)).not.toBeInTheDocument();
+  });
+});
+
+/*
+  ─── THE COMMISSION SPLIT BETWEEN TAHAPAN — 13 September 2026 ─────────────────
+
+  Commission is one rule for the whole shop; how a service's share divides
+  between its tahapan is the service's own. All empty splits evenly; anything
+  filled must be every box and exactly 100 — the server answers 400 otherwise.
+*/
+describe("ServiceForm — commission weights per tahapan", () => {
+  async function addSessions(...names: string[]) {
+    for (const name of names) {
+      await userEvent.type(
+        screen.getByRole("textbox", { name: "Sesi" }),
+        `${name}{enter}`,
+      );
+    }
+  }
+
+  async function fillValidService() {
+    await fillRequiredExceptPrice();
+    await userEvent.type(priceBox(), "150000");
+  }
+
+  it("sends [] when every weight is left empty — split evenly", async () => {
+    mockedServiceService.create.mockResolvedValue(serviceFixture);
+    await renderNew();
+
+    await fillValidService();
+    await addSessions("Mandi", "Gunting");
+    await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
+
+    await waitFor(() => expect(mockedServiceService.create).toHaveBeenCalled());
+    expect(mockedServiceService.create.mock.calls[0][0].sessionWeights).toEqual([]);
+  });
+
+  it("sends one whole per cent per tahapan, in their order", async () => {
+    mockedServiceService.create.mockResolvedValue(serviceFixture);
+    await renderNew();
+
+    await fillValidService();
+    await addSessions("Mandi", "Gunting");
+    await userEvent.type(screen.getByLabelText("Bobot Mandi (%)"), "60");
+    await userEvent.type(screen.getByLabelText("Bobot Gunting (%)"), "40");
+    await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
+
+    await waitFor(() => expect(mockedServiceService.create).toHaveBeenCalled());
+    expect(mockedServiceService.create.mock.calls[0][0].sessionWeights).toEqual([
+      60, 40,
+    ]);
+  });
+
+  it("refuses weights that do not add up to 100, and says the total", async () => {
+    await renderNew();
+
+    await fillValidService();
+    await addSessions("Mandi", "Gunting");
+    await userEvent.type(screen.getByLabelText("Bobot Mandi (%)"), "50");
+    await userEvent.type(screen.getByLabelText("Bobot Gunting (%)"), "40");
+    await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
+
+    expect(
+      await screen.findByText(/total bobotnya 90%, harus pas 100%/i),
+    ).toBeVisible();
+    expect(mockedServiceService.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses a half-filled set rather than guessing the rest", async () => {
+    await renderNew();
+
+    await fillValidService();
+    await addSessions("Mandi", "Gunting");
+    await userEvent.type(screen.getByLabelText("Bobot Mandi (%)"), "100");
+    await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
+
+    expect(await screen.findByText(/isi bobot semua tahapan/i)).toBeVisible();
+    expect(mockedServiceService.create).not.toHaveBeenCalled();
+  });
+
+  it("fills whole per cents that add up to 100 with Bagi rata", async () => {
+    await renderNew();
+
+    await addSessions("Mandi", "Gunting", "Blow dry");
+    await userEvent.click(screen.getByRole("button", { name: "Bagi rata" }));
+
+    expect(screen.getByLabelText("Bobot Mandi (%)")).toHaveValue("34");
+    expect(screen.getByLabelText("Bobot Gunting (%)")).toHaveValue("33");
+    expect(screen.getByLabelText("Bobot Blow dry (%)")).toHaveValue("33");
+  });
+
+  it("loads stored weights on edit", async () => {
+    mockedServiceService.getById.mockResolvedValue({
+      ...serviceFixture,
+      sessions: ["Mandi", "Gunting"],
+      sessionWeights: [70, 30],
+    });
+
+    renderWithAuth(<ServiceForm serviceId={SERVICE_ID} />);
+
+    expect(await screen.findByLabelText("Bobot Mandi (%)")).toHaveValue("70");
+    expect(screen.getByLabelText("Bobot Gunting (%)")).toHaveValue("30");
+  });
+
+  it("ignores stored weights that no longer line up with the tahapan", async () => {
+    // Which number belonged to which tahapan is unknowable once the lengths
+    // differ; the empty editor says what the server does — split evenly.
+    mockedServiceService.getById.mockResolvedValue({
+      ...serviceFixture,
+      sessions: ["Mandi", "Gunting"],
+      sessionWeights: [100],
+    });
+
+    renderWithAuth(<ServiceForm serviceId={SERVICE_ID} />);
+
+    expect(await screen.findByLabelText("Bobot Mandi (%)")).toHaveValue("");
+    expect(screen.getByLabelText("Bobot Gunting (%)")).toHaveValue("");
   });
 });
 

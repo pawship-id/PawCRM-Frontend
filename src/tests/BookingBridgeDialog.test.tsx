@@ -62,6 +62,7 @@ const booking = (overrides: Partial<Booking> = {}): Booking => ({
       petItemId: PET_ITEM_ID,
       petId: PET_ID,
       petName: "Bruno",
+      petSize: "medium",
       status: "confirmed",
       statusHistory: [],
       nextStatuses: [],

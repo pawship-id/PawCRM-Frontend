@@ -354,6 +354,183 @@ export function StringListField({
   );
 }
 
+/** Below this many tahapan there is nothing to split — one takes it all. */
+export const WEIGHTS_MIN_SESSIONS = 2;
+
+/** `3` → `[34, 33, 33]`: whole per cents that add up to exactly 100. */
+export function evenSessionWeights(count: number): number[] {
+  if (count <= 0) return [];
+
+  const base = Math.floor(100 / count);
+  const remainder = 100 - base * count;
+
+  return Array.from({ length: count }, (_, index) =>
+    index < remainder ? base + 1 : base,
+  );
+}
+
+function typedWeights(
+  sessions: string[],
+  weights: Record<string, string>,
+): string[] {
+  return sessions.map((session) => (weights[session] ?? "").trim());
+}
+
+/**
+ * The server's rule, checked before the round trip: EVERY BOX EMPTY splits
+ * evenly; otherwise every box is a whole number 0–100 and they add up to 100.
+ */
+export function sessionWeightsError(
+  sessions: string[],
+  weights: Record<string, string>,
+): string | null {
+  if (sessions.length < WEIGHTS_MIN_SESSIONS) return null;
+
+  const typed = typedWeights(sessions, weights);
+  if (typed.every((value) => value === "")) return null;
+
+  if (typed.some((value) => value === "")) {
+    return "Isi bobot semua tahapan, atau kosongkan semuanya supaya dibagi rata.";
+  }
+  if (typed.some((value) => !/^\d+$/.test(value) || Number(value) > 100)) {
+    return "Bobot diisi angka bulat 0–100, tanpa tanda %.";
+  }
+
+  const total = typed.reduce((sum, value) => sum + Number(value), 0);
+  return total === 100 ? null : `Total bobotnya ${total}%, harus pas 100%.`;
+}
+
+/** `[]` for "split evenly", else one number per session in session order. */
+export function sessionWeightsPayload(
+  sessions: string[],
+  weights: Record<string, string>,
+): number[] {
+  if (sessions.length < WEIGHTS_MIN_SESSIONS) return [];
+
+  const typed = typedWeights(sessions, weights);
+  return typed.every((value) => value === "") ? [] : typed.map(Number);
+}
+
+/**
+ * Each tahapan's share of the service's commission — decided 13 September 2026.
+ *
+ * KEYED BY THE SESSION'S NAME, which is unique in that list (`StringListField`
+ * refuses a repeat). Removing a tahapan drops its box; the numbers typed for the
+ * others stay.
+ *
+ * HIDDEN BELOW TWO TAHAPAN. One tahapan takes the whole commission whatever is
+ * typed, so a box for it would be a question with one answer.
+ */
+export function SessionWeightsEditor({
+  sessions,
+  weights,
+  error,
+  disabled,
+  onChange,
+}: {
+  sessions: string[];
+  weights: Record<string, string>;
+  error?: string;
+  disabled: boolean;
+  onChange: (next: Record<string, string>) => void;
+}) {
+  if (sessions.length < WEIGHTS_MIN_SESSIONS) return null;
+
+  const typed = typedWeights(sessions, weights);
+  const filled = typed.some((value) => value !== "");
+  const total = typed.reduce(
+    (sum, value) => sum + (/^\d+$/.test(value) ? Number(value) : 0),
+    0,
+  );
+
+  return (
+    <div className="flex flex-col gap-3 border-t border-border pt-4">
+      <div>
+        <p className="text-sm font-medium">Bobot komisi per tahapan</p>
+        <p className="mt-1 text-xs text-muted">
+          Kosongkan semua supaya komisinya dibagi rata. Kalau diisi, semua
+          tahapan harus diisi dan totalnya pas 100%.
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        {sessions.map((session) => (
+          <div
+            key={session}
+            className="grid items-center gap-3 sm:grid-cols-[1fr_160px]"
+          >
+            <span className="text-sm">{session}</span>
+            <span className="flex items-center gap-2">
+              <Input
+                aria-label={`Bobot ${session} (%)`}
+                inputMode="numeric"
+                value={weights[session] ?? ""}
+                onChange={(event) =>
+                  onChange({ ...weights, [session]: event.target.value })
+                }
+                placeholder="rata"
+                disabled={disabled}
+                className={`${FIELD_HEIGHT} text-right tabular-nums`}
+              />
+              <span className="text-sm text-muted">%</span>
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm">
+          Total{" "}
+          <span
+            className={
+              !filled || total === 100
+                ? "font-semibold tabular-nums text-foreground"
+                : "font-semibold tabular-nums text-danger"
+            }
+          >
+            {filled ? `${total}%` : "dibagi rata"}
+          </span>
+        </p>
+        <span className="flex gap-2">
+          {filled && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={disabled}
+              onClick={() => onChange({})}
+            >
+              Kosongkan
+            </Button>
+          )}
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={disabled}
+            onClick={() => {
+              const even = evenSessionWeights(sessions.length);
+              onChange(
+                Object.fromEntries(
+                  sessions.map((session, index) => [session, String(even[index])]),
+                ),
+              );
+            }}
+          >
+            Bagi rata
+          </Button>
+        </span>
+      </div>
+
+      {error && (
+        <p role="alert" className="text-xs font-semibold text-danger">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /**
  * Which branches offer this service.
  *

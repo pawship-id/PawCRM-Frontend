@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarClock, EllipsisVertical } from "lucide-react";
+import { CalendarClock, ChevronDown, EllipsisVertical } from "lucide-react";
 
 import { Alert, TextareaField } from "@/components";
 import { Button } from "@/components/ui/button";
@@ -33,7 +33,10 @@ import {
   forwardStatuses,
   impliedStatuses,
 } from "../statusFlow";
-import { BOOKING_STATUS_LABELS } from "./BookingStatusBadge";
+import {
+  BOOKING_STATUS_LABELS,
+  BookingStatusBadge,
+} from "./BookingStatusBadge";
 import { BookingRescheduleDialog } from "./BookingRescheduleDialog";
 
 /** Mirrors NOTES_MAX_LENGTH in booking.model.js. */
@@ -109,13 +112,18 @@ export function BookingStatusActions({
    * the trail, cancelling). Built for the per-animal work page, where this is
    * the one booking-level action on the whole screen.
    *
-   * BOTH VARIANTS SHARE EVERY LINE OF STATE BELOW THIS POINT — the confirm
+   * "status" — the current status badge IS the trigger, with a chevron: the
+   * Grooming board's Status column (`buloo-grooming-v3.html`), where the badge
+   * and the control sit in one cell. With nothing to offer it is the bare badge
+   * — a chevron that opens onto nothing reads as broken (see `hasMenu`).
+   *
+   * EVERY VARIANT SHARES EVERY LINE OF STATE BELOW THIS POINT — the confirm
    * dialog, the implied-rungs note, the cancel reason, the error handling.
    * Only the trigger markup differs; duplicating the dialog logic for a second
    * look is exactly the "two sources of truth" shape this module keeps
    * producing bugs from.
    */
-  variant?: "compact" | "prominent";
+  variant?: "compact" | "prominent" | "status";
 }) {
   const [next, setNext] = useState<BookingStatus | null>(null);
   const [reason, setReason] = useState("");
@@ -245,6 +253,10 @@ export function BookingStatusActions({
           </Can>
         )}
 
+        {variant === "status" && !hasMenu && (
+          <BookingStatusBadge status={pet.status} />
+        )}
+
         {hasMenu && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -252,6 +264,15 @@ export function BookingStatusActions({
                 <Button variant="secondary" size="lg">
                   Other statuses ▾
                 </Button>
+              ) : variant === "status" ? (
+                <button
+                  type="button"
+                  aria-label={`Status ${label}: ${BOOKING_STATUS_LABELS[pet.status]}`}
+                  className="inline-flex min-h-9 items-center gap-1 rounded-full pr-1.5 transition hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                >
+                  <BookingStatusBadge status={pet.status} />
+                  <ChevronDown className="size-4 text-muted" aria-hidden />
+                </button>
               ) : (
                 <Button
                   variant="ghost"

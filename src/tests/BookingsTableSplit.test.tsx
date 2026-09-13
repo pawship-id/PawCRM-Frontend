@@ -25,6 +25,7 @@ const pet = (over: Partial<BookingPet>): BookingPet =>
     petItemId: over.petItemId ?? "p1",
     petId: over.petId ?? "pet1",
     petName: over.petName ?? "Cici",
+    petSize: over.petSize ?? "medium",
     status: over.status ?? "requested",
     statusHistory: [],
     nextStatuses: [],

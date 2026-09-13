@@ -202,7 +202,19 @@ export interface User {
    * all read it. Before it existed they read "every active user".
    */
   isGroomer: boolean;
+  /**
+   * ⚠️ NO LONGER READ BY THE SERVER (13 September 2026). Commission is one rule
+   * for the whole shop now — `TenantSettings.grooming.commission` — and nothing
+   * in this app sets it. Still typed because old users come back carrying it.
+   */
   commissionRate: CommissionRate | null;
+  /**
+   * THIS GROOMER'S MINUTES PER DAY, when they differ from the shop's
+   * `grooming.capacity.defaultMinutes`. `null` follows the default — which is
+   * what most groomers do, and why an override is the exception rather than a
+   * copy of the default on every row.
+   */
+  dailyCapacityMin: number | null;
   availability: UserAvailability;
   status: "active" | "suspended";
   emailVerifiedAt: string | null;
@@ -359,7 +371,10 @@ export interface UpdateUserInput {
    */
   /** See `User.isGroomer` — what they do in the shop, not what they may do here. */
   isGroomer?: boolean;
+  /** Ignored by the server since 13 September 2026 — see `User.commissionRate`. */
   commissionRate?: CommissionRateInput | null;
+  /** Integer 1–1440; `null` puts this groomer back on the shop's default. */
+  dailyCapacityMin?: number | null;
   /**
    * MERGED, unlike the rate. Its two keys are independent, so writing the weekly
    * pattern must not wipe next month's leave.
@@ -522,6 +537,57 @@ export interface TenantSettings {
    * until a receipt or an opname puts them right.
    */
   allowNegativeStock?: boolean;
+
+  /**
+   * Layanan › Grooming › Pengaturan — commission and daily capacity.
+   *
+   * ⚠️ ABSENT ON A TENANT THAT HAS NEVER SAVED IT. Fill the defaults in on the
+   * client (`withGroomingDefaults`); the server does the same when it reads.
+   *
+   * ⚠️ WRITTEN WHOLE. `PATCH /tenants/me` refuses a partial grooming object with
+   * a 400, so every key goes back every time.
+   */
+  grooming?: GroomingSettings;
+}
+
+/** An add-on's or a trip's commission — a percentage, or a flat amount. */
+export interface GroomingFlatCommissionRule {
+  enabled: boolean;
+  mode: "percentage" | "fixed";
+  /** 0–100, up to 2 decimals. */
+  percent: number;
+  /** Whole rupiah, 0–100.000.000. */
+  fixed: number;
+}
+
+/**
+ * ONE RULE FOR THE WHOLE SHOP — decided 13 September 2026, replacing the
+ * per-staff `commissionRate`.
+ *
+ * The service's commission is split across its tahapan by the service's own
+ * `sessionWeights`, and evenly between the people on one tahapan.
+ */
+export interface GroomingSettings {
+  commission: {
+    service: {
+      mode: "percentage" | "size_nominal";
+      percent: number;
+      /** There is no XLarge — these are the three sizes a pet can have. */
+      sizeNominal: { small: number; medium: number; large: number };
+    };
+    addon: GroomingFlatCommissionRule;
+    /**
+     * STORED, NOT COMPUTED. Zones and trips do not exist yet, so nothing earns
+     * this today; the rule is kept so it is ready when they do.
+     */
+    travel: GroomingFlatCommissionRule;
+  };
+  capacity: {
+    /** Integer 1–1440 — a groomer's minutes per day unless they override it. */
+    defaultMinutes: number;
+    /** `warn` asks before overbooking; `block` refuses the booking. */
+    overLimit: "warn" | "block";
+  };
 }
 
 /**
@@ -2318,6 +2384,12 @@ export interface BookingSession {
   /** For whoever handles the animal next. Never shown to a customer. */
   notesInternalSession: string | null;
   media: SessionMedia[];
+  /**
+   * This tahapan's share of the service's commission, in per cent — snapshotted
+   * from `Service.sessionWeights` when the booking was written. `null` when the
+   * service splits evenly.
+   */
+  commissionWeight: number | null;
 }
 
 /**
@@ -2424,6 +2496,11 @@ export interface BookingPet {
   petItemId: string;
   petId: string;
   petName: string | null;
+  /**
+   * The size commission is read against. A booking cannot be written for an
+   * animal without one (400); `null` survives only on bookings older than that.
+   */
+  petSize: PetSize | null;
   status: BookingStatus;
   statusHistory: BookingStatusEvent[];
   /** Where this animal may go next — computed against the booking's trip legs. */
@@ -2539,6 +2616,26 @@ export interface GroomerAvailability {
   _id: string;
   fullName: string;
   offReason: string | null;
+}
+
+/**
+ * GET /api/bookings/capacity?date= — each groomer's minutes that day.
+ *
+ * `dailyCapacityMin` is what is STORED on the user (null = follows the default);
+ * `capacityMin` is what APPLIES. The screen edits the first and draws the second.
+ */
+export interface GroomerCapacityDay {
+  date: string;
+  defaultMinutes: number;
+  overLimit: "warn" | "block";
+  groomers: {
+    _id: string;
+    fullName: string;
+    offReason: string | null;
+    dailyCapacityMin: number | null;
+    capacityMin: number;
+    usedMin: number;
+  }[];
 }
 
 /** A booking row that a proposed leave would strand — FR-4 kriteria 4.9. */
@@ -3010,6 +3107,12 @@ export interface Service {
   variants: ServiceVariant[];
   /** The stops a booking of this service moves through. */
   sessions: string[];
+  /**
+   * EACH TAHAPAN'S SHARE OF THE COMMISSION, in per cent, position for position
+   * with `sessions`. `[]` splits evenly; otherwise integers 0–100 summing to
+   * exactly 100 — the server refuses anything else.
+   */
+  sessionWeights: number[];
   /** `true` means every branch, now and as new ones open — `branchIds` is []. */
   allBranches: boolean;
   branchIds: string[];
@@ -3078,6 +3181,8 @@ export interface CreateServiceInput {
   variantAxes?: ServiceVariantAxis[];
   variants?: ServiceVariantInput[];
   sessions?: string[];
+  /** See `Service.sessionWeights`. `[]` = split evenly. */
+  sessionWeights?: number[];
   allBranches?: boolean;
   branchIds?: string[];
   serviceType?: ServiceType;
@@ -3114,6 +3219,8 @@ export interface UpdateServiceInput {
   variantAxes?: ServiceVariantAxis[];
   variants?: ServiceVariantInput[];
   sessions?: string[];
+  /** See `Service.sessionWeights`. `[]` = split evenly. */
+  sessionWeights?: number[];
   allBranches?: boolean;
   branchIds?: string[];
   serviceType?: ServiceType;

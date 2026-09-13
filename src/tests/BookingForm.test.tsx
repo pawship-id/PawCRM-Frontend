@@ -69,6 +69,8 @@ const customer = {
 const pet = {
   _id: "pet-1",
   name: "Bruno",
+  /* A pet with no size cannot be booked since 13 September 2026. */
+  size: "medium",
   preferences: { text: null, tags: [] },
   medical: {
     allergies: [],
@@ -227,8 +229,8 @@ describe("BookingForm", () => {
   it("sends two animals on one booking", async () => {
     pets.list.mockResolvedValue(
       page([
-        { _id: "pet-1", name: "Mochi" } as Pet,
-        { _id: "pet-2", name: "Coco" } as Pet,
+        { _id: "pet-1", name: "Mochi", size: "small" } as Pet,
+        { _id: "pet-2", name: "Coco", size: "medium" } as Pet,
       ]),
     );
     services.list.mockResolvedValue(
@@ -306,8 +308,8 @@ describe("BookingForm", () => {
   it("shows a finish time from the longest groomer, not the sum", async () => {
     pets.list.mockResolvedValue(
       page([
-        { _id: "pet-1", name: "Mochi" } as Pet,
-        { _id: "pet-2", name: "Coco" } as Pet,
+        { _id: "pet-1", name: "Mochi", size: "small" } as Pet,
+        { _id: "pet-2", name: "Coco", size: "medium" } as Pet,
       ]),
     );
     services.list.mockResolvedValue(
@@ -945,6 +947,27 @@ describe("BookingForm — layanan, add-on dan varian", () => {
     expect(bookings.create).not.toHaveBeenCalled();
   });
 
+  it("refuses to book an animal with no size, even on a flat-priced service", async () => {
+    /*
+      13 September 2026: commission is read against the animal's size, so the
+      server refuses ANY booking for one without it — not only a service priced
+      by size. The card names the animal and links to its form; Simpan says why.
+    */
+    pets.list.mockResolvedValue(page([{ ...pet, size: null } as unknown as Pet]));
+
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+    await choose(/^layanan$/i, /grooming full service/i);
+
+    expect(await screen.findByText(/bruno belum punya ukuran/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /lengkapi ukuran bruno/i }),
+    ).toHaveAttribute("target", "_blank");
+    expect(screen.getByText(/ukuran bruno belum diisi/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /simpan booking/i })).toBeDisabled();
+  });
+
   it("offers the way to fix it, opening beside the half-filled booking", async () => {
     /*
       Naming the missing fact still leaves somebody to find the animal through a
@@ -992,8 +1015,8 @@ describe("BookingForm — telling one animal's card from another's", () => {
   beforeEach(() => {
     pets.list.mockResolvedValue(
       page([
-        { _id: "pet-1", name: "Mochi" } as Pet,
-        { _id: "pet-2", name: "Coco" } as Pet,
+        { _id: "pet-1", name: "Mochi", size: "small" } as Pet,
+        { _id: "pet-2", name: "Coco", size: "medium" } as Pet,
       ]),
     );
   });
@@ -1176,8 +1199,8 @@ describe("BookingForm — re-reading an animal that was just corrected", () => {
   it("re-reads them when an animal is picked, too", async () => {
     pets.list.mockResolvedValue(
       page([
-        { _id: "pet-1", name: "Mochi" } as Pet,
-        { _id: "pet-2", name: "Coco" } as Pet,
+        { _id: "pet-1", name: "Mochi", size: "small" } as Pet,
+        { _id: "pet-2", name: "Coco", size: "medium" } as Pet,
       ]),
     );
 

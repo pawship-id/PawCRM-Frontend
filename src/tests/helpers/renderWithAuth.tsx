@@ -42,6 +42,8 @@ export const FULL_REACH_USER = {
   /* Most staff are not groomers — the model's own default. */
   isGroomer: false,
   commissionRate: null,
+  /* Follows the shop's default capacity — most groomers do. */
+  dailyCapacityMin: null,
   availability: { weeklyOff: [], leaveDates: [] },
   status: "active",
   emailVerifiedAt: null,

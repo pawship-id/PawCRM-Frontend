@@ -7,6 +7,7 @@ import type {
   BookingListQuery,
   AffectedBooking,
   GroomerAvailability,
+  GroomerCapacityDay,
   BookingStatus,
   BookingUnbilledSummary,
   CreateBookingInput,
@@ -392,6 +393,18 @@ export const bookingService = {
    */
   availability: (date: string) =>
     apiClient.get<GroomerAvailability[]>("/bookings/availability", {
+      query: { date },
+    }),
+
+  /**
+   * GET /bookings/capacity?date= — every groomer's minutes that day: what they
+   * may take, and what is already booked.
+   *
+   * `date` IS A LOCAL `YYYY-MM-DD`, never `toISOString()` — which is yesterday
+   * for anybody east of London before seven in the morning.
+   */
+  capacity: (date: string) =>
+    apiClient.get<GroomerCapacityDay>("/bookings/capacity", {
       query: { date },
     }),
 

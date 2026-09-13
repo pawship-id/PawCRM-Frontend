@@ -21,6 +21,7 @@ const BASE_PETS: BookingPet[] = [
     petItemId: "pi-1",
     petId: "pet-1",
     petName: "Bruno",
+    petSize: "medium",
     status: "confirmed",
     statusHistory: [],
     nextStatuses: [],

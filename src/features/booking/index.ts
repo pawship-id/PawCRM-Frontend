@@ -27,6 +27,7 @@ export {
   BOOKING_STATUS_ACTIONS,
   canCancel,
   canReschedule,
+  canStartWork,
   forwardStatuses,
   hasCompletedWork,
   impliedStatuses,

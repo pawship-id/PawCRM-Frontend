@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ChevronDown, Plus, X } from "lucide-react";
 
 import {
+  Alert,
   CheckRow,
   CheckRowGroup,
   FIELD_HEIGHT,
@@ -225,6 +226,19 @@ export function BookingPetGroupCard({
           ABOVE THE SERVICES, not below: a severe allergy read after the service
           has been picked is a warning that arrived too late to change anything.
         */}
+        {/*
+          NO SIZE, NO BOOKING — since 13 September 2026 commission is read
+          against it, and the server refuses the save. Said on the animal rather
+          than on a service line: it is true whatever is booked, including a
+          flat-priced bath that never asked for a size.
+        */}
+        {pet && !pet.size && (
+          <Alert variant="warning">
+            {pet.name} belum punya ukuran — ukuran wajib diisi untuk booking.{" "}
+            <PetFixLink pet={pet} axis="sizeCategory" />
+          </Alert>
+        )}
+
         {pet && <PetSummaryCard pet={pet} />}
 
         <div className="flex flex-col gap-3 border-l-2 border-border pl-3">
@@ -523,6 +537,12 @@ function ServiceLine({
                 <span className="text-muted"> · varian {variantLabel}</span>
               )}
             </>
+          ) : missingAxis === "sizeCategory" && pet ? (
+            /* The animal's own warning above already names it and links out;
+               a second link with the same words would be one too many. */
+            <span className="text-xs text-muted">
+              Harganya menunggu ukuran {pet.name}.
+            </span>
           ) : missingAxis ? (
             <span className="text-xs font-semibold text-danger">
               {pet?.name ?? "Hewan ini"} belum punya {AXIS_LABEL[missingAxis]} —
@@ -549,6 +569,8 @@ function ServiceLine({
                   description={
                     addonPrice.price ? (
                       `${formatMoney(addonPrice.price)}${addon.durationMin ? ` · +${addon.durationMin} mnt` : ""}`
+                    ) : addonPrice.missingAxis === "sizeCategory" && pet ? (
+                      `Harganya menunggu ukuran ${pet.name}.`
                     ) : addonPrice.missingAxis ? (
                       <span className="text-danger">
                         Belum bisa dihitung — {pet?.name ?? "hewan ini"} belum

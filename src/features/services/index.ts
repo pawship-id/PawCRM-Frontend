@@ -7,3 +7,4 @@
 export { ServicesScreen } from "./components/ServicesScreen";
 export { ServiceForm } from "./components/ServiceForm";
 export { useServices, type ServicesQuery } from "./hooks/useServices";
+export { formatDuration, formatServicePrice } from "./format";

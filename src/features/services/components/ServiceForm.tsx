@@ -40,6 +40,9 @@ import {
   ServiceAddonPicker,
   ServiceBranchScope,
   ServiceVariantEditor,
+  SessionWeightsEditor,
+  sessionWeightsError,
+  sessionWeightsPayload,
   StringListField,
 } from "./ServiceFormFields";
 
@@ -142,6 +145,10 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
   );
 
   const [sessions, setSessions] = useState<string[]>([]);
+  /* Session name → per cent as typed. All empty = split evenly. */
+  const [sessionWeights, setSessionWeights] = useState<Record<string, string>>(
+    {},
+  );
   const [included, setIncluded] = useState<string[]>([]);
   const [serviceLocations, setServiceLocations] = useState<ServiceLocation[]>([
     "in_store",
@@ -161,6 +168,7 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
   const [durationError, setDurationError] = useState<string | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [branchError, setBranchError] = useState<string | null>(null);
+  const [weightError, setWeightError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -272,7 +280,25 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
             ]),
           ),
         );
-        setSessions(result.sessions ?? []);
+        const storedSessions = result.sessions ?? [];
+        const storedWeights = result.sessionWeights ?? [];
+        setSessions(storedSessions);
+        /*
+          WEIGHTS THAT DO NOT LINE UP WITH THE SESSIONS ARE DROPPED, not
+          guessed at. Which number belonged to which tahapan is unknowable once
+          the lengths differ, and the empty editor says "dibagi rata" — which is
+          what the server does with such a service anyway.
+        */
+        setSessionWeights(
+          storedWeights.length > 0 && storedWeights.length === storedSessions.length
+            ? Object.fromEntries(
+                storedSessions.map((session, index) => [
+                  session,
+                  String(storedWeights[index]),
+                ]),
+              )
+            : {},
+        );
         setIncluded(result.included ?? []);
         // Not `[]`: an old service has no locations stored, and leaving the
         // field empty would make Simpan fail on a rule the user never set.
@@ -444,6 +470,12 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
       invalid = true;
     }
 
+    const weightsProblem = sessionWeightsError(sessions, sessionWeights);
+    if (weightsProblem) {
+      setWeightError(weightsProblem);
+      invalid = true;
+    }
+
     if (invalid) return;
 
     setSaving(true);
@@ -477,6 +509,8 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
         : // Sent exactly as typed. Never Number(price).
           { price: trimmedPrice }),
       sessions,
+      // `[]` IS AN ANSWER — "split evenly" — and is sent as one.
+      sessionWeights: sessionWeightsPayload(sessions, sessionWeights),
       included,
       serviceLocations,
       pickupDeliveryAvailable,
@@ -511,6 +545,8 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
           setLineError("Lini bisnis ini tidak ditemukan lagi. Pilih yang lain.");
         } else if (detail?.field === "branchIds") {
           setBranchError(detail.message);
+        } else if (detail?.field?.endsWith("sessionWeights")) {
+          setWeightError(error.reason ?? detail.message);
         } else if (
           detail?.field === "variants" ||
           detail?.field === "variantAxes"
@@ -742,19 +778,40 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
 
       <Card
         title="Isi layanan"
-        description="Sesi dipakai kalender untuk memecah pengerjaannya. Termasuk dipakai etalase untuk menyebut apa saja yang didapat pelanggan."
+        description="Sesi dipakai kalender untuk memecah pengerjaannya, dan bobotnya menentukan bagian komisi tiap tahapan. Termasuk dipakai etalase untuk menyebut apa saja yang didapat pelanggan."
       >
         <div className="flex flex-col gap-6">
-          <StringListField
-            label="Sesi"
-            hint="Tahapan pengerjaannya, mis. Mandi → Gunting → Selesai."
-            placeholder="mis. Mandi"
-            values={sessions}
-            maxItems={MAX_SESSIONS}
-            maxLength={SESSION_MAX_LENGTH}
-            disabled={saving}
-            onChange={setSessions}
-          />
+          <div className="flex flex-col gap-4">
+            <StringListField
+              label="Sesi"
+              hint="Tahapan pengerjaannya, mis. Mandi → Gunting → Selesai."
+              placeholder="mis. Mandi"
+              values={sessions}
+              maxItems={MAX_SESSIONS}
+              maxLength={SESSION_MAX_LENGTH}
+              disabled={saving}
+              onChange={(next) => {
+                setSessions(next);
+                setWeightError(null);
+              }}
+            />
+
+            {/*
+              UNDER THE LIST IT SPLITS. Commission is one rule for the whole shop
+              (Layanan › Grooming › Pengaturan); how a service's share is divided
+              between its tahapan is this service's business.
+            */}
+            <SessionWeightsEditor
+              sessions={sessions}
+              weights={sessionWeights}
+              error={weightError ?? undefined}
+              disabled={saving}
+              onChange={(next) => {
+                setSessionWeights(next);
+                setWeightError(null);
+              }}
+            />
+          </div>
 
           <div className="border-t border-border pt-6">
             <StringListField

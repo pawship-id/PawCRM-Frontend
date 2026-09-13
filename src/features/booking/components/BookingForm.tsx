@@ -869,6 +869,16 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
     ),
   );
 
+  /*
+    AN ANIMAL WITH NO SIZE CANNOT BE BOOKED AT ALL — since 13 September 2026
+    commission is read against it and the server refuses the save. Wider than
+    `unpriceable`, which only caught services priced by size; the card says
+    which animal and links to its form.
+  */
+  const sizeless = groups
+    .map((group) => petOf(group.petId))
+    .find((pet): pet is Pet => pet !== null && !pet.size);
+
   const ownerFixed = lockedKeys.size > 0;
 
   const blockedReason = !branchId
@@ -879,11 +889,13 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
         ? "Setiap hewan harus punya layanan."
         : duplicateKeys.size > 0
           ? "Ada hewan dengan layanan yang sama dua kali."
-          : unpriceable
-            ? `Data ${petOf(unpriceable.petId)?.name ?? "hewan"} belum lengkap, harganya belum bisa dihitung.`
-            : date === "" || time === ""
-              ? "Tanggal dan jamnya belum lengkap."
-              : null;
+          : sizeless
+            ? `Ukuran ${sizeless.name} belum diisi.`
+            : unpriceable
+              ? `Data ${petOf(unpriceable.petId)?.name ?? "hewan"} belum lengkap, harganya belum bisa dihitung.`
+              : date === "" || time === ""
+                ? "Tanggal dan jamnya belum lengkap."
+                : null;
 
   return (
     <>

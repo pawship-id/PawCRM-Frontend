@@ -32,6 +32,7 @@ const petOf = (status: BookingStatus = "confirmed") =>
     petItemId: "pi-1",
     petId: "pet-1",
     petName: "Bruno",
+    petSize: "medium",
     status,
     statusHistory: [],
     nextStatuses: [],
