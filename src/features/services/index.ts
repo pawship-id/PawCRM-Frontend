@@ -23,5 +23,7 @@ export {
 // form that wrote them does.
 export {
   buildVariantCombos,
+  comboKey,
   VARIANT_AXIS_TABLE,
+  type VariantCombo,
 } from "./components/ServiceFormFields";

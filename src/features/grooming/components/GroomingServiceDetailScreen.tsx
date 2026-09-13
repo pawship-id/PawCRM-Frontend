@@ -31,9 +31,9 @@ import {
   ServicePortalPanel,
   ServiceStepsPanel,
   ServiceSummaryPanel,
-  ServiceVariantsPanel,
 } from "./GroomingServiceDetailPanels";
 import { GroomingModuleHeader } from "./GroomingModuleHeader";
+import { GroomingServiceVariantsEditor } from "./GroomingServiceVariantsEditor";
 
 type DetailTab = "ringkasan" | "varian" | "tahapan" | "portal";
 
@@ -126,10 +126,11 @@ function copyBlockedBy(service: Service): string | null {
  * Layanan › Grooming › Layanan & Harga › one service — from
  * `buloo-grooming-v3.html` (decided 13 September 2026).
  *
- * A PAGE TO READ, WITH AN UBAH TO CHANGE IT. The mockup edits in its tabs; here
- * the service form stays the one editor, and this page opens it. What the page
- * does do itself is what is one click in the mockup and one field on the API:
- * Aktif / Nonaktif, Duplikat, and Hapus.
+ * MOSTLY A PAGE TO READ, WITH AN UBAH TO CHANGE IT. The page does itself what is
+ * one click in the mockup and one field on the API — Aktif / Nonaktif, Duplikat,
+ * Hapus — and, since 14 September 2026, the whole Varian & Harga tab, edited in
+ * place with its own Simpan (`GroomingServiceVariantsEditor`). Ringkasan,
+ * Tahapan & Add-on and Portal still open the service form.
  *
  * WHAT THE MOCKUP HAS AND THIS DOES NOT: the Portal/Internal badge and the
  * "terbit di portal" choice (no portal, no flag — drawn "Segera"), and the
@@ -162,6 +163,8 @@ export function GroomingServiceDetailScreen({ serviceId }: { serviceId: string }
   const [pending, setPending] = useState<ServiceLifecycleAction | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  /** Bumped by a save from the Varian & Harga tab, to re-seed its draft. */
+  const [variantsVersion, setVariantsVersion] = useState(0);
   const tabRefs = useRef<Partial<Record<DetailTab, HTMLButtonElement | null>>>({});
 
   function onTabKey(event: KeyboardEvent<HTMLButtonElement>) {
@@ -415,13 +418,30 @@ export function GroomingServiceDetailScreen({ serviceId }: { serviceId: string }
             busy={busy}
             onSetActive={(active) => void setActive(active)}
           />
-        ) : tab === "varian" ? (
-          <ServiceVariantsPanel service={service} />
         ) : tab === "tahapan" ? (
           <ServiceStepsPanel service={service} addons={addons} />
-        ) : (
+        ) : tab === "portal" ? (
           <ServicePortalPanel service={service} />
-        )}
+        ) : null}
+
+        {/*
+          VARIAN & HARGA IS EDITED IN PLACE (14 September 2026), so it stays
+          MOUNTED and is only hidden while another tab is open: a draft of eight
+          prices must not vanish because somebody glanced at Ringkasan. The key
+          moves only after its own save, which re-seeds the draft from what the
+          server stored — Nonaktifkan in the header does not throw a draft away.
+        */}
+        <div hidden={tab !== "varian"}>
+          <GroomingServiceVariantsEditor
+            key={`${service._id}:${variantsVersion}`}
+            service={service}
+            mayUpdate={mayUpdate}
+            onSaved={(updated) => {
+              replace(updated);
+              setVariantsVersion((current) => current + 1);
+            }}
+          />
+        </div>
       </div>
 
       <ServiceLifecycleDialog

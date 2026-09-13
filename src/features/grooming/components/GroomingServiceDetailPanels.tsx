@@ -7,17 +7,8 @@ import { Pencil } from "lucide-react";
 import { Alert, Card, Spinner, StatTile } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Can } from "@/features/permissions";
 import {
-  formatDuration,
   formatDurationRange,
   formatServicePrice,
   serviceDurationBounds,
@@ -38,16 +29,16 @@ import {
   sessionShares,
   statusOf,
   variantCounts,
-  variantRows,
 } from "../serviceDisplay";
 
 /**
- * The four tabs of a service's detail page — from `buloo-grooming-v3.html`.
+ * Three of the four tabs of a service's detail page — from
+ * `buloo-grooming-v3.html`.
  *
- * READ-ONLY, where the mockup edits in place. The service form stays the one
- * editor (decided 13 September 2026, on request): every panel that shows
- * something changeable carries an Ubah that opens it. Two editors for one
- * service is two sets of validation to keep agreeing.
+ * READ-ONLY, where the mockup edits in place: every panel that shows something
+ * changeable carries an Ubah into the service form. The fourth tab, Varian &
+ * Harga, IS edited in place since 14 September 2026 — see
+ * `GroomingServiceVariantsEditor`.
  */
 
 function EditLink({ serviceId, label = "Ubah" }: { serviceId: string; label?: string }) {
@@ -288,143 +279,6 @@ export function ServiceSummaryPanel({
           </ul>
         )}
       </Card>
-    </div>
-  );
-}
-
-/**
- * Varian & Harga — where it is done, what the price depends on, and the grid:
- * each variant's price, its own length and its own on/off (13 September 2026).
- */
-export function ServiceVariantsPanel({ service }: { service: Service }) {
-  const rows = variantRows(service);
-  const counts = variantCounts(service);
-
-  return (
-    <div className="flex flex-col gap-6">
-      <Card
-        title="Tempat pengerjaan"
-        action={<EditLink serviceId={service._id} />}
-      >
-        <p className="text-sm font-semibold text-foreground">
-          {PLACE_LONG[placeOf(service.serviceLocations)]}
-        </p>
-        <p className="mt-1 text-sm text-muted">
-          {service.pickupDeliveryAvailable
-            ? "Antar-jemput bisa ditambahkan ke booking."
-            : "Tanpa antar-jemput."}
-        </p>
-      </Card>
-
-      <Card title="Opsi yang membedakan harga">
-        {service.hasVariants ? (
-          <p className="text-sm font-semibold text-foreground">
-            {axesLabel(service)}
-          </p>
-        ) : (
-          <p className="text-sm text-muted">
-            Harga tunggal — tidak ada opsi yang membedakan harga.
-          </p>
-        )}
-      </Card>
-
-      {service.hasVariants ? (
-        <Card
-          title="Daftar varian"
-          description={`${counts.active} dari ${counts.total} varian aktif · varian nonaktif tetap tampil, tapi tidak bisa dipilih di booking maupun kasir`}
-          action={<EditLink serviceId={service._id} label="Ubah harga" />}
-        >
-          <div className="overflow-x-auto rounded-xl border border-border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Varian</TableHead>
-                  <TableHead className="text-right">Harga</TableHead>
-                  <TableHead className="text-right">Durasi</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((row) => (
-                  <TableRow key={row.key}>
-                    <TableCell
-                      className={cn(
-                        "text-sm font-semibold",
-                        row.isActive ? "text-foreground" : "text-muted",
-                      )}
-                    >
-                      {row.label}
-                    </TableCell>
-                    <TableCell className="text-right text-sm tabular-nums">
-                      {row.price === null ? (
-                        <span className="font-semibold text-danger">
-                          Belum diberi harga
-                        </span>
-                      ) : (
-                        formatMoney(row.price)
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right text-sm tabular-nums">
-                      {!row.stored ? (
-                        <span className="text-muted">—</span>
-                      ) : row.durationMin === null ? (
-                        <span className="font-semibold text-danger">
-                          Belum diisi
-                        </span>
-                      ) : (
-                        formatDuration(row.durationMin)
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {row.stored ? (
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "border-transparent",
-                            row.isActive
-                              ? "bg-tint-success text-success"
-                              : "bg-tint-neutral text-muted",
-                          )}
-                        >
-                          {row.isActive ? "Aktif" : "Nonaktif"}
-                        </Badge>
-                      ) : (
-                        <span className="text-sm text-muted">—</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          <p className="mt-3 text-sm text-muted">
-            Varian aktif:{" "}
-            <span className="font-semibold tabular-nums text-foreground">
-              {formatServicePrice(service)}
-            </span>
-            {" · "}
-            <span className="font-semibold tabular-nums text-foreground">
-              {formatDurationRange(serviceDurationBounds(service))}
-            </span>
-          </p>
-        </Card>
-      ) : (
-        <Card
-          title="Harga & durasi"
-          action={<EditLink serviceId={service._id} label="Ubah harga" />}
-        >
-          <dl className="grid max-w-md gap-4 sm:grid-cols-2">
-            <Fact label="Harga" numeric>
-              {formatServicePrice(service)}
-            </Fact>
-            <Fact label="Durasi" numeric>
-              {service.durationMin === null
-                ? "Belum diisi"
-                : formatDuration(service.durationMin)}
-            </Fact>
-          </dl>
-        </Card>
-      )}
     </div>
   );
 }

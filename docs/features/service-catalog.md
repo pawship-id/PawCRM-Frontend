@@ -21,18 +21,40 @@ Fase 3 of the POS module.
 **A row opens the service's detail page, not the form** (13 September 2026, from
 `buloo-grooming-v3.html`). The table has the mockup's columns — Layanan · Tempat · Varian ·
 Harga · Durasi · Tahapan · Status — and the detail page its four tabs (Ringkasan, Varian &
-Harga, Tahapan & Add-on, Portal). The page is **read-only**; its **Ubah** opens
-`ServiceForm`, which returns to the detail page after an edit and to the list after a
-create. What the page does itself: Aktif / Nonaktif (`PATCH isActive`), **Duplikat** (a new
-inactive service with `-SALIN` on the code, without the photo), and **Hapus**.
+Harga, Tahapan & Add-on, Portal). Ringkasan, Tahapan & Add-on and Portal are
+**read-only**; the header's **Ubah** opens `ServiceForm`, which returns to the detail page
+after an edit and to the list after a create. What the page does itself: Aktif / Nonaktif
+(`PATCH isActive`), **Duplikat** (a new inactive service with `-SALIN` on the code, without
+the photo), **Hapus**, and the whole Varian & Harga tab — below.
+
+**Varian & Harga is edited in place** (14 September 2026, on request, as the mockup draws
+it; `GroomingServiceVariantsEditor`, rules in `serviceVariantDraft.ts`):
+
+- **Tempat pengerjaan** — three cards: Di toko saja · Di alamat pelanggan saja · Keduanya.
+- **Opsi yang membedakan harga** — Ukuran ×3, Jenis bulu ×2, Jenis hewan ×2. Nothing ticked
+  is one Harga and one Durasi. The mockup's Tier Groomer and Zona are **not** offered: they
+  are not variant axes, and the shop asked for the three that exist.
+- **Daftar varian** — every combination a row with Harga, Durasi (mnt) and Aktif; "N varian
+  · N aktif" in the header; the active range under the table. Ticking an option splits rows
+  that **start from the row they came from**; unticking merges them back.
+- **Bulk bar** once rows are selected: Set harga, Set durasi, + % (rounded to the thousand),
+  + Rp (either may be negative; never below zero), Aktif / nonaktif. Values are typed in the
+  bar itself, not in a browser prompt. **Isi bertingkat per ukuran…** fills Kecil's price
+  and a step per size up, while Ukuran is ticked.
+- **One draft, one Simpan.** A bar at the head of the tab appears once the draft differs
+  from what is stored — Batal throws the draft away, **Simpan varian & harga** sends one
+  `PATCH` (`serviceLocations` + either `price`/`durationMin` or
+  `variantAxes`/`variants`), and is disabled with a reason while any row lacks a price or
+  1–1440 minutes. Prices are shown grouped (`139.000`); a dot is read as thousands. The tab
+  stays mounted while another is open, so a draft survives a look at Ringkasan.
+- A role without `services:update` sees the same grid, disabled, with no bulk bar.
 
 **"N booking" and "Dipakai"** come from `GET /api/bookings/service-counts`
 (`bookings:read`; draft and cancelled work not counted, add-ons counted where ticked). A
 role without that grant is asked nothing and sees no figure.
 
 **Not drawn, because the data does not exist:** the Portal / Internal badge and "terbit di
-portal" (shown *Segera*), a duration or on/off per variant (Varian reads *priced / possible
-combinations*), satuan tagihan, and a reason for turning a service off.
+portal" (shown *Segera*), and a reason for turning a service off.
 
 **A deleted service has no detail page** — `GET /services/:id` does not return one — so its
 row opens nothing and carries **Pulihkan** beside the *Terhapus* badge. Hapus itself is on
@@ -80,7 +102,7 @@ Decided 13 September 2026, on request.
   says so.
 - **What reads it:** the catalogue table's Varian is *active / total* and Durasi the range
   across active variants ("45–115 mnt"); Harga ranges over active variants only; the detail
-  page's variant table has Durasi and Status columns; "selesai sekitar" and a booking's
+  page's variant grid has Harga, Durasi and Aktif per row, editable in place; "selesai sekitar" and a booking's
   snapshot use the animal's own variant's minutes (`priceForPet(...).durationMin`).
 - **Existing data:** run `node src/seeds/backfillServiceVariantFields.js` in the backend
   (see its changelog). Until then the API already presents a variant with no duration as

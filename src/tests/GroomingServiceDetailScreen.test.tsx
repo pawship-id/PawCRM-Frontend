@@ -29,14 +29,14 @@ jest.mock("@/services/branch.service");
 jest.mock("@/services/service.service");
 
 /**
- * Grooming › Layanan & Harga › one service — the mockup's detail page, read-only
- * with an Ubah into the form.
+ * Grooming › Layanan & Harga › one service — the mockup's detail page: mostly
+ * read-only with an Ubah into the form, and a Varian & Harga tab edited in place.
  *
  * WHAT IS PINNED HERE: what the page says is taken from the record (and a gap in
- * the variant grid is said, not hidden); the three things the page does itself —
- * Nonaktifkan, Hapus, Duplikat — reach the API with the right body; and a role
- * that may only read is offered nothing to press and asked no question it would
- * be refused.
+ * the variant grid is said, not hidden); what the page does itself — Nonaktifkan,
+ * Hapus, Duplikat, and saving the variant grid — reaches the API with the right
+ * body; and a role that may only read is offered nothing to press and asked no
+ * question it would be refused.
  */
 const SERVICE = {
   _id: "svc-1",
@@ -241,21 +241,111 @@ describe("GroomingServiceDetailScreen", () => {
     expect(payload).not.toHaveProperty("price");
   });
 
-  it("shows every variant combination, and says which one has no price", async () => {
-    renderDetail();
+  /*
+    ─── VARIAN & HARGA, EDITED IN PLACE (14 September 2026) ───────────────────
+  */
+  const openVariants = async () =>
+    userEvent.click(await screen.findByRole("tab", { name: "Varian & Harga" }));
 
+  it("edits the variant grid in place and saves it whole with one button", async () => {
+    jest
+      .mocked(serviceService.update)
+      .mockResolvedValue({ ...SERVICE, updatedAt: "2026-09-14T00:00:00.000Z" });
+
+    renderDetail();
+    await openVariants();
+
+    // Every combination is a row — the unpriced one comes up blank.
+    expect(screen.getByLabelText("Harga Kecil")).toHaveValue("89.000");
+    expect(screen.getByLabelText("Harga Besar")).toHaveValue("");
+    // Nothing changed yet, so nothing to save.
+    expect(
+      screen.queryByRole("button", { name: "Simpan varian & harga" }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText("Harga Besar"), "150000");
+
+    // A draft that is not complete says why and cannot be saved.
+    expect(screen.getByText(/1 varian belum punya durasi/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Simpan varian & harga" }),
+    ).toBeDisabled();
+
+    await userEvent.type(screen.getByLabelText("Durasi Besar (menit)"), "90");
+    await userEvent.click(screen.getByLabelText("Sedang aktif"));
     await userEvent.click(
-      await screen.findByRole("tab", { name: "Varian & Harga" }),
+      screen.getByRole("button", { name: "Simpan varian & harga" }),
     );
 
+    await waitFor(() => expect(serviceService.update).toHaveBeenCalled());
+    const [id, patch] = jest.mocked(serviceService.update).mock.calls[0];
+    expect(id).toBe("svc-1");
+    expect(patch).toEqual({
+      serviceLocations: ["in_store"],
+      hasVariants: true,
+      variantAxes: ["sizeCategory"],
+      variants: [
+        { petType: null, sizeCategory: "small", furType: null, price: "89000", durationMin: 45, isActive: true },
+        { petType: null, sizeCategory: "medium", furType: null, price: "129000", durationMin: 60, isActive: false },
+        { petType: null, sizeCategory: "large", furType: null, price: "150000", durationMin: 90, isActive: true },
+      ],
+    });
+  });
+
+  it("changes every selected variant at once from the bulk bar", async () => {
+    renderDetail();
+    await openVariants();
+
+    await userEvent.click(screen.getByLabelText("Pilih Kecil"));
+    await userEvent.click(screen.getByLabelText("Pilih Sedang"));
+    expect(screen.getByText("2 dipilih")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "+ %" }));
+    await userEvent.type(
+      screen.getByLabelText("Naik berapa persen (boleh minus)"),
+      "10",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Terapkan" }));
+
+    // Rounded to the nearest thousand, as a shop prices.
+    expect(screen.getByLabelText("Harga Kecil")).toHaveValue("98.000");
+    expect(screen.getByLabelText("Harga Sedang")).toHaveValue("142.000");
+    expect(screen.queryByText("2 dipilih")).not.toBeInTheDocument();
+  });
+
+  it("splits rows when an option is ticked, each starting from the row it came from", async () => {
+    renderDetail();
+    await openVariants();
+
+    await userEvent.click(screen.getByLabelText(/Jenis bulu/));
+
+    expect(screen.getByLabelText("Harga Kecil · Bulu panjang")).toHaveValue(
+      "89.000",
+    );
+    expect(screen.getByLabelText("Harga Kecil · Bulu pendek")).toHaveValue(
+      "89.000",
+    );
     expect(
-      within(screen.getByRole("row", { name: /Besar/ })).getByText(
-        "Belum diberi harga",
-      ),
-    ).toBeInTheDocument();
+      screen.getByLabelText("Durasi Sedang · Bulu pendek (menit)"),
+    ).toHaveValue(60);
+
+    // Batal throws the draft away.
+    await userEvent.click(screen.getByRole("button", { name: "Batal" }));
+    expect(screen.getByLabelText("Harga Kecil")).toHaveValue("89.000");
+  });
+
+  it("lets a role that may only read see the grid but change nothing", async () => {
+    renderDetail({
+      isSuperAdmin: false,
+      permissions: [{ feature: "services", actions: ["read"] }],
+    });
+    await openVariants();
+
+    expect(screen.getByLabelText("Harga Kecil")).toBeDisabled();
+    expect(screen.getByLabelText("Kecil aktif")).toBeDisabled();
     expect(
-      within(screen.getByRole("row", { name: /Kecil/ })).getByText(/89\.000/),
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: /Isi bertingkat/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("lists the tahapan with their weights and the add-ons by name", async () => {
