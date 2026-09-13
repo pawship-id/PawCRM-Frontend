@@ -38,6 +38,28 @@ combinations*), satuan tagihan, and a reason for turning a service off.
 row opens nothing and carries **Pulihkan** beside the *Terhapus* badge. Hapus itself is on
 the detail page.
 
+**The Filter panel** (`GroomingServicesToolbar`) is the mockup's modal with the fields a
+catalogue can mean: **Cabang**, **Status**, **Jenis hewan**, **Tempat** and **Tampilkan
+terhapus**, all waiting for Terapkan and counted in `Filter (n)`. Every one is a server
+filter on `GET /api/services` (`branchId`, `isActive`, `petType`, `location`,
+`includeDeleted`), so the pager counts what was asked for. Jenis hewan means *can be sold for
+that animal* (price independent of species, or a variant for it); Tempat *di toko* includes a
+service with no location stored. The mockup's Groomer and Layanan are booking questions and
+stay on the Booking tab; the panel is not shared across tabs.
+
+**The card above the search** is the mockup's context card, drawn with the Booking tab's
+`GroomingPeriodBar`: **Cabang**, **Periode** (Hari ini / Minggu ini / Bulan ini / **Custom**)
+and **Reset filter (n)**. The date trigger appears only once Custom is pressed, starting from
+the dates of the period in force so the numbers do not move until a date does — the same bar,
+and the same behaviour, on the Booking tab. Cabang is the same value as the panel's — it narrows the
+list and the booking count, counts in `Filter (n)`, and Reset clears it. **Periode narrows
+only "N booking"** (`scheduledFrom`/`scheduledTo` on `GET /api/bookings/service-counts`): a
+service has no date, and a period that hid services would hide the ones nobody booked. The
+panel's **Tanggal booking — sama dengan Periode di atas** is that same period drawn the same
+way — the four pills, and the two dates only behind Custom, with no preset chips — drafted
+until Terapkan; it is never counted and Reset leaves it alone. Under the search, "N layanan · X
+aktif dari Y" is what is listed, then the line's whole catalogue.
+
 **There is no catalogue-wide list since 13 September 2026.** `/dashboard/master/layanan`
 used to be one (`ServicesScreen`); that address is now the Pengaturan › Layanan hub of cards
 from the navbar mockup, and the list was removed on request as a duplicate of Grooming ›

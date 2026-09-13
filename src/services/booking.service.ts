@@ -14,6 +14,7 @@ import type {
   UpdateBookingInput,
   PageResult,
   ServiceBookingCounts,
+  ServiceBookingCountScope,
   SessionMediaKind,
 } from "@/types/api";
 import type { MediaAsset } from "@/types/inventory";
@@ -103,11 +104,17 @@ export const bookingService = {
    * counted; every asked id comes back, zero when unused.
    *
    * ONE REQUEST FOR A PAGE of the catalogue, ids as repeated params. `bookings:
-   * read` — a caller without it should not ask.
+   * read` — a caller without it should not ask. `scope` narrows the count to a
+   * branch and a period; without it the count is all-time.
    */
-  serviceCounts: (serviceIds: string[]) =>
+  serviceCounts: (serviceIds: string[], scope: ServiceBookingCountScope = {}) =>
     apiClient.get<ServiceBookingCounts>("/bookings/service-counts", {
-      query: { serviceIds },
+      query: {
+        serviceIds,
+        branchId: scope.branchId,
+        scheduledFrom: scope.scheduledFrom,
+        scheduledTo: scope.scheduledTo,
+      },
     }),
 
   /**

@@ -1,21 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus, RotateCcw } from "lucide-react";
 
-import {
-  Alert,
-  FilterBar,
-  FilterSearch,
-  FilterSelect,
-  FilterToggle,
-  HighlightText,
-  Pagination,
-  Spinner,
-  withAll,
-} from "@/components";
+import { Alert, Card, HighlightText, Pagination, Spinner } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,11 +24,10 @@ import {
 } from "@/features/services";
 import { cn } from "@/lib/utils";
 
+import { periodRange, type DateRange, type GroomingPeriod } from "../board";
 import { useGroomingLine } from "../hooks/useGroomingLine";
-import {
-  useGroomingServices,
-  type GroomingServicesQuery,
-} from "../hooks/useGroomingServices";
+import { useGroomingServices } from "../hooks/useGroomingServices";
+import { useGroomingServiceTotals } from "../hooks/useGroomingServiceTotals";
 import { useServiceBookingCounts } from "../hooks/useServiceBookingCounts";
 import { groomingServicePath } from "../paths";
 import {
@@ -50,14 +39,12 @@ import {
   variantCoverage,
 } from "../serviceDisplay";
 import { GroomingModuleHeader } from "./GroomingModuleHeader";
-
-const STATUS_OPTIONS = withAll<GroomingServicesQuery["isActive"]>(
-  [
-    { value: "true", label: "Aktif" },
-    { value: "false", label: "Nonaktif" },
-  ],
-  "Semua status",
-);
+import { GroomingPeriodBar } from "./GroomingPeriodBar";
+import {
+  countServiceFilters,
+  EMPTY_SERVICE_FILTERS,
+  GroomingServicesToolbar,
+} from "./GroomingServicesToolbar";
 
 /**
  * Layanan › Grooming › Layanan & Harga — the Grooming line's services.
@@ -75,6 +62,24 @@ const STATUS_OPTIONS = withAll<GroomingServicesQuery["isActive"]>(
  * variant has no on/off of its own; Durasi is one figure, since a variant has no
  * duration of its own; and Status has no Portal badge, since there is no portal.
  *
+ * ─── THE CARD: CABANG AND PERIODE ──────────────────────────────────────────
+ *
+ * The mockup's context card, drawn with the Booking tab's `GroomingPeriodBar`
+ * so the two tabs read the same. What each control means HERE:
+ *
+ *  - Cabang narrows the LIST (services offered there) and the booking count. It
+ *    is the same value as the panel's Cabang, so it counts in `Filter (n)` and
+ *    "Reset filter" clears it — unlike the Booking tab, where Cabang changes
+ *    only the numbers and stays out of the count.
+ *  - Periode narrows ONLY what "N booking" counts. A service has no date; a
+ *    period that hid services would hide the ones nobody booked this month,
+ *    which are exactly the ones worth seeing. The panel's "Tanggal booking" is
+ *    the same four pills and the same dates behind Custom, drafted until
+ *    Terapkan.
+ *
+ * THE LINE UNDER THE SEARCH — "6 layanan · 6 aktif dari 6" — is what is listed,
+ * then the line's whole catalogue whatever the filters say.
+ *
  * ─── HAPUS LIVES ON THE DETAIL PAGE, PULIHKAN ON THE ROW ───────────────────
  *
  * The mockup's table has no action column, so deleting moved to the service's
@@ -89,15 +94,47 @@ export function GroomingServicesScreen() {
   const lineId = line.line?._id ?? null;
   const { services, pagination, query, setQuery, refetch, loading, error } =
     useGroomingServices(lineId);
+
+  const [period, setPeriod] = useState<GroomingPeriod>("month");
+  const [custom, setCustom] = useState<DateRange>({ from: "", to: "" });
+  const range = useMemo(
+    () => (period === "custom" ? custom : periodRange(period)),
+    [period, custom],
+  );
+
   const usage = useServiceBookingCounts(
     services.map((service) => service._id),
     can("bookings", "read"),
+    {
+      branchId: query.branchId || undefined,
+      scheduledFrom: range.from || undefined,
+      scheduledTo: range.to || undefined,
+    },
   );
+
+  // Bumped after a delete or restore — the only things here that move a total.
+  const [version, setVersion] = useState(0);
+  const totals = useGroomingServiceTotals(lineId, version);
   const [pending, setPending] = useState<ServiceLifecycleAction | null>(null);
 
   const mayRestore = can("services", "restore");
-  const narrowed =
-    query.search.trim() !== "" || query.isActive !== "" || query.includeDeleted;
+  const filterCount = countServiceFilters(query);
+  const narrowed = query.search.trim() !== "" || filterCount > 0;
+
+  /** Custom's dates, from the card or the panel. */
+  function pickCustomRange(next: DateRange) {
+    // An emptied range — the date field's own Reset — goes back to the default.
+    if (!next.from && !next.to) {
+      setPeriod("month");
+      return;
+    }
+
+    setCustom(next);
+    setPeriod("custom");
+  }
+
+  const listed =
+    lineId !== null && !line.loading && !error && !(loading && services.length === 0);
 
   return (
     <div className="flex flex-col gap-6">
@@ -114,32 +151,54 @@ export function GroomingServicesScreen() {
         }
       />
 
-      <FilterBar
-        searchPlacement="leading"
-        searchClassName="min-w-[12rem] flex-1"
-        search={
-          <FilterSearch
-            value={query.search}
-            onChange={(search) => setQuery({ search })}
-            placeholder="Cari nama atau kode layanan…"
-            ariaLabel="Cari layanan grooming"
-            fill
+      <Card className="py-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <GroomingPeriodBar
+            branchId={query.branchId}
+            onBranchChange={(branchId) => setQuery({ branchId })}
+            period={period}
+            customRange={custom}
+            onPeriodChange={setPeriod}
+            onCustomRange={pickCustomRange}
           />
-        }
-      >
-        <FilterSelect
-          label="Status"
-          ariaLabel="Filter status layanan"
-          value={query.isActive}
-          options={STATUS_OPTIONS}
-          onChange={(isActive) => setQuery({ isActive })}
+          {filterCount > 0 && (
+            <Button
+              type="button"
+              variant="link"
+              className="ml-auto min-h-11"
+              onClick={() => setQuery(EMPTY_SERVICE_FILTERS)}
+            >
+              Reset filter ({filterCount})
+            </Button>
+          )}
+        </div>
+      </Card>
+
+      <div className="flex flex-col gap-3">
+        <GroomingServicesToolbar
+          search={query.search}
+          onSearch={(search) => setQuery({ search })}
+          filters={query}
+          period={period}
+          customRange={custom}
+          onApply={(filters, nextPeriod, nextCustom) => {
+            setQuery(filters);
+            if (nextPeriod === "custom") {
+              pickCustomRange(nextCustom);
+            } else {
+              setPeriod(nextPeriod);
+            }
+          }}
+          onReset={() => setQuery(EMPTY_SERVICE_FILTERS)}
         />
-        <FilterToggle
-          label="Tampilkan terhapus"
-          checked={query.includeDeleted}
-          onChange={(includeDeleted) => setQuery({ includeDeleted })}
-        />
-      </FilterBar>
+
+        {listed && (
+          <p className="text-sm tabular-nums text-muted">
+            {pagination.total} layanan
+            {totals && ` · ${totals.active} aktif dari ${totals.all}`}
+          </p>
+        )}
+      </div>
 
       {line.failed && (
         <Alert variant="error">
@@ -181,7 +240,7 @@ export function GroomingServicesScreen() {
       ) : (
         <>
           <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-            <Table className={cn("min-w-[960px]", loading && "opacity-60")}>
+            <Table className={cn("min-w-240", loading && "opacity-60")}>
               <TableHeader>
                 <TableRow>
                   <TableHead>Layanan</TableHead>
@@ -345,6 +404,7 @@ export function GroomingServicesScreen() {
         onDone={() => {
           setPending(null);
           refetch();
+          setVersion((current) => current + 1);
         }}
       />
     </div>

@@ -131,25 +131,29 @@ export function FilterDateRange({
     onChange: (next: { from: string; to: string }) => void,
   ) => (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-1.5">
-        {chips.map((preset) => {
-          const picked = value.from === preset.from && value.to === preset.to;
-          return (
-            <button
-              key={preset.label}
-              type="button"
-              onClick={() => onChange({ from: preset.from, to: preset.to })}
-              className={cn(
-                "rounded-full border border-border px-3 py-1 text-xs font-semibold text-muted transition",
-                "outline-none hover:border-input-hover focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50",
-                picked && "border-primary bg-primary text-primary-foreground",
-              )}
-            >
-              {preset.label}
-            </button>
-          );
-        })}
-      </div>
+      {/* `presets={[]}` means none — the row goes, not just its chips, so the
+          inputs do not sit under an empty strip of spacing. */}
+      {chips.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {chips.map((preset) => {
+            const picked = value.from === preset.from && value.to === preset.to;
+            return (
+              <button
+                key={preset.label}
+                type="button"
+                onClick={() => onChange({ from: preset.from, to: preset.to })}
+                className={cn(
+                  "rounded-full border border-border px-3 py-1 text-xs font-semibold text-muted transition",
+                  "outline-none hover:border-input-hover focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                  picked && "border-primary bg-primary text-primary-foreground",
+                )}
+              >
+                {preset.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <div className="flex items-end gap-2">
         <label className="flex-1 space-y-1">

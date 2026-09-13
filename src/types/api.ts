@@ -2814,6 +2814,17 @@ export interface ServiceBookingCounts {
 }
 
 /**
+ * What a booking count may be narrowed to — the catalogue's Cabang and Periode.
+ * Calendar dates; the server expands them in the tenant's timezone. All
+ * optional: without them the count is all-time, across every branch.
+ */
+export interface ServiceBookingCountScope {
+  branchId?: string;
+  scheduledFrom?: string;
+  scheduledTo?: string;
+}
+
+/**
  * Body of POST /api/bookings.
  *
  * An item carries NO PRICE: it is read from the catalogue and snapshotted by the
@@ -3155,6 +3166,16 @@ export interface ServiceListQuery {
   /** Only services offered at that branch, `allBranches` ones included. */
   branchId?: string;
   isActive?: boolean;
+  /**
+   * Where the work is done. `in_store` includes a service with no location
+   * stored — one priced before the field existed was a shop service.
+   */
+  location?: ServiceLocation;
+  /**
+   * Services that can be sold for this animal: priced regardless of species,
+   * or with a variant for this one.
+   */
+  petType?: PetSpecies;
   /** Free-text over name / code. */
   search?: string;
   includeDeleted?: boolean;

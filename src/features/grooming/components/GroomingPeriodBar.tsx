@@ -12,12 +12,14 @@ import {
 import { branchService } from "@/services/branch.service";
 import type { Branch } from "@/types/api";
 
-import type { DateRange, GroomingPeriod } from "../board";
+import { periodRange, type DateRange, type GroomingPeriod } from "../board";
 
-const PERIODS: PillOption<GroomingPeriod>[] = [
+/** The four pills — also the Layanan & Harga Filter panel's, so both say the same. */
+export const PERIOD_OPTIONS: PillOption<GroomingPeriod>[] = [
   { value: "today", label: "Hari ini" },
   { value: "week", label: "Minggu ini" },
   { value: "month", label: "Bulan ini" },
+  { value: "custom", label: "Custom" },
 ];
 
 /**
@@ -29,8 +31,17 @@ const PERIODS: PillOption<GroomingPeriod>[] = [
  * lens this screen is opened to use, so it is a pill row that applies on click.
  * Neither counts towards `Filter (n)`, and the panel's Reset leaves both alone.
  *
- * A PICKED RANGE REPLACES THE PILLS rather than adding a fourth "Custom" pill:
- * the trigger reads the dates themselves, and "custom" is never shown as a word.
+ * ─── A "Custom" PILL, AND THE DATES ONLY BEHIND IT ─────────────────────────
+ *
+ * Decided 13 September 2026, on request, reversing the first build — which had
+ * no fourth pill and kept the date trigger on the bar at all times. The mockup
+ * draws "Custom" beside "Bulan ini", and a date control sitting next to three
+ * pills that already answer "which dates" was two ways to say one thing.
+ *
+ * CUSTOM STARTS FROM THE PERIOD IN FORCE. Pressing it hands the current dates
+ * over as the custom range, so the numbers do not move until somebody changes a
+ * date — an empty range here would mean "all time" on one tab and a board that
+ * loads every booking the shop ever took on the other.
  */
 export function GroomingPeriodBar({
   branchId,
@@ -84,16 +95,27 @@ export function GroomingPeriodBar({
       <FilterPills
         ariaLabel="Periode"
         value={period}
-        options={PERIODS}
-        onChange={onPeriodChange}
+        options={PERIOD_OPTIONS}
+        onChange={(next) => {
+          if (next !== "custom") {
+            onPeriodChange(next);
+          } else if (period !== "custom") {
+            onCustomRange(periodRange(period));
+          }
+        }}
       />
-      <FilterDateRange
-        label="Tanggal"
-        ariaLabel="Pilih rentang tanggal booking"
-        from={period === "custom" ? customRange.from : ""}
-        to={period === "custom" ? customRange.to : ""}
-        onApply={onCustomRange}
-      />
+      {period === "custom" && (
+        <FilterDateRange
+          label="Tanggal"
+          ariaLabel="Pilih rentang tanggal booking"
+          from={customRange.from}
+          to={customRange.to}
+          // NO PRESETS, on request: the pills beside it already are the presets,
+          // and "Hari ini" twice on one bar is two controls for one choice.
+          presets={[]}
+          onApply={onCustomRange}
+        />
+      )}
     </div>
   );
 }

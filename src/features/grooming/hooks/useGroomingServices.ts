@@ -4,13 +4,24 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 import { serviceService } from "@/services/service.service";
-import type { PageResult, Service } from "@/types/api";
+import type {
+  PageResult,
+  PetSpecies,
+  Service,
+  ServiceLocation,
+} from "@/types/api";
 
 export interface GroomingServicesQuery {
   page: number;
   search: string;
+  /** "" = every branch. */
+  branchId: string;
   /** "" = both. */
   isActive: "" | "true" | "false";
+  /** "" = any animal. */
+  petType: "" | PetSpecies;
+  /** "" = anywhere. */
+  location: "" | ServiceLocation;
   /** Deleted services too — the only way to reach one to Pulihkan it. */
   includeDeleted: boolean;
 }
@@ -20,7 +31,10 @@ const PAGE_SIZE = 20;
 const DEFAULT_QUERY: GroomingServicesQuery = {
   page: 1,
   search: "",
+  branchId: "",
   isActive: "",
+  petType: "",
+  location: "",
   includeDeleted: false,
 };
 
@@ -45,6 +59,10 @@ interface Loaded {
  * (the tab IS the filter). The deleted toggle and `refetch` came across when that
  * list was removed on 13 September 2026: this tab is where a service is deleted
  * and restored now, and a row action has to be able to re-read the page.
+ *
+ * EVERY FILTER IS THE SERVER'S. Cabang, Jenis hewan and Tempat narrow the query
+ * rather than the page, so the pager's total is the total of what was asked for
+ * and page 2 is not a page of leftovers.
  */
 export function useGroomingServices(lineId: string | null) {
   const [query, setQueryState] = useState<GroomingServicesQuery>(DEFAULT_QUERY);
@@ -81,7 +99,10 @@ export function useGroomingServices(lineId: string | null) {
         page: settled.page,
         limit: PAGE_SIZE,
         search: settled.search.trim() || undefined,
+        branchId: settled.branchId || undefined,
         isActive: settled.isActive === "" ? undefined : settled.isActive === "true",
+        petType: settled.petType || undefined,
+        location: settled.location || undefined,
         includeDeleted: settled.includeDeleted || undefined,
       })
       .then((result) => {
