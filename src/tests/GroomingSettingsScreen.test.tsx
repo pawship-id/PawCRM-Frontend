@@ -135,6 +135,36 @@ describe("GroomingSettingsScreen — nominal per size", () => {
     expect(screen.getByRole("button", { name: "Simpan pengaturan" })).toBeDisabled();
     expect(screen.getByText(/isian di tab Komisi belum benar/)).toBeInTheDocument();
   });
+
+  it("says the rule once under the row, in default colours rather than red", async () => {
+    (tenantService.me as jest.Mock).mockResolvedValue(
+      tenant({
+        ...GROOMING,
+        commission: {
+          ...GROOMING.commission,
+          service: { ...GROOMING.commission.service, sizeNominal: {} },
+        },
+      }),
+    );
+
+    renderWithAuth(<GroomingSettingsScreen />);
+
+    const boxes = await Promise.all(
+      ["Kecil", "Sedang", "Besar", "Ekstra besar"].map((label) =>
+        screen.findByLabelText(label),
+      ),
+    );
+    const notes = screen.getAllByText(/Isi angka saja tanpa titik/);
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).not.toHaveClass("text-danger");
+
+    boxes.forEach((box) => {
+      expect(box).not.toHaveClass("border-danger");
+      // `ui/input` paints a red border on aria-invalid, so it must stay off.
+      expect(box).not.toHaveAttribute("aria-invalid");
+      expect(box).toHaveAttribute("aria-describedby", notes[0].id);
+    });
+  });
 });
 
 describe("GroomingSettingsScreen — lists shared by every service", () => {

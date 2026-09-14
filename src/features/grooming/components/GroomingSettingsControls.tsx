@@ -108,6 +108,8 @@ export function UnitField({
   suffix,
   hint,
   error,
+  invalid = false,
+  describedBy,
   disabled = false,
   inputMode = "numeric",
   className,
@@ -119,6 +121,18 @@ export function UnitField({
   suffix?: string;
   hint?: ReactNode;
   error?: string;
+  /**
+   * Not yet valid, WITHOUT a sentence of its own and WITHOUT the red border —
+   * for a row of boxes that share one quiet note below them (the per-size
+   * nominals, decided 14 September 2026 on request: default colours, no red).
+   *
+   * NOT EVEN `aria-invalid`: the vendored `ui/input` paints a red border and
+   * ring on that attribute, so setting it brought back exactly the red the shop
+   * asked to remove. The box is tied to the note by `describedBy` instead, so a
+   * screen reader still hears the rule.
+   */
+  invalid?: boolean;
+  describedBy?: string;
   disabled?: boolean;
   inputMode?: "numeric" | "decimal";
   className?: string;
@@ -130,6 +144,7 @@ export function UnitField({
           {prefix && <span className="text-sm text-muted">{prefix}</span>}
           <Input
             {...field}
+            aria-describedby={field["aria-describedby"] ?? (invalid ? describedBy : undefined)}
             value={value}
             onChange={(event) => onChange(event.target.value)}
             inputMode={inputMode}

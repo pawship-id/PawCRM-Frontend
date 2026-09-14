@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import Link from "next/link";
 
 import { Alert, Card } from "@/components";
@@ -11,6 +12,7 @@ import {
   COMMISSION_EXAMPLE,
   exampleCommission,
   formatRupiah,
+  RUPIAH_ERROR,
   sizeErrorKey,
   sizeNominalText,
   type CommissionSize,
@@ -58,6 +60,8 @@ export function GroomingCommissionSettings({
   onRetrySizes: () => void;
 }) {
   const service = draft.service;
+  const sizeErrorId = useId();
+  const sizesInvalid = sizes.some((size) => Boolean(errors[sizeErrorKey(size.code)]));
 
   function setFlat(key: "addon" | "travel", patch: Partial<FlatRuleDraft>) {
     update((current) => ({ ...current, [key]: { ...current[key], ...patch } }));
@@ -123,34 +127,50 @@ export function GroomingCommissionSettings({
               )}
 
               {sizes.length > 0 ? (
-                <div className="grid gap-4 sm:grid-cols-3">
-                  {sizes.map((size) => (
-                    <UnitField
-                      key={size.code}
-                      label={size.retired ? `${size.label} (nonaktif)` : size.label}
-                      hint={
-                        size.retired
-                          ? "Tidak dipilih lagi untuk hewan baru; hewan yang sudah berukuran ini tetap dihitung."
-                          : undefined
-                      }
-                      value={sizeNominalText(draft, size.code)}
-                      onChange={(value) =>
-                        update((current) => ({
-                          ...current,
-                          service: {
-                            ...current.service,
-                            sizeNominal: {
-                              ...current.service.sizeNominal,
-                              [size.code]: value,
+                /*
+                  FOUR TO A ROW, AND ONE QUIET NOTE FOR THE ROW (decided 14
+                  September 2026, on request). Every size box fails for the same
+                  reason, so repeating the rule under each one filled the card
+                  with the same red line. The rule is said once beneath them,
+                  in the default colours — no red text and no red borders; the
+                  save bar is what says the tab is not ready yet.
+                */
+                <div className="flex flex-col gap-2">
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    {sizes.map((size) => (
+                      <UnitField
+                        key={size.code}
+                        label={size.retired ? `${size.label} (nonaktif)` : size.label}
+                        hint={
+                          size.retired
+                            ? "Tidak dipilih lagi untuk hewan baru; hewan yang sudah berukuran ini tetap dihitung."
+                            : undefined
+                        }
+                        value={sizeNominalText(draft, size.code)}
+                        onChange={(value) =>
+                          update((current) => ({
+                            ...current,
+                            service: {
+                              ...current.service,
+                              sizeNominal: {
+                                ...current.service.sizeNominal,
+                                [size.code]: value,
+                              },
                             },
-                          },
-                        }))
-                      }
-                      prefix="Rp"
-                      error={errors[sizeErrorKey(size.code)]}
-                      disabled={disabled}
-                    />
-                  ))}
+                          }))
+                        }
+                        prefix="Rp"
+                        invalid={Boolean(errors[sizeErrorKey(size.code)])}
+                        describedBy={sizeErrorId}
+                        disabled={disabled}
+                      />
+                    ))}
+                  </div>
+                  {sizesInvalid && (
+                    <p id={sizeErrorId} className="text-xs text-muted">
+                      {RUPIAH_ERROR}
+                    </p>
+                  )}
                 </div>
               ) : (
                 !sizesError && (
