@@ -5712,6 +5712,16 @@ export interface CustomerInvoiceItem {
    * back to releasing the whole booking.
    */
   bookingItemId: string | null;
+  /**
+   * THE MAIN SERVICE THIS LINE HANGS OFF, as a CATALOGUE service id — the till's
+   * `parentServiceId` under the same name. Null on a main service, a product,
+   * and an add-on billed on its own.
+   *
+   * RESOLVED BY THE SERVER, never sent: it files an add-on under the service on
+   * the same animal that offers it. Optional because invoices raised before it
+   * existed do not carry the key.
+   */
+  parentServiceId?: string | null;
   /** Whose animal the service is for. Null on a product line. */
   petId: string | null;
   /**

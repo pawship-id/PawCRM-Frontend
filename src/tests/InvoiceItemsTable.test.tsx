@@ -46,6 +46,62 @@ const invoice = (overrides = {}): CustomerInvoiceDetail =>
     ...overrides,
   }) as unknown as CustomerInvoiceDetail;
 
+/*
+  ADD-ONS (14 September 2026). "Parfum" ticked under "Mandi Full" reads as part
+  of the bath: directly under it, marked, whatever order the lines were stored
+  in. The server resolved `parentServiceId`; the table only places the row.
+*/
+describe("add-ons", () => {
+  const service = (overrides = {}) =>
+    line({
+      kind: "service",
+      sku: null,
+      hppAtTime: null,
+      petId: "pet1",
+      petName: "Miko",
+      ...overrides,
+    });
+
+  it("sets an add-on directly under the service it was billed with", () => {
+    render(
+      <InvoiceItemsTable
+        invoice={invoice({
+          items: [
+            service({ refId: "s1", name: "Mandi Full" }),
+            service({ refId: "s2", name: "Potong Kuku" }),
+            service({ refId: "a1", name: "Parfum", parentServiceId: "s1" }),
+          ],
+        })}
+      />,
+    );
+
+    const order = screen
+      .getAllByRole("row")
+      .map((row) => row.textContent ?? "")
+      .filter((text) => /Mandi Full|Potong Kuku|Parfum/.test(text))
+      .map((text) => text.match(/Mandi Full|Potong Kuku|Parfum/)?.[0]);
+
+    expect(order).toEqual(["Mandi Full", "Parfum", "Potong Kuku"]);
+    expect(
+      within(screen.getByRole("row", { name: /Parfum/ })).getByText("Add-on"),
+    ).toBeInTheDocument();
+  });
+
+  it("leaves an add-on whose service is not on the bill as a line of its own", () => {
+    render(
+      <InvoiceItemsTable
+        invoice={invoice({
+          items: [service({ refId: "a1", name: "Parfum", parentServiceId: "s9" })],
+        })}
+      />,
+    );
+
+    const row = screen.getByRole("row", { name: /Parfum/ });
+    expect(within(row).getByText("Jasa")).toBeInTheDocument();
+    expect(within(row).queryByText("Add-on")).not.toBeInTheDocument();
+  });
+});
+
 describe("the lines", () => {
   it("names each item and its SKU", () => {
     render(<InvoiceItemsTable invoice={invoice()} />);

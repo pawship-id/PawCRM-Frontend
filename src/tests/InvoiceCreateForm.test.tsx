@@ -928,6 +928,231 @@ describe("the animal a service is for", () => {
   });
 });
 
+/*
+  ADD-ONS (14 September 2026). A main service's row offers its add-ons once the
+  animal is chosen; a tick puts the add-on on the bill directly under the row, on
+  the same animal and priced for it. Nothing is sent as a parent — the server
+  files the add-on under its service from the catalogue.
+*/
+describe("add-ons under a service", () => {
+  const MAIN = {
+    _id: "s1",
+    name: "Grooming",
+    price: "150000",
+    serviceType: "main",
+    addonServiceIds: ["a1", "a2"],
+  };
+  const PARFUM = {
+    _id: "a1",
+    name: "Parfum",
+    price: "25000",
+    serviceType: "addon",
+    addonServiceIds: [],
+  };
+  /* Priced for a LARGE animal only — Miko is small. */
+  const SISIR = {
+    _id: "a2",
+    name: "Sisir Bulu",
+    price: null,
+    hasVariants: true,
+    variantAxes: ["sizeCategory"],
+    variants: [{ sizeCategory: "large", price: "40000" }],
+    serviceType: "addon",
+    addonServiceIds: [],
+  };
+
+  beforeEach(() => {
+    jest
+      .spyOn(serviceService, "list")
+      .mockResolvedValue(page([PARFUM, MAIN, SISIR]) as never);
+    jest.spyOn(petService, "list").mockResolvedValue(
+      page([
+        { _id: "pet1", name: "Miko", size: "small" },
+        { _id: "pet2", name: "Coco", size: "large" },
+      ]) as never,
+    );
+  });
+
+  async function fillService() {
+    await pick(/^Pelanggan$/i, /Bu Sari/);
+    await pick(/^Cabang$/i, /Cabang Pusat/);
+    await addItem(/^Grooming/, "Jasa");
+  }
+
+  /** Opens the add-on dialog on the Grooming row and returns it. */
+  async function openAddons() {
+    await userEvent.click(
+      screen.getByRole("button", { name: /^Add-on untuk Grooming/ }),
+    );
+    return screen.findByRole("dialog");
+  }
+
+  async function tick(addon: RegExp) {
+    const dialog = await openAddons();
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: addon }));
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Simpan add-on" }),
+    );
+  }
+
+  it("lists add-ons after the main services in the dialog, labelled", async () => {
+    render(<InvoiceCreateForm />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /tambah barang atau jasa/i }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("tab", { name: /^Jasa/ }));
+
+    expect(
+      within(dialog)
+        .getAllByRole("checkbox")
+        .map((box) => box.getAttribute("id")),
+    ).toEqual(["pick-service-s1", "pick-service-a1", "pick-service-a2"]);
+    expect(within(dialog).getAllByText("Add-on")).toHaveLength(2);
+  });
+
+  it("offers the add-ons only once the animal is chosen", async () => {
+    render(<InvoiceCreateForm />);
+    await fillService();
+
+    expect(
+      screen.getByRole("button", { name: /^Add-on untuk Grooming/ }),
+    ).toBeDisabled();
+    expect(screen.getByText("Pilih hewan dulu")).toBeInTheDocument();
+
+    await pick(/^Hewan untuk Grooming$/i, /Miko/);
+
+    expect(
+      screen.getByRole("button", { name: /^Add-on untuk Grooming/ }),
+    ).toBeEnabled();
+  });
+
+  it("puts a ticked add-on under its service, on its animal, and sends no parent", async () => {
+    render(<InvoiceCreateForm />);
+    await fillService();
+    await pick(/^Hewan untuk Grooming$/i, /Miko/);
+
+    const dialog = await openAddons();
+    /* Nobody can price the comb-out for Miko, so it cannot be ticked. */
+    expect(
+      within(dialog).getByRole("checkbox", { name: /Sisir Bulu/ }),
+    ).toBeDisabled();
+    await userEvent.click(
+      within(dialog).getByRole("checkbox", { name: /Parfum/ }),
+    );
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Simpan add-on" }),
+    );
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    const rows = screen.getAllByRole("row").map((row) => row.textContent ?? "");
+    const groomingAt = rows.findIndex((text) => text.startsWith("Grooming"));
+    expect(rows[groomingAt + 1]).toContain("Parfum");
+    expect(
+      within(screen.getByRole("row", { name: /Parfum/ })).getByText("Miko"),
+    ).toBeInTheDocument();
+
+    await submit();
+
+    await waitFor(() =>
+      expect(customerInvoiceService.create).toHaveBeenCalled(),
+    );
+    expect(sent().items).toEqual([
+      { kind: "service", refId: "s1", qty: "1", discount: null, petId: "pet1" },
+      { kind: "service", refId: "a1", qty: "1", discount: null, petId: "pet1" },
+    ]);
+  });
+
+  it("moves an add-on to its service's new animal, re-priced", async () => {
+    jest.spyOn(serviceService, "list").mockResolvedValue(
+      page([
+        MAIN,
+        {
+          ...SISIR,
+          variants: [
+            { sizeCategory: "small", price: "30000" },
+            { sizeCategory: "large", price: "40000" },
+          ],
+        },
+      ]) as never,
+    );
+
+    render(<InvoiceCreateForm />);
+    await fillService();
+    await pick(/^Hewan untuk Grooming$/i, /Miko/);
+    await tick(/Sisir Bulu/);
+
+    expect(
+      within(screen.getByRole("row", { name: /Sisir Bulu/ })).getAllByText(
+        "Rp 30.000",
+      ),
+    ).not.toHaveLength(0);
+
+    await pick(/^Hewan untuk Grooming$/i, /Coco/);
+
+    const row = screen.getByRole("row", { name: /Sisir Bulu/ });
+    expect(within(row).getByText("Coco")).toBeInTheDocument();
+    expect(within(row).getAllByText("Rp 40.000")).not.toHaveLength(0);
+  });
+
+  /* A DRAFT UNTIL SAVED — Batal leaves the bill exactly as it was. */
+  it("puts nothing on the bill when the dialog is cancelled", async () => {
+    render(<InvoiceCreateForm />);
+    await fillService();
+    await pick(/^Hewan untuk Grooming$/i, /Miko/);
+
+    const dialog = await openAddons();
+    await userEvent.click(
+      within(dialog).getByRole("checkbox", { name: /Parfum/ }),
+    );
+    await userEvent.click(within(dialog).getByRole("button", { name: "Batal" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("row", { name: /Parfum/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("reopens with what the bill carries, and takes off what is unticked", async () => {
+    render(<InvoiceCreateForm />);
+    await fillService();
+    await pick(/^Hewan untuk Grooming$/i, /Miko/);
+    await tick(/Parfum/);
+
+    const dialog = await openAddons();
+    const parfum = within(dialog).getByRole("checkbox", { name: /Parfum/ });
+    expect(parfum).toBeChecked();
+
+    await userEvent.click(parfum);
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Simpan add-on" }),
+    );
+
+    expect(
+      screen.queryByRole("row", { name: /Parfum/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Add-on untuk Grooming" }),
+    ).toBeInTheDocument();
+  });
+
+  it("takes its add-ons off with the service", async () => {
+    render(<InvoiceCreateForm />);
+    await fillService();
+    await pick(/^Hewan untuk Grooming$/i, /Miko/);
+    await tick(/Parfum/);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /^Hapus Grooming$/ }),
+    );
+
+    expect(
+      screen.queryByRole("row", { name: /Parfum/ }),
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe("what the form sends", () => {
   it("sends the line, and no price with it", async () => {
     render(<InvoiceCreateForm />);

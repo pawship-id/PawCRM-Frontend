@@ -1,5 +1,6 @@
 import { Fragment } from "react";
 import Link from "next/link";
+import { CornerDownRight } from "lucide-react";
 
 import {
   Table,
@@ -48,6 +49,50 @@ function taxAddedOnTop(totals: CustomerInvoiceTotals | null): boolean {
     minor(totals.otherCharges);
 
   return minor(totals.grandTotal) - beforeTax > ZERO;
+}
+
+/**
+ * One animal's lines with each ADD-ON moved directly under the service it was
+ * billed with — `parentServiceId`, which the server resolved from the catalogue.
+ *
+ * MATCHED ON THE CATALOGUE SERVICE, not a line id, the same as the till's
+ * `nestAddons`: a group is already one animal, so the service settles it. Two
+ * lines of the same service take the add-on under the FIRST.
+ *
+ * AN ORPHAN STAYS WHERE IT IS, as a line of its own — an add-on sold alone has
+ * no parent, and one that vanished from the table while staying on the total is
+ * the worst outcome available.
+ *
+ * THE ORIGINAL INDEX TRAVELS ON, unchanged — rows are keyed by it.
+ */
+function nestAddons(rows: { item: CustomerInvoiceItem; index: number }[]) {
+  const hostOf = new Map<number, number>();
+
+  rows.forEach((row) => {
+    const parentId = row.item.parentServiceId;
+    if (!parentId) return;
+
+    const host = rows.find(
+      (one) =>
+        one !== row &&
+        one.item.kind === "service" &&
+        !one.item.parentServiceId &&
+        one.item.refId === parentId,
+    );
+
+    if (host) hostOf.set(row.index, host.index);
+  });
+
+  return rows.flatMap((row) =>
+    hostOf.has(row.index)
+      ? []
+      : [
+          { ...row, isAddon: false },
+          ...rows
+            .filter((one) => hostOf.get(one.index) === row.index)
+            .map((one) => ({ ...one, isAddon: true })),
+        ],
+  );
 }
 
 /** "11" → "11", "11.5" → "11,5" — the rate as a person writes it. */
@@ -267,13 +312,30 @@ export function InvoiceItemsTable({
                     </TableRow>
                   )}
 
-                  {group.rows.map(({ item, index }) => (
+                  {nestAddons(group.rows).map(({ item, index, isAddon }) => (
                     <TableRow key={`${item.refId}-${index}`}>
                       <TableCell>
-                        <span className="font-medium">{item.name}</span>
-                        <span className="block text-xs text-muted tabular-nums">
-                          {item.sku ?? "Jasa"}
-                        </span>
+                        {isAddon ? (
+                          <span className="flex items-start gap-1.5 pl-4">
+                            <CornerDownRight
+                              aria-hidden
+                              className="mt-0.5 size-4 shrink-0 text-muted"
+                            />
+                            <span>
+                              <span className="font-medium">{item.name}</span>
+                              <span className="block text-xs text-muted">
+                                Add-on
+                              </span>
+                            </span>
+                          </span>
+                        ) : (
+                          <>
+                            <span className="font-medium">{item.name}</span>
+                            <span className="block text-xs text-muted tabular-nums">
+                              {item.sku ?? "Jasa"}
+                            </span>
+                          </>
+                        )}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         {formatMoney(item.unitPrice)}

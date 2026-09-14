@@ -42,6 +42,11 @@ type Tab = "product" | "service";
  *
  * NOTHING IS PRICED FOR AN ANIMAL HERE. A service priced by pet reads "Harga
  * menurut hewan"; the animal is chosen on the row afterwards, which re-prices it.
+ *
+ * ADD-ONS ARE OFFERED TOO, labelled and listed after the main services (decided
+ * 14 September 2026). One sold on its own is a real sale, as at the till — but
+ * the usual way in is the "+ Add-on" on its service's row, which prices it for
+ * that row's animal and files it under that service.
  */
 export function InvoiceAddItemsDialog({
   services,
@@ -63,12 +68,19 @@ export function InvoiceAddItemsDialog({
 
   const visibleServices = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return services;
-    return services.filter(
-      (service) =>
-        service.name.toLowerCase().includes(q) ||
-        Boolean(service.code?.toLowerCase().includes(q)),
-    );
+    const matching = q
+      ? services.filter(
+          (service) =>
+            service.name.toLowerCase().includes(q) ||
+            Boolean(service.code?.toLowerCase().includes(q)),
+        )
+      : services;
+
+    /* MAIN SERVICES FIRST, each half in catalogue order — see the header. */
+    return [
+      ...matching.filter((service) => service.serviceType !== "addon"),
+      ...matching.filter((service) => service.serviceType === "addon"),
+    ];
   }, [services, search]);
 
   const pickedIds = new Set(picked.map((service) => service._id));
@@ -95,7 +107,7 @@ export function InvoiceAddItemsDialog({
           <DialogDescription>
             Cari lalu centang, boleh beberapa sekaligus dari kedua tab. Harga
             diambil dari katalog; hewan untuk jasa dipilih di baris faktur
-            setelah ini.
+            setelah ini, begitu juga add-on layanannya.
           </DialogDescription>
         </DialogHeader>
 
@@ -205,6 +217,11 @@ export function InvoiceAddItemsDialog({
                         {service.code && (
                           <span className="text-xs text-muted tabular-nums">
                             {service.code}
+                          </span>
+                        )}
+                        {service.serviceType === "addon" && (
+                          <span className="rounded-full bg-tint-neutral px-2 py-0.5 text-xs font-medium text-foreground">
+                            Add-on
                           </span>
                         )}
                         <span className="ml-auto text-xs text-muted tabular-nums">

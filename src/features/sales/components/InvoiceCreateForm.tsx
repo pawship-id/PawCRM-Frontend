@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Trash2 } from "lucide-react";
+import { CornerDownRight, Trash2 } from "lucide-react";
 
 import {
   Alert,
@@ -43,6 +43,7 @@ import type { Product } from "@/types/inventory";
 import { useInvoiceLookups } from "../hooks/useInvoiceLookups";
 import { previewInvoice } from "../invoicePreview";
 import { InvoiceAddItemsDialog } from "./InvoiceAddItemsDialog";
+import { InvoiceAddonPicker } from "./InvoiceAddonPicker";
 import { InvoiceBarcodeScan } from "./InvoiceBarcodeScan";
 import { InvoiceBookingPanel } from "./InvoiceBookingPanel";
 import { formatRate } from "./InvoiceItemsTable";
@@ -111,7 +112,21 @@ interface DraftLine {
    * has no grooming.
    */
   petId: string;
+  /** This row's handle — stable while rows above it come and go. */
+  key: string;
+  /**
+   * THE ROW AN ADD-ON WAS TICKED UNDER — that row's `key`, null on every other.
+   *
+   * THE FORM'S OWN BOOKKEEPING, never sent: it keeps the add-on beside its
+   * service, on the same animal, and takes it off with it. The server files the
+   * add-on under the service again from the catalogue.
+   */
+  parentKey: string | null;
 }
+
+/** Row handles — a counter, because an index shifts whenever a row is removed. */
+let lastLineKey = 0;
+const nextLineKey = () => `line-${(lastLineKey += 1)}`;
 
 const todayValue = () => new Date().toISOString().slice(0, 10);
 
@@ -392,6 +407,8 @@ export function InvoiceCreateForm() {
             discountMode: "percent",
             discountValue: "",
             petId: "",
+            key: nextLineKey(),
+            parentKey: null,
           },
         ];
       }
@@ -426,6 +443,8 @@ export function InvoiceCreateForm() {
         discountMode: "percent" as const,
         discountValue: "",
         petId: "",
+        key: nextLineKey(),
+        parentKey: null,
       })),
       ...picked.services.map((service) => ({
         kind: "service" as const,
@@ -442,6 +461,8 @@ export function InvoiceCreateForm() {
         discountMode: "percent" as const,
         discountValue: "",
         petId: "",
+        key: nextLineKey(),
+        parentKey: null,
       })),
     ];
 
@@ -473,11 +494,26 @@ export function InvoiceCreateForm() {
   }
 
   function patchLine(index: number, patch: Partial<DraftLine>) {
-    setLines((current) =>
-      current.map((line, at) => {
-        if (at !== index) return line;
+    setLines((current) => {
+      const target = current[index];
 
-        const next = { ...line, ...patch };
+      return current.map((line, at) => {
+        /*
+          AN ADD-ON FOLLOWS ITS SERVICE'S ANIMAL. It was ticked for that dog and
+          priced for it; left on the old one it would bill Miko's perfume under
+          Coco's bath.
+        */
+        const follows =
+          patch.petId !== undefined &&
+          target !== undefined &&
+          line.parentKey === target.key;
+
+        if (at !== index && !follows) return line;
+
+        const next =
+          at === index
+            ? { ...line, ...patch }
+            : { ...line, petId: patch.petId ?? "" };
 
         /*
           RE-PRICED WHEN THE ANIMAL CHANGES, because for a variant service that
@@ -487,8 +523,88 @@ export function InvoiceCreateForm() {
         return patch.petId === undefined || next.kind !== "service"
           ? next
           : { ...next, unitPrice: priceOfService(next.refId, next.petId) };
-      }),
-    );
+      });
+    });
+  }
+
+  /** Takes a row off, and every add-on ticked under it with it. */
+  function removeLine(index: number) {
+    setLines((current) => {
+      const target = current[index];
+
+      return current.filter(
+        (line, at) =>
+          at !== index && (!target || line.parentKey !== target.key),
+      );
+    });
+  }
+
+  /**
+   * The add-ons a row may offer — only on a MAIN service's own row, never on a
+   * row that is itself an add-on (nesting is one deep, as on a booking), and
+   * only those still in the active catalogue the form loaded.
+   */
+  function addonsOffered(line: DraftLine): Service[] {
+    if (line.kind !== "service" || line.parentKey) return [];
+
+    const service = lookups.services.find((one) => one._id === line.refId);
+    if (!service || service.serviceType === "addon") return [];
+
+    return (service.addonServiceIds ?? [])
+      .map((id) => lookups.services.find((one) => one._id === id))
+      .filter(
+        (one): one is Service =>
+          one !== undefined && one.serviceType === "addon",
+      );
+  }
+
+  /**
+   * Puts exactly these add-ons under one row — what the add-on dialog saved —
+   * directly below it, in the dialog's order, on the row's animal.
+   *
+   * AN ADD-ON ALREADY ON THE BILL KEEPS ITS LINE, quantity and discount with
+   * it; only a new one is priced here, for the row's animal. One missing from
+   * the list comes off.
+   *
+   * LOOKED UP BY `key`, in a functional update: the save lands after the dialog
+   * opened, and the rows may have moved since.
+   */
+  function setAddons(parentKey: string, addonIds: string[]) {
+    setLines((current) => {
+      const parent = current.find((line) => line.key === parentKey);
+      if (!parent) return current;
+
+      const existing = current.filter((line) => line.parentKey === parentKey);
+      const children = addonIds.flatMap((id): DraftLine[] => {
+        const kept = existing.find((line) => line.refId === id);
+        if (kept) return [kept];
+
+        const addon = lookups.services.find((one) => one._id === id);
+        if (!addon) return [];
+
+        return [
+          {
+            kind: "service",
+            refId: addon._id,
+            name: addon.name,
+            sku: null,
+            unitPrice: priceOfService(addon._id, parent.petId),
+            // FREE TO CHANGE, like any line — decided 14 September 2026.
+            qty: "1",
+            discountMode: "percent",
+            discountValue: "",
+            petId: parent.petId,
+            key: nextLineKey(),
+            parentKey,
+          },
+        ];
+      });
+
+      const rest = current.filter((line) => line.parentKey !== parentKey);
+      const at = rest.findIndex((line) => line.key === parentKey) + 1;
+
+      return [...rest.slice(0, at), ...children, ...rest.slice(at)];
+    });
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -822,18 +938,64 @@ export function InvoiceCreateForm() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {lines.map((line, index) => (
-                      <TableRow key={`${line.refId}-${index}`}>
+                    {lines.map((line, index) => {
+                      const offered = addonsOffered(line);
+                      const linePet = pets.items.find(
+                        (one) => one._id === line.petId,
+                      );
+
+                      return (
+                      <TableRow key={line.key}>
                         <TableCell>
-                          <span className="font-medium">{line.name}</span>
-                          <span className="block text-xs text-muted">
-                            {line.sku ?? "Jasa"}
-                          </span>
+                          {line.parentKey ? (
+                            /* UNDER ITS SERVICE, and marked — one visit, not a
+                               second grooming to read. */
+                            <span className="flex items-start gap-1.5 pl-4">
+                              <CornerDownRight
+                                aria-hidden
+                                className="mt-0.5 size-4 shrink-0 text-muted"
+                              />
+                              <span>
+                                <span className="font-medium">{line.name}</span>
+                                <span className="block text-xs text-muted">
+                                  Add-on
+                                </span>
+                              </span>
+                            </span>
+                          ) : (
+                            <>
+                              <span className="font-medium">{line.name}</span>
+                              <span className="block text-xs text-muted">
+                                {line.sku ?? "Jasa"}
+                              </span>
+                              {offered.length > 0 && (
+                                <InvoiceAddonPicker
+                                  idPrefix={line.key}
+                                  serviceName={line.name}
+                                  pet={linePet}
+                                  offered={offered}
+                                  tickedIds={lines
+                                    .filter((one) => one.parentKey === line.key)
+                                    .map((one) => one.refId)}
+                                  onSave={(addonIds) =>
+                                    setAddons(line.key, addonIds)
+                                  }
+                                  disabled={saving}
+                                />
+                              )}
+                            </>
+                          )}
                         </TableCell>
 
                         {hasServiceLine && (
                           <TableCell>
-                            {line.kind === "service" ? (
+                            {line.parentKey ? (
+                              /* THE SERVICE'S ANIMAL, not a choice of its own —
+                                 it changes on the service's row, and follows. */
+                              <span className="text-sm">
+                                {linePet?.name ?? "—"}
+                              </span>
+                            ) : line.kind === "service" ? (
                               /*
                               WHY IT IS HERE AT ALL — PCR-035. A grooming billed
                               with no animal named reaches no day sheet: nobody
@@ -1002,18 +1164,15 @@ export function InvoiceCreateForm() {
                             variant="ghost"
                             size="sm"
                             aria-label={`Hapus ${line.name}`}
-                            onClick={() =>
-                              setLines((current) =>
-                                current.filter((_, at) => at !== index),
-                              )
-                            }
+                            onClick={() => removeLine(index)}
                             disabled={saving}
                           >
                             <Trash2 className="size-4 text-danger" />
                           </UIButton>
                         </TableCell>
                       </TableRow>
-                    ))}
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
