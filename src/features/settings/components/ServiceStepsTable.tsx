@@ -31,83 +31,88 @@ import {
 } from "@/components/ui/table";
 import { Can, usePermissions } from "@/features/permissions";
 import { ApiError } from "@/services/api-error";
-import { petOptionService } from "@/services/petOption.service";
+import type { BusinessLine } from "@/services/businessLine.service";
+import { serviceStepService } from "@/services/serviceStep.service";
 import { swalToast } from "@/lib/swal";
-import type { PetOption, PetOptionType } from "@/types/api";
+import type { ServiceStep } from "@/types/api";
 
-import { PET_OPTION_TYPE_WORDS } from "../petOptions";
 import { reorderPatches } from "../sortOrder";
 import { ListItemStatus } from "./ListItemStatus";
 
 /**
- * One list of pet options and its row actions.
+ * One business line's tahapan and their row actions.
  *
- * Rows arrive sorted and already narrowed to one type; the writes that need no
- * form are owned here, on SupplierCategoriesTable's shape — call, toast, ask the
- * parent to re-read. Renaming needs a field, so it is handed up as `onRename`.
+ * PetOptionsTable's shape, kept on purpose — the two screens sit one card apart
+ * and are used by the same person: rows arrive sorted and narrowed to one line,
+ * writes that need no form are owned here (call, toast, ask the parent to
+ * re-read), and renaming is handed up as `onRename` because it needs a field.
+ *
+ * ─── THE GRANTS ARE `services:*` ───────────────────────────────────────────
+ *
+ * A tahapan is part of what a service is, so the server gates the list on the
+ * service grants (14 September 2026): update covers add, rename, reorder and
+ * retire — POST included, so a service's Tahapan card can add a missing step
+ * on the spot — while delete and restore keep their own.
+ *
+ * ─── DIPAKAI IS WHAT A RENAME REWRITES ─────────────────────────────────────
+ *
+ * `serviceCount` is how many live services of the line list the step. It is
+ * the number a rename reaches and the number a delete is refused over, so it
+ * sits beside the name rather than behind a click. A deleted row shows "—":
+ * it is offered nowhere, and a count there would read as a use it still has.
  *
  * ─── ORDER IS DATA ─────────────────────────────────────────────────────────
  *
- * Naikkan / Turunkan swap `sortOrder` with the neighbour (see `reorderPatches`)
- * and every picker in the app follows. It matters most for sizes — the price
- * grid and the commission rows read smallest first — so there is no separate
- * sort control: the table IS the order. Deleted rows, when shown, are skipped
- * when finding a neighbour and cannot be moved; they are offered nowhere, so
- * their position means nothing until they are restored.
+ * Naikkan / Turunkan swap `sortOrder` with the neighbour (`reorderPatches`),
+ * and that is the order a service's picker offers. It is NOT the order of a
+ * service's own tahapan, which each service keeps in `sessions`. Deleted rows
+ * are skipped when finding a neighbour and cannot be moved.
  *
- * ─── ONE WRITE AT A TIME ───────────────────────────────────────────────────
+ * ─── ONE WRITE AT A TIME, RETIRE BEFORE DELETE ─────────────────────────────
  *
- * Every kebab is disabled while a row write is in flight AND while the list is
- * being re-read. A second Naikkan fired against the old `sortOrder`s would swap
- * values that are no longer there.
- *
- * ─── RETIRE BEFORE DELETE ──────────────────────────────────────────────────
- *
- * Nonaktifkan needs no confirmation: it is undone by the item that replaces it,
- * and records holding the code keep it. Hapus confirms, and its dialog says up
- * front that the server refuses while a pet or service still holds the code —
- * for a word anybody actually used, the refusal is the normal outcome, and
- * pointing at Nonaktifkan first is kinder than a 409 after.
+ * Every kebab is disabled while a write is in flight and while the list is
+ * re-read — a second Naikkan against old `sortOrder`s would swap values no
+ * longer there. Nonaktifkan needs no confirmation; Hapus confirms and says up
+ * front that it is refused while services list the step, since for a step
+ * anybody used that refusal is the normal outcome.
  */
-export function PetOptionsTable({
-  type,
+export function ServiceStepsTable({
+  line,
   rows,
   loading,
   onRename,
   onChanged,
 }: {
-  type: PetOptionType;
-  /** One type's options in display order — deleted ones only when shown. */
-  rows: PetOption[];
+  line: BusinessLine;
+  /** One line's steps in display order — deleted ones only when shown. */
+  rows: ServiceStep[];
   loading: boolean;
-  onRename: (option: PetOption) => void;
+  onRename: (step: ServiceStep) => void;
   /** Re-read the screen's list and the app's shared one. */
   onChanged: () => void;
 }) {
   const { can } = usePermissions();
-  const words = PET_OPTION_TYPE_WORDS[type];
 
   const [working, setWorking] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [pendingDelete, setPendingDelete] = useState<PetOption | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<ServiceStep | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  const live = rows.filter((option) => option.deletedAt === null);
+  const live = rows.filter((step) => step.deletedAt === null);
 
   // The Aksi column appears only when some LISTED row would have an item, so a
   // role that may only read gets no empty column and no kebab opening onto
   // nothing.
-  const rowHasActions = (option: PetOption) =>
-    option.deletedAt !== null
-      ? can("petOptions", "restore")
-      : can("petOptions", "update") || can("petOptions", "delete");
+  const rowHasActions = (step: ServiceStep) =>
+    step.deletedAt !== null
+      ? can("services", "restore")
+      : can("services", "update") || can("services", "delete");
   const showActions = rows.some(rowHasActions);
 
   /**
    * Runs a write that needs no form. RE-READS EVEN ON FAILURE: a move is two
-   * requests, and when the second one fails the first has already landed — the
-   * list on screen must be the server's, not the one from before the click.
+   * requests, and when the second fails the first has already landed.
    */
   async function run(write: () => Promise<unknown>, done: string) {
     setWorking(true);
@@ -116,8 +121,8 @@ export function PetOptionsTable({
       await write();
       swalToast(done);
     } catch (error) {
-      // `fullMessage`: a restore refused because the name or code was reused
-      // puts WHICH one in `reason`.
+      // `fullMessage`: a restore refused because the name was reused says
+      // which name in `reason`.
       setActionError(
         error instanceof ApiError
           ? error.fullMessage
@@ -129,18 +134,17 @@ export function PetOptionsTable({
     }
   }
 
-  function move(option: PetOption, step: -1 | 1) {
-    const from = live.findIndex((row) => row._id === option._id);
-    const to = from + step;
+  function move(step: ServiceStep, offset: -1 | 1) {
+    const from = live.findIndex((row) => row._id === step._id);
+    const to = from + offset;
     if (from < 0 || to < 0 || to >= live.length) return;
 
     void run(async () => {
-      // In sequence rather than in parallel, so a refusal stops the second
-      // write instead of racing it.
+      // In sequence, so a refusal stops the second write instead of racing it.
       for (const [target, sortOrder] of reorderPatches(live, from, to)) {
-        await petOptionService.update(target._id, { sortOrder });
+        await serviceStepService.update(target._id, { sortOrder });
       }
-    }, `Urutan ${words.noun} disimpan.`);
+    }, "Urutan tahapan disimpan.");
   }
 
   function closeDelete() {
@@ -154,14 +158,13 @@ export function PetOptionsTable({
     setDeleting(true);
     setDeleteError(null);
     try {
-      await petOptionService.remove(pendingDelete._id);
+      await serviceStepService.remove(pendingDelete._id);
       setPendingDelete(null);
       onChanged();
-      swalToast(`${words.title} dihapus.`);
+      swalToast("Tahapan dihapus.");
     } catch (error) {
-      // Verbatim, `fullMessage`: the 409's `reason` carries how many pets and
-      // services still hold the code, which is the only part that says what to
-      // do next.
+      // Verbatim, `fullMessage`: the 409's `reason` carries how many services
+      // still list the step, which is the part that says what to do next.
       setDeleteError(
         error instanceof ApiError
           ? error.fullMessage
@@ -172,6 +175,8 @@ export function PetOptionsTable({
     }
   }
 
+  const pendingUsedBy = pendingDelete?.serviceCount ?? 0;
+
   return (
     <>
       {actionError && <Alert variant="error">{actionError}</Alert>}
@@ -181,34 +186,34 @@ export function PetOptionsTable({
           <TableHeader>
             <TableRow>
               <TableHead>Nama</TableHead>
-              <TableHead>Kode</TableHead>
+              <TableHead className="text-right">Dipakai</TableHead>
               <TableHead>Status</TableHead>
               {showActions && <TableHead className="text-right">Aksi</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((option) => {
-              const deleted = option.deletedAt !== null;
-              const position = live.indexOf(option);
+            {rows.map((step) => {
+              const deleted = step.deletedAt !== null;
+              const position = live.indexOf(step);
 
               return (
-                <TableRow key={option._id}>
+                <TableRow key={step._id}>
                   <TableCell
                     className={
                       deleted ? "text-muted" : "font-medium text-foreground"
                     }
                   >
-                    {option.label}
+                    {step.name}
                   </TableCell>
-                  <TableCell className="text-sm text-muted tabular-nums">
-                    {option.code}
+                  <TableCell className="text-right text-sm tabular-nums">
+                    <UsedBy step={step} />
                   </TableCell>
                   <TableCell>
-                    <ListItemStatus item={option} />
+                    <ListItemStatus item={step} />
                   </TableCell>
                   {showActions && (
                     <TableCell>
-                      {rowHasActions(option) && (
+                      {rowHasActions(step) && (
                         <div className="flex items-center justify-end">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -216,9 +221,7 @@ export function PetOptionsTable({
                                 variant="ghost"
                                 className="size-9"
                                 disabled={working || loading}
-                                // Names the row: twenty identical "Aksi"
-                                // buttons tell a screen reader nothing.
-                                aria-label={`Aksi untuk ${option.label}`}
+                                aria-label={`Aksi untuk ${step.name}`}
                               >
                                 <EllipsisVertical className="size-4" />
                               </Button>
@@ -226,12 +229,12 @@ export function PetOptionsTable({
 
                             <DropdownMenuContent align="end">
                               {deleted ? (
-                                <Can feature="petOptions" action="restore">
+                                <Can feature="services" action="restore">
                                   <DropdownMenuItem
                                     onSelect={() =>
                                       void run(
-                                        () => petOptionService.restore(option._id),
-                                        `${words.title} dipulihkan.`,
+                                        () => serviceStepService.restore(step._id),
+                                        "Tahapan dipulihkan.",
                                       )
                                     }
                                   >
@@ -241,26 +244,25 @@ export function PetOptionsTable({
                                 </Can>
                               ) : (
                                 <>
-                                  <Can feature="petOptions" action="update">
+                                  <Can feature="services" action="update">
                                     <DropdownMenuItem
-                                      onSelect={() => onRename(option)}
+                                      onSelect={() => onRename(step)}
                                     >
                                       <Pencil />
                                       Ubah nama
                                     </DropdownMenuItem>
                                     {/* Disabled rather than hidden at the
-                                        ends, so the menu keeps its shape and
-                                        says the list has an order. */}
+                                        ends, so the menu keeps its shape. */}
                                     <DropdownMenuItem
                                       disabled={position === 0}
-                                      onSelect={() => move(option, -1)}
+                                      onSelect={() => move(step, -1)}
                                     >
                                       <ArrowUp />
                                       Naikkan
                                     </DropdownMenuItem>
                                     <DropdownMenuItem
                                       disabled={position === live.length - 1}
-                                      onSelect={() => move(option, 1)}
+                                      onSelect={() => move(step, 1)}
                                     >
                                       <ArrowDown />
                                       Turunkan
@@ -269,16 +271,16 @@ export function PetOptionsTable({
                                       onSelect={() =>
                                         void run(
                                           () =>
-                                            petOptionService.update(option._id, {
-                                              isActive: !option.isActive,
+                                            serviceStepService.update(step._id, {
+                                              isActive: !step.isActive,
                                             }),
-                                          option.isActive
-                                            ? `${words.title} dinonaktifkan.`
-                                            : `${words.title} diaktifkan.`,
+                                          step.isActive
+                                            ? "Tahapan dinonaktifkan."
+                                            : "Tahapan diaktifkan.",
                                         )
                                       }
                                     >
-                                      {option.isActive ? (
+                                      {step.isActive ? (
                                         <>
                                           <CircleOff />
                                           Nonaktifkan
@@ -291,14 +293,11 @@ export function PetOptionsTable({
                                       )}
                                     </DropdownMenuItem>
                                   </Can>
-                                  <Can feature="petOptions" action="delete">
-                                    {/* Separated and tinted: everything above
-                                        is undone by another click; this is
-                                        not. */}
+                                  <Can feature="services" action="delete">
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem
                                       variant="destructive"
-                                      onSelect={() => setPendingDelete(option)}
+                                      onSelect={() => setPendingDelete(step)}
                                     >
                                       <Trash2 />
                                       Hapus
@@ -321,7 +320,7 @@ export function PetOptionsTable({
 
       {pendingDelete && (
         <ConfirmDialog
-          title={`Hapus ${words.noun}`}
+          title="Hapus tahapan"
           confirmLabel="Hapus"
           destructive
           busy={deleting}
@@ -329,12 +328,25 @@ export function PetOptionsTable({
           onConfirm={confirmDelete}
           onCancel={closeDelete}
         >
-          Hapus <strong>{pendingDelete.label}</strong> dari daftar {words.noun}?
-          Hapusnya ditolak selama masih ada {words.heldBy} yang memakainya. Kalau
-          cuma mau berhenti menawarkannya, pilih <strong>Nonaktifkan</strong>{" "}
-          saja — data yang sudah ada tetap aman.
+          Hapus <strong>{pendingDelete.name}</strong> dari tahapan {line.name}?
+          Hapusnya ditolak selama masih ada layanan yang memakainya
+          {pendingUsedBy > 0 ? ` — sekarang ${pendingUsedBy} layanan` : ""}.
+          Kalau cuma mau berhenti menawarkannya, pilih{" "}
+          <strong>Nonaktifkan</strong> saja — layanan yang sudah memakainya
+          tetap.
         </ConfirmDialog>
       )}
     </>
   );
+}
+
+/** "3 layanan", or a word for none — never a bare 0 in a column of phrases. */
+function UsedBy({ step }: { step: ServiceStep }) {
+  if (step.deletedAt !== null || step.serviceCount === undefined) {
+    return <span className="text-muted">—</span>;
+  }
+  if (step.serviceCount === 0) {
+    return <span className="text-muted">Belum dipakai</span>;
+  }
+  return <span className="text-foreground">{step.serviceCount} layanan</span>;
 }

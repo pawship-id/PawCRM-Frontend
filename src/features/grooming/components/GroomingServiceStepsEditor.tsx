@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, type KeyboardEvent } from "react";
-import { ChevronsUpDown, GripVertical, Plus, X } from "lucide-react";
+import { useState, type KeyboardEvent, type SetStateAction } from "react";
+import { GripVertical, X } from "lucide-react";
 
 import { Alert, Card, Spinner } from "@/components";
 import { Badge } from "@/components/ui/badge";
@@ -9,31 +9,28 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
   formatDurationRange,
   formatServicePrice,
   serviceDurationBounds,
+  ServiceStepFlagBadge,
+  serviceStepFlag,
+  ServiceStepPicker,
+  sessionsRefusal,
 } from "@/features/services";
+import { invalidateServiceSteps, useServiceSteps } from "@/hooks/useServiceSteps";
 import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/services/api-error";
 import { serviceService } from "@/services/service.service";
 import type { Service, UpdateServiceInput } from "@/types/api";
 
-import { useLineSessionNames } from "../hooks/useGroomingServiceDetail";
 import { statusOf } from "../serviceDisplay";
 import {
   addStep,
-  hasStep,
   MAX_SESSIONS,
   moveStep,
   removeStep,
   seedSteps,
-  SESSION_MAX_LENGTH,
   setWeight,
   splitEvenly,
   stepsPatch,
@@ -47,133 +44,6 @@ import { DraftSaveBar } from "./DraftSaveBar";
 /** The same add-ons, whatever order they were ticked in. */
 function sameIds(a: string[], b: string[]): boolean {
   return a.length === b.length && [...a].sort().join(",") === [...b].sort().join(",");
-}
-
-/**
- * "+ Tambah tahapan…" — the tahapan other grooming services use, and a new name
- * typed. A popover rather than the mockup's native select, because the list has
- * to take a name nobody has used yet.
- */
-function StepPicker({
-  names,
-  loading,
-  isTaken,
-  full,
-  onPick,
-}: {
-  names: string[];
-  loading: boolean;
-  isTaken: (name: string) => boolean;
-  full: boolean;
-  onPick: (name: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-
-  const typed = query.trim();
-  const available = names.filter((name) => !isTaken(name));
-  const matches = typed
-    ? available.filter((name) => name.toLowerCase().includes(typed.toLowerCase()))
-    : available;
-  const exact = available.find(
-    (name) => name.toLowerCase() === typed.toLowerCase(),
-  );
-  const typedTaken = typed !== "" && isTaken(typed);
-
-  function pick(name: string) {
-    onPick(name);
-    setQuery("");
-    setOpen(false);
-  }
-
-  return (
-    <Popover
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (!next) setQuery("");
-      }}
-    >
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="secondary"
-          disabled={full}
-          title={full ? `Maksimal ${MAX_SESSIONS} tahapan.` : undefined}
-          className="min-w-56 justify-between"
-        >
-          <span className="flex items-center gap-1.5">
-            <Plus className="size-4" />
-            Tambah tahapan…
-          </span>
-          <ChevronsUpDown className="size-4 text-muted" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-72 p-2">
-        <Input
-          aria-label="Cari atau ketik tahapan baru"
-          autoFocus
-          value={query}
-          maxLength={SESSION_MAX_LENGTH}
-          onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key !== "Enter") return;
-            event.preventDefault();
-            if (exact) pick(exact);
-            else if (typed !== "" && !typedTaken) pick(typed);
-          }}
-          placeholder="Cari atau ketik tahapan baru"
-          className="h-9"
-        />
-
-        <div className="mt-2 flex max-h-60 flex-col overflow-y-auto">
-          {typed !== "" && !exact && !typedTaken && (
-            <button
-              type="button"
-              onClick={() => pick(typed)}
-              className="flex min-h-9 items-center gap-2 rounded-md px-2 text-left text-sm font-semibold text-primary transition hover:bg-surface-hover focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
-            >
-              <Plus className="size-4" />
-              Tambah “{typed}”
-            </button>
-          )}
-          {typedTaken && (
-            <p className="px-2 py-1.5 text-sm text-muted">
-              Tahapan ini sudah ada di layanan ini.
-            </p>
-          )}
-
-          {loading ? (
-            <p className="px-2 py-1.5 text-sm text-muted">
-              Memuat tahapan layanan lain…
-            </p>
-          ) : matches.length > 0 ? (
-            <>
-              <p className="px-2 pt-1.5 pb-1 text-xs text-muted">
-                Dipakai layanan grooming lain
-              </p>
-              {matches.map((name) => (
-                <button
-                  key={name}
-                  type="button"
-                  onClick={() => pick(name)}
-                  className="flex min-h-9 items-center rounded-md px-2 text-left text-sm text-foreground transition hover:bg-surface-hover focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
-                >
-                  {name}
-                </button>
-              ))}
-            </>
-          ) : (
-            typed === "" && (
-              <p className="px-2 py-1.5 text-sm text-muted">
-                Belum ada tahapan lain untuk dipilih. Ketik nama tahapan baru.
-              </p>
-            )
-          )}
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
 }
 
 export interface AddonCatalog {
@@ -204,8 +74,14 @@ export interface AddonCatalog {
  *
  * ─── WHAT THE MOCKUP HAS AND THIS DOES NOT ─────────────────────────────────
  *
- * A shop-wide list of tahapan to pick from: there is none — the picker offers
- * the names other grooming services already use, and takes a new one typed.
+ * A SHOP-WIDE list of tahapan: the list is PER BUSINESS LINE (14 September
+ * 2026). The picker (`ServiceStepPicker`, shared with the service form) offers
+ * the active steps of this service's line that it does not list yet, and
+ * somebody who may edit can add a missing name to that list from the popover.
+ * The server refuses any other name on save. A name this service already holds
+ * that is retired on the list, or not on it (stored while tahapan were free
+ * text), stays — marked "nonaktif" / "belum di daftar" — and may be removed but
+ * not added back.
  *
  * "— tahapan tidak dipakai" on an add-on: the mockup files each add-on under a
  * tahapan of the main service. No such link is stored — a booking adds an
@@ -237,10 +113,12 @@ export function GroomingServiceStepsEditor({
   const [armed, setArmed] = useState<number | null>(null);
   const [dragging, setDragging] = useState<number | null>(null);
 
-  const suggestions = useLineSessionNames(
-    mayUpdate ? service.businessLineId : null,
-    service._id,
-  );
+  /*
+    Read for every role, not only one that may edit: the "nonaktif" / "belum di
+    daftar" words on a row are worth knowing to a reader too, and the list is
+    `services:read`. Shared with the picker below — one fetch per line.
+  */
+  const stepList = useServiceSteps(service.businessLineId);
 
   const disabled = !mayUpdate || saving;
   const storedAddonIds = service.addonServiceIds ?? [];
@@ -252,7 +130,8 @@ export function GroomingServiceStepsEditor({
   const total = stepsTotal(draft);
   const single = draft.sessions.length === 1;
 
-  function change(next: StepsDraft) {
+  /** An updater too — the picker's quick add answers after an await. */
+  function change(next: SetStateAction<StepsDraft>) {
     setDraft(next);
     setSaveError(null);
   }
@@ -304,10 +183,18 @@ export function GroomingServiceStepsEditor({
       swalToast("Tahapan & add-on tersimpan.");
       onSaved(updated);
     } catch (err) {
+      /*
+        A REFUSED TAHAPAN says which one and why, in Bahasa, in `details` —
+        "'Spa' belum ada di daftar tahapan lini ini". The list changed since it
+        was read, so it is read again and the rows' words follow.
+      */
+      const refusal = sessionsRefusal(err);
+      if (refusal) invalidateServiceSteps(service.businessLineId);
       setSaveError(
-        err instanceof ApiError
-          ? (err.reason ?? err.fullMessage)
-          : "Tahapan & add-on belum tersimpan. Coba lagi.",
+        refusal ??
+          (err instanceof ApiError
+            ? (err.reason ?? err.fullMessage)
+            : "Tahapan & add-on belum tersimpan. Coba lagi."),
       );
     } finally {
       setSaving(false);
@@ -370,7 +257,10 @@ export function GroomingServiceStepsEditor({
           </p>
         ) : (
           <ol className="flex flex-col gap-2">
-            {draft.sessions.map((name, index) => (
+            {draft.sessions.map((name, index) => {
+              const flag = serviceStepFlag(name, stepList);
+
+              return (
               <li
                 key={name}
                 draggable={mayUpdate && armed === index}
@@ -411,8 +301,11 @@ export function GroomingServiceStepsEditor({
                     <GripVertical className="size-4" />
                   </button>
                 )}
-                <span className="min-w-0 flex-1 text-sm font-semibold text-foreground">
-                  {name}
+                <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                  <span className="text-sm font-semibold text-foreground">
+                    {name}
+                  </span>
+                  {flag && <ServiceStepFlagBadge flag={flag} />}
                 </span>
                 <Input
                   aria-label={`Bobot ${name} (%)`}
@@ -441,18 +334,24 @@ export function GroomingServiceStepsEditor({
                   </Button>
                 )}
               </li>
-            ))}
+              );
+            })}
           </ol>
         )}
 
         {mayUpdate && (
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <StepPicker
-              names={suggestions.names}
-              loading={suggestions.loading}
-              isTaken={(name) => hasStep(draft, name)}
-              full={saving || draft.sessions.length >= MAX_SESSIONS}
-              onPick={(name) => change(addStep(draft, name))}
+            <ServiceStepPicker
+              businessLineId={service.businessLineId}
+              taken={draft.sessions}
+              mayAddToList={mayUpdate}
+              disabled={saving}
+              disabledReason={
+                draft.sessions.length >= MAX_SESSIONS
+                  ? `Maksimal ${MAX_SESSIONS} tahapan.`
+                  : null
+              }
+              onPick={(name) => change((current) => addStep(current, name))}
             />
             <Button
               type="button"

@@ -3376,6 +3376,65 @@ export interface UpdatePetOptionInput {
 }
 
 /**
+ * One TAHAPAN on a business line's list, as GET /api/service-steps returns it
+ * (14 September 2026) — what a service's `sessions` pick from.
+ *
+ * SERVICES STORE THE NAME, not this id: `Service.sessions` is still `string[]`
+ * and a booking still copies the name onto each turn. Renaming a step rewrites
+ * the services of its line (`renamedServiceCount`), never a booking.
+ */
+export interface ServiceStep {
+  _id: string;
+  tenantId: string;
+  /** Fixed for life — each line keeps its own list. */
+  businessLineId: string;
+  name: string;
+  /** The lowercased name the list is unique on — "Mandi" and "mandi" are one step. */
+  nameKey: string;
+  /** Position in the picker, ascending. */
+  sortOrder: number;
+  /** Retired steps cannot be added to a service; a service holding one keeps it. */
+  isActive: boolean;
+  createdBy: string | null;
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Live services of the line listing this step. Present on list reads. */
+  serviceCount?: number;
+  /** On a PATCH that renamed it: how many services were rewritten. */
+  renamedServiceCount?: number;
+}
+
+/** Query parameters accepted by GET /api/service-steps (`services:read`). */
+export interface ServiceStepListQuery {
+  page?: number;
+  limit?: number;
+  businessLineId?: string;
+  isActive?: boolean;
+  search?: string;
+  includeDeleted?: boolean;
+}
+
+/**
+ * Body of POST /api/service-steps (`services:update` — so the Tahapan card can
+ * add a missing step on the spot). 409 when the line already has the name.
+ */
+export interface CreateServiceStepInput {
+  businessLineId: string;
+  /** ≤ 60 characters — what a booking turn can hold. */
+  name: string;
+  sortOrder?: number;
+  isActive?: boolean;
+}
+
+/** Body of PATCH /api/service-steps/:id. No `businessLineId`. */
+export interface UpdateServiceStepInput {
+  name?: string;
+  sortOrder?: number;
+  isActive?: boolean;
+}
+
+/**
  * A `species` option CODE. These four were closed unions mirroring enums on
  * pet.model.js; since 14 September 2026 the lists are tenant data
  * (`petoptions`), so any string the tenant has made an option is legal. The

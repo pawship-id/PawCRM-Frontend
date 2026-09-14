@@ -53,6 +53,9 @@ export function hasStep(draft: StepsDraft, name: string): boolean {
 /**
  * A tahapan added at the end, with an empty weight. A blank name, a repeat, or
  * a list already at the cap comes back unchanged.
+ *
+ * `name` is stored as given (trimmed) — pass the LINE LIST'S spelling, which is
+ * what the picker hands over (`step.name`), since the server stores that one.
  */
 export function addStep(draft: StepsDraft, name: string): StepsDraft {
   const trimmed = name.trim().slice(0, SESSION_MAX_LENGTH);

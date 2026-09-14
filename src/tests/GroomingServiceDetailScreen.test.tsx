@@ -7,6 +7,7 @@ import { bookingService } from "@/services/booking.service";
 import { branchService } from "@/services/branch.service";
 import { petOptionService } from "@/services/petOption.service";
 import { serviceService } from "@/services/service.service";
+import { serviceStepService } from "@/services/serviceStep.service";
 import type { Branch, PageResult, Service } from "@/types/api";
 
 import {
@@ -15,6 +16,11 @@ import {
   primePetOptions,
 } from "./helpers/petOptions";
 import { renderWithAuth } from "./helpers/renderWithAuth";
+import {
+  makeServiceStep,
+  SERVICE_STEP_FIXTURES,
+  primeServiceSteps,
+} from "./helpers/serviceSteps";
 
 const mockPush = jest.fn();
 
@@ -35,6 +41,8 @@ jest.mock("@/services/branch.service");
 jest.mock("@/services/service.service");
 // The variant grid's rows are the tenant's species, sizes and coats.
 jest.mock("@/services/petOption.service");
+// The Tahapan card picks from the line's tahapan list.
+jest.mock("@/services/serviceStep.service");
 
 /**
  * Grooming › Layanan & Harga › one service — the mockup's detail page: mostly
@@ -123,6 +131,8 @@ function page<T>(items: T[]): PageResult<T> {
 beforeEach(() => {
   mockPush.mockReset();
   primePetOptions(petOptionService.list);
+  // Mandi → Gunting → Blow dry, on the grooming line.
+  primeServiceSteps(serviceStepService.list);
   jest.mocked(serviceService.getById).mockResolvedValue(SERVICE);
   jest.mocked(serviceService.list).mockResolvedValue(page([ADDON]));
   jest
@@ -489,25 +499,33 @@ describe("GroomingServiceDetailScreen", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("adds a tahapan other grooming services use, or a new one typed, and removes one", async () => {
-    jest.mocked(serviceService.list).mockImplementation(async (query) =>
-      page(
-        query?.serviceType === "addon"
-          ? [ADDON]
-          : [
-              SERVICE,
-              { ...SERVICE, _id: "svc-2", sessions: ["mandi", "Gunting"] },
-            ],
-      ),
-    );
+  /*
+    ─── TAHAPAN COME FROM THE LINE'S LIST (14 September 2026) ─────────────────
+  */
+  const openPicker = async () => {
+    await userEvent.click(screen.getByRole("button", { name: /Tambah tahapan/ }));
+    return screen.findByLabelText("Cari tahapan");
+  };
+
+  it("offers only the line's active steps the service does not list yet, and removes one", async () => {
+    primeServiceSteps(serviceStepService.list, [
+      ...SERVICE_STEP_FIXTURES,
+      makeServiceStep({ name: "Spa", sortOrder: 3, isActive: false }),
+      makeServiceStep({ name: "Kandang", businessLineId: "bl-hotel" }),
+    ]);
 
     renderDetail();
     await openSteps();
 
-    await userEvent.click(screen.getByRole("button", { name: /Tambah tahapan/ }));
-    // "mandi" is already on this service, whatever its case.
+    await openPicker();
+    // Mandi and Blow dry are on the service; Spa is retired; Kandang is Hotel's.
+    for (const name of ["Mandi", "Blow dry", "Spa", "Kandang"]) {
+      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+    }
     await userEvent.click(await screen.findByRole("button", { name: "Gunting" }));
-    expect(screen.queryByRole("button", { name: "mandi" })).not.toBeInTheDocument();
+    expect(serviceStepService.list).toHaveBeenCalledWith(
+      expect.objectContaining({ businessLineId: "bl-grooming" }),
+    );
     expect(screen.getByLabelText("Bobot Gunting (%)")).toHaveValue("");
     expect(
       screen.getByText(
@@ -515,23 +533,130 @@ describe("GroomingServiceDetailScreen", () => {
       ),
     ).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /Tambah tahapan/ }));
-    await userEvent.type(
-      screen.getByLabelText("Cari atau ketik tahapan baru"),
-      "Potong kuku{Enter}",
-    );
-    expect(screen.getByLabelText("Bobot Potong kuku (%)")).toBeInTheDocument();
+    await userEvent.type(await openPicker(), "spa");
+    expect(screen.getByText(/“Spa” sudah dinonaktifkan/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /ke daftar tahapan/ }),
+    ).not.toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
 
     await userEvent.click(screen.getByRole("button", { name: "Hapus tahapan Mandi" }));
-    expect(stepOrder()).toEqual([
-      "Bobot Blow dry (%)",
-      "Bobot Gunting (%)",
-      "Bobot Potong kuku (%)",
-    ]);
+    expect(stepOrder()).toEqual(["Bobot Blow dry (%)", "Bobot Gunting (%)"]);
 
     // Batal throws the draft away.
     await userEvent.click(screen.getByRole("button", { name: "Batal" }));
     expect(stepOrder()).toEqual(["Bobot Mandi (%)", "Bobot Blow dry (%)"]);
+  });
+
+  it("adds a name missing from the list to the line's list, and saves it as the list spells it", async () => {
+    const steps = [...SERVICE_STEP_FIXTURES];
+    primeServiceSteps(serviceStepService.list, steps);
+    jest.mocked(serviceStepService.create).mockImplementation(async () => {
+      const step = makeServiceStep({ name: "Potong kuku", sortOrder: 3 });
+      steps.push(step);
+      return step;
+    });
+    jest.mocked(serviceService.update).mockResolvedValue({
+      ...SERVICE,
+      sessions: ["Mandi", "Blow dry", "Potong kuku"],
+      sessionWeights: [],
+    });
+
+    renderDetail();
+    await openSteps();
+
+    await userEvent.type(await openPicker(), "potong kuku");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Tambah “potong kuku” ke daftar tahapan" }),
+    );
+
+    await waitFor(() =>
+      expect(serviceStepService.create).toHaveBeenCalledWith({
+        businessLineId: "bl-grooming",
+        name: "potong kuku",
+      }),
+    );
+    expect(
+      await screen.findByLabelText("Bobot Potong kuku (%)"),
+    ).toBeInTheDocument();
+    // The list is read again, and the new row is on it — no word beside it.
+    await waitFor(() => expect(serviceStepService.list).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText("belum di daftar")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Bagi rata" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Simpan tahapan & add-on" }),
+    );
+
+    await waitFor(() =>
+      expect(serviceService.update).toHaveBeenCalledWith("svc-1", {
+        sessions: ["Mandi", "Blow dry", "Potong kuku"],
+        sessionWeights: [34, 33, 33],
+      }),
+    );
+  });
+
+  it("marks a stored tahapan that is retired or not on the list, and does not offer it again", async () => {
+    primeServiceSteps(serviceStepService.list, [
+      makeServiceStep({ name: "Mandi", sortOrder: 0 }),
+      makeServiceStep({ name: "Gunting", sortOrder: 1 }),
+      makeServiceStep({ name: "Blow dry", sortOrder: 2, isActive: false }),
+    ]);
+    jest.mocked(serviceService.getById).mockResolvedValue({
+      ...SERVICE,
+      sessions: ["Mandi", "Blow dry", "Spa"],
+      sessionWeights: [],
+    });
+
+    renderDetail();
+    await openSteps();
+
+    const row = (name: string) =>
+      screen.getByLabelText(`Bobot ${name} (%)`).closest("li") as HTMLElement;
+    expect(await within(row("Blow dry")).findByText("nonaktif")).toBeInTheDocument();
+    expect(within(row("Spa")).getByText("belum di daftar")).toBeInTheDocument();
+    expect(within(row("Mandi")).queryByText(/nonaktif|belum di daftar/)).toBeNull();
+
+    await openPicker();
+    expect(await screen.findByRole("button", { name: "Gunting" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Blow dry" })).not.toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+
+    // Removable all the same.
+    await userEvent.click(screen.getByRole("button", { name: "Hapus tahapan Spa" }));
+    expect(stepOrder()).toEqual(["Bobot Mandi (%)", "Bobot Blow dry (%)"]);
+  });
+
+  it("shows the server's sentence when it refuses a tahapan on save", async () => {
+    jest.mocked(serviceService.update).mockRejectedValue(
+      new ApiError("Unknown or retired service step", 400, {
+        details: [
+          {
+            field: "sessions",
+            message: "'Gunting' belum ada di daftar tahapan lini ini",
+          },
+        ],
+      }),
+    );
+
+    renderDetail();
+    await openSteps();
+
+    await openPicker();
+    await userEvent.click(await screen.findByRole("button", { name: "Gunting" }));
+    await userEvent.click(screen.getByRole("button", { name: "Bagi rata" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Simpan tahapan & add-on" }),
+    );
+
+    expect(
+      await screen.findByText("'Gunting' belum ada di daftar tahapan lini ini"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Unknown or retired service step/),
+    ).not.toBeInTheDocument();
+    // A refusal means the list moved on; it is read again.
+    await waitFor(() => expect(serviceStepService.list).toHaveBeenCalledTimes(2));
   });
 
   it("lets a role that may only read see the tahapan but change nothing", async () => {
@@ -548,10 +673,9 @@ describe("GroomingServiceDetailScreen", () => {
     expect(
       screen.queryByRole("button", { name: "Hapus tahapan Mandi" }),
     ).not.toBeInTheDocument();
-    // Suggestions are for somebody who may add one.
-    expect(serviceService.list).not.toHaveBeenCalledWith(
-      expect.objectContaining({ businessLineId: "bl-grooming" }),
-    );
+    expect(
+      screen.queryByRole("button", { name: "Pindahkan Mandi" }),
+    ).not.toBeInTheDocument();
   });
 
   it("ticks and unticks add-ons in place, sending only the add-on list", async () => {

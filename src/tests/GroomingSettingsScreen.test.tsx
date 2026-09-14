@@ -40,7 +40,8 @@ jest.mock("@/services/user.service");
  *  - the screen does not draw the size grid before the size list has loaded;
  *  - a save sends the new size's nominal AND carries back a stored nominal for
  *    a size that is not on screen, since the PATCH replaces the object whole;
- *  - the shared lists card leads to Data hewan, where sizes are edited.
+ *  - the shared lists card leads to Data hewan, where sizes are edited, and to
+ *    Tahapan's own list rather than the catalogue.
  */
 const XL = makePetOption({
   type: "size",
@@ -148,6 +149,15 @@ describe("GroomingSettingsScreen — lists shared by every service", () => {
     expect(screen.getAllByText("Segera")).toHaveLength(1);
   });
 
+  it("leads to the Tahapan list, not the catalogue", async () => {
+    renderWithAuth(<GroomingSettingsScreen />);
+
+    const link = await screen.findByRole("link", { name: /Tahapan/ });
+    expect(link).toHaveAttribute("href", "/dashboard/master/layanan/tahapan");
+    // The bobot did not move with it.
+    expect(link).toHaveTextContent(/Bobot komisinya tetap diisi per layanan/);
+  });
+
   it("does not link a role that may not open Pengaturan › Layanan", async () => {
     renderWithAuth(<GroomingSettingsScreen />, {
       isSuperAdmin: false,
@@ -156,5 +166,7 @@ describe("GroomingSettingsScreen — lists shared by every service", () => {
 
     expect(await screen.findByText("Data hewan")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Data hewan/ })).not.toBeInTheDocument();
+    expect(screen.getByText("Tahapan")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Tahapan/ })).not.toBeInTheDocument();
   });
 });

@@ -14,10 +14,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { useServiceSteps } from "@/hooks/useServiceSteps";
 import { cn } from "@/lib/utils";
 import type { ServiceLocation, ServiceVariantAxis } from "@/types/api";
 
 import { MAX_VARIANTS, type VariantCombo } from "../variantAxes";
+import {
+  ServiceStepFlagBadge,
+  serviceStepFlag,
+  ServiceStepPicker,
+} from "./ServiceStepPicker";
 
 /**
  * The service form's fields that are more than one control each.
@@ -246,12 +252,14 @@ export function ServiceVariantEditor({
 }
 
 /**
- * A free list of short lines — Sesi, and Termasuk.
+ * A free list of short lines — Termasuk. (Tahapan were one too, until each
+ * business line got its own list on 14 September 2026 — see
+ * `ServiceStepsField`.)
  *
- * ADD-AND-REMOVE RATHER THAN A COMMA-SEPARATED BOX, because both lists are
- * rendered as separate items downstream (a calendar's stops, a storefront's
- * ticks). A text box would make the separator part of the data, and the first
- * item containing a comma would silently become two.
+ * ADD-AND-REMOVE RATHER THAN A COMMA-SEPARATED BOX, because the list is
+ * rendered as separate items downstream (a storefront's ticks). A text box
+ * would make the separator part of the data, and the first item containing a
+ * comma would silently become two.
  */
 export function StringListField({
   label,
@@ -351,6 +359,131 @@ export function StringListField({
   );
 }
 
+/**
+ * The service's tahapan, picked from its business line's list (14 September
+ * 2026) — they were free text before.
+ *
+ * NO LINE, NO LIST: the picker stays off and says "Pilih lini bisnis dulu"
+ * until the Identitas card has one.
+ *
+ * A ROW THAT CANNOT BE ADDED AGAIN — retired on the list, or not on it — says
+ * so beside its name and can still be removed.
+ *
+ * WHAT THE SERVER WILL REFUSE is warned about before Simpan. It keeps a name
+ * the service already stored on this same line (`kept`), retired or not; any
+ * other name must be an active step of the chosen line. So after the line is
+ * changed, every row not on the new line's list is named in a warning — the
+ * save would fail on them otherwise.
+ */
+export function ServiceStepsField({
+  businessLineId,
+  sessions,
+  kept,
+  maxItems,
+  mayAddToList,
+  error,
+  disabled,
+  onChange,
+}: {
+  businessLineId: string;
+  sessions: string[];
+  /** Names the server keeps whatever the list says — stored, same line. */
+  kept: string[];
+  maxItems: number;
+  mayAddToList: boolean;
+  error?: string;
+  disabled: boolean;
+  /** A functional update: the quick add answers after an await. */
+  onChange: (update: (current: string[]) => string[]) => void;
+}) {
+  const list = useServiceSteps(businessLineId || null);
+  const keptKeys = new Set(kept.map((name) => name.trim().toLowerCase()));
+  const flags = sessions.map((name) => serviceStepFlag(name, list));
+  const refused = sessions.filter(
+    (name, index) =>
+      flags[index] !== null && !keptKeys.has(name.trim().toLowerCase()),
+  );
+  const full = sessions.length >= maxItems;
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div>
+        <p className="text-sm font-medium">Tahapan</p>
+        <p className="mt-1 text-xs text-muted">
+          Urutan pengerjaannya, dipilih dari daftar tahapan lini bisnisnya — mis.
+          Mandi → Gunting → Blow dry.
+        </p>
+      </div>
+
+      {sessions.length > 0 && (
+        <ol className="flex flex-wrap gap-2">
+          {sessions.map((name, index) => (
+            <li
+              key={name}
+              className="flex items-center gap-1.5 rounded-full bg-surface-hover py-0 pr-0 pl-3 text-sm"
+            >
+              {name}
+              {flags[index] && <ServiceStepFlagBadge flag={flags[index]} />}
+              <button
+                type="button"
+                aria-label={`Hapus tahapan ${name}`}
+                className="flex size-9 items-center justify-center rounded-full text-muted transition hover:text-danger focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                disabled={disabled}
+                onClick={() =>
+                  onChange((current) =>
+                    current.filter((session) => session !== name),
+                  )
+                }
+              >
+                <X className="size-4" aria-hidden />
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      {refused.length > 0 && (
+        <Alert variant="warning">
+          {refused.map((name) => `“${name}”`).join(", ")} tidak ada di daftar
+          tahapan aktif lini bisnis ini. Hapus, lalu pilih penggantinya dari
+          daftar — kalau tidak, layanan ini ditolak saat disimpan.
+        </Alert>
+      )}
+
+      <ServiceStepPicker
+        businessLineId={businessLineId}
+        taken={sessions}
+        mayAddToList={mayAddToList}
+        disabled={disabled}
+        disabledReason={
+          !businessLineId
+            ? "Pilih lini bisnis dulu."
+            : full
+              ? `Maksimal ${maxItems} tahapan.`
+              : null
+        }
+        onPick={(name) =>
+          onChange((current) =>
+            current.length >= maxItems ||
+            current.some(
+              (session) => session.toLowerCase() === name.toLowerCase(),
+            )
+              ? current
+              : [...current, name],
+          )
+        }
+        className={FIELD_HEIGHT}
+      />
+
+      {error && (
+        <p role="alert" className="text-xs font-semibold text-danger">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** Below this many tahapan there is nothing to split — one takes it all. */
 export const WEIGHTS_MIN_SESSIONS = 2;
 
@@ -411,8 +544,8 @@ export function sessionWeightsPayload(
 /**
  * Each tahapan's share of the service's commission — decided 13 September 2026.
  *
- * KEYED BY THE SESSION'S NAME, which is unique in that list (`StringListField`
- * refuses a repeat). Removing a tahapan drops its box; the numbers typed for the
+ * KEYED BY THE SESSION'S NAME, which is unique in that list (the picker never
+ * offers a name the service already has, and the server refuses a repeat). Removing a tahapan drops its box; the numbers typed for the
  * others stay.
  *
  * HIDDEN BELOW TWO TAHAPAN. One tahapan takes the whole commission whatever is

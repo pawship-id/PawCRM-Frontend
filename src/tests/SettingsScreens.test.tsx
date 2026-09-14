@@ -173,15 +173,20 @@ describe("InitialDataScreen", () => {
 });
 
 describe("ServiceSettingsScreen", () => {
-  it("sends Tahapan and Add-on to Layanan & Harga, Data hewan to its screen, and badges Zona", () => {
+  it("sends Tahapan and Data hewan to their screens, Add-on to Layanan & Harga, and badges Zona", () => {
     renderWithAuth(<ServiceSettingsScreen />);
 
-    for (const name of [/Tahapan/, /Add-on/]) {
-      expect(screen.getByRole("link", { name })).toHaveAttribute(
-        "href",
-        "/dashboard/layanan/grooming/katalog",
-      );
-    }
+    // Tahapan became a list per business line (14 September 2026); the bobot
+    // stayed on the service, and the card says so.
+    const steps = screen.getByRole("link", { name: /Tahapan/ });
+    expect(steps).toHaveAttribute("href", "/dashboard/master/layanan/tahapan");
+    expect(steps).toHaveTextContent(/lini bisnis/);
+    expect(steps).toHaveTextContent(/diisi per layanan/);
+
+    expect(screen.getByRole("link", { name: /Add-on/ })).toHaveAttribute(
+      "href",
+      "/dashboard/layanan/grooming/katalog",
+    );
     // Ukuran and Ras became tenant data (14 September 2026) — one card for the
     // four lists, not two "Segera" cards.
     expect(screen.getByRole("link", { name: /Data hewan/ })).toHaveAttribute(

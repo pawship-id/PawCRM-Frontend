@@ -4,6 +4,7 @@ import { GROOMING_CATALOG_PATH } from "@/features/grooming";
 import { usePermissions } from "@/features/permissions";
 
 import { PET_DATA_PATH } from "../petOptions";
+import { SERVICE_STEPS_PATH } from "../serviceSteps";
 import {
   HubLinkCard,
   HubPendingCard,
@@ -23,11 +24,17 @@ import {
  * are listed on Grooming › Layanan & Harga, which also took the list's Hapus and
  * Pulihkan.
  *
- * TAHAPAN AND ADD-ON LEAD TO LAYANAN & HARGA, not to screens of their own. Both
- * are real, and both are fields OF a service — its turns, and the add-ons it may
- * be sold with — so they are edited in its form, and the card says so rather
- * than implying a list that does not exist. `GroomingSharedSettingsCard` made
- * the same call.
+ * TAHAPAN HAS A SCREEN OF ITS OWN since 14 September 2026. It led to Layanan &
+ * Harga while tahapan were free text typed into each service; they are now one
+ * list per business line (`servicesteps`) that services pick from, so the card
+ * opens that list. The BOBOT did not move — a step's commission weight belongs
+ * to its place in a service and is still filled in there, which is why the
+ * description says so rather than letting "Tahapan" promise it.
+ *
+ * ADD-ON STILL LEADS TO LAYANAN & HARGA. It is a field OF a service — the
+ * add-ons it may be sold with — so it is edited in the service's form, and the
+ * card says so rather than implying a list that does not exist.
+ * `GroomingSharedSettingsCard` makes both calls the same way.
  *
  * DATA HEWAN IS ONE CARD WHERE THE MOCKUP DRAWS TWO. Ukuran and Ras were badged
  * "Segera" while both were closed enums on the pet (`PET_SIZES`, `PET_BREEDS`).
@@ -70,8 +77,8 @@ export function ServiceSettingsScreen() {
           <>
             <HubLinkCard
               title="Tahapan"
-              description="Urutan kerja yang dipakai jadwal dan komisi, beserta bobotnya. Diisi di form tiap layanan, dari Grooming › Layanan & Harga."
-              href={GROOMING_CATALOG_PATH}
+              description="Daftar tahapan tiap lini bisnis — Mandi, Gunting, Blow dry — yang dipilih layanan. Bobotnya tetap diisi per layanan."
+              href={SERVICE_STEPS_PATH}
             />
             <HubLinkCard
               title="Add-on"

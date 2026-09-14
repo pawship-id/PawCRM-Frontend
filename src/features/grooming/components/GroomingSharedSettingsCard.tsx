@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Card } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { PET_DATA_PATH } from "@/features/settings/petOptions";
+import { SERVICE_STEPS_PATH } from "@/features/settings/serviceSteps";
 
 import { GROOMING_CATALOG_PATH } from "../paths";
 
@@ -31,8 +32,15 @@ interface SharedItem {
  * the same page would read as two places to look. It sits first because a
  * size added there is also a new row under Nominal per ukuran on this page.
  *
- * Tahapan and Add-on are edited in each service's form, so they link to
- * Layanan & Harga. Zona & Perjalanan has nothing behind it yet.
+ * TAHAPAN OPENS ITS OWN LIST, Pengaturan › Layanan › Tahapan (14 September
+ * 2026). It linked to Layanan & Harga while each service typed its steps as
+ * free text; now every business line keeps one list the services pick from.
+ * The bobot komisi stayed on the service — it weighs a step's place in THAT
+ * service — so the description still sends people there for it. Same door as
+ * Data hewan, so the same `services:read` flag decides whether it is a link.
+ *
+ * Add-on is still a field of each service's form, so it links to Layanan &
+ * Harga. Zona & Perjalanan has nothing behind it yet.
  */
 const ITEMS: SharedItem[] = [
   {
@@ -44,8 +52,8 @@ const ITEMS: SharedItem[] = [
   {
     title: "Tahapan",
     description:
-      "Mandi, gunting, blow dry — beserta bobot komisinya. Diisi di form tiap layanan.",
-    href: GROOMING_CATALOG_PATH,
+      "Mandi, gunting, blow dry — daftar yang dipilih tiap layanan. Bobot komisinya tetap diisi per layanan.",
+    href: SERVICE_STEPS_PATH,
   },
   {
     title: "Add-on",
@@ -64,9 +72,10 @@ export function GroomingSharedSettingsCard({
   mayOpenCatalog,
 }: {
   /**
-   * `services:read` — without it the catalogue tab AND Data hewan are closed
-   * doors: that page is gated on the same grant, since it is reached from
-   * Pengaturan › Layanan. Every link here is read against this one flag.
+   * `services:read` — without it the catalogue tab, Data hewan AND Tahapan are
+   * closed doors: both settings pages are gated on the same grant, since they
+   * are reached from Pengaturan › Layanan. Every link here is read against
+   * this one flag.
    */
   mayOpenCatalog: boolean;
 }) {

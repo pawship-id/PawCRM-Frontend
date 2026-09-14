@@ -18,6 +18,8 @@ import {
 } from "@/components";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { usePermissions } from "@/features/permissions";
+import { invalidateServiceSteps } from "@/hooks/useServiceSteps";
 import { ApiError } from "@/services/api-error";
 import { serviceService } from "@/services/service.service";
 import { businessLineService } from "@/services/businessLine.service";
@@ -44,8 +46,10 @@ import {
   SessionWeightsEditor,
   sessionWeightsError,
   sessionWeightsPayload,
+  ServiceStepsField,
   StringListField,
 } from "./ServiceFormFields";
+import { sessionsRefusal } from "./ServiceStepPicker";
 // Deep, not the barrel: the grooming index imports this feature back.
 import { GROOMING_CATALOG_PATH } from "@/features/grooming/paths";
 
@@ -55,7 +59,6 @@ const CODE_MAX_LENGTH = 40;
 const DESCRIPTION_MAX_LENGTH = 500;
 const MAX_DURATION_MIN = 1440;
 const MAX_SESSIONS = 50;
-const SESSION_MAX_LENGTH = 120;
 const MAX_INCLUDED_ITEMS = 30;
 const INCLUDED_ITEM_MAX_LENGTH = 200;
 
@@ -162,6 +165,9 @@ function durationProblem(value: string): string | null {
 export function ServiceForm({ serviceId }: { serviceId?: string }) {
   const editing = serviceId !== undefined;
   const router = useRouter();
+  // Adding a missing tahapan to the line's list is `services:update`, which a
+  // role opening this form to CREATE a service may not hold.
+  const mayAddSteps = usePermissions().can("services", "update");
 
   const [service, setService] = useState<Service | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -225,6 +231,7 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
   const [locationError, setLocationError] = useState<string | null>(null);
   const [branchError, setBranchError] = useState<string | null>(null);
   const [weightError, setWeightError] = useState<string | null>(null);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -669,7 +676,17 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
         setCodeError(`Kode "${trimmedCode}" sudah dipakai layanan lain.`);
       } else if (error instanceof ApiError && error.status === 400) {
         const detail = error.details?.[0];
-        if (detail?.field === "businessLineId") {
+        /*
+          A REFUSED TAHAPAN — not on the line's list, retired, or listed twice.
+          The server's sentences are Bahasa and name the tahapan, so they go
+          under the field as sent; the list is reloaded because a refusal means
+          it changed since this form read it.
+        */
+        const refusal = sessionsRefusal(error);
+        if (refusal) {
+          setSessionsError(refusal);
+          invalidateServiceSteps(businessLineId);
+        } else if (detail?.field === "businessLineId") {
           setLineError("Lini bisnis ini tidak ditemukan lagi. Pilih yang lain.");
         } else if (detail?.field === "branchIds") {
           setBranchError(detail.message);
@@ -939,21 +956,28 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
 
       <Card
         title="Isi layanan"
-        description="Sesi dipakai kalender untuk memecah pengerjaannya, dan bobotnya menentukan bagian komisi tiap tahapan. Termasuk dipakai etalase untuk menyebut apa saja yang didapat pelanggan."
+        description="Tahapan dipakai kalender untuk memecah pengerjaannya, dan bobotnya menentukan bagian komisi tiap tahapan. Termasuk dipakai etalase untuk menyebut apa saja yang didapat pelanggan."
       >
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-4">
-            <StringListField
-              label="Sesi"
-              hint="Tahapan pengerjaannya, mis. Mandi → Gunting → Selesai."
-              placeholder="mis. Mandi"
-              values={sessions}
+            <ServiceStepsField
+              businessLineId={businessLineId}
+              sessions={sessions}
+              // The server keeps what this service stored on this same line,
+              // retired or not; a moved service keeps nothing for free.
+              kept={
+                service && businessLineId === service.businessLineId
+                  ? (service.sessions ?? [])
+                  : []
+              }
               maxItems={MAX_SESSIONS}
-              maxLength={SESSION_MAX_LENGTH}
+              mayAddToList={mayAddSteps}
+              error={sessionsError ?? undefined}
               disabled={saving}
-              onChange={(next) => {
-                setSessions(next);
+              onChange={(update) => {
+                setSessions(update);
                 setWeightError(null);
+                setSessionsError(null);
               }}
             />
 

@@ -35,6 +35,17 @@ export {
   type VariantCombo,
 } from "./variantAxes";
 export { useVariantAxisValues } from "./hooks/useVariantAxisValues";
+// The one tahapan picker — the line's list plus a quick add — and the word a
+// row carries when its name cannot be added again. The form and the grooming
+// detail page's Tahapan card both draw it (14 September 2026).
+export {
+  SERVICE_STEP_NAME_MAX_LENGTH,
+  ServiceStepFlagBadge,
+  serviceStepFlag,
+  ServiceStepPicker,
+  sessionsRefusal,
+  type ServiceStepFlag,
+} from "./components/ServiceStepPicker";
 // The tahapan weight rules, for the detail page that edits tahapan in place.
 export {
   evenSessionWeights,
