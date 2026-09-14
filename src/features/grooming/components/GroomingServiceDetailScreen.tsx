@@ -28,7 +28,6 @@ import { useServiceBookingCounts } from "../hooks/useServiceBookingCounts";
 import { GROOMING_CATALOG_PATH, groomingServicePath } from "../paths";
 import { branchesText, serviceEditPath, statusOf } from "../serviceDisplay";
 import {
-  ServiceAddonsPanel,
   ServicePortalPanel,
   ServiceSummaryPanel,
 } from "./GroomingServiceDetailPanels";
@@ -158,6 +157,7 @@ export function GroomingServiceDetailScreen({ serviceId }: { serviceId: string }
   );
   const addons = useServiceAddons(
     service?.serviceType === "main" ? (service.addonServiceIds ?? []) : [],
+    service?.serviceType === "main",
   );
 
   const [tab, setTab] = useState<DetailTab>("ringkasan");
@@ -423,17 +423,15 @@ export function GroomingServiceDetailScreen({ serviceId }: { serviceId: string }
           <ServicePortalPanel service={service} />
         ) : null}
 
-        {/* Tahapan is edited in place too — mounted and hidden, as below. */}
+        {/* Tahapan & Add-on is edited in place too — mounted and hidden, as below. */}
         <div hidden={tab !== "tahapan"}>
-          <div className="flex flex-col gap-6">
-            <GroomingServiceStepsEditor
-              key={service._id}
-              service={service}
-              mayUpdate={mayUpdate}
-              onSaved={replace}
-            />
-            <ServiceAddonsPanel service={service} addons={addons} />
-          </div>
+          <GroomingServiceStepsEditor
+            key={service._id}
+            service={service}
+            mayUpdate={mayUpdate}
+            addons={addons}
+            onSaved={replace}
+          />
         </div>
 
         {/*

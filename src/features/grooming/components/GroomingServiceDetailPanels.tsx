@@ -4,13 +4,11 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { Pencil } from "lucide-react";
 
-import { Alert, Card, Spinner, StatTile } from "@/components";
+import { Alert, Card, StatTile } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
 import {
-  formatDurationRange,
-  formatServicePrice,
   serviceDurationBounds,
   servicePriceBounds,
 } from "@/features/services";
@@ -27,18 +25,17 @@ import {
   placeOf,
   serviceEditPath,
   sessionShares,
-  statusOf,
   variantCounts,
 } from "../serviceDisplay";
 
 /**
- * The read-only parts of a service's detail page — from `buloo-grooming-v3.html`:
- * Ringkasan, the add-on card of Tahapan & Add-on, and Portal.
+ * The read-only tabs of a service's detail page — from `buloo-grooming-v3.html`:
+ * Ringkasan and Portal.
  *
  * READ-ONLY, where the mockup edits in place: every panel that shows something
  * changeable carries an Ubah into the service form. Edited in place since 14
  * September 2026, and so not here: Varian & Harga (`GroomingServiceVariantsEditor`)
- * and Tahapan & bobot komisi (`GroomingServiceStepsEditor`).
+ * and Tahapan & Add-on (`GroomingServiceStepsEditor`).
  */
 
 function EditLink({ serviceId, label = "Ubah" }: { serviceId: string; label?: string }) {
@@ -277,90 +274,6 @@ export function ServiceSummaryPanel({
               <li key={item}>{item}</li>
             ))}
           </ul>
-        )}
-      </Card>
-    </div>
-  );
-}
-
-/**
- * Tahapan & Add-on — the add-on half. The tahapan half is edited in place since
- * 14 September 2026 (`GroomingServiceStepsEditor`) and sits above this card.
- */
-export function ServiceAddonsPanel({
-  service,
-  addons,
-}: {
-  service: Service;
-  addons: { items: Service[]; missing: number; loading: boolean; failed: boolean };
-}) {
-  const addonCount = (service.addonServiceIds ?? []).length;
-
-  return (
-    <div className="flex flex-col gap-6">
-      <Card
-        title="Add-on yang boleh dipasang"
-        action={
-          service.serviceType === "main" ? (
-            <EditLink serviceId={service._id} />
-          ) : undefined
-        }
-      >
-        {service.serviceType === "addon" ? (
-          <p className="text-sm text-muted">
-            Layanan ini sendiri add-on, jadi tidak bisa punya add-on.
-          </p>
-        ) : addonCount === 0 ? (
-          <p className="text-sm text-muted">Belum ada add-on yang dipasang.</p>
-        ) : addons.loading ? (
-          <div className="flex items-center gap-2 text-sm text-muted">
-            <Spinner /> Memuat add-on…
-          </div>
-        ) : addons.failed ? (
-          <Alert variant="error">Daftar add-on tidak bisa dimuat. Coba muat ulang.</Alert>
-        ) : (
-          <>
-            <ul className="grid gap-3 md:grid-cols-2">
-              {addons.items.map((addon) => {
-                const status = statusOf(addon);
-                const retired = addon.deletedAt !== null || !addon.isActive;
-                const minutes = serviceDurationBounds(addon);
-
-                return (
-                  <li
-                    key={addon._id}
-                    className="flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3"
-                  >
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-semibold text-foreground">
-                        {addon.name}
-                      </span>
-                      <span className="block text-xs text-muted">
-                        <span className="tabular-nums">{addon.code}</span>
-                        {minutes !== null && ` · +${formatDurationRange(minutes)}`}
-                      </span>
-                    </span>
-                    {retired && (
-                      <Badge
-                        variant="outline"
-                        className={cn("border-transparent", status.className)}
-                      >
-                        {status.label}
-                      </Badge>
-                    )}
-                    <span className="text-sm font-semibold tabular-nums text-foreground">
-                      {formatServicePrice(addon)}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-            {addons.missing > 0 && (
-              <p className="mt-3 text-xs text-muted">
-                {addons.missing} add-on tidak ditemukan di daftar add-on.
-              </p>
-            )}
-          </>
         )}
       </Card>
     </div>

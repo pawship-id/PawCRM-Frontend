@@ -3,22 +3,29 @@
 import { useState, type KeyboardEvent } from "react";
 import { ChevronsUpDown, GripVertical, Plus, X } from "lucide-react";
 
-import { Alert, Card } from "@/components";
+import { Alert, Card, Spinner } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  formatDurationRange,
+  formatServicePrice,
+  serviceDurationBounds,
+} from "@/features/services";
 import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/services/api-error";
 import { serviceService } from "@/services/service.service";
-import type { Service } from "@/types/api";
+import type { Service, UpdateServiceInput } from "@/types/api";
 
 import { useLineSessionNames } from "../hooks/useGroomingServiceDetail";
+import { statusOf } from "../serviceDisplay";
 import {
   addStep,
   hasStep,
@@ -36,6 +43,11 @@ import {
   type StepsDraft,
 } from "../serviceStepsDraft";
 import { DraftSaveBar } from "./DraftSaveBar";
+
+/** The same add-ons, whatever order they were ticked in. */
+function sameIds(a: string[], b: string[]): boolean {
+  return a.length === b.length && [...a].sort().join(",") === [...b].sort().join(",");
+}
 
 /**
  * "+ Tambah tahapan…" — the tahapan other grooming services use, and a new name
@@ -164,37 +176,61 @@ function StepPicker({
   );
 }
 
+export interface AddonCatalog {
+  /** Every add-on in the tenant, deleted ones too. */
+  all: Service[];
+  loading: boolean;
+  failed: boolean;
+}
+
 /**
- * Layanan › Grooming › a service › Tahapan & Add-on › "Tahapan & bobot komisi" —
- * EDITED IN PLACE, as `buloo-grooming-v3.html` draws it (decided 14 September
- * 2026, on request).
+ * Layanan › Grooming › a service › Tahapan & Add-on — BOTH CARDS EDITED IN
+ * PLACE, as `buloo-grooming-v3.html` draws them (decided 14 September 2026, on
+ * request).
  *
- * THE SAME SHAPE AS VARIAN & HARGA: every change goes to a draft
- * (`serviceStepsDraft.ts`), and `DraftSaveBar` appears once it differs from
- * what is stored — one PATCH of `sessions` and `sessionWeights`.
+ * ONE DRAFT FOR THE TAB, ONE SIMPAN. The tahapan list (`serviceStepsDraft.ts`)
+ * and the ticked add-ons are one question on the mockup — which work this
+ * service is — so `DraftSaveBar` appears once either differs from what is
+ * stored, and sends ONE PATCH carrying only the half that changed: `sessions` +
+ * `sessionWeights`, and/or `addonServiceIds`. Sending an unchanged add-on list
+ * would re-judge ids somebody deleted since, and refuse a save about weights.
  *
- * WHAT A SAVE CHANGES: the tahapan a NEW booking line is split into, and how
- * its commission is shared. A booking already made keeps the turns it was made
- * with — they were copied onto it.
+ * WHAT A SAVE CHANGES: the tahapan a NEW booking line is split into, how its
+ * commission is shared, and the add-ons a new line may carry. A booking already
+ * made keeps what it was made with — it was copied onto it.
  *
  * REORDERING: the handle drags, and it also answers ArrowUp / ArrowDown, so the
  * order is not a mouse-only question.
  *
- * WHAT THE MOCKUP HAS AND THIS DOES NOT: a shop-wide list of tahapan to pick
- * from. There is none — the picker offers the names other grooming services
- * already use, and takes a new one typed.
+ * ─── WHAT THE MOCKUP HAS AND THIS DOES NOT ─────────────────────────────────
+ *
+ * A shop-wide list of tahapan to pick from: there is none — the picker offers
+ * the names other grooming services already use, and takes a new one typed.
+ *
+ * "— tahapan tidak dipakai" on an add-on: the mockup files each add-on under a
+ * tahapan of the main service. No such link is stored — a booking adds an
+ * add-on as its own line — so the card cannot say it, and says the add-on's
+ * code instead.
+ *
+ * AN ADD-ON THAT IS OFF OR DELETED is offered only while this service still
+ * lists it, marked so, and may be unticked but not ticked again.
  */
 export function GroomingServiceStepsEditor({
   service,
   mayUpdate,
+  addons,
   onSaved,
 }: {
   service: Service;
-  /** `services:update` — without it the list is shown and nothing is editable. */
+  /** `services:update` — without it everything is shown and nothing is editable. */
   mayUpdate: boolean;
+  addons: AddonCatalog;
   onSaved: (service: Service) => void;
 }) {
   const [draft, setDraft] = useState<StepsDraft>(() => seedSteps(service));
+  const [addonIds, setAddonIds] = useState<string[]>(
+    () => service.addonServiceIds ?? [],
+  );
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   /** The row whose handle is held — only that row may start a drag. */
@@ -207,13 +243,28 @@ export function GroomingServiceStepsEditor({
   );
 
   const disabled = !mayUpdate || saving;
-  const dirty = stepsSignature(draft) !== stepsSignature(seedSteps(service));
+  const storedAddonIds = service.addonServiceIds ?? [];
+  const isMain = service.serviceType === "main";
+  const stepsDirty = stepsSignature(draft) !== stepsSignature(seedSteps(service));
+  const addonsDirty = isMain && !sameIds(addonIds, storedAddonIds);
+  const dirty = stepsDirty || addonsDirty;
   const problem = stepsProblem(draft);
   const total = stepsTotal(draft);
   const single = draft.sessions.length === 1;
 
   function change(next: StepsDraft) {
     setDraft(next);
+    setSaveError(null);
+  }
+
+  function toggleAddon(id: string, on: boolean) {
+    setAddonIds((current) =>
+      on
+        ? current.includes(id)
+          ? current
+          : [...current, id]
+        : current.filter((value) => value !== id),
+    );
     setSaveError(null);
   }
 
@@ -230,21 +281,33 @@ export function GroomingServiceStepsEditor({
     change(moveStep(draft, index, to));
   }
 
+  function discard() {
+    setDraft(seedSteps(service));
+    setAddonIds(storedAddonIds);
+    setSaveError(null);
+  }
+
   async function save() {
-    if (problem || saving) return;
+    if (problem || saving || !dirty) return;
+
+    const patch: UpdateServiceInput = {
+      ...(stepsDirty ? stepsPatch(draft) : {}),
+      ...(addonsDirty ? { addonServiceIds: addonIds } : {}),
+    };
 
     setSaving(true);
     setSaveError(null);
     try {
-      const updated = await serviceService.update(service._id, stepsPatch(draft));
+      const updated = await serviceService.update(service._id, patch);
       setDraft(seedSteps(updated));
-      swalToast("Tahapan tersimpan.");
+      setAddonIds(updated.addonServiceIds ?? []);
+      swalToast("Tahapan & add-on tersimpan.");
       onSaved(updated);
     } catch (err) {
       setSaveError(
         err instanceof ApiError
           ? (err.reason ?? err.fullMessage)
-          : "Tahapan belum tersimpan. Coba lagi.",
+          : "Tahapan & add-on belum tersimpan. Coba lagi.",
       );
     } finally {
       setSaving(false);
@@ -260,19 +323,27 @@ export function GroomingServiceStepsEditor({
         ? { label: `Total ${total}%`, className: "bg-tint-success text-success" }
         : { label: `Total ${total}%`, className: "bg-tint-danger text-danger" };
 
+  const addonOptions = addons.all.filter(
+    (addon) =>
+      addon._id !== service._id &&
+      (addonIds.includes(addon._id) ||
+        storedAddonIds.includes(addon._id) ||
+        (addon.deletedAt === null && addon.isActive)),
+  );
+  const missingAddons =
+    addons.loading || addons.failed
+      ? 0
+      : addonIds.filter((id) => !addons.all.some((addon) => addon._id === id))
+          .length;
+
   return (
     <div className="flex flex-col gap-6">
       {mayUpdate && dirty && (
         <DraftSaveBar
-          problem={
-            problem && <b className="font-semibold">{problem}</b>
-          }
+          problem={problem && <b className="font-semibold">{problem}</b>}
           saving={saving}
-          saveLabel="Simpan tahapan"
-          onDiscard={() => {
-            setDraft(seedSteps(service));
-            setSaveError(null);
-          }}
+          saveLabel="Simpan tahapan & add-on"
+          onDiscard={discard}
           onSave={() => void save()}
         />
       )}
@@ -393,6 +464,91 @@ export function GroomingServiceStepsEditor({
               Bagi rata
             </Button>
           </div>
+        )}
+      </Card>
+
+      <Card title="Add-on yang boleh dipasang">
+        {!isMain ? (
+          <p className="text-sm text-muted">
+            Layanan ini sendiri add-on, jadi tidak bisa punya add-on.
+          </p>
+        ) : addons.loading ? (
+          <div className="flex items-center gap-2 text-sm text-muted">
+            <Spinner /> Memuat add-on…
+          </div>
+        ) : addons.failed ? (
+          <Alert variant="error">
+            Daftar add-on tidak bisa dimuat. Coba muat ulang.
+          </Alert>
+        ) : addonOptions.length === 0 ? (
+          <p className="text-sm text-muted">
+            Belum ada layanan yang ditandai sebagai add-on. Buat layanannya dengan
+            jenis “Add-on”, nanti muncul di sini.
+          </p>
+        ) : (
+          <>
+            <ul className="grid grid-cols-[repeat(auto-fill,minmax(15.5rem,1fr))] gap-3">
+              {addonOptions.map((addon) => {
+                const checked = addonIds.includes(addon._id);
+                const retired = addon.deletedAt !== null || !addon.isActive;
+                // Off or deleted: may be unticked, never ticked again.
+                const locked = disabled || (retired && !checked);
+                const minutes = serviceDurationBounds(addon);
+
+                return (
+                  <li key={addon._id}>
+                    <label
+                      className={cn(
+                        "flex h-full min-h-11 items-center gap-3 rounded-xl border px-4 py-3 transition",
+                        checked
+                          ? "border-primary bg-surface-selected"
+                          : "border-border bg-surface",
+                        locked
+                          ? "cursor-not-allowed"
+                          : cn("cursor-pointer", !checked && "hover:bg-surface-hover"),
+                      )}
+                    >
+                      <Checkbox
+                        aria-label={`Pasang add-on ${addon.name}`}
+                        checked={checked}
+                        disabled={locked}
+                        onCheckedChange={(next) =>
+                          toggleAddon(addon._id, next === true)
+                        }
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-semibold text-foreground">
+                          {addon.name}
+                        </span>
+                        <span className="mt-0.5 block text-xs text-muted">
+                          {minutes !== null && (
+                            <span className="tabular-nums">
+                              +{formatDurationRange(minutes)} ·{" "}
+                            </span>
+                          )}
+                          <span className="tabular-nums">{addon.code}</span>
+                          {retired && (
+                            <b className="font-semibold text-danger-ink">
+                              {" "}
+                              — {statusOf(addon).label.toLowerCase()}
+                            </b>
+                          )}
+                        </span>
+                      </span>
+                      <span className="text-sm font-bold tabular-nums text-foreground">
+                        {formatServicePrice(addon)}
+                      </span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+            {missingAddons > 0 && (
+              <p className="mt-3 text-xs text-muted">
+                {missingAddons} add-on tidak ditemukan di daftar add-on.
+              </p>
+            )}
+          </>
         )}
       </Card>
     </div>

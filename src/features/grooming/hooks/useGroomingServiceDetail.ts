@@ -82,56 +82,61 @@ export function useGroomingService(serviceId: string) {
 }
 
 /**
- * The add-ons a service lists, in the order it lists them.
+ * Every add-on in the tenant (`all`) — what the Tahapan & Add-on tab offers to
+ * tick — and the ones this service lists (`items`), in the order it lists them.
  *
- * ONE LIST CALL, NOT ONE PER ID: every add-on in the tenant, deleted ones too —
- * a service can still list an add-on that was deleted since, and that is exactly
- * the thing the page should be able to say. Capped at the API's page of 100;
- * an id not found in it is counted as `missing` rather than dropped silently.
+ * ONE LIST CALL, NOT ONE PER ID, fetched once per page: deleted add-ons too — a
+ * service can still list an add-on that was deleted since, and that is exactly
+ * the thing the page should be able to say. Ticking or unticking re-derives
+ * `items` from what is held, without a round trip. Capped at the API's page of
+ * 100; an id not found in it is counted as `missing` rather than dropped
+ * silently. `enabled` false (an add-on's own page) asks nothing.
  */
-export function useServiceAddons(addonIds: string[]) {
-  const key = addonIds.join(",");
+export function useServiceAddons(addonIds: string[], enabled: boolean) {
   const [loaded, setLoaded] = useState<{
-    key: string;
     addons: Service[];
     failed: boolean;
-  }>({ key: "", addons: [], failed: false });
+  } | null>(null);
 
   useEffect(() => {
-    if (key === "") return;
+    if (!enabled) return;
 
     let active = true;
 
     serviceService
       .list({ serviceType: "addon", limit: 100, includeDeleted: true })
       .then((result) => {
-        if (active) setLoaded({ key, addons: result.items, failed: false });
+        if (active) setLoaded({ addons: result.items, failed: false });
       })
       .catch(() => {
-        if (active) setLoaded({ key, addons: [], failed: true });
+        if (active) setLoaded({ addons: [], failed: true });
       });
 
     return () => {
       active = false;
     };
-  }, [key]);
+  }, [enabled]);
 
-  if (key === "") {
-    return { items: [] as Service[], missing: 0, loading: false, failed: false };
+  if (!enabled || loaded === null) {
+    return {
+      all: [] as Service[],
+      items: [] as Service[],
+      missing: 0,
+      loading: enabled,
+      failed: false,
+    };
   }
 
-  const current = loaded.key === key;
-  const items = current
-    ? addonIds
-        .map((id) => loaded.addons.find((addon) => addon._id === id))
-        .filter((addon): addon is Service => addon !== undefined)
-    : [];
+  const items = addonIds
+    .map((id) => loaded.addons.find((addon) => addon._id === id))
+    .filter((addon): addon is Service => addon !== undefined);
 
   return {
+    all: loaded.addons,
     items,
-    missing: current && !loaded.failed ? addonIds.length - items.length : 0,
-    loading: !current,
-    failed: current && loaded.failed,
+    missing: loaded.failed ? 0 : addonIds.length - items.length,
+    loading: false,
+    failed: loaded.failed,
   };
 }
 

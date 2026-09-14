@@ -389,7 +389,7 @@ describe("GroomingServiceDetailScreen", () => {
     // The badge follows what is typed, and a total that is not 100 cannot save.
     expect(screen.getByText("Total 90%")).toBeInTheDocument();
     expect(screen.getByText("Total bobotnya 90%, harus pas 100%.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Simpan tahapan" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Simpan tahapan & add-on" })).toBeDisabled();
 
     await userEvent.click(screen.getByRole("button", { name: "Bagi rata" }));
     expect(screen.getByLabelText("Bobot Mandi (%)")).toHaveValue("50");
@@ -399,7 +399,7 @@ describe("GroomingServiceDetailScreen", () => {
     await userEvent.keyboard("{ArrowUp}");
     expect(stepOrder()).toEqual(["Bobot Blow dry (%)", "Bobot Mandi (%)"]);
 
-    await userEvent.click(screen.getByRole("button", { name: "Simpan tahapan" }));
+    await userEvent.click(screen.getByRole("button", { name: "Simpan tahapan & add-on" }));
 
     await waitFor(() =>
       expect(serviceService.update).toHaveBeenCalledWith("svc-1", {
@@ -411,7 +411,7 @@ describe("GroomingServiceDetailScreen", () => {
       await screen.findByRole("tab", { name: "Tahapan & Add-on" }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Simpan tahapan" }),
+      screen.queryByRole("button", { name: "Simpan tahapan & add-on" }),
     ).not.toBeInTheDocument();
   });
 
@@ -477,6 +477,58 @@ describe("GroomingServiceDetailScreen", () => {
     // Suggestions are for somebody who may add one.
     expect(serviceService.list).not.toHaveBeenCalledWith(
       expect.objectContaining({ businessLineId: "bl-grooming" }),
+    );
+  });
+
+  it("ticks and unticks add-ons in place, sending only the add-on list", async () => {
+    const NAILS = {
+      ...ADDON,
+      _id: "add-2",
+      name: "Potong Kuku",
+      code: "ADD-02",
+      price: "25000.0000",
+      durationMin: 15,
+    } as Service;
+    const RETIRED = {
+      ...ADDON,
+      _id: "add-3",
+      name: "Masker Lama",
+      code: "ADD-03",
+      isActive: false,
+    } as Service;
+    jest
+      .mocked(serviceService.list)
+      .mockResolvedValue(page([ADDON, NAILS, RETIRED]));
+    jest
+      .mocked(serviceService.update)
+      .mockResolvedValue({ ...SERVICE, addonServiceIds: ["add-2"] });
+
+    renderDetail();
+    await openSteps();
+
+    const spa = await screen.findByRole("checkbox", {
+      name: "Pasang add-on Spa Aromaterapi",
+    });
+    expect(spa).toBeChecked();
+    const nails = screen.getByRole("checkbox", { name: "Pasang add-on Potong Kuku" });
+    expect(nails).not.toBeChecked();
+    expect(screen.getByText("ADD-02")).toBeInTheDocument();
+    // Switched off and not listed by this service: not offered.
+    expect(
+      screen.queryByRole("checkbox", { name: "Pasang add-on Masker Lama" }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(nails);
+    await userEvent.click(spa);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Simpan tahapan & add-on" }),
+    );
+
+    // The tahapan did not change, so they are not sent.
+    await waitFor(() =>
+      expect(serviceService.update).toHaveBeenCalledWith("svc-1", {
+        addonServiceIds: ["add-2"],
+      }),
     );
   });
 

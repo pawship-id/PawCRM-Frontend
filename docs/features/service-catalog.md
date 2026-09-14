@@ -49,9 +49,20 @@ it; `GroomingServiceVariantsEditor`, rules in `serviceVariantDraft.ts`):
   stays mounted while another is open, so a draft survives a look at Ringkasan.
 - A role without `services:update` sees the same grid, disabled, with no bulk bar.
 
-**Tahapan & bobot komisi is edited in place too** (14 September 2026, on request;
+**Tahapan & Add-on is edited in place too** (14 September 2026, on request;
 `GroomingServiceStepsEditor`, rules in `serviceStepsDraft.ts`, sharing `DraftSaveBar` with
-Varian & Harga). The add-on card under it stays read-only.
+Varian & Harga). Both cards are one draft with one **Simpan tahapan & add-on**, and the
+PATCH carries only the half that changed — an unchanged add-on list is not re-sent, so a
+save about weights is never refused over an add-on deleted since.
+
+- **Add-on yang boleh dipasang** is a grid of every active add-on: a tick, the name,
+  "+durasi · kode", and the price; ticked cards are highlighted. An add-on that is off or
+  deleted appears only while this service still lists it, marked *— nonaktif* / *—
+  terhapus*, and can be unticked but not ticked again. A service filed as an add-on says it
+  cannot have add-ons.
+- **Not drawn:** the mockup's "+15 mnt · Mandi & Basic Wash — tahapan tidak dipakai". It
+  files each add-on under a tahapan of the main service; no such link is stored (a booking
+  adds an add-on as its own line), so the card shows the add-on's code instead.
 
 - Each tahapan is a row: a drag handle (which also answers ArrowUp / ArrowDown), the name,
   its weight in %, and ✕. The header badge reads **Total N%** (green at 100, red otherwise),
@@ -60,11 +71,11 @@ Varian & Harga). The add-on card under it stays read-only.
   most used first, and takes a new name typed. There is **no shop-wide tahapan list** — the
   mockup picks from one; a name already on the service (any case) is not offered twice.
 - **Bagi rata** fills whole per cents that add up to 100 (`34 · 33 · 33`).
-- **Simpan tahapan** sends one `PATCH { sessions, sessionWeights }` with the form's rules:
-  every box empty splits evenly, otherwise all filled and exactly 100. A booking already
-  made keeps the turns it was made with.
-- A role without `services:update` sees the list with disabled boxes and no handle, ✕,
-  picker or Bagi rata — and the suggestions are not fetched.
+- **The tahapan half of the PATCH** is `{ sessions, sessionWeights }`, with the form's
+  rules: every box empty splits evenly, otherwise all filled and exactly 100. A booking
+  already made keeps the turns and add-ons it was made with.
+- A role without `services:update` sees both cards with disabled boxes and ticks, and no
+  handle, ✕, picker or Bagi rata — and the tahapan suggestions are not fetched.
 
 **"N booking" and "Dipakai"** come from `GET /api/bookings/service-counts`
 (`bookings:read`; draft and cancelled work not counted, add-ons counted where ticked). A
