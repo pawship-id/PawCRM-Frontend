@@ -641,6 +641,30 @@ describe("BookingDetailScreen — the turns", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("names each person with their part of the turn in the session header", async () => {
+    bookings.getById.mockResolvedValue(
+      booking({
+        service: {
+          sessions: [
+            session({
+              groomers: [
+                { _id: "user-1", name: "Sinta", offReason: null, sharePercent: 33 },
+                { _id: "user-2", name: "Dedi", offReason: null, sharePercent: 33 },
+                { _id: "user-3", name: "Rina", offReason: null, sharePercent: 34 },
+              ],
+            }),
+          ],
+        },
+      }),
+    );
+
+    show();
+
+    expect(
+      await screen.findByText("Sinta 33% · Dedi 33% · Rina 34%"),
+    ).toBeInTheDocument();
+  });
+
   it("carries the leave warning, and says what to do about it", async () => {
     bookings.getById.mockResolvedValue(
       booking({

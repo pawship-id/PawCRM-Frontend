@@ -102,7 +102,7 @@ describe("SessionCrew", () => {
     expect(box("Rio")).toHaveValue("30");
   });
 
-  it("takes the shop's decimal comma", async () => {
+  it("rounds a typed part of a per cent down, and the other takes the rest", async () => {
     show();
 
     await userEvent.clear(box("Rio"));
@@ -112,10 +112,12 @@ describe("SessionCrew", () => {
       expect(bookings.setSessionCrew).toHaveBeenCalledWith(
         "bk-1",
         expect.objectContaining({
-          groomerShares: { "u-sinta": 62.5, "u-rio": 37.5 },
+          groomerShares: { "u-sinta": 63, "u-rio": 37 },
         }),
       ),
     );
+    expect(box("Rio")).toHaveValue("37");
+    expect(box("Sinta")).toHaveValue("63");
   });
 
   it("says the total is wrong on a crew of three, and sends nothing", async () => {
@@ -124,9 +126,9 @@ describe("SessionCrew", () => {
     show(
       session({
         groomers: [
-          { ...sinta, sharePercent: 33.33 },
-          { ...rio, sharePercent: 33.33 },
-          { ...dedi, sharePercent: 33.34 },
+          { ...sinta, sharePercent: 33 },
+          { ...rio, sharePercent: 33 },
+          { ...dedi, sharePercent: 34 },
         ],
       }),
     );
@@ -135,7 +137,7 @@ describe("SessionCrew", () => {
     await userEvent.type(box("Sinta"), "50{Enter}");
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Total bagian 116,67% — harus 100%.",
+      "Total bagian 117% — harus 100%.",
     );
     expect(bookings.setSessionCrew).not.toHaveBeenCalled();
   });
@@ -191,5 +193,21 @@ describe("SessionCrew", () => {
 
     expect(box("Sinta")).toHaveValue("50");
     expect(box("Rio")).toHaveValue("50");
+  });
+
+  it("falls back to the server's even rule for three — 33 · 33 · 34", () => {
+    show(
+      session({
+        groomers: [
+          { _id: "u-sinta", name: "Sinta", offReason: null },
+          { _id: "u-dedi", name: "Dedi", offReason: null },
+          { _id: "u-rina", name: "Rina", offReason: null },
+        ],
+      }),
+    );
+
+    expect(box("Sinta")).toHaveValue("33");
+    expect(box("Dedi")).toHaveValue("33");
+    expect(box("Rina")).toHaveValue("34");
   });
 });

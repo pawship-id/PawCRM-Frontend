@@ -16,8 +16,12 @@ orang tampil sebagai satu baris: "Sinta · Senior", kotak persen bagian komisiny
 lalu tombol ×. Di bawah daftar ada pilihan "+ Tambah groomer…" tanpa label
 terpisah.
 
+- **Persen selalu bilangan bulat:** bagi rata dibulatkan ke bawah dan groomer
+  terakhir mengambil sisanya (33 · 33 · 34). Kalau yang diketik ada komanya
+  ("37,5"), angkanya dibulatkan ke bawah.
 - **Menyimpan persen:** tersimpan saat kotak ditinggalkan atau Enter ditekan.
-  Koma desimal diterima.
+- **Header kartu sesi:** menampilkan tiap nama beserta persennya, mis. "Sinta
+  33% · Dedi 33% · Rina 34%".
 - **Dua orang:** kotak yang satunya otomatis diisi sisanya.
 - **Tiga orang atau lebih:** total harus 100 dulu. Kalau belum, muncul "Total
   bagian …% — harus 100%." dan tidak ada yang dikirim.

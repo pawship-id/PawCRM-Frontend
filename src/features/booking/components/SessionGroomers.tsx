@@ -29,32 +29,41 @@ const MAX_SESSIONS = 6;
 /** Mirrors MAX_GROOMERS_PER_SESSION in booking.model.js. */
 const MAX_GROOMERS = 4;
 
-/** Two decimals — the precision the server keeps a share at. */
-const round2 = (value: number) => Math.round(value * 100) / 100;
+/** A share for reading and for the box — always a whole per cent. */
+const asText = (value: number) => String(value);
 
-/** "33,33" — the shop's decimal comma, for reading and for typing into. */
-const asText = (value: number) => String(round2(value)).replace(".", ",");
-
-/** A typed percent, comma or dot; `null` when it is not 0–100. */
+/**
+ * A typed percent as a WHOLE number — "37,5" is 37, rounded DOWN (14 September
+ * 2026). Comma or dot. `null` when it is not 0–100.
+ */
 function parsePercent(typed: string | undefined): number | null {
-  const value = Number((typed ?? "").trim().replace(",", "."));
+  const text = (typed ?? "").trim().replace(",", ".");
+  const value = Number(text);
 
-  if ((typed ?? "").trim() === "" || !Number.isFinite(value)) return null;
-  if (value < 0 || value > 100) return null;
+  if (text === "" || !Number.isFinite(value)) return null;
 
-  return round2(value);
+  const whole = Math.floor(value);
+
+  return whole < 0 || whole > 100 ? null : whole;
 }
 
 /**
- * Each person's part of the turn, as the server sent it — or the even split
- * when a response predates `sharePercent`.
+ * Each person's part of the turn, as the server sent it — or, for a response
+ * that predates `sharePercent`, the server's own even rule: rounded down, the
+ * LAST person taking the rest (33 · 33 · 34).
+ *
+ * Exported for the session header, which names each person with their part.
  */
-function sharesOf(session: BookingSession): Record<string, number> {
-  const even =
-    session.groomers.length > 0 ? round2(100 / session.groomers.length) : 0;
+export function sharesOf(session: BookingSession): Record<string, number> {
+  const count = session.groomers.length;
+  const base = count > 0 ? Math.floor(100 / count) : 0;
 
   return Object.fromEntries(
-    session.groomers.map((who) => [who._id, who.sharePercent ?? even]),
+    session.groomers.map((who, index) => [
+      who._id,
+      who.sharePercent ??
+        (index === count - 1 ? 100 - base * (count - 1) : base),
+    ]),
   );
 }
 
@@ -119,11 +128,13 @@ function useSave(bookingId: string, onChanged: (booking: Booking) => void) {
  *
  * ─── THE PERCENT ────────────────────────────────────────────────────────────
  *
- * Even by default, and the server resets it to even whenever the crew changes.
- * It is saved when a box is left (or Enter): with TWO people the other box is
- * filled with the rest, so one number is one decision; with three or more the
- * boxes must add up to 100 before anything is sent. The server refuses a split
- * that does not, so this is the screen saying so first.
+ * WHOLE PER CENT ONLY. Even by default — rounded down, the last person taking
+ * the rest (33 · 33 · 34) — and the server resets it to even whenever the crew
+ * changes. A typed fraction is rounded down. It is saved when a box is left (or
+ * Enter): with TWO people the other box is filled with the rest, so one number
+ * is one decision; with three or more the boxes must add up to 100 before
+ * anything is sent. The server refuses a split that does not, so this is the
+ * screen saying so first.
  *
  * Everybody on the turn is counted busy by the clash check, whatever their part.
  */
@@ -181,14 +192,14 @@ export function SessionCrew({
     /* TWO PEOPLE: the other box takes the rest, so the pair always adds up. */
     if (crewIds.length === 2) {
       const other = crewIds.find((crewId) => crewId !== id);
-      if (other) next[other] = round2(100 - next[id]);
+      if (other) next[other] = 100 - next[id];
     }
 
     setDrafts(
       Object.fromEntries(crewIds.map((crewId) => [crewId, asText(next[crewId])])),
     );
 
-    const total = round2(Object.values(next).reduce((sum, value) => sum + value, 0));
+    const total = Object.values(next).reduce((sum, value) => sum + value, 0);
 
     if (total !== 100) {
       setSplitError(`Total bagian ${asText(total)}% — harus 100%.`);
@@ -280,7 +291,7 @@ export function SessionCrew({
                       commit(who._id);
                     }
                   }}
-                  inputMode="decimal"
+                  inputMode="numeric"
                   aria-label={`Bagian komisi ${who.name} di ${session.sessionName} (persen)`}
                   /* One person earns the whole turn — nothing to split. */
                   disabled={busy || crewIds.length < 2}

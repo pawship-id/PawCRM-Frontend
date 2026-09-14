@@ -40,6 +40,7 @@ import {
   AddSessionButton,
   RemoveSessionButton,
   SessionCrew,
+  sharesOf,
 } from "./SessionGroomers";
 import { SessionAlbum } from "./SessionAlbum";
 import { SessionRecord } from "./SessionRecord";
@@ -891,6 +892,16 @@ export function BookingDetailScreen({ id }: { id: string }) {
                     session.groomers.length > 0
                       ? session.groomers.map((who) => who.name).join(" + ")
                       : "Belum ditentukan";
+                  /* THE HEADER NAMES EACH PERSON WITH THEIR PART of the turn —
+                     "Sinta 33% · Dedi 33% · Rina 34%". The leave warning below
+                     keeps the plain names. */
+                  const shares = sharesOf(session);
+                  const crewLabel =
+                    session.groomers.length > 0
+                      ? session.groomers
+                          .map((who) => `${who.name} ${shares[who._id]}%`)
+                          .join(" · ")
+                      : "Belum ditentukan";
                   const offReason =
                     session.groomers.find((who) => who.offReason)?.offReason ??
                     null;
@@ -948,8 +959,8 @@ export function BookingDetailScreen({ id }: { id: string }) {
                         >
                           {WORK_LABELS[status]}
                         </span>
-                        <span className="hidden whitespace-nowrap text-xs text-muted sm:inline">
-                          {crew}
+                        <span className="hidden whitespace-nowrap text-xs tabular-nums text-muted sm:inline">
+                          {crewLabel}
                         </span>
                         <span className="whitespace-nowrap text-xs tabular-nums text-foreground">
                           {minutes === null ? "—" : `${minutes}'`}

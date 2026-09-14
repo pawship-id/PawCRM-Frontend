@@ -2263,8 +2263,9 @@ export interface BookingSession {
    * is counted busy by the clash check, and each earns their `sharePercent` of
    * the turn's commission. Empty is a real state — such a turn cannot be started.
    *
-   * `sharePercent` IS THE SERVER'S ANSWER: the split set on the turn when it fits
-   * the crew and adds up to 100, otherwise an even split (33.33 each for three).
+   * `sharePercent` IS THE SERVER'S ANSWER, in whole per cent: the split set on
+   * the turn when it fits the crew and adds up to 100, otherwise an even split
+   * rounded down with the last person taking the rest (33 · 33 · 34).
    * Optional only because older responses and fixtures lack it — a screen falls
    * back to the even split.
    *
