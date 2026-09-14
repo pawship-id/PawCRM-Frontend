@@ -85,6 +85,11 @@ function mockLookups(overrides: { warehouses?: unknown[] } = {}) {
   jest
     .spyOn(productService, "list")
     .mockResolvedValue(page([PRODUCT]) as never);
+  // The stock under a product line's SKU — ten at Gudang Pusat, none elsewhere.
+  jest.spyOn(productService, "getById").mockResolvedValue({
+    ...PRODUCT,
+    stockByWarehouse: [{ warehouseId: "wh1", qty: "10.0000" }],
+  } as never);
   jest
     .spyOn(serviceService, "list")
     .mockResolvedValue(page([SERVICE]) as never);
@@ -1242,6 +1247,61 @@ describe("other charges", () => {
       expect(customerInvoiceService.create).toHaveBeenCalled(),
     );
     expect(sent()).not.toHaveProperty("otherCharges");
+  });
+});
+
+/*
+  STOCK UNDER A PRODUCT LINE'S SKU (14 September 2026) — at the warehouse the
+  header chose. That is the `productstocks` row the save is refused against: one
+  per product per warehouse, already the sum of the product's batches there.
+*/
+describe("stock under a product line", () => {
+  const productRow = () => screen.getByRole("row", { name: /Kalung Nylon/ });
+
+  it("shows what the chosen warehouse holds", async () => {
+    render(<InvoiceCreateForm />);
+    await fillMinimal();
+
+    expect(await within(productRow()).findByText("Stok 10")).toBeInTheDocument();
+    expect(productService.getById).toHaveBeenCalledWith("p1");
+  });
+
+  it("asks for a warehouse before it can say", async () => {
+    render(<InvoiceCreateForm />);
+    await pick(/^Pelanggan$/i, /Bu Sari/);
+    await pick(/^Cabang$/i, /Cabang Pusat/);
+    await addItem(/Kalung Nylon/);
+
+    expect(
+      within(productRow()).getByText("Pilih gudang untuk melihat stok"),
+    ).toBeInTheDocument();
+  });
+
+  it("says when the line wants more than the warehouse holds", async () => {
+    render(<InvoiceCreateForm />);
+    await fillMinimal();
+    await userEvent.clear(screen.getByLabelText(/^Jumlah Kalung Nylon$/i));
+    await userEvent.type(screen.getByLabelText(/^Jumlah Kalung Nylon$/i), "12");
+
+    expect(
+      await within(productRow()).findByText("Stok 10 — kurang"),
+    ).toBeInTheDocument();
+  });
+
+  it("follows the warehouse without asking again — none held at another", async () => {
+    mockLookups({ warehouses: [WAREHOUSE, CENTRAL] });
+
+    render(<InvoiceCreateForm />);
+    await pick(/^Pelanggan$/i, /Bu Sari/);
+    await pick(/^Cabang$/i, /Cabang Pusat/);
+    await pick(/^Gudang$/i, /^Gudang Pusat$/);
+    await addItem(/Kalung Nylon/);
+    expect(await within(productRow()).findByText("Stok 10")).toBeInTheDocument();
+
+    await pick(/^Gudang$/i, /Gudang Pusat Bersama/);
+
+    expect(within(productRow()).getByText("Stok 0")).toBeInTheDocument();
+    expect(productService.getById).toHaveBeenCalledTimes(1);
   });
 });
 

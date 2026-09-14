@@ -28,7 +28,12 @@ import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
 import { petService } from "@/services/pet.service";
-import { formatMoney, subtractDecimals } from "@/utils/decimal";
+import {
+  formatMoney,
+  formatQty,
+  subtractDecimals,
+  toMinor,
+} from "@/utils/decimal";
 import { AXIS_LABEL, priceForPet } from "@/utils/serviceVariant";
 import type {
   Booking,
@@ -41,6 +46,7 @@ import type {
 } from "@/types/api";
 import type { Product } from "@/types/inventory";
 
+import { useInvoiceLineStock } from "../hooks/useInvoiceLineStock";
 import { useInvoiceLookups } from "../hooks/useInvoiceLookups";
 import { previewInvoice } from "../invoicePreview";
 import { InvoiceAddItemsDialog } from "./InvoiceAddItemsDialog";
@@ -286,6 +292,63 @@ export function InvoiceCreateForm() {
   );
 
   const hasProductLine = lines.some((line) => line.kind === "product");
+
+  /*
+    STOCK UNDER EACH PRODUCT LINE'S SKU (14 September 2026, the BO mockup) — at
+    the warehouse the header chose, which already stands for the chosen branch.
+    See `useInvoiceLineStock` for why this is the batches' sum and the figure the
+    save is refused against.
+  */
+  const lineStock = useInvoiceLineStock(
+    lines.filter((line) => line.kind === "product").map((line) => line.refId),
+  );
+
+  /**
+   * The mockup's three notes — enough, short, none — or a nudge to pick the
+   * warehouse first. Nothing while the figure is still being read, rather than a
+   * zero that is not true yet.
+   *
+   * THE SAVE IS NOT BLOCKED HERE. The server refuses a short shelf by name, and
+   * this is a warning read while the bill is still being put together.
+   */
+  function stockNote(line: DraftLine) {
+    if (line.kind !== "product") return null;
+
+    if (!warehouseId) {
+      return (
+        <span className="block text-xs text-muted">
+          Pilih gudang untuk melihat stok
+        </span>
+      );
+    }
+
+    const onHand = lineStock.qtyAt(line.refId, warehouseId);
+    if (onHand === null) return null;
+
+    const have = toMinor(onHand) ?? BigInt(0);
+    const label = `Stok ${formatQty(onHand)}`;
+
+    if (have <= BigInt(0)) {
+      // `danger-ink`, not `danger`: 13 px text needs the 6.37:1 one (§13).
+      return (
+        <span className="block text-xs font-semibold text-danger-ink">
+          {label}
+        </span>
+      );
+    }
+
+    if (have < (toMinor(line.qty) ?? BigInt(0))) {
+      return (
+        <span className="block text-xs font-semibold text-warning">
+          {`${label} — kurang`}
+        </span>
+      );
+    }
+
+    return (
+      <span className="block text-xs font-semibold text-success">{label}</span>
+    );
+  }
   const hasServiceLine = lines.some((line) => line.kind === "service");
 
   const preview = useMemo(
@@ -1025,6 +1088,7 @@ export function InvoiceCreateForm() {
                               <span className="block text-xs text-muted">
                                 {line.sku ?? "Jasa"}
                               </span>
+                              {stockNote(line)}
                               {offered.length > 0 && (
                                 <InvoiceAddonPicker
                                   idPrefix={line.key}
