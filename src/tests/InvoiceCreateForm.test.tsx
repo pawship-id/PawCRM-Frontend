@@ -1153,6 +1153,98 @@ describe("add-ons under a service", () => {
   });
 });
 
+/*
+  OTHER CHARGES (14 September 2026) — ongkir and the like, under Diskon faktur as
+  at the till. Typed straight into a row with nothing to confirm: it counts
+  toward the total as it is typed, and is sent itemised.
+*/
+describe("other charges", () => {
+  const addRow = () =>
+    userEvent.click(screen.getByRole("button", { name: "+ Tambah biaya lain" }));
+
+  const totalShows = (amount: string) =>
+    expect(
+      within(screen.getByText(/^Total tagihan$/i).closest("div")!).getByText(
+        amount,
+      ),
+    ).toBeInTheDocument();
+
+  it("counts a charge toward the total as it is typed, and sends it", async () => {
+    render(<InvoiceCreateForm />);
+    await fillMinimal();
+    await addRow();
+    await userEvent.type(screen.getByLabelText("Nama biaya 1"), "Ongkos kirim");
+    await userEvent.type(screen.getByLabelText("Nominal biaya 1"), "20000");
+
+    // 100.000 on a price that already includes tax, + 20.000 ongkir.
+    totalShows("Rp 120.000");
+
+    await submit();
+
+    await waitFor(() =>
+      expect(customerInvoiceService.create).toHaveBeenCalled(),
+    );
+    expect(sent().otherCharges).toEqual([
+      { label: "Ongkos kirim", amount: "20000" },
+    ]);
+  });
+
+  it("adds the next charge straight away, with nothing to confirm", async () => {
+    render(<InvoiceCreateForm />);
+    await fillMinimal();
+    await addRow();
+    await userEvent.type(screen.getByLabelText("Nama biaya 1"), "Ongkos kirim");
+    await userEvent.type(screen.getByLabelText("Nominal biaya 1"), "20000");
+    await addRow();
+    await userEvent.type(screen.getByLabelText("Nama biaya 2"), "Packaging");
+    await userEvent.type(screen.getByLabelText("Nominal biaya 2"), "5000");
+
+    totalShows("Rp 125.000");
+  });
+
+  /* In Indonesian "10.000" is ten thousand — a dot must not make it ten. */
+  it("keeps the amount to digits", async () => {
+    render(<InvoiceCreateForm />);
+    await fillMinimal();
+    await addRow();
+    await userEvent.type(screen.getByLabelText("Nominal biaya 1"), "10.000");
+
+    expect(screen.getByLabelText("Nominal biaya 1")).toHaveValue("10000");
+  });
+
+  it("will not save a charge with an amount but no name", async () => {
+    render(<InvoiceCreateForm />);
+    await fillMinimal();
+    await addRow();
+    await userEvent.type(screen.getByLabelText("Nominal biaya 1"), "20000");
+
+    expect(
+      screen.getByRole("button", { name: /^simpan faktur$/i }),
+    ).toBeDisabled();
+    expect(screen.getByText(/Beri nama biaya lain/)).toBeInTheDocument();
+  });
+
+  it("ignores a row left blank, and takes a row back off", async () => {
+    render(<InvoiceCreateForm />);
+    await fillMinimal();
+    await addRow();
+    await addRow();
+    await userEvent.type(screen.getByLabelText("Nama biaya 2"), "Ongkos kirim");
+    await userEvent.type(screen.getByLabelText("Nominal biaya 2"), "20000");
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Hapus biaya lain 2" }),
+    );
+    totalShows("Rp 100.000");
+    await submit();
+
+    await waitFor(() =>
+      expect(customerInvoiceService.create).toHaveBeenCalled(),
+    );
+    expect(sent()).not.toHaveProperty("otherCharges");
+  });
+});
+
 describe("what the form sends", () => {
   it("sends the line, and no price with it", async () => {
     render(<InvoiceCreateForm />);

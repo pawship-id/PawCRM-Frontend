@@ -451,9 +451,10 @@ Channel, and Catatan last. Do not reorder it back to Kapan-first as a tidy-up.
 
 **Faktur baru has no Rekap card.** Decided 14 September 2026 on request, to
 match the same mockup: Subtotal, Diskon baris, Diskon faktur (typed in its own
-row), PPN and Total tagihan sit right-aligned at the foot of the Baris faktur
-card, under the rows they add up. Do not split it back into a card of its own as
-a tidy-up.
+row), one row per biaya lain with "+ Tambah biaya lain" under them, then —
+where tax is added on top — Dasar pengenaan pajak and PPN under a dashed rule,
+and Total tagihan, all right-aligned at the foot of the Baris faktur card, under
+the rows they add up. Do not split it back into a card of its own as a tidy-up.
 
 
 **One bar, two buttons, always the same places: Batal (secondary) left, Simpan (primary) right**, in a `sticky top-14 z-10` bar at the top of the form. Not `top-0` — DashboardShell's own header is already there, fixed and 56 px tall.

@@ -36,6 +36,7 @@ import type {
   InvoiceChannel,
   InvoiceDiscountMode,
   Pet,
+  PosCharge,
   Service,
 } from "@/types/api";
 import type { Product } from "@/types/inventory";
@@ -227,6 +228,30 @@ export function InvoiceCreateForm() {
     useState<InvoiceDiscountMode>("percent");
   const [invoiceDiscountValue, setInvoiceDiscountValue] = useState("");
 
+  /*
+    OTHER CHARGES — ongkir, packaging — the till's "biaya lain", on a bill
+    (14 September 2026). Added after the discounts and taxed like a line; the
+    server prices them again and credits them to 4193.
+
+    EDITED IN PLACE, WITH NOTHING TO CONFIRM (decided 14 September 2026 on
+    request): "+ Tambah biaya lain" puts an empty row on, and what is typed
+    counts toward the total straight away. A row left entirely blank is ignored;
+    a half-filled one blocks saving — see `blocking`.
+
+    `key` IS THE ROW'S OWN HANDLE, never the label: keyed on what is being typed,
+    the input would remount on every keystroke and lose the cursor.
+  */
+  const [charges, setCharges] = useState<(PosCharge & { key: string })[]>(
+    [],
+  );
+  /** The rows somebody actually typed into, trimmed — what is sent. */
+  const filledCharges = charges
+    .map((charge) => ({
+      label: charge.label.trim(),
+      amount: charge.amount.trim(),
+    }))
+    .filter((charge) => charge.label !== "" || charge.amount !== "");
+
   const [saving, setSaving] = useState(false);
 
   /**
@@ -280,7 +305,7 @@ export function InvoiceCreateForm() {
         invoiceDiscountValue
           ? { mode: invoiceDiscountMode, value: invoiceDiscountValue }
           : null,
-        lookups.tax,
+        { ...lookups.tax, otherCharges: charges },
       ),
     [
       lines,
@@ -288,6 +313,7 @@ export function InvoiceCreateForm() {
       invoiceDiscountMode,
       invoiceDiscountValue,
       lookups.tax,
+      charges,
     ],
   );
 
@@ -372,6 +398,26 @@ export function InvoiceCreateForm() {
       return missing
         ? `Lengkapi ${AXIS_LABEL[missing]} ${pet?.name ?? "hewannya"} dulu — harga '${unpriced.name}' ditentukan dari situ.`
         : `'${unpriced.name}' belum punya harga untuk ${pet?.name ?? "hewan ini"}. Tambahkan variannya di katalog.`;
+    }
+
+    /*
+      A HALF-FILLED CHARGE, named by the half that is missing. A row left
+      entirely blank is not a charge and is simply not sent; one with an amount
+      and no name, or a name and nothing to charge, would bill something the
+      customer cannot read — and the server refuses a zero anyway.
+    */
+    const unnamed = filledCharges.find((charge) => charge.label === "");
+
+    if (unnamed) {
+      return `Beri nama biaya lain yang nominalnya ${formatMoney(unnamed.amount)}.`;
+    }
+
+    const nothingToCharge = filledCharges.find(
+      (charge) => !(Number(charge.amount) > 0),
+    );
+
+    if (nothingToCharge) {
+      return `Isi nominal ${nothingToCharge.label} — harus lebih dari 0.`;
     }
 
     return null;
@@ -607,6 +653,15 @@ export function InvoiceCreateForm() {
     });
   }
 
+  /** One charge row typed into, found by its own `key`. */
+  function patchCharge(key: string, patch: Partial<PosCharge>) {
+    setCharges((current) =>
+      current.map((charge) =>
+        charge.key === key ? { ...charge, ...patch } : charge,
+      ),
+    );
+  }
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (blocking) return;
@@ -639,6 +694,8 @@ export function InvoiceCreateForm() {
         ...(hasProductLine ? { warehouseId } : {}),
         items,
         ...(bookingIds.length > 0 ? { bookingIds } : {}),
+        // Itemised and trimmed — blank rows dropped, left out when none remain.
+        ...(filledCharges.length > 0 ? { otherCharges: filledCharges } : {}),
         ...(invoiceDiscountValue
           ? {
               invoiceDiscount: {
@@ -1247,6 +1304,88 @@ export function InvoiceCreateForm() {
                   </div>
                 </dd>
               </div>
+
+              {/*
+                OTHER CHARGES — ongkir, packaging — one editable row each, under
+                the discount they are added after (14 September 2026, the BO
+                mockup and the till's "biaya lain"). Taxed like a line, so they
+                sit above Dasar pengenaan pajak.
+
+                NOTHING TO CONFIRM (decided 14 September 2026 on request): a row
+                counts toward the total as it is typed, and "+ Tambah biaya lain"
+                simply puts the next one on.
+
+                EACH ROW AND THE LINK KEEP A `dt` OF THEIR OWN, visually hidden:
+                a `dl` group holds a term and its details, and bare inputs in one
+                are invalid markup a screen reader stumbles over.
+              */}
+              {charges.map((charge, index) => (
+                <div key={charge.key}>
+                  <dt className="sr-only">{`Biaya lain ${index + 1}`}</dt>
+                  <dd className="flex items-center gap-1">
+                    <Input
+                      aria-label={`Nama biaya ${index + 1}`}
+                      placeholder="Ongkos kirim"
+                      className="h-9 flex-1"
+                      value={charge.label}
+                      onChange={(event) =>
+                        patchCharge(charge.key, { label: event.target.value })
+                      }
+                      disabled={saving}
+                    />
+                    <Input
+                      aria-label={`Nominal biaya ${index + 1}`}
+                      placeholder="10000"
+                      inputMode="numeric"
+                      className="h-9 w-28 text-right tabular-nums"
+                      value={charge.amount}
+                      onChange={(event) =>
+                        patchCharge(charge.key, {
+                          /* DIGITS ONLY. In Indonesian "10.000" is ten
+                             thousand; kept as typed it would be read as ten. */
+                          amount: event.target.value.replace(/\D/g, ""),
+                        })
+                      }
+                      disabled={saving}
+                    />
+                    <UIButton
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`Hapus biaya lain ${index + 1}`}
+                      onClick={() =>
+                        setCharges((current) =>
+                          current.filter((one) => one.key !== charge.key),
+                        )
+                      }
+                      disabled={saving}
+                    >
+                      <Trash2 className="size-4 text-danger" />
+                    </UIButton>
+                  </dd>
+                </div>
+              ))}
+
+              <div className="flex justify-end">
+                <dt className="sr-only">Biaya lain</dt>
+                <dd>
+                  <UIButton
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      setCharges((current) => [
+                        ...current,
+                        { key: nextLineKey(), label: "", amount: "" },
+                      ])
+                    }
+                    disabled={saving}
+                  >
+                    + Tambah biaya lain
+                  </UIButton>
+                </dd>
+              </div>
+
               {/*
                 THE ROW THAT MAKES THE LIST ADD UP. Without it the recap ran
                 Subtotal Rp 100.000 → Total Rp 111.000 with nothing between them,

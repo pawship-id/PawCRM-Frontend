@@ -5792,6 +5792,8 @@ export interface UpdateCustomerInvoiceInput {
   items: UpdateInvoiceItemInput[];
   /** Absent keeps the typed discount; null removes it. */
   invoiceDiscount?: TypedDiscountInput | null;
+  /** Absent keeps the stored charges; an array — even empty — replaces them. */
+  otherCharges?: PosCharge[];
   dueDate?: string;
   /** Only read when the invoice shipped nothing before and now does. */
   warehouseId?: string;
@@ -5874,6 +5876,11 @@ export interface CreateCustomerInvoiceInput {
   warehouseId?: string;
   items: CreateInvoiceItemInput[];
   invoiceDiscount?: TypedDiscountInput | null;
+  /**
+   * Ongkir, packaging — the till's `otherCharges`, same shape. Each amount is
+   * positive; added after the discounts and taxed like a line.
+   */
+  otherCharges?: PosCharge[];
   invoiceDate?: string;
   dueDate?: string;
   termDays?: number;

@@ -213,9 +213,18 @@ export function InvoiceEditor({
         invoiceDiscountValue
           ? { mode: invoiceDiscountMode, value: invoiceDiscountValue }
           : null,
-        lookups.tax,
+        /* THE STORED CHARGES COUNT TOWARD THE TOTAL. The editor does not change
+           them — the server keeps them when none are sent — but a total that
+           left out the ongkir would not be the bill that gets saved. */
+        { ...lookups.tax, otherCharges: invoice.otherCharges ?? [] },
       ),
-    [lines, invoiceDiscountMode, invoiceDiscountValue, lookups.tax],
+    [
+      lines,
+      invoiceDiscountMode,
+      invoiceDiscountValue,
+      lookups.tax,
+      invoice.otherCharges,
+    ],
   );
 
   function payload(): UpdateCustomerInvoiceInput {
@@ -701,6 +710,17 @@ export function InvoiceEditor({
               −{formatMoney(preview.invoiceDiscount)}
             </dd>
           </div>
+          {/* THE STORED CHARGES, read-only — this screen does not change them,
+              and the server keeps them on the revised bill. */}
+          {(invoice.otherCharges ?? []).map((charge, index) => (
+            <div
+              key={`${charge.label}-${index}`}
+              className="flex justify-between gap-4"
+            >
+              <dt className="text-muted">{charge.label}</dt>
+              <dd className="tabular-nums">+{formatMoney(charge.amount)}</dd>
+            </div>
+          ))}
           {preview.taxAdded !== "0.0000" && (
             <div className="flex justify-between gap-4">
               <dt className="text-muted">{`PPN ${lookups.tax.taxRate}%`}</dt>

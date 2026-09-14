@@ -47,6 +47,8 @@ export interface InvoicePreview {
   subtotal: string;
   itemDiscount: string;
   invoiceDiscount: string;
+  /** Σ of the other charges — added after both discounts, inside the taxed base. */
+  otherCharges: string;
   /**
    * The tax ADDED ON TOP, and zero whenever prices already include it.
    *
@@ -135,7 +137,19 @@ function allocate(total: bigint, weights: bigint[]): bigint[] {
 export function previewInvoice(
   lines: PreviewLine[],
   invoiceDiscount: TypedDiscountInput | null = null,
-  { priceIncludesTax = true, taxRate = 0 }: { priceIncludesTax?: boolean; taxRate?: number } = {},
+  {
+    priceIncludesTax = true,
+    taxRate = 0,
+    otherCharges = [],
+  }: {
+    priceIncludesTax?: boolean;
+    taxRate?: number;
+    /**
+     * Ongkir and the like — ADDED after both discounts and TAXED like a line,
+     * the server's step 5. Only the amounts matter here.
+     */
+    otherCharges?: { amount: string }[];
+  } = {},
 ): InvoicePreview {
   const lineTotals: bigint[] = [];
   const lineDiscounts: bigint[] = [];
@@ -155,7 +169,18 @@ export function previewInvoice(
   const afterItems = subtotal - itemDiscount;
   const documentDiscount = resolveDiscount(afterItems, invoiceDiscount);
 
-  const net = afterItems - documentDiscount;
+  /*
+    OTHER CHARGES ARE ADDED AFTER BOTH DISCOUNTS and are part of the taxed gross —
+    the server's step 5, which is the till's rule. A half-typed amount counts as
+    nothing rather than throwing.
+  */
+  const charges = otherCharges.map((charge) => {
+    const amount = parse(charge.amount);
+    return amount > ZERO ? amount : ZERO;
+  });
+  const chargesTotal = charges.reduce((sum, value) => sum + value, ZERO);
+
+  const net = afterItems - documentDiscount + chargesTotal;
   const rate = toMinor(String(taxRate)) ?? ZERO;
 
   /*
@@ -174,7 +199,7 @@ export function previewInvoice(
   */
   const documentTax = priceIncludesTax
     ? net -
-      (baseFromGross(subtotal, rate) -
+      (baseFromGross(subtotal + chargesTotal, rate) -
         baseFromGross(itemDiscount + documentDiscount, rate))
     : taxAdded;
 
@@ -184,12 +209,17 @@ export function previewInvoice(
     documentDiscount,
     lineTotals.map((total, index) => total - lineDiscounts[index]),
   );
-  const lineTaxes = allocate(
-    documentTax,
-    lineTotals.map(
+  /*
+    THE CHARGES TAKE PART IN THE TAX ALLOCATION, weighted by their amounts after
+    the lines — the server allocates both in one pass. Their slices are dropped
+    here: the form has a Pajak column for lines only.
+  */
+  const lineTaxes = allocate(documentTax, [
+    ...lineTotals.map(
       (total, index) => total - lineDiscounts[index] - documentDiscountShares[index],
     ),
-  );
+    ...charges,
+  ]).slice(0, lineTotals.length);
 
   const grandTotal = net + taxAdded;
 
@@ -200,6 +230,7 @@ export function previewInvoice(
     subtotal: toDecimalString(subtotal),
     itemDiscount: toDecimalString(itemDiscount),
     invoiceDiscount: toDecimalString(documentDiscount),
+    otherCharges: toDecimalString(chargesTotal),
     taxAdded: toDecimalString(taxAdded),
     grandTotal: toDecimalString(grandTotal),
   };

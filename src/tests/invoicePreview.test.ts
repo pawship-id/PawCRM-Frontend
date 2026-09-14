@@ -235,6 +235,48 @@ describe("tax-inclusive versus tax-exclusive pricing", () => {
  * line's net after both discounts; these are that rule's cases, so the column
  * reads what the saved invoice will freeze per line.
  */
+/*
+  OTHER CHARGES (14 September 2026) — the server's step 5: added after both
+  discounts, inside the taxed base. The same cases `invoicePricing.test.js`
+  asserts, so the form cannot quote a delivery the bill then prices differently.
+*/
+describe("other charges", () => {
+  it("adds a charge after the discounts, which do not touch it", () => {
+    const preview = previewInvoice(
+      [{ qty: "1", unitPrice: "100000" }],
+      { mode: "percent", value: "10" },
+      { otherCharges: [{ amount: "20000" }] },
+    );
+
+    expect(preview.invoiceDiscount).toBe("10000.0000");
+    expect(preview.otherCharges).toBe("20000.0000");
+    expect(preview.grandTotal).toBe("110000.0000");
+  });
+
+  it("taxes a charge on top when prices exclude tax", () => {
+    const preview = previewInvoice([{ qty: "1", unitPrice: "100000" }], null, {
+      priceIncludesTax: false,
+      taxRate: 11,
+      otherCharges: [{ amount: "20000" }],
+    });
+
+    expect(preview.taxAdded).toBe("13200.0000");
+    expect(preview.grandTotal).toBe("133200.0000");
+  });
+
+  it("leaves the charge its own share of an inclusive tax", () => {
+    // 133.200 gross holds 13.200 PPN; the line is worth 111.000 of it → 11.000.
+    const preview = previewInvoice([{ qty: "1", unitPrice: "111000" }], null, {
+      priceIncludesTax: true,
+      taxRate: 11,
+      otherCharges: [{ amount: "22200" }],
+    });
+
+    expect(preview.lineTaxes).toEqual(["11000.0000"]);
+    expect(preview.grandTotal).toBe("133200.0000");
+  });
+});
+
 describe("the tax on each line", () => {
   it("unwinds the tax inside an inclusive price", () => {
     const preview = previewInvoice([{ qty: "1", unitPrice: "111000" }], null, {
