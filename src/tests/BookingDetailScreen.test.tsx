@@ -390,8 +390,9 @@ describe("BookingDetailScreen — the status track", () => {
 
     show();
 
-    /* Anchored: the trail in the rail says "… 10.15 · Rio (groomer)" too. */
-    expect(await screen.findByText(/^10\.15 · Rio$/)).toBeInTheDocument();
+    /* Scoped to the block: the trail in the rail names the same move too. */
+    const since = (await screen.findByText("Status sejak")).parentElement!;
+    expect(within(since).getByText(/^10\.15 · Rio \(groomer\)$/)).toBeInTheDocument();
   });
 
   it("moving the booking updates the page from the answer, without re-reading it", async () => {

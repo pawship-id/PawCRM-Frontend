@@ -432,32 +432,17 @@ export function BookingDetailScreen({ id }: { id: string }) {
               </span>
             </div>
 
-            <p className="mt-1 text-base font-semibold text-foreground">
-              {petName}
-              {service && (
-                <span className="font-normal text-muted"> · {service.name}</span>
-              )}
-            </p>
-
             {/*
-              WHOSE, AND HOW TO REACH THEM. The number is the point of this line:
-              it is who to ring when the groomer is on leave, or when the dog
-              turns out to need something the owner did not ask for.
-            */}
-            <p className="mt-0.5 text-sm text-muted">
-              {booking.customerName ?? "—"}
-              {customer?.phone && (
-                <span className="tabular-nums"> · {customer.phone}</span>
-              )}
-            </p>
+              ONLY THE AUDIT LINE UNDER THE TITLE, as the mockup has it. The
+              animal, the service and the owner's number are not lost: the
+              Kunjungan and Hewan & Pelanggan cards below carry all three.
 
-            {/*
-              WHO MADE THIS, AND WHEN — an AUDIT LINE, not the appointment's own
-              date, which has its place in the Kunjungan card below. The name and
-              role go through `bookingActorLabel`, the formatter the trail uses,
-              so the two never render one fact two ways.
+              WHO MADE THIS, AND WHEN — not the appointment's own date, which is
+              in Kunjungan. The name and role go through `bookingActorLabel`, the
+              formatter the trail uses, so the two never render one fact two ways.
+              `tabular-nums`, not the mockup's monospace: §5 allows two typefaces.
             */}
-            <p className="mt-0.5 text-xs tabular-nums text-muted">
+            <p className="mt-1.5 text-sm tabular-nums text-muted">
               Dibuat{" "}
               {new Date(booking.createdAt).toLocaleString("id-ID", {
                 day: "numeric",
@@ -508,17 +493,19 @@ export function BookingDetailScreen({ id }: { id: string }) {
           </div>
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-4 border-t border-border pt-3">
+        <div className="mt-5 flex flex-wrap items-center gap-4 border-t border-border pt-4">
           <div className="min-w-[180px] flex-1">
             <p className="text-xs font-bold uppercase tracking-wide text-muted">
               Status sejak
             </p>
             <p className="text-xs tabular-nums text-foreground">
+              {/* The name WITH the role, through the same formatter as the
+                  "Dibuat" line and the trail — "Jess (super admin)". */}
               {lastEvent
                 ? `${new Date(lastEvent.at).toLocaleTimeString("id-ID", {
                     hour: "2-digit",
                     minute: "2-digit",
-                  })} · ${lastEvent.byName ?? "sistem"}`
+                  })} · ${bookingActorLabel(lastEvent.byName, lastEvent.byRoleName)}`
                 : "—"}
             </p>
 
