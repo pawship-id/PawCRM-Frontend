@@ -1493,9 +1493,12 @@ describe("what the form shows", () => {
     expect(within(totalRow).getByText("Rp 90.000")).toBeInTheDocument();
   });
 
-  it("says the price already includes tax when the tenant prices that way", async () => {
+  /* The note under the recap says what saving does (14 September 2026). */
+  it("says the invoice saves as Belum Lunas, editable until the first payment", async () => {
     render(<InvoiceCreateForm />);
-    expect(await screen.findByText(/sudah termasuk PPN/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/tersimpan berstatus Belum Lunas/i),
+    ).toBeInTheDocument();
   });
 
   /*

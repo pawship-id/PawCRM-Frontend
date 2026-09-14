@@ -1433,14 +1433,13 @@ export function InvoiceCreateForm() {
               </div>
             </dl>
 
-            {/* What the removed card's description said, kept with the figures
-                it is about. One template string, so it reads as one sentence. */}
+            {/* WHAT SAVING DOES — the BO mockup's own sentence, replacing the
+                note about how the recap is computed (14 September 2026, on
+                request). True to `#assertRevisable`: editable until a payment. */}
             <p className="text-xs text-muted">
-              {`Dihitung di layar dengan urutan yang sama seperti di server; angka finalnya ditetapkan saat faktur disimpan. ${
-                lookups.tax.priceIncludesTax
-                  ? "Harga katalog sudah termasuk PPN — rincian DPP dan PPN muncul di faktur setelah disimpan."
-                  : "Rincian DPP-nya muncul di faktur setelah disimpan."
-              }`}
+              Faktur ini akan tersimpan berstatus Belum Lunas — masih bisa
+              diedit sampai pembayaran pertama tercatat (lihat halaman Detail
+              Faktur).
             </p>
           </div>
         </div>
