@@ -16,6 +16,7 @@ import { branchService } from "@/services/branch.service";
 import { customerService } from "@/services/customer.service";
 import { petService } from "@/services/pet.service";
 import { formatMoney, sumDecimals } from "@/utils/decimal";
+import { GROOMER_LEVEL_LABELS } from "@/types/api";
 import type {
   Booking,
   BookingSession,
@@ -249,13 +250,18 @@ export function BookingDetailScreen({ id }: { id: string }) {
       .then((rows) => {
         if (!active) return;
         setGroomers(
-          rows.map((row) => ({
-            value: row._id,
-            label: row.offReason
-              ? `${row.fullName} — ${row.offReason}`
-              : row.fullName,
-            disabled: Boolean(row.offReason),
-          })),
+          rows.map((row) => {
+            /* "Sinta · Senior" — the same label the crew row shows. */
+            const name = row.groomerLevel
+              ? `${row.fullName} · ${GROOMER_LEVEL_LABELS[row.groomerLevel]}`
+              : row.fullName;
+
+            return {
+              value: row._id,
+              label: row.offReason ? `${name} — ${row.offReason}` : name,
+              disabled: Boolean(row.offReason),
+            };
+          }),
         );
       })
       .catch(() => {

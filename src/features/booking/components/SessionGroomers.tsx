@@ -1,14 +1,27 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Trash2, UserRound, X } from "lucide-react";
+import { Plus, Trash2, X } from "lucide-react";
 
-import { Alert, ConfirmDialog, SelectField } from "@/components";
+import { Alert, ConfirmDialog } from "@/components";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Can } from "@/features/permissions";
 import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
-import type { Booking, BookingMainService, BookingSession } from "@/types/api";
+import {
+  GROOMER_LEVEL_LABELS,
+  type Booking,
+  type BookingMainService,
+  type BookingSession,
+} from "@/types/api";
 
 /** Mirrors MAX_SESSIONS_PER_SERVICE in booking.model.js. */
 const MAX_SESSIONS = 6;
@@ -16,8 +29,34 @@ const MAX_SESSIONS = 6;
 /** Mirrors MAX_GROOMERS_PER_SESSION in booking.model.js. */
 const MAX_GROOMERS = 4;
 
-/** The sentinel the selects use — Radix refuses an empty value. */
-const PICK = "pilih";
+/** Two decimals — the precision the server keeps a share at. */
+const round2 = (value: number) => Math.round(value * 100) / 100;
+
+/** "33,33" — the shop's decimal comma, for reading and for typing into. */
+const asText = (value: number) => String(round2(value)).replace(".", ",");
+
+/** A typed percent, comma or dot; `null` when it is not 0–100. */
+function parsePercent(typed: string | undefined): number | null {
+  const value = Number((typed ?? "").trim().replace(",", "."));
+
+  if ((typed ?? "").trim() === "" || !Number.isFinite(value)) return null;
+  if (value < 0 || value > 100) return null;
+
+  return round2(value);
+}
+
+/**
+ * Each person's part of the turn, as the server sent it — or the even split
+ * when a response predates `sharePercent`.
+ */
+function sharesOf(session: BookingSession): Record<string, number> {
+  const even =
+    session.groomers.length > 0 ? round2(100 / session.groomers.length) : 0;
+
+  return Object.fromEntries(
+    session.groomers.map((who) => [who._id, who.sharePercent ?? even]),
+  );
+}
 
 type Groomers = { value: string; label: string; disabled?: boolean }[];
 
@@ -73,13 +112,20 @@ function useSave(bookingId: string, onChanged: (booking: Booking) => void) {
 }
 
 /**
- * WHO IS ON ONE TURN.
+ * WHO IS ON ONE TURN, AND WHAT PART OF IT EACH EARNS.
  *
- * ⚠️ EVERYBODY HERE IS COUNTED BUSY, AND NOBODY HERE IS PAID YET. The clash
- * check counts the whole crew; how a turn's money is split between them is a
- * question the shop has not answered, and nothing computes commission from a
- * session until it does — see `groomerUserIds` in booking.model.js for what
- * goes wrong if that is wired up first.
+ * One row per person — "Sinta · Senior", their percent of the turn's
+ * commission, and × to take them off — then "+ Tambah groomer…" under them.
+ *
+ * ─── THE PERCENT ────────────────────────────────────────────────────────────
+ *
+ * Even by default, and the server resets it to even whenever the crew changes.
+ * It is saved when a box is left (or Enter): with TWO people the other box is
+ * filled with the rest, so one number is one decision; with three or more the
+ * boxes must add up to 100 before anything is sent. The server refuses a split
+ * that does not, so this is the screen saying so first.
+ *
+ * Everybody on the turn is counted busy by the clash check, whatever their part.
  */
 export function SessionCrew({
   bookingId,
@@ -94,6 +140,71 @@ export function SessionCrew({
   onChanged: (booking: Booking) => void;
 }) {
   const { busy, error, save } = useSave(bookingId, onChanged);
+
+  const saved = sharesOf(session);
+  const crewIds = session.groomers.map((who) => who._id);
+
+  /*
+    THE BOXES, AS TYPED. Re-seeded from the server whenever the crew or its
+    saved split changes — the render-time reset React recommends over an effect,
+    so a stale draft never flashes after a save.
+  */
+  const seed = session.groomers
+    .map((who) => `${who._id}:${saved[who._id]}`)
+    .join("|");
+  const [seenSeed, setSeenSeed] = useState(seed);
+  const [drafts, setDrafts] = useState<Record<string, string>>(() =>
+    Object.fromEntries(crewIds.map((id) => [id, asText(saved[id])])),
+  );
+  const [splitError, setSplitError] = useState<string | null>(null);
+
+  if (seenSeed !== seed) {
+    setSeenSeed(seed);
+    setDrafts(Object.fromEntries(crewIds.map((id) => [id, asText(saved[id])])));
+    setSplitError(null);
+  }
+
+  function commit(id: string) {
+    const next: Record<string, number> = {};
+
+    for (const crewId of crewIds) {
+      const value = parsePercent(drafts[crewId]);
+
+      if (value === null) {
+        setSplitError("Isi persen antara 0 dan 100.");
+        return;
+      }
+
+      next[crewId] = value;
+    }
+
+    /* TWO PEOPLE: the other box takes the rest, so the pair always adds up. */
+    if (crewIds.length === 2) {
+      const other = crewIds.find((crewId) => crewId !== id);
+      if (other) next[other] = round2(100 - next[id]);
+    }
+
+    setDrafts(
+      Object.fromEntries(crewIds.map((crewId) => [crewId, asText(next[crewId])])),
+    );
+
+    const total = round2(Object.values(next).reduce((sum, value) => sum + value, 0));
+
+    if (total !== 100) {
+      setSplitError(`Total bagian ${asText(total)}% — harus 100%.`);
+      return;
+    }
+
+    setSplitError(null);
+
+    if (crewIds.every((crewId) => next[crewId] === saved[crewId])) return;
+
+    void save({
+      sessionId: session.sessionId,
+      groomerUserIds: crewIds,
+      groomerShares: next,
+    });
+  }
 
   /*
     ─── A FINISHED TURN IS READ-ONLY ──────────────────────────────────────────
@@ -122,80 +233,138 @@ export function SessionCrew({
   const crewWithout = (id: string) =>
     session.groomers.filter((who) => who._id !== id).map((who) => who._id);
 
+  /* ONE ROW PER PERSON — editable, or the same facts read-only. */
+  const rows = (editable: boolean) =>
+    session.groomers.length === 0 ? (
+      <p className="text-xs text-muted">
+        Belum ditentukan — sesi ini belum bisa dimulai.
+      </p>
+    ) : (
+      <ul className="flex flex-col gap-2">
+        {session.groomers.map((who) => (
+          <li
+            key={who._id}
+            className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-surface-hover px-4 py-2"
+          >
+            <p className="min-w-0 flex-1 text-sm">
+              <span className="font-semibold text-foreground">{who.name}</span>
+              {who.level && (
+                <span className="text-muted">
+                  {" "}
+                  · {GROOMER_LEVEL_LABELS[who.level]}
+                </span>
+              )}
+              {/* THE LEAVE WARNING TRAVELS WITH THE PERSON: two people on one
+                  turn can be off on different days. */}
+              {who.offReason && (
+                <span className="ml-1 text-xs font-semibold text-danger">
+                  ({who.offReason.toLowerCase()})
+                </span>
+              )}
+            </p>
+
+            {editable ? (
+              <label className="flex items-center gap-2 text-sm text-muted">
+                <Input
+                  value={drafts[who._id] ?? ""}
+                  onChange={(event) =>
+                    setDrafts((prev) => ({
+                      ...prev,
+                      [who._id]: event.target.value,
+                    }))
+                  }
+                  onBlur={() => commit(who._id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      commit(who._id);
+                    }
+                  }}
+                  inputMode="decimal"
+                  aria-label={`Bagian komisi ${who.name} di ${session.sessionName} (persen)`}
+                  /* One person earns the whole turn — nothing to split. */
+                  disabled={busy || crewIds.length < 2}
+                  className="h-9 w-20 bg-surface text-right tabular-nums"
+                />
+                %
+              </label>
+            ) : (
+              <span className="text-sm tabular-nums text-muted">
+                {asText(saved[who._id])} %
+              </span>
+            )}
+
+            {editable && (
+              <button
+                type="button"
+                aria-label={`Hapus ${who.name} dari ${session.sessionName}`}
+                className="flex size-9 items-center justify-center rounded-full text-muted transition hover:bg-surface hover:text-danger focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                disabled={busy}
+                onClick={() =>
+                  void save({
+                    sessionId: session.sessionId,
+                    groomerUserIds: crewWithout(who._id),
+                  })
+                }
+              >
+                <X className="size-4" aria-hidden />
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    );
+
   return (
     <div className="flex flex-col gap-2">
       {error && <Alert variant="error">{error}</Alert>}
 
-      <Can
-        feature="bookings"
-        action="update"
-        fallback={
-          <p className="text-sm text-muted">
-            <UserRound className="mr-1 inline size-4" aria-hidden />
-            {session.groomers.map((who) => who.name).join(" + ") ||
-              "Belum ditentukan"}
+      <Can feature="bookings" action="update" fallback={rows(false)}>
+        {rows(!settled)}
+
+        {splitError && (
+          <p role="alert" className="text-sm font-semibold text-danger">
+            {splitError}
           </p>
-        }
-      >
-        {session.groomers.length === 0 ? (
-          <p className="text-xs text-muted">
-            Belum ditentukan — sesi ini belum bisa dimulai.
-          </p>
-        ) : (
-          <ul className="flex flex-wrap gap-2">
-            {session.groomers.map((who) => (
-              <li
-                key={who._id}
-                className="flex items-center gap-1.5 rounded-full bg-surface-hover px-3 py-1.5 text-sm"
-              >
-                {who.name}
-                {/* THE LEAVE WARNING TRAVELS WITH THE PERSON: two people on one
-                    turn can be off on different days. */}
-                {who.offReason && (
-                  <span className="text-xs font-semibold text-danger">
-                    ({who.offReason.toLowerCase()})
-                  </span>
-                )}
-                {!settled && (
-                  <button
-                    type="button"
-                    aria-label={`Hapus ${who.name} dari ${session.sessionName}`}
-                    className="rounded-full p-0.5 text-muted transition hover:text-danger focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                    disabled={busy}
-                    onClick={() =>
-                      void save({
-                        sessionId: session.sessionId,
-                        groomerUserIds: crewWithout(who._id),
-                      })
-                    }
-                  >
-                    <X className="size-3.5" aria-hidden />
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
         )}
 
+        {/*
+          ADDING SOMEBODY IS ONE PICK, and the list resets to its placeholder so
+          the next pick is another person. The server splits the new crew evenly.
+        */}
         {!settled &&
           session.groomers.length < MAX_GROOMERS &&
           free.length > 0 && (
-            <SelectField
-              label="Tambah groomer"
-              value={PICK}
-              onChange={(value) =>
-                value !== PICK &&
+            <Select
+              value=""
+              onValueChange={(value) =>
+                value &&
                 void save({
                   sessionId: session.sessionId,
-                  groomerUserIds: [
-                    ...session.groomers.map((who) => who._id),
-                    value,
-                  ],
+                  groomerUserIds: [...crewIds, value],
                 })
               }
-              options={[{ value: PICK, label: "Pilih orangnya…" }, ...free]}
               disabled={busy}
-            />
+            >
+              <SelectTrigger
+                size="lg"
+                aria-label={`Tambah groomer ke ${session.sessionName}`}
+                className="w-full"
+              >
+                <SelectValue placeholder="+ Tambah groomer…" />
+              </SelectTrigger>
+              <SelectContent>
+                {free.map((option) => (
+                  <SelectItem
+                    key={option.value}
+                    value={option.value}
+                    disabled={option.disabled}
+                  >
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
       </Can>
     </div>

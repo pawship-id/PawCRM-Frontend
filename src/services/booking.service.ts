@@ -141,18 +141,27 @@ export const bookingService = {
    * booking has exactly one main service, so adding a turn names nothing but
    * the turn:
    *   { sessionName?, groomerUserIds? }   add a turn (no `sessionId`)
-   *   { sessionId, groomerUserIds }       set who is on it
+   *   { sessionId, groomerUserIds, groomerShares? }   set who is on it
    *   { sessionId, remove: true }         take the turn off
    *
    * ⚠️ THE CREW IS SENT WHOLESALE, never as a delta. The screen edits it as a
    * list — a groomer is picked or unpicked from a set — and add/remove verbs
    * would leave a moment where a running turn has nobody on it.
+   *
+   * `groomerShares` IS EACH PERSON'S PART OF THE TURN'S COMMISSION, keyed by
+   * user id. It must name exactly the crew and add up to 100, or the server
+   * answers 400. Left out, the server splits the turn evenly — which is what a
+   * crew change should do.
    */
   setSessionCrew: (
     bookingId: string,
     patch:
       | { sessionName?: string; groomerUserIds?: string[] }
-      | { sessionId: string; groomerUserIds: string[] }
+      | {
+          sessionId: string;
+          groomerUserIds: string[];
+          groomerShares?: Record<string, number> | null;
+        }
       | { sessionId: string; remove: true },
   ) => apiClient.patch<Booking>(`/bookings/${bookingId}/sessions`, patch),
 

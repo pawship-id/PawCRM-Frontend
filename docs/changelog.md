@@ -7,6 +7,30 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Kru sesi: persen komisi dan level groomer
+
+14 September 2026, atas permintaan.
+
+**Kontrol groomer di tiap sesi booking dibentuk ulang** (`SessionCrew`). Tiap
+orang tampil sebagai satu baris: "Sinta · Senior", kotak persen bagian komisinya,
+lalu tombol ×. Di bawah daftar ada pilihan "+ Tambah groomer…" tanpa label
+terpisah.
+
+- **Menyimpan persen:** tersimpan saat kotak ditinggalkan atau Enter ditekan.
+  Koma desimal diterima.
+- **Dua orang:** kotak yang satunya otomatis diisi sisanya.
+- **Tiga orang atau lebih:** total harus 100 dulu. Kalau belum, muncul "Total
+  bagian …% — harus 100%." dan tidak ada yang dikirim.
+- **Satu orang:** kotaknya nonaktif karena tidak ada yang dibagi.
+- **Sesi selesai, atau tanpa izin ubah:** persen hanya ditampilkan sebagai teks.
+- **Kru berubah:** menambah atau menghapus orang membuat server membagi rata lagi.
+
+**Level groomer** (`User.groomerLevel`: Junior / Senior) bisa diatur di bagian
+Roster pengguna, dan hanya muncul kalau "Groomer" dicentang. Label yang sama
+dipakai di baris kru dan di pilihan groomer. Copy tombol tambah memakai Bahasa
+("+ Tambah groomer…"), bukan "Assign groomer" seperti di mockup, sesuai ui-rules
+§12.
+
 ## [Unreleased] — Booking: satu hewan, satu layanan utama
 
 14 September 2026, atas permintaan. Kontraknya ada di

@@ -159,8 +159,47 @@ describe("RosterSection", () => {
     await waitFor(() => expect(users.update).toHaveBeenCalled());
     expect(users.update.mock.calls[0][1]).toEqual({
       isGroomer: false,
+      groomerLevel: null,
       availability: { weeklyOff: [], leaveDates: [] },
     });
+  });
+
+  /*
+    ─── THE LEVEL — the label beside a groomer's name on a booking's crew ───────
+
+    Offered only for a groomer, and sent back as it was so a save of the
+    schedule does not wipe it.
+  */
+  it("offers a level only for somebody ticked as a groomer", async () => {
+    renderWithAuth(<RosterSection user={user()} onUpdated={jest.fn()} />);
+
+    expect(
+      screen.queryByRole("combobox", { name: "Level groomer" }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByLabelText("Groomer"));
+
+    expect(
+      screen.getByRole("combobox", { name: "Level groomer" }),
+    ).toBeInTheDocument();
+  });
+
+  it("sends a stored level back on save", async () => {
+    renderWithAuth(
+      <RosterSection
+        user={user({ isGroomer: true, groomerLevel: "senior" })}
+        onUpdated={jest.fn()}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /simpan jadwal/i }),
+    );
+
+    await waitFor(() => expect(users.update).toHaveBeenCalled());
+    expect(users.update.mock.calls[0][1]).toEqual(
+      expect.objectContaining({ isGroomer: true, groomerLevel: "senior" }),
+    );
   });
 
   it("says where commission is set now, and offers no control for it", () => {

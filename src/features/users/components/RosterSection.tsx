@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 
-import { Alert, TextField } from "@/components";
+import { Alert, SelectField, TextField } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -11,7 +11,16 @@ import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
 import { userService } from "@/services/user.service";
 import { swalToast } from "@/lib/swal";
-import type { AffectedBooking, User } from "@/types/api";
+import {
+  GROOMER_LEVEL_LABELS,
+  GROOMER_LEVELS,
+  type AffectedBooking,
+  type GroomerLevel,
+  type User,
+} from "@/types/api";
+
+/** "No level yet" as a real option value — Radix refuses `""` on an item. */
+const NO_LEVEL = "tanpa-level";
 
 /**
  * JAVASCRIPT'S DAY NUMBERING — 0 is Sunday, 3 is Wednesday.
@@ -119,6 +128,10 @@ export function RosterSection({
     two groomers picked from ten names.
   */
   const [isGroomer, setIsGroomer] = useState(user.isGroomer === true);
+  /* The label beside the name on a booking's crew — "Sinta · Senior". */
+  const [groomerLevel, setGroomerLevel] = useState<GroomerLevel | null>(
+    user.groomerLevel ?? null,
+  );
 
   const [weeklyOff, setWeeklyOff] = useState<number[]>(
     user.availability?.weeklyOff ?? [],
@@ -254,6 +267,7 @@ export function RosterSection({
           stored one back would keep alive a number that means nothing.
         */
         isGroomer,
+        groomerLevel,
         availability: { weeklyOff, leaveDates },
       });
 
@@ -304,6 +318,31 @@ export function RosterSection({
           Komisi diatur untuk seluruh toko di Layanan › Grooming › Pengaturan.
         </p>
       </div>
+
+      {/*
+        ONLY FOR A GROOMER — it is the label beside their name when they are put
+        on a booking's session. Kept when the box is unticked, so ticking it
+        back does not lose it.
+      */}
+      {isGroomer && (
+        <SelectField
+          label="Level groomer"
+          value={groomerLevel ?? NO_LEVEL}
+          onChange={(value) =>
+            setGroomerLevel(value === NO_LEVEL ? null : (value as GroomerLevel))
+          }
+          options={[
+            { value: NO_LEVEL, label: "Belum diatur" },
+            ...GROOMER_LEVELS.map((level) => ({
+              value: level,
+              label: GROOMER_LEVEL_LABELS[level],
+            })),
+          ]}
+          hint="Tampil di samping nama saat groomer ditugaskan ke sesi booking."
+          disabled={saving}
+          className="max-w-xs"
+        />
+      )}
 
       <div className="flex flex-col gap-2">
         <Label>Libur mingguan</Label>
