@@ -28,7 +28,7 @@ import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
 import { petService } from "@/services/pet.service";
-import { formatMoney } from "@/utils/decimal";
+import { formatMoney, subtractDecimals } from "@/utils/decimal";
 import { AXIS_LABEL, priceForPet } from "@/utils/serviceVariant";
 import type {
   Booking,
@@ -1189,66 +1189,62 @@ export function InvoiceCreateForm() {
               </div>
             </>
           )}
-        </div>
-      </Card>
 
-      <Card
-        title="Rekap"
-        description="Dihitung di layar dengan urutan yang sama seperti di server. Angka finalnya ditetapkan saat faktur disimpan."
-      >
-        <div className="flex flex-col gap-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <span className="text-sm font-medium">Diskon faktur</span>
-              <div className="mt-1.5 flex gap-1">
-                <select
-                  aria-label="Jenis diskon faktur"
-                  className="h-11 rounded-md border border-border bg-surface px-2 text-sm"
-                  value={invoiceDiscountMode}
-                  onChange={(event) =>
-                    setInvoiceDiscountMode(
-                      event.target.value as InvoiceDiscountMode,
-                    )
-                  }
-                  disabled={saving}
-                >
-                  <option value="percent">%</option>
-                  <option value="amount">Rp</option>
-                </select>
-                <Input
-                  aria-label="Diskon faktur"
-                  className="h-11"
-                  value={invoiceDiscountValue}
-                  inputMode="decimal"
-                  placeholder="0"
-                  onChange={(event) =>
-                    setInvoiceDiscountValue(event.target.value)
-                  }
-                  disabled={saving}
-                />
-              </div>
-              <p className="mt-1.5 text-xs text-muted">
-                Dihitung dari subtotal <strong>setelah</strong> diskon baris.
-              </p>
-            </div>
+          {/*
+            THE RECAP, UNDER THE ROWS IT ADDS UP — no card of its own since 14
+            September 2026, on request and matching the BO mockup (ui-rules §16).
+            Right-aligned, the way the detail page draws its own.
 
-            <dl className="flex flex-col gap-2 text-sm">
-              <div className="flex justify-between">
+            ALWAYS SHOWN, even before the first row: pulled bookings count
+            toward it, and the sentence under it says how the prices were set.
+          */}
+          <div className="flex flex-col gap-3 border-t border-border pt-4">
+            <dl className="flex w-full flex-col gap-2 self-end text-sm sm:w-96">
+              <div className="flex justify-between gap-4">
                 <dt className="text-muted">Subtotal</dt>
                 <dd className="tabular-nums">
                   {formatMoney(preview.subtotal)}
                 </dd>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between gap-4">
                 <dt className="text-muted">Diskon baris</dt>
                 <dd className="tabular-nums">
                   −{formatMoney(preview.itemDiscount)}
                 </dd>
               </div>
-              <div className="flex justify-between">
+              {/* TYPED IN ITS OWN ROW, as the mockup draws it. What it comes
+                  to shows in the Total below — no line of its own under the
+                  field (removed 14 Sep 2026 on request). */}
+              <div className="flex items-center justify-between gap-4">
                 <dt className="text-muted">Diskon faktur</dt>
-                <dd className="tabular-nums">
-                  −{formatMoney(preview.invoiceDiscount)}
+                <dd>
+                  <div className="flex gap-1">
+                    <select
+                      aria-label="Jenis diskon faktur"
+                      className="h-9 rounded-md border border-border bg-surface px-2 text-sm"
+                      value={invoiceDiscountMode}
+                      onChange={(event) =>
+                        setInvoiceDiscountMode(
+                          event.target.value as InvoiceDiscountMode,
+                        )
+                      }
+                      disabled={saving}
+                    >
+                      <option value="percent">%</option>
+                      <option value="amount">Rp</option>
+                    </select>
+                    <Input
+                      aria-label="Diskon faktur"
+                      className="h-9 w-28 text-right tabular-nums"
+                      value={invoiceDiscountValue}
+                      inputMode="decimal"
+                      placeholder="0"
+                      onChange={(event) =>
+                        setInvoiceDiscountValue(event.target.value)
+                      }
+                      disabled={saving}
+                    />
+                  </div>
                 </dd>
               </div>
               {/*
@@ -1262,15 +1258,31 @@ export function InvoiceCreateForm() {
                 is already inside the subtotal; a row reading "PPN Rp 0" there
                 would deny a tax that was charged.
               */}
+              {/*
+                AND IT STANDS ON ITS BASE (14 September 2026, the BO mockup):
+                Dasar pengenaan pajak directly above, under a dashed rule, so the
+                PPN can be checked against what it was charged on. Where tax is
+                added on top the base is exactly the total less that tax.
+              */}
               {preview.taxAdded !== "0.0000" && (
-                <div className="flex justify-between">
-                  {/* One template string, not `PPN {rate}%` — interpolation
-                      splits it into three text nodes, which a screen reader
-                      announces in pieces and a query cannot match as a label. */}
-                  <dt className="text-muted">{`PPN ${lookups.tax.taxRate}%`}</dt>
-                  <dd className="tabular-nums">
-                    {formatMoney(preview.taxAdded)}
-                  </dd>
+                <div className="flex flex-col gap-2 border-t border-dashed border-border pt-2">
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted">Dasar pengenaan pajak</dt>
+                    <dd className="tabular-nums">
+                      {formatMoney(
+                        subtractDecimals(preview.grandTotal, preview.taxAdded),
+                      )}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    {/* One template string, not `PPN {rate}%` — interpolation
+                        splits it into three text nodes, which a screen reader
+                        announces in pieces and a query cannot match as a label. */}
+                    <dt className="text-muted">{`PPN ${lookups.tax.taxRate}%`}</dt>
+                    <dd className="tabular-nums">
+                      {formatMoney(preview.taxAdded)}
+                    </dd>
+                  </div>
                 </div>
               )}
 
@@ -1281,13 +1293,17 @@ export function InvoiceCreateForm() {
                 </dd>
               </div>
             </dl>
-          </div>
 
-          <p className="text-xs text-muted">
-            {lookups.tax.priceIncludesTax
-              ? "Harga katalog sudah termasuk PPN — rincian DPP dan PPN muncul di faktur setelah disimpan."
-              : "Rincian DPP-nya muncul di faktur setelah disimpan."}
-          </p>
+            {/* What the removed card's description said, kept with the figures
+                it is about. One template string, so it reads as one sentence. */}
+            <p className="text-xs text-muted">
+              {`Dihitung di layar dengan urutan yang sama seperti di server; angka finalnya ditetapkan saat faktur disimpan. ${
+                lookups.tax.priceIncludesTax
+                  ? "Harga katalog sudah termasuk PPN — rincian DPP dan PPN muncul di faktur setelah disimpan."
+                  : "Rincian DPP-nya muncul di faktur setelah disimpan."
+              }`}
+            </p>
+          </div>
         </div>
       </Card>
     </form>

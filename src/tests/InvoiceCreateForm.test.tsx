@@ -1434,12 +1434,39 @@ describe("what the form shows", () => {
     — it is simply inside the subtotal already — so a row reading "PPN Rp 0"
     would deny a tax that was charged.
   */
+  /*
+    A PPN ROW STANDS ON ITS BASE (14 September 2026, the BO mockup): Dasar
+    pengenaan pajak directly above it, after both discounts, so the tax can be
+    checked against what it was charged on.
+  */
+  it("shows the base the added tax was charged on, after the discounts", async () => {
+    jest.spyOn(tenantService, "me").mockResolvedValue({
+      settings: { taxRate: 11, priceIncludesTax: false },
+    } as never);
+
+    render(<InvoiceCreateForm />);
+    await fillMinimal();
+    await userEvent.type(screen.getByLabelText(/^Diskon Kalung Nylon$/i), "10");
+
+    const recap = screen.getByText(/^Total tagihan$/i).closest("dl")!;
+    // 100.000 − 10% = 90.000 taxed; 11% of it is 9.900.
+    const base = within(recap)
+      .getByText("Dasar pengenaan pajak")
+      .closest("div")!;
+    expect(within(base).getByText("Rp 90.000")).toBeInTheDocument();
+    expect(within(recap).getByText("Rp 9.900")).toBeInTheDocument();
+    expect(within(recap).getByText("Rp 99.900")).toBeInTheDocument();
+  });
+
   it("shows no tax row when the price already includes it", async () => {
     render(<InvoiceCreateForm />);
     await fillMinimal();
 
     const recap = screen.getByText(/^Total tagihan$/i).closest("dl")!;
     expect(within(recap).queryByText(/^PPN/)).not.toBeInTheDocument();
+    expect(
+      within(recap).queryByText("Dasar pengenaan pajak"),
+    ).not.toBeInTheDocument();
   });
 });
 
