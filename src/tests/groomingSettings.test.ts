@@ -1,6 +1,7 @@
 import {
   capacityRows,
   changedOverrides,
+  commissionSizes,
   DEFAULT_GROOMING_SETTINGS,
   draftToSettings,
   exampleCommission,
@@ -10,6 +11,7 @@ import {
   parsePercent,
   parseRupiah,
   percentOf,
+  RUPIAH_ERROR,
   teamLoad,
   toDraft,
   validateDraft,
@@ -18,11 +20,33 @@ import {
 } from "@/features/grooming/settings";
 import type { GroomerCapacityDay, GroomingSettings } from "@/types/api";
 
+import { makePetOption, PET_OPTION_FIXTURES } from "./helpers/petOptions";
+
 /**
  * Grooming › Pengaturan saves a WHOLE settings object and one PATCH per changed
  * groomer, and draws a worked example of the rule — so the defaults, the
  * rounding and the save plan are the parts worth pinning down.
+ *
+ * Sizes are the tenant's since 14 September 2026, so every function that lays
+ * something out per size is handed the list, built here from the seeded
+ * options the way the screen builds it from `usePetOptions()`.
  */
+
+/** Kecil, Sedang, Besar — what every tenant is seeded with, in order. */
+const SEEDED_SIZES = PET_OPTION_FIXTURES.filter((option) => option.type === "size");
+
+/** A size a shop added itself, after the seeded three. */
+const XL = makePetOption({
+  type: "size",
+  code: "xl",
+  label: "Ekstra besar",
+  sortOrder: 3,
+});
+
+const SIZES = commissionSizes(SEEDED_SIZES, {});
+const SIZES_WITH_XL = commissionSizes([...SEEDED_SIZES, XL], {});
+
+const PRICED = { small: 30000, medium: 45000, large: 60000 };
 
 function settings(
   change: (draft: GroomingSettings) => void = () => {},
@@ -81,7 +105,7 @@ describe("withGroomingDefaults", () => {
         service: {
           mode: "percentage",
           percent: 0,
-          sizeNominal: { small: 0, medium: 0, large: 0 },
+          sizeNominal: {},
         },
         addon: { enabled: false, mode: "percentage", percent: 0, fixed: 0 },
         travel: { enabled: false, mode: "percentage", percent: 0, fixed: 0 },
@@ -102,7 +126,7 @@ describe("withGroomingDefaults", () => {
     expect(merged.commission.service).toEqual({
       mode: "size_nominal",
       percent: 0,
-      sizeNominal: { small: 0, medium: 40000, large: 0 },
+      sizeNominal: { medium: 40000 },
     });
     expect(merged.commission.addon).toEqual({
       enabled: true,
@@ -111,6 +135,43 @@ describe("withGroomingDefaults", () => {
       fixed: 5000,
     });
     expect(merged.capacity).toEqual({ defaultMinutes: 420, overLimit: "warn" });
+  });
+
+  it("keeps a stored nominal whatever its size code, and drops what is not a number", () => {
+    const merged = withGroomingDefaults({
+      commission: {
+        service: { sizeNominal: { xl: 55000, jumbo: 80000, medium: "40000" } },
+      },
+    });
+
+    expect(merged.commission.service.sizeNominal).toEqual({ xl: 55000, jumbo: 80000 });
+  });
+});
+
+describe("commissionSizes", () => {
+  it("draws every active size in the tenant's order, a size the shop added included", () => {
+    expect(SIZES_WITH_XL).toEqual([
+      { code: "small", label: "Kecil", retired: false },
+      { code: "medium", label: "Sedang", retired: false },
+      { code: "large", label: "Besar", retired: false },
+      { code: "xl", label: "Ekstra besar", retired: false },
+    ]);
+  });
+
+  it("shows a retired size only while a nominal is stored for it", () => {
+    const options = SEEDED_SIZES.map((option) =>
+      option.code === "large" ? { ...option, isActive: false } : option,
+    );
+
+    expect(commissionSizes(options, PRICED)).toContainEqual({
+      code: "large",
+      label: "Besar",
+      retired: true,
+    });
+    expect(commissionSizes(options, { small: 30000 }).map((size) => size.code)).toEqual([
+      "small",
+      "medium",
+    ]);
   });
 });
 
@@ -144,6 +205,7 @@ describe("exampleCommission", () => {
       settings((s) => {
         s.commission.service.percent = 20;
       }),
+      SIZES,
     );
 
     expect(result.service.amount).toBe(49_800);
@@ -158,15 +220,33 @@ describe("exampleCommission", () => {
     expect(percentOf(70_000, 12.5)).toBe(8_750);
   });
 
-  it("reads the Medium nominal when commission is per size", () => {
+  it("reads the middle active size's nominal when commission is per size", () => {
+    const perSize = settings((s) => {
+      s.commission.service.mode = "size_nominal";
+      s.commission.service.sizeNominal = { ...PRICED, xl: 75000 };
+    });
+
+    const result = exampleCommission(perSize, SIZES);
+    expect(result.size).toEqual({ code: "medium", label: "Sedang", retired: false });
+    expect(result.service).toEqual({ amount: 45_000, basis: "nominal Sedang" });
+
+    // Adding a size at the end does not change the example's animal.
+    expect(exampleCommission(perSize, SIZES_WITH_XL).service).toEqual({
+      amount: 45_000,
+      basis: "nominal Sedang",
+    });
+  });
+
+  it("says the example's size is not priced yet rather than counting Rp 0", () => {
     const result = exampleCommission(
       settings((s) => {
         s.commission.service.mode = "size_nominal";
-        s.commission.service.sizeNominal = { small: 30000, medium: 45000, large: 60000 };
       }),
+      SIZES,
     );
 
-    expect(result.service).toEqual({ amount: 45_000, basis: "nominal Sedang" });
+    expect(result.service).toEqual({ amount: null, basis: "nominal Sedang belum diisi" });
+    expect(result.total).toBe(0);
   });
 
   it("adds the add-on, and shows travel without counting it", () => {
@@ -176,6 +256,7 @@ describe("exampleCommission", () => {
         s.commission.addon = { enabled: true, mode: "fixed", percent: 0, fixed: 10_000 };
         s.commission.travel = { enabled: true, mode: "percentage", percent: 10, fixed: 0 };
       }),
+      SIZES,
     );
 
     expect(result.addon).toEqual({ amount: 10_000, basis: "nominal tetap per add-on" });
@@ -211,15 +292,34 @@ describe("the draft", () => {
     expect(isDraftDirty(draft, draftOf(), day)).toBe(true);
   });
 
+  it("treats a new size's box typed into and cleared again as no change — and an emptied stored one as a change", () => {
+    const base = settings((s) => {
+      s.commission.service.sizeNominal = { ...PRICED };
+    });
+
+    const retyped = draftOf(base, (d) => {
+      d.service.sizeNominal.xl = "";
+    });
+    expect(isDraftDirty(retyped, draftOf(base), day)).toBe(false);
+
+    const emptied = draftOf(base, (d) => {
+      d.service.sizeNominal.small = "";
+    });
+    expect(isDraftDirty(emptied, draftOf(base), day)).toBe(true);
+  });
+
   it("checks only the boxes on screen", () => {
-    const draft = draftOf(settings(), (d) => {
+    const base = settings((s) => {
+      s.commission.service.sizeNominal = { ...PRICED };
+    });
+    const draft = draftOf(base, (d) => {
       d.service.mode = "size_nominal";
       d.service.percent = "abc";
       d.addon = { enabled: false, mode: "fixed", percent: "x", fixed: "y" };
       d.overrides["u-sinta"] = "";
     });
 
-    expect(validateDraft(draft)).toEqual({ "override.u-sinta": expect.any(String) });
+    expect(validateDraft(draft, SIZES)).toEqual({ "override.u-sinta": expect.any(String) });
   });
 
   it("builds every key, keeping the stored value for an off-screen box that does not parse", () => {
@@ -245,6 +345,61 @@ describe("the draft", () => {
       },
       capacity: { defaultMinutes: 480, overLimit: "block" },
     });
+  });
+});
+
+describe("nominal per size, on the tenant's own sizes", () => {
+  const perSize = settings((s) => {
+    s.commission.service.mode = "size_nominal";
+    s.commission.service.sizeNominal = { ...PRICED };
+  });
+
+  it("holds up the save until a size the shop added is priced — then sends it", () => {
+    const empty = draftOf(perSize);
+    expect(validateDraft(empty, SIZES_WITH_XL)).toEqual({
+      "service.size.xl": RUPIAH_ERROR,
+    });
+
+    const priced = draftOf(perSize, (d) => {
+      d.service.sizeNominal.xl = "55000";
+    });
+    expect(validateDraft(priced, SIZES_WITH_XL)).toEqual({});
+    expect(draftToSettings(priced, perSize).commission.service.sizeNominal).toEqual({
+      ...PRICED,
+      xl: 55000,
+    });
+  });
+
+  it("carries a stored nominal for a size not on screen back unchanged", () => {
+    const base = settings((s) => {
+      s.commission.service.mode = "size_nominal";
+      s.commission.service.sizeNominal = { ...PRICED, jumbo: 80000 };
+    });
+    const draft = draftOf(base, (d) => {
+      d.service.sizeNominal.medium = "50000";
+    });
+
+    // "jumbo" is not one of the tenant's sizes, so it is not a row to check…
+    expect(validateDraft(draft, SIZES)).toEqual({});
+    // …and saving does not delete it.
+    expect(draftToSettings(draft, base).commission.service.sizeNominal).toEqual({
+      small: 30000,
+      medium: 50000,
+      large: 60000,
+      jumbo: 80000,
+    });
+  });
+
+  it("sends no key, not a 0, for a size nobody priced while the rule is a percentage", () => {
+    const base = settings((s) => {
+      s.commission.service.sizeNominal = { ...PRICED };
+    });
+    const draft = draftOf(base, (d) => {
+      d.service.percent = "20";
+    });
+
+    expect(validateDraft(draft, SIZES_WITH_XL)).toEqual({});
+    expect(draftToSettings(draft, base).commission.service.sizeNominal).toEqual(PRICED);
   });
 });
 

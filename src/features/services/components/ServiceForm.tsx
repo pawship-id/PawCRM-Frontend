@@ -34,9 +34,9 @@ import type {
 } from "@/types/api";
 import type { MediaAsset } from "@/types/inventory";
 
+import { useVariantAxisValues } from "../hooks/useVariantAxisValues";
+import { buildVariantCombos, comboKey, MAX_VARIANTS } from "../variantAxes";
 import {
-  buildVariantCombos,
-  comboKey,
   LOCATION_LABELS,
   ServiceAddonPicker,
   ServiceBranchScope,
@@ -146,6 +146,18 @@ function durationProblem(value: string): string | null {
  * variant row carries its minutes beside its price, and its own Aktif — a
  * variant switched off stays in the grid but cannot be chosen at booking or at
  * the till.
+ *
+ * ─── THE ROWS COME FROM THE TENANT'S PET OPTIONS (14 September 2026) ───────
+ *
+ * Which species, sizes and coats a price splits by is the shop's own list now,
+ * not three constants beside the form. Two consequences are handled here:
+ *
+ *  - A VALUE THIS SERVICE PRICES STAYS A ROW after its option is retired or
+ *    deleted — marked "(nonaktif)" — because dropping the row would drop its
+ *    price on the next save. The server accepts it for the same reason.
+ *  - THE GRID CAN OUTGROW THE SERVER. Four species, five sizes and three coats
+ *    is sixty rows against a MAX_VARIANTS of twenty. Simpan says so and stays
+ *    off until an axis is unticked, rather than sending a save to be refused.
  */
 export function ServiceForm({ serviceId }: { serviceId?: string }) {
   const editing = serviceId !== undefined;
@@ -216,10 +228,35 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const combos = useMemo(
-    () => buildVariantCombos(variantAxes),
-    [variantAxes],
+  /*
+    BUILT FROM THE STORED VARIANTS, not the typed ones: a retired value is kept
+    because the record holds it, not because somebody filled in its box. On a
+    create there is no record, so only active options are offered.
+  */
+  const { valuesFor, loading: axisValuesLoading } = useVariantAxisValues();
+  const axisValues = useMemo(
+    () => valuesFor(service?.variants),
+    [valuesFor, service],
   );
+  const combos = useMemo(
+    () => buildVariantCombos(variantAxes, axisValues),
+    [variantAxes, axisValues],
+  );
+
+  /*
+    WHY SIMPAN IS OFF BEFORE ANYBODY PRESSES IT — the two variant-grid reasons
+    no amount of typing fixes. Rows generated from a list still loading would be
+    missing the values yet to arrive, and more than MAX_VARIANTS rows is a save
+    the server refuses whole.
+  */
+  const variantBlock =
+    !hasVariants || variantAxes.length === 0
+      ? null
+      : axisValuesLoading
+        ? "jenis hewan, ukuran, dan bulu masih dimuat"
+        : combos.length > MAX_VARIANTS
+          ? `${combos.length} varian, maksimal ${MAX_VARIANTS} per layanan`
+          : null;
 
   useEffect(() => {
     let active = true;
@@ -422,7 +459,8 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    if (saving) return;
+    // Enter in a price box submits too; the bar's reason is already on screen.
+    if (saving || variantBlock) return;
 
     const trimmedName = name.trim();
     const trimmedPrice = price.trim();
@@ -696,6 +734,8 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
         meta={editing ? (service?.name ?? undefined) : undefined}
         submitLabel={editing ? "Simpan layanan" : "Buat layanan"}
         submitting={saving}
+        disabled={variantBlock !== null}
+        blockedReason={variantBlock}
         onCancel={goBack}
       />
 
@@ -839,6 +879,7 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
               durations={variantDurations}
               active={variantActive}
               combos={combos}
+              loading={axisValuesLoading}
               error={variantError ?? undefined}
               disabled={saving}
               onToggleAxis={toggleAxis}

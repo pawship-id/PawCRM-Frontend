@@ -22,6 +22,7 @@ import {
   serviceDurationBounds,
   ServiceLifecycleDialog,
   type ServiceLifecycleAction,
+  useVariantAxisValues,
 } from "@/features/services";
 import { cn } from "@/lib/utils";
 
@@ -99,6 +100,8 @@ export function GroomingServicesScreen() {
   const lineId = line.line?._id ?? null;
   const { services, pagination, query, setQuery, refetch, loading, error } =
     useGroomingServices(lineId);
+  // Per row, over that row's own variants — see variantRows.
+  const { valuesFor } = useVariantAxisValues();
 
   const [period, setPeriod] = useState<GroomingPeriod>("month");
   const [custom, setCustom] = useState<DateRange>({ from: "", to: "" });
@@ -263,7 +266,10 @@ export function GroomingServicesScreen() {
                   const href = groomingServicePath(service._id);
                   const deleted = service.deletedAt !== null;
                   const place = placeOf(service.serviceLocations);
-                  const counts = variantCounts(service);
+                  const counts = variantCounts(
+                    service,
+                    valuesFor(service.variants),
+                  );
                   const duration = serviceDurationBounds(service);
                   const sessions = (service.sessions ?? []).length;
                   const status = statusOf(service);

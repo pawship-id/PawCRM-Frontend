@@ -14,14 +14,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PetFixLink, PetSummaryCard } from "@/features/pets";
+import { usePetOptions } from "@/hooks/usePetOptions";
 import { formatMoney } from "@/utils/decimal";
-/* The vocabulary moved to the util when the till became the second screen
-   naming a variant — see VARIANT_VALUE_LABELS there. */
 import {
   AXIS_LABEL,
   priceForPet,
   variantLabelForPet,
-  VARIANT_VALUE_LABELS,
 } from "@/utils/serviceVariant";
 import type { BusinessLine } from "@/services/businessLine.service";
 import type { Pet, Service } from "@/types/api";
@@ -426,12 +424,14 @@ function ServiceLine({
   const [editingDuration, setEditingDuration] = useState(
     line.durationMin !== "",
   );
+  // The tenant's words for the variant — "Anjing · Ekstra besar", as it named them.
+  const { label: petOptionLabel } = usePetOptions();
 
   const service = serviceOf(line.serviceId);
   const locked = line.locked;
   const quote = priceForPet(service, pet);
   const { price, missingAxis } = quote;
-  const variantLabel = variantLabelForPet(service, pet, VARIANT_VALUE_LABELS);
+  const variantLabel = variantLabelForPet(service, pet, petOptionLabel);
   /*
     THE ANIMAL'S VARIANT IS SWITCHED OFF, and this line is new (13 September
     2026). It is not priceable: the server refuses a new line for it, so the

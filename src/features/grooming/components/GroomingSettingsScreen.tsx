@@ -125,9 +125,14 @@ export function GroomingSettingsScreen() {
             >
               Batalkan perubahan
             </Button>
+            {/*
+              NOT WHILE ANYTHING IS STILL LOADING — the size list included. The
+              draft can exist before it does, and a save then has no size rows
+              to check.
+            */}
             <Button
               type="button"
-              disabled={!state.dirty || invalid || state.saving}
+              disabled={!state.dirty || invalid || state.saving || state.loading}
               onClick={() => void state.save()}
             >
               {state.saving && <Spinner size={16} />}
@@ -228,6 +233,9 @@ export function GroomingSettingsScreen() {
               update={state.update}
               disabled={disabled}
               mayOpenCatalog={mayOpenCatalog}
+              sizes={state.sizes}
+              sizesError={state.sizesError}
+              onRetrySizes={state.retrySizes}
             />
           ) : (
             <GroomingCapacitySettings
@@ -247,6 +255,7 @@ export function GroomingSettingsScreen() {
           {tab === "komisi" ? (
             <GroomingCommissionExample
               settings={draftToSettings(draft, settings)}
+              sizes={state.sizes}
             />
           ) : (
             <GroomingTeamLoadPanel

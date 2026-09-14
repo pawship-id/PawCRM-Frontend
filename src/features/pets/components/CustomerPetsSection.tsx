@@ -7,6 +7,7 @@ import { Plus, Pencil } from "lucide-react";
 import { Alert, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
+import { usePetOptions } from "@/hooks/usePetOptions";
 import type { Pet } from "@/types/api";
 
 import { usePets } from "../hooks/usePets";
@@ -35,6 +36,9 @@ import { PetQuickAddDialog } from "./PetQuickAddDialog";
 
 /** One page of pets is what this section shows. See the note below the list. */
 function PetRow({ pet }: { pet: Pet }) {
+  /* The breed is a CODE; the word is the tenant's. */
+  const { label } = usePetOptions();
+
   return (
     <li className="flex items-center gap-3 border-b border-border py-3 last:border-b-0">
       <div className="min-w-0 flex-1">
@@ -47,7 +51,7 @@ function PetRow({ pet }: { pet: Pet }) {
         </div>
         <p className="mt-0.5 truncate text-xs text-muted">
           {[
-            pet.breed,
+            label("breed", pet.breed),
             pet.weightKg === null ? null : `${pet.weightKg} kg`,
           ]
             .filter(Boolean)

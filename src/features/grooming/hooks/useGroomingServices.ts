@@ -18,7 +18,10 @@ export interface GroomingServicesQuery {
   branchId: string;
   /** "" = both. */
   isActive: "" | "true" | "false";
-  /** "" = any animal. */
+  /**
+   * "" = any animal; otherwise a `species` option code. The tenant's own list
+   * since 14 September 2026 — the toolbar reads it from `usePetOptions`.
+   */
   petType: "" | PetSpecies;
   /** "" = anywhere. */
   location: "" | ServiceLocation;

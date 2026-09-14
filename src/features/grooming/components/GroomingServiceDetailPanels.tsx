@@ -11,6 +11,7 @@ import { Can } from "@/features/permissions";
 import {
   serviceDurationBounds,
   servicePriceBounds,
+  useVariantAxisValues,
 } from "@/features/services";
 import { cn } from "@/lib/utils";
 import { formatMoney } from "@/utils/decimal";
@@ -149,12 +150,14 @@ export function ServiceSummaryPanel({
   busy: boolean;
   onSetActive: (active: boolean) => void;
 }) {
+  const { valuesFor } = useVariantAxisValues();
+  const axisValues = valuesFor(service.variants);
   const bounds = servicePriceBounds(service);
   const duration = serviceDurationBounds(service);
-  const counts = variantCounts(service);
+  const counts = variantCounts(service, axisValues);
   const shares = sessionShares(service);
   const weighted = shares.some((share) => share.weight !== null);
-  const missing = missingPieces(service, addons);
+  const missing = missingPieces(service, addons, axisValues);
 
   const priceCaption = !bounds
     ? service.hasVariants

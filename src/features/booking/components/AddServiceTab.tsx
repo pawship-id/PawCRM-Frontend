@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { PetFixLink, PetQuickAddDialog } from "@/features/pets";
+import { usePetOptions } from "@/hooks/usePetOptions";
 import { petService } from "@/services/pet.service";
 import { serviceService } from "@/services/service.service";
 import { formatMoney, sumDecimals } from "@/utils/decimal";
@@ -92,6 +93,8 @@ export function AddServiceTab({
   const [formError, setFormError] = useState<string | null>(null);
 
   const [petsNonce, setPetsNonce] = useState(0);
+  // Names the variant caption in the tenant's words.
+  const { label: petOptionLabel } = usePetOptions();
 
   useEffect(() => {
     let active = true;
@@ -248,6 +251,7 @@ export function AddServiceTab({
     ? variantLabelForPet(
         services.find((service) => service.hasVariants) ?? null,
         activePet,
+        petOptionLabel,
       )
     : null;
 

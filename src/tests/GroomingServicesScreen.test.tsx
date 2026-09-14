@@ -9,9 +9,15 @@ import {
   businessLineService,
   type BusinessLine,
 } from "@/services/businessLine.service";
+import { petOptionService } from "@/services/petOption.service";
 import { serviceService } from "@/services/service.service";
 import type { Branch, PageResult, Service } from "@/types/api";
 
+import {
+  makePetOption,
+  PET_OPTION_FIXTURES,
+  primePetOptions,
+} from "./helpers/petOptions";
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
 jest.mock("next/navigation", () => ({
@@ -30,6 +36,8 @@ jest.mock("@/services/booking.service");
 jest.mock("@/services/branch.service");
 jest.mock("@/services/businessLine.service");
 jest.mock("@/services/service.service");
+// Jenis hewan lists the tenant's species; Varian counts over its sizes and coats.
+jest.mock("@/services/petOption.service");
 
 /**
  * Grooming › Layanan & Harga.
@@ -113,6 +121,7 @@ const DELETED = service({
 });
 
 beforeEach(() => {
+  primePetOptions(petOptionService.list);
   jest.mocked(businessLineService.list).mockResolvedValue(page([GROOMING]));
   jest
     .mocked(branchService.list)
@@ -368,6 +377,11 @@ describe("GroomingServicesScreen", () => {
 
   it("narrows by cabang, jenis hewan and tempat on Terapkan, and Reset clears them", async () => {
     jest.mocked(serviceService.list).mockResolvedValue(page([EXPRESS]));
+    // A species the tenant added — the list is not a cat and a dog written in.
+    primePetOptions(petOptionService.list, [
+      ...PET_OPTION_FIXTURES,
+      makePetOption({ type: "species", code: "rabbit", label: "Kelinci", sortOrder: 2 }),
+    ]);
 
     renderWithAuth(<GroomingServicesScreen />);
     await screen.findByRole("link", { name: "Express Wash" });
@@ -376,6 +390,7 @@ describe("GroomingServicesScreen", () => {
     await userEvent.click(within(panel).getByLabelText("Cabang"));
     await userEvent.click(await screen.findByRole("option", { name: "Barat" }));
     await userEvent.click(within(panel).getByLabelText("Jenis hewan"));
+    expect(screen.getByRole("option", { name: "Kelinci" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("option", { name: "Kucing" }));
     await userEvent.click(within(panel).getByLabelText("Tempat"));
     await userEvent.click(screen.getByRole("option", { name: "Di rumah" }));

@@ -26,6 +26,7 @@ import type {
   PetSpecies,
 } from "@/types/api";
 
+import { usePetPickers } from "../hooks/usePetPickers";
 import { PetOwnerField } from "./PetOwnerField";
 
 /** Backend caps — NAME_MAX_LENGTH and friends in pet.model.js. */
@@ -38,35 +39,6 @@ const MAX_WEIGHT_KG = 500;
 
 /** Where both verbs return to, and what Batal goes back to. */
 const LIST_PATH = "/dashboard/master/pets";
-
-/**
- * Cat and dog only, for now — PET_SPECIES in pet.model.js. Deliberately not
- * extended in place; a wider set of species becomes a tenant-managed
- * collection later rather than a longer hardcoded array here.
- */
-const SPECIES_OPTIONS: { value: PetSpecies; label: string }[] = [
-  { value: "cat", label: "Kucing" },
-  { value: "dog", label: "Anjing" },
-];
-
-/** PET_BREEDS in pet.model.js. Same "grows into its own collection" caveat. */
-const BREED_OPTIONS: { value: PetBreed; label: string }[] = [
-  { value: "domestic", label: "Domestic" },
-  { value: "poodle", label: "Poodle" },
-];
-
-/** PET_FUR_TYPES in pet.model.js. */
-const FUR_TYPE_OPTIONS: { value: PetFurType; label: string }[] = [
-  { value: "long hair", label: "Berbulu panjang" },
-  { value: "short hair", label: "Berbulu pendek" },
-];
-
-/** PET_SIZES in pet.model.js. */
-const SIZE_OPTIONS: { value: PetSize; label: string }[] = [
-  { value: "small", label: "Kecil" },
-  { value: "medium", label: "Sedang" },
-  { value: "large", label: "Besar" },
-];
 
 const SEX_OPTIONS: { value: PetSex; label: string }[] = [
   { value: "male", label: "Jantan" },
@@ -100,6 +72,23 @@ function todayISO(): string {
  * in the shop's care — offering "register this one and retire it immediately"
  * answers a question nobody asked. Retiring is a decision taken later.
  *
+ * JENIS, RAS, UKURAN AND JENIS BULU ARE THE SHOP'S OWN LISTS. They were four
+ * hardcoded arrays here — cat and dog, domestic and poodle — until 14 September
+ * 2026, when they became tenant data (`petoptions`) a shop adds to, renames and
+ * retires. The pet still stores the CODE; the pickers offer the ACTIVE options,
+ * in the shop's order.
+ *
+ * AN EDIT KEEPS WHAT THE PET ALREADY HOLDS. When the stored value's option has
+ * since been retired or deleted it stays in the picker, marked "(nonaktif)":
+ * the server still accepts a retired value the pet already has, and a select
+ * with no item for its value renders blank and clears it on the next save —
+ * losing a fact nobody chose to change. It is the LOADED pet's value that is
+ * kept, not the field's current one, so switching away and back still works.
+ *
+ * WHILE THE LISTS LOAD only the four pickers wait (disabled, "Memuat…"); the
+ * rest of the form is usable. See `usePetPickers` for why the stored value is
+ * not called retired in that moment.
+ *
  * NO PHOTO FIELD YET, and that is scoped rather than forgotten: the API accepts
  * one and the model stores one. The refactor this was waiting on has since
  * happened — the upload control is now `ImageField` in the shared component
@@ -109,6 +98,11 @@ function todayISO(): string {
 export function PetForm({ petId }: { petId?: string }) {
   const editing = petId !== undefined;
   const router = useRouter();
+  const {
+    pickerOptions,
+    loading: optionsLoading,
+    error: optionsError,
+  } = usePetPickers();
 
   const [pet, setPet] = useState<Pet | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -341,10 +335,12 @@ export function PetForm({ petId }: { petId?: string }) {
                 setSpecies(next as PetSpecies);
                 setSpeciesError(null);
               }}
-              options={SPECIES_OPTIONS}
-              placeholder="Pilih jenis"
+              options={pickerOptions("species", pet?.species)}
+              placeholder={optionsLoading ? "Memuat…" : "Pilih jenis"}
               error={speciesError ?? undefined}
-              disabled={saving}
+              /* One sentence for all four lists — they load together. */
+              hint={optionsError ?? undefined}
+              disabled={saving || optionsLoading}
               required
             />
             <SelectField
@@ -369,9 +365,9 @@ export function PetForm({ petId }: { petId?: string }) {
               label="Ras"
               value={breed}
               onChange={(next) => setBreed(next as PetBreed)}
-              options={BREED_OPTIONS}
-              placeholder="Pilih ras"
-              disabled={saving}
+              options={pickerOptions("breed", pet?.breed)}
+              placeholder={optionsLoading ? "Memuat…" : "Pilih ras"}
+              disabled={saving || optionsLoading}
             />
             <TextField
               label="Warna"
@@ -389,17 +385,17 @@ export function PetForm({ petId }: { petId?: string }) {
               label="Ukuran"
               value={size}
               onChange={(next) => setSize(next as PetSize)}
-              options={SIZE_OPTIONS}
-              placeholder="Pilih ukuran"
-              disabled={saving}
+              options={pickerOptions("size", pet?.size)}
+              placeholder={optionsLoading ? "Memuat…" : "Pilih ukuran"}
+              disabled={saving || optionsLoading}
             />
             <SelectField
               label="Jenis bulu"
               value={furType}
               onChange={(next) => setFurType(next as PetFurType)}
-              options={FUR_TYPE_OPTIONS}
-              placeholder="Pilih jenis bulu"
-              disabled={saving}
+              options={pickerOptions("furType", pet?.furType)}
+              placeholder={optionsLoading ? "Memuat…" : "Pilih jenis bulu"}
+              disabled={saving || optionsLoading}
             />
           </div>
 

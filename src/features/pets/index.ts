@@ -21,13 +21,13 @@ export { PetFixLink } from "./components/PetFixLink";
 /** One customer's animals — rendered by the customers feature's edit screen. */
 export { CustomerPetsSection } from "./components/CustomerPetsSection";
 export { PetCardPrintScreen } from "./components/PetCardPrintScreen";
-export {
-  PetSpeciesBadge,
-  PetStatusBadge,
-  speciesLabel,
-  sizeLabel,
-  furTypeLabel,
-} from "./components/PetBadges";
+/*
+  NO `speciesLabel` / `sizeLabel` / `furTypeLabel` any more. Those words are
+  tenant data now — read them with `usePetOptions().label()` from
+  `@/hooks/usePetOptions`, which every feature can reach without importing this
+  one.
+*/
+export { PetSpeciesBadge, PetStatusBadge } from "./components/PetBadges";
 export { usePets, type PetsQuery } from "./hooks/usePets";
 export { PetSummaryCard } from "./components/PetSummaryCard";
 export { PetProfileScreen } from "./components/PetProfileScreen";

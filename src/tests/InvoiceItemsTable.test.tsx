@@ -1,7 +1,12 @@
 import { render, screen, within } from "@testing-library/react";
 
 import { InvoiceItemsTable } from "@/features/sales/components/InvoiceItemsTable";
+import { petOptionService } from "@/services/petOption.service";
 import type { CustomerInvoiceDetail } from "@/types/api";
+
+/* Mocked only to prove the table never asks for the option list — see the
+   species-word case below. */
+jest.mock("@/services/petOption.service");
 
 /**
  * What was billed, and the arithmetic behind the total.
@@ -558,6 +563,47 @@ describe("the mockup's columns", () => {
     expect(
       screen.getByRole("link", { name: "Booking BK-260906-003 →" }),
     ).toHaveAttribute("href", "/dashboard/booking/bk9");
+  });
+
+  /*
+    SPECIES ARE TENANT DATA since 14 Sep 2026, and the invoice read resolves the
+    word beside the code. The table heads a group with the SERVER'S word — it
+    loads no option list of its own — and falls back to the code only when the
+    server could not resolve one.
+  */
+  it("heads an animal's group with the species word the server resolved", () => {
+    render(
+      <InvoiceItemsTable
+        invoice={invoice({
+          items: [
+            line({
+              kind: "service",
+              name: "Grooming Basic",
+              sku: null,
+              petId: "pet1",
+              petName: "Milo",
+              petSpecies: "kelinci",
+              petSpeciesLabel: "Kelinci",
+            }),
+            line({
+              kind: "service",
+              refId: "s2",
+              name: "Mandi",
+              sku: null,
+              petId: "pet2",
+              petName: "Cici",
+              petSpecies: "musang",
+              petSpeciesLabel: null,
+            }),
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Kelinci")).toBeInTheDocument();
+    expect(screen.queryByText("kelinci")).not.toBeInTheDocument();
+    expect(screen.getByText("musang")).toBeInTheDocument();
+    expect(petOptionService.list).not.toHaveBeenCalled();
   });
 
   it("draws no animal headings on a bill with no animal on it", () => {

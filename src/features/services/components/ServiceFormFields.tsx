@@ -3,19 +3,21 @@
 import { useState } from "react";
 import { Plus, X } from "lucide-react";
 
-import { CheckRow, CheckRowGroup, FIELD_HEIGHT, Spinner } from "@/components";
+import {
+  Alert,
+  CheckRow,
+  CheckRowGroup,
+  FIELD_HEIGHT,
+  Spinner,
+} from "@/components";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import type {
-  PetFurType,
-  PetSize,
-  PetSpecies,
-  ServiceLocation,
-  ServiceVariantAxis,
-} from "@/types/api";
+import type { ServiceLocation, ServiceVariantAxis } from "@/types/api";
+
+import { MAX_VARIANTS, type VariantCombo } from "../variantAxes";
 
 /**
  * The service form's fields that are more than one control each.
@@ -27,133 +29,41 @@ import type {
  * unasked.
  */
 
-/** The pet's own vocabulary, in the language the counter speaks. */
-export const PET_TYPE_LABELS: Record<PetSpecies, string> = {
-  cat: "Kucing",
-  dog: "Anjing",
-};
-
-export const SIZE_LABELS: Record<PetSize, string> = {
-  small: "Kecil",
-  medium: "Sedang",
-  large: "Besar",
-};
-
-export const FUR_LABELS: Record<PetFurType, string> = {
-  "long hair": "Bulu panjang",
-  "short hair": "Bulu pendek",
-};
-
 export const LOCATION_LABELS: Record<ServiceLocation, string> = {
   in_store: "Di toko",
   in_home: "Di rumah pelanggan",
 };
 
 /**
- * The axes, their values and their labels — one table, so the checkbox list,
- * the generated rows and the payload can never disagree about what an axis is.
+ * The three axes as this form offers them — a checkbox each, with the reason
+ * somebody would tick it.
  *
- * The values mirror `PET_SPECIES`, `PET_SIZES` and `PET_FUR_TYPES` in
- * `pet.model.js`. They are a CLOSED list on the server; a value added there
- * without being added here simply cannot be priced, which is a visible gap
- * rather than a silent one.
+ * ONLY THE AXES ARE WRITTEN HERE. Their VALUES — which species, which sizes,
+ * which coats — sat in this table as a closed list mirroring pet.model.js until
+ * 14 September 2026. They are the tenant's pet options now, handed to the
+ * combinations as a `VariantAxisValues`; see `variantAxes.ts`.
  */
-export const VARIANT_AXIS_TABLE: Array<{
+export const VARIANT_AXIS_FIELDS: Array<{
   axis: ServiceVariantAxis;
   label: string;
   hint: string;
-  values: string[];
-  labels: Record<string, string>;
 }> = [
   {
     axis: "petType",
     label: "Tipe hewan",
     hint: "Harga anjing beda dari kucing.",
-    values: ["cat", "dog"],
-    labels: PET_TYPE_LABELS,
   },
   {
     axis: "sizeCategory",
     label: "Kategori ukuran",
     hint: "Harga naik mengikuti besar hewannya.",
-    values: ["small", "medium", "large"],
-    labels: SIZE_LABELS,
   },
   {
     axis: "furType",
     label: "Kategori bulu",
     hint: "Bulu panjang makan waktu lebih lama.",
-    values: ["long hair", "short hair"],
-    labels: FUR_LABELS,
   },
 ];
-
-/** One generated combination: the axis values, and the key its price is held under. */
-export interface VariantCombo {
-  key: string;
-  petType: PetSpecies | null;
-  sizeCategory: PetSize | null;
-  furType: PetFurType | null;
-  label: string;
-}
-
-/**
- * `["petType", "sizeCategory"]` → every combination of the two, in axis order.
- *
- * GENERATED RATHER THAN TYPED IN, which is what makes three of the server's
- * rules unreachable from this screen: no duplicate combination, no variant
- * missing a declared axis, and no variant setting one the service never
- * declared. A hand-built list could break all three, and the user would only
- * find out on save.
- *
- * The ceiling is arithmetic: 2 × 3 × 2 is twelve rows at the very widest, well
- * under the server's `MAX_VARIANTS`.
- */
-export function buildVariantCombos(
-  axes: ServiceVariantAxis[] | undefined,
-): VariantCombo[] {
-  // `undefined` is a real input, not a caller bug: a service stored before
-  // `variantAxes` existed has no such key, and this used to throw on
-  // `axes.includes(...)` and blank the edit page. No axes means no rows.
-  const ordered = VARIANT_AXIS_TABLE.filter((entry) =>
-    (axes ?? []).includes(entry.axis),
-  );
-
-  if (ordered.length === 0) return [];
-
-  let rows: VariantCombo[] = [
-    { key: "", petType: null, sizeCategory: null, furType: null, label: "" },
-  ];
-
-  for (const entry of ordered) {
-    rows = rows.flatMap((row) =>
-      entry.values.map((value) => ({
-        ...row,
-        [entry.axis]: value,
-        key: `${row.key}${value}|`,
-        label: row.label
-          ? `${row.label} · ${entry.labels[value]}`
-          : entry.labels[value],
-      })),
-    ) as VariantCombo[];
-  }
-
-  return rows;
-}
-
-/** The key a stored variant is held under — must match `buildVariantCombos`. */
-export function comboKey(
-  axes: ServiceVariantAxis[] | undefined,
-  variant: {
-    petType?: string | null;
-    sizeCategory?: string | null;
-    furType?: string | null;
-  },
-): string {
-  return VARIANT_AXIS_TABLE.filter((entry) => (axes ?? []).includes(entry.axis))
-    .map((entry) => `${variant[entry.axis] ?? ""}|`)
-    .join("");
-}
 
 /**
  * Which axes the price varies by, and a price box per generated combination.
@@ -162,6 +72,11 @@ export function comboKey(
  * fills three boxes, then adds Tipe hewan is refining an answer rather than
  * starting again — the prices they already typed for the combinations that
  * survive are kept, and only the genuinely new rows come up blank.
+ *
+ * MORE ROWS THAN THE SERVER STORES IS SAID HERE, beside the ticks that made
+ * them. With the tenant's own lists a grid can reach sixty rows against a limit
+ * of `MAX_VARIANTS`; the rows stay drawn — what was typed is not thrown away —
+ * and the form's Simpan stays off until an axis is unticked.
  */
 export function ServiceVariantEditor({
   axes,
@@ -169,6 +84,7 @@ export function ServiceVariantEditor({
   durations,
   active,
   combos,
+  loading,
   error,
   disabled,
   onToggleAxis,
@@ -183,6 +99,8 @@ export function ServiceVariantEditor({
   /** Combo key → on/off. A key that is absent reads as on. */
   active: Record<string, boolean>;
   combos: VariantCombo[];
+  /** The tenant's axis values have not arrived; no rows are drawn from half a list. */
+  loading: boolean;
   error?: string;
   disabled: boolean;
   onToggleAxis: (axis: ServiceVariantAxis, checked: boolean) => void;
@@ -199,7 +117,7 @@ export function ServiceVariantEditor({
           dicentang.
         </p>
         <CheckRowGroup className="mt-2">
-          {VARIANT_AXIS_TABLE.map((entry) => (
+          {VARIANT_AXIS_FIELDS.map((entry) => (
             <CheckRow
               key={entry.axis}
               label={entry.label}
@@ -212,7 +130,11 @@ export function ServiceVariantEditor({
         </CheckRowGroup>
       </div>
 
-      {combos.length > 0 && (
+      {loading && axes.length > 0 ? (
+        <div className="flex h-9 items-center gap-2 border-t border-border pt-4 text-sm text-muted">
+          <Spinner size={16} /> Memuat jenis hewan, ukuran, dan bulu…
+        </div>
+      ) : combos.length > 0 && (
         <div className="flex flex-col gap-3 border-t border-border pt-4">
           <div>
             <p className="text-sm font-medium">
@@ -235,6 +157,14 @@ export function ServiceVariantEditor({
               dipilih di booking maupun kasir.
             </p>
           </div>
+
+          {combos.length > MAX_VARIANTS && (
+            <Alert variant="error">
+              Kombinasinya jadi {combos.length} varian — maksimal{" "}
+              {MAX_VARIANTS} per layanan. Hilangkan salah satu centang supaya
+              bisa disimpan.
+            </Alert>
+          )}
 
           <div
             aria-hidden

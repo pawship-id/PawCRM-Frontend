@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { X } from "lucide-react";
 
-import { Alert, Card } from "@/components";
+import { Alert, Card, Spinner } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -16,7 +16,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { buildVariantCombos } from "@/features/services";
+import {
+  buildVariantCombos,
+  MAX_VARIANTS,
+  useVariantAxisValues,
+} from "@/features/services";
 import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/services/api-error";
@@ -28,7 +32,6 @@ import { AXIS_LABELS, type ServicePlace } from "../serviceDisplay";
 import {
   applyBulk,
   AXIS_ORDER,
-  AXIS_VALUE_COUNT,
   type BulkAction,
   draftPatch,
   draftProblem,
@@ -108,8 +111,17 @@ function bulkActionOf(field: BulkField, text: string): BulkAction | null {
  * ─── WHAT THE MOCKUP HAS AND THIS DOES NOT ─────────────────────────────────
  *
  * Tier Groomer and Zona as price options: neither exists as a variant axis, and
- * the shop asked for the three that do — Ukuran, Jenis bulu, Jenis hewan. Ukuran
- * has three sizes here, not the mockup's four.
+ * the shop asked for the three that do — Ukuran, Jenis bulu, Jenis hewan.
+ *
+ * ─── THE VALUES ARE THE SHOP'S (14 September 2026) ─────────────────────────
+ *
+ * How many sizes Ukuran has — the chip's "×3", the mockup's four — and the order
+ * "Isi bertingkat" climbs them in are the tenant's pet options, read through
+ * `useVariantAxisValues` over the stored variants. So a size retired after this
+ * service priced it stays a row, "(nonaktif)", and a size added since is a new
+ * blank row the draft asks to be priced. With lists that can grow, ticking all
+ * three can exceed the server's MAX_VARIANTS; the grid says so and the draft
+ * cannot be saved until an option is unticked.
  */
 export function GroomingServiceVariantsEditor({
   service,
@@ -133,10 +145,29 @@ export function GroomingServiceVariantsEditor({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const disabled = !mayUpdate || saving;
-  const combos = buildVariantCombos(draft.axes);
-  const dirty = draftSignature(draft) !== draftSignature(seedDraft(service));
-  const problem = draftProblem(draft);
+  const {
+    valuesFor,
+    loading: optionsLoading,
+    error: optionsError,
+  } = useVariantAxisValues();
+  const axisValues = useMemo(
+    () => valuesFor(service.variants),
+    [valuesFor, service.variants],
+  );
+
+  /*
+    NOT EDITABLE WITHOUT THE LIST. Which rows an axis makes is the tenant's
+    list; with it unknown, ticking one would build a grid from the stored values
+    alone and save that as the service's whole price list.
+  */
+  const disabled = !mayUpdate || saving || optionsError !== null;
+  const combos = buildVariantCombos(draft.axes, axisValues);
+  const dirty =
+    draftSignature(draft, axisValues) !==
+    draftSignature(seedDraft(service), axisValues);
+  const problem = draftProblem(draft, axisValues);
+  const tooMany = combos.length > MAX_VARIANTS;
+  const smallestSize = axisValues.sizeCategory[0]?.label ?? "ukuran terkecil";
   const activeCount = combos.filter((combo) => rowOf(draft, combo.key).active).length;
 
   const activePrices = combos
@@ -158,7 +189,7 @@ export function GroomingServiceVariantsEditor({
   }
 
   function pickAxis(axis: (typeof AXIS_ORDER)[number], on: boolean) {
-    change(toggleAxis(draft, axis, on));
+    change(toggleAxis(draft, axis, on, axisValues));
     // The rows' keys change with the axes, so a selection would point at nothing.
     setSelected([]);
     closeBulk();
@@ -194,11 +225,13 @@ export function GroomingServiceVariantsEditor({
     const step = priceDigits(tierStep);
 
     if (base === null || step === null) {
-      setTierError("Isi harga Kecil dan kenaikan per ukuran dalam rupiah.");
+      setTierError(
+        `Isi harga ${smallestSize} dan kenaikan per ukuran dalam rupiah.`,
+      );
       return;
     }
 
-    change(fillBySize(draft, Number(base), Number(step)));
+    change(fillBySize(draft, Number(base), Number(step), axisValues));
     setTiering(false);
     setTierBase("");
     setTierStep("");
@@ -219,7 +252,10 @@ export function GroomingServiceVariantsEditor({
     setSaving(true);
     setSaveError(null);
     try {
-      const updated = await serviceService.update(service._id, draftPatch(draft));
+      const updated = await serviceService.update(
+        service._id,
+        draftPatch(draft, axisValues),
+      );
       swalToast("Varian & harga tersimpan.");
       onSaved(updated);
     } catch (err) {
@@ -234,6 +270,18 @@ export function GroomingServiceVariantsEditor({
   }
 
   const allSelected = combos.length > 0 && selected.length === combos.length;
+
+  /*
+    NO GRID FROM HALF A LIST. Until the tenant's values arrive, every stored
+    value would read as "(nonaktif)" and every axis chip would count wrong.
+  */
+  if (optionsLoading) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
+        <Spinner /> Memuat jenis hewan, ukuran, dan bulu…
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -254,6 +302,12 @@ export function GroomingServiceVariantsEditor({
       )}
 
       {saveError && <Alert variant="error">{saveError}</Alert>}
+      {optionsError && (
+        <Alert variant="error">
+          Daftar jenis hewan, ukuran, dan bulu tidak bisa dimuat, jadi varian
+          belum bisa diubah. Muat ulang halamannya.
+        </Alert>
+      )}
 
       <Card title="Tempat pengerjaan">
         <div
@@ -312,7 +366,7 @@ export function GroomingServiceVariantsEditor({
                 />
                 {AXIS_LABELS[axis]}
                 <span className="font-normal text-muted">
-                  ×{AXIS_VALUE_COUNT[axis]}
+                  ×{axisValues[axis].length}
                 </span>
               </label>
             );
@@ -393,6 +447,14 @@ export function GroomingServiceVariantsEditor({
           }
         >
           <div className="flex flex-col gap-3">
+            {tooMany && (
+              <Alert variant="error">
+                Kombinasinya jadi {combos.length} varian — maksimal{" "}
+                {MAX_VARIANTS} per layanan. Hilangkan salah satu centang di
+                atas supaya bisa disimpan.
+              </Alert>
+            )}
+
             {mayUpdate && selected.length > 0 && (
               <div className="flex flex-wrap items-center gap-2 rounded-xl bg-primary px-4 py-3 text-primary-foreground">
                 <b className="text-sm tabular-nums">{selected.length} dipilih</b>
@@ -618,7 +680,7 @@ export function GroomingServiceVariantsEditor({
             {tiering && (
               <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-surface px-4 py-3">
                 <label className="flex flex-col gap-1.5 text-sm font-medium text-foreground">
-                  Harga Kecil
+                  Harga {smallestSize}
                   <Input
                     inputMode="numeric"
                     value={tierBase}

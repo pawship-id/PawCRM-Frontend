@@ -9,7 +9,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { speciesLabel } from "@/features/pets";
 import {
   formatMoney,
   formatQty,
@@ -155,7 +154,8 @@ export function InvoiceItemsTable({
   const groups: {
     key: string;
     petName: string | null;
-    species: CustomerInvoiceItem["petSpecies"];
+    /** The species' WORD, ready to render — see where it is read below. */
+    speciesLabel: string | null;
     bookingId: string | null;
     rows: { item: CustomerInvoiceItem; index: number }[];
   }[] = [];
@@ -170,7 +170,15 @@ export function InvoiceItemsTable({
       group = {
         key,
         petName: item.petName ?? null,
-        species: item.petSpecies ?? null,
+        /*
+          THE SERVER'S WORD, NOT `usePetOptions()`. Species are tenant data
+          since 14 Sep 2026, and the invoice read resolves `petSpeciesLabel`
+          beside the code — the same word a session-less reader of the bill is
+          given — so this table stays a render of the document it is handed,
+          with no list of its own to load. When the server could not resolve
+          it, the code is still a better heading than nothing.
+        */
+        speciesLabel: item.petSpeciesLabel ?? item.petSpecies ?? null,
         bookingId: item.bookingId ?? null,
         rows: [],
       };
@@ -228,9 +236,9 @@ export function InvoiceItemsTable({
                           {group.key === "__tanpa-hewan__"
                             ? "Tanpa hewan"
                             : (group.petName ?? "Hewan terhapus")}
-                          {group.species && (
+                          {group.speciesLabel && (
                             <span className="text-xs font-medium tracking-wide text-muted uppercase">
-                              {speciesLabel(group.species)}
+                              {group.speciesLabel}
                             </span>
                           )}
                           {/*

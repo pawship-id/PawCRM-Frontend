@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { PetFixLink, PetQuickAddDialog } from "@/features/pets";
 import { Checkbox } from "@/components/ui/checkbox";
+import { usePetOptions } from "@/hooks/usePetOptions";
 import { petService } from "@/services/pet.service";
 import { formatMoney } from "@/utils/decimal";
 import {
@@ -80,6 +81,7 @@ export function PosServicePetDialog({
   const [addingPet, setAddingPet] = useState(false);
   const [nonce, setNonce] = useState(0);
   const [addons, setAddons] = useState<Set<string>>(new Set());
+  const { label: petOptionLabel } = usePetOptions();
 
   const open = service !== null;
   const chosen = pets.find((candidate) => candidate._id === petId) ?? null;
@@ -112,7 +114,7 @@ export function PosServicePetDialog({
     NULL ON A FLAT-PRICED SERVICE — there is no variant to name, and a caption
     under every ordinary grooming is noise.
   */
-  const variantLabel = variantLabelForPet(service, chosen);
+  const variantLabel = variantLabelForPet(service, chosen, petOptionLabel);
   const addonQuotes = offered.map((addon) => ({
     addon,
     quote: priceForPet(addon, chosen),

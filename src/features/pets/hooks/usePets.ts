@@ -11,7 +11,7 @@ import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 export interface PetsQuery {
   page: number;
   search: string;
-  /** "" = any species, otherwise one catalogued species. */
+  /** "" = any species, otherwise one of the tenant's species codes (`petoptions`). */
   species: PetSpecies | "";
   /** "" = both, "true"/"false" = only pets in care / only retired ones. */
   isActive: "" | "true" | "false";

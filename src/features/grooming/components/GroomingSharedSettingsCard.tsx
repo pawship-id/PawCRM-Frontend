@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { Card } from "@/components";
 import { Badge } from "@/components/ui/badge";
+import { PET_DATA_PATH } from "@/features/settings/petOptions";
 
 import { GROOMING_CATALOG_PATH } from "../paths";
 
@@ -17,24 +18,28 @@ interface SharedItem {
 }
 
 /**
- * The mockup's five lists every grooming service draws from.
+ * The mockup's lists every grooming service draws from.
  *
- * TWO LEAD SOMEWHERE AND THREE SAY "Segera", the way `GeneralSettingsScreen`
- * draws its pending cards. Tahapan and Add-on are real — they are edited in
- * each service's form, so they link to Layanan & Harga. Opsi Varian, Ras and
- * Zona & Perjalanan have nothing behind them yet; leaving them out would make
- * the page look finished and send people hunting.
+ * THREE LEAD SOMEWHERE AND ONE SAYS "Segera", the way `GeneralSettingsScreen`
+ * draws its pending cards. Leaving the pending one out would make the page look
+ * finished and send people hunting.
+ *
+ * OPSI VARIAN AND RAS ARE ONE ITEM NOW, "Data hewan" (14 September 2026). Both
+ * were "Segera" while species, sizes and coats were closed enums and breeds had
+ * no list at all; they became tenant data in one collection (`petoptions`),
+ * edited on ONE screen — Pengaturan › Layanan › Data hewan. Two cards opening
+ * the same page would read as two places to look. It sits first because a
+ * size added there is also a new row under Nominal per ukuran on this page.
+ *
+ * Tahapan and Add-on are edited in each service's form, so they link to
+ * Layanan & Harga. Zona & Perjalanan has nothing behind it yet.
  */
 const ITEMS: SharedItem[] = [
   {
-    title: "Opsi Varian",
-    description: "Pilihan jenis hewan, ukuran, dan bulu yang membedakan harga.",
-    blockedBy: "Masih daftar tetap, belum bisa diubah",
-  },
-  {
-    title: "Ras",
-    description: "Daftar ras yang dipilih di data hewan.",
-    blockedBy: "Belum ada daftar ras yang bisa diatur",
+    title: "Data hewan",
+    description:
+      "Jenis hewan, ras, ukuran, dan bulu. Ukuran yang ditambah di sana ikut muncul di Nominal per ukuran.",
+    href: PET_DATA_PATH,
   },
   {
     title: "Tahapan",
@@ -58,7 +63,11 @@ const ITEMS: SharedItem[] = [
 export function GroomingSharedSettingsCard({
   mayOpenCatalog,
 }: {
-  /** `services:read` — without it the catalogue tab is a closed door. */
+  /**
+   * `services:read` — without it the catalogue tab AND Data hewan are closed
+   * doors: that page is gated on the same grant, since it is reached from
+   * Pengaturan › Layanan. Every link here is read against this one flag.
+   */
   mayOpenCatalog: boolean;
 }) {
   return (

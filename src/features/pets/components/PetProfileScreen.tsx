@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { Alert, FilterPills, Spinner } from "@/components";
+import { usePetOptions } from "@/hooks/usePetOptions";
 import { petService } from "@/services/pet.service";
 import type { Pet } from "@/types/api";
 
@@ -53,6 +54,8 @@ export function PetProfileScreen({ petId }: { petId: string }) {
   const [pet, setPet] = useState<Pet | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /* The breed under the name is a CODE; the word is the tenant's. */
+  const { label } = usePetOptions();
 
   useEffect(() => {
     let active = true;
@@ -97,7 +100,8 @@ export function PetProfileScreen({ petId }: { petId: string }) {
       <div>
         <h1 className="text-2xl font-extrabold text-foreground">{pet.name}</h1>
         <p className="mt-1 text-sm text-muted">
-          {[pet.breed, pet.color].filter(Boolean).join(" · ") || "—"}
+          {[label("breed", pet.breed), pet.color].filter(Boolean).join(" · ") ||
+            "—"}
         </p>
       </div>
 

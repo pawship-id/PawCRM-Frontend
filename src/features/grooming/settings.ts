@@ -1,10 +1,9 @@
 import { formatMoney } from "@/utils/decimal";
-import { VARIANT_VALUE_LABELS } from "@/utils/serviceVariant";
 import type {
   GroomerCapacityDay,
   GroomingFlatCommissionRule,
   GroomingSettings,
-  PetSize,
+  PetOption,
 } from "@/types/api";
 
 /**
@@ -17,15 +16,16 @@ import type {
  * a valid rate, and coercing on every keystroke turns a cleared field into a
  * silent zero — a commission of nothing that nobody chose. Numbers are parsed
  * at the edges: when the example is drawn, when the payload is built.
+ *
+ * ─── THE SIZES ARE THE TENANT'S ────────────────────────────────────────────
+ *
+ * Until 14 September 2026 there were exactly three — Kecil, Sedang, Besar — and
+ * this file held them in a constant. Sizes are tenant data now (`petoptions`):
+ * a shop may add Ekstra besar, rename Sedang, or retire one. So nothing here
+ * knows which sizes exist. Whatever lays something out per size TAKES THE LIST
+ * as an argument (`commissionSizes`), which keeps it testable without React;
+ * the screen builds that list from `usePetOptions()`.
  */
-
-export const PET_SIZES: PetSize[] = ["small", "medium", "large"];
-
-/** "Kecil" / "Sedang" / "Besar" — the words the pet form already uses. */
-export const SIZE_WORDS = VARIANT_VALUE_LABELS.sizeCategory as Record<
-  PetSize,
-  string
->;
 
 /** The server's caps (tenant.validation.js / user.validation.js). */
 export const MAX_PERCENT = 100;
@@ -47,13 +47,62 @@ export const DEFAULT_GROOMING_SETTINGS: GroomingSettings = {
     service: {
       mode: "percentage",
       percent: 0,
-      sizeNominal: { small: 0, medium: 0, large: 0 },
+      /*
+        EMPTY, NOT A ZERO PER SIZE. There is no list of sizes to zero, and a
+        size with no key is the server's own "earns nothing, and says so".
+      */
+      sizeNominal: {},
     },
     addon: DEFAULT_FLAT_RULE,
     travel: DEFAULT_FLAT_RULE,
   },
   capacity: { defaultMinutes: 420, overLimit: "warn" },
 };
+
+/* ─── sizes ────────────────────────────────────────────────────────────── */
+
+/** One row of "Nominal per ukuran". */
+export interface CommissionSize {
+  /** The option's code — the key in `sizeNominal`. */
+  code: string;
+  /** The tenant's word for it, without " (nonaktif)". */
+  label: string;
+  /** Retired: on screen only because a nominal is already stored for it. */
+  retired: boolean;
+}
+
+/**
+ * `record[key]` only when the record itself holds it. "constructor" is a valid
+ * size code, and a plain object answers it with a function.
+ */
+function own<T>(record: Record<string, T>, key: string): T | undefined {
+  return Object.prototype.hasOwnProperty.call(record, key) ? record[key] : undefined;
+}
+
+/**
+ * The size rows, from the tenant's live size options IN THEIR ORDER — pass
+ * `usePetOptions().ordered("size")` — and the nominals as stored.
+ *
+ * A RETIRED SIZE IS A ROW ONLY WHEN A NOMINAL IS ALREADY STORED FOR IT. Pets
+ * that hold it still earn by it, so a rate on it is live money and belongs on
+ * screen. A retired size nobody priced has nothing to show, and an empty box
+ * for it would hold up the save for a size no new animal can be given.
+ *
+ * A DELETED OR UNKNOWN CODE IS NEVER A ROW, and its nominal is not dropped
+ * either — see `draftToSettings`.
+ */
+export function commissionSizes(
+  options: Pick<PetOption, "code" | "label" | "isActive">[],
+  stored: Record<string, number>,
+): CommissionSize[] {
+  return options
+    .filter((option) => option.isActive || own(stored, option.code) !== undefined)
+    .map((option) => ({
+      code: option.code,
+      label: option.label,
+      retired: !option.isActive,
+    }));
+}
 
 /* ─── defaults ─────────────────────────────────────────────────────────── */
 
@@ -66,6 +115,21 @@ function oneOf<T extends string>(value: unknown, options: T[], fallback: T): T {
 }
 
 type Loose<T> = { [K in keyof T]?: T[K] extends object ? Loose<T[K]> : unknown };
+
+/**
+ * Every stored nominal that is a number, WHATEVER ITS KEY. Which sizes exist is
+ * not this function's question: a key for a size since retired or deleted is
+ * kept, so the next save does not quietly drop it.
+ */
+function storedNominals(stored: unknown): Record<string, number> {
+  if (typeof stored !== "object" || stored === null) return {};
+
+  return Object.fromEntries(
+    Object.entries(stored).filter(
+      ([, value]) => typeof value === "number" && Number.isFinite(value),
+    ),
+  );
+}
 
 function flatRule(
   stored: Loose<GroomingFlatCommissionRule> | undefined,
@@ -89,18 +153,13 @@ export function withGroomingDefaults(
   stored: Loose<GroomingSettings> | null | undefined,
 ): GroomingSettings {
   const service = stored?.commission?.service;
-  const sizes = service?.sizeNominal;
 
   return {
     commission: {
       service: {
         mode: oneOf(service?.mode, ["percentage", "size_nominal"], "percentage"),
         percent: num(service?.percent, 0),
-        sizeNominal: {
-          small: num(sizes?.small, 0),
-          medium: num(sizes?.medium, 0),
-          large: num(sizes?.large, 0),
-        },
+        sizeNominal: storedNominals(service?.sizeNominal),
       },
       addon: flatRule(stored?.commission?.addon),
       travel: flatRule(stored?.commission?.travel),
@@ -165,7 +224,12 @@ export interface GroomingSettingsDraft {
   service: {
     mode: GroomingSettings["commission"]["service"]["mode"];
     percent: string;
-    sizeNominal: Record<PetSize, string>;
+    /**
+     * Size code → rupiah as typed. Seeded with EVERY STORED KEY, on screen or
+     * not, so the payload can carry the hidden ones back. A size with nothing
+     * stored has no key until somebody types — read it with `sizeNominalText`.
+     */
+    sizeNominal: Record<string, string>;
   };
   addon: FlatRuleDraft;
   travel: FlatRuleDraft;
@@ -200,11 +264,12 @@ export function toDraft(
     service: {
       mode: service.mode,
       percent: String(service.percent),
-      sizeNominal: {
-        small: String(service.sizeNominal.small),
-        medium: String(service.sizeNominal.medium),
-        large: String(service.sizeNominal.large),
-      },
+      sizeNominal: Object.fromEntries(
+        Object.entries(service.sizeNominal).map(([code, amount]) => [
+          code,
+          String(amount),
+        ]),
+      ),
     },
     addon: flatRuleDraft(addon),
     travel: flatRuleDraft(travel),
@@ -219,6 +284,11 @@ export function toDraft(
       ]),
     ),
   };
+}
+
+/** What a size's box shows — `""` for a size nothing has been typed or stored for. */
+export function sizeNominalText(draft: GroomingSettingsDraft, code: string): string {
+  return own(draft.service.sizeNominal, code) ?? "";
 }
 
 /**
@@ -240,11 +310,23 @@ export const RUPIAH_ERROR = "Isi angka saja tanpa titik, paling besar 100.000.00
 export const MINUTES_ERROR = `Isi menit antara 1 dan ${MAX_MINUTES}.`;
 
 /**
- * Field key → message. Keys: `service.percent`, `service.small|medium|large`,
+ * Field key → message. Keys: `service.percent`, `service.size.<code>`,
  * `addon.percent|fixed`, `travel.percent|fixed`, `capacity.defaultMinutes`,
  * `override.<groomerId>`.
  */
 export type DraftErrors = Record<string, string>;
+
+export function sizeErrorKey(code: string): string {
+  return `service.size.${code}`;
+}
+
+function overrideErrors(draft: GroomingSettingsDraft, errors: DraftErrors) {
+  for (const [id, raw] of Object.entries(draft.overrides)) {
+    if (raw !== null && parseMinutes(raw) === null) {
+      errors[`override.${id}`] = MINUTES_ERROR;
+    }
+  }
+}
 
 function flatRuleErrors(
   key: "addon" | "travel",
@@ -264,8 +346,14 @@ function flatRuleErrors(
  * ONLY THE BOXES ON SCREEN ARE CHECKED. A percentage left behind after
  * switching to nominal-per-size is not something anybody can see to fix; the
  * payload keeps the stored value for it instead (see `draftToSettings`).
+ *
+ * `sizes` is what the screen draws (`commissionSizes`) — pass the same list, or
+ * a row on screen and a row checked become two different things.
  */
-export function validateDraft(draft: GroomingSettingsDraft): DraftErrors {
+export function validateDraft(
+  draft: GroomingSettingsDraft,
+  sizes: CommissionSize[],
+): DraftErrors {
   const errors: DraftErrors = {};
 
   if (draft.service.mode === "percentage") {
@@ -273,9 +361,17 @@ export function validateDraft(draft: GroomingSettingsDraft): DraftErrors {
       errors["service.percent"] = PERCENT_ERROR;
     }
   } else {
-    for (const size of PET_SIZES) {
-      if (parseRupiah(draft.service.sizeNominal[size]) === null) {
-        errors[`service.${size}`] = RUPIAH_ERROR;
+    /*
+      EVERY SIZE ROW, ACTIVE OR RETIRED. A size the shop added yesterday starts
+      EMPTY, not at 0, and holds up the save until somebody prices it: the
+      server pays a size with no key nothing, and a zero filled in on the
+      shop's behalf would be that same payslip with nobody having chosen it. A
+      retired row always arrives with a stored number, so it only ever blocks
+      after somebody breaks its box.
+    */
+    for (const size of sizes) {
+      if (parseRupiah(sizeNominalText(draft, size.code)) === null) {
+        errors[sizeErrorKey(size.code)] = RUPIAH_ERROR;
       }
     }
   }
@@ -287,11 +383,7 @@ export function validateDraft(draft: GroomingSettingsDraft): DraftErrors {
     errors["capacity.defaultMinutes"] = MINUTES_ERROR;
   }
 
-  for (const [id, raw] of Object.entries(draft.overrides)) {
-    if (raw !== null && parseMinutes(raw) === null) {
-      errors[`override.${id}`] = MINUTES_ERROR;
-    }
-  }
+  overrideErrors(draft, errors);
 
   return errors;
 }
@@ -311,6 +403,35 @@ function flatRuleFrom(
 }
 
 /**
+ * `sizeNominal` for the payload: every stored key, with what was typed laid
+ * over it.
+ *
+ * STORED KEYS FOR SIZES NOT ON SCREEN GO BACK UNCHANGED. The PATCH replaces the
+ * object whole, so a key left out is a key deleted — and such a nominal is not
+ * dead. A deleted size can be restored and should come back priced; the server
+ * already treats a key for a size that no longer exists as inert, so carrying
+ * it costs nothing, and dropping it would be a payslip change nobody made.
+ *
+ * A SIZE NOBODY HAS PRICED GOES OUT WITH NO KEY, not as 0. That only happens
+ * under the percentage rule — the size rows are checked under the other — and
+ * "no key" is the server's own "earns nothing, and says so". A 0 would pass for
+ * a decision, and be read back into the box next time as one.
+ */
+function sizeNominalFrom(
+  typed: Record<string, string>,
+  stored: Record<string, number>,
+): Record<string, number> {
+  const result: Record<string, number> = { ...stored };
+
+  for (const [code, raw] of Object.entries(typed)) {
+    const value = parseRupiah(raw);
+    if (value !== null) result[code] = value;
+  }
+
+  return result;
+}
+
+/**
  * The draft as the WHOLE object the PATCH demands. A box that does not parse
  * keeps `fallback`'s value — that only happens to a box that is off screen,
  * since `validateDraft` blocks the save for the ones that are on it.
@@ -326,12 +447,7 @@ export function draftToSettings(
       service: {
         mode: draft.service.mode,
         percent: parsePercent(draft.service.percent) ?? service.percent,
-        sizeNominal: {
-          small: parseRupiah(draft.service.sizeNominal.small) ?? service.sizeNominal.small,
-          medium:
-            parseRupiah(draft.service.sizeNominal.medium) ?? service.sizeNominal.medium,
-          large: parseRupiah(draft.service.sizeNominal.large) ?? service.sizeNominal.large,
-        },
+        sizeNominal: sizeNominalFrom(draft.service.sizeNominal, service.sizeNominal),
       },
       addon: flatRuleFrom(draft.addon, fallback.commission.addon),
       travel: flatRuleFrom(draft.travel, fallback.commission.travel),
@@ -382,8 +498,14 @@ export function isDraftDirty(
   return (
     settingsKey(draft) !== settingsKey(baseline) ||
     changedOverrides(draft, capacity).length > 0 ||
-    Object.keys(validateDraft(draft)).some((key) => key.startsWith("override."))
+    hasOverrideErrors(draft)
   );
+}
+
+function hasOverrideErrors(draft: GroomingSettingsDraft): boolean {
+  const errors: DraftErrors = {};
+  overrideErrors(draft, errors);
+  return Object.keys(errors).length > 0;
 }
 
 function settingsKey(draft: GroomingSettingsDraft): string {
@@ -399,7 +521,14 @@ function settingsKey(draft: GroomingSettingsDraft): string {
   return JSON.stringify([
     draft.service.mode,
     canon(draft.service.percent, parsePercent),
-    PET_SIZES.map((size) => canon(draft.service.sizeNominal[size], parseRupiah)),
+    /*
+      A BOX TYPED INTO AND CLEARED AGAIN IS NOT A CHANGE: a key holding "" and
+      no key are the same empty box. Sorted, because key order says nothing.
+    */
+    Object.entries(draft.service.sizeNominal)
+      .filter(([, raw]) => raw.trim() !== "")
+      .map(([code, raw]) => [code, canon(raw, parseRupiah)] as const)
+      .sort(([a], [b]) => a.localeCompare(b)),
     rule(draft.addon),
     rule(draft.travel),
     canon(draft.capacity.defaultMinutes, parseMinutes),
@@ -423,7 +552,6 @@ export function settingsChanged(
  */
 export const COMMISSION_EXAMPLE = {
   serviceName: "Basic + Styling",
-  size: "medium" as PetSize,
   servicePrice: 249_000,
   addonName: "Spa Aromaterapi",
   addonPrice: 70_000,
@@ -431,14 +559,28 @@ export const COMMISSION_EXAMPLE = {
   zoneFee: 70_000,
 };
 
+/**
+ * The example animal's size: THE MIDDLE ACTIVE SIZE, the lower of the two
+ * middles on an even count. It was hardcoded Medium; this is Sedang on the
+ * seeded three and stays Sedang when a shop adds Ekstra besar at the end —
+ * the example should not change size because a size was added. Null when the
+ * tenant has no active size at all.
+ */
+export function exampleSize(sizes: CommissionSize[]): CommissionSize | null {
+  const active = sizes.filter((size) => !size.retired);
+  return active[Math.floor((active.length - 1) / 2)] ?? null;
+}
+
 export interface ExampleLine {
-  /** Null when the rule is off. */
+  /** Null when the rule is off, or when nothing is priced to compute from. */
   amount: number | null;
   /** "20% × Rp 249.000" — how the amount was reached. */
   basis: string | null;
 }
 
 export interface ExampleCommission {
+  /** The size the example animal is — `exampleSize`. */
+  size: CommissionSize | null;
   service: ExampleLine;
   addon: ExampleLine;
   /** Worked out, and NOT in `total` — nothing earns it until trips exist. */
@@ -483,9 +625,30 @@ function flatExample(
     : { amount: rule.fixed, basis: fixedBasis };
 }
 
-export function exampleCommission(settings: GroomingSettings): ExampleCommission {
+/**
+ * A size with no nominal says so rather than showing Rp 0 — the server pays it
+ * nothing and reports the size as missing, and the example should read the
+ * same way.
+ */
+function sizeExample(
+  sizeNominal: Record<string, number>,
+  size: CommissionSize | null,
+): ExampleLine {
+  if (size === null) return { amount: null, basis: "belum ada ukuran hewan aktif" };
+
+  const amount = own(sizeNominal, size.code);
+  return amount === undefined
+    ? { amount: null, basis: `nominal ${size.label} belum diisi` }
+    : { amount, basis: `nominal ${size.label}` };
+}
+
+export function exampleCommission(
+  settings: GroomingSettings,
+  sizes: CommissionSize[],
+): ExampleCommission {
   const { service, addon, travel } = settings.commission;
   const example = COMMISSION_EXAMPLE;
+  const size = exampleSize(sizes);
 
   const serviceLine: ExampleLine =
     service.mode === "percentage"
@@ -493,10 +656,7 @@ export function exampleCommission(settings: GroomingSettings): ExampleCommission
           amount: percentOf(example.servicePrice, service.percent),
           basis: `${formatPercent(service.percent)} × ${formatRupiah(example.servicePrice)}`,
         }
-      : {
-          amount: service.sizeNominal[example.size],
-          basis: `nominal ${SIZE_WORDS[example.size]}`,
-        };
+      : sizeExample(service.sizeNominal, size);
 
   const addonLine = flatExample(
     addon,
@@ -512,6 +672,7 @@ export function exampleCommission(settings: GroomingSettings): ExampleCommission
   );
 
   return {
+    size,
     service: serviceLine,
     addon: addonLine,
     travel: travelLine,

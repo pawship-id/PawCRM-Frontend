@@ -3,11 +3,14 @@ import userEvent from "@testing-library/user-event";
 
 import { CustomerPetsSection } from "@/features/pets";
 import { petService } from "@/services/pet.service";
+import { petOptionService } from "@/services/petOption.service";
 import type { Pet } from "@/types/api";
 
+import { primePetOptions } from "./helpers/petOptions";
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
 jest.mock("@/services/pet.service");
+jest.mock("@/services/petOption.service");
 
 const mockedPetService = petService as jest.Mocked<typeof petService>;
 
@@ -54,7 +57,19 @@ function listReturns(items: Pet[], total = items.length) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  primePetOptions(petOptionService.list);
 });
+
+/**
+ * Opens the dialog's species picker once the tenant's lists have arrived — the
+ * three pickers stay disabled while they load, and a click on a disabled
+ * trigger opens nothing.
+ */
+async function openPicker(name: RegExp) {
+  const picker = screen.getByRole("combobox", { name });
+  await waitFor(() => expect(picker).toBeEnabled());
+  await userEvent.click(picker);
+}
 
 describe("CustomerPetsSection", () => {
   it("asks only for this customer's animals", async () => {
@@ -136,7 +151,7 @@ describe("CustomerPetsSection", () => {
     await userEvent.type(screen.getByLabelText(/nama hewan/i), "Bella");
     /* ⚠️ ANCHORED. "Jenis bulu" joined the dialog on 7 Sep 2026, so /jenis/i now
        matches two comboboxes. */
-    await userEvent.click(screen.getByRole("combobox", { name: /^jenis$/i }));
+    await openPicker(/^jenis$/i);
     await userEvent.click(
       await screen.findByRole("option", { name: "Anjing" }),
     );
@@ -190,19 +205,19 @@ describe("CustomerPetsSection", () => {
     await screen.findByRole("dialog");
 
     await userEvent.type(screen.getByLabelText(/nama hewan/i), "Bella");
-    await userEvent.click(screen.getByRole("combobox", { name: /^jenis$/i }));
+    await openPicker(/^jenis$/i);
     await userEvent.click(
       await screen.findByRole("option", { name: "Anjing" }),
     );
 
-    await userEvent.click(screen.getByRole("combobox", { name: /ukuran/i }));
+    await openPicker(/ukuran/i);
     await userEvent.click(await screen.findByRole("option", { name: "Besar" }));
 
+    /* The tenant's word — the seeded "Bulu panjang", not the "Berbulu panjang"
+       this dialog once hardcoded. */
+    await openPicker(/jenis bulu/i);
     await userEvent.click(
-      screen.getByRole("combobox", { name: /jenis bulu/i }),
-    );
-    await userEvent.click(
-      await screen.findByRole("option", { name: "Berbulu panjang" }),
+      await screen.findByRole("option", { name: "Bulu panjang" }),
     );
 
     await userEvent.click(

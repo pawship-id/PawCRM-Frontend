@@ -155,6 +155,15 @@ export const PERMISSION_CATALOG = {
   pets: ["create", "read", "update", "delete", "restore"],
 
   /**
+   * The species, breeds, sizes and coats a tenant describes animals with —
+   * Pengaturan › Layanan › Data hewan (14 September 2026).
+   *
+   * NO `read`: GET /api/pet-options needs only a session, because every screen
+   * that records an animal reads it. Only changing the lists is gated.
+   */
+  petOptions: ["create", "update", "delete", "restore"],
+
+  /**
    * The catalogue of what a tenant sells the DOING of — grooming, penitipan.
    *
    * ITS OWN FEATURE, not part of `products`, and the split is about who edits

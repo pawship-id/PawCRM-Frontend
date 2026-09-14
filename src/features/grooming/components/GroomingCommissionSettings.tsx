@@ -2,16 +2,18 @@
 
 import Link from "next/link";
 
-import { Card } from "@/components";
+import { Alert, Card } from "@/components";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 import { GROOMING_CATALOG_PATH } from "../paths";
 import {
   COMMISSION_EXAMPLE,
   exampleCommission,
   formatRupiah,
-  PET_SIZES,
-  SIZE_WORDS,
+  sizeErrorKey,
+  sizeNominalText,
+  type CommissionSize,
   type DraftErrors,
   type ExampleLine,
   type FlatRuleDraft,
@@ -30,6 +32,11 @@ type Update = (
  *
  * Only the service's rule is computed today. The add-on rule is too; the
  * travel rule is stored and says plainly that nothing earns it yet.
+ *
+ * ONE BOX PER SIZE THE TENANT HAS, in its order — not three boxes (14 September
+ * 2026). `sizes` comes from `useGroomingSettings`, the same list the save is
+ * checked against; a retired size appears only while it still holds a nominal,
+ * and says it is retired.
  */
 export function GroomingCommissionSettings({
   draft,
@@ -37,12 +44,18 @@ export function GroomingCommissionSettings({
   update,
   disabled,
   mayOpenCatalog,
+  sizes,
+  sizesError,
+  onRetrySizes,
 }: {
   draft: GroomingSettingsDraft;
   errors: DraftErrors;
   update: Update;
   disabled: boolean;
   mayOpenCatalog: boolean;
+  sizes: CommissionSize[];
+  sizesError: string | null;
+  onRetrySizes: () => void;
 }) {
   const service = draft.service;
 
@@ -75,7 +88,7 @@ export function GroomingCommissionSettings({
               {
                 value: "size_nominal",
                 label: "Nominal per ukuran",
-                description: "Rupiah tetap untuk hewan kecil, sedang, dan besar.",
+                description: "Rupiah tetap untuk tiap ukuran hewan.",
               },
             ]}
             disabled={disabled}
@@ -97,29 +110,56 @@ export function GroomingCommissionSettings({
               disabled={disabled}
             />
           ) : (
-            <div className="grid gap-4 sm:grid-cols-3">
-              {PET_SIZES.map((size) => (
-                <UnitField
-                  key={size}
-                  label={SIZE_WORDS[size]}
-                  value={service.sizeNominal[size]}
-                  onChange={(value) =>
-                    update((current) => ({
-                      ...current,
-                      service: {
-                        ...current.service,
-                        sizeNominal: {
-                          ...current.service.sizeNominal,
-                          [size]: value,
-                        },
-                      },
-                    }))
-                  }
-                  prefix="Rp"
-                  error={errors[`service.${size}`]}
-                  disabled={disabled}
-                />
-              ))}
+            <div className="flex flex-col gap-4">
+              {sizesError && (
+                <Alert variant="error">
+                  <span className="flex flex-wrap items-center justify-between gap-3">
+                    <span>Daftar ukuran hewan tidak bisa dimuat. {sizesError}</span>
+                    <Button type="button" variant="secondary" size="sm" onClick={onRetrySizes}>
+                      Muat ulang
+                    </Button>
+                  </span>
+                </Alert>
+              )}
+
+              {sizes.length > 0 ? (
+                <div className="grid gap-4 sm:grid-cols-3">
+                  {sizes.map((size) => (
+                    <UnitField
+                      key={size.code}
+                      label={size.retired ? `${size.label} (nonaktif)` : size.label}
+                      hint={
+                        size.retired
+                          ? "Tidak dipilih lagi untuk hewan baru; hewan yang sudah berukuran ini tetap dihitung."
+                          : undefined
+                      }
+                      value={sizeNominalText(draft, size.code)}
+                      onChange={(value) =>
+                        update((current) => ({
+                          ...current,
+                          service: {
+                            ...current.service,
+                            sizeNominal: {
+                              ...current.service.sizeNominal,
+                              [size.code]: value,
+                            },
+                          },
+                        }))
+                      }
+                      prefix="Rp"
+                      error={errors[sizeErrorKey(size.code)]}
+                      disabled={disabled}
+                    />
+                  ))}
+                </div>
+              ) : (
+                !sizesError && (
+                  <p className="rounded-lg bg-tint-neutral px-4 py-3 text-sm text-muted">
+                    Belum ada ukuran hewan yang aktif, jadi belum ada yang bisa
+                    diberi nominal.
+                  </p>
+                )
+              )}
             </div>
           )}
 
@@ -267,11 +307,14 @@ function FlatRuleFields({
  */
 export function GroomingCommissionExample({
   settings,
+  sizes,
 }: {
   settings: GroomingSettings;
+  /** The same rows the Komisi column draws — the example picks its size from them. */
+  sizes: CommissionSize[];
 }) {
   const example = COMMISSION_EXAMPLE;
-  const result = exampleCommission(settings);
+  const result = exampleCommission(settings, sizes);
 
   return (
     <section
@@ -282,7 +325,7 @@ export function GroomingCommissionExample({
         Contoh perhitungan
       </h2>
       <p className="mt-1 text-sm text-primary-foreground/80">
-        {example.serviceName} · {SIZE_WORDS[example.size]} ·{" "}
+        {example.serviceName} · {result.size && `${result.size.label} · `}
         <span className="tabular-nums">{formatRupiah(example.servicePrice)}</span>,
         ditambah {example.addonName}{" "}
         <span className="tabular-nums">{formatRupiah(example.addonPrice)}</span>,

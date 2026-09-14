@@ -5,9 +5,15 @@ import { GroomingServiceDetailScreen } from "@/features/grooming";
 import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
 import { branchService } from "@/services/branch.service";
+import { petOptionService } from "@/services/petOption.service";
 import { serviceService } from "@/services/service.service";
 import type { Branch, PageResult, Service } from "@/types/api";
 
+import {
+  makePetOption,
+  PET_OPTION_FIXTURES,
+  primePetOptions,
+} from "./helpers/petOptions";
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
 const mockPush = jest.fn();
@@ -27,6 +33,8 @@ jest.mock("sweetalert2", () => ({
 jest.mock("@/services/booking.service");
 jest.mock("@/services/branch.service");
 jest.mock("@/services/service.service");
+// The variant grid's rows are the tenant's species, sizes and coats.
+jest.mock("@/services/petOption.service");
 
 /**
  * Grooming › Layanan & Harga › one service — the mockup's detail page: mostly
@@ -114,6 +122,7 @@ function page<T>(items: T[]): PageResult<T> {
 
 beforeEach(() => {
   mockPush.mockReset();
+  primePetOptions(petOptionService.list);
   jest.mocked(serviceService.getById).mockResolvedValue(SERVICE);
   jest.mocked(serviceService.list).mockResolvedValue(page([ADDON]));
   jest
@@ -346,6 +355,71 @@ describe("GroomingServiceDetailScreen", () => {
     expect(
       screen.queryByRole("button", { name: /Isi bertingkat/ }),
     ).not.toBeInTheDocument();
+  });
+
+  /*
+    ─── THE TENANT'S SIZES (14 September 2026) ──────────────────────────────
+  */
+  const XL = makePetOption({
+    type: "size",
+    code: "xl",
+    label: "Ekstra besar",
+    sortOrder: 3,
+  });
+
+  it("keeps a priced size whose option was retired, and gives a size the tenant added its own row", async () => {
+    primePetOptions(petOptionService.list, [
+      XL,
+      ...PET_OPTION_FIXTURES.map((option) =>
+        option.type === "size" && option.code === "medium"
+          ? { ...option, isActive: false }
+          : option,
+      ),
+    ]);
+
+    renderDetail();
+    await openVariants();
+
+    expect(
+      (await screen.findAllByRole("textbox", { name: /^Harga / })).map(
+        (input) => input.getAttribute("aria-label"),
+      ),
+    ).toEqual([
+      "Harga Kecil",
+      "Harga Sedang (nonaktif)",
+      "Harga Besar",
+      "Harga Ekstra besar",
+    ]);
+    expect(screen.getByLabelText("Harga Sedang (nonaktif)")).toHaveValue(
+      "129.000",
+    );
+    // The Ukuran chip counts what this service can be priced by.
+    expect(screen.getByText("×4")).toBeInTheDocument();
+  });
+
+  it("refuses to save more variants than a service may have, and says so", async () => {
+    primePetOptions(petOptionService.list, [
+      ...PET_OPTION_FIXTURES,
+      makePetOption({ type: "species", code: "rabbit", label: "Kelinci", sortOrder: 2 }),
+      XL,
+    ]);
+
+    renderDetail();
+    await openVariants();
+
+    await userEvent.click(await screen.findByLabelText(/Jenis bulu/));
+    await userEvent.click(screen.getByLabelText(/Jenis hewan/));
+
+    // 4 sizes × 2 coats × 3 species.
+    expect(
+      screen.getByText(/Kombinasinya jadi 24 varian — maksimal 20 per layanan/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("kombinasinya jadi 24 varian, maksimal 20 per layanan"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Simpan varian & harga" }),
+    ).toBeDisabled();
   });
 
   /*

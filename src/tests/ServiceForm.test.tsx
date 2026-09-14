@@ -6,13 +6,21 @@ import { serviceService } from "@/services/service.service";
 import { businessLineService } from "@/services/businessLine.service";
 import { branchService } from "@/services/branch.service";
 import { ApiError } from "@/services/api-error";
+import { petOptionService } from "@/services/petOption.service";
 import type { Service } from "@/types/api";
 
+import {
+  makePetOption,
+  PET_OPTION_FIXTURES,
+  primePetOptions,
+} from "./helpers/petOptions";
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
 jest.mock("@/services/service.service");
 jest.mock("@/services/businessLine.service");
 jest.mock("@/services/branch.service");
+// The variant rows are the tenant's species, sizes and coats.
+jest.mock("@/services/petOption.service");
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
 
 import { swalToast } from "@/lib/swal";
@@ -87,6 +95,7 @@ const addonFixture: Service = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  primePetOptions(petOptionService.list);
   mockedBusinessLineService.list.mockResolvedValue({
     items: [
       {
@@ -532,6 +541,142 @@ describe("ServiceForm — variant pricing", () => {
     expect(
       await screen.findByText(/semua baris varian harus punya durasi/i),
     ).toBeVisible();
+    expect(mockedServiceService.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("ServiceForm — the tenant's species, sizes and coats", () => {
+  /*
+    ─── THE ROWS ARE THE TENANT'S PET OPTIONS (14 September 2026) ─────────────
+
+    Not three closed lists any more: a shop can add a size, retire a coat, or
+    have enough of each that ticking every axis makes more variants than the
+    server stores.
+  */
+  const XL = makePetOption({
+    type: "size",
+    code: "xl",
+    label: "Ekstra besar",
+    sortOrder: 3,
+  });
+
+  const LONG_HAIR_RETIRED = PET_OPTION_FIXTURES.map((option) =>
+    option.code === "long hair" ? { ...option, isActive: false } : option,
+  );
+
+  const priceRows = () =>
+    screen
+      .getAllByRole("textbox", { name: /^Harga / })
+      .map((input) => input.getAttribute("aria-label"));
+
+  it("gives a size the tenant added its own row, in the tenant's order", async () => {
+    // Listed first: the order is sortOrder, not arrival.
+    primePetOptions(petOptionService.list, [XL, ...PET_OPTION_FIXTURES]);
+    await renderNew();
+
+    await userEvent.click(screen.getByLabelText(/harga beda per varian/i));
+    await userEvent.click(screen.getByLabelText(/kategori ukuran/i));
+
+    expect(await screen.findByText(/4 baris/i)).toBeVisible();
+    expect(priceRows()).toEqual([
+      "Harga Kecil",
+      "Harga Sedang",
+      "Harga Besar",
+      "Harga Ekstra besar",
+    ]);
+  });
+
+  it("keeps a priced coat whose option was retired, and saves it with the rest", async () => {
+    primePetOptions(petOptionService.list, LONG_HAIR_RETIRED);
+    mockedServiceService.getById.mockResolvedValue({
+      ...serviceFixture,
+      price: null,
+      durationMin: null,
+      hasVariants: true,
+      variantAxes: ["furType"],
+      variants: [
+        {
+          petType: null,
+          sizeCategory: null,
+          furType: "long hair",
+          price: "180000.0000",
+          durationMin: 120,
+          isActive: true,
+        },
+        {
+          petType: null,
+          sizeCategory: null,
+          furType: "short hair",
+          price: "150000.0000",
+          durationMin: 90,
+          isActive: true,
+        },
+      ],
+    });
+    mockedServiceService.update.mockResolvedValue(serviceFixture);
+
+    renderWithAuth(<ServiceForm serviceId={SERVICE_ID} />);
+
+    expect(
+      await screen.findByLabelText("Harga Bulu panjang (nonaktif)"),
+    ).toHaveValue("180000");
+    expect(priceRows()).toEqual([
+      "Harga Bulu panjang (nonaktif)",
+      "Harga Bulu pendek",
+    ]);
+
+    await userEvent.click(screen.getByRole("button", { name: /simpan layanan/i }));
+
+    await waitFor(() => expect(mockedServiceService.update).toHaveBeenCalled());
+    const [, payload] = mockedServiceService.update.mock.calls[0];
+    expect(payload.variants?.map((variant) => variant.furType)).toEqual([
+      "long hair",
+      "short hair",
+    ]);
+  });
+
+  it("does not offer a retired coat on a new service", async () => {
+    primePetOptions(petOptionService.list, LONG_HAIR_RETIRED);
+    await renderNew();
+
+    await userEvent.click(screen.getByLabelText(/harga beda per varian/i));
+    await userEvent.click(screen.getByLabelText(/kategori bulu/i));
+
+    expect(await screen.findByText(/1 baris/i)).toBeVisible();
+    expect(priceRows()).toEqual(["Harga Bulu pendek"]);
+  });
+
+  it("keeps Simpan off while the ticked axes make more than 20 variants", async () => {
+    primePetOptions(petOptionService.list, [
+      ...PET_OPTION_FIXTURES,
+      makePetOption({ type: "species", code: "rabbit", label: "Kelinci", sortOrder: 2 }),
+      XL,
+    ]);
+    await renderNew();
+
+    await fillRequiredExceptPrice();
+    await userEvent.click(screen.getByLabelText(/harga beda per varian/i));
+    await userEvent.click(screen.getByLabelText(/tipe hewan/i));
+    await userEvent.click(screen.getByLabelText(/kategori ukuran/i));
+    await userEvent.click(screen.getByLabelText(/kategori bulu/i));
+
+    // 3 species × 4 sizes × 2 coats.
+    expect(
+      await screen.findByText(
+        /kombinasinya jadi 24 varian — maksimal 20 per layanan/i,
+      ),
+    ).toBeVisible();
+    // The action bar says why its button is off.
+    expect(
+      screen.getByText("24 varian, maksimal 20 per layanan"),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: /buat layanan/i })).toBeDisabled();
+
+    // 4 × 2 = 8 fits.
+    await userEvent.click(screen.getByLabelText(/tipe hewan/i));
+
+    expect(screen.queryByText(/kombinasinya jadi/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /buat layanan/i })).toBeEnabled();
     expect(mockedServiceService.create).not.toHaveBeenCalled();
   });
 });

@@ -6,12 +6,15 @@ import { bookingService } from "@/services/booking.service";
 import { branchService } from "@/services/branch.service";
 import { customerService } from "@/services/customer.service";
 import { petService } from "@/services/pet.service";
+import { petOptionService } from "@/services/petOption.service";
 import type { Booking } from "@/types/api";
 
+import { primePetOptions } from "./helpers/petOptions";
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
 jest.mock("@/services/booking.service");
 jest.mock("@/services/pet.service");
+jest.mock("@/services/petOption.service");
 jest.mock("@/services/customer.service");
 jest.mock("@/services/branch.service");
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
@@ -187,6 +190,8 @@ const LADDER_ONLY = [
 
 beforeEach(() => {
   jest.clearAllMocks();
+  /* The words for species, size and coat — tenant data, read via usePetOptions. */
+  primePetOptions(petOptionService.list);
   bookings.getById.mockResolvedValue(booking());
   bookings.advanceItemWork.mockResolvedValue(booking());
   bookings.correctItemTimes.mockResolvedValue(booking());

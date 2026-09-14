@@ -173,7 +173,7 @@ describe("InitialDataScreen", () => {
 });
 
 describe("ServiceSettingsScreen", () => {
-  it("sends Tahapan and Add-on to Layanan & Harga and badges the three that are not built", () => {
+  it("sends Tahapan and Add-on to Layanan & Harga, Data hewan to its screen, and badges Zona", () => {
     renderWithAuth(<ServiceSettingsScreen />);
 
     for (const name of [/Tahapan/, /Add-on/]) {
@@ -182,20 +182,31 @@ describe("ServiceSettingsScreen", () => {
         "/dashboard/layanan/grooming/katalog",
       );
     }
+    // Ukuran and Ras became tenant data (14 September 2026) — one card for the
+    // four lists, not two "Segera" cards.
+    expect(screen.getByRole("link", { name: /Data hewan/ })).toHaveAttribute(
+      "href",
+      "/dashboard/master/layanan/data-hewan",
+    );
     // No catalogue card — the list lives on Grooming › Layanan & Harga.
-    expect(screen.getAllByRole("link")).toHaveLength(2);
+    expect(screen.getAllByRole("link")).toHaveLength(3);
 
-    // Ukuran, Ras, Zona — drawn so the module's shape is visible, going nowhere.
-    expect(screen.getAllByText("Segera")).toHaveLength(3);
+    // Zona alone — drawn so the module's shape is visible, going nowhere.
+    expect(screen.getAllByText("Segera")).toHaveLength(1);
+    expect(screen.queryByText("Ukuran")).not.toBeInTheDocument();
+    expect(screen.queryByText("Ras")).not.toBeInTheDocument();
   });
 
-  it("links nowhere for a role without the grant", () => {
+  it("keeps only Data hewan for a role without the services grant", () => {
     renderWithAuth(<ServiceSettingsScreen />, {
       isSuperAdmin: false,
       permissions: [{ feature: "branches", actions: ["read"] }],
     });
 
-    expect(screen.queryByRole("link")).not.toBeInTheDocument();
-    expect(screen.getAllByText("Segera")).toHaveLength(3);
+    // Reading the vocabulary needs no grant, so its card does not hide with
+    // the two that lead into the service catalogue.
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expect(screen.getByRole("link", { name: /Data hewan/ })).toBeInTheDocument();
+    expect(screen.getAllByText("Segera")).toHaveLength(1);
   });
 });

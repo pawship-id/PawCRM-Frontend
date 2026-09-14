@@ -1,5 +1,10 @@
 import { toMinor } from "@/utils/decimal";
-import type { Pet, Service, ServiceVariantAxis } from "@/types/api";
+import type {
+  Pet,
+  PetOptionType,
+  Service,
+  ServiceVariantAxis,
+} from "@/types/api";
 
 /**
  * ANYTHING PRICED THE WAY A SERVICE IS — the catalogue's own row, one of its
@@ -44,6 +49,18 @@ type Priced = Pick<
  * every animal ever stored, and the bug would look like "variants do not work".
  */
 const AXIS_TO_PET_FIELD: Record<ServiceVariantAxis, keyof Pet> = {
+  petType: "species",
+  sizeCategory: "size",
+  furType: "furType",
+};
+
+/**
+ * The axis on the service ← the pet-option list its values come from.
+ *
+ * THE SAME RENAME AS ABOVE, on the vocabulary side: a `petType` value is a
+ * `species` option code (14 September 2026, when the lists became tenant data).
+ */
+export const AXIS_OPTION_TYPE: Record<ServiceVariantAxis, PetOptionType> = {
   petType: "species",
   sizeCategory: "size",
   furType: "furType",
@@ -131,29 +148,22 @@ export function priceForPet(
   };
 }
 
-/**
- * The pet vocabulary, in Bahasa — what each stored axis value is called on
- * screen.
- *
- * ⚠️ IT LIVES HERE, BESIDE THE FUNCTION THAT READS IT, since the till's grid
- * became the second screen naming a variant. It was a `const` inside
- * `BookingPetGroupCard`, and a second copy is how "Bulu panjang" becomes
- * "Panjang" on one screen and not the other — the animal is described the same
- * way wherever it is described.
- *
- * KEYED BY THE STORED VALUE, and an unknown one falls through to itself rather
- * than to a blank: a species added to the model before this table is a word
- * somebody can still read.
- */
-export const VARIANT_VALUE_LABELS: Record<string, Record<string, string>> = {
-  petType: { cat: "Kucing", dog: "Anjing" },
-  sizeCategory: { small: "Kecil", medium: "Sedang", large: "Besar" },
-  furType: { "long hair": "Bulu panjang", "short hair": "Bulu pendek" },
-};
+/** Names a stored option code — `usePetOptions().label` is exactly this. */
+export type VariantValueLabel = (
+  type: PetOptionType,
+  code: string,
+) => string | null;
 
 /**
  * A label for the variant an animal falls into — "Anjing · Besar" — so a screen
  * can show WHICH price is being applied rather than just the number.
+ *
+ * `label` IS REQUIRED, and is the tenant's word — pass `usePetOptions().label`.
+ * It used to default to `VARIANT_VALUE_LABELS`, seven words typed in here
+ * (removed 14 September 2026, when species, sizes and coats became tenant data),
+ * which is how a shop that renamed "Besar" would have gone on reading "Besar" on
+ * the one caption meant to let a cashier check the price. A code nothing can
+ * name falls through to itself rather than to a blank.
  *
  * NULL ON A FLAT-PRICED SERVICE, where there is no variant to name and a caption
  * would be noise under every ordinary line.
@@ -161,14 +171,16 @@ export const VARIANT_VALUE_LABELS: Record<string, Record<string, string>> = {
 export function variantLabelForPet(
   service: Partial<Priced> | null | undefined,
   pet: Pet | null | undefined,
-  labels: Record<string, Record<string, string>> = VARIANT_VALUE_LABELS,
+  label: VariantValueLabel,
 ): string | null {
   if (!service?.hasVariants) return null;
 
   const parts = (service.variantAxes ?? [])
     .map((axis) => {
       const value = pet?.[AXIS_TO_PET_FIELD[axis]] ?? null;
-      return value === null ? null : (labels[axis]?.[value as string] ?? value);
+      return value === null
+        ? null
+        : (label(AXIS_OPTION_TYPE[axis], value as string) ?? (value as string));
     })
     .filter((part): part is string => Boolean(part));
 

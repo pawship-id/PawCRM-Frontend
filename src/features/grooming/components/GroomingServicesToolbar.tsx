@@ -16,6 +16,7 @@ import {
 } from "@/components";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/features/auth";
+import { usePetOptions } from "@/hooks/usePetOptions";
 import { branchService } from "@/services/branch.service";
 import type { Branch } from "@/types/api";
 import { accessibleBranches } from "@/utils/accessScope";
@@ -62,14 +63,6 @@ const STATUS_OPTIONS = withAll<GroomingServicesQuery["isActive"]>(
   "Semua status",
 );
 
-const PET_OPTIONS = withAll<GroomingServicesQuery["petType"]>(
-  [
-    { value: "dog", label: "Anjing" },
-    { value: "cat", label: "Kucing" },
-  ],
-  "Semua jenis hewan",
-);
-
 const PLACE_OPTIONS = withAll<GroomingServicesQuery["location"]>(
   [
     { value: "in_store", label: "Di toko" },
@@ -95,7 +88,9 @@ const PLACE_OPTIONS = withAll<GroomingServicesQuery["location"]>(
  *  - Cabang — offered at that branch, "semua cabang" services included. The
  *    same value the card above sets; this is a second way to set it;
  *  - Jenis hewan — can be sold for that animal: priced regardless of species,
- *    or with a variant for it;
+ *    or with a variant for it. The species are the tenant's pet options (14
+ *    September 2026), not a cat and a dog written here — a shop that adds
+ *    Kelinci can narrow to it;
  *  - Tempat — done there; a service with no location stored counts as the shop;
  *  - Tanggal booking — the card's Periode, drafted here. A service has no date,
  *    so this narrows what "N booking" counts, not which services are listed.
@@ -141,6 +136,18 @@ export function GroomingServicesToolbar({
   const [draft, setDraft] = useState(filters);
   const [draftPeriod, setDraftPeriod] = useState(period);
   const [draftCustom, setDraftCustom] = useState(customRange);
+  const { choices } = usePetOptions();
+
+  /*
+    ACTIVE SPECIES, PLUS WHATEVER IS ALREADY PICKED — applied or drafted — once
+    its option is retired, so the field never holds a value it has no row for.
+  */
+  const petTypeOptions = withAll(
+    choices("species", [filters.petType, draft.petType]).map(
+      ({ value, label }) => ({ value, label }),
+    ),
+    "Semua jenis hewan",
+  );
 
   useEffect(() => {
     let active = true;
@@ -240,7 +247,7 @@ export function GroomingServicesToolbar({
           layout="field"
           label="Jenis hewan"
           value={draft.petType}
-          options={PET_OPTIONS}
+          options={petTypeOptions}
           onChange={(petType) => patch({ petType })}
         />
         <FilterSelect

@@ -18,6 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Can, usePermissions } from "@/features/permissions";
+import { usePetOptions } from "@/hooks/usePetOptions";
 import type { Pet } from "@/types/api";
 
 import { PetSpeciesBadge, PetStatusBadge } from "./PetBadges";
@@ -76,6 +77,8 @@ export function PetsTable({
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const { can } = usePermissions();
+  /* Breed is stored as the tenant's option CODE; the cell shows its word. */
+  const { label } = usePetOptions();
 
   // Show the Aksi column only when at least one CURRENTLY-LISTED row would
   // render a button — so a restore-only role sees the column while "show
@@ -157,7 +160,10 @@ export function PetsTable({
                   <TableCell>
                     <span className="text-muted">
                       {pet.breed ? (
-                        <HighlightText text={pet.breed} query={search} />
+                        <HighlightText
+                          text={label("breed", pet.breed) ?? pet.breed}
+                          query={search}
+                        />
                       ) : (
                         "—"
                       )}

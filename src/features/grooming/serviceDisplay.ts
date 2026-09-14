@@ -1,6 +1,7 @@
 import {
   buildVariantCombos,
   servicePriceBounds,
+  type VariantAxisValues,
 } from "@/features/services";
 import type {
   Branch,
@@ -104,13 +105,20 @@ export interface VariantRow {
  * GENERATED FROM THE AXES, not read off `variants`, so a combination nobody
  * priced still shows up — as a gap — instead of silently not existing. The form
  * refuses to save a gap today; a service priced before it did may have one.
+ *
+ * `table` IS THE TENANT'S VALUES (14 September 2026) — build it over this
+ * service's own variants (`useVariantAxisValues().valuesFor(service.variants)`)
+ * so every stored row is in it. A size the shop added after this service was
+ * priced is therefore a gap too, which is exactly what it is: an animal of that
+ * size cannot be quoted.
  */
 export function variantRows(
   service: Pick<Service, "variantAxes" | "variants">,
+  table: VariantAxisValues,
 ): VariantRow[] {
   const axes = service.variantAxes ?? [];
 
-  return buildVariantCombos(axes).map((combo) => {
+  return buildVariantCombos(axes, table).map((combo) => {
     const match = (service.variants ?? []).find((variant) =>
       axes.every((axis) => variant[axis] === combo[axis]),
     );
@@ -132,8 +140,9 @@ export function variantRows(
  */
 export function variantCounts(
   service: Pick<Service, "variantAxes" | "variants">,
+  table: VariantAxisValues,
 ): { active: number; total: number; priced: number; possible: number } {
-  const rows = variantRows(service);
+  const rows = variantRows(service, table);
   const stored = rows.filter((row) => row.stored);
 
   return {
@@ -199,13 +208,14 @@ export function branchesText(
 export function missingPieces(
   service: Service,
   addons: Service[] | null,
+  table: VariantAxisValues,
 ): string[] {
   const missing: string[] = [];
 
   if (service.hasVariants) {
-    const rows = variantRows(service).filter((row) => row.stored);
+    const rows = variantRows(service, table).filter((row) => row.stored);
     const untimed = rows.filter((row) => row.durationMin === null).length;
-    const counts = variantCounts(service);
+    const counts = variantCounts(service, table);
 
     if (untimed > 0) {
       missing.push(

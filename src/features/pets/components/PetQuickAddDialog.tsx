@@ -17,25 +17,9 @@ import { ApiError } from "@/services/api-error";
 import { petService } from "@/services/pet.service";
 import type { Pet, PetFurType, PetSize, PetSpecies } from "@/types/api";
 
+import { usePetPickers } from "../hooks/usePetPickers";
+
 const NAME_MAX_LENGTH = 80;
-
-const SPECIES_OPTIONS: { value: PetSpecies; label: string }[] = [
-  { value: "cat", label: "Kucing" },
-  { value: "dog", label: "Anjing" },
-];
-
-/* The same words and the same order as the full form's — an animal is described
-   one way wherever it is described. See PetForm. */
-const SIZE_OPTIONS: { value: PetSize; label: string }[] = [
-  { value: "small", label: "Kecil" },
-  { value: "medium", label: "Sedang" },
-  { value: "large", label: "Besar" },
-];
-
-const FUR_TYPE_OPTIONS: { value: PetFurType; label: string }[] = [
-  { value: "long hair", label: "Berbulu panjang" },
-  { value: "short hair", label: "Berbulu pendek" },
-];
 
 /**
  * Registers an animal without leaving whatever screen you are on.
@@ -68,6 +52,14 @@ const FUR_TYPE_OPTIONS: { value: PetFurType; label: string }[] = [
  *
  * NOTHING ELSE JOINS THEM without the same argument: a quick-add that asked for
  * a birth date would be the full form wearing a dialog.
+ *
+ * ─── THE SAME LISTS AS THE FULL FORM ───────────────────────────────────────
+ *
+ * Species, sizes and coats are the tenant's own lists since 14 September 2026
+ * (`petoptions`), and this dialog offers exactly what `PetForm` offers — both
+ * read `usePetPickers`, so an animal is described one way wherever it is
+ * described. They were copied arrays here before, and the copy had already
+ * drifted once. Nothing is stored yet, so only ACTIVE options are offered.
  *
  * THE OWNER IS A PROP, not a picker. Every caller already knows whose animal it
  * is: the POS has a selected pelanggan, and the customer screen IS one. Offering
@@ -198,44 +190,19 @@ export function PetQuickAddDialog({
             required
           />
 
-          <SelectField
-            label="Jenis"
-            value={species}
-            onChange={(next) => {
-              setSpecies(next as PetSpecies);
+          <QuickAddPickers
+            species={species}
+            onSpeciesChange={(next) => {
+              setSpecies(next);
               setSpeciesError(null);
             }}
-            options={SPECIES_OPTIONS}
-            placeholder="Pilih jenis"
-            error={speciesError ?? undefined}
+            speciesError={speciesError}
+            size={size}
+            onSizeChange={setSize}
+            furType={furType}
+            onFurTypeChange={setFurType}
             disabled={saving}
-            required
           />
-
-          {/*
-            SIDE BY SIDE, AND OPTIONAL. They sit under the two required fields
-            because that is the order somebody answers them in — what is it
-            called, what is it, then what is it like — and they are the two the
-            price may depend on. A shop with flat prices leaves both alone.
-          */}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <SelectField
-              label="Ukuran"
-              value={size}
-              onChange={(next) => setSize(next as PetSize)}
-              options={SIZE_OPTIONS}
-              placeholder="Pilih ukuran"
-              disabled={saving}
-            />
-            <SelectField
-              label="Jenis bulu"
-              value={furType}
-              onChange={(next) => setFurType(next as PetFurType)}
-              options={FUR_TYPE_OPTIONS}
-              placeholder="Pilih jenis bulu"
-              disabled={saving}
-            />
-          </div>
 
           <DialogFooter>
             <Button
@@ -253,5 +220,76 @@ export function PetQuickAddDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Jenis, then Ukuran and Jenis bulu side by side.
+ *
+ * ITS OWN COMPONENT FOR ONE REASON: the dialog's content is mounted only while
+ * it is open, so the tenant's lists are asked for when somebody opens the
+ * dialog — not by every booking form and till screen that merely carries it
+ * closed.
+ */
+function QuickAddPickers({
+  species,
+  onSpeciesChange,
+  speciesError,
+  size,
+  onSizeChange,
+  furType,
+  onFurTypeChange,
+  disabled,
+}: {
+  species: PetSpecies | "";
+  onSpeciesChange: (next: PetSpecies) => void;
+  speciesError: string | null;
+  size: PetSize | "";
+  onSizeChange: (next: PetSize) => void;
+  furType: PetFurType | "";
+  onFurTypeChange: (next: PetFurType) => void;
+  disabled: boolean;
+}) {
+  const { pickerOptions, loading, error } = usePetPickers();
+
+  return (
+    <>
+      <SelectField
+        label="Jenis"
+        value={species}
+        onChange={onSpeciesChange}
+        options={pickerOptions("species")}
+        placeholder={loading ? "Memuat…" : "Pilih jenis"}
+        error={speciesError ?? undefined}
+        hint={error ?? undefined}
+        disabled={disabled || loading}
+        required
+      />
+
+      {/*
+        SIDE BY SIDE, AND OPTIONAL. They sit under the two required fields
+        because that is the order somebody answers them in — what is it
+        called, what is it, then what is it like — and they are the two the
+        price may depend on. A shop with flat prices leaves both alone.
+      */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <SelectField
+          label="Ukuran"
+          value={size}
+          onChange={onSizeChange}
+          options={pickerOptions("size")}
+          placeholder={loading ? "Memuat…" : "Pilih ukuran"}
+          disabled={disabled || loading}
+        />
+        <SelectField
+          label="Jenis bulu"
+          value={furType}
+          onChange={onFurTypeChange}
+          options={pickerOptions("furType")}
+          placeholder={loading ? "Memuat…" : "Pilih jenis bulu"}
+          disabled={disabled || loading}
+        />
+      </div>
+    </>
   );
 }

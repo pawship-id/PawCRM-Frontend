@@ -572,8 +572,12 @@ export interface GroomingSettings {
     service: {
       mode: "percentage" | "size_nominal";
       percent: number;
-      /** There is no XLarge — these are the three sizes a pet can have. */
-      sizeNominal: { small: number; medium: number; large: number };
+      /**
+       * Whole rupiah, KEYED BY SIZE-OPTION CODE — one key per size the tenant
+       * has (14 September 2026; it was exactly small/medium/large). A size with
+       * no key earns nothing. The server accepts any code-shaped key.
+       */
+      sizeNominal: Record<string, number>;
     };
     addon: GroomingFlatCommissionRule;
     /**
@@ -3300,21 +3304,93 @@ export interface UpdateServiceInput {
 }
 
 /**
- * The animal species a pet may be. Mirrors PET_SPECIES in pet.model.js — a
- * closed list, because it decides which services and prices a booking may offer.
- * Scoped to cat and dog for now — see the model for why the list stays this
- * short rather than growing in place.
+ * Which of the four lists a pet option belongs to — named after the pet field
+ * that stores it. Mirrors PET_OPTION_TYPES in petOption.model.js.
  */
-export type PetSpecies = "cat" | "dog";
+export type PetOptionType = "species" | "breed" | "size" | "furType";
 
-/** Mirrors PET_BREEDS in pet.model.js. `domestic` is the mixed-breed answer. */
-export type PetBreed = "domestic" | "poodle";
+/**
+ * One word in a tenant's vocabulary for an animal, as GET /api/pet-options
+ * returns it (14 September 2026).
+ *
+ * `code` IS WHAT OTHER DOCUMENTS STORE — `pet.species`, a variant's
+ * `sizeCategory`, a key of `sizeNominal` — and it never changes. `label` is what
+ * a screen shows, and is free to. Never render a code where a label is wanted:
+ * use `usePetOptions().label(type, code)`.
+ */
+export interface PetOption {
+  _id: string;
+  tenantId: string;
+  type: PetOptionType;
+  code: string;
+  label: string;
+  /** Position within its list, ascending — sizes go smallest first. */
+  sortOrder: number;
+  /**
+   * Still offered. A retired option is refused for a NEW choice, but a pet or a
+   * variant that already holds it keeps it and saves unchanged.
+   */
+  isActive: boolean;
+  createdBy: string | null;
+  /** Soft-delete marker; refused by the API while a live pet or service uses the code. */
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
 
-/** Mirrors PET_FUR_TYPES in pet.model.js. */
-export type PetFurType = "long hair" | "short hair";
+/**
+ * Query parameters accepted by GET /api/pet-options. Reading needs a session
+ * and no permission — every screen that records an animal reads this list.
+ */
+export interface PetOptionListQuery {
+  page?: number;
+  limit?: number;
+  type?: PetOptionType;
+  /** Omit for both states. */
+  isActive?: boolean;
+  /** Free text over label and code. */
+  search?: string;
+  includeDeleted?: boolean;
+}
 
-/** Mirrors PET_SIZES in pet.model.js. */
-export type PetSize = "small" | "medium" | "large";
+/**
+ * Body of POST /api/pet-options. `code` is optional — the server derives one
+ * from the label — and `sortOrder` defaults to the end of the list.
+ */
+export interface CreatePetOptionInput {
+  type: PetOptionType;
+  label: string;
+  code?: string;
+  sortOrder?: number;
+  isActive?: boolean;
+}
+
+/**
+ * Body of PATCH /api/pet-options/:id. No `code` and no `type`: other documents
+ * store the code, so it is fixed for life.
+ */
+export interface UpdatePetOptionInput {
+  label?: string;
+  sortOrder?: number;
+  isActive?: boolean;
+}
+
+/**
+ * A `species` option CODE. These four were closed unions mirroring enums on
+ * pet.model.js; since 14 September 2026 the lists are tenant data
+ * (`petoptions`), so any string the tenant has made an option is legal. The
+ * names are kept so a reader still sees WHICH list a field draws from.
+ */
+export type PetSpecies = string;
+
+/** A `breed` option code. `domestic` is the seeded mixed-breed answer. */
+export type PetBreed = string;
+
+/** A `furType` option code. */
+export type PetFurType = string;
+
+/** A `size` option code. */
+export type PetSize = string;
 
 /**
  * `unknown` is a REAL value, not a missing one: a rescue arrives unsexed and
@@ -5593,6 +5669,12 @@ export interface CustomerInvoiceItem {
    * group the line sits in. Null on a product line, or when the pet is gone.
    */
   petSpecies?: PetSpecies | null;
+  /**
+   * The species' WORD ("Kucing"), resolved on read beside `petSpecies`. Species
+   * are tenant data now, and the public invoice page has no session to look the
+   * code up with — so the server says it. Null when unresolvable; show the code.
+   */
+  petSpeciesLabel?: string | null;
   /**
    * The booking's number, RESOLVED ON READ for every line with a `bookingId` —
    * a till sale's too, whose bookings `bookings[]` does not carry. Null on a

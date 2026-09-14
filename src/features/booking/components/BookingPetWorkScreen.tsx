@@ -19,12 +19,8 @@ import {
 } from "./SessionGroomers";
 import { SessionAlbum } from "./SessionAlbum";
 import { SessionRecord } from "./SessionRecord";
-import {
-  furTypeLabel,
-  PetSummaryCard,
-  sizeLabel,
-  speciesLabel,
-} from "@/features/pets";
+import { PetSummaryCard } from "@/features/pets";
+import { usePetOptions } from "@/hooks/usePetOptions";
 import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
 import { branchService } from "@/services/branch.service";
@@ -220,6 +216,11 @@ export function BookingPetWorkScreen({
   const [openRows, setOpenRows] = useState<Record<string, boolean>>({});
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [branchName, setBranchName] = useState<string | null>(null);
+  /*
+    THE WORDS FOR THE ANIMAL — species, breed, size, coat. The pet stores codes,
+    and the words are the tenant's own since 14 Sep 2026.
+  */
+  const { label: petOptionLabel } = usePetOptions();
 
   useEffect(() => {
     let active = true;
@@ -937,8 +938,8 @@ export function BookingPetWorkScreen({
                   */}
                   <p className="text-xs text-muted">
                     {[
-                      sizeLabel(pet?.size),
-                      furTypeLabel(pet?.furType),
+                      petOptionLabel("size", pet?.size),
+                      petOptionLabel("furType", pet?.furType),
                       service.durationMin
                         ? `${service.durationMin} mnt`
                         : "durasi belum diisi",
@@ -992,6 +993,11 @@ export function BookingPetWorkScreen({
                   product UI entirely — the reference draws a cat's face here and
                   this draws the same shape from the icon set everything else
                   uses.
+
+                  KEYED ON THE SEEDED `cat` CODE, with the dog for everything
+                  else. Species are tenant data now, so a shop may add one the
+                  icon set has no shape for; the fallback is unchanged, and the
+                  WORD beside the name is what says which animal it is.
                 */}
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-start gap-3">
@@ -1009,9 +1015,9 @@ export function BookingPetWorkScreen({
                       </p>
                       <p className="text-xs text-muted">
                         {[
-                          pet.breed,
+                          petOptionLabel("breed", pet.breed),
                           pet.weightKg ? `${pet.weightKg} kg` : null,
-                          pet.species ? speciesLabel(pet.species) : null,
+                          petOptionLabel("species", pet.species),
                         ]
                           .filter(Boolean)
                           .join(" · ") || "—"}
@@ -1024,9 +1030,12 @@ export function BookingPetWorkScreen({
                       dash when nobody has recorded them: an empty chip is a
                       thing to decode.
                     */}
-                      {(sizeLabel(pet.size) || furTypeLabel(pet.furType)) && (
+                      {(pet.size || pet.furType) && (
                         <ul className="mt-1.5 flex flex-wrap gap-1.5">
-                          {[sizeLabel(pet.size), furTypeLabel(pet.furType)]
+                          {[
+                            petOptionLabel("size", pet.size),
+                            petOptionLabel("furType", pet.furType),
+                          ]
                             .filter((label): label is string => Boolean(label))
                             .map((label) => (
                               <li

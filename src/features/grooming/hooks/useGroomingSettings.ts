@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { usePermissions } from "@/features/permissions";
+import { usePetOptions } from "@/hooks/usePetOptions";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
@@ -13,6 +14,7 @@ import { isoDate } from "@/utils/date";
 
 import {
   changedOverrides,
+  commissionSizes,
   draftToSettings,
   isDraftDirty,
   settingsChanged,
@@ -80,10 +82,24 @@ async function read(mayReadBookings: boolean): Promise<Loaded> {
  * A GROOMER WHOSE PATCH FAILED KEEPS WHAT WAS TYPED. The screen re-reads after
  * every save, and a re-read that silently put back the old number would make
  * the failure look like a success to anybody who missed the banner.
+ *
+ * ─── THE SIZE ROWS ARE WORKED OUT HERE, ONCE ───────────────────────────────
+ *
+ * From the tenant's size options (14 September 2026) and the nominals as
+ * stored, and handed to the screen as `sizes` — so the rows it draws and the
+ * rows `validateDraft` checks are one list, not two that could drift.
+ *
+ * THE SCREEN WAITS FOR THAT LIST (`loading`). Drawn before it arrives, "Nominal
+ * per ukuran" is an empty grid with nothing to check, and a Simpan that goes
+ * through as if the shop had no sizes. If the list FAILS, nothing is lost by
+ * saving: the payload carries every stored nominal back whether or not it is on
+ * screen (`draftToSettings`).
  */
 export function useGroomingSettings() {
   const { can } = usePermissions();
   const mayReadBookings = can("bookings", "read");
+  const petOptions = usePetOptions();
+  const { ordered } = petOptions;
 
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -130,7 +146,16 @@ export function useGroomingSettings() {
     setNonce((n) => n + 1);
   }, []);
 
-  const errors = useMemo(() => (draft ? validateDraft(draft) : {}), [draft]);
+  const storedSizes = loaded?.settings.commission.service.sizeNominal;
+  const sizes = useMemo(
+    () => commissionSizes(ordered("size"), storedSizes ?? {}),
+    [ordered, storedSizes],
+  );
+
+  const errors = useMemo(
+    () => (draft ? validateDraft(draft, sizes) : {}),
+    [draft, sizes],
+  );
 
   const dirty =
     loaded !== null &&
@@ -152,6 +177,8 @@ export function useGroomingSettings() {
 
   async function save() {
     if (!loaded || !draft || saving) return;
+    // The size rows are not known yet, so nothing has checked them.
+    if (petOptions.loading) return;
     if (Object.keys(errors).length > 0) return;
 
     setSaving(true);
@@ -226,9 +253,14 @@ export function useGroomingSettings() {
   }
 
   return {
-    loading: loaded === null && loadError === null,
+    loading: (loaded === null && loadError === null) || petOptions.loading,
     loadError,
     retry,
+    /** The "Nominal per ukuran" rows, in the tenant's order. */
+    sizes,
+    /** The size list could not be read; `sizes` is then empty or stale. */
+    sizesError: petOptions.error,
+    retrySizes: petOptions.reload,
     settings: loaded?.settings ?? null,
     capacity: loaded?.capacity ?? null,
     capacityError: loaded?.capacityError ?? null,

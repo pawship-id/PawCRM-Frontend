@@ -1,7 +1,10 @@
 import {
   buildVariantCombos,
   comboKey,
-  VARIANT_AXIS_TABLE,
+  MAX_VARIANTS,
+  VARIANT_AXES,
+  variantComboCount,
+  type VariantAxisValues,
 } from "@/features/services";
 import type {
   Service,
@@ -23,6 +26,13 @@ import { placeOf, type ServicePlace } from "./serviceDisplay";
  * TEXT, NOT NUMBERS, while it is a draft. A price box half typed is not a price,
  * and a draft that parsed on every keystroke would turn "1" into 1 rupiah the
  * moment the second digit was late.
+ *
+ * THE AXIS VALUES ARE AN ARGUMENT (14 September 2026). Which sizes a row can be,
+ * how many there are, and the order "Isi bertingkat" climbs them in are the
+ * tenant's pet options now, not constants in this file. Every function that
+ * generates rows takes a `VariantAxisValues`, which the editor builds from
+ * `useVariantAxisValues` over the STORED variants — so a priced value whose
+ * option was retired still makes its row.
  */
 
 /** Longest a service may take — `MAX_DURATION_MIN` in service.model.js. */
@@ -34,14 +44,6 @@ export const AXIS_ORDER: ServiceVariantAxis[] = [
   "furType",
   "petType",
 ];
-
-/** How many values each axis has — the chip's "×3". */
-export const AXIS_VALUE_COUNT: Record<ServiceVariantAxis, number> = Object.fromEntries(
-  VARIANT_AXIS_TABLE.map((entry) => [entry.axis, entry.values.length]),
-) as Record<ServiceVariantAxis, number>;
-
-/** Smallest to largest — what "Isi bertingkat per ukuran" steps through. */
-const SIZE_ORDER = ["small", "medium", "large"];
 
 export const PLACE_LOCATIONS: Record<ServicePlace, ServiceLocation[]> = {
   store: ["in_store"],
@@ -156,16 +158,17 @@ export function toggleAxis(
   draft: VariantDraft,
   axis: ServiceVariantAxis,
   on: boolean,
+  table: VariantAxisValues,
 ): VariantDraft {
-  const nextAxes = VARIANT_AXIS_TABLE.map((entry) => entry.axis).filter(
-    (candidate) => (candidate === axis ? on : draft.axes.includes(candidate)),
+  const nextAxes = VARIANT_AXES.filter((candidate) =>
+    candidate === axis ? on : draft.axes.includes(candidate),
   );
 
-  const oldCombos = buildVariantCombos(draft.axes);
+  const oldCombos = buildVariantCombos(draft.axes, table);
   const shared = draft.axes.filter((candidate) => nextAxes.includes(candidate));
 
   const rows: Record<string, DraftRow> = {};
-  for (const combo of buildVariantCombos(nextAxes)) {
+  for (const combo of buildVariantCombos(nextAxes, table)) {
     const parent = oldCombos.find((old) =>
       shared.every((candidate) => old[candidate] === combo[candidate]),
     );
@@ -263,20 +266,27 @@ export function applyBulk(
 }
 
 /**
- * "Isi bertingkat per ukuran": Kecil at `base`, each size up `step` more — on
- * every row, whatever else the row varies by. Only meaningful while Ukuran is
- * one of the axes; a draft without it comes back unchanged.
+ * "Isi bertingkat per ukuran": the smallest size at `base`, each size up `step`
+ * more — on every row, whatever else the row varies by. Only meaningful while
+ * Ukuran is one of the axes; a draft without it comes back unchanged.
+ *
+ * SMALLEST TO LARGEST IS THE TENANT'S `sortOrder`, read off `table` rather than
+ * a list of three written here — a shop that adds "Ekstra besar" after Besar
+ * gets one more step up, not a price nobody set. A retired size the service
+ * still prices keeps its place in that order.
  */
 export function fillBySize(
   draft: VariantDraft,
   base: number,
   step: number,
+  table: VariantAxisValues,
 ): VariantDraft {
   if (!draft.axes.includes("sizeCategory")) return draft;
 
+  const sizes = table.sizeCategory.map((entry) => entry.value);
   let next = draft;
-  for (const combo of buildVariantCombos(draft.axes)) {
-    const index = SIZE_ORDER.indexOf(combo.sizeCategory ?? "");
+  for (const combo of buildVariantCombos(draft.axes, table)) {
+    const index = sizes.indexOf(combo.sizeCategory ?? "");
     if (index < 0) continue;
     next = updateRow(next, combo.key, {
       price: groupDigits(String(Math.max(0, base + step * index))),
@@ -288,9 +298,13 @@ export function fillBySize(
 
 /**
  * Why the draft cannot be saved yet, said as the rest of a sentence, or null.
- * The server holds the same line — every variant priced and timed.
+ * The server holds the same line — every variant priced and timed, and no more
+ * than `MAX_VARIANTS` of them, which the tenant's own lists can now exceed.
  */
-export function draftProblem(draft: VariantDraft): string | null {
+export function draftProblem(
+  draft: VariantDraft,
+  table: VariantAxisValues,
+): string | null {
   if (draft.axes.length === 0) {
     if (priceDigits(draft.flat.price) === null) {
       return "harganya belum diisi dengan benar";
@@ -301,7 +315,13 @@ export function draftProblem(draft: VariantDraft): string | null {
     return null;
   }
 
-  const rows = buildVariantCombos(draft.axes).map((combo) =>
+  // First: no amount of typing fixes it, so counting blank boxes would mislead.
+  const count = variantComboCount(draft.axes, table);
+  if (count > MAX_VARIANTS) {
+    return `kombinasinya jadi ${count} varian, maksimal ${MAX_VARIANTS} per layanan`;
+  }
+
+  const rows = buildVariantCombos(draft.axes, table).map((combo) =>
     rowOf(draft, combo.key),
   );
   const unpriced = rows.filter((row) => priceDigits(row.price) === null).length;
@@ -322,7 +342,10 @@ export function draftProblem(draft: VariantDraft): string | null {
  *
  * Call it only when `draftProblem` is null.
  */
-export function draftPatch(draft: VariantDraft): UpdateServiceInput {
+export function draftPatch(
+  draft: VariantDraft,
+  table: VariantAxisValues,
+): UpdateServiceInput {
   const serviceLocations = PLACE_LOCATIONS[draft.place];
 
   if (draft.axes.length === 0) {
@@ -338,7 +361,7 @@ export function draftPatch(draft: VariantDraft): UpdateServiceInput {
     serviceLocations,
     hasVariants: true,
     variantAxes: draft.axes,
-    variants: buildVariantCombos(draft.axes).map((combo) => {
+    variants: buildVariantCombos(draft.axes, table).map((combo) => {
       const row = rowOf(draft, combo.key);
 
       return {
@@ -358,7 +381,10 @@ export function draftPatch(draft: VariantDraft): UpdateServiceInput {
  * same thing. "139.000" and "139000" are one price; rows of combinations the
  * current axes do not have are not part of it.
  */
-export function draftSignature(draft: VariantDraft): string {
+export function draftSignature(
+  draft: VariantDraft,
+  table: VariantAxisValues,
+): string {
   const normalised = (row: DraftRow) => [
     priceDigits(row.price) ?? row.price.trim(),
     row.duration.trim(),
@@ -370,7 +396,7 @@ export function draftSignature(draft: VariantDraft): string {
     rows:
       draft.axes.length === 0
         ? null
-        : buildVariantCombos(draft.axes).map((combo) => {
+        : buildVariantCombos(draft.axes, table).map((combo) => {
             const row = rowOf(draft, combo.key);
             return [...normalised(row), row.active];
           }),
