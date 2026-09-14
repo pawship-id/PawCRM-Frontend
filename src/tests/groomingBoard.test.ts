@@ -16,14 +16,14 @@ import {
 } from "@/features/grooming/board";
 import type {
   Booking,
-  BookingPet,
-  BookingPetService,
+  BookingMainService,
   BookingSession,
 } from "@/types/api";
 
 /**
  * The Grooming board computes every card from the rows it draws — so the
- * narrowing and the sums are the part worth pinning down.
+ * narrowing and the sums are the part worth pinning down. One row is one
+ * booking: one animal, one main service.
  */
 
 const scope: GroomingScope = {
@@ -47,9 +47,8 @@ function session(over: Partial<BookingSession> = {}): BookingSession {
   };
 }
 
-function service(over: Partial<BookingPetService> = {}): BookingPetService {
+function service(over: Partial<BookingMainService> = {}): BookingMainService {
   return {
-    itemId: "item-1",
     serviceId: "svc-groom",
     name: "Basic Grooming",
     serviceType: "Grooming",
@@ -65,39 +64,23 @@ function service(over: Partial<BookingPetService> = {}): BookingPetService {
   };
 }
 
-function pet(over: Partial<BookingPet> = {}): BookingPet {
-  return {
-    petItemId: "pi-1",
-    petId: "pet-1",
-    petName: "Bella",
-    petSize: "medium",
-    status: "confirmed",
-    statusHistory: [],
-    nextStatuses: [],
-    cancelReason: null,
-    internalNotes: null,
-    customerNotes: null,
-    notes: null,
-    belongings: [],
-    media: [],
-    pulledToCartAt: null,
-    pulledToInvoiceAt: null,
-    services: [service()],
-    ...over,
-  };
-}
-
 function booking(over: Partial<Booking> = {}): Booking {
   return {
     _id: "bk-1",
     bookingNumber: "BK-260913-001",
     customerName: "Rina",
+    petId: "pet-1",
+    petName: "Bella",
+    status: "confirmed",
     scheduledAt: "2026-09-13T09:00:00",
     location: "in_store",
     pickupRequested: false,
     deliveryRequested: false,
     posTransactionId: null,
-    pets: [pet()],
+    pulledToCartAt: null,
+    pulledToInvoiceAt: null,
+    internalNotes: null,
+    service: service(),
     ...over,
   } as Booking;
 }
@@ -139,51 +122,44 @@ describe("periodRange", () => {
 });
 
 describe("toGroomingRows", () => {
-  it("keeps only grooming work, with its add-ons in the value", () => {
+  it("keeps one row per grooming booking, with its add-ons in the value", () => {
     const rows = toGroomingRows(
       [
         booking({
-          pets: [
-            pet({
-              services: [
-                service({
-                  addons: [
-                    {
-                      itemId: "add-1",
-                      serviceId: "svc-kutu",
-                      name: "Obat Kutu",
-                      price: "35000.0000",
-                      durationMin: 15,
-                    },
-                  ],
-                }),
-                service({
-                  itemId: "item-2",
-                  serviceId: "svc-hotel",
-                  name: "Hotel 1 malam",
-                  serviceType: "Hotel",
-                  price: "200000.0000",
-                }),
-              ],
-            }),
-            pet({
-              petItemId: "pi-2",
-              petName: "Milo",
-              services: [
-                service({ serviceId: "svc-hotel", serviceType: "Hotel" }),
-              ],
-            }),
-          ],
+          service: service({
+            addons: [
+              {
+                itemId: "add-1",
+                serviceId: "svc-kutu",
+                name: "Obat Kutu",
+                price: "35000.0000",
+                durationMin: 15,
+              },
+            ],
+          }),
+        }),
+        /* The same visit's other booking — a night in the hotel, not a row. */
+        booking({
+          _id: "bk-2",
+          petId: "pet-2",
+          petName: "Milo",
+          service: service({
+            serviceId: "svc-hotel",
+            name: "Hotel 1 malam",
+            serviceType: "Hotel",
+            price: "200000.0000",
+          }),
         }),
       ],
       scope,
     );
 
     expect(rows).toHaveLength(1);
-    expect(rows[0].pet.petName).toBe("Bella");
+    expect(rows[0].key).toBe("bk-1");
+    expect(rows[0].booking.petName).toBe("Bella");
+    expect(rows[0].service.name).toBe("Basic Grooming");
     expect(rows[0].value).toBe("185000.0000");
     expect(rows[0].durationMin).toBe(75);
-    expect(rows[0].services.map((line) => line.name)).toEqual(["Basic Grooming"]);
   });
 
   it("lists each groomer once across turns and counts finished turns", () => {
@@ -191,21 +167,15 @@ describe("toGroomingRows", () => {
     const [row] = toGroomingRows(
       [
         booking({
-          pets: [
-            pet({
-              services: [
-                service({
-                  sessions: [
-                    session({ sessionId: "s1", groomers: [sinta], status: "done" }),
-                    session({
-                      sessionId: "s2",
-                      groomers: [sinta, { _id: "u-dedi", name: "Dedi", offReason: null }],
-                    }),
-                  ],
-                }),
-              ],
-            }),
-          ],
+          service: service({
+            sessions: [
+              session({ sessionId: "s1", groomers: [sinta], status: "done" }),
+              session({
+                sessionId: "s2",
+                groomers: [sinta, { _id: "u-dedi", name: "Dedi", offReason: null }],
+              }),
+            ],
+          }),
         }),
       ],
       scope,
@@ -218,59 +188,54 @@ describe("toGroomingRows", () => {
 });
 
 describe("billingOf", () => {
-  const plain = booking();
-
   it("calls finished, unclaimed work unbilled — and nothing else", () => {
-    expect(billingOf(plain, pet({ status: "completed" }))).toBe("unbilled");
-    expect(billingOf(plain, pet({ status: "return_to_pawrents" }))).toBe("unbilled");
-    expect(billingOf(plain, pet({ status: "in_progress" }))).toBe("not_due");
-    expect(billingOf(plain, pet({ status: "cancelled" }))).toBe("not_due");
+    expect(billingOf(booking({ status: "completed" }))).toBe("unbilled");
+    expect(billingOf(booking({ status: "return_to_pawrents" }))).toBe("unbilled");
+    expect(billingOf(booking({ status: "in_progress" }))).toBe("not_due");
+    expect(billingOf(booking({ status: "cancelled" }))).toBe("not_due");
   });
 
   it("tells an open basket from a settled sale and an invoice", () => {
     const claimed = { status: "completed" as const, pulledToCartAt: "2026-09-13T10:00:00Z" };
 
-    expect(billingOf(plain, pet(claimed))).toBe("in_cart");
-    expect(billingOf(booking({ posTransactionId: "pos-1" }), pet(claimed))).toBe("paid");
+    expect(billingOf(booking(claimed))).toBe("in_cart");
+    expect(billingOf(booking({ ...claimed, posTransactionId: "pos-1" }))).toBe("paid");
     expect(
-      billingOf(plain, pet({ status: "completed", pulledToInvoiceAt: "2026-09-13T10:00:00Z" })),
+      billingOf(booking({ status: "completed", pulledToInvoiceAt: "2026-09-13T10:00:00Z" })),
     ).toBe("invoiced");
   });
 });
 
 describe("summarisePeriod", () => {
-  it("leaves cancelled animals out of the value and finds the oldest unbilled day", () => {
+  it("leaves cancelled bookings out of the value and finds the oldest unbilled day", () => {
     const rows = toGroomingRows(
       [
         booking({
           _id: "bk-1",
           scheduledAt: "2026-09-07T09:00:00",
-          pets: [pet({ status: "completed" })],
+          status: "completed",
         }),
         booking({
           _id: "bk-2",
           scheduledAt: "2026-09-12T09:00:00",
-          pets: [
-            pet({ petItemId: "pi-2", status: "cancelled" }),
-            pet({
-              petItemId: "pi-3",
-              status: "confirmed",
-              services: [
-                service({
-                  price: "100000.0000",
-                  addons: [
-                    {
-                      itemId: "a",
-                      serviceId: "svc-spa",
-                      name: "Spa",
-                      price: "50000.0000",
-                      durationMin: null,
-                    },
-                  ],
-                }),
-              ],
-            }),
-          ],
+          status: "cancelled",
+        }),
+        booking({
+          _id: "bk-3",
+          scheduledAt: "2026-09-12T09:00:00",
+          status: "confirmed",
+          service: service({
+            price: "100000.0000",
+            addons: [
+              {
+                itemId: "a",
+                serviceId: "svc-spa",
+                name: "Spa",
+                price: "50000.0000",
+                durationMin: null,
+              },
+            ],
+          }),
         }),
       ],
       scope,
@@ -278,8 +243,7 @@ describe("summarisePeriod", () => {
 
     const summary = summarisePeriod(rows, new Date(2026, 8, 13));
 
-    expect(summary.visits).toBe(2);
-    expect(summary.animals).toBe(2);
+    expect(summary.bookings).toBe(2);
     expect(summary.value).toBe("300000.0000");
     expect(summary.averagePerAnimal).toBe("150000.0000");
     expect(summary.addonRate).toBe(50);
@@ -301,13 +265,7 @@ describe("summariseDay", () => {
   it("keeps Draft and Requested out of the queue", () => {
     const statuses = ["in_progress", "arrived", "confirmed", "draft", "requested", "completed"] as const;
     const rows = toGroomingRows(
-      [
-        booking({
-          pets: statuses.map((status, index) =>
-            pet({ petItemId: `pi-${index}`, status }),
-          ),
-        }),
-      ],
+      statuses.map((status, index) => booking({ _id: `bk-${index}`, status })),
       scope,
     );
 
@@ -329,21 +287,16 @@ describe("filters, lens and sort", () => {
         bookingNumber: "BK-2",
         scheduledAt: "2026-09-13T14:00:00",
         location: "in_home",
-        pets: [pet({ petItemId: "p-late", status: "in_progress" })],
+        status: "in_progress",
       }),
       booking({
         _id: "early",
         bookingNumber: "BK-1",
         scheduledAt: "2026-09-13T08:00:00",
-        pets: [
-          pet({
-            petItemId: "p-early",
-            services: [service({ price: "400000.0000" })],
-          }),
-        ],
+        service: service({ serviceId: "svc-groom-plus", price: "400000.0000" }),
       }),
     ],
-    scope,
+    { ...scope, serviceIds: new Set(["svc-groom", "svc-groom-plus"]) },
   );
 
   it("never counts the sort towards Filter (n)", () => {
@@ -351,21 +304,25 @@ describe("filters, lens and sort", () => {
     expect(countFilters({ ...DEFAULT_FILTERS, locations: ["in_home"] })).toBe(1);
   });
 
-  it("narrows by place and by the working lens", () => {
+  it("narrows by place, by service and by the working lens", () => {
     const home = rows.filter((row) =>
       matchesFilters(row, { ...DEFAULT_FILTERS, locations: ["in_home"] }),
     );
+    const plus = rows.filter((row) =>
+      matchesFilters(row, { ...DEFAULT_FILTERS, serviceIds: ["svc-groom-plus"] }),
+    );
 
-    expect(home.map((row) => row.key)).toEqual(["p-late"]);
+    expect(home.map((row) => row.key)).toEqual(["late"]);
+    expect(plus.map((row) => row.key)).toEqual(["early"]);
     expect(rows.filter((row) => matchesLens(row, "working")).map((row) => row.key)).toEqual([
-      "p-late",
+      "late",
     ]);
   });
 
   it("orders by schedule either way, and by value", () => {
-    expect(sortRows(rows, "schedule_asc").map((row) => row.key)).toEqual(["p-early", "p-late"]);
-    expect(sortRows(rows, "schedule_desc").map((row) => row.key)).toEqual(["p-late", "p-early"]);
-    expect(sortRows(rows, "value_desc").map((row) => row.key)).toEqual(["p-early", "p-late"]);
+    expect(sortRows(rows, "schedule_asc").map((row) => row.key)).toEqual(["early", "late"]);
+    expect(sortRows(rows, "schedule_desc").map((row) => row.key)).toEqual(["late", "early"]);
+    expect(sortRows(rows, "value_desc").map((row) => row.key)).toEqual(["early", "late"]);
   });
 });
 

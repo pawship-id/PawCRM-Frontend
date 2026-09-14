@@ -566,6 +566,53 @@ describe("the mockup's columns", () => {
     ).toHaveAttribute("href", "/dashboard/booking/bk1");
   });
 
+  /*
+    A BOOKING IS ONE ANIMAL AND ONE MAIN SERVICE, so the same animal booked for
+    two services is two bookings — and two groups, each with its own chip. One
+    group would name only the first booking and leave the second unfindable.
+  */
+  it("gives a second booking for the same animal its own group", () => {
+    render(
+      <InvoiceItemsTable
+        canOpenBookings
+        invoice={invoice({
+          items: [
+            line({
+              kind: "service",
+              refId: "s1",
+              name: "Grooming Basic",
+              sku: null,
+              petId: "pet1",
+              petName: "Milo",
+              bookingId: "bk1",
+            }),
+            line({
+              kind: "service",
+              refId: "s3",
+              name: "Mandi Kutu",
+              sku: null,
+              petId: "pet1",
+              petName: "Milo",
+              bookingId: "bk2",
+            }),
+          ],
+          bookings: [
+            { _id: "bk1", bookingNumber: "BK-2026-0091" },
+            { _id: "bk2", bookingNumber: "BK-2026-0092" },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getAllByText("Milo")).toHaveLength(2);
+    expect(
+      screen.getByRole("link", { name: /Booking BK-2026-0091/ }),
+    ).toHaveAttribute("href", "/dashboard/booking/bk1");
+    expect(
+      screen.getByRole("link", { name: /Booking BK-2026-0092/ }),
+    ).toHaveAttribute("href", "/dashboard/booking/bk2");
+  });
+
   it("names the booking without linking it for a role that cannot open bookings", () => {
     render(
       <InvoiceItemsTable

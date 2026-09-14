@@ -174,10 +174,14 @@ export function InvoiceCreateForm() {
     discount that touched them.
 
     The prices here are the bridge's, which are the same frozen figures the
-    server will read from the bookings themselves.
+    server will read from the bookings themselves — the main service, then each
+    add-on as a line of its own, in the order the server assembles them.
   */
   const bookingLines = pulledBookings.flatMap((booking) =>
-    booking.items.map((item) => ({ qty: "1", unitPrice: item.price })),
+    [booking.service, ...booking.service.addons].map((line) => ({
+      qty: "1",
+      unitPrice: line.price,
+    })),
   );
   /*
     THE CUSTOMER'S ANIMALS — PCR-035, and refetched whenever the customer

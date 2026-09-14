@@ -35,8 +35,8 @@ const BILLING: Record<BillingState, { label: string; className: string } | null>
 };
 
 /**
- * The Grooming board's table — one row per animal per visit, each opening onto
- * its turns and its bill.
+ * The Grooming board's table — one row per booking (one animal, one grooming),
+ * each opening onto its turns and its bill.
  *
  * ─── IT MOVES THINGS, UNLIKE `BookingsTable` ───────────────────────────────
  *
@@ -48,7 +48,7 @@ const BILLING: Record<BillingState, { label: string; className: string } | null>
  * Do not strip them as a tidy-up to match the booking list.
  *
  * WHAT THE MOCKUP SHOWS AND THIS CANNOT: the breed (a booking does not carry
- * it), the invoice NUMBER (only whether one claimed the animal), and a travel
+ * it), the invoice NUMBER (only whether one claimed the booking), and a travel
  * fee per trip (there are no trips yet).
  */
 export function GroomingBookingsTable({
@@ -102,11 +102,11 @@ export function GroomingBookingsTable({
 
         <TableBody>
           {rows.map((row) => {
-            const { booking, pet } = row;
+            const { booking, service } = row;
             const expanded = open.has(row.key);
             const detailId = `grooming-detail-${row.key}`;
             const billing = BILLING[row.billing];
-            const petLabel = pet.petName ?? "hewan";
+            const petLabel = booking.petName ?? "hewan";
 
             return (
               <Fragment key={row.key}>
@@ -167,7 +167,7 @@ export function GroomingBookingsTable({
 
                   <TableCell className="whitespace-normal">
                     <span className="block text-sm font-semibold text-foreground">
-                      {pet.petName ?? "—"}
+                      {booking.petName ?? "—"}
                     </span>
                     <span className="block text-xs text-muted">
                       {booking.customerName ?? "—"}
@@ -176,7 +176,7 @@ export function GroomingBookingsTable({
 
                   <TableCell className="max-w-[22rem] whitespace-normal">
                     <span className="block text-sm font-semibold text-foreground">
-                      {row.services.map((service) => service.name).join(" + ")}
+                      {service.name}
                     </span>
 
                     {(booking.location === "in_home" ||
@@ -216,13 +216,13 @@ export function GroomingBookingsTable({
                     )}
 
                     {/* Staff-facing only — the customer's note is not a warning. */}
-                    {pet.internalNotes && (
+                    {booking.internalNotes && (
                       <span className="mt-2 flex items-start gap-1.5 rounded-md bg-tint-warning px-2 py-1.5 text-xs text-foreground">
                         <TriangleAlert
                           className="mt-px size-4 flex-none text-warning"
                           aria-hidden
                         />
-                        {pet.internalNotes}
+                        {booking.internalNotes}
                       </span>
                     )}
                   </TableCell>
@@ -271,7 +271,6 @@ export function GroomingBookingsTable({
                   <TableCell>
                     <BookingStatusActions
                       booking={booking}
-                      pet={pet}
                       onChanged={onChanged}
                       variant="status"
                     />
@@ -304,9 +303,9 @@ export function GroomingBookingsTable({
   );
 }
 
-/** What this animal's grooming comes to, line by line, and where to go next. */
+/** What this booking's grooming comes to, line by line, and where to go next. */
 function RowBreakdown({ row }: { row: GroomingRow }) {
-  const { booking, pet } = row;
+  const { booking, service } = row;
 
   return (
     <section aria-label="Rincian" className="flex flex-col gap-3">
@@ -314,24 +313,20 @@ function RowBreakdown({ row }: { row: GroomingRow }) {
 
       <div className="rounded-xl border border-border bg-surface px-4 py-2">
         <dl className="text-sm">
-          {row.services.map((service) => (
-            <Fragment key={service.itemId}>
-              <div className="flex justify-between gap-3 border-b border-border py-1.5">
-                <dt className="text-foreground">{service.name}</dt>
-                <dd className="font-semibold tabular-nums">
-                  {formatMoney(service.price)}
-                </dd>
-              </div>
-              {(service.addons ?? []).map((addon) => (
-                <div
-                  key={addon.itemId}
-                  className="flex justify-between gap-3 border-b border-border py-1.5 pl-3"
-                >
-                  <dt className="text-muted">+ {addon.name}</dt>
-                  <dd className="tabular-nums">{formatMoney(addon.price)}</dd>
-                </div>
-              ))}
-            </Fragment>
+          <div className="flex justify-between gap-3 border-b border-border py-1.5">
+            <dt className="text-foreground">{service.name}</dt>
+            <dd className="font-semibold tabular-nums">
+              {formatMoney(service.price)}
+            </dd>
+          </div>
+          {row.addons.map((addon) => (
+            <div
+              key={addon.itemId}
+              className="flex justify-between gap-3 border-b border-border py-1.5 pl-3"
+            >
+              <dt className="text-muted">+ {addon.name}</dt>
+              <dd className="tabular-nums">{formatMoney(addon.price)}</dd>
+            </div>
           ))}
           <div className="flex justify-between gap-3 pt-2 pb-1 font-bold">
             <dt>Total</dt>
@@ -341,13 +336,14 @@ function RowBreakdown({ row }: { row: GroomingRow }) {
       </div>
 
       <div className="flex flex-wrap gap-2">
+        {/*
+          ONE WAY IN. "Halaman kerja" used to sit beside this, opening the
+          animal's own page under its booking; a booking is one animal now and
+          that page IS the booking's page, so two buttons would be one address
+          offered twice.
+        */}
         <Button asChild variant="secondary" size="sm">
           <Link href={`/dashboard/booking/${booking._id}`}>Buka detail</Link>
-        </Button>
-        <Button asChild variant="secondary" size="sm">
-          <Link href={`/dashboard/booking/${booking._id}/hewan/${pet.petId}`}>
-            Halaman kerja
-          </Link>
         </Button>
         {row.billing === "unbilled" && (
           <Can feature="posTransactions" action="create">

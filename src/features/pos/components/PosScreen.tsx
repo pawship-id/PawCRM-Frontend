@@ -708,9 +708,14 @@ export function PosScreen() {
                 It is the basket's grip on an appointment that decides the count,
                 and that grip changes on more paths than this one.
               */
+              /*
+                A DRAFT HAS NO NUMBER yet, and the toast read "null ditarik"
+                for one. The animal names it instead — one booking is one
+                animal.
+              */
               swalToast(
                 bookings.length === 1
-                  ? `${bookings[0].bookingNumber} ditarik ke keranjang.`
+                  ? `${bookings[0].bookingNumber ?? `Booking ${bookings[0].petName ?? "tanpa nomor"}`} ditarik ke keranjang.`
                   : `${bookings.length} booking ditarik ke keranjang.`,
               );
             })();

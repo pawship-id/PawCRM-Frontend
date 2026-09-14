@@ -19,13 +19,8 @@ const NAME_MAX_LENGTH = 120;
 /**
  * TITIPAN OWNER — what came in with this animal, and what has gone home.
  *
- * ─── ON THE ANIMAL'S OWN PAGE, NOT THE BOOKING'S ───────────────────────────
- *
- * It started on the booking overview, grouped by animal, and moved here. Handing
- * a collar back is something that happens at the table, next to the animal it
- * belongs to and the person holding it — and the overview is about what the
- * whole visit is and what it comes to. A card that made somebody scroll past two
- * other animals' things to tick one was in the wrong place.
+ * One booking is one animal, so everything listed here is that animal's: no
+ * grouping, no filter.
  *
  * ─── TWO TICKS, NOT ONE ────────────────────────────────────────────────────
  *
@@ -50,14 +45,9 @@ const NAME_MAX_LENGTH = 120;
  */
 export function BookingBelongingsCard({
   booking,
-  petId,
-  petName,
   onChanged,
 }: {
   booking: Booking;
-  /** Only this animal's things — the page is about one animal. */
-  petId: string;
-  petName: string | null;
   /** Called with the updated booking, so the page redraws from the server. */
   onChanged: (booking: Booking) => void;
 }) {
@@ -66,9 +56,8 @@ export function BookingBelongingsCard({
   const [draft, setDraft] = useState("");
   const [adding, setAdding] = useState(false);
 
-  const belongings = (booking.belongings ?? []).filter(
-    (belonging) => belonging.petId === petId,
-  );
+  const petName = booking.petName;
+  const belongings = booking.belongings ?? [];
 
   /*
     STILL HERE: handed over, not yet given back. An item that never arrived is
@@ -103,7 +92,7 @@ export function BookingBelongingsCard({
     if (name === "") return;
 
     const ok = await run(
-      () => bookingService.addBelonging(booking._id, { petId, name }),
+      () => bookingService.addBelonging(booking._id, { name }),
       "new",
     );
 

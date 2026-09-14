@@ -25,10 +25,18 @@ import { BookingsToolbar } from "./BookingsToolbar";
  * that books Thursday.
  *
  * THE FORM IS A PAGE OF ITS OWN — `/dashboard/booking/new`. It was a dialog on
- * this screen until a booking could hold several animals; three cards of five
+ * this screen until one save could take several animals; three cards of five
  * controls each is a form scrolling inside a scrolling page.
+ *
+ * A SAVE THAT MADE SEVERAL BOOKINGS LANDS HERE, narrowed to them —
+ * `?groupId=`, read by the page and handed in as `initialGroupId`.
  */
-export function BookingsScreen() {
+export function BookingsScreen({
+  initialGroupId = "",
+}: {
+  /** From `?groupId=`; "" is the whole list. */
+  initialGroupId?: string;
+} = {}) {
   const {
     bookings,
     unbilled,
@@ -37,7 +45,7 @@ export function BookingsScreen() {
     loading,
     error,
     setQuery,
-  } = useBookings();
+  } = useBookings(initialGroupId);
   return (
     <div className="flex flex-col gap-6">
       <div>

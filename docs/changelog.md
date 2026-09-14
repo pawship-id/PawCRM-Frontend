@@ -7,6 +7,48 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Booking: satu hewan, satu layanan utama
+
+14 September 2026, atas permintaan. Kontraknya ada di
+`Booking-Satu-Hewan-Implementation-Plan.md` di root repo. Satu booking (satu
+nomor) sekarang = satu hewan + satu layanan utama + add-on-nya. Pemilik yang
+membawa dua hewan mendapat dua booking yang tertaut lewat `groupId`.
+
+**Tipe dan service.** `Booking` tidak lagi punya `pets[]`, `items[]`, `petCount`,
+atau `billingState: "partial"`. Isinya sekarang `petId`/`petName`, `status`,
+`service` tunggal (dengan `sessions` dan `addons`), `groomerName`, `groupId`, dan
+`group[]` di detail. `BookingPet`, `BookingPetService`, `BookingItem`,
+`BookingItemInput`, `petItemId`, dan `bookingItemId` di baris kasir/faktur
+dihapus. Rute yang berganti nama: `setNotes` (`/:id/notes`), `setMedia`
+(`/:id/media`), `advanceSessionWork` / `correctSessionTimes`
+(`/:id/sessions/:sessionId/work|times`). Status, barang bawaan, dan groomer
+tidak lagi mengirim `petId`/`serviceId`. `create` mengembalikan
+`{ groupId, bookings }`.
+
+**Form.** Mode buat punya banyak kartu, dan tiap kartu = satu booking: hewan,
+**satu** layanan utama, add-on, durasi, groomer, dua catatan, barang bawaan.
+Maksimal 10 kartu. Hewan yang sama boleh muncul dengan layanan lain, tetapi
+tidak dengan layanan yang sama. Kalau yang tersimpan satu booking, form membuka
+detailnya; kalau lebih, form membuka daftar `?groupId=` dengan chip "Satu
+kunjungan". Mode ubah hanya punya satu kartu. Tombol di dua mode sekarang
+"Simpan booking" (§16).
+
+**Detail jadi satu halaman.** `BookingDetailScreen` sekarang juga memuat isi
+`BookingPetWorkScreen`: status, sesi, catatan, album, titipan, dan riwayat.
+Ditambah kartu "Satu kunjungan" yang berisi saudara satu grup dan tersembunyi
+kalau kosong. `/booking/[id]/hewan/[petId]` kini `redirect()` ke
+`/booking/[id]`. Dihapus: `BookingPetWorkScreen`, `BookingPetGroupCard`,
+`BookingPetRowCard`, `BookingPetNotesCard` (diganti `BookingCard` dan
+`BookingNotesCard`).
+
+**Daftar, papan, kalender, kasir, faktur.** Satu baris per booking. Papan
+grooming tetap memakai kontrol di baris. Dialog tarik booking di kasir
+menampilkan satu baris per booking, dan keranjang mengelompokkan per
+`bookingId`. Panel faktur membaca `service` + `addons` dengan satu badge status
+per booking.
+
+Belum ada: biaya antar jemput dan pilihan layanan transport (plan §2).
+
 ## [Unreleased] — Favicon jadi ikon Buloo
 
 Tab browser masih menampilkan segitiga bawaan Next.js. Sekarang ikon `b` navy —

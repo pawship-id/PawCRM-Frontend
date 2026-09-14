@@ -104,7 +104,6 @@ const cartWithItem: PosTransaction = {
       discount: null,
       hppAtTime: null,
       bookingId: null,
-      bookingItemId: null,
       parentServiceId: null,
       petId: null,
       petName: null,
@@ -2148,14 +2147,13 @@ describe("PosScreen — the transaction note", () => {
 });
 
 /**
- * ─── THE BASKET'S BOOKING HEADER — reported from the till, 3 Sept 2026 ──────
+ * ─── THE BASKET'S BOOKING HEADER ────────────────────────────────────────────
  *
- * A basket pulled from a two-animal booking showed one header reading "Mochi"
- * over two services, one of which was Coco's. The cashier is being asked to
- * check the basket against the animals in front of them, and the header was
- * quietly wrong about half of it.
+ * One booking is one animal and one main service, and the basket groups its
+ * lines on `bookingId`: one header naming the animal and the booking, with the
+ * service and its add-ons under it.
  */
-describe("PosCart — a booking with two animals", () => {
+describe("PosCart — a booking's header", () => {
   const line = (over: Record<string, unknown>) => ({
     kind: "service",
     refId: "svc-1",
@@ -2167,54 +2165,58 @@ describe("PosCart — a booking with two animals", () => {
     discount: null,
     hppAtTime: null,
     bookingId: "bk-1",
-    bookingItemId: "it-1",
+    parentServiceId: null,
     petId: "pet-1",
     petName: "Mochi",
     groomerName: "Sinta",
     bookingStatus: "confirmed",
-    bookingOwned: true,
+    bookingOwned: false,
     bookingNumber: "BK-1",
     ...over,
   });
 
-  it("names every animal on the booking, not just the first", async () => {
+  it("names the animal and the booking's number", async () => {
+    mockedPos.activeCart.mockResolvedValue({
+      ...cartWithItem,
+      items: [line({})],
+    } as never);
+
+    renderWithAuth(<PosScreen />);
+
+    expect(await screen.findByText("Mochi")).toBeInTheDocument();
+    expect(screen.getByText("BK-1")).toBeInTheDocument();
+  });
+
+  /*
+    ONE GROUP PER BOOKING, wherever its lines sit. An add-on that landed after a
+    bag of feed is still done to the same bath, and a second "Mochi" header over
+    it would read as a second booking.
+  */
+  it("keeps a booking's add-on under its service when another line sits between", async () => {
     mockedPos.activeCart.mockResolvedValue({
       ...cartWithItem,
       items: [
         line({}),
+        cartWithItem.items[0],
         line({
           refId: "svc-2",
-          bookingItemId: "it-2",
-          name: "Basic Grooming",
-          petId: "pet-2",
-          petName: "Coco",
-          groomerName: "Rio",
-          unitPrice: "100000.0000",
-          lineTotal: "100000.0000",
+          name: "Potong Kuku",
+          parentServiceId: "svc-1",
+          unitPrice: "20000.0000",
+          lineTotal: "20000.0000",
         }),
       ],
     } as never);
 
     renderWithAuth(<PosScreen />);
 
-    expect(await screen.findByText("Mochi, Coco")).toBeInTheDocument();
-  });
-
-  it("says a single animal once, not twice, for two of its services", async () => {
-    /*
-      DISTINCT NAMES. Repeating it would make a one-pet visit read as two, which
-      is the same class of error in the other direction.
-    */
-    mockedPos.activeCart.mockResolvedValue({
-      ...cartWithItem,
-      items: [
-        line({}),
-        line({ refId: "svc-2", bookingItemId: "it-2", name: "Potong Kuku" }),
-      ],
-    } as never);
-
-    renderWithAuth(<PosScreen />);
-
-    expect(await screen.findByText("Mochi")).toBeInTheDocument();
+    expect(await screen.findByText("+ Potong Kuku")).toBeInTheDocument();
+    expect(screen.getAllByText("Mochi")).toHaveLength(1);
+    // Scoped to the basket — the catalogue grid names the product too.
+    expect(
+      within(screen.getByRole("complementary", { name: "Keranjang" })).getByText(
+        "Royal Canin Adult 2kg",
+      ),
+    ).toBeInTheDocument();
   });
 });

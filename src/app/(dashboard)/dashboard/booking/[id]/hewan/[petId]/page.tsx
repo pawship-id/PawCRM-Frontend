@@ -1,35 +1,22 @@
-import type { Metadata } from "next";
-
-import { BookingPetWorkScreen } from "@/features/booking";
-import { RequirePermission } from "@/features/permissions";
-
-export const metadata: Metadata = { title: "Lembar Kerja Hewan · Buloo" };
+import { redirect } from "next/navigation";
 
 /**
- * ONE ANIMAL'S WORK IN ONE VISIT.
+ * AN OLD ADDRESS, KEPT SO LINKS DO NOT BREAK.
  *
- * UNDER THE BOOKING, NOT UNDER THE PET, and the address says which question it
- * answers: Coco may be on ten bookings, and "how is Coco's grooming going" only
- * means something inside one of them. `/dashboard/master/pets/:id` is the other
- * page — the animal in general, for its whole life.
+ * This was one animal's work inside a visit that could hold several. A booking
+ * is one animal and one main service now, so the booking's own page IS that
+ * work — and a bookmark or a WhatsApp'd link to the old address lands there.
  *
- * GATED ON `read`. Moving the work needs `advanceStatus` or `update` and
- * correcting the clock needs `update`; both are enforced on the server and
- * mirrored by the controls, so somebody who may only look still gets the page
- * they were sent to rather than a refusal.
- *
+ * A SERVER REDIRECT, before anything renders: there is nothing on this route to
+ * show, and a client component bouncing after a paint would flash an empty page.
  * `params` IS A PROMISE in this version of Next — see AGENTS.md.
  */
-export default async function BookingPetWorkPage({
+export default async function BookingPetWorkRedirect({
   params,
 }: {
   params: Promise<{ id: string; petId: string }>;
 }) {
-  const { id, petId } = await params;
+  const { id } = await params;
 
-  return (
-    <RequirePermission feature="bookings" action="read">
-      <BookingPetWorkScreen bookingId={id} petId={petId} />
-    </RequirePermission>
-  );
+  redirect(`/dashboard/booking/${id}`);
 }

@@ -35,7 +35,7 @@ const SORTS: { value: GroomingSort; label: string }[] = [
   { value: "value_desc", label: "Nilai terbesar" },
 ];
 
-/** In the order an animal walks them — see BookingsToolbar. */
+/** In the order a booking walks them — see BookingsToolbar. */
 const STATUSES: BookingStatus[] = [
   "draft",
   "requested",

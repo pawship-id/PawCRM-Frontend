@@ -2,9 +2,9 @@ import { hasCompletedWork } from "@/features/booking/statusFlow";
 import type { BusinessLine } from "@/services/businessLine.service";
 import type {
   Booking,
+  BookingAddon,
   BookingLocation,
-  BookingPet,
-  BookingPetService,
+  BookingMainService,
   BookingSession,
   BookingStatus,
 } from "@/types/api";
@@ -22,10 +22,10 @@ import {
  *
  * ─── WHY THE SCREEN READS A WHOLE PERIOD AND NARROWS IT HERE ───────────────
  *
- * `GET /bookings` cannot be asked for one line of business: a visit may hold a
- * grooming and a night in the hotel, and the line lives on each service row.
- * So the screen fetches every booking in the period and keeps the grooming rows
- * itself.
+ * `GET /bookings` cannot be asked for one line of business: the line is known
+ * only from the booking's service — its catalogue id, or the `serviceType`
+ * snapshot — and the list has no filter for either. So the screen fetches every
+ * booking in the period and keeps the grooming ones itself.
  *
  * THE UPSIDE IS THAT EVERY NUMBER COMES FROM THE SAME ROWS. A card saying
  * "4 belum ditagih" sits over a lens that lists exactly those four, because both
@@ -44,10 +44,10 @@ export interface GroomingScope {
    */
   serviceIds: ReadonlySet<string>;
   /**
-   * The line's name, which a booking row snapshots into `serviceType`.
+   * The line's name, which a booking snapshots into `service.serviceType`.
    *
    * THE FALLBACK FOR AN ID WE CANNOT SEE. A role that may read bookings but not
-   * the catalogue gets no ids at all, and the snapshot is still on every row.
+   * the catalogue gets no ids at all, and the snapshot is still on every booking.
    */
   lineName: string;
 }
@@ -64,7 +64,7 @@ export function pickGroomingLine(lines: BusinessLine[]): BusinessLine | null {
 }
 
 export function isGroomingService(
-  service: Pick<BookingPetService, "serviceId" | "serviceType">,
+  service: Pick<BookingMainService, "serviceId" | "serviceType">,
   scope: GroomingScope,
 ): boolean {
   if (scope.serviceIds.has(service.serviceId)) return true;
@@ -126,7 +126,11 @@ export function periodRange(
 /* ─── Rows ────────────────────────────────────────────────────────────────── */
 
 /**
- * Where one animal's bill stands.
+ * Where one booking's bill stands.
+ *
+ * NOT `booking.billingState`, which is only billed / unbilled: the board tells
+ * an invoice from a settled sale from a basket still open, and only calls
+ * FINISHED work unbilled.
  *
  * `unbilled` IS NARROWER THAN THE SERVER'S `unbilled` FILTER, on purpose: the
  * board's card is "work that is FINISHED and nobody has charged for", while the
@@ -138,39 +142,41 @@ export type BillingState = "invoiced" | "paid" | "in_cart" | "unbilled" | "not_d
 export function billingOf(
   booking: Pick<
     Booking,
-    "posTransactionId" | "pickupRequested" | "deliveryRequested"
+    | "status"
+    | "posTransactionId"
+    | "pulledToCartAt"
+    | "pulledToInvoiceAt"
+    | "pickupRequested"
+    | "deliveryRequested"
   >,
-  pet: Pick<BookingPet, "status" | "pulledToCartAt" | "pulledToInvoiceAt">,
 ): BillingState {
-  if (pet.pulledToInvoiceAt) return "invoiced";
+  if (booking.pulledToInvoiceAt) return "invoiced";
   /* A claim with no sale behind it is a basket still open — see BookingsTable. */
-  if (pet.pulledToCartAt) return booking.posTransactionId ? "paid" : "in_cart";
-  if (pet.status === "cancelled") return "not_due";
+  if (booking.pulledToCartAt) return booking.posTransactionId ? "paid" : "in_cart";
+  if (booking.status === "cancelled") return "not_due";
 
-  return hasCompletedWork(pet, booking) ? "unbilled" : "not_due";
+  return hasCompletedWork(booking) ? "unbilled" : "not_due";
 }
 
 /**
- * ONE ANIMAL ON ONE VISIT, with only its grooming work.
+ * ONE BOOKING ON THE BOARD — one animal and its one grooming service.
  *
- * The mockup draws a row per booking because its bookings hold one animal; ours
- * have held several since PCR-040, and the status, the bill and the turns all
- * belong to the animal.
+ * A booking whose main service is not grooming (a night in the hotel) is not a
+ * row at all.
  */
 export interface GroomingRow {
-  /** `petItemId` — never `petId`, which repeats on pre-PCR-041 bookings. */
+  /** The booking's id. */
   key: string;
   booking: Booking;
-  pet: BookingPet;
-  services: BookingPetService[];
-  addons: BookingPetService["addons"];
-  /** Grooming services plus their add-ons, as a decimal string. */
+  service: BookingMainService;
+  addons: BookingAddon[];
+  /** The service plus its add-ons, as a decimal string. */
   value: string;
-  /** Null when not one of the services carries a duration. */
+  /** Null when neither the service nor an add-on carries a duration. */
   durationMin: number | null;
-  sessions: { service: BookingPetService; session: BookingSession }[];
+  sessions: BookingSession[];
   sessionsDone: number;
-  /** Everybody on any grooming turn of this animal, once each. */
+  /** Everybody on any turn of this booking, once each. */
   groomers: { _id: string; name: string }[];
   billing: BillingState;
 }
@@ -179,68 +185,64 @@ export function toGroomingRows(
   bookings: Booking[],
   scope: GroomingScope,
 ): GroomingRow[] {
-  return bookings.flatMap((booking) =>
-    (booking.pets ?? []).flatMap((pet): GroomingRow[] => {
-      const services = (pet.services ?? []).filter((service) =>
-        isGroomingService(service, scope),
-      );
-      if (services.length === 0) return [];
+  return bookings.flatMap((booking): GroomingRow[] => {
+    const service = booking.service;
+    /* Absent only on a response from before the deploy — see BookingsTable. */
+    if (!service || !isGroomingService(service, scope)) return [];
 
-      const addons = services.flatMap((service) => service.addons ?? []);
-      const sessions = services.flatMap((service) =>
-        (service.sessions ?? []).map((session) => ({ service, session })),
-      );
+    const addons = service.addons ?? [];
+    const sessions = service.sessions ?? [];
 
-      const groomers = new Map<string, { _id: string; name: string }>();
-      for (const { session } of sessions) {
-        for (const who of session.groomers ?? []) {
-          if (!groomers.has(who._id)) {
-            groomers.set(who._id, { _id: who._id, name: who.name });
-          }
+    const groomers = new Map<string, { _id: string; name: string }>();
+    for (const session of sessions) {
+      for (const who of session.groomers ?? []) {
+        if (!groomers.has(who._id)) {
+          groomers.set(who._id, { _id: who._id, name: who.name });
         }
       }
+    }
 
-      const minutes = [...services, ...addons]
-        .map((line) => line.durationMin)
-        .filter((value): value is number => value !== null);
+    const minutes = [service, ...addons]
+      .map((line) => line.durationMin)
+      .filter((value): value is number => value !== null);
 
-      return [
-        {
-          key: pet.petItemId,
-          booking,
-          pet,
-          services,
-          addons,
-          value: sumDecimals([
-            ...services.map((service) => service.price),
-            ...addons.map((addon) => addon.price),
-          ]),
-          durationMin: minutes.length
-            ? minutes.reduce((total, value) => total + value, 0)
-            : null,
-          sessions,
-          sessionsDone: sessions.filter(
-            ({ session }) => session.status === "done",
-          ).length,
-          groomers: [...groomers.values()],
-          billing: billingOf(booking, pet),
-        },
-      ];
-    }),
-  );
+    return [
+      {
+        key: booking._id,
+        booking,
+        service,
+        addons,
+        value: sumDecimals([
+          service.price,
+          ...addons.map((addon) => addon.price),
+        ]),
+        durationMin: minutes.length
+          ? minutes.reduce((total, value) => total + value, 0)
+          : null,
+        sessions,
+        sessionsDone: sessions.filter((session) => session.status === "done")
+          .length,
+        groomers: [...groomers.values()],
+        billing: billingOf(booking),
+      },
+    ];
+  });
 }
 
 /* ─── The cards ───────────────────────────────────────────────────────────── */
 
 export interface PeriodSummary {
-  /** Distinct bookings with a live grooming row. */
-  visits: number;
-  /** Live grooming rows — one per animal per visit. */
-  animals: number;
+  /** Live grooming bookings — one animal each. */
+  bookings: number;
   /** Before any discount: a booking carries prices, not what was charged. */
   value: string;
+  /**
+   * The value over the live bookings. A booking is one animal, so this is the
+   * card's "per hewan"; the same dog booked for two main services is two
+   * bookings and counts twice, which is also how it is billed.
+   */
   averagePerAnimal: string | null;
-  /** Whole percent of animals with at least one add-on; null when none. */
+  /** Whole percent of live bookings with at least one add-on; null when none. */
   addonRate: number | null;
   unbilledCount: number;
   unbilledValue: string;
@@ -259,12 +261,12 @@ function daysSince(iso: string, today: Date): number | null {
   return Math.max(0, Math.round((now.getTime() - then.getTime()) / DAY_MS));
 }
 
-/** CANCELLED ANIMALS COUNT FOR NOTHING — not in the value, not in the average. */
+/** CANCELLED BOOKINGS COUNT FOR NOTHING — not in the value, not in the average. */
 export function summarisePeriod(
   rows: GroomingRow[],
   today: Date = new Date(),
 ): PeriodSummary {
-  const live = rows.filter((row) => row.pet.status !== "cancelled");
+  const live = rows.filter((row) => row.booking.status !== "cancelled");
   const value = sumDecimals(live.map((row) => row.value));
   const unbilled = rows.filter((row) => row.billing === "unbilled");
 
@@ -275,8 +277,7 @@ export function summarisePeriod(
   }, null);
 
   return {
-    visits: new Set(live.map((row) => row.booking._id)).size,
-    animals: live.length,
+    bookings: live.length,
     value,
     averagePerAnimal: live.length
       ? toDecimalString(
@@ -313,9 +314,9 @@ const FINISHED: BookingStatus[] = ["completed", "delivery", "return_to_pawrents"
 const UNCONFIRMED: BookingStatus[] = ["draft", "requested"];
 
 export function summariseDay(rows: GroomingRow[]): DaySummary {
-  const working = rows.filter((row) => row.pet.status === "in_progress");
+  const working = rows.filter((row) => row.booking.status === "in_progress");
   const count = (statuses: BookingStatus[]) =>
-    rows.filter((row) => statuses.includes(row.pet.status)).length;
+    rows.filter((row) => statuses.includes(row.booking.status)).length;
 
   return {
     working: working.length,
@@ -360,7 +361,10 @@ export function matchesFilters(
   row: GroomingRow,
   filters: GroomingFilters,
 ): boolean {
-  if (filters.statuses.length && !filters.statuses.includes(row.pet.status)) {
+  if (
+    filters.statuses.length &&
+    !filters.statuses.includes(row.booking.status)
+  ) {
     return false;
   }
   if (
@@ -371,9 +375,7 @@ export function matchesFilters(
   }
   if (
     filters.serviceIds.length &&
-    !row.services.some((service) =>
-      filters.serviceIds.includes(service.serviceId),
-    )
+    !filters.serviceIds.includes(row.service.serviceId)
   ) {
     return false;
   }
@@ -392,7 +394,7 @@ export type GroomingLens = "all" | "unbilled" | "working";
 
 export function matchesLens(row: GroomingRow, lens: GroomingLens): boolean {
   if (lens === "unbilled") return row.billing === "unbilled";
-  if (lens === "working") return row.pet.status === "in_progress";
+  if (lens === "working") return row.booking.status === "in_progress";
 
   return true;
 }
@@ -401,7 +403,11 @@ export function matchesSearch(row: GroomingRow, search: string): boolean {
   const needle = search.trim().toLowerCase();
   if (!needle) return true;
 
-  return [row.pet.petName, row.booking.customerName, row.booking.bookingNumber]
+  return [
+    row.booking.petName,
+    row.booking.customerName,
+    row.booking.bookingNumber,
+  ]
     .filter(Boolean)
     .some((text) => (text as string).toLowerCase().includes(needle));
 }
@@ -414,7 +420,7 @@ function scheduleOf(row: GroomingRow): number {
 export function sortRows(rows: GroomingRow[], sort: GroomingSort): GroomingRow[] {
   const tieBreak = (a: GroomingRow, b: GroomingRow) =>
     (a.booking.bookingNumber ?? "").localeCompare(b.booking.bookingNumber ?? "") ||
-    (a.pet.petName ?? "").localeCompare(b.pet.petName ?? "");
+    (a.booking.petName ?? "").localeCompare(b.booking.petName ?? "");
 
   return [...rows].sort((a, b) => {
     if (sort === "value_desc") {

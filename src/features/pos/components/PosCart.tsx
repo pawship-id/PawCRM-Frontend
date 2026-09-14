@@ -14,17 +14,18 @@ import { PosNoteEditor } from "./PosNoteEditor";
 import { PosOtherChargesEditor } from "./PosOtherChargesEditor";
 
 /**
- * One run of consecutive lines that belong together.
+ * The basket's lines, gathered per booking.
  *
  * `bookingId` NULL IS RETAIL and gets no header — a bag of feed does not belong
  * to an appointment, and wrapping it in a titled box would invent a group nobody
- * asked for.
+ * asked for. Retail lines are gathered by RUN, in the order the cart stores them.
  *
- * GROUPED BY RUN, NOT BY KEY. Two bookings for the same animal on the same day
- * must stay two groups (FR-3's edge case: "keduanya tetap ditampilkan sebagai
- * baris terpisah, tidak digabung otomatis"), and lines keep the order the cart
- * stores them in — so a group is a stretch of adjacent lines sharing a booking,
- * never a bucket collected from across the basket.
+ * ONE GROUP PER BOOKING, wherever its lines sit. A booking is one animal and one
+ * main service, so the service and every add-on on it belong under one header —
+ * including an add-on tapped later that landed after a bag of feed. Two bookings
+ * for the same animal on the same day are two ids and so stay two groups (FR-3's
+ * edge case: "keduanya tetap ditampilkan sebagai baris terpisah, tidak digabung
+ * otomatis").
  *
  * The ORIGINAL INDEX travels with every line, because every callback below —
  * remove, quantity, discount — addresses a line by its position in the cart. A
@@ -32,53 +33,37 @@ import { PosOtherChargesEditor } from "./PosOtherChargesEditor";
  */
 function groupLines(items: PosItem[]): Array<{
   bookingId: string | null;
-  /**
-   * EVERY ANIMAL ON THIS BOOKING, not the first one.
-   *
-   * It took `item.petName` off the FIRST line and called that the group's
-   * animal. Since PCR-040 a visit may bring Mochi and Coco, and the header then
-   * read "Mochi" over two services — one of which was Coco's. The cashier is
-   * being asked to check the basket against the animals in front of them, and
-   * the header was quietly wrong about half of it.
-   *
-   * DISTINCT AND IN LINE ORDER, so two services for one animal still say the
-   * animal once — repeating it would make a one-pet visit look like two.
-   */
-  petNames: string[];
+  /** The booking's animal — every line of one booking names the same one. */
+  petName: string | null;
+  /** Null while the booking is a draft; it earns a number when it is paid. */
+  bookingNumber: string | null;
   lines: Array<{ item: PosItem; index: number }>;
 }> {
   const groups: ReturnType<typeof groupLines> = [];
 
-  const remember = (group: (typeof groups)[number], item: PosItem) => {
-    if (item.petName && !group.petNames.includes(item.petName)) {
-      group.petNames.push(item.petName);
-    }
-  };
-
   items.forEach((item, index) => {
     const bookingId = item.bookingId ?? null;
     const last = groups[groups.length - 1];
+    const existing =
+      bookingId === null
+        ? last?.bookingId === null
+          ? last
+          : undefined
+        : groups.find((group) => group.bookingId === bookingId);
 
-    if (last && last.bookingId === bookingId && bookingId !== null) {
-      last.lines.push({ item, index });
-      remember(last, item);
+    if (existing) {
+      existing.lines.push({ item, index });
+      existing.petName ??= item.petName ?? null;
+      existing.bookingNumber ??= item.bookingNumber ?? null;
       return;
     }
 
-    if (last && last.bookingId === null && bookingId === null) {
-      last.lines.push({ item, index });
-      remember(last, item);
-      return;
-    }
-
-    const group = {
+    groups.push({
       bookingId,
-      petNames: [] as string[],
+      petName: item.petName ?? null,
+      bookingNumber: item.bookingNumber ?? null,
       lines: [{ item, index }],
-    };
-
-    remember(group, item);
-    groups.push(group);
+    });
   });
 
   return groups;
@@ -92,11 +77,10 @@ function groupLines(items: PosItem[]): Array<{
  * services were sold. It is not a third purchase; it is something done to the
  * bath.
  *
- * MATCHED ON (animal, service), NOT ON A LINE ID. A cart line has no stable
- * identity — the server rebuilds every line from the payload on each write — so
- * `parentServiceId` names the CATALOGUE service its parent is for, and a booking
- * holds at most one row per (animal, service). The booking is already the same
- * across a group, so the animal and the service settle it.
+ * MATCHED ON THE SERVICE, NOT ON A LINE ID. A cart line has no stable identity —
+ * the server rebuilds every line from the payload on each write — so
+ * `parentServiceId` names the CATALOGUE service its parent is for. A group is
+ * one booking, and a booking has one main service, so the service settles it.
  *
  * AN ORPHAN STAYS A LINE OF ITS OWN, and that is the case this must not lose:
  * an add-on bought on its own at the till carries no parent at all, and one
@@ -116,19 +100,14 @@ function nestAddons(lines: Array<{ item: PosItem; index: number }>): Array<{
   const nested = lines.map((line) => ({ ...line, addons: [] as typeof lines }));
 
   /* Keyed on the PARENT's own service, which is what an add-on points at. */
-  const byPetService = new Map(
-    nested.map((line) => [
-      `${String(line.item.petId ?? "")}|${String(line.item.refId)}`,
-      line,
-    ]),
+  const byService = new Map(
+    nested.map((line) => [String(line.item.refId), line]),
   );
 
   return nested.filter((line) => {
     if (!line.item.parentServiceId) return true;
 
-    const parent = byPetService.get(
-      `${String(line.item.petId ?? "")}|${String(line.item.parentServiceId)}`,
-    );
+    const parent = byService.get(String(line.item.parentServiceId));
 
     if (!parent || parent === line) return true;
 
@@ -254,25 +233,18 @@ export function PosCart({
                 booking/ID dan nama hewan". Retail lines get no header — see
                 `groupLines`.
 
-                THE NUMBER IS NOT ON THE LINE. A cart item carries `bookingId`,
-                not `bookingNumber`, so the header shows the animal's name and
-                the booking's short id. Snapshotting the number onto every line
-                would repeat it once per service to save one lookup.
+                THE NUMBER WHEN THERE IS ONE. A draft this basket raised has
+                none until the sale is paid, so its short id stands in — a
+                header with a blank where the number goes reads as broken.
               */}
               {group.bookingId && (
                 <div className="flex items-baseline justify-between gap-2 bg-surface px-3 py-1.5">
-                  {/*
-                    ALL OF THEM, joined. A visit with two animals reads "Mochi,
-                    Coco" — which is what tells the cashier the two services
-                    below are not both for the same dog.
-                  */}
                   <span className="truncate text-xs font-medium text-foreground">
-                    {group.petNames.length > 0
-                      ? group.petNames.join(", ")
-                      : "Hewan tidak diketahui"}
+                    {group.petName ?? "Hewan tidak diketahui"}
                   </span>
                   <span className="shrink-0 text-xs tabular-nums text-muted">
-                    Booking ·{group.bookingId.slice(-6)}
+                    {group.bookingNumber ??
+                      `Booking ·${group.bookingId.slice(-6)}`}
                   </span>
                 </div>
               )}

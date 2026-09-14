@@ -135,6 +135,28 @@ export function BookingsToolbar({
   return (
     <FilterBar
       /*
+        THE GROUP HAS NO CONTROL OF ITS OWN — only a chip, and the chip is the
+        way out. It is set by arriving from a save that made several bookings at
+        once (`?groupId=`), and a picker for "which save" would be a control
+        nobody could answer.
+
+        A CHIP, NOT A SILENT FILTER. The list after such a save shows two or
+        three rows out of hundreds; with nothing on screen saying why, that reads
+        as "the other bookings are gone". This bar has no `Filter (n)` button, so
+        the chip is the only place it could be said.
+      */
+      chips={
+        query.groupId
+          ? [
+              {
+                key: "group",
+                label: "Satu kunjungan",
+                onRemove: () => onChange({ groupId: "" }),
+              },
+            ]
+          : []
+      }
+      /*
         THE BAR CARRIES THE EXPLANATION, not the control — `FilterSelect` renders
         `disabledHint` only when it stands alone with its own label; inside a bar
         the caption belongs to the row, which is what `FilterBar.hint` is for.

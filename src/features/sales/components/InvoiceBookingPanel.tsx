@@ -20,10 +20,10 @@ import type { Booking } from "@/types/api";
  * panel empty for exactly the cases it exists to serve. Backwards only: an
  * appointment booked for next Friday has not been earned yet.
  *
- * ONE ROW PER ANIMAL, showing every service on that booking. A bill for three
- * cats has to say which three — the customer checking it and the groomer reading
- * it both need the names, and "Grooming ×3" tells neither of them whose bath was
- * missed.
+ * ONE ROW PER BOOKING, which is one animal and one main service with its
+ * add-ons. A bill for three cats has to say which three — the customer checking
+ * it and the groomer reading it both need the names, and "Grooming ×3" tells
+ * neither of them whose bath was missed.
  *
  * THE LIST IS ALREADY FILTERED BY THE SERVER to bookings this customer has not
  * been billed for — in a basket OR on another invoice — in any status but
@@ -142,9 +142,9 @@ export function InvoiceBookingPanel({
 
       {bookings.map((booking) => {
         const id = booking._id;
-        const total = booking.items.reduce(
-          (sum, item) => sum + Number(item.price),
-          0,
+        const total = booking.service.addons.reduce(
+          (sum, addon) => sum + Number(addon.price),
+          Number(booking.service.price),
         );
 
         return (
@@ -176,13 +176,18 @@ export function InvoiceBookingPanel({
                 {booking.bookingNumber ?? "—"}
               </span>
               <ul className="mt-1 flex flex-col gap-0.5 text-xs text-muted">
-                {booking.items.map((item, index) => (
-                  <li key={`${item.serviceId}-${index}`}>
-                    {item.name}
-                    {/* Never null — the server resolves an unassigned slot to
-                        "Belum ditentukan" once, rather than three screens each
-                        inventing their own word for it. */}
-                    {item.groomerName ? ` · ${item.groomerName}` : ""}
+                <li>
+                  {booking.service.name}
+                  {/* Never null — the server resolves an unassigned slot to
+                      "Belum ditentukan" once, rather than three screens each
+                      inventing their own word for it. */}
+                  {booking.groomerName ? ` · ${booking.groomerName}` : ""}
+                </li>
+                {/* Under the service they came with — nobody chose "Parfum"
+                    by itself. */}
+                {booking.service.addons.map((addon) => (
+                  <li key={addon.itemId} className="pl-3">
+                    {addon.name}
                   </li>
                 ))}
               </ul>

@@ -10,7 +10,14 @@ import { customerService } from "@/services/customer.service";
 import { petService } from "@/services/pet.service";
 import { serviceService } from "@/services/service.service";
 import { userService } from "@/services/user.service";
-import type { Booking, Customer, Pet, Service, User } from "@/types/api";
+import type {
+  Booking,
+  CreateBookingResult,
+  Customer,
+  Pet,
+  Service,
+  User,
+} from "@/types/api";
 
 import { swalToast } from "@/lib/swal";
 
@@ -93,7 +100,11 @@ const service = (overrides: Partial<Service> = {}) =>
 
 const groomer = { _id: "user-1", fullName: "Mbak Sari" } as User;
 
-const created = { _id: "bk-1", bookingNumber: "BK-260826-001" } as Booking;
+/* ONE BOOKING MADE — so the form opens it rather than the list. */
+const created = {
+  groupId: "grp-1",
+  bookings: [{ _id: "bk-1", bookingNumber: "BK-260826-001" } as Booking],
+} as CreateBookingResult;
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -138,13 +149,12 @@ async function choose(name: RegExp, option: RegExp | string) {
  * `/dashboard/booking/new`.
  *
  * Until this form existed the only way to make a booking was to sell it at the
- * till, which cannot answer the phone call that books Thursday. It was a DIALOG
- * on the list until a booking could hold several animals — three animals is
- * three cards of five controls each, and a dialog holding that is a form
- * scrolling inside a scrolling page.
+ * till, which cannot answer the phone call that books Thursday. One card is one
+ * booking — one animal, one main service — and a save sends them all as
+ * `bookings[]` under one header.
  */
 describe("BookingForm", () => {
-  it("sends who, which animals, what services and when", async () => {
+  it("sends who, when, and one booking per card", async () => {
     renderWithAuth(
       <BookingForm />,
     );
@@ -177,11 +187,11 @@ describe("BookingForm", () => {
         /* Never true on a first attempt — a warning nobody read is not a decision. */
         forceClash: false,
         /*
-          THE ANIMAL IS ON THE ROW since PCR-040, and no price crosses the wire:
-          the server snapshots it from the catalogue. `durationMin` is undefined
-          because nobody typed over the catalogue's ninety minutes.
+          ONE ENTRY PER CARD, and no price crosses the wire: the server snapshots
+          it from the catalogue. `durationMin` is undefined because nobody typed
+          over the catalogue's ninety minutes.
         */
-        items: [
+        bookings: [
           {
             petId: "pet-1",
             serviceId: "svc-1",
@@ -194,9 +204,9 @@ describe("BookingForm", () => {
             /* Two notes, and the key is always sent — same reason as above. */
             internalNotes: null,
             customerNotes: null,
+            belongings: [],
           },
         ],
-        belongings: [],
         // The two fields mean WALL-CLOCK TIME in the shop's own zone.
         scheduledAt: new Date("2026-09-03T10:30").toISOString(),
         /* The salon unless somebody says otherwise, and no van booked. */
@@ -215,18 +225,24 @@ describe("BookingForm", () => {
         notes: null,
       }),
     );
-    // Back to the list, which re-asks the server rather than splicing a row in.
-    // Back to the list, which re-asks the server rather than splicing a row in.
-    await waitFor(() => expect(push).toHaveBeenCalledWith("/dashboard/booking"));
+    // ONE BOOKING CAME BACK, so its own page is the next thing anybody does.
+    await waitFor(() =>
+      expect(push).toHaveBeenCalledWith("/dashboard/booking/bk-1"),
+    );
   });
 
   /*
-    THE CASE PCR-041 EXISTS FOR. Bu Lisa arrives with Mochi and Coco: one form,
-    one booking, one number. Before this the dialog made two — two rounds of the
-    same six fields, and two rows on a day sheet that could not tell they were
-    one arrival.
+    BU LISA ARRIVES WITH MOCHI AND COCO: one form, one header, two cards — and
+    two bookings in one group, each with its own number, status and bill.
   */
-  it("sends two animals on one booking", async () => {
+  it("makes one booking per animal and opens the list narrowed to the group", async () => {
+    bookings.create.mockResolvedValue({
+      groupId: "grp-9",
+      bookings: [
+        { _id: "bk-1", bookingNumber: "BK-260826-001" },
+        { _id: "bk-2", bookingNumber: "BK-260826-002" },
+      ] as Booking[],
+    });
     pets.list.mockResolvedValue(
       page([
         { _id: "pet-1", name: "Mochi", size: "small" } as Pet,
@@ -247,7 +263,7 @@ describe("BookingForm", () => {
     await choose(/^hewan$/i, "Mochi");
     await choose(/^layanan$/i, /grooming full service/i);
 
-    await userEvent.click(screen.getByRole("button", { name: /^tambah hewan$/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^tambah booking$/i }));
 
     const cards = screen.getAllByRole("combobox", { name: /^hewan$/i });
     await userEvent.click(cards[1]);
@@ -262,16 +278,64 @@ describe("BookingForm", () => {
     await waitFor(() => expect(bookings.create).toHaveBeenCalled());
 
     const sent = bookings.create.mock.calls[0][0];
-    expect(sent.items).toHaveLength(2);
-    expect(sent.items.map((item) => item.petId)).toEqual(["pet-1", "pet-2"]);
-    expect(sent.items.map((item) => item.serviceId)).toEqual(["svc-1", "svc-2"]);
+    expect(sent.bookings).toHaveLength(2);
+    expect(sent.bookings.map((entry) => entry.petId)).toEqual(["pet-1", "pet-2"]);
+    expect(sent.bookings.map((entry) => entry.serviceId)).toEqual([
+      "svc-1",
+      "svc-2",
+    ]);
+
+    /* TWO CAME BACK — no single page is "the" answer, so the list, filtered. */
+    await waitFor(() =>
+      expect(push).toHaveBeenCalledWith("/dashboard/booking?groupId=grp-9"),
+    );
   });
 
   /*
-    THE SAME ANIMAL TWICE FOR THE SAME SERVICE is two identical rows — nothing on
-    the day sheet could tell them apart, and each would need its own groomer. The
-    message NAMES the animal: with four cards on screen, "one of these is wrong"
-    is a puzzle rather than a message (PRD 2.7).
+    THE SAME ANIMAL ON TWO CARDS IS ALLOWED — a bath and a hotel stay are two
+    bookings, and the form must not treat the second card as a mistake.
+  */
+  it("lets the same animal sit on two cards with two different services", async () => {
+    services.list.mockResolvedValue(
+      page([service(), service({ _id: "svc-2", name: "Penitipan" })]),
+    );
+
+    renderWithAuth(<BookingForm />);
+
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+    await choose(/^layanan$/i, /grooming full service/i);
+
+    await userEvent.click(screen.getByRole("button", { name: /^tambah booking$/i }));
+
+    const petSelects = screen.getAllByRole("combobox", { name: /^hewan$/i });
+    await userEvent.click(petSelects[1]);
+    await userEvent.click(await screen.findByRole("option", { name: "Bruno" }));
+
+    const serviceSelects = screen.getAllByRole("combobox", { name: /^layanan$/i });
+    await userEvent.click(serviceSelects[1]);
+    await userEvent.click(await screen.findByRole("option", { name: /penitipan/i }));
+
+    expect(
+      screen.queryByText(/sudah punya layanan yang sama/i),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+    await waitFor(() => expect(bookings.create).toHaveBeenCalled());
+    const sent = bookings.create.mock.calls[0][0];
+    expect(sent.bookings.map((entry) => entry.petId)).toEqual(["pet-1", "pet-1"]);
+    expect(sent.bookings.map((entry) => entry.serviceId)).toEqual([
+      "svc-1",
+      "svc-2",
+    ]);
+  });
+
+  /*
+    THE SAME ANIMAL TWICE FOR THE SAME SERVICE is one grooming booked twice —
+    nothing on the day sheet could tell the two apart. The message NAMES the
+    animal: with four cards on screen, "one of these is wrong" is a puzzle rather
+    than a message (PRD 2.7).
   */
   it("refuses the same animal twice for the same service, and says which", async () => {
     renderWithAuth(
@@ -282,7 +346,7 @@ describe("BookingForm", () => {
     await screen.findByRole("combobox", { name: /^layanan$/i });
     await choose(/^layanan$/i, /grooming full service/i);
 
-    await userEvent.click(screen.getByRole("button", { name: /^tambah hewan$/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^tambah booking$/i }));
 
     const petSelects = screen.getAllByRole("combobox", { name: /^hewan$/i });
     await userEvent.click(petSelects[1]);
@@ -337,7 +401,7 @@ describe("BookingForm", () => {
     await choose(/^layanan$/i, /grooming full service/i);
     await choose(/groomer/i, "Mbak Sari");
 
-    await userEvent.click(screen.getByRole("button", { name: /^tambah hewan$/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^tambah booking$/i }));
 
     const petSelects = screen.getAllByRole("combobox", { name: /^hewan$/i });
     await userEvent.click(petSelects[1]);
@@ -366,7 +430,7 @@ describe("BookingForm", () => {
     await pickCustomer();
 
     expect(
-      await screen.findByText(/setiap hewan harus punya layanan/i),
+      await screen.findByText(/setiap booking harus punya hewan dan layanan/i),
     ).toBeInTheDocument();
     expect(bookings.create).not.toHaveBeenCalled();
   });
@@ -386,7 +450,7 @@ describe("BookingForm", () => {
     await waitFor(() =>
       expect(bookings.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          items: [expect.objectContaining({ groomerUserId: "user-1" })],
+          bookings: [expect.objectContaining({ groomerUserId: "user-1" })],
         }),
       ),
     );
@@ -417,7 +481,7 @@ describe("BookingForm", () => {
     await waitFor(() =>
       expect(bookings.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          items: [expect.objectContaining({ groomerUserId: null })],
+          bookings: [expect.objectContaining({ groomerUserId: null })],
         }),
       ),
     );
@@ -433,8 +497,8 @@ describe("BookingForm", () => {
       new ApiError("Validation failed", 400, {
         details: [
           {
-            // AFTER FR-1 the animal is a row, so the field points at `items`.
-            field: "body.items",
+            // The animal is on the entry, so the field points into `bookings`.
+            field: "body.bookings[0].petId",
             message: "This pet belongs to a different customer",
           },
         ],
@@ -589,7 +653,9 @@ describe("BookingForm", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
 
-    await waitFor(() => expect(push).toHaveBeenCalledWith("/dashboard/booking"));
+    await waitFor(() =>
+      expect(push).toHaveBeenCalledWith("/dashboard/booking/bk-1"),
+    );
     expect(screen.queryByText(/terjadi kesalahan/i)).not.toBeInTheDocument();
   });
 
@@ -742,11 +808,10 @@ describe("BookingForm", () => {
  * `status` in the body, and a row already billed that cannot be touched.
  */
 /**
- * ─── WHAT THE PER-ANIMAL FLOW ADDED ─────────────────────────────────────────
+ * ─── WHAT A CARD CARRIES ────────────────────────────────────────────────────
  *
- * The card became per ANIMAL rather than per line, and with it came four things
- * the old shape had nowhere to put: several services on one animal, add-ons
- * under each, a price that follows the animal, and what it brought with it.
+ * One main service, the add-ons under it, a price that follows the animal, and
+ * what it brought with it.
  */
 describe("BookingForm — layanan, add-on dan varian", () => {
   const main = service({
@@ -768,10 +833,10 @@ describe("BookingForm — layanan, add-on dan varian", () => {
     services.list.mockResolvedValue(page([main, addon]));
   });
 
-  it("narrows only its OWN line when a type is chosen", async () => {
+  it("narrows its card's service list when a type is chosen", async () => {
     /*
-      THE FILTER IS PER LINE, not per animal: one visit may take a Grooming
-      service and a Hotel one, and a single filter per card could not say that.
+      THE FILTER IS PER CARD: one visit may take a Grooming booking and a Hotel
+      one, each on its own card.
     */
     services.list.mockResolvedValue(
       page([
@@ -847,7 +912,7 @@ describe("BookingForm — layanan, add-on dan varian", () => {
     await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
 
     await waitFor(() => expect(bookings.create).toHaveBeenCalled());
-    expect(bookings.create.mock.calls[0][0].items).toEqual([
+    expect(bookings.create.mock.calls[0][0].bookings).toEqual([
       expect.objectContaining({
         serviceId: "svc-1",
         addonServiceIds: ["svc-addon"],
@@ -855,31 +920,17 @@ describe("BookingForm — layanan, add-on dan varian", () => {
     ]);
   });
 
-  it("adds a second service to the SAME animal without a second card", async () => {
-    services.list.mockResolvedValue(
-      page([main, addon, service({ _id: "svc-2", name: "Potong Kuku" })]),
-    );
-
+  it("offers ONE main service per card — a second is a card of its own", async () => {
     renderWithAuth(<BookingForm />);
     await pickCustomer();
     await screen.findByRole("combobox", { name: /^layanan$/i });
 
-    await choose(/^layanan$/i, /grooming full service/i);
-    await userEvent.click(
-      screen.getByRole("button", { name: /^tambah layanan$/i }),
-    );
-
-    const lines = screen.getAllByRole("combobox", { name: /^layanan$/i });
-    await userEvent.click(lines[1]);
-    await userEvent.click(await screen.findByRole("option", { name: /potong kuku/i }));
-
-    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
-
-    await waitFor(() => expect(bookings.create).toHaveBeenCalled());
-    const sent = bookings.create.mock.calls[0][0];
-    // Two rows, one animal — and the form asked for the animal once.
-    expect(sent.items.map((item) => item.petId)).toEqual(["pet-1", "pet-1"]);
-    expect(sent.items.map((item) => item.serviceId)).toEqual(["svc-1", "svc-2"]);
+    expect(
+      screen.getAllByRole("combobox", { name: /^layanan$/i }),
+    ).toHaveLength(1);
+    expect(
+      screen.queryByRole("button", { name: /^tambah layanan$/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("prices a variant service from the animal's own size", async () => {
@@ -1080,11 +1131,11 @@ describe("BookingForm — layanan, add-on dan varian", () => {
 /**
  * ─── WHOSE FIELD IS THIS? ───────────────────────────────────────────────────
  *
- * The first version of the per-animal card was flat: a small grey caption over
- * eight controls, repeated. The question it produced from somebody using it was
- * "ini input buat hewan 1 atau hewan 2?" — so these pin what answers it.
+ * The first version of the card was flat: a small grey caption over eight
+ * controls, repeated. The question it produced from somebody using it was "ini
+ * input buat hewan 1 atau hewan 2?" — so these pin what answers it.
  */
-describe("BookingForm — telling one animal's card from another's", () => {
+describe("BookingForm — telling one card from another", () => {
   beforeEach(() => {
     pets.list.mockResolvedValue(
       page([
@@ -1099,13 +1150,13 @@ describe("BookingForm — telling one animal's card from another's", () => {
     await pickCustomer();
     await screen.findByRole("combobox", { name: /^hewan$/i });
 
-    await userEvent.click(screen.getByRole("button", { name: /^tambah hewan$/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^tambah booking$/i }));
 
     expect(
-      screen.getByRole("heading", { name: "Hewan ke-1" }),
+      screen.getByRole("heading", { name: "Booking ke-1" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Hewan ke-2" }),
+      screen.getByRole("heading", { name: "Booking ke-2" }),
     ).toBeInTheDocument();
   });
 
@@ -1115,7 +1166,7 @@ describe("BookingForm — telling one animal's card from another's", () => {
     await screen.findByRole("combobox", { name: /^hewan$/i });
 
     await choose(/^hewan$/i, "Mochi");
-    await userEvent.click(screen.getByRole("button", { name: /^tambah hewan$/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^tambah booking$/i }));
 
     const pickers = screen.getAllByRole("combobox", { name: /^hewan$/i });
     await userEvent.click(pickers[1]);
@@ -1183,23 +1234,20 @@ describe("BookingForm — telling one animal's card from another's", () => {
       scheduledAt: new Date("2026-09-03T09:00:00").toISOString(),
       status: "confirmed",
       notes: null,
+      petId: "pet-1",
       belongings: [],
-      items: [
-        {
-          _id: "it-1",
-          petId: "pet-1",
-          serviceId: "svc-1",
-          parentItemId: null,
-          name: "Grooming Full Service",
-          price: "150000.0000",
-          durationMin: 90,
-          internalNotes: "Takut hairdryer",
-          customerNotes: null,
-          groomerUserId: null,
-          pulledToCartAt: null,
-          pulledToInvoiceAt: null,
-        },
-      ],
+      internalNotes: "Takut hairdryer",
+      customerNotes: null,
+      pulledToCartAt: null,
+      pulledToInvoiceAt: null,
+      service: {
+        serviceId: "svc-1",
+        name: "Grooming Full Service",
+        price: "150000.0000",
+        durationMin: 90,
+        sessions: [],
+        addons: [],
+      },
     } as unknown as Booking);
     customers.getById.mockResolvedValue(customer);
 
@@ -1362,57 +1410,10 @@ describe("BookingForm — lokasi, antar-jemput dan barang bawaan", () => {
     await userEvent.click(screen.getByRole("button", { name: /^tambah$/i }));
     await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
 
+    /* ON THE CARD'S OWN ENTRY — no `petId` to name, the entry already has one. */
     await waitFor(() => expect(bookings.create).toHaveBeenCalled());
-    expect(bookings.create.mock.calls[0][0].belongings).toEqual([
-      { petId: "pet-1", name: "Carrier biru" },
-    ]);
-  });
-
-  it("writes both of the animal's notes onto each of its services", async () => {
-    /*
-      Both notes are "anything special about THIS animal on THIS visit" — a
-      per-animal fact stored per row. The card asks once; the payload fans them
-      out, rather than putting the same boxes in front of somebody twice.
-    */
-    services.list.mockResolvedValue(
-      page([service(), service({ _id: "svc-2", name: "Potong Kuku" })]),
-    );
-
-    renderWithAuth(<BookingForm />);
-    await pickCustomer();
-    await screen.findByRole("combobox", { name: /^layanan$/i });
-
-    await choose(/^layanan$/i, /grooming full service/i);
-    await userEvent.click(
-      screen.getByRole("button", { name: /^tambah layanan$/i }),
-    );
-    const lines = screen.getAllByRole("combobox", { name: /^layanan$/i });
-    await userEvent.click(lines[1]);
-    await userEvent.click(await screen.findByRole("option", { name: /potong kuku/i }));
-
-    await userEvent.click(
-      screen.getByRole("button", { name: /catatan & barang bawaan/i }),
-    );
-    await userEvent.type(
-      screen.getByLabelText(/catatan internal/i),
-      "Takut hairdryer",
-    );
-    await userEvent.type(
-      screen.getByLabelText(/catatan untuk pelanggan/i),
-      "Sarankan 3 minggu sekali",
-    );
-    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
-
-    await waitFor(() => expect(bookings.create).toHaveBeenCalled());
-
-    const items = bookings.create.mock.calls[0][0].items;
-    expect(items.map((item) => item.internalNotes)).toEqual([
-      "Takut hairdryer",
-      "Takut hairdryer",
-    ]);
-    expect(items.map((item) => item.customerNotes)).toEqual([
-      "Sarankan 3 minggu sekali",
-      "Sarankan 3 minggu sekali",
+    expect(bookings.create.mock.calls[0][0].bookings[0].belongings).toEqual([
+      { name: "Carrier biru" },
     ]);
   });
 
@@ -1437,7 +1438,7 @@ describe("BookingForm — lokasi, antar-jemput dan barang bawaan", () => {
     await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
 
     await waitFor(() => expect(bookings.create).toHaveBeenCalled());
-    expect(bookings.create.mock.calls[0][0].items[0]).toMatchObject({
+    expect(bookings.create.mock.calls[0][0].bookings[0]).toMatchObject({
       internalNotes: "Pemiliknya suka ngeyel soal harga",
       customerNotes: null,
     });
@@ -1454,22 +1455,21 @@ describe("BookingForm — mengubah booking", () => {
     scheduledAt: new Date("2026-09-03T09:00:00").toISOString(),
     status: "confirmed",
     notes: "Alergi sampo biasa",
-    items: [
-      {
-        _id: "it-1",
-        petId: "pet-1",
-        serviceId: "svc-1",
-        name: "Grooming Full Service",
-        price: "150000.0000",
-        durationMin: 90,
-        internalNotes: null,
-        customerNotes: null,
-        groomerUserId: null,
-        groomerName: "Belum ditentukan",
-        pulledToCartAt: null,
-        pulledToInvoiceAt: null,
-      },
-    ],
+    petId: "pet-1",
+    belongings: [],
+    internalNotes: null,
+    customerNotes: null,
+    pulledToCartAt: null,
+    pulledToInvoiceAt: null,
+    groomerName: "Belum ditentukan",
+    service: {
+      serviceId: "svc-1",
+      name: "Grooming Full Service",
+      price: "150000.0000",
+      durationMin: 90,
+      sessions: [],
+      addons: [],
+    },
   } as unknown as Booking;
 
   beforeEach(() => {
@@ -1486,10 +1486,32 @@ describe("BookingForm — mengubah booking", () => {
     */
     renderWithAuth(<BookingForm bookingId="bk-9" />);
 
-    await screen.findByRole("button", { name: /simpan perubahan/i });
+    await screen.findByRole("button", { name: /simpan booking/i });
 
     expect(
       screen.queryByRole("button", { name: /simpan sebagai draf/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows exactly one card, and no way to add another", async () => {
+    /*
+      THE EDIT PAGE CORRECTS ONE BOOKING. A second animal for the same visit is a
+      booking of its own, made from the new-booking form.
+    */
+    renderWithAuth(<BookingForm bookingId="bk-9" />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: /^layanan$/i })).toHaveTextContent(
+        "Grooming Full Service",
+      ),
+    );
+
+    expect(screen.getAllByRole("combobox", { name: /^hewan$/i })).toHaveLength(1);
+    expect(
+      screen.queryByRole("button", { name: /tambah booking/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /^hapus/i }),
     ).not.toBeInTheDocument();
   });
 
@@ -1512,7 +1534,7 @@ describe("BookingForm — mengubah booking", () => {
     expect(screen.getByText(/ibu rina/i)).toBeInTheDocument();
 
     await userEvent.click(
-      screen.getByRole("button", { name: /simpan perubahan/i }),
+      screen.getByRole("button", { name: /simpan booking/i }),
     );
 
     await waitFor(() => expect(bookings.update).toHaveBeenCalled());
@@ -1520,20 +1542,21 @@ describe("BookingForm — mengubah booking", () => {
 
     const [id, patch] = bookings.update.mock.calls[0];
     expect(id).toBe("bk-9");
-    expect(patch.customerId).toBe("cust-1");
-    expect(patch.items).toEqual([
-      {
-        petId: "pet-1",
-        serviceId: "svc-1",
-        /* Loaded with none ticked, and sent back the same — the round trip that
-           must not quietly drop an add-on. See bookingDraft.test.ts. */
-        addonServiceIds: [],
-        groomerUserId: null,
-        durationMin: 90,
-        internalNotes: null,
-        customerNotes: null,
-      },
-    ]);
+    /* FLAT FIELDS — one booking, so no `bookings[]` and no `items[]`. */
+    expect(patch).toMatchObject({
+      customerId: "cust-1",
+      petId: "pet-1",
+      serviceId: "svc-1",
+      /* Loaded with none ticked, and sent back the same — the round trip that
+         must not quietly drop an add-on. See bookingDraft.test.ts. */
+      addonServiceIds: [],
+      groomerUserId: null,
+      durationMin: 90,
+      internalNotes: null,
+      customerNotes: null,
+      belongings: [],
+    });
+    expect(patch).not.toHaveProperty("bookings");
     /*
       `status` MUST NOT BE IN THE BODY. PATCH has no such field — a transition
       has rules a `$set` cannot express, so it moves through its own route. Joi
@@ -1552,7 +1575,7 @@ describe("BookingForm — mengubah booking", () => {
     );
 
     await userEvent.click(
-      screen.getByRole("button", { name: /simpan perubahan/i }),
+      screen.getByRole("button", { name: /simpan booking/i }),
     );
 
     await waitFor(() =>
@@ -1574,46 +1597,29 @@ describe("BookingForm — mengubah booking", () => {
     ).toBeInTheDocument();
   });
 
-  it("locks a row that has already been billed and refuses to let it go", async () => {
+  it("locks a booking that has already been billed", async () => {
     bookings.getById.mockResolvedValue({
       ...existing,
-      items: [
-        { ...existing.items[0], pulledToInvoiceAt: "2026-09-01T04:00:00.000Z" },
-        {
-          ...existing.items[0],
-          _id: "it-2",
-          serviceId: "svc-2",
-          name: "Potong Kuku",
-        },
-      ],
+      pulledToInvoiceAt: "2026-09-01T04:00:00.000Z",
     } as unknown as Booking);
-    services.list.mockResolvedValue(
-      page([service(), service({ _id: "svc-2", name: "Potong Kuku" })]),
-    );
 
     renderWithAuth(<BookingForm bookingId="bk-9" />);
 
-    expect(await screen.findByText(/sudah ditagih/i)).toBeInTheDocument();
-
     /*
-      NO REMOVE BUTTON ON THE BILLED LINE, and one on the other. PRD 2.12: work
-      already on a bill cannot leave the booking it was billed from, or the
-      appointment and the invoice stop agreeing about what was done.
-
-      BOTH LINES ARE ONE ANIMAL'S, so they sit in ONE card now — the grouping
-      that came with the per-pet flow. What is asserted is unchanged: exactly one
-      of the two services can be taken off.
+      PRD 2.12: work already on a bill cannot change under the bill, or the
+      appointment and the invoice stop agreeing about what was done. The card
+      says so, and its service and animal cannot be changed.
     */
-    const card = screen.getAllByRole("listitem")[0];
-    expect(
-      within(card).getAllByRole("button", { name: /hapus layanan/i }),
-    ).toHaveLength(1);
-    /* And the card itself cannot go while it holds billed work. */
-    expect(
-      within(card).queryByRole("button", { name: /^hapus bruno$/i }),
-    ).not.toBeInTheDocument();
+    const card = (await screen.findAllByRole("listitem"))[0];
+    expect(within(card).getAllByText(/sudah ditagih/i).length).toBeGreaterThan(0);
+    await waitFor(() =>
+      expect(
+        within(card).getByRole("combobox", { name: /^layanan$/i }),
+      ).toBeDisabled(),
+    );
+    expect(within(card).getByRole("combobox", { name: /^hewan$/i })).toBeDisabled();
 
-    /* And the owner is pinned: emptying his animals would empty the billed one. */
+    /* And the owner is pinned: emptying the animal would empty the billed one. */
     expect(screen.getByRole("button", { name: /ganti/i })).toBeDisabled();
   });
 
@@ -1654,7 +1660,7 @@ describe("BookingForm — mengubah booking", () => {
     expect(screen.queryByText(/sedang nonaktif/i)).not.toBeInTheDocument();
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: /simpan perubahan/i }),
+        screen.getByRole("button", { name: /simpan booking/i }),
       ).toBeEnabled(),
     );
   });
@@ -1710,6 +1716,6 @@ describe("BookingForm — when no staff are marked as groomers", () => {
     await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
 
     await waitFor(() => expect(bookings.create).toHaveBeenCalled());
-    expect(bookings.create.mock.calls[0][0].items[0].groomerUserId).toBeNull();
+    expect(bookings.create.mock.calls[0][0].bookings[0].groomerUserId).toBeNull();
   });
 });

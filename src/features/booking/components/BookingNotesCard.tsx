@@ -8,13 +8,13 @@ import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
 import type { Booking } from "@/types/api";
 
-/** Mirrors NOTES_MAX_LENGTH in bookingItem.model.js. */
+/** Mirrors NOTES_MAX_LENGTH in booking.model.js. */
 const NOTES_MAX_LENGTH = 500;
 
 type Field = "customerNotes" | "internalNotes";
 
 /**
- * ONE ANIMAL'S TWO NOTES, WRITTEN WHERE THE WORK IS.
+ * THE BOOKING'S TWO NOTES, WRITTEN WHERE THE WORK IS.
  *
  * ─── WHY IT IS EDITABLE HERE AND NOT ONLY ON THE FORM ─────────────────────
  *
@@ -27,16 +27,16 @@ type Field = "customerNotes" | "internalNotes";
  *
  * ─── IT IS NOT `PATCH /bookings/:id` ─────────────────────────────────────
  *
- * The wholesale edit re-snapshots every unbilled row at today's catalogue price,
- * because changing what is being done is a new quote. Saving a note through it
- * would reprice a visit nobody meant to reprice, and the shop would find out on
- * the bill. `setPetNotes` writes two strings.
+ * The wholesale edit re-snapshots an unbilled service at today's catalogue
+ * price, because changing what is being done is a new quote. Saving a note
+ * through it would reprice a visit nobody meant to reprice, and the shop would
+ * find out on the bill. `setNotes` writes two strings.
  *
  * ─── SAVED ON BLUR, ONE FIELD AT A TIME ──────────────────────────────────
  *
- * No save button, matching the time fields on this page: somebody types, looks
- * away, and it is kept. Each box sends only ITSELF — the other may be half-typed,
- * and a patch carrying both would write a stale value over live editing.
+ * No save button: somebody types, looks away, and it is kept. Each box sends
+ * only ITSELF — the other may be half-typed, and a patch carrying both would
+ * write a stale value over live editing.
  *
  * A save that changes nothing is not sent at all. Tabbing through a card is the
  * commonest thing that happens to it, and a request per focus lost would be a
@@ -49,35 +49,20 @@ type Field = "customerNotes" | "internalNotes";
  * changes underneath — which is what makes a failed save recover: the box keeps
  * the words, and the error says why they are not saved yet.
  */
-export function BookingPetNotesCard({
+export function BookingNotesCard({
   booking,
-  petId,
   onChanged,
 }: {
   booking: Booking;
-  petId: string;
   /** Called with the updated booking, so the page redraws from the server. */
   onChanged: (booking: Booking) => void;
 }) {
   /*
-    ─── READ OFF THE ANIMAL, NOT OFF ITS SERVICES ─────────────────────────────
-
-    Both notes are about the ANIMAL on this visit, and the form asks each once.
-    Until PCR-042 there was no per-animal record to put them in, so each was
-    written onto EVERY service of that animal and this card had to go hunting:
-    "the first service that has any is the answer", per field, because rows could
-    disagree if an edit reached only some of them.
-
-    They have one home now. The hunt is gone, and with it the class of bug it was
-    working around.
-
     HELD AS TWO STRINGS rather than an object, because they are what the reseed
     below compares: a fresh object every render is never equal to the last one.
   */
-  const pet = booking.pets.find((entry) => entry.petId === petId);
-
-  const storedCustomer = pet?.customerNotes ?? "";
-  const storedInternal = pet?.internalNotes ?? "";
+  const storedCustomer = booking.customerNotes ?? "";
+  const storedInternal = booking.internalNotes ?? "";
 
   const [draft, setDraft] = useState({
     customerNotes: storedCustomer,
@@ -123,7 +108,7 @@ export function BookingPetNotesCard({
     setError(null);
 
     try {
-      const updated = await bookingService.setPetNotes(booking._id, petId, {
+      const updated = await bookingService.setNotes(booking._id, {
         [field]: value,
       });
       seeded.current = { ...seeded.current, [field]: value };

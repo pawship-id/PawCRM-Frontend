@@ -12,14 +12,10 @@ jest.mock("@/services/booking.service");
 
 const bookings = bookingService as jest.Mocked<typeof bookingService>;
 
-const PET_A = "pet-1";
-const PET_B = "pet-2";
-
 const belonging = (
   overrides: Partial<BookingBelonging> = {},
 ): BookingBelonging => ({
   _id: "bel-1",
-  petId: PET_A,
   name: "Carrier biru",
   checkedInAt: null,
   checkedOutAt: null,
@@ -28,15 +24,14 @@ const belonging = (
   ...overrides,
 });
 
+/* ONE BOOKING IS ONE ANIMAL, so everything it holds is Mochi's. */
 const booking = (belongings: BookingBelonging[]): Booking =>
-  ({ _id: "bk-1", belongings }) as Booking;
+  ({ _id: "bk-1", petId: "pet-1", petName: "Mochi", belongings }) as Booking;
 
 function render(belongings: BookingBelonging[], onChanged = jest.fn()) {
   renderWithAuth(
     <BookingBelongingsCard
       booking={booking(belongings)}
-      petId={PET_A}
-      petName="Mochi"
       onChanged={onChanged}
     />,
   );
@@ -53,30 +48,26 @@ beforeEach(() => {
  * Titipan owner — checked in on arrival, checked out on the way home.
  *
  * WHAT THESE PIN is the pair of states a single "returned" checkbox cannot tell
- * apart, the order the two ticks happen in, and — since the card moved off the
- * booking overview onto one animal's page — that it shows ONE animal's things.
+ * apart, and the order the two ticks happen in.
  */
 describe("BookingBelongingsCard", () => {
-  it("shows only the animal whose page this is", () => {
-    /*
-      THE REASON IT MOVED. It used to be one card on the booking overview,
-      grouped by animal, so handing Mochi's collar back meant scrolling past
-      Coco's. This page is about one animal; the other's things are not on it.
-    */
+  it("lists everything the booking holds", () => {
     render([
-      belonging({ _id: "a", petId: PET_A, name: "Carrier biru" }),
-      belonging({ _id: "b", petId: PET_B, name: "Kalung merah" }),
+      belonging({ _id: "a", name: "Carrier biru" }),
+      belonging({ _id: "b", name: "Kalung merah" }),
     ]);
 
     expect(screen.getByText("Carrier biru")).toBeInTheDocument();
-    expect(screen.queryByText("Kalung merah")).not.toBeInTheDocument();
+    expect(screen.getByText("Kalung merah")).toBeInTheDocument();
   });
 
-  it("says so plainly when this animal brought nothing", () => {
+  it("says so plainly when the animal brought nothing", () => {
     // Not an empty card and not a blank space: the fact, stated. §10.
-    render([belonging({ petId: PET_B })]);
+    render([]);
 
-    expect(screen.getByText(/tidak menitipkan barang/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/mochi tidak menitipkan barang/i),
+    ).toBeInTheDocument();
   });
 
   it("ticks one thing in, by its own id", async () => {
@@ -149,11 +140,11 @@ describe("BookingBelongingsCard", () => {
     expect(screen.getByText("Semua kembali")).toBeInTheDocument();
   });
 
-  it("adds a thing to THIS animal, checked in", async () => {
+  it("adds a thing to the booking without naming an animal", async () => {
     /*
-      An item added at the counter is one somebody is holding — it arrived in the
-      same movement that recorded it — so the server defaults `checkedIn` and the
-      card does not send it. The petId is the page's, never asked for.
+      An item added at the counter is one somebody is holding, so the server
+      defaults `checkedIn` and the card does not send it. No `petId`: the booking
+      is one animal already.
     */
     render([]);
 
@@ -166,7 +157,6 @@ describe("BookingBelongingsCard", () => {
 
     await waitFor(() =>
       expect(bookings.addBelonging).toHaveBeenCalledWith("bk-1", {
-        petId: PET_A,
         name: "Kalung merah",
       }),
     );

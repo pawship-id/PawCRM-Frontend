@@ -2,27 +2,26 @@ import { priceForPet } from "@/utils/serviceVariant";
 import type {
   Booking,
   BookingBelongingInput,
-  BookingItemInput,
+  CreateBookingEntry,
   Pet,
   Service,
+  UpdateBookingInput,
 } from "@/types/api";
 
 /**
- * The shape the booking form holds while somebody fills it in — and the two
+ * The shape the booking form holds while somebody fills it in — and the
  * conversions between it and the API's.
  *
- * ─── WHY THE FORM'S SHAPE IS NOT THE API'S ─────────────────────────────────
+ * ─── ONE CARD IS ONE BOOKING ───────────────────────────────────────────────
  *
- * The API stores a FLAT list of rows: one per animal per service, add-ons
- * included, each with a `parentItemId`. That is right for it — the calendar, the
- * clash check, the pet timeline and the commission run all want to find rows
- * without knowing which booking they sit in.
+ * A booking is one animal and one main service, with add-ons under it. The form
+ * asks in that order — which animal, what is being done to it, what is added to
+ * that — so a card holds exactly those answers and nothing about any other
+ * booking. Bu Lisa bringing Mochi and Coco is two cards; Mochi having a bath and
+ * a hotel stay is two cards too, and the same animal may appear on both.
  *
- * The SCREEN asks a different question, in the order a receptionist asks it:
- * which animal, then what is being done to it, then what is added to that. So
- * the draft is a tree — a card per animal, services under it, add-ons under
- * each — and this file is the one place the two shapes meet. Everything else on
- * both sides gets to keep the shape that suits it.
+ * What the bookings of one save SHARE — who, where, when, the trip — is the
+ * form's header, not part of a card. See `BookingForm`.
  *
  * ─── PURE, SO IT CAN BE TESTED WITHOUT A SCREEN ────────────────────────────
  *
@@ -34,47 +33,40 @@ import type {
 /** The sentinel for "Belum ditentukan" — a real state, not a gap (FR-3). */
 export const UNASSIGNED = "belum-ditentukan";
 
-export interface ServiceDraft {
-  /** Local identity. Never sent — see `blankGroup`. */
+/** Mirrors MAX_BOOKINGS_PER_GROUP in booking.model.js — one save, at most ten. */
+export const MAX_CARDS = 10;
+
+/**
+ * One thing the owner is handing over. `_id` and `checkedInAt` are carried on an
+ * edit so saving the list back keeps what the counter already ticked in.
+ */
+export type BelongingDraft = BookingBelongingInput;
+
+export interface BookingCardDraft {
+  /** Local identity. Never sent — two empty cards look identical. */
   key: string;
+  petId: string;
   /**
-   * WHICH LINE OF BUSINESS this line's service picker is narrowed to.
+   * WHICH LINE OF BUSINESS the service picker is narrowed to.
    *
    * A FILTER, NOT A FIELD: never sent, because the service already names its
-   * own. It sits on the LINE rather than on the animal because one animal may
-   * take a Grooming service and a Hotel one on the same visit — a single filter
-   * per card could not express that, and asking it once per card made it read as
-   * a property of the animal rather than of the list it narrows.
+   * own.
    */
   businessLineId: string;
+  /** The ONE main service. */
   serviceId: string;
-  /** The add-ons ticked under this service, by service id. */
+  /** The add-ons ticked under it, by service id. */
   addonServiceIds: string[];
   /** As typed; "" means "use the catalogue's". */
   durationMin: string;
   /**
-   * Already billed, so it may not be changed or removed (PRD 2.12). Held on the
-   * draft rather than in a side set: a locked service is a property of that
-   * line, and a parallel `Set` keyed by string is how the two drift.
-   */
-  locked: boolean;
-}
-
-export interface PetGroupDraft {
-  key: string;
-  petId: string;
-  /**
-   * THE GROOMER THIS ANIMAL'S WHOLE VISIT STARTS WITH — a DEFAULT, not the last
-   * word.
+   * THE GROOMER THE BOOKING STARTS WITH — a DEFAULT, not the last word.
    *
-   * It is asked once per animal rather than once per service, because at booking
-   * time it is one answer: "Sinta is doing Bruno today". Who actually stands at
-   * each session — and whether a second pair of hands joins one of them — is
-   * settled on the booking's own page once the day is running, which is where
-   * the person who knows is standing.
+   * At booking time it is one answer: "Sinta is doing Bruno today". Who actually
+   * stands at each session — and whether a second pair of hands joins one of
+   * them — is settled on the booking's own page once the day is running.
    */
   groomerUserId: string;
-  services: ServiceDraft[];
   /**
    * ─── TWO NOTES, TWO AUDIENCES ─────────────────────────────────────────────
    *
@@ -82,242 +74,180 @@ export interface PetGroupDraft {
    * the OWNER something had nowhere to put it but the same box — and whichever
    * way that box is then treated it is wrong: shown to the customer it leaks,
    * hidden from them the advice never arrives.
-   *
-   * BOTH ARE PER ANIMAL, asked once on the card and written onto each of that
-   * animal's rows on the way out; see `groupsToItems`.
    */
   internalNotes: string;
-  /** For the owner to read. Staff still write it — see `BookingItem`. */
+  /** For the owner to read. Staff still write it — see `Booking`. */
   customerNotes: string;
-  /** What the owner is handing over with this animal, by name. */
-  belongings: string[];
+  /** What the owner is handing over with this animal. */
+  belongings: BelongingDraft[];
+  /**
+   * Already billed, so the service may not be changed (PRD 2.12). Held on the
+   * draft rather than in a side set: a locked service is a property of that
+   * card, and a parallel `Set` keyed by string is how the two drift.
+   */
+  locked: boolean;
 }
 
 let seq = 0;
 
-/** A fresh service line. The key is local — two empty lines look identical. */
-export function blankService(): ServiceDraft {
+/** A fresh card, optionally with its animal already chosen. */
+export function blankCard(petId = ""): BookingCardDraft {
   seq += 1;
   return {
-    key: `svc-${seq}`,
+    key: `card-${seq}`,
+    petId,
     businessLineId: "",
     serviceId: "",
     addonServiceIds: [],
     durationMin: "",
+    groomerUserId: UNASSIGNED,
+    internalNotes: "",
+    customerNotes: "",
+    belongings: [],
     locked: false,
   };
 }
 
-/** A fresh animal card, with one empty service line ready to fill in. */
-export function blankGroup(petId = ""): PetGroupDraft {
-  seq += 1;
+/**
+ * A booking as the API returns it → the one card the edit form shows.
+ *
+ * THE GROOMER IS THE FIRST PERSON ON THE FIRST SESSION. The API stores a crew
+ * per session, and by the time a booking is being edited those may genuinely
+ * differ — the day ran, and one turn was handed to somebody else. The card shows
+ * the first answer rather than inventing a blank; per-session crews are changed
+ * on the booking's own page, not here.
+ */
+export function cardFromBooking(booking: Booking): BookingCardDraft {
+  const service = booking.service;
+  const firstGroomer = service?.sessions?.[0]?.groomers?.[0]?._id;
+
   return {
-    key: `pet-${seq}`,
-    petId,
-    groomerUserId: UNASSIGNED,
-    services: [blankService()],
-    internalNotes: "",
-    customerNotes: "",
-    belongings: [],
+    ...blankCard(booking.petId),
+    serviceId: service?.serviceId ?? "",
+    addonServiceIds: (service?.addons ?? []).map((addon) => addon.serviceId),
+    // Shown as typed, so saving without touching it keeps the number.
+    durationMin:
+      service?.durationMin === null || service?.durationMin === undefined
+        ? ""
+        : String(service.durationMin),
+    groomerUserId: firstGroomer ?? UNASSIGNED,
+    internalNotes: booking.internalNotes ?? "",
+    customerNotes: booking.customerNotes ?? "",
+    belongings: (booking.belongings ?? []).map((belonging) => ({
+      _id: belonging._id,
+      name: belonging.name,
+      checkedInAt: belonging.checkedInAt,
+    })),
+    locked: Boolean(booking.pulledToCartAt || booking.pulledToInvoiceAt),
+  };
+}
+
+/** "" → null, anything else trimmed. */
+const noteOf = (value: string): string | null =>
+  value.trim() === "" ? null : value.trim();
+
+/** Blank names dropped, the rest trimmed — a half-typed row is not a thing. */
+const belongingsOf = (card: BookingCardDraft): BelongingDraft[] =>
+  card.belongings
+    .map((belonging) => ({ ...belonging, name: belonging.name.trim() }))
+    .filter((belonging) => belonging.name !== "");
+
+/**
+ * The fields one card contributes, in the names both `POST` and `PATCH` use.
+ *
+ * `durationMin` IS OMITTED WHEN NOBODY TYPED ONE, rather than sent as the
+ * catalogue's number: the server snapshots from the catalogue itself, so sending
+ * nothing keeps the appointment following a duration the shop may still correct
+ * before Thursday.
+ */
+function cardFields(card: BookingCardDraft) {
+  return {
+    petId: card.petId,
+    serviceId: card.serviceId,
+    addonServiceIds: card.addonServiceIds,
+    durationMin:
+      card.durationMin.trim() === "" ? undefined : Number(card.durationMin),
+    /* FR-3's "Belum ditentukan" is a real state, sent as null. */
+    groomerUserId:
+      card.groomerUserId === UNASSIGNED ? null : card.groomerUserId,
+    internalNotes: noteOf(card.internalNotes),
+    customerNotes: noteOf(card.customerNotes),
   };
 }
 
 /**
- * A booking as the API returns it → the cards the form edits.
+ * The cards → `bookings[]` for `POST /bookings`.
  *
- * ADD-ONS ARE FOLDED BACK UNDER THEIR PARENT, which is the whole reason
- * `parentItemId` is on the read model: the API hands back a flat list, and a
- * form that showed it flat would present "Parfum" as a service somebody chose
- * on its own — which is not what it is, and not something they could then
- * untick.
- *
- * AN ORPHANED ADD-ON IS KEPT, NOT DROPPED. If a parent row is missing — deleted
- * directly through the API, say — its add-on is shown as a line of its own
- * rather than silently vanishing from a booking somebody is about to save. A row
- * that disappears from an edit form is a row that disappears from the booking.
+ * A card with no animal or no service is DROPPED rather than sent empty — a card
+ * somebody added and did not fill in is not a booking, and the server would
+ * refuse it by field name. `_id` never goes on a create.
  */
-export function groupsFromBooking(booking: Booking): PetGroupDraft[] {
-  const groups = new Map<string, PetGroupDraft>();
-  const linesById = new Map<string, ServiceDraft>();
-
-  const groupFor = (petId: string): PetGroupDraft => {
-    const existing = groups.get(petId);
-    if (existing) return existing;
-
-    const created = { ...blankGroup(petId), services: [] as ServiceDraft[] };
-    groups.set(petId, created);
-    return created;
-  };
-
-  /* Parents first, so an add-on always finds the line it hangs off. */
-  const parents = booking.items.filter((item) => !item.parentItemId);
-  const addons = booking.items.filter((item) => item.parentItemId);
-
-  for (const item of parents) {
-    const line: ServiceDraft = {
-      ...blankService(),
-      serviceId: item.serviceId,
-      // Shown as typed, so saving without touching it keeps the number.
-      durationMin: item.durationMin === null ? "" : String(item.durationMin),
-      locked: Boolean(item.pulledToCartAt || item.pulledToInvoiceAt),
-    };
-
-    linesById.set(item._id, line);
-
-    const group = groupFor(item.petId);
-    group.services.push(line);
-    /*
-      ONE PAIR PER ANIMAL: the rows of one animal carry the same words, so the
-      first non-empty one of each is what the card shows. The two are collapsed
-      INDEPENDENTLY — a booking whose first row has an internal note and whose
-      second has the customer's must show both, and testing them together would
-      drop whichever the first row happened to lack.
-    */
-    if (!group.internalNotes && item.internalNotes) {
-      group.internalNotes = item.internalNotes;
-    }
-    if (!group.customerNotes && item.customerNotes) {
-      group.customerNotes = item.customerNotes;
-    }
-    /*
-      THE ANIMAL'S DEFAULT GROOMER, from the first of its rows that names one.
-
-      The form asks this once per animal; the API stores it per row, and by the
-      time a booking is being edited those rows may genuinely differ — the day
-      ran, and one session was handed to somebody else. The card shows the first
-      answer rather than inventing a blank, and re-saving applies it to every row
-      of that animal, which is what "default" means on this screen. Per-session
-      crews are changed on the booking's own page, not here.
-    */
-    if (group.groomerUserId === UNASSIGNED && item.groomerUserId) {
-      group.groomerUserId = item.groomerUserId;
-    }
-  }
-
-  for (const item of addons) {
-    const parent = linesById.get(item.parentItemId as string);
-
-    if (parent) {
-      parent.addonServiceIds.push(item.serviceId);
-      continue;
-    }
-
-    const group = groupFor(item.petId);
-    group.services.push({
-      ...blankService(),
-      serviceId: item.serviceId,
-      durationMin: item.durationMin === null ? "" : String(item.durationMin),
-      locked: Boolean(item.pulledToCartAt || item.pulledToInvoiceAt),
-    });
-  }
-
-  for (const belonging of booking.belongings ?? []) {
-    groupFor(belonging.petId).belongings.push(belonging.name);
-  }
-
-  const result = [...groups.values()];
-  return result.length > 0 ? result : [blankGroup()];
-}
-
-/**
- * The cards → the flat `items[]` the API takes.
- *
- * BOTH OF THE ANIMAL'S NOTES GO ON EVERY ROW OF THAT ANIMAL, and that is a real
- * decision rather than a shrug. They are documented as facts about THIS animal
- * on THIS visit — per-animal facts that happen to be stored per row, because the
- * row is the only thing a visit has one of per animal per service. Asking for
- * each once and writing it to every row is what makes the screen match the
- * fields' own meaning; asking once per service would put the same sentence in
- * front of somebody three times.
- *
- * Lines with no service chosen are DROPPED rather than sent empty — a card
- * somebody added and did not fill in is not a row, and the server would refuse
- * it by field name.
- */
-export function groupsToItems(groups: PetGroupDraft[]): BookingItemInput[] {
-  return groups.flatMap((group) =>
-    group.services
-      .filter((line) => group.petId !== "" && line.serviceId !== "")
-      .map((line) => ({
-        petId: group.petId,
-        serviceId: line.serviceId,
-        addonServiceIds: line.addonServiceIds,
-        /*
-          THE ANIMAL'S DEFAULT, ONTO EVERY ONE OF ITS ROWS. Asked once, applied
-          to each — the same fan-out the note gets, and for the same reason: at
-          booking time it is one answer about one animal. FR-3's "Belum
-          ditentukan" is a real state, not a gap.
-        */
-        groomerUserId:
-          group.groomerUserId === UNASSIGNED ? null : group.groomerUserId,
-        /*
-          OMITTED WHEN NOBODY TYPED ONE, rather than sent as the catalogue's
-          number: the server snapshots from the catalogue itself, so sending
-          nothing keeps the appointment following a duration the shop may still
-          correct before Thursday.
-        */
-        durationMin:
-          line.durationMin.trim() === "" ? undefined : Number(line.durationMin),
-        internalNotes:
-          group.internalNotes.trim() === "" ? null : group.internalNotes.trim(),
-        customerNotes:
-          group.customerNotes.trim() === "" ? null : group.customerNotes.trim(),
+export function cardsToEntries(cards: BookingCardDraft[]): CreateBookingEntry[] {
+  return cards
+    .filter((card) => card.petId !== "" && card.serviceId !== "")
+    .map((card) => ({
+      ...cardFields(card),
+      belongings: belongingsOf(card).map(({ name, checkedInAt }) => ({
+        name,
+        ...(checkedInAt ? { checkedInAt } : {}),
       })),
-  );
-}
-
-/** The cards → the flat `belongings[]`, each naming the animal it belongs to. */
-export function groupsToBelongings(
-  groups: PetGroupDraft[],
-): BookingBelongingInput[] {
-  return groups.flatMap((group) =>
-    group.petId === ""
-      ? []
-      : group.belongings
-          .map((name) => name.trim())
-          .filter((name) => name !== "")
-          .map((name) => ({ petId: group.petId, name })),
-  );
+    }));
 }
 
 /**
- * WHICH LINES REPEAT AN ANIMAL AND A SERVICE ALREADY ON THE BOOKING — by line
- * key, so the message lands on the card somebody just added rather than the one
- * they filled in five minutes ago (PRD 2.7).
+ * The edit form's one card → the flat fields `PATCH /bookings/:id` takes.
  *
- * ADD-ONS COUNT. The same perfume ticked under two of one animal's services is
- * one perfume charged twice, and the server refuses it — so the form has to see
- * it as a duplicate too, or the refusal arrives with nothing highlighted.
+ * BELONGINGS GO WHOLESALE, `_id` INCLUDED: what the list holds is the booking's
+ * belongings afterwards, and the id is what keeps a stored item's check-in.
  */
-export function duplicateServiceKeys(groups: PetGroupDraft[]): Set<string> {
-  const duplicates = new Set<string>();
-  const seen = new Set<string>();
-
-  for (const group of groups) {
-    if (group.petId === "") continue;
-
-    for (const line of group.services) {
-      for (const serviceId of [line.serviceId, ...line.addonServiceIds]) {
-        if (serviceId === "") continue;
-
-        const pair = petServiceKey(group.petId, serviceId);
-        if (seen.has(pair)) duplicates.add(line.key);
-        else seen.add(pair);
-      }
-    }
-  }
-
-  return duplicates;
+export function cardToUpdate(
+  card: BookingCardDraft,
+): Pick<
+  UpdateBookingInput,
+  | "petId"
+  | "serviceId"
+  | "addonServiceIds"
+  | "durationMin"
+  | "groomerUserId"
+  | "internalNotes"
+  | "customerNotes"
+  | "belongings"
+> {
+  return { ...cardFields(card), belongings: belongingsOf(card) };
 }
 
-/** One animal and one service, as a key — the unit the server checks by. */
+/** One animal and one service, as a key. */
 export function petServiceKey(petId: string, serviceId: string): string {
   return `${petId}|${serviceId}`;
 }
 
 /**
- * EVERY (ANIMAL, SERVICE) PAIR A STORED BOOKING ALREADY HOLDS — add-ons
- * included, by the same key `petServiceKey` makes.
+ * WHICH CARDS REPEAT AN ANIMAL AND A MAIN SERVICE ALREADY ON ANOTHER CARD — by
+ * card key, so the message lands on the card somebody just added rather than the
+ * one they filled in five minutes ago (PRD 2.7).
+ *
+ * THE SAME ANIMAL ON TWO CARDS IS ALLOWED, and that is the point of a card being
+ * one booking: a bath and a hotel stay are two bookings. The SAME service twice
+ * for the same animal at the same time is not — it is one grooming booked twice.
+ */
+export function duplicateCardKeys(cards: BookingCardDraft[]): Set<string> {
+  const duplicates = new Set<string>();
+  const seen = new Set<string>();
+
+  for (const card of cards) {
+    if (card.petId === "" || card.serviceId === "") continue;
+
+    const pair = petServiceKey(card.petId, card.serviceId);
+    if (seen.has(pair)) duplicates.add(card.key);
+    else seen.add(pair);
+  }
+
+  return duplicates;
+}
+
+/**
+ * EVERY (ANIMAL, SERVICE) PAIR A STORED BOOKING ALREADY HOLDS — the main service
+ * and its add-ons, by the same key `petServiceKey` makes.
  *
  * ─── WHY THE FORM NEEDS TO KNOW (13 September 2026) ───────────────────────
  *
@@ -328,13 +258,15 @@ export function petServiceKey(petId: string, serviceId: string): string {
  * variant allowed. So the form blocks an inactive variant only for a pair this
  * set does not hold — otherwise correcting the time of an old booking would be
  * refused over a service nobody touched.
- *
- * BY PAIR, NOT BY LINE KEY, because that is how the server decides: a line
- * removed and added back for the same animal is the same pair, and is allowed.
  */
 export function storedPetServiceKeys(booking: Booking): Set<string> {
+  const service = booking.service;
+  if (!service) return new Set();
+
   return new Set(
-    booking.items.map((item) => petServiceKey(item.petId, item.serviceId)),
+    [service.serviceId, ...(service.addons ?? []).map((addon) => addon.serviceId)]
+      .filter(Boolean)
+      .map((serviceId) => petServiceKey(booking.petId, serviceId)),
   );
 }
 
@@ -343,57 +275,51 @@ export function storedPetServiceKeys(booking: Booking): Set<string> {
  * never the sum (PRD 2.9).
  *
  * Two groomers work at the same time: Mochi with Sinta for 90 minutes and Coco
- * with Rio for 60 means the visit takes 90, not 150. Lines sharing a groomer ARE
- * summed, because one person cannot do two animals at once, and lines with
+ * with Rio for 60 means the visit takes 90, not 150. Cards sharing a groomer ARE
+ * summed, because one person cannot do two animals at once, and cards with
  * nobody assigned are grouped together — which over-estimates rather than
  * under-, and promising an earlier finish than the shop can manage is the
  * mistake that sends somebody home late.
  *
- * AN ADD-ON'S MINUTES COUNT TOWARDS ITS PARENT'S GROOMER, because that is who
- * does it. This mirrors `BookingItemRepository#summarise`; the stored answer is
- * the server's.
+ * AN ADD-ON'S MINUTES COUNT TOWARDS ITS CARD'S GROOMER, because that is who
+ * does it. The stored answer, per booking, is the server's.
  */
 export function longestGroomerMinutes(
-  groups: PetGroupDraft[],
+  cards: BookingCardDraft[],
   serviceOf: (id: string) => Service | null,
   /*
     THE ANIMAL, BECAUSE THE MINUTES ARE ITS OWN (13 September 2026). A service
     priced by variant has no service-level `durationMin` any more — a large dog's
     grooming takes longer than a small one's, and each variant says how long.
-    Reading `service.durationMin` would find null and quietly count nothing, so
-    "selesai sekitar" would promise the customer an earlier finish than the shop
-    can manage. An animal whose variant cannot be found counts nothing, the same
-    as a service with no length did before.
+    Reading `service.durationMin` would find null and quietly count nothing.
   */
   petOf: (id: string) => Pet | null,
 ): number {
   const perGroomer = new Map<string, number>();
 
-  for (const group of groups) {
-    const pet = petOf(group.petId);
+  for (const card of cards) {
+    const pet = petOf(card.petId);
     const minutesOf = (id: string) =>
       priceForPet(serviceOf(id), pet).durationMin ?? 0;
 
-    for (const line of group.services) {
-      const typed = Number(line.durationMin);
-      const own =
-        line.durationMin.trim() !== "" && Number.isFinite(typed) && typed > 0
-          ? typed
-          : minutesOf(line.serviceId);
+    const typed = Number(card.durationMin);
+    const own =
+      card.durationMin.trim() !== "" && Number.isFinite(typed) && typed > 0
+        ? typed
+        : minutesOf(card.serviceId);
 
-      const addons = line.addonServiceIds.reduce(
-        (total, id) => total + minutesOf(id),
-        0,
-      );
+    const addons = card.addonServiceIds.reduce(
+      (total, id) => total + minutesOf(id),
+      0,
+    );
 
-      const minutes = own + addons;
-      if (minutes <= 0) continue;
+    const minutes = own + addons;
+    if (minutes <= 0) continue;
 
-      perGroomer.set(
-        group.groomerUserId,
-        (perGroomer.get(group.groomerUserId) ?? 0) + minutes,
-      );
-    }
+    perGroomer.set(
+      card.groomerUserId,
+      (perGroomer.get(card.groomerUserId) ?? 0) + minutes,
+    );
   }
 
   return Math.max(0, ...perGroomer.values());

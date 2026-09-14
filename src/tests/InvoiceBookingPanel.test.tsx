@@ -24,15 +24,15 @@ const booking = (overrides: Partial<Booking> = {}): Booking =>
     petId: "pet1",
     petName: "Miko",
     scheduledAt: "2026-08-28T02:00:00.000Z",
-    items: [
-      {
-        serviceId: "svc1",
-        name: "Grooming Full",
-        price: "150000",
-        groomerUserId: "u1",
-        groomerName: "Rina",
-      },
-    ],
+    status: "confirmed",
+    service: {
+      serviceId: "svc1",
+      name: "Grooming Full",
+      price: "150000",
+      addons: [],
+      sessions: [],
+    },
+    groomerName: "Rina",
     ...overrides,
   }) as unknown as Booking;
 
@@ -78,10 +78,30 @@ describe("what it shows", () => {
     expect(screen.getByText("BK-260828-001")).toBeInTheDocument();
   });
 
-  it("lists every service with who is doing it", async () => {
+  it("names the service with who is doing it", async () => {
     open();
 
     expect(await screen.findByText(/Grooming Full · Rina/)).toBeInTheDocument();
+  });
+
+  it("lists the add-ons under the service", async () => {
+    (bookingService.bridge as jest.Mock).mockResolvedValue([
+      booking({
+        service: {
+          serviceId: "svc1",
+          name: "Grooming Full",
+          price: "150000",
+          addons: [
+            { itemId: "ad1", serviceId: "svc2", name: "Potong kuku", price: "30000" },
+          ],
+          sessions: [],
+        },
+      } as never),
+    ]);
+    open();
+
+    expect(await screen.findByText("Potong kuku")).toBeInTheDocument();
+    expect(screen.getByText("Rp 180.000")).toBeInTheDocument();
   });
 
   it("adds the booking up", async () => {
@@ -100,10 +120,11 @@ describe("what it shows", () => {
   });
 
   /*
-    ONE ROW PER ANIMAL. A bill for three cats has to say which three — the
-    customer checking it and the groomer reading it both need the names.
+    ONE ROW PER BOOKING, and a booking is one animal. A bill for three cats has
+    to say which three — the customer checking it and the groomer reading it
+    both need the names.
   */
-  it("shows one row per animal", async () => {
+  it("shows one row per booking", async () => {
     (bookingService.bridge as jest.Mock).mockResolvedValue([
       booking(),
       booking({ _id: "bk2", petName: "Oyen", bookingNumber: "BK-260828-002" }),
@@ -148,10 +169,16 @@ describe("choosing", () => {
   it("adds up a price that arrives as a decimal string", async () => {
     (bookingService.bridge as jest.Mock).mockResolvedValue([
       booking({
-        items: [
-          { serviceId: "svc1", name: "Grooming", price: "120000.0000", groomerUserId: null, groomerName: "Belum ditentukan" },
-          { serviceId: "svc2", name: "Potong kuku", price: "30000.0000", groomerUserId: null, groomerName: "Belum ditentukan" },
-        ],
+        service: {
+          serviceId: "svc1",
+          name: "Grooming",
+          price: "120000.0000",
+          addons: [
+            { itemId: "ad1", serviceId: "svc2", name: "Potong kuku", price: "30000.0000" },
+          ],
+          sessions: [],
+        },
+        groomerName: "Belum ditentukan",
       } as never),
     ]);
     open();

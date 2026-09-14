@@ -1,14 +1,10 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+import BookingPage from "@/app/(dashboard)/dashboard/booking/page";
 import { BookingsScreen } from "@/features/booking";
 import { bookingService } from "@/services/booking.service";
-import type {
-  Booking,
-  BookingPet,
-  BookingStatus,
-  PageResult,
-} from "@/types/api";
+import type { Booking, BookingMainService, PageResult } from "@/types/api";
 
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
@@ -16,157 +12,84 @@ jest.mock("@/services/booking.service");
 
 const mocked = bookingService as jest.Mocked<typeof bookingService>;
 
-const BASE_PETS: BookingPet[] = [
-  {
-    petItemId: "pi-1",
-    petId: "pet-1",
-    petName: "Bruno",
-    petSize: "medium",
-    status: "confirmed",
-    statusHistory: [],
-    nextStatuses: [],
-    cancelReason: null,
-    internalNotes: null,
-    customerNotes: null,
-    notes: null,
-    belongings: [],
-    /* The animal's own album — a different array from its turns' evidence. */
-    media: [],
-    pulledToCartAt: null,
-    pulledToInvoiceAt: null,
-    services: [
-      {
-        itemId: "row-1",
-        serviceId: "svc-1",
-        name: "Full Grooming",
-        serviceType: null,
-        price: "150000.0000",
-        durationMin: null,
-        status: "pending",
-        statusHistory: [],
-        startedAt: null,
-        finishedAt: null,
-        sessions: [],
-        addons: [],
-      },
-    ],
-  },
-] as BookingPet[];
+const service = (
+  overrides: Partial<BookingMainService> = {},
+): BookingMainService => ({
+  serviceId: "svc-1",
+  name: "Grooming Full Service",
+  serviceType: null,
+  price: "150000.0000",
+  durationMin: null,
+  status: "pending",
+  statusHistory: [],
+  startedAt: null,
+  finishedAt: null,
+  sessions: [],
+  addons: [],
+  ...overrides,
+});
 
 /**
- * ⚠️ `status` IS NOT ON `Booking` ANY MORE, and this type keeps accepting it.
+ * ONE BOOKING — one animal, one main service — in the shape the API sends.
  *
- * Every test below describes its case the way a person would — "a draft",
- * "half-paid" — and PCR-042 moved both facts onto the ANIMAL. Rewriting thirty
- * call sites into nested `pets[]` literals would bury what each test is about,
- * so the factory takes the old words and translates them once, at the bottom.
+ * The status, the claim markers and the money are all the booking's own, so a
+ * test says what it means directly: `booking({ status: "draft" })`, or one of
+ * the two claim shapes below.
  */
-type BookingOverrides = Partial<Omit<Booking, "pets">> & {
-  status?: BookingStatus;
-  pets?: BookingPet[];
+const booking = (overrides: Partial<Booking> = {}): Booking => ({
+  _id: "bk-1",
+  tenantId: "t1",
+  branchId: "b1",
+  bookingNumber: "BK-260826-001",
+  groupId: "66e5a1b2c3d4e5f6a7b8c9d1",
+  customerId: "cust-1",
+  customerName: "Ibu Rina",
+  petId: "pet-1",
+  petName: "Bruno",
+  petSize: "medium",
+  status: "confirmed",
+  statusHistory: [],
+  nextStatuses: [],
+  cancelReason: null,
+  scheduledAt: "2026-08-26T03:00:00.000Z",
+  origin: "booking",
+  posTransactionId: null,
+  location: "in_store",
+  pickupRequested: false,
+  deliveryRequested: false,
+  tripAddress: null,
+  service: service(),
+  groomerName: "Belum ditentukan",
+  belongings: [],
+  internalNotes: null,
+  customerNotes: null,
+  notes: null,
+  media: [],
+  pulledToCartAt: null,
+  pulledToInvoiceAt: null,
+  billingState: "unbilled",
+  totalAmount: "150000.0000",
+  totalDurationMin: null,
+  createdBy: null,
+  createdByName: null,
+  createdByRoleName: null,
+  createdAt: "2026-08-26T00:00:00.000Z",
+  updatedAt: "2026-08-26T00:00:00.000Z",
+  ...overrides,
+});
+
+/** In a basket right now: a till holds it, and no sale has settled it. */
+const IN_BASKET: Partial<Booking> = {
+  pulledToCartAt: "2026-08-26T04:00:00.000Z",
+  billingState: "billed",
 };
 
-const booking = (overrides: BookingOverrides = {}): Booking => {
-  const pets: BookingPet[] = overrides.pets ?? BASE_PETS;
-  const translate = translateFactory(overrides);
-
-  return {
-    _id: "bk-1",
-    tenantId: "t1",
-    branchId: "b1",
-    bookingNumber: "BK-260826-001",
-    customerId: "cust-1",
-    customerName: "Ibu Rina",
-    // AFTER PCR-040 the animals are on the rows; the header lists them.
-    /*
-      ⚠️ `pets[]` CARRIES THE STATUS AND THE MONEY SINCE PCR-042. It used to be
-      two names for a badge; the row is split per animal now, so each entry needs
-      its own `status` and its own `services[]` — a fixture without them is not a
-      smaller fixture, it is a different shape from what the API sends.
-    */
-    petCount: 1,
-    totalAmount: "150000.0000",
-    totalDurationMin: null,
-    billingState: "unbilled",
-    petName: "Bruno",
-    items: [
-      {
-        _id: "row-1",
-        petId: "pet-1",
-        petName: "Bruno",
-        serviceId: "svc-1",
-        name: "Grooming Full Service",
-        price: "150000.0000",
-        durationMin: null,
-        notes: null,
-        pulledToCartAt: null,
-        pulledToInvoiceAt: null,
-        groomerUserId: null,
-        groomerName: "Belum ditentukan",
-      },
-    ],
-    scheduledAt: "2026-08-26T03:00:00.000Z",
-    status: "confirmed",
-    origin: "booking",
-    posTransactionId: null,
-    notes: null,
-    cancelReason: null,
-    createdAt: "2026-08-26T00:00:00.000Z",
-    updatedAt: "2026-08-26T00:00:00.000Z",
-    ...overrides,
-    /*
-      ─── THE OVERRIDES STILL SPEAK THE OLD LANGUAGE, AND THAT IS DELIBERATE ────
-
-      Every test below says `booking({ status: "draft" })` or
-      `booking({ billingState: "partial" })`, because that is how a person
-      describes the case being tested — "a draft", "half-paid". PCR-042 moved
-      both facts onto the ANIMAL, and rewriting thirty call sites into nested
-      `pets[]` literals would bury what each test is actually about.
-
-      SO THE FACTORY TRANSLATES, once, here:
-
-        `status`        → every animal's own status
-        `billingState`  → the animals' claim markers, which is what the row's
-                          "sudah dibayar / ada di keranjang" line now reads
-
-      `partial` PUTS THE CLAIM ON THE FIRST ANIMAL ONLY, which is what partial
-      means since the unit of billing became the animal: Mochi was paid for and
-      Coco was not. With one animal in the fixture, `partial` and `billed` differ
-      only in the header summary — which is exactly the distinction those tests
-      assert, so both are kept.
-    */
-    /*
-      ⚠️ AN EXPLICIT `pets` OVERRIDE WINS, AND THE TRANSLATION IS SKIPPED.
-
-      The shorthand below exists for tests that describe a case in the old words
-      — "a draft", "half-paid" — and let the factory work out what that means for
-      the animals. A test that hands over `pets[]` itself is describing them
-      precisely, usually to make two animals DIFFER; translating over the top of
-      that would stamp the claim onto the very animal the test set up as unpaid.
-    */
-    pets: (overrides.pets ? pets : pets.map(translate)) as BookingPet[],
-  } as Booking;
-};
-
-/** See the `pets` field above. */
-const translateFactory =
-  (overrides: BookingOverrides) =>
-  (pet: BookingPet, index: number): BookingPet => ({
-    ...pet,
-    status: overrides.status ?? pet.status,
-    /*
-        A SALE STAMPS BOTH. `posTransactionId` lands on the header and the claim
-        lands on the animals, in the same write — so a fixture that sets one
-        without the other describes a state the API cannot produce, and the row
-        would read "belum ditagih" over a booking the test calls paid.
-      */
-    pulledToCartAt:
-      overrides.posTransactionId ||
-      overrides.billingState === "billed" ||
-      (overrides.billingState === "partial" && index === 0)
-        ? "2026-08-26T04:00:00.000Z"
-        : (pet.pulledToCartAt ?? null),
-  });
+/**
+ * Paid for at the till. A SALE STAMPS BOTH — the claim and `posTransactionId`
+ * land in the same write — so a fixture with one and not the other describes a
+ * state the API cannot produce.
+ */
+const PAID: Partial<Booking> = { ...IN_BASKET, posTransactionId: "sale-1" };
 
 const page = (items: Booking[]): PageResult<Booking> => ({
   items,
@@ -188,7 +111,7 @@ beforeEach(() => {
   /*
     The unbilled lens asks for its own count on every load. Stubbed to "nothing
     outstanding" so these cases stay about the list rather than about the pill —
-    the pill has its own describe at the foot of the file.
+    the pill has its own describe further down.
   */
   mocked.unbilledSummary.mockResolvedValue({
     bookingCount: 0,
@@ -212,20 +135,23 @@ describe("BookingsScreen", () => {
     expect(screen.getByText("Rp 150.000")).toBeInTheDocument();
   });
 
+  it("opens a row on the booking's own page", async () => {
+    renderWithAuth(<BookingsScreen />);
+
+    expect(
+      await screen.findByRole("link", { name: /buka BK-260826-001/i }),
+    ).toHaveAttribute("href", "/dashboard/booking/bk-1");
+  });
+
   it("does not list the services on the row", async () => {
     /*
       ─── WHY THE COLUMN LEFT ─────────────────────────────────────────────────
 
-      It printed every row of the booking — name over groomer — inside one cell,
-      the only cell whose height depended on the booking. A visit with three
-      services made its row three times as tall and pushed the next booking off
-      the fold; a day sheet showing six bookings is worth more than one showing
-      two and their service lists. It also repeated "Belum ditentukan" once per
-      service, which is the ordinary state of a booking taken over the phone.
-
-      WHAT IT ANSWERED IS STILL ANSWERED: `Hewan` names the animals, `Total` sums
-      exactly these rows, and "which services" is a question about ONE booking —
-      answered on that booking's page, next to the prices and the sessions.
+      It printed every service of the booking — name over groomer — inside one
+      cell, the only cell whose height depended on the booking, and it repeated
+      "Belum ditentukan" once per service, which is the ordinary state of a
+      booking taken over the phone. A booking holds one service now; the column
+      was not brought back with that change, and this pins that it was not.
     */
     renderWithAuth(<BookingsScreen />);
 
@@ -236,7 +162,7 @@ describe("BookingsScreen", () => {
     expect(
       screen.queryByRole("columnheader", { name: /layanan/i }),
     ).not.toBeInTheDocument();
-    /* The money it added up is still there — the sum is of those same rows. */
+    /* The money it added up is still there. */
     expect(screen.getByText("Rp 150.000")).toBeInTheDocument();
   });
 
@@ -246,7 +172,7 @@ describe("BookingsScreen", () => {
     this a cashier at the second till reads "Confirmed" and rings it up again.
   */
   it("says when a confirmed booking is already in a basket", async () => {
-    mocked.list.mockResolvedValue(page([booking({ billingState: "billed" })]));
+    mocked.list.mockResolvedValue(page([booking(IN_BASKET)]));
 
     renderWithAuth(<BookingsScreen />);
 
@@ -255,13 +181,7 @@ describe("BookingsScreen", () => {
 
   it("does not say so once it has been paid for", async () => {
     mocked.list.mockResolvedValue(
-      page([
-        booking({
-          status: "completed",
-          billingState: "billed",
-          posTransactionId: "sale-1",
-        }),
-      ]),
+      page([booking({ status: "completed", ...PAID })]),
     );
 
     renderWithAuth(<BookingsScreen />);
@@ -304,6 +224,7 @@ describe("BookingsScreen", () => {
     const [query] = mocked.list.mock.calls[0];
     expect(query?.scheduledFrom).toBeUndefined();
     expect(query?.status).toBeUndefined();
+    expect(query?.groupId).toBeUndefined();
   });
 
   it("narrows by status", async () => {
@@ -354,6 +275,100 @@ describe("BookingsScreen", () => {
     renderWithAuth(<BookingsScreen />);
 
     expect(await screen.findByText(/tidak bisa dimuat/i)).toBeInTheDocument();
+  });
+});
+
+/**
+ * ─── THE BOOKINGS SAVED TOGETHER ───────────────────────────────────────────
+ *
+ * One save of the form can take several animals, and each becomes a booking of
+ * its own under one `groupId`. The form then lands here at `?groupId=…`, so
+ * whoever just took them sees exactly those — and a chip says why the list is
+ * two rows long, because a list narrowed by nothing visible reads as "the other
+ * bookings are gone".
+ */
+describe("BookingsScreen — one group, from the address", () => {
+  const GROUP = "66e5a1b2c3d4e5f6a7b8c9d0";
+
+  const openGroup = async (groupId: string = GROUP) => {
+    window.history.replaceState(null, "", `/dashboard/booking?groupId=${groupId}`);
+    return renderWithAuth(
+      await BookingPage({ searchParams: Promise.resolve({ groupId }) }),
+    );
+  };
+
+  afterEach(() => {
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("asks for the group named in the address, and says so in a chip", async () => {
+    await openGroup();
+
+    await waitFor(() =>
+      expect(mocked.list).toHaveBeenCalledWith(
+        expect.objectContaining({ groupId: GROUP }),
+      ),
+    );
+    expect(await screen.findByText("Satu kunjungan")).toBeInTheDocument();
+  });
+
+  it("drops the filter, and takes it out of the address, when the chip is removed", async () => {
+    const user = userEvent.setup();
+    await openGroup();
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /hapus filter satu kunjungan/i,
+      }),
+    );
+
+    await waitFor(() =>
+      expect(mocked.list.mock.calls.at(-1)?.[0]?.groupId).toBeUndefined(),
+    );
+    expect(screen.queryByText("Satu kunjungan")).not.toBeInTheDocument();
+    /* Otherwise a reload — or a copied link — would put it straight back. */
+    expect(window.location.search).not.toContain("groupId");
+    expect(window.location.pathname).toBe("/dashboard/booking");
+  });
+
+  it("keeps the other filters when the group comes off", async () => {
+    const user = userEvent.setup();
+    await openGroup();
+
+    await screen.findByText("BK-260826-001");
+    await user.click(
+      screen.getByRole("button", { name: /filter status booking/i }),
+    );
+    await user.click(await screen.findByRole("option", { name: "Completed" }));
+    await waitFor(() =>
+      expect(mocked.list.mock.calls.at(-1)?.[0]?.status).toBe("completed"),
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: /hapus filter satu kunjungan/i }),
+    );
+
+    await waitFor(() =>
+      expect(mocked.list.mock.calls.at(-1)?.[0]).toEqual(
+        expect.objectContaining({ status: "completed", groupId: undefined }),
+      ),
+    );
+  });
+
+  /* A bad id would 400 the whole list; dropped, it is just the whole list. */
+  it("ignores an address that is not a group id", async () => {
+    await openGroup("bukan-id");
+
+    await waitFor(() => expect(mocked.list).toHaveBeenCalled());
+    expect(mocked.list.mock.calls[0][0]?.groupId).toBeUndefined();
+    expect(screen.queryByText("Satu kunjungan")).not.toBeInTheDocument();
+  });
+
+  it("shows no chip on the ordinary list", async () => {
+    renderWithAuth(<BookingsScreen />);
+
+    await screen.findByText("BK-260826-001");
+    expect(screen.queryByText("Satu kunjungan")).not.toBeInTheDocument();
   });
 });
 
@@ -437,9 +452,7 @@ describe("BookingsScreen — what the badge cannot say on its own", () => {
   });
 
   it("says when a confirmed booking has already been paid for", async () => {
-    mocked.list.mockResolvedValue(
-      page([booking({ posTransactionId: "sale-1" })]),
-    );
+    mocked.list.mockResolvedValue(page([booking(PAID)]));
 
     renderWithAuth(<BookingsScreen />);
 
@@ -449,7 +462,7 @@ describe("BookingsScreen — what the badge cannot say on its own", () => {
   });
 
   it("says when one is sitting in a basket", async () => {
-    mocked.list.mockResolvedValue(page([booking({ billingState: "billed" })]));
+    mocked.list.mockResolvedValue(page([booking(IN_BASKET)]));
 
     renderWithAuth(<BookingsScreen />);
 
@@ -462,14 +475,7 @@ describe("BookingsScreen — what the badge cannot say on its own", () => {
     that has already been settled.
   */
   it("prefers 'paid' over 'in a basket' when both are true", async () => {
-    mocked.list.mockResolvedValue(
-      page([
-        booking({
-          posTransactionId: "sale-1",
-          billingState: "billed",
-        }),
-      ]),
-    );
+    mocked.list.mockResolvedValue(page([booking(PAID)]));
 
     renderWithAuth(<BookingsScreen />);
 
@@ -479,10 +485,28 @@ describe("BookingsScreen — what the badge cannot say on its own", () => {
     expect(screen.queryByText(/ada di keranjang/i)).not.toBeInTheDocument();
   });
 
+  /*
+    TWO INDEPENDENT FACTS. How much was paid and whether the work has started do
+    not decide each other; `confirmed` is the only status that means "nobody has
+    started", so the work half goes once the animal is on the table and the paid
+    half stays.
+  */
+  it("drops the work half once the animal is on the table", async () => {
+    mocked.list.mockResolvedValue(
+      page([booking({ status: "in_progress", ...PAID })]),
+    );
+
+    renderWithAuth(<BookingsScreen />);
+    await screen.findByText("BK-260826-001");
+
+    expect(screen.getByText(/^sudah dibayar$/i)).toBeInTheDocument();
+    expect(screen.queryByText(/belum dikerjakan/i)).not.toBeInTheDocument();
+  });
+
   /* A finished booking says so in the badge; a second line would be noise. */
   it("says neither once the work is done", async () => {
     mocked.list.mockResolvedValue(
-      page([booking({ status: "completed", posTransactionId: "sale-1" })]),
+      page([booking({ status: "completed", ...PAID })]),
     );
 
     renderWithAuth(<BookingsScreen />);
@@ -493,7 +517,7 @@ describe("BookingsScreen — what the badge cannot say on its own", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("says neither when nothing has touched it", async () => {
+  it("says neither when nothing has touched it — only that nobody has started", async () => {
     mocked.list.mockResolvedValue(page([booking()]));
 
     renderWithAuth(<BookingsScreen />);
@@ -502,6 +526,7 @@ describe("BookingsScreen — what the badge cannot say on its own", () => {
     expect(
       screen.queryByText(/sudah dibayar|ada di keranjang/i),
     ).not.toBeInTheDocument();
+    expect(screen.getByText(/^belum dikerjakan$/i)).toBeInTheDocument();
   });
 });
 
@@ -664,9 +689,9 @@ describe("BookingsScreen — the groomer filter", () => {
     "SIAPA YANG MENGERJAKAN" — the filter a shop asks for first, and the one
     that was missing while status and origin were there from the start.
 
-    IT IS A QUESTION ABOUT ROWS. The groomer sits on each service since PCR-040
-    and a visit can be split between two people, so the server resolves it into
-    booking ids rather than matching a header field.
+    IT IS A QUESTION ABOUT SESSIONS. A groomer is named on each turn and one
+    grooming can be split between two people, so the server matches anybody on
+    any of the booking's sessions rather than one field on the booking.
   */
   it("filters the list by groomer", async () => {
     const user = userEvent.setup();
@@ -728,146 +753,6 @@ describe("BookingsScreen — the groomer filter", () => {
   });
 });
 
-/**
- * ─── A HALF-PAID VISIT, SAID BY THE ROWS RATHER THAN BY A WORD ──────────────
- *
- * `posTransactionId` is stamped on the header by any sale that touched the
- * booking, and a sale may cover ONE of two animals. The list used to read "Sudah
- * dibayar" over a visit half of which had never been charged for — the screen
- * agreeing with money the shop had lost — and the fix at the time was to compose
- * the word "sebagian" out of the header's `billingState`.
- *
- * ─── THAT WORD IS GONE, AND ITS ABSENCE IS THE IMPROVEMENT ──────────────────
- *
- * The day sheet draws ONE ROW PER ANIMAL now. "Half-paid" is not a word the
- * screen has to find any more: Mochi's row says she was paid for and Coco's says
- * nothing, which is the same fact shown rather than summarised — and it names
- * WHICH half, which "sebagian" never could.
- *
- * The claim is read off the ANIMAL (`pulledToCartAt` / `pulledToInvoiceAt`), so
- * a sale that touched one dog can no longer speak for the other.
- */
-describe("BookingsTable — a half-paid visit", () => {
-  /** Two animals, one of them already through the till. */
-  const halfPaid = (status: BookingStatus = "confirmed") =>
-    booking({
-      posTransactionId: "sale-1",
-      status,
-      pets: [
-        {
-          ...BASE_PETS[0],
-          petItemId: "pi-1",
-          petId: "pet-1",
-          petName: "Bruno",
-          status,
-          pulledToCartAt: "2026-08-26T04:00:00.000Z",
-        },
-        {
-          ...BASE_PETS[0],
-          petItemId: "pi-2",
-          petId: "pet-2",
-          petName: "Coco",
-          status,
-          pulledToCartAt: null,
-        },
-      ],
-    });
-
-  it("says paid on the animal that was, and nothing on the one that was not", async () => {
-    mocked.list.mockResolvedValue(page([halfPaid()]));
-
-    renderWithAuth(<BookingsScreen />);
-    await screen.findByText("Bruno");
-
-    /*
-      ONE OF EACH, NOT ONE SENTENCE ABOUT BOTH. Two rows, and only one of them
-      carries the paid line — which is what "sebagian" was trying to say.
-    */
-    /*
-      ONE OF EACH, NOT ONE SENTENCE ABOUT BOTH. Two rows, and only the paid one
-      carries the claim — which is what "sebagian" was trying to say, without
-      naming which half.
-    */
-    expect(
-      screen.getAllByText(/sudah dibayar — belum dikerjakan/i),
-    ).toHaveLength(1);
-    expect(screen.getAllByText(/^belum dikerjakan$/i)).toHaveLength(1);
-  });
-
-  it("still says nobody has started, on both", async () => {
-    /*
-      TWO INDEPENDENT FACTS. How much was paid and whether the work has started
-      do not decide each other, and the first version of this column folded them
-      into one ladder — so the half-paid row lost the "belum dikerjakan" that
-      every other row carried, on the row that needed explaining most.
-    */
-    mocked.list.mockResolvedValue(page([halfPaid("confirmed")]));
-
-    renderWithAuth(<BookingsScreen />);
-    await screen.findByText("Bruno");
-
-    /* BOTH animals: one paid and unstarted, one unpaid and unstarted. */
-    expect(screen.getAllByText(/belum dikerjakan/i)).toHaveLength(2);
-  });
-
-  it("drops the work half once the animal has moved on", async () => {
-    // `confirmed` is the only status that means "nobody has started".
-    mocked.list.mockResolvedValue(page([halfPaid("in_progress")]));
-
-    renderWithAuth(<BookingsScreen />);
-    await screen.findByText("Bruno");
-
-    expect(screen.getAllByText(/^sudah dibayar$/i)).toHaveLength(1);
-    expect(screen.queryByText(/belum dikerjakan/i)).not.toBeInTheDocument();
-  });
-
-  it("says it on both animals when the whole visit was paid", async () => {
-    mocked.list.mockResolvedValue(
-      page([
-        booking({
-          posTransactionId: "sale-1",
-          billingState: "billed",
-          status: "confirmed",
-          /* BOTH CLAIMED, stated here rather than left to the factory: this
-             block names its animals, so it owns what is true of them. */
-          pets: [
-            {
-              ...BASE_PETS[0],
-              petItemId: "pi-1",
-              petName: "Bruno",
-              pulledToCartAt: "2026-08-26T04:00:00.000Z",
-            },
-            {
-              ...BASE_PETS[0],
-              petItemId: "pi-2",
-              petName: "Coco",
-              pulledToCartAt: "2026-08-26T04:00:00.000Z",
-            },
-          ],
-        }),
-      ]),
-    );
-
-    renderWithAuth(<BookingsScreen />);
-    await screen.findByText("Bruno");
-
-    expect(
-      screen.getAllByText(/sudah dibayar — belum dikerjakan/i),
-    ).toHaveLength(2);
-  });
-});
-
-/**
- * ─── THE ACTION COLUMN READS, AND MOVES NOTHING ────────────────────────────
- *
- * The status menu used to live here — every forward rung, cancel, reschedule and
- * the trail, on every row. It was taken out on 5 September 2026.
- *
- * WHY IT MATTERS ENOUGH TO PIN: the kebab sat under the pointer at the end of
- * every row, and "Tandai selesai dikerjakan" on the wrong one fires commission
- * for the wrong visit. The ladder only runs forward — there is no undo, only a
- * cancellation and a new booking.
- */
 describe("BookingsTable — a newly saved booking", () => {
   it("shows `requested` as a badge with a word on it", async () => {
     /*
@@ -933,6 +818,17 @@ describe("BookingsTable — a newly saved booking", () => {
   });
 });
 
+/**
+ * ─── THE ACTION COLUMN READS, AND MOVES NOTHING ────────────────────────────
+ *
+ * The status menu used to live here — every forward rung, cancel, reschedule and
+ * the trail, on every row. It was taken out on 5 September 2026.
+ *
+ * WHY IT MATTERS ENOUGH TO PIN: the kebab sat under the pointer at the end of
+ * every row, and "Tandai selesai dikerjakan" on the wrong one fires commission
+ * for the wrong visit. The ladder only runs forward — there is no undo, only a
+ * cancellation and a new booking.
+ */
 describe("BookingsTable — the action column", () => {
   const openMenu = async () => {
     const user = userEvent.setup();

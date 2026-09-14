@@ -8,12 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
 import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
-import type { Booking, BookingPetService, BookingSession } from "@/types/api";
+import type { Booking, BookingMainService, BookingSession } from "@/types/api";
 
-/** Mirrors MAX_SESSIONS_PER_SERVICE in bookingItem.model.js. */
+/** Mirrors MAX_SESSIONS_PER_SERVICE in booking.model.js. */
 const MAX_SESSIONS = 6;
 
-/** Mirrors MAX_GROOMERS_PER_SESSION in bookingItem.model.js. */
+/** Mirrors MAX_GROOMERS_PER_SESSION in booking.model.js. */
 const MAX_GROOMERS = 4;
 
 /** The sentinel the selects use — Radix refuses an empty value. */
@@ -78,7 +78,7 @@ function useSave(bookingId: string, onChanged: (booking: Booking) => void) {
  * ⚠️ EVERYBODY HERE IS COUNTED BUSY, AND NOBODY HERE IS PAID YET. The clash
  * check counts the whole crew; how a turn's money is split between them is a
  * question the shop has not answered, and nothing computes commission from a
- * session until it does — see `groomerUserIds` in bookingItem.model.js for what
+ * session until it does — see `groomerUserIds` in booking.model.js for what
  * goes wrong if that is wired up first.
  */
 export function SessionCrew({
@@ -308,7 +308,7 @@ export function AddSessionButton({
   onChanged,
 }: {
   bookingId: string;
-  service: BookingPetService;
+  service: BookingMainService;
   onChanged: (booking: Booking) => void;
 }) {
   const { busy, error, save } = useSave(bookingId, onChanged);
@@ -328,11 +328,11 @@ export function AddSessionButton({
       THE NAME AND NOTHING ELSE. Who works it is decided in the turn's own row,
       once it exists — the roster is read at the table, not while somebody is
       still typing what the turn is called.
+
+      NO SERVICE IS NAMED: a booking has exactly one, so a turn without a
+      `sessionId` can only be a new turn on it.
     */
-    const ok = await save({
-      serviceItemId: service.itemId,
-      sessionName: trimmed,
-    });
+    const ok = await save({ sessionName: trimmed });
 
     if (ok) {
       /* CLOSED, NOT CLEARED-AND-LEFT-OPEN. The button comes back, so adding a

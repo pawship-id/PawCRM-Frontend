@@ -28,7 +28,7 @@ import type {
 
 import { isoDate, type GroomingRow } from "../board";
 
-/** Mirrors MAX_GROOMERS_PER_SESSION in bookingItem.model.js. */
+/** Mirrors MAX_GROOMERS_PER_SESSION in booking.model.js. */
 const MAX_GROOMERS = 4;
 
 const WORK: Record<BookingWorkStatus, { label: string; className: string }> = {
@@ -40,7 +40,7 @@ const WORK: Record<BookingWorkStatus, { label: string; className: string }> = {
   done: { label: "Selesai", className: "bg-tint-success text-success" },
 };
 
-/** The move offered next, and nothing else — see BookingPetWorkScreen. */
+/** The move offered next, and nothing else — see BookingDetailScreen. */
 const NEXT: Partial<
   Record<BookingWorkStatus, { to: BookingWorkStatus; label: string }>
 > = {
@@ -49,7 +49,7 @@ const NEXT: Partial<
 };
 
 /**
- * One animal's grooming turns, inside its opened row on the board.
+ * One booking's grooming turns, inside its opened row on the board.
  *
  * ─── ON THE ROW, BY DECISION ───────────────────────────────────────────────
  *
@@ -64,7 +64,7 @@ const NEXT: Partial<
  * but the shop took it off the work page — a button that undoes "Selesai" beside
  * the one that presses it gets used as a toggle. The board follows the shop.
  *
- * The same two gates as the work page: a turn moves only once the ANIMAL is
+ * The same two gates as the work page: a turn moves only once the BOOKING is
  * In Progress, and a turn nobody is on cannot start.
  */
 export function GroomingSessionSteps({
@@ -75,21 +75,20 @@ export function GroomingSessionSteps({
   onChanged: (booking: Booking) => void;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
-  const { booking, pet } = row;
+  const { booking } = row;
 
-  const startable = canStartWork(pet);
+  const startable = canStartWork(booking);
   /* Re-crewing touches money once the work is completed — statusFlow. */
-  const settled = hasCompletedWork(pet, booking);
+  const settled = hasCompletedWork(booking);
   const running = row.sessions.find(
-    ({ session }) => session.status === "in_progress",
+    (session) => session.status === "in_progress",
   );
-  const namesService = row.services.length > 1;
 
   async function move(session: BookingSession, to: BookingWorkStatus) {
     setBusy(session.sessionId);
 
     try {
-      const updated = await bookingService.advanceItemWork(
+      const updated = await bookingService.advanceSessionWork(
         booking._id,
         session.sessionId,
         to,
@@ -121,19 +120,19 @@ export function GroomingSessionSteps({
         {running && (
           <span className="font-normal text-muted">
             {" "}
-            · sedang berjalan: {running.session.sessionName}
+            · sedang berjalan: {running.sessionName}
           </span>
         )}
       </h3>
 
       {row.sessions.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border bg-surface px-4 py-3 text-sm text-muted">
-          Belum ada tahapan. Tahapan dan groomernya diatur di halaman kerja
-          hewan ini.
+          Belum ada tahapan. Tahapan dan groomernya diatur di halaman detail
+          booking ini.
         </p>
       ) : (
         <ol className="flex flex-col gap-2">
-          {row.sessions.map(({ service, session }) => {
+          {row.sessions.map((session) => {
             const next = NEXT[session.status];
             const unassigned = session.groomers.length === 0;
 
@@ -157,12 +156,6 @@ export function GroomingSessionSteps({
                 <div className="min-w-[8rem] flex-1">
                   <p className="text-sm font-semibold text-foreground">
                     {session.sessionName}
-                    {namesService && (
-                      <span className="font-normal text-muted">
-                        {" "}
-                        · {service.name}
-                      </span>
-                    )}
                   </p>
                   <p className="text-xs text-muted">
                     {unassigned
@@ -212,11 +205,11 @@ export function GroomingSessionSteps({
 
       {row.sessions.length > 0 &&
         !startable &&
-        pet.status !== "cancelled" &&
+        booking.status !== "cancelled" &&
         !settled && (
           <p className="text-xs text-muted">
-            Tahapan baru bisa dimulai kalau status hewannya sudah In Progress —
-            ubah lewat kolom Status.
+            Tahapan baru bisa dimulai kalau status booking-nya sudah In Progress
+            — ubah lewat kolom Status.
           </p>
         )}
     </section>

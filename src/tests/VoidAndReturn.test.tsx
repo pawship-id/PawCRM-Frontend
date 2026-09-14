@@ -35,7 +35,6 @@ const item = (overrides = {}) => ({
   discount: null,
   hppAtTime: null,
   bookingId: null,
-  bookingItemId: null,
   parentServiceId: null,
   petId: null,
   petName: null,

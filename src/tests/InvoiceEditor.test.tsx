@@ -58,7 +58,6 @@ const line = (overrides: Partial<CustomerInvoiceItem> = {}): CustomerInvoiceItem
   dpp: null,
   tax: null,
   bookingId: null,
-  bookingItemId: null,
   petId: null,
   petName: null,
   groomerName: null,

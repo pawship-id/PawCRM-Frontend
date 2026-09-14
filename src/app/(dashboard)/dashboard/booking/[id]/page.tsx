@@ -45,8 +45,12 @@ export default async function BookingDetailPage({
         where it is static and server-rendered, and the number is the heading —
         which only the screen can know, because only the screen has fetched it.
       */}
-      <Breadcrumb items={[...BOOKING_CRUMBS, { label: "Detail" }]} />
-      <BookingDetailScreen id={id} />
+      {/* The same `gap-6` every other detail page puts between its crumb and
+          its content — without it the heading card sat flush under the crumb. */}
+      <div className="flex flex-col gap-6">
+        <Breadcrumb items={[...BOOKING_CRUMBS, { label: "Detail" }]} />
+        <BookingDetailScreen id={id} />
+      </div>
     </RequirePermission>
   );
 }

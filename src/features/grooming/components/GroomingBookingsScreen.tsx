@@ -203,7 +203,7 @@ export function GroomingBookingsScreen() {
         <GroomingStatCard
           label="Nilai booking"
           value={formatMoneyShort(summary.value)}
-          caption={`${summary.visits} booking ${periodWords} · sebelum diskon`}
+          caption={`${summary.bookings} booking ${periodWords} · sebelum diskon`}
           splits={[
             {
               label: "Rata-rata per hewan",
@@ -276,7 +276,7 @@ export function GroomingBookingsScreen() {
 
       {!board.loading && (
         <p className="text-sm text-muted">
-          <span className="tabular-nums">{visible.length}</span> hewan
+          <span className="tabular-nums">{visible.length}</span> booking
           {lens !== "all" && ` · disaring: ${LENS_WORDS[lens]}`}
           {lens !== "all" && (
             <>
@@ -325,7 +325,7 @@ export function GroomingBookingsScreen() {
             page={currentPage}
             totalPages={totalPages}
             total={visible.length}
-            unit="hewan"
+            unit="booking"
             onPageChange={setPage}
           />
         </>

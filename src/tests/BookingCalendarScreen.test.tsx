@@ -40,7 +40,7 @@ const entry = (overrides: Partial<BookingCalendarEntry> = {}) =>
     petName: "Mochi",
     customerName: "Bu Lisa",
     serviceName: "Full Grooming",
-    notes: null,
+    internalNotes: null,
     ...overrides,
   }) as BookingCalendarEntry;
 
@@ -83,11 +83,11 @@ describe("BookingCalendarScreen", () => {
   });
 
   /*
-    A BLOCK IS A ROW. Bu Lisa brings Mochi and Coco; Sinta takes one and Rio the
-    other, so one booking shows up in two columns at once — a shape the old
-    one-booking-one-pet calendar could not draw.
+    A BLOCK IS A SESSION. Mochi's bath is Sinta's and the blow dry is Rio's, so
+    one booking shows up in two columns at once — both blocks carrying the same
+    `bookingId`.
   */
-  it("draws one block per animal, even when they share a booking", async () => {
+  it("draws one block per turn, in the column of whoever works it", async () => {
     bookings.calendar.mockResolvedValue(
       calendar({
         groomers: [
@@ -97,9 +97,8 @@ describe("BookingCalendarScreen", () => {
         entries: [
           entry(),
           entry({
-            _id: "row-coco",
-            petId: "pet-coco",
-            petName: "Coco",
+            _id: "ses-blow-dry",
+            startAt: at(11, 30),
             groomerUserId: RIO,
             groomerName: "Rio",
           }),
@@ -109,8 +108,7 @@ describe("BookingCalendarScreen", () => {
 
     renderWithAuth(<BookingCalendarScreen />);
 
-    expect(await screen.findByText("Mochi")).toBeInTheDocument();
-    expect(screen.getByText("Coco")).toBeInTheDocument();
+    expect(await screen.findAllByText("Mochi")).toHaveLength(2);
   });
 
   /*
@@ -159,13 +157,18 @@ describe("BookingCalendarScreen", () => {
     ).toBeInTheDocument();
   });
 
-  it("opens the whole visit when a block is clicked", async () => {
+  it("opens the booking when a block is clicked", async () => {
     renderWithAuth(<BookingCalendarScreen />);
 
     await userEvent.click(await screen.findByText("Mochi"));
 
     expect(await screen.findByText(/Bu Lisa/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /tutup/i })).toBeInTheDocument();
+    /* The booking's own page — never an animal page under it. */
+    expect(screen.getByRole("link", { name: /buka booking/i })).toHaveAttribute(
+      "href",
+      "/dashboard/booking/bk-1",
+    );
   });
 
   /*

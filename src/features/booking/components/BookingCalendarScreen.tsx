@@ -155,12 +155,12 @@ const longDay = (value: string) =>
 /**
  * The day sheet, drawn — FR-3 / PCR-042.
  *
- * A BLOCK IS A ROW, NOT A BOOKING. Since PCR-040 a visit may bring Mochi and
- * Coco with different groomers, so one booking shows up in two columns at once.
- * Blocks of one visit carry the same `bookingId` and are outlined together, and
- * clicking either opens the whole visit.
+ * A BLOCK IS A SESSION, NOT A BOOKING. Mochi's bath is Sinta's and the blow dry
+ * is Rio's, so one booking shows up in two columns at once. Both blocks carry
+ * the same `bookingId`, and clicking either opens that booking. A booking with
+ * no session yet is one block of its own.
  *
- * "BELUM DITENTUKAN" IS A COLUMN, and it is last. A row nobody is assigned to is
+ * "BELUM DITENTUKAN" IS A COLUMN, and it is last. Work nobody is assigned to is
  * the ordinary state of a booking taken over the phone; leaving it off the
  * calendar would hide exactly the work that still needs somebody put on it.
  *
@@ -583,11 +583,8 @@ function WeekView({
 }
 
 /**
- * What one block is.
- *
- * IT OPENS THE WHOLE VISIT, not just the row that was clicked: Mochi's block
- * names Coco too, because the customer is collecting both and the person reading
- * this is about to talk to them.
+ * What one block is — the animal, the service, the time and who is on it — and
+ * the way into the booking it belongs to.
  */
 function DetailPanel({
   entry,
@@ -626,7 +623,7 @@ function DetailPanel({
           {/*
             THE WAY OUT OF THE CALENDAR AND INTO THE BOOKING. A block answers
             "who is where at ten"; the questions that follow it — what else is on
-            this visit, has it been billed, what is this animal allergic to —
+            this booking, has it been billed, what is this animal allergic to —
             live on the booking, and making somebody find it by number would be
             a search for something they are already looking at.
           */}

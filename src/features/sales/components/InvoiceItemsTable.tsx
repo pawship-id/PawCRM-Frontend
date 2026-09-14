@@ -56,8 +56,8 @@ function taxAddedOnTop(totals: CustomerInvoiceTotals | null): boolean {
  * billed with — `parentServiceId`, which the server resolved from the catalogue.
  *
  * MATCHED ON THE CATALOGUE SERVICE, not a line id, the same as the till's
- * `nestAddons`: a group is already one animal, so the service settles it. Two
- * lines of the same service take the add-on under the FIRST.
+ * `nestAddons`: a group is already one booking on one animal, so the service
+ * settles it. Two lines of the same service take the add-on under the FIRST.
  *
  * AN ORPHAN STAYS WHERE IT IS, as a line of its own — an add-on sold alone has
  * no parent, and one that vanished from the table while staying on the total is
@@ -187,15 +187,22 @@ export function InvoiceItemsTable({
     the way somebody reads a bill for two cats: whose grooming, then whose, then
     the food that belongs to nobody in particular.
 
-    A GROUP PER ANIMAL, NOT PER RUN OF LINES. A nail trim added after the food
-    still sits with the grooming it belongs to, so an add-on and its service read
-    as one visit. Animals keep the order they first appear in; lines with no
-    animal close the table.
+    A GROUP PER BOOKING ON AN ANIMAL, NOT PER RUN OF LINES. A nail trim added
+    after the food still sits with the grooming it belongs to, so an add-on and
+    its service read as one visit. A booking is one animal and one main service,
+    so the same animal booked for two services is two groups, each with its own
+    chip — one chip over both would name only the first. Groups keep the order
+    they first appear in; lines with no animal close the table.
 
     NO HEADINGS AT ALL on a bill with no animal on it — a single "Tanpa hewan"
     row over two bags of food is a heading for a question nobody asked.
   */
   const hasAnimals = items.some((item) => item.petId || item.petName);
+  const groupKey = (item: CustomerInvoiceItem) => {
+    if (!hasAnimals) return "__semua__";
+    const animal = item.petId ?? item.petName;
+    return animal ? `${animal}|${item.bookingId ?? ""}` : "__tanpa-hewan__";
+  };
   const groups: {
     key: string;
     petName: string | null;
@@ -206,9 +213,7 @@ export function InvoiceItemsTable({
   }[] = [];
 
   items.forEach((item, index) => {
-    const key = hasAnimals
-      ? (item.petId ?? item.petName ?? "__tanpa-hewan__")
-      : "__semua__";
+    const key = groupKey(item);
     let group = groups.find((one) => one.key === key);
 
     if (!group) {

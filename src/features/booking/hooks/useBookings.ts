@@ -23,12 +23,20 @@ export interface BookingsQuery {
   /**
    * "" = everybody. Whose day sheet this is.
    *
-   * A QUESTION ABOUT ROWS, not about the booking: the groomer sits on each
-   * service since PCR-040, and a visit can be split between two people. So a
-   * booking matches if ANY of its rows is theirs — which is what the shop means
-   * by "Sinta's bookings today".
+   * A QUESTION ABOUT SESSIONS, not about one field on the booking: a groomer is
+   * named on each turn, and one grooming can be split between two people. So a
+   * booking matches if ANYBODY on any of its sessions is theirs — which is what
+   * the shop means by "Sinta's bookings today".
    */
   groomerUserId: string;
+  /**
+   * "" = no group. The bookings saved together in one go — one per animal.
+   *
+   * NO CONTROL OF ITS OWN. It arrives only through `?groupId=`, which is where
+   * the form lands after a save that made several bookings, and it leaves
+   * through its chip (see `setQuery`).
+   */
+  groupId: string;
   /** Calendar dates; the server expands them in the TENANT'S timezone. */
   scheduledFrom: string;
   scheduledTo: string;
@@ -50,6 +58,7 @@ const DEFAULT_QUERY: BookingsQuery = {
   status: "",
   origin: "",
   groomerUserId: "",
+  groupId: "",
   scheduledFrom: "",
   scheduledTo: "",
   unbilled: false,
@@ -95,9 +104,15 @@ interface UseBookingsResult {
  * status, not by typing: a day sheet is read by "who is here this morning", and
  * a booking has no name of its own to search for. That is also why this hook is
  * simpler than the one it mirrors.
+ *
+ * `initialGroupId` IS THE ADDRESS'S SAY, read by the server page from
+ * `?groupId=` — the screen needs no `useSearchParams` and no Suspense boundary.
  */
-export function useBookings(): UseBookingsResult {
-  const [query, setQueryState] = useState<BookingsQuery>(DEFAULT_QUERY);
+export function useBookings(initialGroupId = ""): UseBookingsResult {
+  const [query, setQueryState] = useState<BookingsQuery>(() => ({
+    ...DEFAULT_QUERY,
+    groupId: initialGroupId,
+  }));
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pagination, setPagination] =
     useState<PageResult<Booking>["pagination"]>(EMPTY_PAGE);
@@ -107,6 +122,30 @@ export function useBookings(): UseBookingsResult {
   const [unbilled, setUnbilled] = useState<BookingUnbilledSummary | null>(null);
 
   const setQuery = useCallback((patch: Partial<BookingsQuery>) => {
+    /*
+      TAKING THE GROUP OFF TAKES IT OUT OF THE ADDRESS TOO. It arrived through
+      `?groupId=`, and a chip that cleared the list but left the URL would put
+      the filter straight back on a reload — or on the link somebody copies to a
+      colleague.
+
+      `replaceState`, NOT A NAVIGATION. Next syncs its router with it, nothing is
+      re-requested from the server, and the screen is not remounted — so the
+      date or status somebody set while looking at the group stays set. Replace
+      rather than push: Back should not put back a filter somebody just removed.
+    */
+    if (patch.groupId === "" && typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+
+      if (url.searchParams.has("groupId")) {
+        url.searchParams.delete("groupId");
+        window.history.replaceState(
+          null,
+          "",
+          `${url.pathname}${url.search}${url.hash}`,
+        );
+      }
+    }
+
     setQueryState((prev) => {
       const next = { ...prev, ...patch };
       if (patch.page === undefined) next.page = 1;
@@ -161,6 +200,7 @@ export function useBookings(): UseBookingsResult {
       origin: query.origin === "" ? undefined : query.origin,
       groomerUserId:
         query.groomerUserId === "" ? undefined : query.groomerUserId,
+      groupId: query.groupId || undefined,
       scheduledFrom: query.scheduledFrom || undefined,
       scheduledTo: query.scheduledTo || undefined,
       // Sent only when ON. `unbilled: false` is not the opposite question — the

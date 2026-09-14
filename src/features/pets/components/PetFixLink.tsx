@@ -25,9 +25,10 @@ import type { Pet, ServiceVariantAxis } from "@/types/api";
  * IT NAMES THE ANIMAL AND THE FIELD. "Lengkapi data hewan" sends somebody to a
  * form with fifteen boxes to hunt through; this says which one.
  *
- * ─── PROMOTED FROM `BookingPetGroupCard` ───────────────────────────────────
+ * ─── PROMOTED FROM THE BOOKING FORM'S CARD ─────────────────────────────────
  *
- * It was a private helper there until the till's service picker became the
+ * It was a private helper there (now `BookingCard`) until the till's service
+ * picker became the
  * second screen that had to offer the same way out. Copying it would have been
  * the copy that drifts — the two would eventually name the same missing fact
  * with two different words, on two screens the same person uses in one sitting.

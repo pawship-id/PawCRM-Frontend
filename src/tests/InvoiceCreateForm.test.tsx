@@ -1365,14 +1365,13 @@ describe("what the form sends", () => {
         _id: "bk1",
         bookingNumber: "BK-260828-001",
         petName: "Miko",
-        items: [
-          {
-            serviceId: "svc1",
-            name: "Grooming",
-            price: "150000",
-            groomerName: "Rina",
-          },
-        ],
+        service: {
+          serviceId: "svc1",
+          name: "Grooming",
+          price: "150000",
+          addons: [],
+        },
+        groomerName: "Rina",
       },
     ] as never);
 
@@ -1478,33 +1477,39 @@ describe("what the form shows", () => {
     recap reading Rp 0 with two groomings ticked, and would have understated
     every invoice discount that touched them.
   */
-  it("adds pulled bookings into the recap", async () => {
+  it("adds pulled bookings into the recap, add-ons included", async () => {
     jest.spyOn(bookingService, "bridge").mockResolvedValue([
       {
         _id: "bk1",
         bookingNumber: "BK-260828-001",
         petName: "Cici",
-        items: [
-          {
-            serviceId: "svc1",
-            name: "Grooming",
-            price: "120000.0000",
-            groomerName: "Rina",
-          },
-        ],
+        service: {
+          serviceId: "svc1",
+          name: "Grooming",
+          price: "120000.0000",
+          addons: [],
+        },
+        groomerName: "Rina",
       },
       {
         _id: "bk2",
         bookingNumber: "BK-260828-002",
         petName: "Cilang",
-        items: [
-          {
-            serviceId: "svc1",
-            name: "Grooming",
-            price: "120000.0000",
-            groomerName: "Rina",
-          },
-        ],
+        service: {
+          serviceId: "svc1",
+          name: "Grooming",
+          price: "120000.0000",
+          // Billed as a line of its own, so it has to reach the total too.
+          addons: [
+            {
+              itemId: "ad1",
+              serviceId: "svc9",
+              name: "Potong kuku",
+              price: "20000.0000",
+            },
+          ],
+        },
+        groomerName: "Rina",
       },
     ] as never);
 
@@ -1519,7 +1524,7 @@ describe("what the form shows", () => {
     // Scoped to the Total row: with no discount the subtotal carries the same
     // figure, and a list-wide query would pass on whichever rendered first.
     const totalRow = screen.getByText(/^Total tagihan$/i).closest("div")!;
-    expect(within(totalRow).getByText("Rp 240.000")).toBeInTheDocument();
+    expect(within(totalRow).getByText("Rp 260.000")).toBeInTheDocument();
   });
 
   /*
@@ -1532,14 +1537,13 @@ describe("what the form shows", () => {
         _id: "bk1",
         bookingNumber: "BK-260828-001",
         petName: "Cici",
-        items: [
-          {
-            serviceId: "svc1",
-            name: "Grooming",
-            price: "100000.0000",
-            groomerName: "Rina",
-          },
-        ],
+        service: {
+          serviceId: "svc1",
+          name: "Grooming",
+          price: "100000.0000",
+          addons: [],
+        },
+        groomerName: "Rina",
       },
     ] as never);
 
@@ -1662,14 +1666,13 @@ describe("what the form refuses to submit", () => {
         _id: "bk1",
         bookingNumber: "BK-260828-001",
         petName: "Miko",
-        items: [
-          {
-            serviceId: "svc1",
-            name: "Grooming",
-            price: "150000",
-            groomerName: "Rina",
-          },
-        ],
+        service: {
+          serviceId: "svc1",
+          name: "Grooming",
+          price: "150000",
+          addons: [],
+        },
+        groomerName: "Rina",
       },
     ] as never);
 
