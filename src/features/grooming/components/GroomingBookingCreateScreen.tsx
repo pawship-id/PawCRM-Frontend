@@ -855,6 +855,7 @@ export function GroomingBookingCreateScreen() {
                                 ]}
                                 active={false}
                                 placeholder="Belum ditugaskan"
+                                hint="Diisikan ke semua tahapan layanan ini. Bisa diganti per tahapan di halaman booking."
                                 closeOnScroll
                                 disabled={saving}
                                 className="sm:col-span-2"
