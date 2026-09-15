@@ -17,7 +17,12 @@ import {
 import { BookingStatusActions } from "@/features/booking";
 import { Can } from "@/features/permissions";
 import { cn } from "@/lib/utils";
-import { formatMoney } from "@/utils/decimal";
+import {
+  formatMoney,
+  isPositive,
+  subtractDecimals,
+  sumDecimals,
+} from "@/utils/decimal";
 import type { Booking } from "@/types/api";
 
 import { clockOf, dayOf, type BillingState, type GroomingRow } from "../board";
@@ -303,36 +308,98 @@ export function GroomingBookingsTable({
   );
 }
 
+/** What a line's bill takes off — small print under it, only when something does. */
+function DiscountLine({ amount }: { amount?: string | null }) {
+  if (!amount || !isPositive(amount)) return null;
+
+  return (
+    <div className="flex justify-between gap-3 pl-3 text-xs text-success">
+      <span>Diskon</span>
+      <span className="font-semibold tabular-nums">− {formatMoney(amount)}</span>
+    </div>
+  );
+}
+
 /** What this booking's grooming comes to, line by line, and where to go next. */
 function RowBreakdown({ row }: { row: GroomingRow }) {
   const { booking, service } = row;
+  const discounted = Boolean(
+    booking.discountAmount && isPositive(booking.discountAmount),
+  );
+  /* The lines' own discounts, as each was resolved. */
+  const ownDiscounts = sumDecimals([
+    service.discount?.resolvedAmount ?? null,
+    ...row.addons.map((addon) => addon.discount?.resolvedAmount ?? null),
+  ]);
+  /*
+    THIS BOOKING'S SHARE OF THE SAVE'S DISCOUNT — what the bill takes off in all,
+    less the lines' own. Read this way rather than off `bookingDiscount`, so a
+    share the server clamped (a line re-quoted cheaper since) is shown as billed.
+  */
+  const bookingShare = discounted
+    ? subtractDecimals(booking.discountAmount!, ownDiscounts)
+    : "0";
+  const subtotal = subtractDecimals(row.value, ownDiscounts);
 
   return (
     <section aria-label="Rincian" className="flex flex-col gap-3">
       <h3 className="text-sm font-bold text-foreground">Rincian</h3>
 
+      {/*
+        PLAIN ROWS, NOT A <dl>. A line now carries its discount under it, and a
+        <dl> only allows one <div> between it and its <dt>/<dd> — the nesting
+        this needs would be read out as broken pairs.
+      */}
       <div className="rounded-xl border border-border bg-surface px-4 py-2">
-        <dl className="text-sm">
-          <div className="flex justify-between gap-3 border-b border-border py-1.5">
-            <dt className="text-foreground">{service.name}</dt>
-            <dd className="font-semibold tabular-nums">
-              {formatMoney(service.price)}
-            </dd>
+        <div className="text-sm">
+          <div className="flex flex-col border-b border-border py-1.5">
+            <div className="flex justify-between gap-3">
+              <span className="text-foreground">{service.name}</span>
+              <span className="font-semibold tabular-nums">
+                {formatMoney(service.price)}
+              </span>
+            </div>
+            <DiscountLine amount={service.discount?.resolvedAmount} />
           </div>
           {row.addons.map((addon) => (
             <div
               key={addon.itemId}
-              className="flex justify-between gap-3 border-b border-border py-1.5 pl-3"
+              className="flex flex-col border-b border-border py-1.5 pl-3"
             >
-              <dt className="text-muted">+ {addon.name}</dt>
-              <dd className="tabular-nums">{formatMoney(addon.price)}</dd>
+              <div className="flex justify-between gap-3">
+                <span className="text-muted">+ {addon.name}</span>
+                <span className="tabular-nums">{formatMoney(addon.price)}</span>
+              </div>
+              <DiscountLine amount={addon.discount?.resolvedAmount} />
             </div>
           ))}
+          {/*
+            WITH A DISCOUNT, THE TOTAL IS WHAT GETS BILLED (15 September 2026).
+
+            Each line shows ONLY ITS OWN discount. "Diskon seluruh booking" is
+            not folded into them: it sits under the subtotal as one figure, the
+            way the booking form's summary shows it — the subtotal being the
+            lines after their own discounts.
+          */}
+          {discounted && (
+            <div className="flex justify-between gap-3 pt-2 text-muted">
+              <span>Subtotal</span>
+              <span className="tabular-nums">{formatMoney(subtotal)}</span>
+            </div>
+          )}
+          {isPositive(bookingShare) && (
+            <div className="flex justify-between gap-3 pt-1 text-xs text-success">
+              <span>Diskon booking</span>
+              <span className="font-semibold tabular-nums">
+                − {formatMoney(bookingShare)}
+              </span>
+            </div>
+          )}
           <div className="flex justify-between gap-3 pt-2 pb-1 font-bold">
-            <dt>Total</dt>
-            <dd className="tabular-nums">{formatMoney(row.value)}</dd>
+            <span>Total</span>
+            <span className="tabular-nums">{formatMoney(row.net)}</span>
           </div>
-        </dl>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">
