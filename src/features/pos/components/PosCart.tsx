@@ -4,9 +4,15 @@ import { Bookmark, ShoppingCart } from "lucide-react";
 
 import { Alert, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
-import { formatMoney } from "@/utils/decimal";
+import {
+  formatMoney,
+  isPositive,
+  subtractDecimals,
+  sumDecimals,
+} from "@/utils/decimal";
 import type { PosDiscountMode, PosItem, PosTransaction } from "@/types/api";
 
+import { bookingShareOf } from "../bookingDiscount";
 import { PosCartLine } from "./PosCartLine";
 import { PosCustomerSection } from "./PosCustomerSection";
 import { PosDiscountPopover } from "./PosDiscountPopover";
@@ -295,14 +301,38 @@ export function PosCart({
               </dd>
             </div>
 
-            {totals.itemDiscount !== "0.0000" && (
-              <div className="flex justify-between">
-                <dt className="text-muted">Diskon item</dt>
-                <dd className="tabular-nums text-success">
-                  −{formatMoney(totals.itemDiscount)}
-                </dd>
-              </div>
-            )}
+            {/*
+              THE SERVER'S ITEM DISCOUNT, SPLIT THE WAY THE LINES SHOW IT — the
+              lines' own, then the bookings' shares of "Diskon seluruh booking".
+              The two always add up to `totals.itemDiscount`. The share is shown
+              HERE ONLY, once for the whole basket — not under each booking,
+              which read as a second discount per animal (15 September 2026).
+            */}
+            {(() => {
+              const shares = sumDecimals((cart?.items ?? []).map(bookingShareOf));
+              const own = subtractDecimals(totals.itemDiscount, shares);
+
+              return (
+                <>
+                  {isPositive(own) && (
+                    <div className="flex justify-between">
+                      <dt className="text-muted">Diskon item</dt>
+                      <dd className="tabular-nums text-success">
+                        −{formatMoney(own)}
+                      </dd>
+                    </div>
+                  )}
+                  {isPositive(shares) && (
+                    <div className="flex justify-between">
+                      <dt className="text-muted">Diskon booking</dt>
+                      <dd className="tabular-nums text-success">
+                        −{formatMoney(shares)}
+                      </dd>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
 
             <div className="flex items-center justify-between">
               <dt className="flex items-center gap-1 text-muted">

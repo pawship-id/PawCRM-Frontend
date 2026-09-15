@@ -1297,6 +1297,13 @@ export interface PosItem {
    */
   lineTotal: string;
   discount: PosDiscount | null;
+  /**
+   * HOW MUCH OF `discount` IS THE BOOKING'S "DISKON SELURUH BOOKING" — a PART of
+   * it, never beside it (15 September 2026). The till shows `discount` less this
+   * on the line and this under the booking, and sends the line's own part back.
+   * Optional only because older fixtures lack it.
+   */
+  bookingDiscount?: string | null;
   hppAtTime: string | null;
   /**
    * THE BOOKING BEHIND THIS LINE — and since one booking is one animal and one
