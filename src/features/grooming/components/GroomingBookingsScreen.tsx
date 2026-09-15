@@ -39,6 +39,7 @@ import { GroomingBookingsToolbar } from "./GroomingBookingsToolbar";
 import { GroomingModuleHeader } from "./GroomingModuleHeader";
 import { GroomingPeriodBar } from "./GroomingPeriodBar";
 import { GroomingStatCard } from "./GroomingStatCard";
+import { GROOMING_NEW_BOOKING_PATH } from "../paths";
 
 const PAGE_SIZE = 20;
 
@@ -147,7 +148,7 @@ export function GroomingBookingsScreen() {
         action={
           <Can feature="bookings" action="create">
             <Button asChild>
-              <Link href="/dashboard/booking/new">
+              <Link href={GROOMING_NEW_BOOKING_PATH}>
                 <Plus className="size-4" />
                 Booking baru
               </Link>
@@ -311,7 +312,7 @@ export function GroomingBookingsScreen() {
                   Belum ada booking grooming {periodWords}.{" "}
                   <Can feature="bookings" action="create">
                     <Link
-                      href="/dashboard/booking/new"
+                      href={GROOMING_NEW_BOOKING_PATH}
                       className="font-semibold text-primary underline-offset-2 hover:underline"
                     >
                       Tambah yang pertama →

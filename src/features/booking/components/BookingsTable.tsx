@@ -202,12 +202,14 @@ export function BookingsTable({ bookings }: { bookings: Booking[] }) {
                     one figure on the screen somebody might reconcile against a
                     sale, and `0.1 + 0.2` is the reason utils/decimal.ts exists.
                   */}
+                  {/* After the booking's own discounts, when the server says. */}
                   {service
                     ? formatMoney(
-                        sumDecimals([
-                          service.price,
-                          ...(service.addons ?? []).map((addon) => addon.price),
-                        ]),
+                        booking.netAmount ??
+                          sumDecimals([
+                            service.price,
+                            ...(service.addons ?? []).map((addon) => addon.price),
+                          ]),
                       )
                     : "—"}
                 </TableCell>

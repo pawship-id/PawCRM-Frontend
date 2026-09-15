@@ -6,6 +6,7 @@
  * capacity). Built from `buloo-grooming-v3.html` on the API as it stands.
  */
 export { GroomingBookingsScreen } from "./components/GroomingBookingsScreen";
+export { GroomingBookingCreateScreen } from "./components/GroomingBookingCreateScreen";
 export { GroomingServicesScreen } from "./components/GroomingServicesScreen";
 export { GroomingServiceDetailScreen } from "./components/GroomingServiceDetailScreen";
 export { GroomingSettingsScreen } from "./components/GroomingSettingsScreen";

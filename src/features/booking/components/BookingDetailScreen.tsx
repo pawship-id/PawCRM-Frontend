@@ -15,7 +15,7 @@ import { bookingService } from "@/services/booking.service";
 import { branchService } from "@/services/branch.service";
 import { customerService } from "@/services/customer.service";
 import { petService } from "@/services/pet.service";
-import { formatMoney, sumDecimals } from "@/utils/decimal";
+import { formatMoney, isPositive, sumDecimals } from "@/utils/decimal";
 import { GROOMER_LEVEL_LABELS } from "@/types/api";
 import type {
   Booking,
@@ -364,6 +364,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
     the sum on screen is the fallback for a booking whose summary has not run.
   */
   const total =
+    booking.netAmount ??
     booking.totalAmount ??
     sumDecimals([
       ...(service ? [service.price] : []),
@@ -729,6 +730,20 @@ export function BookingDetailScreen({ id }: { id: string }) {
                       </li>
                     ))}
                   </ul>
+                )}
+
+                {/*
+                  EVERY DISCOUNT ON ONE ROW — the lines' own and the booking's
+                  share of the save's. The till and the invoice pull the same
+                  figure, so the total below is what gets billed.
+                */}
+                {booking.discountAmount && isPositive(booking.discountAmount) && (
+                  <div className="flex justify-between gap-3 py-1 text-sm">
+                    <span className="font-medium text-success">Diskon</span>
+                    <span className="font-semibold tabular-nums text-success">
+                      − {formatMoney(booking.discountAmount)}
+                    </span>
+                  </div>
                 )}
 
                 <div className="mt-2 flex justify-between gap-3 border-t-2 border-foreground pt-2 text-sm">

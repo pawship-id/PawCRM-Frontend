@@ -181,6 +181,10 @@ export function InvoiceCreateForm() {
     [booking.service, ...booking.service.addons].map((line) => ({
       qty: "1",
       unitPrice: line.price,
+      /* The booking's discount on this line, pulled as the server pulls it. */
+      discount: line.discountAmount
+        ? { mode: "amount" as const, value: line.discountAmount }
+        : null,
     })),
   );
   /*

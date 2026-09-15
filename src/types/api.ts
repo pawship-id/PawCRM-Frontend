@@ -2221,6 +2221,16 @@ export interface Booking {
   totalAmount: string | null;
   /** The service's minutes plus its live add-ons'. */
   totalDurationMin: number | null;
+  /**
+   * "DISKON SELURUH BOOKING" — `mode`/`value` as typed for the whole save,
+   * `resolvedAmount` THIS booking's share of it. Optional, like the two below,
+   * only because older fixtures lack them.
+   */
+  bookingDiscount?: InvoiceDiscount | null;
+  /** Every discount this booking carries. `totalAmount` stays before discount. */
+  discountAmount?: string | null;
+  /** What the bill comes to — `totalAmount` less `discountAmount`. */
+  netAmount?: string | null;
   createdBy: string | null;
   /**
    * WHO CREATED THE BOOKING, resolved on read. Null when nothing human made it
@@ -2360,7 +2370,25 @@ export interface BookingMainService {
    * line of business must not rewrite last month's day sheets.
    */
   serviceType: string | null;
+  /**
+   * What this line BILLS AT — the catalogue's quote, unless somebody holding
+   * `bookings:setPrice` typed another (15 September 2026). Commission reads it.
+   */
   price: string;
+  /**
+   * The catalogue's quote when the line was written. Equal to `price` when
+   * nobody typed one; null on bookings the till or an invoice raised. Optional
+   * only because older responses and fixtures lack it — so are the two below.
+   */
+  catalogPrice?: string | null;
+  /** This line's own discount, as typed and resolved. */
+  discount?: InvoiceDiscount | null;
+  /**
+   * WHAT THE BILL TAKES OFF THIS LINE — its own discount plus its part of the
+   * booking's share of "Diskon seluruh booking". The till and the invoice pull
+   * exactly this as a nominal line discount.
+   */
+  discountAmount?: string | null;
   /**
    * How long it takes, in minutes. Snapshotted and overridable — a nervous dog
    * genuinely takes longer than the catalogue says. NULL WHEN THE CATALOGUE
@@ -2393,6 +2421,10 @@ export interface BookingAddon {
   serviceId: string;
   name: string;
   price: string;
+  /** As on `BookingMainService`. */
+  catalogPrice?: string | null;
+  discount?: InvoiceDiscount | null;
+  discountAmount?: string | null;
   durationMin: number | null;
 }
 
@@ -2779,6 +2811,21 @@ export interface CreateBookingEntry {
   /** Must be a MAIN service — an add-on goes in `addonServiceIds`. */
   serviceId: string;
   /**
+   * ─── PRICE AND DISCOUNT (15 September 2026) ───────────────────────────────
+   *
+   * Absent or null follows the catalogue. A price different from the quote, or
+   * any discount, is refused (403) without `bookings:setPrice`. A price EQUAL to
+   * the quote is not a typed price, so the form may always send what it shows.
+   */
+  price?: string | null;
+  discount?: TypedDiscountInput | null;
+  /** Only for add-ons ticked in `addonServiceIds`. */
+  addonPricing?: {
+    serviceId: string;
+    price?: string | null;
+    discount?: TypedDiscountInput | null;
+  }[];
+  /**
    * The add-ons ticked under the service. Each must be filed `serviceType:
    * "addon"` AND listed in the service's own `addonServiceIds`; the server
    * refuses anything else.
@@ -2825,6 +2872,12 @@ export interface CreateBookingInput {
   forceClash?: boolean;
   /** Join an existing group (the same customer's) instead of starting one. */
   groupId?: string;
+  /**
+   * "Diskon seluruh booking", measured against what the entries come to after
+   * their own discounts and split across them by that figure. Needs
+   * `bookings:setPrice`.
+   */
+  bookingDiscount?: TypedDiscountInput | null;
   bookings: CreateBookingEntry[];
 }
 

@@ -33,7 +33,10 @@ type Tab = "pull" | "adhoc";
  * decimal strings so they would never pass through a float.
  */
 function bookingTotal(booking: Booking): string {
+  /* AFTER the booking's own discounts (15 September 2026) — the basket pulls
+     them as line discounts, so this is what it will add. */
   return (
+    booking.netAmount ??
     booking.totalAmount ??
     sumDecimals([
       booking.service.price,

@@ -16,6 +16,7 @@ import { FilterTrigger } from "./FilterTrigger";
 import {
   CLEAR_OF_SHELL_HEADER,
   useCloseBehindShellHeader,
+  useCloseOnPageScroll,
 } from "./popoverPlacement";
 
 /**
@@ -103,6 +104,12 @@ export interface FilterSelectProps<T> {
    * sentence can never disagree about whether something is wrong.
    */
   error?: string;
+  /**
+   * Close the list the moment the page scrolls (see `useCloseOnPageScroll`).
+   * Off by default, so every bar and panel keeps behaving as it did; a form
+   * that swapped a Radix Select for this to stop the page locking turns it on.
+   */
+  closeOnScroll?: boolean;
   align?: "start" | "end";
   className?: string;
 }
@@ -125,11 +132,13 @@ export function FilterSelect<T>({
   disabled,
   disabledHint,
   error,
+  closeOnScroll = false,
   align = "start",
   className,
 }: FilterSelectProps<T>) {
   const [open, setOpen] = React.useState(false);
   const triggerRef = useCloseBehindShellHeader(open, setOpen);
+  const contentRef = useCloseOnPageScroll(open && closeOnScroll, setOpen);
   // Null on a bar, the panel's element inside one — see useFilterPanelContainer.
   // Without it the option list cannot be scrolled inside a panel at all.
   const container = useFilterPanelContainer();
@@ -169,6 +178,7 @@ export function FilterSelect<T>({
       </PopoverTrigger>
 
       <PopoverContent
+        ref={contentRef}
         container={container ?? undefined}
         align={align}
         {...CLEAR_OF_SHELL_HEADER}

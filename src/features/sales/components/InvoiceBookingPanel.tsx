@@ -142,10 +142,13 @@ export function InvoiceBookingPanel({
 
       {bookings.map((booking) => {
         const id = booking._id;
-        const total = booking.service.addons.reduce(
-          (sum, addon) => sum + Number(addon.price),
-          Number(booking.service.price),
-        );
+        /* After the booking's own discounts, which the invoice pulls too. */
+        const total =
+          booking.netAmount ??
+          booking.service.addons.reduce(
+            (sum, addon) => sum + Number(addon.price),
+            Number(booking.service.price),
+          );
 
         return (
           <label

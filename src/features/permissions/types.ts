@@ -209,6 +209,11 @@ export const PERMISSION_CATALOG = {
    * (kriteria 4.6), but pressing through one is a decision that should belong to
    * somebody senior. It was MISSING from this list while the server has had it
    * since FR-4: the role editor could not grant what the API was checking.
+   *
+   * `setPrice` IS TYPING A PRICE OR A DISCOUNT on a booking (15 September 2026).
+   * The till and the invoice bill that price, so without its own grant a booking
+   * would be a way round the cashier's discount limit. Without it the grooming
+   * booking form shows the catalogue's price, read-only.
    */
   bookings: [
     "create",
@@ -217,6 +222,7 @@ export const PERMISSION_CATALOG = {
     "advanceStatus",
     "cancel",
     "overrideClash",
+    "setPrice",
   ],
 
   /**

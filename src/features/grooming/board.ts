@@ -170,8 +170,10 @@ export interface GroomingRow {
   booking: Booking;
   service: BookingMainService;
   addons: BookingAddon[];
-  /** The service plus its add-ons, as a decimal string. */
+  /** The service plus its add-ons, as a decimal string — BEFORE discount. */
   value: string;
+  /** What the bill comes to, after the booking's own discounts. */
+  net: string;
   /** Null when neither the service nor an add-on carries a duration. */
   durationMin: number | null;
   sessions: BookingSession[];
@@ -216,6 +218,9 @@ export function toGroomingRows(
           service.price,
           ...addons.map((addon) => addon.price),
         ]),
+        net:
+          booking.netAmount ??
+          sumDecimals([service.price, ...addons.map((addon) => addon.price)]),
         durationMin: minutes.length
           ? minutes.reduce((total, value) => total + value, 0)
           : null,
@@ -291,7 +296,8 @@ export function summarisePeriod(
         )
       : null,
     unbilledCount: unbilled.length,
-    unbilledValue: sumDecimals(unbilled.map((row) => row.value)),
+    /* What the bills will come to — after discount, unlike `value`. */
+    unbilledValue: sumDecimals(unbilled.map((row) => row.net)),
     oldestUnbilledDays: oldest,
   };
 }

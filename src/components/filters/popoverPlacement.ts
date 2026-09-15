@@ -26,6 +26,18 @@ export const CLEAR_OF_SHELL_HEADER = {
 } as const;
 
 /**
+ * Closes the popover as soon as the PAGE scrolls — the window, the sidebar, any
+ * scrolling container — while leaving the page free to scroll at all. Returns the
+ * ref to put on the popover content.
+ *
+ * FOR A FORM'S PICKER (15 September 2026). Radix Select locks the whole page
+ * while its list is open (`RemoveScroll`, unconditionally), which on a long form
+ * reads as the screen freezing. A non-modal popover lets the page scroll, and
+ * this closes the list the moment it does, rather than leaving it riding along.
+ *
+ * Same capturing listener as below; a scroll INSIDE the content is ignored.
+ */
+/**
  * Closes the popover once its trigger has scrolled behind the header — the
  * list hangs below the trigger, so from there on it can only be covering the
  * navbar. Returns the ref to put on the trigger.
@@ -36,6 +48,34 @@ export const CLEAR_OF_SHELL_HEADER = {
  *
  * `setOpen` is a state setter, so the listener is not re-bound every render.
  */
+export function useCloseOnPageScroll(
+  enabled: boolean,
+  setOpen: (open: boolean) => void,
+) {
+  const contentRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!enabled) return;
+
+    function onScroll(event: Event) {
+      /* Scrolling the option list itself is choosing, not leaving. */
+      const target = event.target;
+      if (target instanceof Node && contentRef.current?.contains(target)) return;
+
+      setOpen(false);
+    }
+
+    document.addEventListener("scroll", onScroll, {
+      capture: true,
+      passive: true,
+    });
+    return () =>
+      document.removeEventListener("scroll", onScroll, { capture: true });
+  }, [enabled, setOpen]);
+
+  return contentRef;
+}
+
 export function useCloseBehindShellHeader(
   open: boolean,
   setOpen: (open: boolean) => void,
