@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { bookingService } from "@/services/booking.service";
-import type { Booking, BookingListQuery } from "@/types/api";
+import { listAllBookings, MAX_BOOKING_PAGES } from "@/features/booking/listAll";
+import type { Booking } from "@/types/api";
 
 import {
   isoDate,
@@ -13,15 +13,10 @@ import {
   type GroomingScope,
 } from "../board";
 
-/** The API's page cap. */
-const PAGE_LIMIT = 100;
+/** Re-exported: the screen's truncation warning says the number out loud. */
+export { MAX_BOOKING_PAGES };
 
-/**
- * 2.000 bookings in one period. Past that the screen says the numbers are
- * partial rather than quietly summing the first pages.
- */
-export const MAX_BOOKING_PAGES = 20;
-
+/** One answered read, tagged with the query it answers — see below. */
 interface Loaded {
   key: string;
   bookings: Booking[];
@@ -30,34 +25,6 @@ interface Loaded {
 }
 
 const NOTHING: Loaded = { key: "", bookings: [], truncated: false, failed: false };
-
-async function listAll(
-  query: BookingListQuery,
-): Promise<{ bookings: Booking[]; truncated: boolean }> {
-  const first = await bookingService.list({ ...query, page: 1, limit: PAGE_LIMIT });
-  const pages = Math.min(first.pagination.totalPages, MAX_BOOKING_PAGES);
-
-  const rest = await Promise.all(
-    Array.from({ length: Math.max(0, pages - 1) }, (_, index) =>
-      bookingService.list({ ...query, page: index + 2, limit: PAGE_LIMIT }),
-    ),
-  );
-
-  /*
-    DEDUPED BY ID. A booking made while the pages are in flight shifts every
-    later page by one, and the row on the boundary would otherwise be counted
-    twice on the cards.
-  */
-  const seen = new Map<string, Booking>();
-  for (const result of [first, ...rest]) {
-    for (const booking of result.items) seen.set(booking._id, booking);
-  }
-
-  return {
-    bookings: [...seen.values()],
-    truncated: first.pagination.totalPages > MAX_BOOKING_PAGES,
-  };
-}
 
 export interface GroomingBoardState {
   /** The chosen period, grooming rows only. */
@@ -102,7 +69,7 @@ export function useGroomingBoard(
   useEffect(() => {
     let active = true;
 
-    listAll({
+    listAllBookings({
       branchId: branchId || undefined,
       scheduledFrom: range.from || undefined,
       scheduledTo: range.to || undefined,
@@ -122,7 +89,7 @@ export function useGroomingBoard(
   useEffect(() => {
     let active = true;
 
-    listAll({
+    listAllBookings({
       branchId: branchId || undefined,
       scheduledFrom: today,
       scheduledTo: today,

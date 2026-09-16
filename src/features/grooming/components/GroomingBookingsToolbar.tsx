@@ -5,13 +5,12 @@ import { ListFilter } from "lucide-react";
 
 import {
   FilterBar,
-  FilterField,
+  FilterCheckList,
   FilterPanel,
   FilterSearch,
   FilterSelect,
   FilterTrigger,
 } from "@/components";
-import { Checkbox } from "@/components/ui/checkbox";
 import { BOOKING_STATUS_LABELS } from "@/features/booking";
 import { bookingService } from "@/services/booking.service";
 import type {
@@ -161,7 +160,7 @@ export function GroomingBookingsToolbar({
           options={SORTS}
           onChange={(sort) => patch({ sort })}
         />
-        <CheckList
+        <FilterCheckList
           label="Status"
           options={STATUSES.map((status) => ({
             value: status,
@@ -170,7 +169,7 @@ export function GroomingBookingsToolbar({
           values={draft.statuses}
           onChange={(statuses) => patch({ statuses })}
         />
-        <CheckList
+        <FilterCheckList
           label="Groomer"
           options={groomers.map((groomer) => ({
             value: groomer._id,
@@ -180,7 +179,7 @@ export function GroomingBookingsToolbar({
           onChange={(groomerIds) => patch({ groomerIds })}
           empty="Belum ada staf yang ditandai Groomer di Master Data › Staf."
         />
-        <CheckList
+        <FilterCheckList
           label="Layanan"
           options={services
             .filter(
@@ -192,7 +191,7 @@ export function GroomingBookingsToolbar({
           onChange={(serviceIds) => patch({ serviceIds })}
           empty="Belum ada layanan grooming."
         />
-        <CheckList
+        <FilterCheckList
           label="Tempat"
           options={LOCATIONS}
           values={draft.locations}
@@ -200,56 +199,5 @@ export function GroomingBookingsToolbar({
         />
       </FilterPanel>
     </FilterBar>
-  );
-}
-
-/**
- * A multi-select that lives INSIDE a panel — its ticks wait for the panel's
- * Terapkan, so it carries no Terapkan of its own (which `FilterMultiSelect`,
- * a bar control, does).
- */
-function CheckList<T extends string>({
-  label,
-  options,
-  values,
-  onChange,
-  empty = "Tidak ada pilihan.",
-}: {
-  label: string;
-  options: { value: T; label: string }[];
-  values: T[];
-  onChange: (values: T[]) => void;
-  empty?: string;
-}) {
-  return (
-    <FilterField label={label}>
-      {options.length === 0 ? (
-        <p className="text-sm text-muted">{empty}</p>
-      ) : (
-        <ul aria-label={label} className="flex flex-col">
-          {options.map((option) => {
-            const checked = values.includes(option.value);
-
-            return (
-              <li key={option.value}>
-                <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-foreground">
-                  <Checkbox
-                    checked={checked}
-                    onCheckedChange={(next) =>
-                      onChange(
-                        next === true
-                          ? [...values, option.value]
-                          : values.filter((value) => value !== option.value),
-                      )
-                    }
-                  />
-                  {option.label}
-                </label>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </FilterField>
   );
 }

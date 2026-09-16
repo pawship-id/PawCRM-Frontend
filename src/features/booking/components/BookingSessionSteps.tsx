@@ -13,7 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { canStartWork, hasCompletedWork } from "@/features/booking";
+import { canStartWork, hasCompletedWork } from "../statusFlow";
 import { Can } from "@/features/permissions";
 import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
@@ -26,7 +26,7 @@ import type {
   GroomerAvailability,
 } from "@/types/api";
 
-import { isoDate, type GroomingRow } from "../board";
+import { isoDate } from "../day";
 
 /** Mirrors MAX_GROOMERS_PER_SESSION in booking.model.js. */
 const MAX_GROOMERS = 4;
@@ -49,14 +49,14 @@ const NEXT: Partial<
 };
 
 /**
- * One booking's grooming turns, inside its opened row on the board.
+ * One booking's turns — its tahapan — with the two controls that move them.
  *
- * ─── ON THE ROW, BY DECISION ───────────────────────────────────────────────
+ * ─── WHERE IT IS PRESSED ───────────────────────────────────────────────────
  *
- * The mockup puts Mulai / Selesai / Ganti PIC here, and on 13 September 2026 the
- * shop chose that over the list-reads-only rule `BookingsTable` follows. That
- * rule still holds on `/dashboard/booking`; this board is the day sheet at the
- * table, and the person reading it is the one with the dog.
+ * Mulai / Selesai / Ganti PIC sit wherever the work is watched: inside the
+ * opened row on the Grooming board, and in Hari Ini's side panel. The shop
+ * chose that on 13 September 2026 over the reads-only rule the old booking list
+ * followed — a day sheet is read by the person holding the dog.
  *
  * ─── WHAT IS STILL NOT HERE ────────────────────────────────────────────────
  *
@@ -67,20 +67,22 @@ const NEXT: Partial<
  * The same two gates as the work page: a turn moves only once the BOOKING is
  * In Progress, and a turn nobody is on cannot start.
  */
-export function GroomingSessionSteps({
-  row,
+export function BookingSessionSteps({
+  booking,
   onChanged,
 }: {
-  row: GroomingRow;
+  /** ONE booking — one animal, one main service, its turns beneath it. */
+  booking: Booking;
   onChanged: (booking: Booking) => void;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
-  const { booking } = row;
+  /* Absent only on a response from before the service became required. */
+  const sessions = booking.service?.sessions ?? [];
 
   const startable = canStartWork(booking);
   /* Re-crewing touches money once the work is completed — statusFlow. */
   const settled = hasCompletedWork(booking);
-  const running = row.sessions.find(
+  const running = sessions.find(
     (session) => session.status === "in_progress",
   );
 
@@ -125,14 +127,14 @@ export function GroomingSessionSteps({
         )}
       </h3>
 
-      {row.sessions.length === 0 ? (
+      {sessions.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border bg-surface px-4 py-3 text-sm text-muted">
           Belum ada tahapan. Tahapan dan groomernya diatur di halaman detail
           booking ini.
         </p>
       ) : (
         <ol className="flex flex-col gap-2">
-          {row.sessions.map((session) => {
+          {sessions.map((session) => {
             const next = NEXT[session.status];
             const unassigned = session.groomers.length === 0;
 
@@ -203,7 +205,7 @@ export function GroomingSessionSteps({
         </ol>
       )}
 
-      {row.sessions.length > 0 &&
+      {sessions.length > 0 &&
         !startable &&
         booking.status !== "cancelled" &&
         !settled && (

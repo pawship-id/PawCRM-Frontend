@@ -72,6 +72,7 @@ export function BookingStatusActions({
   booking,
   onChanged,
   variant = "compact",
+  dense = false,
 }: {
   /** ONE booking — one animal, one service — and the status is its own. */
   booking: Booking;
@@ -111,6 +112,16 @@ export function BookingStatusActions({
    * producing bugs from.
    */
   variant?: "compact" | "prominent" | "status";
+  /**
+   * "prominent" AT 32 PX INSTEAD OF 40, so its two buttons sit on ONE line in a
+   * side panel — Hari Ini's rail is 21 rem, and at `lg` the pair wraps onto two
+   * rows with a ragged edge under the heading.
+   *
+   * ONLY THE SIZE CHANGES. The primary is still the next rung and the secondary
+   * still opens the rest; a panel that offered different moves from the
+   * booking's own page would be a second state machine to keep in step.
+   */
+  dense?: boolean;
 }) {
   const [next, setNext] = useState<BookingStatus | null>(null);
   const [reason, setReason] = useState("");
@@ -232,7 +243,10 @@ export function BookingStatusActions({
       <div className="flex flex-wrap items-center gap-2">
         {variant === "prominent" && primaryMove && (
           <Can feature="bookings" action={["advanceStatus", "update"]}>
-            <Button size="lg" onClick={() => setNext(primaryMove)}>
+            <Button
+              size={dense ? "sm" : "lg"}
+              onClick={() => setNext(primaryMove)}
+            >
               {BOOKING_STATUS_ACTIONS[primaryMove]} →
             </Button>
           </Can>
@@ -246,7 +260,7 @@ export function BookingStatusActions({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               {variant === "prominent" ? (
-                <Button variant="secondary" size="lg">
+                <Button variant="secondary" size={dense ? "sm" : "lg"}>
                   Other statuses ▾
                 </Button>
               ) : variant === "status" ? (

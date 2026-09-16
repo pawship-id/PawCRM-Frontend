@@ -14,7 +14,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { BookingStatusActions } from "@/features/booking";
+import {
+  BILLING_BADGES,
+  BookingSessionSteps,
+  BookingStatusActions,
+} from "@/features/booking";
 import { Can } from "@/features/permissions";
 import { cn } from "@/lib/utils";
 import {
@@ -25,19 +29,7 @@ import {
 } from "@/utils/decimal";
 import type { Booking } from "@/types/api";
 
-import { clockOf, dayOf, type BillingState, type GroomingRow } from "../board";
-import { GroomingSessionSteps } from "./GroomingSessionSteps";
-
-const BILLING: Record<BillingState, { label: string; className: string } | null> = {
-  invoiced: { label: "Difakturkan", className: "bg-tint-success text-success" },
-  paid: { label: "Dibayar", className: "bg-tint-success text-success" },
-  in_cart: { label: "Di keranjang", className: "bg-tint-info text-info" },
-  unbilled: {
-    label: "Belum ditagih",
-    className: "bg-tint-danger font-semibold text-danger",
-  },
-  not_due: null,
-};
+import { clockOf, dayOf, type GroomingRow } from "../board";
 
 /**
  * The Grooming board's table — one row per booking (one animal, one grooming),
@@ -110,7 +102,7 @@ export function GroomingBookingsTable({
             const { booking, service } = row;
             const expanded = open.has(row.key);
             const detailId = `grooming-detail-${row.key}`;
-            const billing = BILLING[row.billing];
+            const billing = BILLING_BADGES[row.billing];
             const petLabel = booking.petName ?? "hewan";
 
             return (
@@ -293,7 +285,7 @@ export function GroomingBookingsTable({
                   >
                     <TableCell colSpan={9} className="whitespace-normal p-4">
                       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
-                        <GroomingSessionSteps row={row} onChanged={onChanged} />
+                        <BookingSessionSteps booking={booking} onChanged={onChanged} />
                         <RowBreakdown row={row} />
                       </div>
                     </TableCell>

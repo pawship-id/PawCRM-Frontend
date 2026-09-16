@@ -1,4 +1,5 @@
-import { hasCompletedWork } from "@/features/booking/statusFlow";
+import { billingOf, type BillingState } from "@/features/booking/billing";
+import { clockOf, dayOf, isoDate } from "@/features/booking/day";
 import type { BusinessLine } from "@/services/businessLine.service";
 import type {
   Booking,
@@ -10,7 +11,7 @@ import type {
 } from "@/types/api";
 import {
   divideRound,
-  formatMoney,
+  formatMoneyShort,
   sumDecimals,
   toDecimalString,
   toMinor,
@@ -33,6 +34,14 @@ import {
  * page of the list.
  *
  * PURE, so it is tested without a DOM (`src/tests/groomingBoard.test.ts`).
+ *
+ * ─── WHAT MOVED OUT, AND WHY IT IS STILL EXPORTED FROM HERE ────────────────
+ *
+ * `billingOf`, the date helpers and `formatMoneyShort` are read by Hari Ini too
+ * (`features/booking`), so they moved DOWN into the module this one already
+ * depends on rather than being copied. They are re-exported here because a
+ * dozen call sites import them from `../board` and renaming those would be
+ * churn with nothing behind it.
  */
 
 /* ─── Which services are grooming ─────────────────────────────────────────── */
@@ -86,17 +95,6 @@ export interface DateRange {
   to: string;
 }
 
-/**
- * A date as the API takes it, from LOCAL parts — `toISOString()` is UTC and
- * shifts the day for everybody east of Greenwich, which is everybody here.
- */
-export function isoDate(date: Date): string {
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
-
-  return `${date.getFullYear()}-${month}-${day}`;
-}
-
 /** A week runs Monday to Sunday — the shop's week, not the calendar app's. */
 export function periodRange(
   period: Exclude<GroomingPeriod, "custom">,
@@ -124,39 +122,6 @@ export function periodRange(
 }
 
 /* ─── Rows ────────────────────────────────────────────────────────────────── */
-
-/**
- * Where one booking's bill stands.
- *
- * NOT `booking.billingState`, which is only billed / unbilled: the board tells
- * an invoice from a settled sale from a basket still open, and only calls
- * FINISHED work unbilled.
- *
- * `unbilled` IS NARROWER THAN THE SERVER'S `unbilled` FILTER, on purpose: the
- * board's card is "work that is FINISHED and nobody has charged for", while the
- * booking list's lens also counts an appointment for tomorrow. A dog still on
- * the table is not yet money the shop forgot.
- */
-export type BillingState = "invoiced" | "paid" | "in_cart" | "unbilled" | "not_due";
-
-export function billingOf(
-  booking: Pick<
-    Booking,
-    | "status"
-    | "posTransactionId"
-    | "pulledToCartAt"
-    | "pulledToInvoiceAt"
-    | "pickupRequested"
-    | "deliveryRequested"
-  >,
-): BillingState {
-  if (booking.pulledToInvoiceAt) return "invoiced";
-  /* A claim with no sale behind it is a basket still open — see BookingsTable. */
-  if (booking.pulledToCartAt) return booking.posTransactionId ? "paid" : "in_cart";
-  if (booking.status === "cancelled") return "not_due";
-
-  return hasCompletedWork(booking) ? "unbilled" : "not_due";
-}
 
 /**
  * ONE BOOKING ON THE BOARD — one animal and its one grooming service.
@@ -189,7 +154,7 @@ export function toGroomingRows(
 ): GroomingRow[] {
   return bookings.flatMap((booking): GroomingRow[] => {
     const service = booking.service;
-    /* Absent only on a response from before the deploy — see BookingsTable. */
+    /* Absent only on a response from before the service became required. */
     if (!service || !isGroomingService(service, scope)) return [];
 
     const addons = service.addons ?? [];
@@ -443,44 +408,7 @@ export function sortRows(rows: GroomingRow[], sort: GroomingSort): GroomingRow[]
 
 /* ─── Reading ─────────────────────────────────────────────────────────────── */
 
-const ONE_DECIMAL = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 1 });
+/* ─── Reading ─────────────────────────────────────────────────────────────── */
 
-/**
- * "Rp 3,1 jt" — for a card, where the full "Rp 3.145.000" does not fit and is
- * not what anybody reads a summary for. The table keeps the full amount.
- *
- * `Number` HERE IS DISPLAY ONLY. Every sum was taken in minor units first; this
- * rounds a finished figure to one decimal, which a double does exactly enough.
- */
-export function formatMoneyShort(value: string | null | undefined): string {
-  const minor = toMinor(value ?? "");
-  if (minor === null) return "—";
-
-  const rupiah = Number(minor) / 10_000;
-  const size = Math.abs(rupiah);
-
-  if (size >= 999_500_000) return `Rp ${ONE_DECIMAL.format(rupiah / 1e9)} M`;
-  if (size >= 999_500) return `Rp ${ONE_DECIMAL.format(rupiah / 1e6)} jt`;
-  if (size >= 1_000) return `Rp ${Math.round(rupiah / 1_000)} rb`;
-
-  return formatMoney(value);
-}
-
-/** "09.00", in the shop's own clock — never through UTC. */
-export function clockOf(iso: string): string {
-  const at = new Date(iso);
-  if (Number.isNaN(at.getTime())) return "—";
-
-  return `${String(at.getHours()).padStart(2, "0")}.${String(at.getMinutes()).padStart(2, "0")}`;
-}
-
-const DAY_FORMAT = new Intl.DateTimeFormat("id-ID", {
-  day: "numeric",
-  month: "short",
-});
-
-/** "13 Sep". */
-export function dayOf(iso: string): string {
-  const at = new Date(iso);
-  return Number.isNaN(at.getTime()) ? "—" : DAY_FORMAT.format(at);
-}
+export { billingOf, clockOf, dayOf, formatMoneyShort, isoDate };
+export type { BillingState };

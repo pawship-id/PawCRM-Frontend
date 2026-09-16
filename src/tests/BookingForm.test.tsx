@@ -285,9 +285,11 @@ describe("BookingForm", () => {
       "svc-2",
     ]);
 
-    /* TWO CAME BACK — no single page is "the" answer, so the list, filtered. */
+    /* TWO CAME BACK — no single page is "the" answer, so Hari Ini on their day. */
     await waitFor(() =>
-      expect(push).toHaveBeenCalledWith("/dashboard/booking?groupId=grp-9"),
+      expect(push).toHaveBeenCalledWith(
+        expect.stringMatching(/^\/dashboard\/booking\?tanggal=\d{4}-\d{2}-\d{2}$/),
+      ),
     );
   });
 

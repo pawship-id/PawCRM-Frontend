@@ -24,6 +24,7 @@ export function StatTile({
   caption,
   loading = false,
   error = false,
+  dense = false,
 }: {
   label: string;
   /** Already formatted for reading — "412", "Rp 4,2 jt". */
@@ -32,7 +33,34 @@ export function StatTile({
   caption?: string;
   loading?: boolean;
   error?: boolean;
+  /**
+   * A ROW OF FIVE OR SIX TILES BESIDE A PANEL, rather than three or four across
+   * a page — Hari Ini. The tile keeps its three states and its words; it loses
+   * the padding and the two type steps that only fit when there are four of
+   * them. Without it a tile 145 px wide breaks "Rp 3,8 jt" across two lines.
+   */
+  dense?: boolean;
 }) {
+  if (dense) {
+    return (
+      <div className="rounded-xl border border-border bg-surface p-4">
+        {/*
+          SENTENCE CASE, not the mockup's uppercase. Its labels are 10 px and
+          ours cannot go below 13 (§1.6) — "OKUPANSI HOTEL" at 13 px breaks
+          across two lines in a 145 px tile, and a row of tiles where half the
+          headings wrap reads as broken rather than as dense.
+        */}
+        <p className="text-xs font-semibold text-muted">{label}</p>
+        <p className="mt-1.5 text-xl font-bold tabular-nums text-foreground">
+          {loading || error ? "—" : value}
+        </p>
+        <p className="mt-1 text-xs text-muted">
+          {error ? "gagal dimuat" : caption}
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-2xl border border-border bg-surface p-5">
       <p className="text-sm text-muted">{label}</p>
@@ -60,11 +88,30 @@ export function StatTile({
 export function PendingStatTile({
   label,
   blockedBy,
+  dense = false,
 }: {
   label: string;
   /** What is missing, in one line — "Membership belum ada di sistem". */
   blockedBy: string;
+  /** As `StatTile`'s — and the badge drops under the label, which no longer
+      fits beside it at this width. */
+  dense?: boolean;
 }) {
+  if (dense) {
+    return (
+      <div
+        aria-disabled="true"
+        className="rounded-xl border border-border bg-surface p-4 opacity-60"
+      >
+        <p className="text-xs font-semibold text-muted">{label}</p>
+        <Badge variant="outline" className="mt-1.5">
+          Segera
+        </Badge>
+        <p className="mt-1.5 text-xs text-muted">{blockedBy}</p>
+      </div>
+    );
+  }
+
   return (
     <div
       aria-disabled="true"

@@ -6,16 +6,17 @@ import type { Crumb } from "@/components";
  * Declared once so the screens cannot drift into two spellings of the same
  * ancestor — the same reason `features/sales/crumbs.ts` exists.
  *
- * TWO DEEP, NOT THREE. The module's landing page IS the list, so a middle crumb
- * would have nothing to point at but the page you are already on.
+ * "LAYANAN › HARI INI", matching the rail and the mockup. The module's landing
+ * page is the day board, and it is called Hari Ini everywhere a person can read
+ * it — a trail saying "Booking" would name the same address a second way.
  */
 export const BOOKING_CRUMBS: Crumb[] = [
-  { label: "Dashboard", href: "/dashboard" },
-  { label: "Booking", href: "/dashboard/booking" },
+  { label: "Layanan" },
+  { label: "Hari Ini", href: "/dashboard/booking" },
 ];
 
-/** The list itself — current page, so the last crumb carries no href. */
-export const BOOKINGS_CRUMBS: Crumb[] = [
-  { label: "Dashboard", href: "/dashboard" },
-  { label: "Booking" },
+/** The board itself — current page, so the last crumb carries no href. */
+export const TODAY_CRUMBS: Crumb[] = [
+  { label: "Layanan" },
+  { label: "Hari Ini" },
 ];

@@ -656,10 +656,12 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
         const made = result.bookings;
 
         /*
-          ONE BOOKING OPENS ITSELF; SEVERAL OPEN THE LIST, NARROWED TO THEM.
-          A single booking's page is the next thing anybody does with it. Two
-          or more have no one page that is "the" answer, and the list filtered by
-          the group shows every number that was just made.
+          ONE BOOKING OPENS ITSELF; SEVERAL OPEN THE DAY THEY ARE ON.
+          A single booking's page is the next thing anybody does with it. Two or
+          more have no one page that is "the" answer — they are one visit, one
+          animal each — so Hari Ini opens on their date with every one of them
+          in its column. It used to be `?groupId=` on the paged list, which is
+          gone (16 September 2026).
         */
         if (made.length === 1) {
           destination = `/dashboard/booking/${made[0]._id}`;
@@ -667,7 +669,7 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
             ? `Booking ${made[0].bookingNumber} dibuat.`
             : "Booking dibuat sebagai draf.";
         } else {
-          destination = `/dashboard/booking?groupId=${encodeURIComponent(result.groupId)}`;
+          destination = `/dashboard/booking?tanggal=${encodeURIComponent(date)}`;
           message = `${made.length} booking dibuat.`;
         }
       }

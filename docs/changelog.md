@@ -7,6 +7,88 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Hari Ini: papan harian semua layanan
+
+16 September 2026, atas permintaan. Dari mockup `buloo-hari-ini-v1.html`.
+
+**`/dashboard/booking` sekarang adalah "Hari Ini"** (`TodayScreen`) — satu layar
+operasional berisi seluruh lini layanan pada hari yang sedang dibuka, dengan tiga
+tampilan: Harian, Mingguan, dan Bulanan.
+
+- **Kolomnya dibaca dari harinya, bukan didaftar di kode.** Satu kolom per lini
+  bisnis, diambil dari `service.serviceType` yang disimpan tiap booking. Lini
+  yang tidak ada bookingnya hari itu tidak digambar sama sekali — petshop yang
+  belum membuka hotel tidak pernah melihat kolom hotel.
+- **Kolom Hotel dan Antar-Jemput tetap terpasang, dalam keadaan mati** dan
+  berlabel "Segera" (16 September 2026, atas permintaan): yang membaca layar ini
+  tiap pagi perlu tahu di mana penitipan dan antar-jemput nanti muncul, dan kolom
+  yang hilang sama sekali tidak mengatakan itu. Keduanya tidak diisi baris palsu.
+  Kolom Hotel yang mati otomatis tidak muncul kalau tenant memang punya lini
+  bernama Hotel — kolom aslinya yang dipakai, tidak pernah dua-duanya.
+- **Kolom Antar-Jemput yang tadinya hidup dicabut.** Ia sempat berisi booking
+  yang perlu dijemput/diantar/dikerjakan di rumah, dibaca dari flag di booking.
+  Permintaan jemput-antar sekarang terbaca di panel rinciannya ("Dijemput ·
+  Diantar pulang" beserta alamat), dan `tripsOn` disimpan sebagai query yang akan
+  dipakai kolom itu ketika perjalanan sudah jadi catatan sendiri.
+- **Isi kartu:** nama hewan dan jam di baris pertama, **nama layanan** di
+  bawahnya, lalu chip **status · groomer · durasi** (16 September 2026, atas
+  permintaan). Nama pelanggan tidak lagi di kartu — papan harian menjawab "apa
+  yang dikerjakan dan siapa yang pegang", pemiliknya ada di panel. Di kartu
+  Antar-Jemput baris keduanya tetap alamat, karena di sana pekerjaannya adalah
+  perjalanan itu. Kalau belum ada groomernya, chipnya berbunyi "Belum
+  ditentukan".
+- **Kartu dikelompokkan Pagi / Siang, tanpa jam.** Sistem ini tidak punya blok
+  sesi; batasnya jam 12 dan itu murni bantuan membaca, bukan jam buka toko.
+- **Tombol status di panel berukuran kecil dan sebaris** (`BookingStatusActions`
+  varian `prominent` + `dense`, 16 September 2026, atas permintaan): di rail
+  selebar 21rem, ukuran `lg` membuat "Mark completed →" dan "Other statuses ▾"
+  turun dua baris. Yang berubah hanya ukurannya — langkah yang ditawarkan tetap
+  sama dengan halaman booking. Label terpanjang ("Return to pawrents →") masih
+  bisa turun baris, dan itu memang dibiarkan.
+- **Panel kanan** menampilkan satu booking: layanan, jadwal, durasi, groomer,
+  status faktur, nilai, catatan internal, kontrol status, tahapan (Mulai /
+  Selesai / Ganti PIC), dan jalan ke detail bookingnya.
+- **Kartu ringkasan** memakai beban ("beban 4j 30m"), bukan kapasitas. Tidak ada
+  satu pun sumber yang menyatakan jam kerja seorang groomer — alasan yang sama
+  dengan kalender jam.
+- **Kartu ringkasan ada di kolom kiri, satu baris, sejajar dengan panel kanan** —
+  seperti `.grid2` di mockup. Bukan pita selebar halaman: pita akan mendorong
+  panel turun setinggi satu kartu dari hal-hal yang jadi isinya. Lebarnya
+  `auto-fit minmax(8.75rem, 1fr)`, jadi lima kartu muat sebaris di samping panel
+  21rem pada layar 1440, dan membungkus sendiri kalau ruangnya kurang. `StatTile`
+  dan `PendingStatTile` dapat varian `dense` untuk itu (padding lebih rapat,
+  angka 20px) — label tetap sentence case karena huruf besar 13px pecah dua baris
+  di kartu selebar 145px.
+- **Tiga kartu mockup yang datanya belum ada tetap dipasang, dalam keadaan mati**
+  dan berlabel "Segera" (`PendingStatTile`): Okupansi hotel, Masuk / keluar, dan
+  Perjalanan. Bukan angka karangan dan bukan strip — strip terbaca sebagai gagal
+  memuat. "Perjalanan" mati atas permintaan meski jumlahnya sebetulnya bisa
+  dihitung dari `pickupRequested` / `deliveryRequested` / `location`; angkanya
+  tetap terlihat di kolom Antar-Jemput dan di bawah tanggal, dan kartunya menunggu
+  antar-jemput jadi catatan sendiri (jam berangkat, driver, zona, tarif).
+- **Filter** (§8: panel, dua multi-select): Layanan dan PIC, pilihannya dibaca
+  dari rentang yang sedang dimuat.
+- **"Booking baru"** membuka dua pintu: Grooming (`/dashboard/layanan/grooming/new`)
+  dan Layanan lain (`/dashboard/booking/new`).
+
+**Daftar booking berpaginasi yang dulu ada di `/dashboard/booking` dihapus**
+(`BookingsScreen`, `BookingsTable`, `BookingsToolbar`, `useBookings`). Pencarian
+per hewan/nomor, lensa "Belum ditagih", dan saringan status hidup di papan per
+lini — Layanan › Grooming. Form yang menyimpan beberapa booking sekaligus kini
+mendarat di `?tanggal=` (harinya), bukan `?groupId=`. Kalender jam per groomer
+tetap ada di `/dashboard/booking/kalender`, dengan tombol di bar tanggal.
+
+**Yang tidak digambar karena datanya belum ada:** okupansi kamar dalam persen,
+jam check-in/check-out, driver, zona dan tarif perjalanan, serta tombol Chat
+(booking tidak menyimpan nomor telepon).
+
+**Dipindahkan supaya dipakai bersama, bukan disalin:** `billingOf` dan label
+faktur ke `features/booking/billing.ts`, helper tanggal ke
+`features/booking/day.ts`, `formatMoneyShort` ke `utils/decimal.ts`, pemuatan
+semua halaman booking ke `features/booking/listAll.ts`, tahapan sesi ke
+`BookingSessionSteps`, dan daftar centang dalam panel filter ke
+`FilterCheckList` di `@/components`.
+
 ## [Unreleased] — Kru sesi: persen komisi dan level groomer
 
 14 September 2026, atas permintaan.

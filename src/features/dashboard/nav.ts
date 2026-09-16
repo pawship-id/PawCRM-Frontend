@@ -202,9 +202,9 @@ export const NAV_SECTIONS: NavSection[] = [
         children: [
           {
             /**
-             * The booking list, which is today the only real screen in this
-             * group. Prefix-matched (no `exact`) so /kalender, /new and /[id]
-             * keep the row lit.
+             * Hari Ini — the day board, every line of business on one screen
+             * (`TodayScreen`, from `buloo-hari-ini-v1.html`). Prefix-matched
+             * (no `exact`) so /kalender, /new and /[id] keep the row lit.
              *
              * Gated `bookings:read`, the same grant every booking route
              * enforces — without it a user who cannot read bookings would see
