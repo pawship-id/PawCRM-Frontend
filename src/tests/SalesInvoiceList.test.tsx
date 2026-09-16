@@ -237,8 +237,7 @@ describe("SalesInvoiceList — what it asks the server", () => {
 
     await screen.findByText("INV-2026-0042");
     const panel = await openFilters(user);
-    await user.click(within(panel).getByRole("button", { name: "Filter periode" }));
-    await user.click(await screen.findByRole("option", { name: "Bulan ini" }));
+    await user.click(within(panel).getByRole("button", { name: "Bulan ini" }));
     await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
 
     await waitFor(() => expect(lastList()).toMatchObject({ period: "month" }));
@@ -251,8 +250,7 @@ describe("SalesInvoiceList — what it asks the server", () => {
 
     await screen.findByText("INV-2026-0042");
     const panel = await openFilters(user);
-    await user.click(within(panel).getByRole("button", { name: "Filter periode" }));
-    await user.click(await screen.findByRole("option", { name: "Minggu ini" }));
+    await user.click(within(panel).getByRole("button", { name: "Minggu ini" }));
     await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
 
     await waitFor(() => expect(lastList()).toMatchObject({ period: "week" }));
@@ -275,8 +273,8 @@ describe("SalesInvoiceList — what it asks the server", () => {
 
     await screen.findByText("INV-2026-0042");
     const panel = await openFilters(user);
-    await user.click(within(panel).getByRole("button", { name: "Filter periode" }));
-    await user.click(await screen.findByRole("option", { name: "Pilih tanggal" }));
+    /* The last pill — the two dates appear under it only once it is pressed. */
+    await user.click(within(panel).getByRole("button", { name: "Pilih tanggal" }));
     await user.type(within(panel).getByLabelText("Tanggal faktur dari"), "2026-09-01");
     await user.type(
       within(panel).getByLabelText("Tanggal faktur sampai"),
@@ -311,8 +309,7 @@ describe("SalesInvoiceList — the scope card", () => {
 
     await screen.findByText("INV-2026-0042");
     const panel = await openFilters(user);
-    await user.click(within(panel).getByRole("button", { name: "Filter periode" }));
-    await user.click(await screen.findByRole("option", { name: "Bulan ini" }));
+    await user.click(within(panel).getByRole("button", { name: "Bulan ini" }));
     await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
 
     // The days come from the server's echo, cut in the tenant's zone.
@@ -398,8 +395,7 @@ describe("SalesInvoiceList — the scope card", () => {
 
     await screen.findByText("INV-2026-0042");
     const panel = await openFilters(user);
-    await user.click(within(panel).getByRole("button", { name: "Filter periode" }));
-    await user.click(await screen.findByRole("option", { name: "Minggu ini" }));
+    await user.click(within(panel).getByRole("button", { name: "Minggu ini" }));
     await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
     await waitFor(() => expect(lastList()).toMatchObject({ period: "week" }));
 
@@ -421,8 +417,7 @@ describe("SalesInvoiceList — the scope card", () => {
 
     await screen.findByText("INV-2026-0042");
     const first = await openFilters(user);
-    await user.click(within(first).getByRole("button", { name: "Filter periode" }));
-    await user.click(await screen.findByRole("option", { name: "Bulan ini" }));
+    await user.click(within(first).getByRole("button", { name: "Bulan ini" }));
     await user.click(within(first).getByRole("button", { name: "Terapkan" }));
     await waitFor(() =>
       expect(scopeCard()).toHaveTextContent("Bulan ini · 1–30 Sep 2026"),
@@ -433,8 +428,7 @@ describe("SalesInvoiceList — the scope card", () => {
     );
 
     const panel = await openFilters(user);
-    await user.click(within(panel).getByRole("button", { name: "Filter periode" }));
-    await user.click(await screen.findByRole("option", { name: "Minggu ini" }));
+    await user.click(within(panel).getByRole("button", { name: "Minggu ini" }));
     await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
 
     await waitFor(() =>

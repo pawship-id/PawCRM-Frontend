@@ -8,8 +8,8 @@ import {
   FilterDateRange,
   FilterField,
   FilterPanel,
+  FilterPills,
   FilterSearch,
-  FilterSelect,
   FilterTrigger,
   namedOptions,
   type FilterOption,
@@ -379,26 +379,40 @@ function ReceivablesFilterPanel({
           selected={draft.statuses}
           onChange={(statuses) => patch({ statuses })}
         />
-        <FilterSelect
-          layout="field"
-          label="Periode"
-          ariaLabel="Filter periode"
-          value={draft.period}
-          options={PERIODS}
-          unsetValue="all"
-          onChange={(period) => patch({ period })}
-        />
-        {draft.period === "custom" && (
-          <FilterDateRange
-            layout="field"
-            label="Tanggal faktur"
-            from={draft.dateFrom}
-            to={draft.dateTo}
-            // The Periode field above IS the preset list; chips here would be
-            // a second "Bulan ini" cut in the browser's timezone, not the shop's.
-            presets={[]}
-            onApply={({ from, to }) => patch({ dateFrom: from, dateTo: to })}
+        {/*
+          PERIODE AS A ROW OF PILLS (16 September 2026, on request) — the same
+          shape the grooming board's period bar uses, on a line of its own so the
+          five choices are read at a glance rather than opened one at a time.
+          "Pilih tanggal" is the last pill, and the two dates appear under it only
+          once it is pressed.
+        */}
+        {/*
+          A ROW OF ITS OWN, under Status. The panel lays its fields two to a row,
+          and five pills squeezed into half of that wrap into a block that reads
+          as several controls rather than one lens.
+        */}
+        <FilterField label="Periode" className="sm:col-span-2">
+          <FilterPills
+            ariaLabel="Filter periode"
+            value={draft.period}
+            options={PERIODS}
+            onChange={(period) => patch({ period })}
           />
+        </FilterField>
+        {/* The two dates follow the pills, on a row of their own for the same reason. */}
+        {draft.period === "custom" && (
+          <div className="sm:col-span-2">
+            <FilterDateRange
+              layout="field"
+              label="Tanggal faktur"
+              from={draft.dateFrom}
+              to={draft.dateTo}
+              // The Periode field above IS the preset list; chips here would be
+              // a second "Bulan ini" cut in the browser's timezone, not the shop's.
+              presets={[]}
+              onApply={({ from, to }) => patch({ dateFrom: from, dateTo: to })}
+            />
+          </div>
         )}
       </FilterPanel>
     </>
