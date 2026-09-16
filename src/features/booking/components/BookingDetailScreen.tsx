@@ -15,6 +15,11 @@ import { bookingService } from "@/services/booking.service";
 import { branchService } from "@/services/branch.service";
 import { customerService } from "@/services/customer.service";
 import { petService } from "@/services/pet.service";
+import {
+  afterOwnDiscounts,
+  bookingShareOf,
+  ownDiscountOfLine,
+} from "@/features/sales/bookingDiscount";
 import { formatMoney, isPositive, sumDecimals } from "@/utils/decimal";
 import { GROOMER_LEVEL_LABELS } from "@/types/api";
 import type {
@@ -710,13 +715,22 @@ export function BookingDetailScreen({ id }: { id: string }) {
                     .filter(Boolean)
                     .join(" · ")}
                 </p>
+                {/* THE SERVICE'S OWN DISCOUNT, on its row. */}
+                {ownDiscountOfLine(service) && (
+                  <div className="flex justify-between gap-3 pl-3 text-sm">
+                    <span className="text-success">Diskon</span>
+                    <span className="font-semibold tabular-nums text-success">
+                      − {formatMoney(ownDiscountOfLine(service)!)}
+                    </span>
+                  </div>
+                )}
 
                 {addons.length > 0 && (
                   <ul className="mt-2 border-l-2 border-border pl-3">
                     {addons.map((addon) => (
                       <li
                         key={addon.itemId}
-                        className="flex justify-between gap-3 py-1 text-sm"
+                        className="flex flex-wrap justify-between gap-x-3 py-1 text-sm"
                       >
                         <span className="text-muted">
                           + {addon.name}
@@ -727,22 +741,38 @@ export function BookingDetailScreen({ id }: { id: string }) {
                         <span className="font-semibold tabular-nums text-foreground">
                           {formatMoney(addon.price)}
                         </span>
+                        {ownDiscountOfLine(addon) && (
+                          <span className="flex w-full justify-between gap-3 pl-3">
+                            <span className="text-success">Diskon</span>
+                            <span className="font-semibold tabular-nums text-success">
+                              − {formatMoney(ownDiscountOfLine(addon)!)}
+                            </span>
+                          </span>
+                        )}
                       </li>
                     ))}
                   </ul>
                 )}
 
                 {/*
-                  EVERY DISCOUNT ON ONE ROW — the lines' own and the booking's
-                  share of the save's. The till and the invoice pull the same
-                  figure, so the total below is what gets billed.
+                  THE BOOKING'S SHARE OF "DISKON SELURUH BOOKING", ONCE, under a
+                  subtotal of the lines after their own discounts — the same split
+                  the till and the invoice show (16 September 2026).
                 */}
-                {booking.discountAmount && isPositive(booking.discountAmount) && (
-                  <div className="flex justify-between gap-3 py-1 text-sm">
-                    <span className="font-medium text-success">Diskon</span>
-                    <span className="font-semibold tabular-nums text-success">
-                      − {formatMoney(booking.discountAmount)}
-                    </span>
+                {isPositive(bookingShareOf(booking)) && (
+                  <div className="mt-2 border-t border-border pt-2">
+                    <div className="flex justify-between gap-3 py-1 text-sm">
+                      <span className="text-muted">Subtotal</span>
+                      <span className="tabular-nums text-muted">
+                        {formatMoney(afterOwnDiscounts(booking))}
+                      </span>
+                    </div>
+                    <div className="flex justify-between gap-3 py-1 text-sm">
+                      <span className="text-success">Diskon booking</span>
+                      <span className="font-semibold tabular-nums text-success">
+                        − {formatMoney(bookingShareOf(booking))}
+                      </span>
+                    </div>
                   </div>
                 )}
 
