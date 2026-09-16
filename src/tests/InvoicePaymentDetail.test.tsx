@@ -462,7 +462,7 @@ describe("InvoicePaymentDetail — Transaksi Keuangan", () => {
 
     expect(
       await screen.findByRole("link", { name: /Lihat di Transaksi Keuangan/ }),
-    ).toHaveAttribute("href", "/dashboard/keuangan/transaksi/pay1");
+    ).toHaveAttribute("href", "/dashboard/keuangan/kas-bank/transaksi/pay1");
   });
 
   it("opens the shared edit dialog for the transaction and re-reads the invoice after", async () => {

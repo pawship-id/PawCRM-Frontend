@@ -293,7 +293,7 @@ describe("CommissionRecapScreen — paying a groomer", () => {
       screen.getByRole("link", { name: /Riwayat pembayaran komisi/ }),
     ).toHaveAttribute(
       "href",
-      "/dashboard/keuangan/transaksi?kind=commission_payment",
+      "/dashboard/keuangan/kas-bank?kind=commission_payment",
     );
   });
 

@@ -366,7 +366,7 @@ export function CommissionRecapScreen() {
           */}
           <Can feature="cashTransactions" action="read">
             <Link
-              href="/dashboard/keuangan/transaksi?kind=commission_payment"
+              href="/dashboard/keuangan/kas-bank?kind=commission_payment"
               className="ml-auto self-center rounded-md text-sm font-semibold text-primary underline-offset-4 hover:text-primary-hover hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
             >
               Riwayat pembayaran komisi →

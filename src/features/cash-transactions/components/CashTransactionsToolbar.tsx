@@ -3,16 +3,15 @@
 import { useState } from "react";
 import { ListFilter } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import {
   FilterBar,
-  FilterDateRange,
   FilterField,
   FilterPanel,
   FilterPills,
   FilterSearch,
   FilterSelect,
   FilterTrigger,
-  formatRangeShort,
   namedOptions,
   withAll,
   type AppliedFilter,
@@ -27,7 +26,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type {
-  Branch,
   CashTransactionDirection,
   CashTransactionKind,
   CashTransactionSort,
@@ -91,14 +89,14 @@ const CLEARED: PanelFilters = {
  */
 export function CashTransactionsToolbar({
   query,
-  branches,
   channels,
   onChange,
+  className,
 }: {
   query: CashTransactionsQuery;
-  branches: Branch[];
   channels: PaymentChannel[];
   onChange: (patch: Partial<CashTransactionsQuery>) => void;
+  className?: string;
 }) {
   const chips: AppliedFilter[] = [];
 
@@ -107,22 +105,6 @@ export function CashTransactionsToolbar({
       key: "kinds",
       label: query.kinds.map((kind) => KIND_LABEL[kind] ?? kind).join(", "),
       onRemove: () => onChange({ kinds: [] }),
-    });
-  }
-  if (query.dateFrom || query.dateTo) {
-    chips.push({
-      key: "period",
-      label: `Tanggal ${formatRangeShort(query.dateFrom, query.dateTo)}`,
-      onRemove: () => onChange({ dateFrom: "", dateTo: "" }),
-    });
-  }
-  if (query.branchId) {
-    chips.push({
-      key: "branch",
-      label:
-        branches.find((branch) => branch._id === query.branchId)?.name ??
-        "Cabang terpilih",
-      onRemove: () => onChange({ branchId: "" }),
     });
   }
   if (query.channelId) {
@@ -151,7 +133,7 @@ export function CashTransactionsToolbar({
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className={cn("flex flex-col gap-3", className)}>
       <FilterPills
         ariaLabel="Arah uang"
         value={query.direction}
@@ -163,12 +145,15 @@ export function CashTransactionsToolbar({
         searchPlacement="leading"
         searchClassName="min-w-[12rem] flex-1"
         chips={chips}
+        /*
+          CLEARS WHAT THIS BAR OWNS, and not the context bar's period or branch.
+          Reset clears what the control it belongs to conceals (§8); reaching up
+          and throwing the whole page back to "Semua" would undo a choice this
+          button does not appear to be about.
+        */
         onClearAll={() =>
           onChange({
             kinds: [],
-            dateFrom: "",
-            dateTo: "",
-            branchId: "",
             channelId: "",
             status: "",
             documentId: "",
@@ -194,7 +179,6 @@ export function CashTransactionsToolbar({
             channelId: query.channelId,
             status: query.status,
           }}
-          branches={branches}
           channels={channels}
           onApply={(next) => {
             // Only what moved — setQuery re-queries on any new object.
@@ -218,23 +202,23 @@ export function CashTransactionsToolbar({
 
 function TransactionsFilterPanel({
   applied,
-  branches,
   channels,
   onApply,
 }: {
   applied: PanelFilters;
-  branches: Branch[];
   channels: PaymentChannel[];
   onApply: (next: PanelFilters) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(applied);
 
-  // Urutkan is never unset, so it is not counted (§8).
+  /*
+    Urutkan is never unset, so it is not counted (§8). NEITHER ARE PERIODE AND
+    CABANG any more: they moved to the context bar above, where they are visible
+    on the row — and the badge exists to pay back what a panel CONCEALS.
+  */
   const count = [
-    applied.dateFrom !== "" || applied.dateTo !== "",
     applied.kinds.length > 0,
-    applied.branchId !== "",
     applied.channelId !== "",
     applied.status !== "",
   ].filter(Boolean).length;
@@ -289,27 +273,9 @@ function TransactionsFilterPanel({
           unsetValue="newest"
           onChange={(sort) => setDraft((prev) => ({ ...prev, sort }))}
         />
-        <FilterDateRange
-          layout="field"
-          label="Periode"
-          ariaLabel="Periode"
-          from={draft.dateFrom}
-          to={draft.dateTo}
-          onApply={({ from, to }) =>
-            setDraft((prev) => ({ ...prev, dateFrom: from, dateTo: to }))
-          }
-        />
         <KindField
           selected={draft.kinds}
           onChange={(kinds) => setDraft((prev) => ({ ...prev, kinds }))}
-        />
-        <FilterSelect
-          layout="field"
-          label="Cabang"
-          ariaLabel="Filter cabang"
-          value={draft.branchId}
-          options={withAll(namedOptions(branches), "Semua cabang")}
-          onChange={(branchId) => setDraft((prev) => ({ ...prev, branchId }))}
         />
         <FilterSelect
           layout="field"

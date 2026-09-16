@@ -25,12 +25,14 @@ beforeEach(() => {
 });
 
 describe("AccountingModuleHeader", () => {
-  it("draws the mockup's four tabs, with Transaksi beside Ringkasan", () => {
+  it("draws the mockup's tabs, with Kas & Bank beside Ringkasan", () => {
     renderWithAuth(<AccountingModuleHeader />);
 
+    // Transaksi is NOT among them: it became the first sub-tab of Kas & Bank,
+    // because a list of movements is only readable next to the accounts they
+    // moved through.
     expect(tabNames()).toEqual([
       "Ringkasan",
-      "Transaksi",
       "Kas & Bank",
       "Komisi",
       "Daftar Akun",
@@ -40,9 +42,9 @@ describe("AccountingModuleHeader", () => {
       "href",
       "/dashboard/keuangan/chart-of-accounts",
     );
-    expect(screen.getByRole("link", { name: "Transaksi" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Kas & Bank" })).toHaveAttribute(
       "href",
-      "/dashboard/keuangan/transaksi",
+      "/dashboard/keuangan/kas-bank",
     );
     // Komisi moved under Keuangan; its old /dashboard/reports address redirects.
     expect(screen.getByRole("link", { name: "Komisi" })).toHaveAttribute(
@@ -103,12 +105,28 @@ describe("AccountingModuleHeader", () => {
     ).toHaveAttribute("aria-current", "page");
   });
 
-  it("gives the cash-transaction grant the Transaksi tab and nothing else", () => {
+  /**
+   * THE MOVE MUST NOT TAKE THE LIST AWAY FROM ANYBODY. Transaksi stopped being a
+   * tab, so the only way in is now Kas & Bank — and gating that on
+   * `paymentChannels` alone would have locked out every role that could read
+   * transactions and not channels. Either grant opens it; each half is gated
+   * again inside.
+   */
+  it("still offers a way in to a role that may read transactions but not channels", () => {
     renderWithAuth(<AccountingModuleHeader />, {
       isSuperAdmin: false,
       permissions: [{ feature: "cashTransactions", actions: ["read"] }],
     });
 
-    expect(tabNames()).toEqual(["Ringkasan", "Transaksi"]);
+    expect(tabNames()).toEqual(["Ringkasan", "Kas & Bank"]);
+  });
+
+  it("gives the channel grant the Kas & Bank tab and nothing else", () => {
+    renderWithAuth(<AccountingModuleHeader />, {
+      isSuperAdmin: false,
+      permissions: [{ feature: "paymentChannels", actions: ["read"] }],
+    });
+
+    expect(tabNames()).toEqual(["Ringkasan", "Kas & Bank"]);
   });
 });

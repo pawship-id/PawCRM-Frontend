@@ -1,24 +1,11 @@
-import type { Metadata } from "next";
+import { permanentRedirect } from "next/navigation";
 
-import { CashTransactionDetail } from "@/features/cash-transactions";
-import { RequirePermission } from "@/features/permissions";
-
-export const metadata: Metadata = { title: "Detail transaksi · Buloo" };
-
-/**
- * One transaction. Gated on `read`; Ubah and Batalkan sit behind their own
- * `update` / `void` grants inside. `params` is a Promise in this Next.
- */
-export default async function CashTransactionDetailPage({
+/** One transaction, at its new address under Kas & Bank. See ../page.tsx. */
+export default async function LegacyCashTransactionDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-
-  return (
-    <RequirePermission feature="cashTransactions">
-      <CashTransactionDetail transactionId={id} />
-    </RequirePermission>
-  );
+  permanentRedirect(`/dashboard/keuangan/kas-bank/transaksi/${id}`);
 }

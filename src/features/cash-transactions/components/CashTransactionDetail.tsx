@@ -120,7 +120,7 @@ export function CashTransactionDetail({
           <Breadcrumb
             items={[
               ACCOUNTING_CRUMBS.hub,
-              ACCOUNTING_CRUMBS.transactions,
+              ACCOUNTING_CRUMBS.cashBank,
               { label: title },
             ]}
           />

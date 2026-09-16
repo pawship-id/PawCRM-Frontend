@@ -42,14 +42,21 @@ export function AccountingModuleHeader({
     // EXACT: its href is the prefix of all three siblings.
     { label: "Ringkasan", href: "/dashboard/keuangan", exact: true },
     /*
-      TRANSAKSI — every numbered movement of money in one list: receipts,
-      supplier and commission payments, till payments, expenses. Second, beside
-      Ringkasan, because it is the tab a shop opens daily.
+      KAS & BANK — where the money sits, and everything that moved it. Second,
+      beside Ringkasan, because it is the tab a shop opens daily.
+
+      TRANSAKSI USED TO BE A TAB OF ITS OWN and is now the first of its two
+      SUB-tabs (16 September 2026, with the mockup): a list of movements is only
+      readable next to the accounts they moved through, and two module tabs that
+      answered halves of one question meant picking the right one before you
+      could look. The old route redirects, query and all.
+
+      EITHER GRANT OPENS IT, because the page is two halves: the channel table
+      needs `paymentChannels:read` and the list needs `cashTransactions:read`,
+      and each is gated again inside. Requiring only the first would have taken
+      the transaction list away from everyone who could read it before the move.
     */
-    ...(can("cashTransactions", "read")
-      ? [{ label: "Transaksi", href: "/dashboard/keuangan/transaksi" }]
-      : []),
-    ...(can("paymentChannels", "read")
+    ...(can("paymentChannels", "read") || can("cashTransactions", "read")
       ? [{ label: "Kas & Bank", href: "/dashboard/keuangan/kas-bank" }]
       : []),
     /*

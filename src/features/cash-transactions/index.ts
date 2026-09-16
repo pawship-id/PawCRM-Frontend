@@ -7,13 +7,22 @@
  * dialog for the payment it shows, so "Ubah pembayaran" there and "Ubah" here
  * cannot drift apart.
  */
-export { CashTransactionsScreen } from "./components/CashTransactionsScreen";
+/**
+ * The list, as a PANEL rather than a screen: since 16 September 2026 it is the
+ * first sub-tab of Kas & Bank, under the cards and the channel table that say
+ * where the money sits. The page above owns the chrome, the context bar and the
+ * `useCashTransactions` state, and hands the state in.
+ */
+export { CashTransactionsPanel } from "./components/CashTransactionsScreen";
 export { CashTransactionDetail } from "./components/CashTransactionDetail";
 export { CashTransactionCreateForm } from "./components/CashTransactionCreateForm";
 export { CashTransactionEditDialog } from "./components/CashTransactionEditDialog";
 export { CancelCashTransactionDialog } from "./components/CancelCashTransactionDialog";
 export { CashTransactionStatusBadge } from "./components/CashTransactionStatusBadge";
-export { useCashTransactions } from "./hooks/useCashTransactions";
+export {
+  useCashTransactions,
+  type UseCashTransactionsResult,
+} from "./hooks/useCashTransactions";
 // Its own module, not the hook's: the server page calls the parser, and a
 // function exported from a "use client" file cannot be called on the server.
 export {
@@ -24,6 +33,7 @@ export {
 export { useCashTransaction } from "./hooks/useCashTransaction";
 export {
   CASH_TRANSACTIONS_HREF,
+  CASH_TRANSACTION_DETAIL_HREF,
   KIND_LABEL,
   cashTransactionHref,
   cashTransactionTitle,

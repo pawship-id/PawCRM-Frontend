@@ -1,12 +1,12 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import {
-  CashTransactionsScreen,
-  cashTransactionsQueryFromParams,
-} from "@/features/cash-transactions";
+import { cashTransactionsQueryFromParams } from "@/features/cash-transactions";
+import { KasBankScreen } from "@/features/payment-channels";
 import { branchService } from "@/services/branch.service";
 import { cashTransactionService } from "@/services/cashTransaction.service";
+import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
+import { journalEntryService } from "@/services/journalEntry.service";
 import { paymentChannelService } from "@/services/paymentChannel.service";
 
 import { cashPage, cashTx, channelPage } from "./helpers/cashTransactionFixture";
@@ -15,22 +15,29 @@ import { renderWithAuth } from "./helpers/renderWithAuth";
 jest.mock("@/services/cashTransaction.service");
 jest.mock("@/services/branch.service");
 jest.mock("@/services/paymentChannel.service");
+jest.mock("@/services/chartOfAccounts.service");
+jest.mock("@/services/journalEntry.service");
 
 const mockPush = jest.fn();
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: (href: string) => mockPush(href) }),
-  usePathname: () => "/dashboard/keuangan/transaksi",
+  usePathname: () => "/dashboard/keuangan/kas-bank",
 }));
 
 const asMock = <T extends (...args: never[]) => unknown>(fn: T) =>
   fn as jest.MockedFunction<T>;
 
 /**
- * TRANSAKSI KEUANGAN — the list. What it guards: money lands in the column of
- * its direction, the cards are the server's whole-filter totals, the Arah lens
- * applies on click outside the panel, a cancelled row stays visible, and the
- * empty state offers the next step.
+ * TRANSAKSI KEUANGAN — the list, now the first sub-tab of KAS & BANK. What it
+ * guards: money lands in the column of its direction, the cards are the server's
+ * whole-filter totals, the Arah lens applies on click outside the panel, a
+ * cancelled row stays visible, and the empty state offers the next step.
+ *
+ * DRIVEN THROUGH `KasBankScreen`, which is the screen the route renders — the
+ * panel no longer owns its own state, and testing it with a hand-made one would
+ * test a wiring nothing does.
  */
+const NOW = "2026-09-16T04:00:00.000Z";
 const receipt = cashTx();
 const expense = cashTx({
   _id: "ct2",
@@ -59,11 +66,25 @@ beforeEach(() => {
     pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
   });
   asMock(paymentChannelService.list).mockResolvedValue(channelPage([]));
+  // The Kas & Bank half of the page. Empty is fine — these tests are about the
+  // list below it, and the table has a suite of its own.
+  asMock(cashTransactionService.summaryByChannel).mockResolvedValue({
+    channels: [],
+  });
+  asMock(chartOfAccountsService.list).mockResolvedValue({
+    items: [],
+    pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
+  });
+  asMock(journalEntryService.balances).mockResolvedValue({
+    asOf: null,
+    timezone: "Asia/Jakarta",
+    accounts: [],
+  });
 });
 
-describe("CashTransactionsScreen — rows and totals", () => {
+describe("Kas & Bank — transaksi: rows and totals", () => {
   it("puts each amount in the column of its direction", async () => {
-    renderWithAuth(<CashTransactionsScreen />);
+    renderWithAuth(<KasBankScreen now={NOW} />);
 
     const inRow = (await screen.findByText("BKM/CBS/2609/0001")).closest("tr")!;
     const inCells = within(inRow).getAllByRole("cell");
@@ -91,7 +112,7 @@ describe("CashTransactionsScreen — rows and totals", () => {
       }),
     );
 
-    renderWithAuth(<CashTransactionsScreen />);
+    renderWithAuth(<KasBankScreen now={NOW} />);
 
     const inTile = (await screen.findByText("Uang masuk")).parentElement!;
     expect(await within(inTile).findByText("Rp 2.500.000")).toBeInTheDocument();
@@ -106,7 +127,7 @@ describe("CashTransactionsScreen — rows and totals", () => {
       cashPage([cashTx({ status: "void", isVoided: true, recordedVia: "pos" })]),
     );
 
-    renderWithAuth(<CashTransactionsScreen />);
+    renderWithAuth(<KasBankScreen now={NOW} />);
 
     const row = (await screen.findByText("BKM/CBS/2609/0001")).closest("tr")!;
     expect(within(row).getByText("Dibatalkan")).toBeInTheDocument();
@@ -116,18 +137,18 @@ describe("CashTransactionsScreen — rows and totals", () => {
 
   it("opens the detail when a row is clicked", async () => {
     const user = userEvent.setup();
-    renderWithAuth(<CashTransactionsScreen />);
+    renderWithAuth(<KasBankScreen now={NOW} />);
 
     await user.click(await screen.findByText("Bu Sari"));
 
-    expect(mockPush).toHaveBeenCalledWith("/dashboard/keuangan/transaksi/ct1");
+    expect(mockPush).toHaveBeenCalledWith("/dashboard/keuangan/kas-bank/transaksi/ct1");
   });
 });
 
-describe("CashTransactionsScreen — filters", () => {
+describe("Kas & Bank — transaksi: filters", () => {
   it("applies the Arah pill on click, and does not count it on the Filter button", async () => {
     const user = userEvent.setup();
-    renderWithAuth(<CashTransactionsScreen />);
+    renderWithAuth(<KasBankScreen now={NOW} />);
     await screen.findByText("BKM/CBS/2609/0001");
 
     await user.click(screen.getByRole("button", { name: "Keluar" }));
@@ -148,7 +169,9 @@ describe("CashTransactionsScreen — filters", () => {
 
   it("starts from a deep link's kind, as a chip and a counted filter", async () => {
     renderWithAuth(
-      <CashTransactionsScreen initialQuery={{ kinds: ["commission_payment"] }} />,
+      <KasBankScreen
+        now={NOW}
+        initialQuery={{ kinds: ["commission_payment"] }} />,
     );
 
     await waitFor(() =>
@@ -178,25 +201,25 @@ describe("CashTransactionsScreen — filters", () => {
   });
 });
 
-describe("CashTransactionsScreen — empty and gated", () => {
+describe("Kas & Bank — transaksi: empty and gated", () => {
   it("says there is nothing yet and offers the first one", async () => {
     asMock(cashTransactionService.list).mockResolvedValue(cashPage([]));
 
-    renderWithAuth(<CashTransactionsScreen />);
+    renderWithAuth(<KasBankScreen now={NOW} />);
 
     expect(
       await screen.findByText("Belum ada transaksi keuangan."),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Catat yang pertama →" }),
-    ).toHaveAttribute("href", "/dashboard/keuangan/transaksi/new");
+    ).toHaveAttribute("href", "/dashboard/keuangan/kas-bank/transaksi/new");
   });
 
   it("tells a filtered empty list apart from an empty book", async () => {
     const user = userEvent.setup();
     asMock(cashTransactionService.list).mockResolvedValue(cashPage([]));
 
-    renderWithAuth(<CashTransactionsScreen />);
+    renderWithAuth(<KasBankScreen now={NOW} />);
     await screen.findByText("Belum ada transaksi keuangan.");
 
     await user.click(screen.getByRole("button", { name: "Masuk" }));
@@ -207,13 +230,13 @@ describe("CashTransactionsScreen — empty and gated", () => {
   });
 
   it("offers Catat transaksi only to a role that may create one", async () => {
-    const { unmount } = renderWithAuth(<CashTransactionsScreen />);
+    const { unmount } = renderWithAuth(<KasBankScreen now={NOW} />);
     expect(
       await screen.findByRole("link", { name: /Catat transaksi/ }),
-    ).toHaveAttribute("href", "/dashboard/keuangan/transaksi/new");
+    ).toHaveAttribute("href", "/dashboard/keuangan/kas-bank/transaksi/new");
     unmount();
 
-    renderWithAuth(<CashTransactionsScreen />, {
+    renderWithAuth(<KasBankScreen now={NOW} />, {
       isSuperAdmin: false,
       permissions: [{ feature: "cashTransactions", actions: ["read"] }],
     });
@@ -224,16 +247,18 @@ describe("CashTransactionsScreen — empty and gated", () => {
   });
 });
 
-describe("CashTransactionsScreen — search highlight", () => {
+describe("Kas & Bank — transaksi: search highlight", () => {
   it("marks nothing while there is no search term", async () => {
-    const { container } = renderWithAuth(<CashTransactionsScreen />);
+    const { container } = renderWithAuth(<KasBankScreen now={NOW} />);
     await screen.findByText("BKM/CBS/2609/0001");
 
     expect(container.querySelector("mark")).toBeNull();
   });
 
   it("marks the part of the number that matched", async () => {
-    renderWithAuth(<CashTransactionsScreen initialQuery={{ search: "0001" }} />);
+    renderWithAuth(<KasBankScreen
+        now={NOW}
+        initialQuery={{ search: "0001" }} />);
 
     const hit = await screen.findByText("0001", { selector: "mark" });
     expect(hit.closest("a")).toHaveTextContent("BKM/CBS/2609/0001");
@@ -244,7 +269,9 @@ describe("CashTransactionsScreen — search highlight", () => {
       cashPage([cashTx({ ref: "TRF-7788" })], TOTALS),
     );
 
-    renderWithAuth(<CashTransactionsScreen initialQuery={{ search: "7788" }} />);
+    renderWithAuth(<KasBankScreen
+        now={NOW}
+        initialQuery={{ search: "7788" }} />);
 
     const hit = await screen.findByText("7788", { selector: "mark" });
     expect(hit.closest("p")).toHaveTextContent("Ref. TRF-7788");

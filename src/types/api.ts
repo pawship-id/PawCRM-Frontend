@@ -6225,6 +6225,25 @@ export interface CashTransactionListResponse extends PageResult<CashTransaction>
   totals: CashTransactionTotals;
 }
 
+/** One channel's movement over a filter. Σ of POSTED transactions only. */
+export interface CashTransactionChannelTotals {
+  /** `null` is migrated history, recorded before the field existed. */
+  channelId: string | null;
+  in: { amount: string; count: number };
+  out: { amount: string; count: number };
+}
+
+/**
+ * GET /api/cash-transactions/summary — the Kas & Bank table.
+ *
+ * A CHANNEL WITH NO MOVEMENT IS ABSENT, not present with zeros: key by
+ * `channelId` and read a miss as zero. That is what keeps the response short on
+ * a tenant with a long list of channels.
+ */
+export interface CashTransactionChannelSummary {
+  channels: CashTransactionChannelTotals[];
+}
+
 /** GET /api/cash-transactions. `kind` goes out comma-joined. */
 export interface CashTransactionListQuery {
   page?: number;

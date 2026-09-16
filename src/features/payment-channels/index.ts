@@ -8,11 +8,17 @@
  * same words — and two copies of that list is how the settings screen and the
  * till start disagreeing about what "EDC" is called.
  */
-export { PaymentChannelsScreen } from "./components/PaymentChannelsScreen";
+export {
+  KasBankScreen,
+  type KasBankSection,
+} from "./components/KasBankScreen";
 export { PaymentChannelForm } from "./components/PaymentChannelForm";
 export {
-  usePaymentChannels,
+  useCashAccounts,
+  type CashAccountRow,
+  type CashAccountsQuery,
+} from "./hooks/useCashAccounts";
+export {
   CHANNEL_TYPE_LABELS,
   CHANNEL_TYPE_ORDER,
-  type PaymentChannelsQuery,
 } from "./hooks/usePaymentChannels";

@@ -1038,7 +1038,7 @@ describe("PaymentHistory — each payment is a cash transaction", () => {
     expect(await screen.findByText("BBK/CBS/2608/0007")).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: /Buka di Transaksi Keuangan/ }),
-    ).toHaveAttribute("href", "/dashboard/keuangan/transaksi/pay1");
+    ).toHaveAttribute("href", "/dashboard/keuangan/kas-bank/transaksi/pay1");
   });
 
   it("marks a cancelled payment and strikes its amount through", async () => {

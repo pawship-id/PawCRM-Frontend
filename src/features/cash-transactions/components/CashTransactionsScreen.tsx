@@ -9,7 +9,6 @@ import {
   HighlightText,
   Pagination,
   Spinner,
-  StatTile,
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,16 +19,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { AccountingModuleHeader } from "@/features/accounting";
 import { Can, usePermissions } from "@/features/permissions";
 import { cn } from "@/lib/utils";
-import type { CashTransaction, CashTransactionTotals } from "@/types/api";
+import type { CashTransaction } from "@/types/api";
 import { formatMoney } from "@/utils/decimal";
 
-import { useCashTransactions } from "../hooks/useCashTransactions";
-import type { CashTransactionsQuery } from "../query";
+import type { UseCashTransactionsResult } from "../hooks/useCashTransactions";
 import {
-  CASH_TRANSACTIONS_HREF,
+  CASH_TRANSACTION_DETAIL_HREF,
   cashTransactionHref,
   formatDate,
   kindLabel,
@@ -57,26 +54,24 @@ const COLUMN_COUNT = 8;
  * A CANCELLED ROW STAYS, muted and struck through. It posted an entry and a
  * reversal, and a list that hid it would leave both pointing at nothing.
  */
-export function CashTransactionsScreen({
-  initialQuery,
+export function CashTransactionsPanel({
+  state,
 }: {
-  /** From the URL — see `cashTransactionsQueryFromParams`. */
-  initialQuery?: Partial<CashTransactionsQuery>;
+  /** The whole of `useCashTransactions`, owned by the page above. */
+  state: UseCashTransactionsResult;
 }) {
   const router = useRouter();
   const { can } = usePermissions();
   const {
     transactions,
     pagination,
-    totals,
     query,
-    branches,
     channels,
     loading,
     error,
     setQuery,
     refetch,
-  } = useCashTransactions(initialQuery);
+  } = state;
 
   const filtered =
     query.search.trim() !== "" ||
@@ -90,27 +85,7 @@ export function CashTransactionsScreen({
     query.documentId !== "";
 
   return (
-    <div className="flex flex-col gap-6">
-      <AccountingModuleHeader
-        action={
-          <Can feature="cashTransactions" action="create">
-            <Button asChild>
-              <Link href={`${CASH_TRANSACTIONS_HREF}/new`}>
-                <Plus className="size-4" />
-                Catat transaksi
-              </Link>
-            </Button>
-          </Can>
-        }
-      />
-
-      <p className="max-w-2xl text-[15px] text-muted">
-        Semua uang masuk dan keluar yang bernomor — penerimaan piutang,
-        pembayaran supplier dan komisi, pembayaran di kasir, pengeluaran dan
-        pemasukan lain. Yang salah bisa diubah atau dibatalkan dari detailnya;
-        jurnalnya dibalik, tidak pernah dihapus.
-      </p>
-
+    <div className="flex flex-col gap-4">
       {error && (
         <Alert variant="error">
           <span className="flex flex-wrap items-center gap-3">
@@ -123,17 +98,22 @@ export function CashTransactionsScreen({
         </Alert>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <TotalTile label="Uang masuk" side="in" totals={totals} error={!!error} />
-        <TotalTile label="Uang keluar" side="out" totals={totals} error={!!error} />
+      <div className="flex flex-wrap items-start gap-3">
+        <CashTransactionsToolbar
+          query={query}
+          channels={channels}
+          onChange={setQuery}
+          className="min-w-0 flex-1"
+        />
+        <Can feature="cashTransactions" action="create">
+          <Button asChild>
+            <Link href={`${CASH_TRANSACTION_DETAIL_HREF}/new`}>
+              <Plus className="size-4" />
+              Catat transaksi
+            </Link>
+          </Button>
+        </Can>
       </div>
-
-      <CashTransactionsToolbar
-        query={query}
-        branches={branches}
-        channels={channels}
-        onChange={setQuery}
-      />
 
       {loading && transactions.length === 0 ? (
         <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
@@ -172,7 +152,7 @@ export function CashTransactionsScreen({
                           "Coba longgarkan periode atau jenisnya, atau hapus kata kuncinya."
                         ) : can("cashTransactions", "create") ? (
                           <Link
-                            href={`${CASH_TRANSACTIONS_HREF}/new`}
+                            href={`${CASH_TRANSACTION_DETAIL_HREF}/new`}
                             className="rounded-md font-semibold text-primary underline-offset-4 hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
                           >
                             Catat yang pertama →
@@ -307,30 +287,3 @@ function TransactionRow({
   );
 }
 
-function TotalTile({
-  label,
-  side,
-  totals,
-  error,
-}: {
-  label: string;
-  side: "in" | "out";
-  totals: CashTransactionTotals | null;
-  error: boolean;
-}) {
-  const figure = totals?.[side];
-
-  return (
-    <StatTile
-      label={label}
-      value={figure ? formatMoney(figure.amount) : "—"}
-      caption={
-        figure
-          ? `${figure.count} transaksi · seluruh filter, tanpa yang dibatalkan`
-          : undefined
-      }
-      loading={!figure && !error}
-      error={error}
-    />
-  );
-}

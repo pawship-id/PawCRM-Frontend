@@ -2,6 +2,7 @@ import { apiClient } from "./api-client";
 import type {
   CancelCashTransactionInput,
   CashTransaction,
+  CashTransactionChannelSummary,
   CashTransactionListQuery,
   CashTransactionListResponse,
   CreateCashTransactionInput,
@@ -61,6 +62,46 @@ export const cashTransactionService = {
         search: query.search,
       },
     }),
+
+  /**
+   * GET /cash-transactions/summary — Σ in and Σ out PER CHANNEL, over the whole
+   * filter rather than the page.
+   *
+   * WHY NOT ONE `channelId` REQUEST PER ROW, which is what the Kas & Bank table
+   * would otherwise do: that is a fan-out that grows with the tenant's own list
+   * of channels — six channels is six scans of the same period to draw one
+   * table, re-run on every filter change.
+   *
+   * Takes the list's filters minus its pagination and sort. A channel with no
+   * movement is ABSENT; key by `channelId` and read a miss as zero.
+   */
+  summaryByChannel: (
+    query: Omit<CashTransactionListQuery, "page" | "limit" | "sort"> = {},
+  ) =>
+    apiClient.get<CashTransactionChannelSummary>(
+      "/cash-transactions/summary",
+      {
+        query: {
+          dateFrom: query.dateFrom,
+          dateTo: query.dateTo,
+          direction: query.direction,
+          kind: Array.isArray(query.kind)
+            ? query.kind.length > 0
+              ? query.kind.join(",")
+              : undefined
+            : query.kind,
+          branchId: query.branchId,
+          channelId: query.channelId,
+          status: query.status,
+          partyId: query.partyId,
+          documentType: query.documentType,
+          documentId: query.documentId,
+          recordedVia: query.recordedVia,
+          shiftId: query.shiftId,
+          search: query.search,
+        },
+      },
+    ),
 
   /** GET /cash-transactions/:id — one transaction with its revisions. */
   getById: (id: string) =>

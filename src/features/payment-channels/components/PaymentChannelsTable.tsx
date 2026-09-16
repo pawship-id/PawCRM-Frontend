@@ -21,8 +21,10 @@ import {
 import { Can, usePermissions } from "@/features/permissions";
 import { cn } from "@/lib/utils";
 import type { PaymentChannel } from "@/types/api";
+import { formatMoney } from "@/utils/decimal";
 
 import { CHANNEL_TYPE_LABELS } from "../hooks/usePaymentChannels";
+import type { CashAccountRow } from "../hooks/useCashAccounts";
 
 type PendingAction = {
   kind: "delete" | "restore";
@@ -30,29 +32,34 @@ type PendingAction = {
 } | null;
 
 /**
- * The channel list table.
+ * Akun Kas & Bank — every channel money can arrive through, what moved through
+ * it this period, and what its ledger account holds.
  *
  * ONE FLAT TABLE, not four grouped sections. The server already returns them
  * ordered by tab, so the Tipe column reads as a grouping without the markup —
- * and a settings screen for six rows does not need four headings to scan.
+ * and six rows do not need four headings to scan.
+ *
+ * MASUK AND KELUAR ARE THE PERIOD; SALDO IS A POSITION as of its end. Two kinds
+ * of number in one row, which is why the caption under the table says so rather
+ * than leaving it to be worked out from the column names.
+ *
+ * MDR MOVED UNDER THE NAME to make room for them. It is a property of the
+ * channel rather than a figure anybody scans a column of, and it is blank on
+ * most rows — a column that is mostly dashes is a column worth not having.
  */
 export function PaymentChannelsTable({
-  channels,
+  rows,
   loading,
   onChanged,
   search,
-  accountLabels,
-  branchLabels,
 }: {
-  channels: PaymentChannel[];
+  /** Channel, its labels, and what moved through it — see `useCashAccounts`. */
+  rows: CashAccountRow[];
   loading: boolean;
   onChanged: () => void;
   search?: string;
-  /** accountId → "1102 · Bank". Missing ids fall back to a dash. */
-  accountLabels: Map<string, string>;
-  /** branchId → branch name. */
-  branchLabels: Map<string, string>;
 }) {
+  const channels = rows.map((row) => row.channel);
   const [pending, setPending] = useState<PendingAction>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -109,21 +116,43 @@ export function PaymentChannelsTable({
         <Table className={loading ? "opacity-60" : undefined}>
           <TableHeader>
             <TableRow>
-              <TableHead>Tipe</TableHead>
-              <TableHead>Nama</TableHead>
               <TableHead>Akun</TableHead>
+              <TableHead>Nama</TableHead>
+              <TableHead>Tipe</TableHead>
               <TableHead>Cabang</TableHead>
-              <TableHead className="text-right">MDR</TableHead>
+              <TableHead className="text-right">Masuk</TableHead>
+              <TableHead className="text-right">Keluar</TableHead>
+              <TableHead className="text-right">Saldo</TableHead>
               <TableHead>Status</TableHead>
               {showActions && <TableHead className="text-right">Aksi</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
-            {channels.map((channel) => {
+            {rows.map((row) => {
+              const { channel } = row;
               const deleted = channel.deletedAt !== null;
 
               return (
                 <TableRow key={channel._id}>
+                  {/* tabular-nums so the codes line up — ui-rules §5. */}
+                  <TableCell className="tabular-nums whitespace-nowrap text-muted">
+                    {row.accountLabel ?? "—"}
+                  </TableCell>
+                  <TableCell>
+                    <div className="font-medium text-foreground">
+                      <HighlightText text={channel.name} query={search} />
+                    </div>
+                    {channel.mdrPercent > 0 && (
+                      <span className="text-xs text-muted">
+                        MDR {channel.mdrPercent}%
+                      </span>
+                    )}
+                    {channel.requiresReference && (
+                      <span className="block text-xs text-muted">
+                        Wajib no. referensi
+                      </span>
+                    )}
+                  </TableCell>
                   <TableCell>
                     <Badge
                       variant="outline"
@@ -132,27 +161,32 @@ export function PaymentChannelsTable({
                       {CHANNEL_TYPE_LABELS[channel.type]}
                     </Badge>
                   </TableCell>
-                  <TableCell>
-                    <div className="font-medium text-foreground">
-                      <HighlightText text={channel.name} query={search} />
-                    </div>
-                    {channel.requiresReference && (
+                  <TableCell className="text-muted">
+                    {/* Null is a real answer — this channel works everywhere —
+                        and a dash there would read as unset. */}
+                    {row.branchName ?? "Semua cabang"}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums text-success">
+                    {formatMoney(row.masuk)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums text-foreground">
+                    {formatMoney(row.keluar)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {/*
+                      ONCE PER ACCOUNT. Two channels can point at one account,
+                      and a balance repeated on both invites somebody to add the
+                      column up and get twice the money the shop has.
+                    */}
+                    {row.saldo !== null ? (
+                      <b className="font-semibold text-foreground">
+                        {formatMoney(row.saldo)}
+                      </b>
+                    ) : (
                       <span className="text-xs text-muted">
-                        Wajib no. referensi
+                        ikut {row.saldoSharedWith ?? "akun yang sama"}
                       </span>
                     )}
-                  </TableCell>
-                  <TableCell className="text-muted">
-                    {accountLabels.get(channel.accountId) ?? "—"}
-                  </TableCell>
-                  <TableCell className="text-muted">
-                    {channel.branchId === null
-                      ? "Semua cabang"
-                      : (branchLabels.get(channel.branchId) ?? "—")}
-                  </TableCell>
-                  {/* tabular-nums so the column does not shift — ui-rules §5. */}
-                  <TableCell className="text-right tabular-nums text-muted">
-                    {channel.mdrPercent > 0 ? `${channel.mdrPercent}%` : "—"}
                   </TableCell>
                   <TableCell>
                     <Badge

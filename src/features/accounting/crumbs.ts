@@ -14,9 +14,13 @@ import type { Crumb } from "@/components";
  */
 export const ACCOUNTING_CRUMBS = {
   hub: { label: "Keuangan", href: "/dashboard/keuangan" },
-  transactions: {
-    label: "Transaksi",
-    href: "/dashboard/keuangan/transaksi",
+  /**
+   * Kas & Bank — and the trail a transaction hangs from, since Transaksi became
+   * its first sub-tab rather than a tab of its own.
+   */
+  cashBank: {
+    label: "Kas & Bank",
+    href: "/dashboard/keuangan/kas-bank",
   },
   profitLoss: {
     label: "Laba Rugi",

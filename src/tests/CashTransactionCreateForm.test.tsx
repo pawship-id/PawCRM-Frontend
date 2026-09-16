@@ -226,7 +226,7 @@ describe("CashTransactionCreateForm", () => {
       }),
     );
     expect(swalToast).toHaveBeenCalledWith("Transaksi BKK/CBS/2609/0004 tersimpan.");
-    expect(mockPush).toHaveBeenCalledWith("/dashboard/keuangan/transaksi/ct9");
+    expect(mockPush).toHaveBeenCalledWith("/dashboard/keuangan/kas-bank/transaksi/ct9");
   });
 
   it("adds up several lines into the transaction's total", async () => {

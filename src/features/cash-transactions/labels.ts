@@ -13,10 +13,28 @@ import { formatMoney } from "@/utils/decimal";
  * detail, the form and the invoice's payment page never name one kind two ways.
  */
 
-export const CASH_TRANSACTIONS_HREF = "/dashboard/keuangan/transaksi";
+/**
+ * Where the LIST lives — the Kas & Bank tab, whose first sub-tab it is.
+ *
+ * IT MOVED UNDER KAS & BANK on 16 September 2026, with the mockup: Transaksi
+ * stopped being a tab of its own and became the first of two sub-tabs there,
+ * under the cards and the channel table that say where the money sits. The old
+ * `/dashboard/keuangan/transaksi` redirects here.
+ */
+export const CASH_TRANSACTIONS_HREF = "/dashboard/keuangan/kas-bank";
+
+/**
+ * Where a single transaction lives — a level deeper than the list.
+ *
+ * SEPARATE FROM THE LIST'S HREF, which they used to share. The list is a sub-tab
+ * of a page that also carries a channel table and its own `new`/`[id]` routes,
+ * so a transaction cannot hang directly off it: `/kas-bank/9f2…` is a CHANNEL.
+ */
+export const CASH_TRANSACTION_DETAIL_HREF =
+  "/dashboard/keuangan/kas-bank/transaksi";
 
 export function cashTransactionHref(id: string): string {
-  return `${CASH_TRANSACTIONS_HREF}/${id}`;
+  return `${CASH_TRANSACTION_DETAIL_HREF}/${id}`;
 }
 
 /** In the order a shop meets them: money coming in, money going out, the rest. */

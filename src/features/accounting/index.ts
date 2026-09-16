@@ -28,6 +28,12 @@
 export { AccountingModuleHeader } from "./components/AccountingModuleHeader";
 export { FinanceDashboardScreen } from "./components/FinanceDashboardScreen";
 /**
+ * The context bar every Keuangan screen wears — Cabang, Lini Usaha, Periode.
+ * Exported because Kas & Bank borrows it too, and four screens each rolling
+ * their own would be the fifteen-toolbars mistake with a different noun.
+ */
+export { FinanceReportToolbar } from "./components/FinanceReportToolbar";
+/**
  * The two report screens, rendering FIXTURES rather than the ledger — see
  * ./data/reportFixtures.ts. They are here so the routes can reach them and the
  * layout can be reviewed; the swap to a real endpoint is a change of source
