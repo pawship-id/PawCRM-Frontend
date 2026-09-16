@@ -5525,7 +5525,18 @@ export interface InvoiceBooking {
     serviceId: string | null;
     name: string;
     price: string;
-    addons: { serviceId: string | null; name: string; price: string }[];
+    /**
+     * This line's part of "Diskon seluruh booking" — inside the invoice line's
+     * discount, not beside it (15 September 2026). Null when there is none;
+     * optional only because older fixtures lack it.
+     */
+    bookingShare?: string | null;
+    addons: {
+      serviceId: string | null;
+      name: string;
+      price: string;
+      bookingShare?: string | null;
+    }[];
   };
   /** The first person on the first live session, or null when nobody is. */
   groomerUserId: string | null;

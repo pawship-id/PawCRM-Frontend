@@ -47,6 +47,124 @@ const invoice = (overrides = {}): CustomerInvoiceDetail =>
   }) as unknown as CustomerInvoiceDetail;
 
 /*
+  "DISKON BOOKING" DIRECTLY UNDER "DISKON ITEM" (15 September 2026), as the till
+  and the new-invoice form show it. A pulled booking line carries its own
+  discount and its share of "Diskon seluruh booking" as one line discount; the
+  booking view says which part is the share, and the table splits the total.
+*/
+describe("Diskon booking", () => {
+  const booked = (overrides = {}) =>
+    line({
+      kind: "service",
+      sku: null,
+      qty: "1.0000",
+      hppAtTime: null,
+      petId: "pet-cici",
+      petName: "Cici",
+      bookingId: "bk-3",
+      ...overrides,
+    });
+
+  const withShares = (grooming: string, extra: string, itemDiscount: string) =>
+    invoice({
+      items: [
+        booked({
+          refId: "svc-groom",
+          name: "Basic Grooming",
+          unitPrice: "120000.0000",
+          lineTotal: "120000.0000",
+          discount: { mode: "amount", value: grooming, resolvedAmount: grooming },
+        }),
+        booked({
+          refId: "svc-extra",
+          name: "Extra Handling",
+          parentServiceId: "svc-groom",
+          unitPrice: "20000.0000",
+          lineTotal: "20000.0000",
+          discount: { mode: "amount", value: extra, resolvedAmount: extra },
+        }),
+      ],
+      bookings: [
+        {
+          _id: "bk-3",
+          service: {
+            serviceId: "svc-groom",
+            name: "Basic Grooming",
+            price: "120000.0000",
+            bookingShare: "2170.0000",
+            addons: [
+              {
+                serviceId: "svc-extra",
+                name: "Extra Handling",
+                price: "20000.0000",
+                bookingShare: "377.0000",
+              },
+            ],
+          },
+        },
+      ],
+      totals: {
+        subtotal: "140000.0000",
+        itemDiscount,
+        invoiceDiscount: "0.0000",
+        dpp: "0.0000",
+        tax: "0.0000",
+        grandTotal: "0.0000",
+      },
+    });
+
+  it("shows the lines' own discount, and the bookings' share right under it", () => {
+    render(
+      <InvoiceItemsTable invoice={withShares("7170.0000", "377.0000", "7547.0000")} />,
+    );
+
+    expect(screen.getByText("Diskon item").parentElement?.textContent).toContain(
+      "Rp 5.000",
+    );
+    expect(screen.getByText("Diskon booking").parentElement?.textContent).toContain(
+      "Rp 2.547",
+    );
+  });
+
+  /*
+    A ROW SHOWS ITS OWN DISCOUNT ONLY, and its total is not reduced by the share
+    (16 September 2026) — "Diskon booking" is taken off once, in the recap.
+  */
+  it("lists and takes off only each row's own discount", () => {
+    render(
+      <InvoiceItemsTable invoice={withShares("7170.0000", "377.0000", "7547.0000")} />,
+    );
+
+    const rowOf = (name: string) =>
+      screen.getAllByRole("row").find((row) => row.textContent?.includes(name))!;
+
+    const grooming = within(rowOf("Basic Grooming"));
+    expect(grooming.getByText("−Rp 5.000")).toBeInTheDocument();
+    expect(grooming.queryByText("−Rp 7.170")).not.toBeInTheDocument();
+    expect(grooming.getByText("Rp 115.000")).toBeInTheDocument();
+
+    /* All of the add-on's discount is share — so the row carries none. */
+    const extra = within(rowOf("Extra Handling"));
+    expect(extra.queryByText("−Rp 377")).not.toBeInTheDocument();
+    /* The Diskon cell reads "—" (a <td>); the Pajak cell's own "—" is a <span>. */
+    expect(extra.getAllByText("—").some((node) => node.tagName === "TD")).toBe(true);
+    expect(extra.getAllByText("Rp 20.000").length).toBeGreaterThan(0);
+  });
+
+  it("never shows more share than the line still carries after an edit", () => {
+    /* The grooming's discount was cut to 1.000 on the invoice — below its 2.170 share. */
+    render(
+      <InvoiceItemsTable invoice={withShares("1000.0000", "377.0000", "1377.0000")} />,
+    );
+
+    expect(screen.queryByText("Diskon item")).not.toBeInTheDocument();
+    expect(screen.getByText("Diskon booking").parentElement?.textContent).toContain(
+      "Rp 1.377",
+    );
+  });
+});
+
+/*
   ADD-ONS (14 September 2026). "Parfum" ticked under "Mandi Full" reads as part
   of the bath: directly under it, marked, whatever order the lines were stored
   in. The server resolved `parentServiceId`; the table only places the row.

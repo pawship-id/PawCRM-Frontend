@@ -24,7 +24,17 @@ import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
 import { petService } from "@/services/pet.service";
-import { formatMoney, trimDecimal, trimQty } from "@/utils/decimal";
+import {
+  divideRound,
+  formatMoney,
+  isPositive,
+  subtractDecimals,
+  sumDecimals,
+  toDecimalString,
+  toMinor,
+  trimDecimal,
+  trimQty,
+} from "@/utils/decimal";
 import { AXIS_LABEL, priceForPet } from "@/utils/serviceVariant";
 import type {
   CustomerInvoiceDetail,
@@ -33,6 +43,7 @@ import type {
   UpdateCustomerInvoiceInput,
 } from "@/types/api";
 
+import { invoiceBookingShareOf } from "../bookingDiscount";
 import { useInvoiceLookups } from "../hooks/useInvoiceLookups";
 import { previewInvoice } from "../invoicePreview";
 
@@ -55,6 +66,35 @@ interface EditLine {
   petName: string | null;
   /** Billed from a booking — one per animal, so the quantity is fixed at 1. */
   booked: boolean;
+  /**
+   * The line's part of "Diskon seluruh booking" — "0" on everything else
+   * (16 September 2026). The discount fields hold the line's OWN discount; the
+   * server adds this back on save, and the recap shows it as "Diskon booking".
+   */
+  bookingShare: string;
+}
+
+const HUNDRED_MINOR = BigInt(100) * BigInt(10_000);
+
+/**
+ * What the line's own discount takes off `basisMinor` — the server's rule
+ * (`utils/discount.js`): a percent half-up and never past 100, a rupiah amount
+ * never past what it is taken from. Invalid or empty takes nothing.
+ */
+function ownDiscountMinor(
+  basisMinor: bigint,
+  mode: InvoiceDiscountMode,
+  value: string,
+): bigint {
+  const typed = value === "" ? null : toMinor(value.replace(",", "."));
+  if (typed === null || typed <= BigInt(0) || basisMinor <= BigInt(0)) return BigInt(0);
+
+  const off =
+    mode === "percent"
+      ? divideRound(basisMinor * (typed > HUNDRED_MINOR ? HUNDRED_MINOR : typed), HUNDRED_MINOR)
+      : typed;
+
+  return off > basisMinor ? basisMinor : off;
 }
 
 /** Nobody has a hundred animals; this is a ceiling, not a page size. */
@@ -105,22 +145,45 @@ export function InvoiceEditor({
 
   const initialLines = useMemo<EditLine[]>(
     () =>
-      (invoice.items ?? []).map((item, index) => ({
-        key: `simpan-${index}`,
-        fromIndex: index,
-        kind: item.kind,
-        refId: item.refId,
-        name: item.name,
-        sku: item.sku,
-        unitPrice: item.unitPrice,
-        qty: trimQty(item.qty),
-        discountMode: item.discount?.mode ?? "percent",
-        discountValue: item.discount ? trimDecimal(item.discount.value) : "",
-        petId: item.petId ?? "",
-        petName: item.petName,
-        booked: Boolean(item.bookingId),
-      })),
-    [invoice.items],
+      (invoice.items ?? []).map((item, index) => {
+        /*
+          THE LINE'S OWN DISCOUNT IN THE FIELDS — the stored figure less its
+          part of "Diskon seluruh booking", as the invoice's read view shows it.
+          A line with a share holds a nominal figure by then, so its own part is
+          shown in rupiah.
+        */
+        const share = invoiceBookingShareOf(item, invoice.bookings ?? []) ?? "0";
+        const own =
+          item.discount && isPositive(share)
+            ? subtractDecimals(item.discount.resolvedAmount, share)
+            : null;
+
+        return {
+          key: `simpan-${index}`,
+          fromIndex: index,
+          kind: item.kind,
+          refId: item.refId,
+          name: item.name,
+          sku: item.sku,
+          unitPrice: item.unitPrice,
+          qty: trimQty(item.qty),
+          discountMode:
+            own !== null ? "amount" : (item.discount?.mode ?? "percent"),
+          discountValue:
+            own !== null
+              ? isPositive(own)
+                ? trimDecimal(own)
+                : ""
+              : item.discount
+                ? trimDecimal(item.discount.value)
+                : "",
+          petId: item.petId ?? "",
+          petName: item.petName,
+          booked: Boolean(item.bookingId),
+          bookingShare: share,
+        };
+      }),
+    [invoice.items, invoice.bookings],
   );
 
   const [lines, setLines] = useState<EditLine[]>(initialLines);
@@ -193,6 +256,29 @@ export function InvoiceEditor({
 
   const hasProductLine = lines.some((line) => line.kind === "product");
   const hasServiceLine = lines.some((line) => line.kind === "service");
+
+  /*
+    WHAT THE SERVER WILL STORE ON THE LINE — its own discount, measured against
+    the price less the booking's share, plus that share, as one nominal figure.
+    The preview bills exactly that; the fields only ever hold the own part.
+  */
+  function previewDiscountOf(line: EditLine) {
+    const typed = line.discountValue
+      ? { mode: line.discountMode, value: line.discountValue }
+      : null;
+
+    if (!isPositive(line.bookingShare)) return typed;
+
+    const priceMinor = toMinor(line.unitPrice) ?? BigInt(0);
+    const shareMinor = toMinor(line.bookingShare) ?? BigInt(0);
+    const capped = shareMinor > priceMinor ? priceMinor : shareMinor;
+    const own = ownDiscountMinor(priceMinor - capped, line.discountMode, line.discountValue);
+
+    return { mode: "amount" as const, value: toDecimalString(own + capped) };
+  }
+
+  /* The bookings' shares across the edit — shown once, under "Diskon item". */
+  const bookingShares = sumDecimals(lines.map((line) => line.bookingShare));
   /*
     ASKED ONLY WHEN THE INVOICE SHIPPED NOTHING BEFORE. One that already moved
     stock keeps its warehouse: the reversal has to put its goods back on the
@@ -206,9 +292,7 @@ export function InvoiceEditor({
         lines.map((line) => ({
           qty: line.qty,
           unitPrice: line.unitPrice,
-          discount: line.discountValue
-            ? { mode: line.discountMode, value: line.discountValue }
-            : null,
+          discount: previewDiscountOf(line),
         })),
         invoiceDiscountValue
           ? { mode: invoiceDiscountMode, value: invoiceDiscountValue }
@@ -377,6 +461,7 @@ export function InvoiceEditor({
         petId: "",
         petName: null,
         booked: false,
+        bookingShare: "0",
       },
     ]);
     setPicked("");
@@ -488,15 +573,19 @@ export function InvoiceEditor({
         )}
       </div>
 
+      {/*
+        WIDE ENOUGH FOR ITS INPUTS, scrolling sideways when the card is not —
+        a discount field squeezed to two characters cannot be read back.
+      */}
       <div className="overflow-x-auto">
-        <Table>
+        <Table className="min-w-225">
           <TableHeader>
             <TableRow>
               <TableHead>Item</TableHead>
               {hasServiceLine && <TableHead className="w-44">Hewan</TableHead>}
               <TableHead className="text-right">Harga</TableHead>
               <TableHead className="w-24">Jumlah</TableHead>
-              <TableHead className="w-44">Diskon</TableHead>
+              <TableHead className="min-w-64">Diskon</TableHead>
               <TableHead className="text-right">Total</TableHead>
               <TableHead className="w-12" />
             </TableRow>
@@ -578,7 +667,7 @@ export function InvoiceEditor({
                   <div className="flex gap-1">
                     <select
                       aria-label={`Jenis diskon ${line.name}`}
-                      className="h-9 rounded-md border border-border bg-surface px-2 text-sm focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                      className="h-9 shrink-0 rounded-md border border-border bg-surface px-2 text-sm focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
                       value={line.discountMode}
                       onChange={(event) =>
                         patchLine(line.key, {
@@ -593,6 +682,7 @@ export function InvoiceEditor({
                     </select>
                     <Input
                       aria-label={`Diskon ${line.name}`}
+                      className="min-w-32 text-right tabular-nums"
                       value={line.discountValue}
                       inputMode="decimal"
                       placeholder="0"
@@ -604,9 +694,15 @@ export function InvoiceEditor({
                       disabled={saving}
                     />
                   </div>
-                  {preview.lineDiscounts[index] !== "0.0000" && (
+                  {/* The line's own part only — the share is in the recap. */}
+                  {isPositive(
+                    subtractDecimals(preview.lineDiscounts[index], line.bookingShare),
+                  ) && (
                     <span className="mt-1 block text-xs text-danger-ink tabular-nums">
-                      −{formatMoney(preview.lineDiscounts[index])}
+                      −
+                      {formatMoney(
+                        subtractDecimals(preview.lineDiscounts[index], line.bookingShare),
+                      )}
                     </span>
                   )}
                 </TableCell>
@@ -698,12 +794,19 @@ export function InvoiceEditor({
             <dt className="text-muted">Subtotal</dt>
             <dd className="tabular-nums">{formatMoney(preview.subtotal)}</dd>
           </div>
+          {/* The lines' own discounts, then the bookings' shares — as on the read view. */}
           <div className="flex justify-between gap-4">
             <dt className="text-muted">Diskon item</dt>
             <dd className="tabular-nums">
-              −{formatMoney(preview.itemDiscount)}
+              −{formatMoney(subtractDecimals(preview.itemDiscount, bookingShares))}
             </dd>
           </div>
+          {isPositive(bookingShares) && (
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted">Diskon booking</dt>
+              <dd className="tabular-nums">−{formatMoney(bookingShares)}</dd>
+            </div>
+          )}
           <div className="flex justify-between gap-4">
             <dt className="text-muted">Diskon faktur</dt>
             <dd className="tabular-nums">

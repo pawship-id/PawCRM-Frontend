@@ -31,7 +31,9 @@ import { petService } from "@/services/pet.service";
 import {
   formatMoney,
   formatQty,
+  isPositive,
   subtractDecimals,
+  sumDecimals,
   toMinor,
 } from "@/utils/decimal";
 import { AXIS_LABEL, priceForPet } from "@/utils/serviceVariant";
@@ -48,6 +50,7 @@ import type { Product } from "@/types/inventory";
 
 import { useInvoiceLineStock } from "../hooks/useInvoiceLineStock";
 import { useInvoiceLookups } from "../hooks/useInvoiceLookups";
+import { bookingShareOf } from "../bookingDiscount";
 import { previewInvoice } from "../invoicePreview";
 import { InvoiceAddItemsDialog } from "./InvoiceAddItemsDialog";
 import { InvoiceAddonPicker } from "./InvoiceAddonPicker";
@@ -177,6 +180,14 @@ export function InvoiceCreateForm() {
     server will read from the bookings themselves — the main service, then each
     add-on as a line of its own, in the order the server assembles them.
   */
+  /*
+    THE PULLED BOOKINGS' SHARES OF "DISKON SELURUH BOOKING" (15 September 2026).
+    They ride inside each booking line's discount below, so the preview's
+    `itemDiscount` already counts them; the recap shows them apart, under
+    "Diskon baris", the way the till does.
+  */
+  const bookingShares = sumDecimals(pulledBookings.map(bookingShareOf));
+
   const bookingLines = pulledBookings.flatMap((booking) =>
     [booking.service, ...booking.service.addons].map((line) => ({
       qty: "1",
@@ -1335,12 +1346,22 @@ export function InvoiceCreateForm() {
                   {formatMoney(preview.subtotal)}
                 </dd>
               </div>
+              {/* The lines' own discounts — the bookings' shares follow. */}
               <div className="flex justify-between gap-4">
                 <dt className="text-muted">Diskon baris</dt>
-                <dd className="tabular-nums">
-                  −{formatMoney(preview.itemDiscount)}
+                {/* Green, as the till draws a discount. */}
+                <dd className="tabular-nums text-success">
+                  −{formatMoney(subtractDecimals(preview.itemDiscount, bookingShares))}
                 </dd>
               </div>
+              {isPositive(bookingShares) && (
+                <div className="flex justify-between gap-4">
+                  <dt className="text-muted">Diskon booking</dt>
+                  <dd className="tabular-nums text-success">
+                    −{formatMoney(bookingShares)}
+                  </dd>
+                </div>
+              )}
               {/* TYPED IN ITS OWN ROW, as the mockup draws it. What it comes
                   to shows in the Total below — no line of its own under the
                   field (removed 14 Sep 2026 on request). */}

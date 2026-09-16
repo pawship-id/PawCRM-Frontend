@@ -11,6 +11,8 @@ import { bookingService } from "@/services/booking.service";
 import { formatMoney } from "@/utils/decimal";
 import type { Booking } from "@/types/api";
 
+import { afterOwnDiscounts, ownDiscountOfLine } from "../bookingDiscount";
+
 /**
  * THE CUSTOMER'S BOOKINGS, ready to be billed on this invoice — PCR-034.
  *
@@ -142,13 +144,14 @@ export function InvoiceBookingPanel({
 
       {bookings.map((booking) => {
         const id = booking._id;
-        /* After the booking's own discounts, which the invoice pulls too. */
-        const total =
-          booking.netAmount ??
-          booking.service.addons.reduce(
-            (sum, addon) => sum + Number(addon.price),
-            Number(booking.service.price),
-          );
+        /*
+          AFTER EACH LINE'S OWN DISCOUNT, BEFORE THE BOOKING'S SHARE (15
+          September 2026). The lines below show their own discounts, so this is
+          what they add up to; the share of "Diskon seluruh booking" is shown
+          once, in the recap under "Diskon baris" — the till does the same.
+        */
+        const total = afterOwnDiscounts(booking);
+        const mainOwn = ownDiscountOfLine(booking.service);
 
         return (
           <label
@@ -172,27 +175,60 @@ export function InvoiceBookingPanel({
                   {booking.petName ?? "Hewan terhapus"}
                 </span>
                 <span className="tabular-nums text-sm">
-                  {formatMoney(String(total))}
+                  {formatMoney(total)}
                 </span>
               </span>
               <span className="block text-xs text-muted">
                 {booking.bookingNumber ?? "—"}
               </span>
-              <ul className="mt-1 flex flex-col gap-0.5 text-xs text-muted">
-                <li>
-                  {booking.service.name}
-                  {/* Never null — the server resolves an unassigned slot to
-                      "Belum ditentukan" once, rather than three screens each
-                      inventing their own word for it. */}
-                  {booking.groomerName ? ` · ${booking.groomerName}` : ""}
+              {/*
+                PRICED LINE BY LINE, AS THE TILL DRAWS A PULLED BOOKING — each
+                line's price, and its own discount under it.
+              */}
+              <ul className="mt-1.5 flex flex-col gap-1 text-xs">
+                <li className="flex flex-col">
+                  <span className="flex justify-between gap-2">
+                    <span className="text-foreground">
+                      {booking.service.name}
+                      {/* Never null — the server resolves an unassigned slot to
+                          "Belum ditentukan" once, rather than three screens each
+                          inventing their own word for it. */}
+                      {booking.groomerName ? ` · ${booking.groomerName}` : ""}
+                    </span>
+                    <span className="tabular-nums text-muted">
+                      {formatMoney(booking.service.price)}
+                    </span>
+                  </span>
+                  {mainOwn && (
+                    <span className="tabular-nums text-success">
+                      −{formatMoney(mainOwn)}
+                    </span>
+                  )}
                 </li>
                 {/* Under the service they came with — nobody chose "Parfum"
                     by itself. */}
-                {booking.service.addons.map((addon) => (
-                  <li key={addon.itemId} className="pl-3">
-                    {addon.name}
-                  </li>
-                ))}
+                {booking.service.addons.map((addon) => {
+                  const own = ownDiscountOfLine(addon);
+
+                  return (
+                    <li
+                      key={addon.itemId}
+                      className="ml-1 flex flex-col border-l border-border pl-2"
+                    >
+                      <span className="flex justify-between gap-2">
+                        <span className="text-foreground">+ {addon.name}</span>
+                        <span className="tabular-nums text-muted">
+                          {formatMoney(addon.price)}
+                        </span>
+                      </span>
+                      {own && (
+                        <span className="tabular-nums text-success">
+                          −{formatMoney(own)}
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </span>
           </label>

@@ -24,6 +24,8 @@ import type {
   CustomerInvoiceTotals,
 } from "@/types/api";
 
+import { invoiceBookingShareOf, invoiceBookingShares } from "../bookingDiscount";
+
 const ZERO = BigInt(0);
 
 /** A decimal string to minor units, with anything absent read as zero. */
@@ -176,8 +178,22 @@ export function InvoiceItemsTable({
   const discountLabel = (mode: string, value: string) =>
     mode === "percent" ? `${Number(value)}%` : formatMoney(value);
 
+  /*
+    THE LINE'S OWN DISCOUNT — without its part of "Diskon seluruh booking"
+    (16 September 2026). The share is shown once, as "Diskon booking" in the
+    recap under "Diskon item", so a row neither lists it nor takes it off its
+    total. The stored line discount still holds both; only the reading splits.
+  */
+  const ownOffOf = (item: CustomerInvoiceItem): string =>
+    item.discount
+      ? subtractDecimals(
+          item.discount.resolvedAmount,
+          invoiceBookingShareOf(item, bookings) ?? "0",
+        )
+      : "0";
+
   const lineAmount = (item: CustomerInvoiceItem) => {
-    let amount = minor(item.lineTotal) - minor(item.discount?.resolvedAmount);
+    let amount = minor(item.lineTotal) - minor(ownOffOf(item));
     if (addedOnTop && item.tax) amount += minor(item.tax);
     return toDecimalString(amount);
   };
@@ -349,7 +365,7 @@ export function InvoiceItemsTable({
                         {formatQty(item.qty)}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {item.discount ? (
+                        {item.discount && isPositive(ownOffOf(item)) ? (
                           <>
                             {/* RED, as the mockup draws a deduction. The
                                 brighter `--danger` is under 4.5:1 as plain
@@ -357,11 +373,14 @@ export function InvoiceItemsTable({
                                 paired with a word ("−") — the pairing
                                 ui-rules §13 asks for around that known debt. */}
                             <span className="font-semibold text-danger">
-                              −{formatMoney(item.discount.resolvedAmount)}
+                              −{formatMoney(ownOffOf(item))}
                             </span>
                             {/* What was TYPED, beside what it came to — "10%" is
-                                what was agreed with the customer. */}
-                            {item.discount.mode === "percent" && (
+                                what was agreed with the customer. Only when the
+                                figure is all the line's own: a share folded in
+                                makes the percent describe something else. */}
+                            {item.discount.mode === "percent" &&
+                              !invoiceBookingShareOf(item, bookings) && (
                               <span className="block text-xs text-muted">
                                 {discountLabel(
                                   item.discount.mode,
@@ -422,14 +441,40 @@ export function InvoiceItemsTable({
             <dd className="tabular-nums">{formatMoney(totals.subtotal)}</dd>
           </div>
 
-          {totals.itemDiscount !== "0.0000" && (
-            <div className="flex justify-between gap-4">
-              <dt className="text-muted">Diskon item</dt>
-              <dd className="tabular-nums font-semibold text-danger">
-                −{formatMoney(totals.itemDiscount)}
-              </dd>
-            </div>
-          )}
+          {/*
+            THE ITEM DISCOUNT, SPLIT AS THE TILL AND THE NEW-INVOICE FORM SHOW IT
+            (15 September 2026) — the lines' own, then the bookings' shares of
+            "Diskon seluruh booking" directly under it. The two add up to
+            `totals.itemDiscount`; nothing about the stored figure changes.
+          */}
+          {(() => {
+            const shares = invoiceBookingShares(
+              invoice.items ?? [],
+              invoice.bookings ?? [],
+            );
+            const own = subtractDecimals(totals.itemDiscount, shares);
+
+            return (
+              <>
+                {isPositive(own) && (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted">Diskon item</dt>
+                    <dd className="tabular-nums font-semibold text-danger">
+                      −{formatMoney(own)}
+                    </dd>
+                  </div>
+                )}
+                {isPositive(shares) && (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted">Diskon booking</dt>
+                    <dd className="tabular-nums font-semibold text-danger">
+                      −{formatMoney(shares)}
+                    </dd>
+                  </div>
+                )}
+              </>
+            );
+          })()}
 
           {/*
             KEYED ON THE AMOUNT, not on the typed discount beside it. A till sale

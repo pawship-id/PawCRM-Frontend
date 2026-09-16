@@ -143,6 +143,68 @@ describe("InvoiceEditor", () => {
     expect(onSaved).toHaveBeenCalled();
   });
 
+  /*
+    THE FIELDS HOLD THE LINE'S OWN DISCOUNT (16 September 2026). A pulled
+    appointment's stored discount includes its share of "Diskon seluruh booking";
+    the editor shows the share once in the recap, and sends only the own part —
+    the server adds the share back from the booking.
+  */
+  it("shows and sends a booked line's own discount, with the booking's share in the recap", async () => {
+    const user = userEvent.setup();
+    renderEditor(
+      invoice({
+        items: [
+          line(),
+          line({
+            kind: "service",
+            refId: "s1",
+            name: "Grooming Basic",
+            sku: null,
+            qty: "1.0000",
+            unitPrice: "120000.0000",
+            lineTotal: "120000.0000",
+            discount: { mode: "amount", value: "7170.0000", resolvedAmount: "7170.0000" },
+            bookingId: "bk1",
+            petId: "pet1",
+            petName: "Miko",
+          }),
+        ],
+        bookings: [
+          {
+            _id: "bk1",
+            service: {
+              serviceId: "s1",
+              name: "Grooming Basic",
+              price: "120000.0000",
+              bookingShare: "2170.0000",
+              addons: [],
+            },
+          },
+        ],
+      } as never),
+    );
+
+    const discount = await screen.findByLabelText("Diskon Grooming Basic");
+    expect(discount).toHaveValue("5000");
+    expect(screen.getByLabelText("Jenis diskon Grooming Basic")).toHaveValue("amount");
+    expect(screen.getByText("Diskon booking").parentElement?.textContent).toContain(
+      "Rp 2.170",
+    );
+
+    const qty = screen.getByLabelText("Jumlah Kalung Nylon");
+    await user.clear(qty);
+    await user.type(qty, "3");
+    await user.click(screen.getByRole("button", { name: "Simpan faktur" }));
+
+    await waitFor(() => expect(customerInvoiceService.update).toHaveBeenCalled());
+    const [, body] = asMock(customerInvoiceService.update).mock.calls[0];
+    expect(body.items[1]).toMatchObject({
+      refId: "s1",
+      discount: { mode: "amount", value: "5000" },
+      fromIndex: 1,
+    });
+  });
+
   it("leaves a removed line out of the list altogether", async () => {
     const user = userEvent.setup();
     renderEditor();

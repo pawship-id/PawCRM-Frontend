@@ -100,14 +100,17 @@ describe("what it shows", () => {
     ]);
     open();
 
-    expect(await screen.findByText("Potong kuku")).toBeInTheDocument();
+    /* "+ name" and its own price, the way the till draws an add-on. */
+    expect(await screen.findByText("+ Potong kuku")).toBeInTheDocument();
+    expect(screen.getByText("Rp 30.000")).toBeInTheDocument();
     expect(screen.getByText("Rp 180.000")).toBeInTheDocument();
   });
 
   it("adds the booking up", async () => {
     open();
 
-    expect(await screen.findByText("Rp 150.000")).toBeInTheDocument();
+    /* Twice: the card's total, and the service's own price on its line. */
+    expect(await screen.findAllByText("Rp 150.000")).toHaveLength(2);
   });
 
   it("says so plainly when there is nothing to bill", async () => {
@@ -184,6 +187,47 @@ describe("choosing", () => {
     open();
 
     expect(await screen.findByText("Rp 150.000")).toBeInTheDocument();
+  });
+
+  /*
+    PRICED LINE BY LINE, AS THE TILL DRAWS IT (15 September 2026): each line's
+    price and its OWN discount. The booking's share of "Diskon seluruh booking"
+    (here 2.547, riding in `discountAmount`) is not on the card — it is shown
+    once in the invoice's recap — so the card's figure is before it.
+  */
+  it("prices each line with its own discount, and totals before the booking's share", async () => {
+    (bookingService.bridge as jest.Mock).mockResolvedValue([
+      booking({
+        petName: "Cici",
+        service: {
+          serviceId: "svc1",
+          name: "Basic Grooming",
+          price: "120000.0000",
+          discount: { mode: "amount", value: "5000.0000", resolvedAmount: "5000.0000" },
+          discountAmount: "7170.0000",
+          addons: [
+            {
+              itemId: "ad1",
+              serviceId: "svc2",
+              name: "Extra Handling",
+              price: "20000.0000",
+              discount: null,
+              discountAmount: "377.0000",
+            },
+          ],
+          sessions: [],
+        },
+      } as never),
+    ]);
+    open();
+
+    expect(await screen.findByText("Rp 135.000")).toBeInTheDocument();
+    expect(screen.getByText("Rp 120.000")).toBeInTheDocument();
+    expect(screen.getByText("Rp 20.000")).toBeInTheDocument();
+    expect(screen.getByText("−Rp 5.000")).toBeInTheDocument();
+    /* The share is not drawn on a line. */
+    expect(screen.queryByText("−Rp 377")).not.toBeInTheDocument();
+    expect(screen.queryByText("−Rp 7.170")).not.toBeInTheDocument();
   });
 
   it("counts what will be billed", async () => {
