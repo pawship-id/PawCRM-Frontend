@@ -5,31 +5,21 @@ import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
+import { usePetOptions } from "@/hooks/usePetOptions";
 import { customerService } from "@/services/customer.service";
 import type { Pet } from "@/types/api";
 
 import { PetSpeciesBadge, PetStatusBadge } from "./PetBadges";
 
+/*
+  SEX STAYS A MAP HERE — it is a closed enum on the model. Breed, size and coat
+  do not: they are the tenant's own lists since 14 Sep 2026, and their words come
+  from `usePetOptions().label()` below.
+*/
 const SEX_LABELS: Record<string, string> = {
   male: "Jantan",
   female: "Betina",
   unknown: "Tidak diketahui",
-};
-
-const BREED_LABELS: Record<string, string> = {
-  domestic: "Domestic",
-  poodle: "Poodle",
-};
-
-const FUR_TYPE_LABELS: Record<string, string> = {
-  "long hair": "Berbulu panjang",
-  "short hair": "Berbulu pendek",
-};
-
-const SIZE_LABELS: Record<string, string> = {
-  small: "Kecil",
-  medium: "Sedang",
-  large: "Besar",
 };
 
 /** A date somebody reads. */
@@ -84,6 +74,7 @@ function age(iso: string | null): string | null {
  */
 export function PetInfoTab({ pet }: { pet: Pet }) {
   const [ownerName, setOwnerName] = useState<string | null>(null);
+  const { label } = usePetOptions();
 
   useEffect(() => {
     let active = true;
@@ -149,12 +140,9 @@ export function PetInfoTab({ pet }: { pet: Pet }) {
             )
           }
         />
-        <Row label="Ras" value={pet.breed ? (BREED_LABELS[pet.breed] ?? pet.breed) : "—"} />
-        <Row label="Ukuran" value={pet.size ? (SIZE_LABELS[pet.size] ?? pet.size) : "—"} />
-        <Row
-          label="Jenis bulu"
-          value={pet.furType ? (FUR_TYPE_LABELS[pet.furType] ?? pet.furType) : "—"}
-        />
+        <Row label="Ras" value={label("breed", pet.breed) ?? "—"} />
+        <Row label="Ukuran" value={label("size", pet.size) ?? "—"} />
+        <Row label="Jenis bulu" value={label("furType", pet.furType) ?? "—"} />
         <Row label="Kelamin" value={SEX_LABELS[pet.sex] ?? pet.sex} />
         <Row
           label="Lahir"

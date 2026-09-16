@@ -62,7 +62,11 @@ export function FilterOptionList<T>({
   const visible = React.useMemo(() => {
     const q = term.trim().toLowerCase();
     if (!q) return options;
-    return options.filter((o) => o.label.toLowerCase().includes(q));
+    return options.filter(
+      (o) =>
+        o.label.toLowerCase().includes(q) ||
+        Boolean(o.meta?.toLowerCase().includes(q)),
+    );
   }, [options, term]);
 
   // Clamped during render rather than corrected in an effect: filtering can
@@ -171,6 +175,11 @@ export function FilterOptionList<T>({
                 />
               </span>
               <span className="truncate">{option.label}</span>
+              {option.meta && (
+                <span className="ml-auto shrink-0 pl-3 text-xs text-muted tabular-nums">
+                  {option.meta}
+                </span>
+              )}
               {option.count !== undefined && (
                 <span className="ml-auto text-xs text-muted">
                   {option.count}

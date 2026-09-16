@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarClock, EllipsisVertical } from "lucide-react";
+import { CalendarClock, ChevronDown, EllipsisVertical } from "lucide-react";
 
 import { Alert, TextareaField } from "@/components";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,7 @@ import { Can, usePermissions } from "@/features/permissions";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
-import type { Booking, BookingPet, BookingStatus } from "@/types/api";
+import type { Booking, BookingStatus } from "@/types/api";
 
 import {
   BOOKING_STATUS_ACTIONS,
@@ -33,7 +33,10 @@ import {
   forwardStatuses,
   impliedStatuses,
 } from "../statusFlow";
-import { BOOKING_STATUS_LABELS } from "./BookingStatusBadge";
+import {
+  BOOKING_STATUS_LABELS,
+  BookingStatusBadge,
+} from "./BookingStatusBadge";
 import { BookingRescheduleDialog } from "./BookingRescheduleDialog";
 
 /** Mirrors NOTES_MAX_LENGTH in booking.model.js. */
@@ -67,24 +70,12 @@ const REASON_MAX_LENGTH = 500;
  */
 export function BookingStatusActions({
   booking,
-  pet,
   onChanged,
   variant = "compact",
+  dense = false,
 }: {
+  /** ONE booking — one animal, one service — and the status is its own. */
   booking: Booking;
-  /**
-   * THE ANIMAL THIS CONTROL MOVES — PCR-042.
-   *
-   * The status is a fact about one animal: a visit where Mochi has arrived and
-   * Coco has not is in two states, and a single control for the pair could only
-   * be right about one of them. Every screen that shows this now shows one per
-   * animal.
-   *
-   * ⚠️ IT DECIDES BOTH WHAT IS OFFERED AND WHAT IS SENT. `pet.status` builds the
-   * menu; `pet.petId` goes on the wire, so the server moves this animal and
-   * leaves its neighbours where they are.
-   */
-  pet: BookingPet;
   /**
    * Called after a successful move, WITH THE BOOKING THE SERVER JUST RETURNED.
    *
@@ -106,16 +97,31 @@ export function BookingStatusActions({
    *
    * "prominent" — a big primary button for the very next rung, plus a
    * secondary "Other statuses" trigger for everything else (skip-ahead moves,
-   * the trail, cancelling). Built for the per-animal work page, where this is
-   * the one booking-level action on the whole screen.
+   * cancelling). Built for the booking's own page, where this is the one
+   * status action on the whole screen.
    *
-   * BOTH VARIANTS SHARE EVERY LINE OF STATE BELOW THIS POINT — the confirm
+   * "status" — the current status badge IS the trigger, with a chevron: the
+   * Grooming board's Status column (`buloo-grooming-v3.html`), where the badge
+   * and the control sit in one cell. With nothing to offer it is the bare badge
+   * — a chevron that opens onto nothing reads as broken (see `hasMenu`).
+   *
+   * EVERY VARIANT SHARES EVERY LINE OF STATE BELOW THIS POINT — the confirm
    * dialog, the implied-rungs note, the cancel reason, the error handling.
    * Only the trigger markup differs; duplicating the dialog logic for a second
    * look is exactly the "two sources of truth" shape this module keeps
    * producing bugs from.
    */
-  variant?: "compact" | "prominent";
+  variant?: "compact" | "prominent" | "status";
+  /**
+   * "prominent" AT 32 PX INSTEAD OF 40, so its two buttons sit on ONE line in a
+   * side panel — Hari Ini's rail is 21 rem, and at `lg` the pair wraps onto two
+   * rows with a ragged edge under the heading.
+   *
+   * ONLY THE SIZE CHANGES. The primary is still the next rung and the secondary
+   * still opens the rest; a panel that offered different moves from the
+   * booking's own page would be a second state machine to keep in step.
+   */
+  dense?: boolean;
 }) {
   const [next, setNext] = useState<BookingStatus | null>(null);
   const [reason, setReason] = useState("");
@@ -128,8 +134,8 @@ export function BookingStatusActions({
     asked to be fetched or driven home — a menu built from the status alone would
     offer "Mulai penjemputan" on a visit with no van booked.
   */
-  const forward = forwardStatuses(pet, booking);
-  const cancellable = canCancel(pet, booking);
+  const forward = forwardStatuses(booking);
+  const cancellable = canCancel(booking);
   /* Read here as well as through `Can`, and only to decide whether the trigger
      that OPENS the menu is worth drawing — see `hasMenu`. */
   const { can, canAny } = usePermissions();
@@ -139,15 +145,15 @@ export function BookingStatusActions({
     not it advancing — and like cancellation it needs a second piece of
     information, so it opens a dialog rather than firing on click.
   */
-  const reschedulable = canReschedule(pet, booking);
+  const reschedulable = canReschedule(booking);
 
   /*
-    WHAT A HUMAN CALLS THIS ROW — the ANIMAL, since one visit now carries several
-    of these controls. "BK-260910-001 · Mochi" is what a toast has to say for
-    somebody to know which of the two dogs just moved.
+    WHAT A HUMAN CALLS THIS ROW — the number and the animal. A day sheet lists
+    Mochi's and Coco's bookings one under the other, and "BK-260910-001 · Mochi"
+    is what a toast has to say for somebody to know which one just moved.
   */
   const label =
-    [booking.bookingNumber, pet.petName].filter(Boolean).join(" · ") ||
+    [booking.bookingNumber, booking.petName].filter(Boolean).join(" · ") ||
     "booking ini";
 
   function close() {
@@ -171,8 +177,6 @@ export function BookingStatusActions({
         // Stored only on a cancellation, and only when there was something to
         // say — a mandatory field with nothing in it gets filled with "-".
         next === "cancelled" && reason.trim() !== "" ? reason.trim() : null,
-        /* THIS ANIMAL, never the whole visit — see the `pet` prop. */
-        pet.petId,
       );
 
       setNext(null);
@@ -195,7 +199,7 @@ export function BookingStatusActions({
     }
   }
 
-  const implied = next ? impliedStatuses(pet, booking, next) : [];
+  const implied = next ? impliedStatuses(booking, next) : [];
 
   /*
     THE VERY NEXT RUNG, for the prominent variant's primary button.
@@ -213,7 +217,7 @@ export function BookingStatusActions({
   /*
     ─── NO TRIGGER FOR AN EMPTY MENU ───────────────────────────────────────────
 
-    An animal that has finished has no rungs left — `transitionsFor` returns
+    A booking that has finished has no rungs left — `transitionsFor` returns
     nothing past the end of the ladder — and cannot be rescheduled, so
     "Other statuses ▾" opened onto nothing at all. A control that answers a
     click with a blank panel reads as broken, and it invited the press twice:
@@ -239,19 +243,35 @@ export function BookingStatusActions({
       <div className="flex flex-wrap items-center gap-2">
         {variant === "prominent" && primaryMove && (
           <Can feature="bookings" action={["advanceStatus", "update"]}>
-            <Button size="lg" onClick={() => setNext(primaryMove)}>
+            <Button
+              size={dense ? "sm" : "lg"}
+              onClick={() => setNext(primaryMove)}
+            >
               {BOOKING_STATUS_ACTIONS[primaryMove]} →
             </Button>
           </Can>
+        )}
+
+        {variant === "status" && !hasMenu && (
+          <BookingStatusBadge status={booking.status} />
         )}
 
         {hasMenu && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               {variant === "prominent" ? (
-                <Button variant="secondary" size="lg">
+                <Button variant="secondary" size={dense ? "sm" : "lg"}>
                   Other statuses ▾
                 </Button>
+              ) : variant === "status" ? (
+                <button
+                  type="button"
+                  aria-label={`Status ${label}: ${BOOKING_STATUS_LABELS[booking.status]}`}
+                  className="inline-flex min-h-9 items-center gap-1 rounded-full pr-1.5 transition hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                >
+                  <BookingStatusBadge status={booking.status} />
+                  <ChevronDown className="size-4 text-muted" aria-hidden />
+                </button>
               ) : (
                 <Button
                   variant="ghost"
@@ -324,28 +344,10 @@ export function BookingStatusActions({
             <DialogHeader>
               <DialogTitle>{BOOKING_STATUS_ACTIONS[next]}</DialogTitle>
               <DialogDescription>
-                {/*
-                  ⚠️ `booking.petName` USED TO BE APPENDED HERE, and it was a lie
-                  about scope. It is every animal's name joined — "Cici, Cilang" —
-                  left over from when one control moved the whole visit. The move
-                  has named ONE animal since PCR-042, so the dialog read
-                  "BK-… · Cici · Cici, Cilang — statusnya menjadi Confirmed" and
-                  invited somebody to believe both dogs were about to move.
-
-                  `label` ALREADY CARRIES THE NUMBER AND THE ANIMAL, which is
-                  exactly the scope of what is about to happen.
-                */}
+                {/* `label` CARRIES THE NUMBER AND THE ANIMAL — exactly the scope
+                    of what is about to happen. */}
                 {label} — statusnya menjadi {BOOKING_STATUS_LABELS[next]}.
                 Perpindahan status tidak bisa dibatalkan.
-                {/*
-                  SAID OUT LOUD ONLY WHEN THERE IS SOMETHING TO SAY. On a
-                  one-animal visit "hewan lain tidak ikut" answers a question
-                  nobody asked; on a visit with two it is the first thing
-                  somebody wants to know before pressing.
-                */}
-                {booking.pets.length > 1 && (
-                  <> Hewan lain di booking ini tidak ikut berubah.</>
-                )}
               </DialogDescription>
             </DialogHeader>
 

@@ -15,9 +15,11 @@ import type { TypedDiscountInput } from "@/types/api";
  * discount and the screen would disagree with the invoice by a rupiah, which is
  * exactly the kind of difference nobody can explain to a customer.
  *
- * WHAT IT DELIBERATELY DOES NOT COMPUTE: the DPP/PPN split. That is unwound
- * server-side and appears on the issued invoice. The client shows the four figures
- * a person checks before approving — subtotal, both discounts, and what is owed.
+ * EACH LINE'S SLICE OF THE TAX IS COMPUTED, for the form's Pajak column, the
+ * way the server freezes it per line: tax on the WHOLE document, then allocated
+ * back down by each line's net after both discounts, largest remainder first.
+ * The document's DPP itself is still not shown before saving — it appears on
+ * the issued invoice.
  *
  * DRIFT IS THE RISK and it is worth naming: two implementations of one rule can
  * diverge. What keeps them together is that the ORDER is the specification (line
@@ -36,9 +38,17 @@ export interface InvoicePreview {
   lineTotals: string[];
   /** What each line's own discount takes off, after the cap. */
   lineDiscounts: string[];
+  /**
+   * Each line's slice of the invoice's PPN, in the order given — ON TOP of the
+   * line on exclusive pricing, INSIDE it on inclusive. The parts sum to exactly
+   * the document's tax, as the server's do.
+   */
+  lineTaxes: string[];
   subtotal: string;
   itemDiscount: string;
   invoiceDiscount: string;
+  /** Σ of the other charges — added after both discounts, inside the taxed base. */
+  otherCharges: string;
   /**
    * The tax ADDED ON TOP, and zero whenever prices already include it.
    *
@@ -89,10 +99,57 @@ function resolveDiscount(
   return resolved > basis ? basis : resolved;
 }
 
+/** The base inside a tax-inclusive amount — `tax.baseFromGross` on the server. */
+const baseFromGross = (gross: bigint, rate: bigint): bigint =>
+  divideRound(gross * HUNDRED, HUNDRED + rate);
+
+/**
+ * Splits `total` across `weights` in proportion, the parts summing to EXACTLY
+ * the total — `tax.allocate` on the server, rule for rule: floor shares, the
+ * leftover units to the largest discarded fractions, ties to the earlier index,
+ * and everything on the first part when no line carries any weight.
+ */
+function allocate(total: bigint, weights: bigint[]): bigint[] {
+  if (weights.length === 0) return [];
+
+  const weightTotal = weights.reduce((sum, weight) => sum + weight, ZERO);
+  if (weightTotal === ZERO) {
+    return weights.map((_, index) => (index === 0 ? total : ZERO));
+  }
+
+  const parts = weights.map((weight) => (total * weight) / weightTotal);
+  let leftover = total - parts.reduce((sum, part) => sum + part, ZERO);
+
+  const ranked = weights
+    .map((weight, index) => ({ index, remainder: (total * weight) % weightTotal }))
+    .sort((a, b) =>
+      a.remainder === b.remainder ? a.index - b.index : a.remainder > b.remainder ? -1 : 1,
+    );
+
+  for (let rank = 0; leftover > ZERO && rank < ranked.length; rank += 1) {
+    parts[ranked[rank].index] += 1n;
+    leftover -= 1n;
+  }
+
+  return parts;
+}
+
 export function previewInvoice(
   lines: PreviewLine[],
   invoiceDiscount: TypedDiscountInput | null = null,
-  { priceIncludesTax = true, taxRate = 0 }: { priceIncludesTax?: boolean; taxRate?: number } = {},
+  {
+    priceIncludesTax = true,
+    taxRate = 0,
+    otherCharges = [],
+  }: {
+    priceIncludesTax?: boolean;
+    taxRate?: number;
+    /**
+     * Ongkir and the like — ADDED after both discounts and TAXED like a line,
+     * the server's step 5. Only the amounts matter here.
+     */
+    otherCharges?: { amount: string }[];
+  } = {},
 ): InvoicePreview {
   const lineTotals: bigint[] = [];
   const lineDiscounts: bigint[] = [];
@@ -112,7 +169,19 @@ export function previewInvoice(
   const afterItems = subtotal - itemDiscount;
   const documentDiscount = resolveDiscount(afterItems, invoiceDiscount);
 
-  const net = afterItems - documentDiscount;
+  /*
+    OTHER CHARGES ARE ADDED AFTER BOTH DISCOUNTS and are part of the taxed gross —
+    the server's step 5, which is the till's rule. A half-typed amount counts as
+    nothing rather than throwing.
+  */
+  const charges = otherCharges.map((charge) => {
+    const amount = parse(charge.amount);
+    return amount > ZERO ? amount : ZERO;
+  });
+  const chargesTotal = charges.reduce((sum, value) => sum + value, ZERO);
+
+  const net = afterItems - documentDiscount + chargesTotal;
+  const rate = toMinor(String(taxRate)) ?? ZERO;
 
   /*
     WITH INCLUSIVE PRICES THE TOTAL NEEDS NO TAX RATE — the tax is already inside
@@ -120,18 +189,48 @@ export function previewInvoice(
     added on top, and getting this branch wrong understates a bill by the whole
     tax.
   */
-  const taxAdded = priceIncludesTax
-    ? ZERO
-    : divideRound(net * (toMinor(String(taxRate)) ?? ZERO), HUNDRED);
+  const taxAdded = priceIncludesTax ? ZERO : divideRound(net * rate, HUNDRED);
+
+  /*
+    THE DOCUMENT'S TAX, as `tax.applyDiscountThenTax` derives it. Inclusive: the
+    gross and the discounts are unwound SEPARATELY and the tax is what is left
+    between the net and its base — not `baseFromGross(net)`, which rounds once
+    instead of twice and can miss the server by a minor unit.
+  */
+  const documentTax = priceIncludesTax
+    ? net -
+      (baseFromGross(subtotal + chargesTotal, rate) -
+        baseFromGross(itemDiscount + documentDiscount, rate))
+    : taxAdded;
+
+  // PRORATED BY NET LINE VALUE — the invoice discount first, then the tax by
+  // what each line is worth after both discounts.
+  const documentDiscountShares = allocate(
+    documentDiscount,
+    lineTotals.map((total, index) => total - lineDiscounts[index]),
+  );
+  /*
+    THE CHARGES TAKE PART IN THE TAX ALLOCATION, weighted by their amounts after
+    the lines — the server allocates both in one pass. Their slices are dropped
+    here: the form has a Pajak column for lines only.
+  */
+  const lineTaxes = allocate(documentTax, [
+    ...lineTotals.map(
+      (total, index) => total - lineDiscounts[index] - documentDiscountShares[index],
+    ),
+    ...charges,
+  ]).slice(0, lineTotals.length);
 
   const grandTotal = net + taxAdded;
 
   return {
     lineTotals: lineTotals.map(toDecimalString),
     lineDiscounts: lineDiscounts.map(toDecimalString),
+    lineTaxes: lineTaxes.map(toDecimalString),
     subtotal: toDecimalString(subtotal),
     itemDiscount: toDecimalString(itemDiscount),
     invoiceDiscount: toDecimalString(documentDiscount),
+    otherCharges: toDecimalString(chargesTotal),
     taxAdded: toDecimalString(taxAdded),
     grandTotal: toDecimalString(grandTotal),
   };

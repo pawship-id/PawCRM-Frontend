@@ -23,7 +23,11 @@ import { InvoiceScopeCard } from "./InvoiceScopeCard";
 import { InvoiceStatCards } from "./InvoiceStatCards";
 import { RecordPaymentDialog } from "./RecordPaymentDialog";
 import { ReceivablesTable } from "./ReceivablesTable";
-import { ReceivablesToolbar } from "./ReceivablesToolbar";
+import {
+  CLEARED_INVOICE_FILTERS,
+  ReceivablesToolbar,
+  countInvoiceFilters,
+} from "./ReceivablesToolbar";
 import { SalesModuleHeader } from "./SalesModuleHeader";
 import { VoidInvoiceDialog } from "./VoidInvoiceDialog";
 
@@ -139,6 +143,8 @@ export function ReceivablesScreen() {
         options={options}
         summary={summary}
         summaryStale={summaryStale}
+        filterCount={countInvoiceFilters(query)}
+        onReset={() => setQuery(CLEARED_INVOICE_FILTERS)}
       />
 
       <InvoiceStatCards

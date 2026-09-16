@@ -1,11 +1,16 @@
 /**
  * Public surface of the booking feature.
  *
- * `/dashboard/booking` is the list screen; `/dashboard/booking/new` is where a
- * booking is taken. That used to be a dialog on the list and outgrew it when a
- * booking could hold several animals — see `BookingForm`.
- * The Booking module proper — a calendar, a groomer roster, clash detection — is
- * still ahead and is built on top of this collection rather than replacing it.
+ * `/dashboard/booking` is HARI INI — the day board, every line of business on
+ * one screen (`TodayScreen`); `/dashboard/booking/kalender` is the same day as
+ * an hour grid per groomer; `/dashboard/booking/new` is where bookings are
+ * taken — one card per booking, one animal and one main service each — and
+ * `/dashboard/booking/:id` is one booking, whole.
+ *
+ * THE PAGED LIST THAT USED TO LIVE AT `/dashboard/booking` IS GONE (16
+ * September 2026, on request). Searching a booking by animal or number, the
+ * "belum ditagih" lens and the status filters live on the per-line boards —
+ * Layanan › Grooming — which is where somebody goes looking for one.
  *
  * `BookingBridgeDialog` is what the POS cart panel mounts in Fase 6.
  */
@@ -17,9 +22,11 @@ export {
 } from "./components/BookingStatusBadge";
 export { useBookingBridge } from "./hooks/useBookingBridge";
 
-export { BookingsScreen } from "./components/BookingsScreen";
+export { TodayScreen } from "./components/TodayScreen";
+export { BookingSessionSteps } from "./components/BookingSessionSteps";
+export { BILLING_BADGES, billingOf, type BillingState } from "./billing";
+export * from "./today";
 export { BookingDetailScreen } from "./components/BookingDetailScreen";
-export { BookingPetWorkScreen } from "./components/BookingPetWorkScreen";
 export { BookingCalendarScreen } from "./components/BookingCalendarScreen";
 export { BookingForm } from "./components/BookingForm";
 export { BookingStatusActions } from "./components/BookingStatusActions";
@@ -27,6 +34,7 @@ export {
   BOOKING_STATUS_ACTIONS,
   canCancel,
   canReschedule,
+  canStartWork,
   forwardStatuses,
   hasCompletedWork,
   impliedStatuses,
@@ -34,4 +42,4 @@ export {
   transitionsFor,
   type BookingLike,
 } from "./statusFlow";
-export { BOOKING_CRUMBS, BOOKINGS_CRUMBS } from "./crumbs";
+export { BOOKING_CRUMBS, TODAY_CRUMBS } from "./crumbs";

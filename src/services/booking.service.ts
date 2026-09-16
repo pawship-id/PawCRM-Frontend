@@ -7,11 +7,15 @@ import type {
   BookingListQuery,
   AffectedBooking,
   GroomerAvailability,
+  GroomerCapacityDay,
   BookingStatus,
   BookingUnbilledSummary,
   CreateBookingInput,
+  CreateBookingResult,
   UpdateBookingInput,
   PageResult,
+  ServiceBookingCounts,
+  ServiceBookingCountScope,
   SessionMediaKind,
 } from "@/types/api";
 import type { MediaAsset } from "@/types/inventory";
@@ -40,10 +44,10 @@ export const bookingService = {
         limit: query.limit,
         customerId: query.customerId,
         petId: query.petId,
-        // A question about ROWS, like `petId` — the server resolves it to
-        // booking ids and intersects the two. Listed here because `query` is
-        // copied key by key: a field the type allows but this object omits is
-        // dropped silently, which is how the Groomer filter shipped dead.
+        // Listed key by key because `query` is copied that way: a field the
+        // type allows but this object omits is dropped silently, which is how
+        // the Groomer filter shipped dead.
+        groupId: query.groupId,
         groomerUserId: query.groomerUserId,
         branchId: query.branchId,
         // An array becomes repeated `status=` params — see buildUrl. Joining
@@ -96,67 +100,78 @@ export const bookingService = {
     apiClient.get<BookingUnbilledSummary>("/bookings/unbilled-summary"),
 
   /**
+   * GET /bookings/service-counts — how many bookings each service has been on,
+   * for the grooming catalogue's "N booking". Draft and cancelled work is not
+   * counted; every asked id comes back, zero when unused.
+   *
+   * ONE REQUEST FOR A PAGE of the catalogue, ids as repeated params. `bookings:
+   * read` — a caller without it should not ask. `scope` narrows the count to a
+   * branch and a period; without it the count is all-time.
+   */
+  serviceCounts: (serviceIds: string[], scope: ServiceBookingCountScope = {}) =>
+    apiClient.get<ServiceBookingCounts>("/bookings/service-counts", {
+      query: {
+        serviceIds,
+        branchId: scope.branchId,
+        scheduledFrom: scope.scheduledFrom,
+        scheduledTo: scope.scheduledTo,
+      },
+    }),
+
+  /**
    * POST /bookings/:id/belongings — one thing just handed over the counter.
    *
    * A VERB, not a save of the whole list: two people adding two things at the
    * same moment must both get theirs. Counted as ARRIVED by default, unlike the
-   * booking form's list — a thing added from the animal's own page is a thing
+   * booking form's list — a thing added from the booking's own page is a thing
    * somebody is holding, while the form's is what the owner said they'd bring.
    */
   addBelonging: (
     bookingId: string,
-    body: { petId: string; name: string; checkedIn?: boolean },
+    body: { name: string; checkedIn?: boolean },
   ) => apiClient.post<Booking>(`/bookings/${bookingId}/belongings`, body),
 
   /**
-   * PATCH /bookings/:id/items/:itemId/groomers — who is on ONE session.
-   *
-   * The lead (`groomerUserId`, `null` unassigns) and the extra hands beside
-   * them. The booking form sets one default per animal; this is how a session
-   * gets handed to somebody else once the day is running, or gains a second
-   * person at the table.
-   *
-   * Only the LEAD earns: commission reads that field and nothing else. Both the
-   * lead and the assistants are checked against the diary, so a `409` here is a
-   * clash — send `forceClash` to save it anyway, as the booking form does.
-   */
-  /**
    * PATCH /bookings/:id/sessions — who is on a turn, and how many turns exist.
    *
-   * ⚠️ IT REPLACED `.../items/:itemId/groomers` and its `assistantGroomerUserIds`
-   * (PCR-042). That field existed because commission was unique per service, so
-   * a second person on one bath could only be recorded as an unpaid helper. Two
-   * people on one bath are two SESSIONS now, and both earn — so "add an
+   * Two people on one bath are two SESSIONS, and both earn — so "add an
    * assistant" is "add a session".
    *
-   * THREE SHAPES, ONE CALL, matching the one card that does all three:
-   *   { serviceItemId, sessionName?, groomerUserIds? }  add a turn
-   *   { sessionId, groomerUserIds }                    set who is on it
-   *   { sessionId, remove: true }                      take the turn off
+   * THREE SHAPES, ONE CALL, matching the one card that does all three. A
+   * booking has exactly one main service, so adding a turn names nothing but
+   * the turn:
+   *   { sessionName?, groomerUserIds? }   add a turn (no `sessionId`)
+   *   { sessionId, groomerUserIds, groomerShares? }   set who is on it
+   *   { sessionId, remove: true }         take the turn off
    *
    * ⚠️ THE CREW IS SENT WHOLESALE, never as a delta. The screen edits it as a
    * list — a groomer is picked or unpicked from a set — and add/remove verbs
    * would leave a moment where a running turn has nobody on it.
+   *
+   * `groomerShares` IS EACH PERSON'S PART OF THE TURN'S COMMISSION, keyed by
+   * user id. It must name exactly the crew and add up to 100, or the server
+   * answers 400. Left out, the server splits the turn evenly — which is what a
+   * crew change should do.
    */
   setSessionCrew: (
     bookingId: string,
     patch:
+      | { sessionName?: string; groomerUserIds?: string[] }
       | {
-          serviceItemId: string;
-          sessionName?: string;
-          groomerUserIds?: string[];
+          sessionId: string;
+          groomerUserIds: string[];
+          groomerShares?: Record<string, number> | null;
         }
-      | { sessionId: string; groomerUserIds: string[] }
       | { sessionId: string; remove: true },
   ) => apiClient.patch<Booking>(`/bookings/${bookingId}/sessions`, patch),
 
   /**
-   * PATCH /bookings/:id/pets/:petId/notes — one animal's two notes.
+   * PATCH /bookings/:id/notes — the booking's two notes.
    *
    * ─── NOT `update`, AND THE DIFFERENCE IS MONEY ───────────────────────────
    *
-   * `PATCH /bookings/:id` rebuilds the rows and re-snapshots every unbilled one
-   * at today's catalogue price — the server's deliberate rule, because changing
+   * `PATCH /bookings/:id` re-snapshots the service at today's catalogue price
+   * when it is still unbilled — the server's deliberate rule, because changing
    * what is being done is a new quote. Saving a note through it would reprice a
    * visit nobody meant to reprice, and the shop would find out on the bill. This
    * writes two strings and touches nothing else.
@@ -165,15 +180,10 @@ export const bookingService = {
    * the other is still being typed in — and a patch carrying both would overwrite
    * the half nobody submitted. `""` clears a note; the server stores null.
    */
-  setPetNotes: (
+  setNotes: (
     bookingId: string,
-    petId: string,
     patch: { internalNotes?: string | null; customerNotes?: string | null },
-  ) =>
-    apiClient.patch<Booking>(
-      `/bookings/${bookingId}/pets/${petId}/notes`,
-      patch,
-    ),
+  ) => apiClient.patch<Booking>(`/bookings/${bookingId}/notes`, patch),
 
   /**
    * PATCH /bookings/:id/belongings/:belongingId — ticks ONE thing in or out.
@@ -201,9 +211,14 @@ export const bookingService = {
   /** GET /bookings/:id — a single booking. */
   getById: (id: string) => apiClient.get<Booking>(`/bookings/${id}`),
 
-  /** POST /bookings — create a booking (201). */
+  /**
+   * POST /bookings — one save, one group, one booking per entry (201).
+   *
+   * THE ANSWER IS THE GROUP, not a booking: a form that took Mochi and Coco made
+   * two, and the screen decides where to go next by how many came back.
+   */
   create: (input: CreateBookingInput) =>
-    apiClient.post<Booking>("/bookings", input),
+    apiClient.post<CreateBookingResult>("/bookings", input),
 
   /**
    * PATCH /bookings/:id — the editable surface, which does NOT include status.
@@ -219,30 +234,12 @@ export const bookingService = {
    * Its own route because a transition has rules a `$set` cannot express. An
    * illegal one is a 409 whose `reason` says what state the server actually
    * found. `reason` here is the CANCELLATION reason, stored only on a cancel.
-   */
-  /**
-   * PATCH /bookings/:id/status — moves an animal along the visit ladder.
    *
-   * ⚠️ `petId` NAMES ONE ANIMAL; OMITTING IT MOVES EVERY LIVE ONE (PCR-042). The
-   * whole-visit form is what the counter means by "they have arrived" when a
-   * customer hands over two dogs at once; the per-animal one is for when the two
-   * diverge — Coco sent home, Mochi groomed.
-   *
-   * THE SERVER REFUSES THE WHOLE MOVE if any named animal cannot make it, rather
-   * than moving some and skipping others: half a visit advanced with nothing on
-   * screen to say so is worse than a refusal that names the animal.
+   * ONE BOOKING, ONE ANIMAL. Two dogs arriving together are two bookings, each
+   * moved by its own call — the server has no group move in this phase.
    */
-  changeStatus: (
-    id: string,
-    status: BookingStatus,
-    reason?: string | null,
-    petId?: string | null,
-  ) =>
-    apiClient.patch<Booking>(`/bookings/${id}/status`, {
-      status,
-      reason,
-      ...(petId ? { petId } : {}),
-    }),
+  changeStatus: (id: string, status: BookingStatus, reason?: string | null) =>
+    apiClient.patch<Booking>(`/bookings/${id}/status`, { status, reason }),
 
   /**
    * POST /bookings/:id/reschedule — the appointment moves to another time.
@@ -266,33 +263,25 @@ export const bookingService = {
   ) => apiClient.post<Booking>(`/bookings/${id}/reschedule`, body),
 
   /**
-   * PATCH /bookings/:id/items/:itemId/work — ONE ANIMAL's service moves.
+   * PATCH /bookings/:id/sessions/:sessionId/work — ONE TURN moves.
    *
-   * THIS IS THE STATUS ROUTE NOW, one animal at a time. "Mochi sudah selesai
-   * mandi tapi Coco belum" was a sentence the system had no way to hold: status
-   * lived on the booking, so a visit with two animals had one answer for both.
-   *
-   * NO `from` IS SENT. The server reads the row's current status itself; a
+   * NO `from` IS SENT. The server reads the session's current status itself; a
    * caller-supplied one is a second opinion about a fact the database holds.
    *
-   * The BOOKING's own status follows from the rows — nothing here sets it.
+   * The service's own status follows from its sessions — nothing here sets it.
    */
-  /**
-   * ⚠️ `sessionId`, NOT A SERVICE ID (PCR-042). The route path still says
-   * `items` — it is the same endpoint — but what it addresses is one TURN.
-   * Sending a service id gets a 404 naming a session the caller never mentioned.
-   */
-  advanceItemWork: (
+  advanceSessionWork: (
     bookingId: string,
     sessionId: string,
     workStatus: BookingWorkStatus,
   ) =>
-    apiClient.patch<Booking>(`/bookings/${bookingId}/items/${sessionId}/work`, {
-      workStatus,
-    }),
+    apiClient.patch<Booking>(
+      `/bookings/${bookingId}/sessions/${sessionId}/work`,
+      { workStatus },
+    ),
 
   /**
-   * PATCH /bookings/:id/pets/:petId/media — the ANIMAL's own album.
+   * PATCH /bookings/:id/media — the BOOKING's own album.
    *
    * ⚠️ A DIFFERENT ARRAY FROM `setSessionRecord`'s `media`, not a different view
    * of it. A turn's photos are evidence for that stretch of work; these are
@@ -301,12 +290,8 @@ export const bookingService = {
    * SENT WHOLESALE. An asset already in the album carries no `token` — the API
    * never stores one — and the server tells stored from new by `storageKey`.
    */
-  setPetMedia: (
-    id: string,
-    petId: string,
-    media: (MediaAsset & { kind?: SessionMediaKind })[],
-  ) =>
-    apiClient.patch<Booking>(`/bookings/${id}/pets/${petId}/media`, { media }),
+  setMedia: (id: string, media: (MediaAsset & { kind?: SessionMediaKind })[]) =>
+    apiClient.patch<Booking>(`/bookings/${id}/media`, { media }),
 
   /**
    * PATCH /bookings/:id/sessions/:sessionId/record — what happened on one turn.
@@ -338,7 +323,7 @@ export const bookingService = {
     ),
 
   /**
-   * PATCH /bookings/:id/items/:itemId/times — correcting the clock.
+   * PATCH /bookings/:id/sessions/:sessionId/times — correcting the clock.
    *
    * SEPARATE FROM THE MOVE, and gated on `bookings:update` rather than
    * `advanceStatus`, because these two times decide `durationMin` in hindsight
@@ -346,38 +331,30 @@ export const bookingService = {
    * to say "this is done" is not, by that fact, trusted to say it took three
    * hours. Every correction is audited with both values.
    */
-  /** ⚠️ `sessionId` — see `advanceItemWork`. */
-  correctItemTimes: (
+  correctSessionTimes: (
     bookingId: string,
     sessionId: string,
     times: { startedAt?: string | null; finishedAt?: string | null },
   ) =>
     apiClient.patch<Booking>(
-      `/bookings/${bookingId}/items/${sessionId}/times`,
+      `/bookings/${bookingId}/sessions/${sessionId}/times`,
       times,
     ),
 
   /**
    * PATCH /bookings/:id/groomer — PCR-035. Puts a name on a slot, nothing else.
    *
-   * NOT `update({items})`, which re-snapshots every price at today's rates. A
+   * NOT `update({ serviceId })`, which re-snapshots the price at today's rate. A
    * booking raised beside an invoice was billed at the price on that bill, so
    * re-quoting it to write a groomer's name in would leave the appointment and
    * the invoice disagreeing about what the customer owes.
    *
    * `null` UNASSIGNS — somebody rostered off goes back to "Belum ditentukan",
-   * the state the booking was born in. `serviceId` narrows it to one service;
-   * omitted, it covers the whole visit, which is the usual case.
+   * the state the booking was born in. It covers every live session of this
+   * booking.
    */
-  assignGroomer: (
-    id: string,
-    groomerUserId: string | null,
-    serviceId?: string,
-  ) =>
-    apiClient.patch<Booking>(`/bookings/${id}/groomer`, {
-      groomerUserId,
-      serviceId,
-    }),
+  assignGroomer: (id: string, groomerUserId: string | null) =>
+    apiClient.patch<Booking>(`/bookings/${id}/groomer`, { groomerUserId }),
 
   /**
    * GET /bookings/calendar — the day sheet, drawn.
@@ -392,6 +369,18 @@ export const bookingService = {
    */
   availability: (date: string) =>
     apiClient.get<GroomerAvailability[]>("/bookings/availability", {
+      query: { date },
+    }),
+
+  /**
+   * GET /bookings/capacity?date= — every groomer's minutes that day: what they
+   * may take, and what is already booked.
+   *
+   * `date` IS A LOCAL `YYYY-MM-DD`, never `toISOString()` — which is yesterday
+   * for anybody east of London before seven in the morning.
+   */
+  capacity: (date: string) =>
+    apiClient.get<GroomerCapacityDay>("/bookings/capacity", {
       query: { date },
     }),
 

@@ -11,6 +11,10 @@ import {
 import type { FilterOption } from "./codecs";
 import { FilterOptionList } from "./FilterOptionList";
 import { FilterTrigger } from "./FilterTrigger";
+import {
+  CLEAR_OF_SHELL_HEADER,
+  useCloseBehindShellHeader,
+} from "./popoverPlacement";
 
 /**
  * A many-value filter, rendered as `Kategori (3) ⌄`.
@@ -52,6 +56,7 @@ export function FilterMultiSelect<T>({
   className,
 }: FilterMultiSelectProps<T>) {
   const [open, setOpen] = React.useState(false);
+  const triggerRef = useCloseBehindShellHeader(open, setOpen);
   const [draft, setDraft] = React.useState<T[]>(values);
 
   function onOpenChange(next: boolean) {
@@ -78,6 +83,7 @@ export function FilterMultiSelect<T>({
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
         <FilterTrigger
+          ref={triggerRef}
           label={label}
           value={display}
           active={active}
@@ -89,6 +95,7 @@ export function FilterMultiSelect<T>({
 
       <PopoverContent
         align={align}
+        {...CLEAR_OF_SHELL_HEADER}
         className="p-0"
         // See FilterSelect: Radix would focus the content wrapper, which sits
         // above the listbox's key handler.

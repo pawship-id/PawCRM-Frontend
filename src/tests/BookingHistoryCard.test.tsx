@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 
 import { BookingHistoryCard } from "@/features/booking/components/BookingHistoryCard";
-import type { Booking, BookingPet, BookingStatusEvent } from "@/types/api";
+import type { Booking, BookingStatusEvent } from "@/types/api";
 
 const event = (over: Partial<BookingStatusEvent> = {}): BookingStatusEvent => ({
   status: "confirmed",
@@ -14,46 +14,27 @@ const event = (over: Partial<BookingStatusEvent> = {}): BookingStatusEvent => ({
 });
 
 /**
- * ⚠️ THE BOOKING NO LONGER CARRIES THE TRAIL THIS CARD DRAWS.
- *
- * It supplies only the creation line — `createdAt` and who made it. The moves
- * come from the ANIMAL, because the card is read on a page about one dog. See
- * the `pet` prop.
+ * ONE BOOKING, ONE TRAIL — the moves from `statusHistory`, the creation line
+ * from `createdAt` and who made it.
  */
 const booking = (over: Partial<Booking> = {}): Booking =>
   ({
     _id: "bk-1",
+    petName: "Cici",
     createdAt: "2026-09-03T04:52:00.000Z",
     createdByName: "Fitria",
     createdByRoleName: "Ops",
-    /* Deliberately NOT empty: the merged visit-wide trail still exists on the
-       booking, and a case that passed because this was blank would not prove the
-       card had stopped reading it. */
-    statusHistory: [event({ status: "cancelled", petName: "Cilang" })],
+    statusHistory: [event()],
     ...over,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  }) as any;
+  }) as Booking;
 
-const pet = (statusHistory: BookingStatusEvent[] = [event()]): BookingPet =>
-  ({
-    petItemId: "pi-1",
-    petId: "p1",
-    petName: "Cici",
-    status: "confirmed",
-    statusHistory,
-    nextStatuses: [],
-    services: [],
-    belongings: [],
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  }) as any;
-
-/** The card as the work screen mounts it: this booking, this animal. */
+/** The card as the booking page mounts it. */
 const renderCard = (
-  statusHistory?: BookingStatusEvent[],
+  statusHistory: BookingStatusEvent[] = [event()],
   over: Partial<Booking> = {},
 ) =>
   render(
-    <BookingHistoryCard booking={booking(over)} pet={pet(statusHistory)} />,
+    <BookingHistoryCard booking={booking({ statusHistory, ...over })} />,
   );
 
 /**
@@ -200,41 +181,17 @@ describe("BookingHistoryCard", () => {
 });
 
 /**
- * ─── ONE ANIMAL'S TRAIL, AND ONLY ONE ANIMAL'S ─────────────────────────────
+ * ─── THE BOOKING'S OWN TRAIL ────────────────────────────────────────────────
  *
- * This block used to assert the OPPOSITE. The card read `booking.statusHistory`,
- * the trail merged across the visit, so opening Cici showed Cilang's moves
- * interleaved with hers — and the tests here pinned the two workarounds that
- * made that legible: the animal's id in the React key, and its name at the front
- * of every title.
- *
- * Both workarounds are gone with the thing they worked around. What is pinned
- * now is that the card reads `pets[].statusHistory` — the animal's own document,
- * which is where `bookingitems` actually keeps it — and never the merged array
- * sitting beside it on the same prop.
+ * One booking is one animal, so `booking.statusHistory` is that animal's trail —
+ * there is nothing merged to filter and nobody else's moves to leave out.
  */
-describe("BookingHistoryCard — one animal's trail", () => {
+describe("BookingHistoryCard — the booking's trail", () => {
   const sameMoment = "2026-09-06T02:14:13.848Z";
 
-  it("shows the opened animal's moves and none of its neighbour's", () => {
-    /*
-      ⚠️ THE BOOKING CARRIES A DECOY. `booking()` puts a Cilang entry on the
-      merged visit-wide trail; if the card ever reads that prop again, it appears
-      here. A fixture with an empty booking trail would pass either way.
-    */
-    renderCard([event({ status: "requested", at: sameMoment })]);
-
-    expect(screen.getByText(/Status → Requested/i)).toBeInTheDocument();
-    expect(screen.queryByText(/Cilang/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Cancelled/i)).not.toBeInTheDocument();
-  });
-
   it("does not name the animal on every line", () => {
-    /*
-      The page's heading is already the dog. Naming it again on each entry was
-      there to tell two merged trails apart, and there is one trail now.
-    */
-    renderCard([event({ status: "requested", petName: "Cici" })]);
+    /* The page's heading already names it. */
+    renderCard([event({ status: "requested" })]);
 
     expect(screen.getByText(/^Status → Requested$/i)).toBeInTheDocument();
     expect(screen.queryByText(/Cici →/i)).not.toBeInTheDocument();
@@ -242,15 +199,10 @@ describe("BookingHistoryCard — one animal's trail", () => {
 
   it("renders two moves at the same instant without a duplicate key", () => {
     /*
-      ⚠️ ASSERTED THROUGH REACT'S OWN WARNING, and that is not laziness — it is
-      the only thing that can see this. A duplicate key does NOT drop a child:
-      React renders both and logs. So a count of `<li>` passes with the bug
-      present, which is what the first version of this test did.
-
-      One animal cannot reach one STATUS twice in a millisecond, so this is a
-      thinner risk than the merged trail's was — but two different statuses at
-      one instant is ordinary (a skipped rung is backfilled at the same stamp),
-      and that is the case here.
+      ⚠️ ASSERTED THROUGH REACT'S OWN WARNING — a duplicate key does NOT drop a
+      child: React renders both and logs, so a count of `<li>` passes with the bug
+      present. Two different statuses at one instant is ordinary: a skipped rung
+      is backfilled at the same stamp.
     */
     const spy = jest.spyOn(console, "error").mockImplementation(() => {});
 
@@ -269,7 +221,7 @@ describe("BookingHistoryCard — one animal's trail", () => {
     }
   });
 
-  it("still has one honest line when this animal has never moved", () => {
+  it("still has one honest line when the booking has never moved", () => {
     renderCard([]);
 
     expect(screen.getByText("Booking dibuat")).toBeInTheDocument();

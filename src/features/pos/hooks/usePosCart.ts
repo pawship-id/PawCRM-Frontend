@@ -11,6 +11,8 @@ import type {
   UpdateCartInput,
 } from "@/types/api";
 
+import { ownDiscountOf } from "../bookingDiscount";
+
 /**
  * A discount the till is trying to apply and the server has refused pending
  * approval — FR-4's over-limit case.
@@ -236,15 +238,21 @@ export function usePosCart(): UsePosCartResult {
         kind: item.kind,
         refId: item.refId,
         qty: item.qty,
-        discount: item.discount
-          ? {
-              mode: item.discount.mode,
-              value: item.discount.value,
-              ...(item.discount.approvedBy
-                ? { approvedBy: item.discount.approvedBy }
-                : {}),
-            }
-          : null,
+        /*
+          THE LINE'S OWN DISCOUNT, never the whole of it. A booking's share of
+          "Diskon seluruh booking" rides inside the stored figure, and the server
+          adds it back from the booking — sending it too would count it twice.
+        */
+        discount: (() => {
+          const own = ownDiscountOf(item);
+          return own
+            ? {
+                mode: own.mode,
+                value: own.value,
+                ...(own.approvedBy ? { approvedBy: own.approvedBy } : {}),
+              }
+            : null;
+        })(),
         bookingId: item.bookingId,
         petId: item.petId,
         petName: item.petName,

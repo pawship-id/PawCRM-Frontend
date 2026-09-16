@@ -237,8 +237,7 @@ describe("SalesInvoiceList — what it asks the server", () => {
 
     await screen.findByText("INV-2026-0042");
     const panel = await openFilters(user);
-    await user.click(within(panel).getByRole("button", { name: "Filter periode" }));
-    await user.click(await screen.findByRole("option", { name: "Bulan ini" }));
+    await user.click(within(panel).getByRole("button", { name: "Bulan ini" }));
     await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
 
     await waitFor(() => expect(lastList()).toMatchObject({ period: "month" }));
@@ -251,16 +250,20 @@ describe("SalesInvoiceList — what it asks the server", () => {
 
     await screen.findByText("INV-2026-0042");
     const panel = await openFilters(user);
-    await user.click(within(panel).getByRole("button", { name: "Filter periode" }));
-    await user.click(await screen.findByRole("option", { name: "Minggu ini" }));
+    await user.click(within(panel).getByRole("button", { name: "Minggu ini" }));
     await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
 
     await waitFor(() => expect(lastList()).toMatchObject({ period: "week" }));
     await waitFor(() => expect(lastSummary()).toMatchObject({ period: "week" }));
-    // Read on the scope card, so the badge does not count it as well.
     expect(scopeCard()).toHaveTextContent(/Periode\s*Minggu ini/);
-    expect(screen.getByRole("button", { name: "Filter" })).not.toHaveTextContent(
-      "Filter (",
+    /*
+      THE BADGE COUNTS IT TOO (16 September 2026) — one number for "how much is
+      on", shown both here and as the card's "Reset filter (n)". It used to leave
+      the period out because the card already names it, which put "Filter" beside
+      "Reset filter (1)" on the same screen.
+    */
+    expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
+      "Filter (1)",
     );
   });
 
@@ -270,8 +273,8 @@ describe("SalesInvoiceList — what it asks the server", () => {
 
     await screen.findByText("INV-2026-0042");
     const panel = await openFilters(user);
-    await user.click(within(panel).getByRole("button", { name: "Filter periode" }));
-    await user.click(await screen.findByRole("option", { name: "Pilih tanggal" }));
+    /* The last pill — the two dates appear under it only once it is pressed. */
+    await user.click(within(panel).getByRole("button", { name: "Pilih tanggal" }));
     await user.type(within(panel).getByLabelText("Tanggal faktur dari"), "2026-09-01");
     await user.type(
       within(panel).getByLabelText("Tanggal faktur sampai"),
@@ -306,8 +309,7 @@ describe("SalesInvoiceList — the scope card", () => {
 
     await screen.findByText("INV-2026-0042");
     const panel = await openFilters(user);
-    await user.click(within(panel).getByRole("button", { name: "Filter periode" }));
-    await user.click(await screen.findByRole("option", { name: "Bulan ini" }));
+    await user.click(within(panel).getByRole("button", { name: "Bulan ini" }));
     await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
 
     // The days come from the server's echo, cut in the tenant's zone.
@@ -316,11 +318,37 @@ describe("SalesInvoiceList — the scope card", () => {
     );
   });
 
-  it("is read-only — nothing on it can be pressed", async () => {
+  it("is read-only while nothing narrows the list", async () => {
     renderWithAuth(<ReceivablesScreen />);
 
     await screen.findByText("INV-2026-0042");
     expect(within(scopeCard()).queryAllByRole("button")).toHaveLength(0);
+    expect(scopeCard()).toHaveTextContent("Ubah lewat tombol Filter");
+  });
+
+  /*
+    ONE WAY OUT OF A NARROWED LIST (16 September 2026) — the grooming
+    catalogue's "Reset filter (n)", on the card that already says what is on.
+  */
+  it("offers a Reset once filters are on, and clears them in one press", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<ReceivablesScreen />);
+
+    await screen.findByText("INV-2026-0042");
+    const panel = await openFilters(user);
+    // Ticking a gudang ticks its cabang too — two filters, one press.
+    await tick(user, panel, "Gudang", ["Gudang Selatan"]);
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+    const reset = await within(scopeCard()).findByRole("button", {
+      name: "Reset filter (2)",
+    });
+    await user.click(reset);
+
+    await waitFor(() =>
+      expect(scopeCard()).toHaveTextContent(/Cabang\s*Semua cabang/),
+    );
+    expect(scopeCard()).toHaveTextContent(/Gudang\s*Semua gudang/);
     expect(scopeCard()).toHaveTextContent("Ubah lewat tombol Filter");
   });
 
@@ -367,8 +395,7 @@ describe("SalesInvoiceList — the scope card", () => {
 
     await screen.findByText("INV-2026-0042");
     const panel = await openFilters(user);
-    await user.click(within(panel).getByRole("button", { name: "Filter periode" }));
-    await user.click(await screen.findByRole("option", { name: "Minggu ini" }));
+    await user.click(within(panel).getByRole("button", { name: "Minggu ini" }));
     await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
     await waitFor(() => expect(lastList()).toMatchObject({ period: "week" }));
 
@@ -390,8 +417,7 @@ describe("SalesInvoiceList — the scope card", () => {
 
     await screen.findByText("INV-2026-0042");
     const first = await openFilters(user);
-    await user.click(within(first).getByRole("button", { name: "Filter periode" }));
-    await user.click(await screen.findByRole("option", { name: "Bulan ini" }));
+    await user.click(within(first).getByRole("button", { name: "Bulan ini" }));
     await user.click(within(first).getByRole("button", { name: "Terapkan" }));
     await waitFor(() =>
       expect(scopeCard()).toHaveTextContent("Bulan ini · 1–30 Sep 2026"),
@@ -402,13 +428,19 @@ describe("SalesInvoiceList — the scope card", () => {
     );
 
     const panel = await openFilters(user);
-    await user.click(within(panel).getByRole("button", { name: "Filter periode" }));
-    await user.click(await screen.findByRole("option", { name: "Minggu ini" }));
+    await user.click(within(panel).getByRole("button", { name: "Minggu ini" }));
     await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
 
     await waitFor(() =>
-      expect(scopeCard()).toHaveTextContent(/Periode\s*Minggu ini\s*Ubah lewat/),
+      expect(scopeCard()).toHaveTextContent(/Periode\s*Minggu ini/),
     );
+    /*
+      THE LABEL ALONE, WITH NO DATES AT ALL — not the previous period's, and not
+      a guess at this one's. The dot is what joins a period to its days, so its
+      absence is the assertion; the card's right-hand side now carries "Reset
+      filter", which is about the filters rather than about this.
+    */
+    expect(scopeCard()).not.toHaveTextContent("·");
     expect(scopeCard()).not.toHaveTextContent("1–30 Sep 2026");
   });
 });

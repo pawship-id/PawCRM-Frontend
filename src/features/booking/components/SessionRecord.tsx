@@ -16,7 +16,7 @@ import type {
   SessionMediaKind,
 } from "@/types/api";
 
-/** Mirrors MAX_SESSION_MEDIA in bookingItem.model.js. */
+/** Mirrors MAX_SESSION_MEDIA in booking.model.js. */
 const MAX_MEDIA = 9;
 
 /**

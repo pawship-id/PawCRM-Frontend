@@ -7,12 +7,11 @@ import Link from "next/link";
 import { Alert, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import { useTenant } from "@/features/tenant";
+import { usePetOptions } from "@/hooks/usePetOptions";
 import { ApiError } from "@/services/api-error";
 import { customerService } from "@/services/customer.service";
 import { petService } from "@/services/pet.service";
 import type { Customer, Pet, PetTimelineEntry } from "@/types/api";
-
-import { speciesLabel } from "./PetBadges";
 
 import "@/features/pos/print/receipt.css";
 
@@ -69,6 +68,12 @@ function day(iso: string | null): string {
  */
 export function PetCardPrintScreen({ petId }: { petId: string }) {
   const { tenant } = useTenant();
+  /*
+    THE SHOP'S WORDS for species and breed — tenant data since 14 Sep 2026. A
+    list that has not arrived by print time still prints: `label()` falls back
+    to the seeded word, then to the code.
+  */
+  const { label } = usePetOptions();
 
   const [pet, setPet] = useState<Pet | null>(null);
   const [owner, setOwner] = useState<Customer | null>(null);
@@ -211,8 +216,8 @@ export function PetCardPrintScreen({ petId }: { petId: string }) {
           <div>
             <h1 className="text-3xl font-extrabold leading-tight">{pet.name}</h1>
             <p className="text-sm">
-              {speciesLabel(pet.species)}
-              {pet.breed ? ` · ${pet.breed}` : ""}
+              {label("species", pet.species)}
+              {pet.breed ? ` · ${label("breed", pet.breed)}` : ""}
               {` · ${SEX_LABELS[pet.sex] ?? pet.sex}`}
               {pet.weightKg ? ` · ${pet.weightKg} kg` : ""}
             </p>

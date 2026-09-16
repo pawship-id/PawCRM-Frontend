@@ -22,8 +22,8 @@ export default function BookingCalendarPage() {
         crumbs={[...BOOKING_CRUMBS, { label: "Kalender" }]}
         title="Kalender booking"
       >
-        Satu blok adalah satu hewan yang sedang dikerjakan. Kunjungan yang
-        membawa dua hewan muncul di dua kolom sekaligus.
+        Satu blok adalah satu tahap pekerjaan pada satu booking. Tahap yang
+        dikerjakan groomer berbeda muncul di kolom masing-masing.
       </PageHeading>
       <BookingCalendarScreen />
     </RequirePermission>

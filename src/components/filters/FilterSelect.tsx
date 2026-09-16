@@ -13,6 +13,11 @@ import { FilterField } from "./FilterField";
 import { useFilterPanelContainer } from "./FilterPanel";
 import { FilterOptionList } from "./FilterOptionList";
 import { FilterTrigger } from "./FilterTrigger";
+import {
+  CLEAR_OF_SHELL_HEADER,
+  useCloseBehindShellHeader,
+  useCloseOnPageScroll,
+} from "./popoverPlacement";
 
 /**
  * A single-value filter, rendered as `Gudang: Semua ⌄`.
@@ -44,6 +49,14 @@ export interface FilterSelectProps<T> {
   ariaLabel?: string;
   /** In-popover search. Turns itself on past eight options unless set. */
   searchable?: boolean;
+  /** The in-popover search box's placeholder. Defaults to "Cari…". */
+  searchPlaceholder?: string;
+  /**
+   * Explanatory line under the control, `layout="field"`/`"form"` only.
+   * `disabledHint` replaces it while the control is disabled, and `error`
+   * replaces both.
+   */
+  hint?: React.ReactNode;
   /**
    * "inline" — a trigger in a `FilterBar`, reading `Gudang: Semua ⌄`.
    * "field" — a labeled full-width row inside a `FilterPanel`.
@@ -91,6 +104,12 @@ export interface FilterSelectProps<T> {
    * sentence can never disagree about whether something is wrong.
    */
   error?: string;
+  /**
+   * Close the list the moment the page scrolls (see `useCloseOnPageScroll`).
+   * Off by default, so every bar and panel keeps behaving as it did; a form
+   * that swapped a Radix Select for this to stop the page locking turns it on.
+   */
+  closeOnScroll?: boolean;
   align?: "start" | "end";
   className?: string;
 }
@@ -103,6 +122,8 @@ export function FilterSelect<T>({
   unsetValue = "" as T,
   ariaLabel,
   searchable,
+  searchPlaceholder,
+  hint,
   layout = "inline",
   active: activeOverride,
   placeholder,
@@ -111,10 +132,13 @@ export function FilterSelect<T>({
   disabled,
   disabledHint,
   error,
+  closeOnScroll = false,
   align = "start",
   className,
 }: FilterSelectProps<T>) {
   const [open, setOpen] = React.useState(false);
+  const triggerRef = useCloseBehindShellHeader(open, setOpen);
+  const contentRef = useCloseOnPageScroll(open && closeOnScroll, setOpen);
   // Null on a bar, the panel's element inside one — see useFilterPanelContainer.
   // Without it the option list cannot be scrolled inside a panel at all.
   const container = useFilterPanelContainer();
@@ -129,13 +153,19 @@ export function FilterSelect<T>({
 
   // Falling back to the raw value keeps a stale id visible rather than silently
   // reading "Semua" while the list is still filtered by it.
-  const display =
-    current?.label ?? (chosen ? String(value) : (placeholder ?? "Semua"));
+  const display = current
+    ? current.meta
+      ? `${current.label} — ${current.meta}`
+      : current.label
+    : chosen
+      ? String(value)
+      : (placeholder ?? "Semua");
 
   const control = (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <FilterTrigger
+          ref={triggerRef}
           label={label}
           value={display}
           active={active}
@@ -148,8 +178,10 @@ export function FilterSelect<T>({
       </PopoverTrigger>
 
       <PopoverContent
+        ref={contentRef}
         container={container ?? undefined}
         align={align}
+        {...CLEAR_OF_SHELL_HEADER}
         // A field fills its panel, so its list should too — anything narrower
         // reads as a stray popover rather than the field opening.
         className={cn(
@@ -166,6 +198,7 @@ export function FilterSelect<T>({
           selected={[value]}
           searchable={withSearch}
           searchLabel={`Cari ${label.toLowerCase()}`}
+          searchPlaceholder={searchPlaceholder}
           onPick={(picked) => {
             onChange(picked);
             setOpen(false);
@@ -181,11 +214,10 @@ export function FilterSelect<T>({
         label={label}
         required={required}
         error={error}
-        // Only while it is actually greyed out: a permanent caption explaining
-        // a state the field is not in reads as a warning about nothing. This is
-        // the prop's first use — it was declared with the interface and left
-        // dead, because on a bar the explanation went to FilterBar's `hint`.
-        hint={disabled ? disabledHint : undefined}
+        // `disabledHint` only while it is actually greyed out: a permanent
+        // caption explaining a state the field is not in reads as a warning
+        // about nothing. Otherwise the field's own standing hint, if any.
+        hint={disabled ? (disabledHint ?? hint) : hint}
         className={className}
       >
         {control}

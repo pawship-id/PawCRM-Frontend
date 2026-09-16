@@ -1,7 +1,12 @@
 import { render, screen, within } from "@testing-library/react";
 
 import { InvoiceItemsTable } from "@/features/sales/components/InvoiceItemsTable";
+import { petOptionService } from "@/services/petOption.service";
 import type { CustomerInvoiceDetail } from "@/types/api";
+
+/* Mocked only to prove the table never asks for the option list — see the
+   species-word case below. */
+jest.mock("@/services/petOption.service");
 
 /**
  * What was billed, and the arithmetic behind the total.
@@ -40,6 +45,180 @@ const invoice = (overrides = {}): CustomerInvoiceDetail =>
     },
     ...overrides,
   }) as unknown as CustomerInvoiceDetail;
+
+/*
+  "DISKON BOOKING" DIRECTLY UNDER "DISKON ITEM" (15 September 2026), as the till
+  and the new-invoice form show it. A pulled booking line carries its own
+  discount and its share of "Diskon seluruh booking" as one line discount; the
+  booking view says which part is the share, and the table splits the total.
+*/
+describe("Diskon booking", () => {
+  const booked = (overrides = {}) =>
+    line({
+      kind: "service",
+      sku: null,
+      qty: "1.0000",
+      hppAtTime: null,
+      petId: "pet-cici",
+      petName: "Cici",
+      bookingId: "bk-3",
+      ...overrides,
+    });
+
+  const withShares = (grooming: string, extra: string, itemDiscount: string) =>
+    invoice({
+      items: [
+        booked({
+          refId: "svc-groom",
+          name: "Basic Grooming",
+          unitPrice: "120000.0000",
+          lineTotal: "120000.0000",
+          discount: { mode: "amount", value: grooming, resolvedAmount: grooming },
+        }),
+        booked({
+          refId: "svc-extra",
+          name: "Extra Handling",
+          parentServiceId: "svc-groom",
+          unitPrice: "20000.0000",
+          lineTotal: "20000.0000",
+          discount: { mode: "amount", value: extra, resolvedAmount: extra },
+        }),
+      ],
+      bookings: [
+        {
+          _id: "bk-3",
+          service: {
+            serviceId: "svc-groom",
+            name: "Basic Grooming",
+            price: "120000.0000",
+            bookingShare: "2170.0000",
+            addons: [
+              {
+                serviceId: "svc-extra",
+                name: "Extra Handling",
+                price: "20000.0000",
+                bookingShare: "377.0000",
+              },
+            ],
+          },
+        },
+      ],
+      totals: {
+        subtotal: "140000.0000",
+        itemDiscount,
+        invoiceDiscount: "0.0000",
+        dpp: "0.0000",
+        tax: "0.0000",
+        grandTotal: "0.0000",
+      },
+    });
+
+  it("shows the lines' own discount, and the bookings' share right under it", () => {
+    render(
+      <InvoiceItemsTable invoice={withShares("7170.0000", "377.0000", "7547.0000")} />,
+    );
+
+    expect(screen.getByText("Diskon item").parentElement?.textContent).toContain(
+      "Rp 5.000",
+    );
+    expect(screen.getByText("Diskon booking").parentElement?.textContent).toContain(
+      "Rp 2.547",
+    );
+  });
+
+  /*
+    A ROW SHOWS ITS OWN DISCOUNT ONLY, and its total is not reduced by the share
+    (16 September 2026) — "Diskon booking" is taken off once, in the recap.
+  */
+  it("lists and takes off only each row's own discount", () => {
+    render(
+      <InvoiceItemsTable invoice={withShares("7170.0000", "377.0000", "7547.0000")} />,
+    );
+
+    const rowOf = (name: string) =>
+      screen.getAllByRole("row").find((row) => row.textContent?.includes(name))!;
+
+    const grooming = within(rowOf("Basic Grooming"));
+    expect(grooming.getByText("−Rp 5.000")).toBeInTheDocument();
+    expect(grooming.queryByText("−Rp 7.170")).not.toBeInTheDocument();
+    expect(grooming.getByText("Rp 115.000")).toBeInTheDocument();
+
+    /* All of the add-on's discount is share — so the row carries none. */
+    const extra = within(rowOf("Extra Handling"));
+    expect(extra.queryByText("−Rp 377")).not.toBeInTheDocument();
+    /* The Diskon cell reads "—" (a <td>); the Pajak cell's own "—" is a <span>. */
+    expect(extra.getAllByText("—").some((node) => node.tagName === "TD")).toBe(true);
+    expect(extra.getAllByText("Rp 20.000").length).toBeGreaterThan(0);
+  });
+
+  it("never shows more share than the line still carries after an edit", () => {
+    /* The grooming's discount was cut to 1.000 on the invoice — below its 2.170 share. */
+    render(
+      <InvoiceItemsTable invoice={withShares("1000.0000", "377.0000", "1377.0000")} />,
+    );
+
+    expect(screen.queryByText("Diskon item")).not.toBeInTheDocument();
+    expect(screen.getByText("Diskon booking").parentElement?.textContent).toContain(
+      "Rp 1.377",
+    );
+  });
+});
+
+/*
+  ADD-ONS (14 September 2026). "Parfum" ticked under "Mandi Full" reads as part
+  of the bath: directly under it, marked, whatever order the lines were stored
+  in. The server resolved `parentServiceId`; the table only places the row.
+*/
+describe("add-ons", () => {
+  const service = (overrides = {}) =>
+    line({
+      kind: "service",
+      sku: null,
+      hppAtTime: null,
+      petId: "pet1",
+      petName: "Miko",
+      ...overrides,
+    });
+
+  it("sets an add-on directly under the service it was billed with", () => {
+    render(
+      <InvoiceItemsTable
+        invoice={invoice({
+          items: [
+            service({ refId: "s1", name: "Mandi Full" }),
+            service({ refId: "s2", name: "Potong Kuku" }),
+            service({ refId: "a1", name: "Parfum", parentServiceId: "s1" }),
+          ],
+        })}
+      />,
+    );
+
+    const order = screen
+      .getAllByRole("row")
+      .map((row) => row.textContent ?? "")
+      .filter((text) => /Mandi Full|Potong Kuku|Parfum/.test(text))
+      .map((text) => text.match(/Mandi Full|Potong Kuku|Parfum/)?.[0]);
+
+    expect(order).toEqual(["Mandi Full", "Parfum", "Potong Kuku"]);
+    expect(
+      within(screen.getByRole("row", { name: /Parfum/ })).getByText("Add-on"),
+    ).toBeInTheDocument();
+  });
+
+  it("leaves an add-on whose service is not on the bill as a line of its own", () => {
+    render(
+      <InvoiceItemsTable
+        invoice={invoice({
+          items: [service({ refId: "a1", name: "Parfum", parentServiceId: "s9" })],
+        })}
+      />,
+    );
+
+    const row = screen.getByRole("row", { name: /Parfum/ });
+    expect(within(row).getByText("Jasa")).toBeInTheDocument();
+    expect(within(row).queryByText("Add-on")).not.toBeInTheDocument();
+  });
+});
 
 describe("the lines", () => {
   it("names each item and its SKU", () => {
@@ -505,6 +684,53 @@ describe("the mockup's columns", () => {
     ).toHaveAttribute("href", "/dashboard/booking/bk1");
   });
 
+  /*
+    A BOOKING IS ONE ANIMAL AND ONE MAIN SERVICE, so the same animal booked for
+    two services is two bookings — and two groups, each with its own chip. One
+    group would name only the first booking and leave the second unfindable.
+  */
+  it("gives a second booking for the same animal its own group", () => {
+    render(
+      <InvoiceItemsTable
+        canOpenBookings
+        invoice={invoice({
+          items: [
+            line({
+              kind: "service",
+              refId: "s1",
+              name: "Grooming Basic",
+              sku: null,
+              petId: "pet1",
+              petName: "Milo",
+              bookingId: "bk1",
+            }),
+            line({
+              kind: "service",
+              refId: "s3",
+              name: "Mandi Kutu",
+              sku: null,
+              petId: "pet1",
+              petName: "Milo",
+              bookingId: "bk2",
+            }),
+          ],
+          bookings: [
+            { _id: "bk1", bookingNumber: "BK-2026-0091" },
+            { _id: "bk2", bookingNumber: "BK-2026-0092" },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getAllByText("Milo")).toHaveLength(2);
+    expect(
+      screen.getByRole("link", { name: /Booking BK-2026-0091/ }),
+    ).toHaveAttribute("href", "/dashboard/booking/bk1");
+    expect(
+      screen.getByRole("link", { name: /Booking BK-2026-0092/ }),
+    ).toHaveAttribute("href", "/dashboard/booking/bk2");
+  });
+
   it("names the booking without linking it for a role that cannot open bookings", () => {
     render(
       <InvoiceItemsTable
@@ -558,6 +784,47 @@ describe("the mockup's columns", () => {
     expect(
       screen.getByRole("link", { name: "Booking BK-260906-003 →" }),
     ).toHaveAttribute("href", "/dashboard/booking/bk9");
+  });
+
+  /*
+    SPECIES ARE TENANT DATA since 14 Sep 2026, and the invoice read resolves the
+    word beside the code. The table heads a group with the SERVER'S word — it
+    loads no option list of its own — and falls back to the code only when the
+    server could not resolve one.
+  */
+  it("heads an animal's group with the species word the server resolved", () => {
+    render(
+      <InvoiceItemsTable
+        invoice={invoice({
+          items: [
+            line({
+              kind: "service",
+              name: "Grooming Basic",
+              sku: null,
+              petId: "pet1",
+              petName: "Milo",
+              petSpecies: "kelinci",
+              petSpeciesLabel: "Kelinci",
+            }),
+            line({
+              kind: "service",
+              refId: "s2",
+              name: "Mandi",
+              sku: null,
+              petId: "pet2",
+              petName: "Cici",
+              petSpecies: "musang",
+              petSpeciesLabel: null,
+            }),
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Kelinci")).toBeInTheDocument();
+    expect(screen.queryByText("kelinci")).not.toBeInTheDocument();
+    expect(screen.getByText("musang")).toBeInTheDocument();
+    expect(petOptionService.list).not.toHaveBeenCalled();
   });
 
   it("draws no animal headings on a bill with no animal on it", () => {

@@ -1,14 +1,23 @@
 import {
-  blankGroup,
-  blankService,
-  duplicateServiceKeys,
-  groupsFromBooking,
-  groupsToBelongings,
-  groupsToItems,
+  MAX_CARDS,
+  blankCard,
+  cardFromBooking,
+  cardToUpdate,
+  cardsToEntries,
+  duplicateCardKeys,
   longestGroomerMinutes,
+  petServiceKey,
+  storedPetServiceKeys,
   UNASSIGNED,
 } from "@/features/booking/bookingDraft";
-import type { Booking, BookingItem, Service } from "@/types/api";
+import type { BookingCardDraft } from "@/features/booking/bookingDraft";
+import type {
+  Booking,
+  BookingSession,
+  Pet,
+  Service,
+  ServiceVariant,
+} from "@/types/api";
 
 /**
  * The one place the form's shape and the API's meet.
@@ -24,428 +33,364 @@ const MAIN = "5a7f1f77bcf86cd7994390e1";
 const OTHER_MAIN = "5a7f1f77bcf86cd7994390e2";
 const ADDON = "5a7f1f77bcf86cd7994390e7";
 
-const item = (overrides: Partial<BookingItem>): BookingItem =>
+const session = (over: Partial<BookingSession> = {}): BookingSession => ({
+  sessionId: "se-1",
+  sessionName: "Full Grooming",
+  groomers: [],
+  status: "pending",
+  startedAt: null,
+  finishedAt: null,
+  notesSession: null,
+  notesInternalSession: null,
+  media: [],
+  commissionWeight: null,
+  ...over,
+});
+
+type Overrides = Omit<Partial<Booking>, "service"> & {
+  service?: Partial<Booking["service"]>;
+};
+
+const booking = ({ service, ...over }: Overrides = {}): Booking =>
   ({
-    _id: "item-1",
+    _id: "bk-1",
     petId: PET_A,
     petName: "Mochi",
-    serviceId: MAIN,
-    parentItemId: null,
-    name: "Full Grooming",
-    price: "150000.0000",
-    durationMin: 90,
+    service: {
+      serviceId: MAIN,
+      name: "Full Grooming",
+      serviceType: "Grooming",
+      price: "150000.0000",
+      durationMin: 90,
+      status: "pending",
+      statusHistory: [],
+      startedAt: null,
+      finishedAt: null,
+      sessions: [],
+      addons: [],
+      ...service,
+    },
+    belongings: [],
     internalNotes: null,
     customerNotes: null,
     pulledToCartAt: null,
     pulledToInvoiceAt: null,
-    groomerUserId: null,
-    groomerName: null,
-    ...overrides,
-  }) as BookingItem;
-
-const booking = (overrides: Partial<Booking>): Booking =>
-  ({
-    _id: "bk-1",
-    items: [],
-    belongings: [],
-    ...overrides,
+    ...over,
   }) as Booking;
 
-describe("groupsFromBooking", () => {
-  it("puts one animal's services on one card", () => {
-    const groups = groupsFromBooking(
-      booking({
-        items: [
-          item({ _id: "a" }),
-          item({ _id: "b", serviceId: OTHER_MAIN }),
-        ],
-      }),
-    );
-
-    expect(groups).toHaveLength(1);
-    expect(groups[0].petId).toBe(PET_A);
-    expect(groups[0].services.map((line) => line.serviceId)).toEqual([
-      MAIN,
-      OTHER_MAIN,
-    ]);
-  });
-
-  it("gives two animals two cards", () => {
-    const groups = groupsFromBooking(
-      booking({
-        items: [item({ _id: "a" }), item({ _id: "b", petId: PET_B })],
-      }),
-    );
-
-    expect(groups.map((group) => group.petId)).toEqual([PET_A, PET_B]);
-  });
-
-  it("folds an add-on back under the service it hangs off", () => {
-    // The API hands back a flat list; shown flat, "Parfum" would look like a
-    // service somebody chose on its own — and could not be unticked.
-    const groups = groupsFromBooking(
-      booking({
-        items: [
-          item({ _id: "parent" }),
-          item({ _id: "child", serviceId: ADDON, parentItemId: "parent" }),
-        ],
-      }),
-    );
-
-    expect(groups[0].services).toHaveLength(1);
-    expect(groups[0].services[0].addonServiceIds).toEqual([ADDON]);
-  });
-
-  it("keeps an add-on whose parent is missing rather than dropping it", () => {
-    // A row that disappears from an edit form is a row that disappears from the
-    // booking.
-    const groups = groupsFromBooking(
-      booking({
-        items: [item({ _id: "child", serviceId: ADDON, parentItemId: "gone" })],
-      }),
-    );
-
-    expect(groups[0].services.map((line) => line.serviceId)).toEqual([ADDON]);
-  });
-
-  it("marks a billed line locked, from either claim", () => {
-    const groups = groupsFromBooking(
-      booking({
-        items: [
-          item({ _id: "a", pulledToCartAt: "2026-09-01T00:00:00.000Z" }),
-          item({
-            _id: "b",
-            serviceId: OTHER_MAIN,
-            pulledToInvoiceAt: "2026-09-01T00:00:00.000Z",
-          }),
-        ],
-      }),
-    );
-
-    expect(groups[0].services.map((line) => line.locked)).toEqual([true, true]);
-  });
-
-  it("shows each of the animal's notes once, from its rows", () => {
-    const groups = groupsFromBooking(
-      booking({
-        items: [
-          item({
-            _id: "a",
-            internalNotes: "Takut hairdryer",
-            customerNotes: "Sarankan 3 minggu sekali",
-          }),
-          item({
-            _id: "b",
-            serviceId: OTHER_MAIN,
-            internalNotes: "Takut hairdryer",
-            customerNotes: "Sarankan 3 minggu sekali",
-          }),
-        ],
-      }),
-    );
-
-    expect(groups[0].internalNotes).toBe("Takut hairdryer");
-    expect(groups[0].customerNotes).toBe("Sarankan 3 minggu sekali");
-  });
-
-  it("collapses the two notes independently of each other", () => {
-    /*
-      A BOOKING WHOSE ROWS DISAGREE — one written before the split, one after,
-      or an edit that reached only some rows. Testing the pair together would
-      take whichever the FIRST non-empty row happened to carry and silently drop
-      the other half, which the reader would then re-save as deleted.
-    */
-    const groups = groupsFromBooking(
-      booking({
-        items: [
-          item({ _id: "a", internalNotes: "Takut hairdryer", customerNotes: null }),
-          item({
-            _id: "b",
-            serviceId: OTHER_MAIN,
-            internalNotes: null,
-            customerNotes: "Sarankan 3 minggu sekali",
-          }),
-        ],
-      }),
-    );
-
-    expect(groups[0].internalNotes).toBe("Takut hairdryer");
-    expect(groups[0].customerNotes).toBe("Sarankan 3 minggu sekali");
-  });
-
-  it("files each belonging under its own animal", () => {
-    const groups = groupsFromBooking(
-      booking({
-        items: [item({ _id: "a" }), item({ _id: "b", petId: PET_B })],
-         
-        belongings: [
-          { petId: PET_B, name: "Carrier biru" },
-          { petId: PET_A, name: "Kalung merah" },
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ] as any,
-      }),
-    );
-
-    expect(groups[0].belongings).toEqual(["Kalung merah"]);
-    expect(groups[1].belongings).toEqual(["Carrier biru"]);
-  });
-
-  it("never returns an empty form", () => {
-    expect(groupsFromBooking(booking({}))).toHaveLength(1);
-  });
+const card = (over: Partial<BookingCardDraft> = {}): BookingCardDraft => ({
+  ...blankCard(PET_A),
+  serviceId: MAIN,
+  ...over,
 });
 
-describe("groupsToItems", () => {
-  it("sends one row per service, carrying its add-ons on the parent", () => {
-    const group = blankGroup(PET_A);
-    group.services = [
-      { ...blankService(), serviceId: MAIN, addonServiceIds: [ADDON] },
-    ];
+describe("bookingDraft — one card is one booking", () => {
+  it("starts a card with nobody assigned and nothing chosen", () => {
+    const fresh = blankCard();
 
-    expect(groupsToItems([group])).toEqual([
-      expect.objectContaining({
+    expect(fresh).toMatchObject({
+      petId: "",
+      serviceId: "",
+      addonServiceIds: [],
+      durationMin: "",
+      groomerUserId: UNASSIGNED,
+      internalNotes: "",
+      customerNotes: "",
+      belongings: [],
+      locked: false,
+    });
+    /* Two empty cards look identical; only the key tells them apart. */
+    expect(blankCard().key).not.toBe(fresh.key);
+  });
+
+  it("caps a save at ten bookings, like the server", () => {
+    expect(MAX_CARDS).toBe(10);
+  });
+
+  it("loads a booking into one card — its service, add-ons, duration and notes", () => {
+    const loaded = cardFromBooking(
+      booking({
+        service: {
+          durationMin: 120,
+          addons: [
+            {
+              itemId: "ad-1",
+              serviceId: ADDON,
+              name: "Parfum",
+              price: "20000.0000",
+              durationMin: 10,
+            },
+          ],
+        },
+        internalNotes: "Takut hairdryer",
+        customerNotes: "Sarankan 3 minggu sekali",
+      }),
+    );
+
+    expect(loaded).toMatchObject({
+      petId: PET_A,
+      serviceId: MAIN,
+      addonServiceIds: [ADDON],
+      durationMin: "120",
+      internalNotes: "Takut hairdryer",
+      customerNotes: "Sarankan 3 minggu sekali",
+      locked: false,
+    });
+  });
+
+  it("takes the groomer from the first person on the first session", () => {
+    /*
+      THE API STORES A CREW PER SESSION, and by the time a booking is edited
+      those may differ. The card shows the first answer rather than a blank.
+    */
+    const loaded = cardFromBooking(
+      booking({
+        service: {
+          sessions: [
+            session({ groomers: [{ _id: "user-1", name: "Sinta", offReason: null }] }),
+            session({
+              sessionId: "se-2",
+              groomers: [{ _id: "user-2", name: "Rio", offReason: null }],
+            }),
+          ],
+        },
+      }),
+    );
+
+    expect(loaded.groomerUserId).toBe("user-1");
+    expect(cardFromBooking(booking()).groomerUserId).toBe(UNASSIGNED);
+  });
+
+  it("locks a card whose booking a basket or a bill has claimed", () => {
+    expect(
+      cardFromBooking(booking({ pulledToCartAt: "2026-09-01T04:00:00.000Z" }))
+        .locked,
+    ).toBe(true);
+    expect(
+      cardFromBooking(booking({ pulledToInvoiceAt: "2026-09-01T04:00:00.000Z" }))
+        .locked,
+    ).toBe(true);
+  });
+
+  it("round-trips a loaded booking back to the same fields, add-ons and check-ins included", () => {
+    const loaded = cardFromBooking(
+      booking({
+        service: {
+          addons: [
+            {
+              itemId: "ad-1",
+              serviceId: ADDON,
+              name: "Parfum",
+              price: "20000.0000",
+              durationMin: 10,
+            },
+          ],
+          sessions: [
+            session({ groomers: [{ _id: "user-1", name: "Sinta", offReason: null }] }),
+          ],
+        },
+        belongings: [
+          {
+            _id: "bel-1",
+            name: "Carrier biru",
+            checkedInAt: "2026-09-01T03:00:00.000Z",
+            checkedOutAt: null,
+            checkedInBy: null,
+            checkedOutBy: null,
+          },
+        ],
+      }),
+    );
+
+    expect(cardToUpdate(loaded)).toEqual({
+      petId: PET_A,
+      serviceId: MAIN,
+      addonServiceIds: [ADDON],
+      durationMin: 90,
+      groomerUserId: "user-1",
+      internalNotes: null,
+      customerNotes: null,
+      /* THE ID GOES BACK, so the stored item keeps its check-in. */
+      belongings: [
+        {
+          _id: "bel-1",
+          name: "Carrier biru",
+          checkedInAt: "2026-09-01T03:00:00.000Z",
+        },
+      ],
+    });
+  });
+
+  it("turns each complete card into one entry, and drops the half-filled ones", () => {
+    const entries = cardsToEntries([
+      card(),
+      card({ petId: "" }),
+      card({ serviceId: "" }),
+    ]);
+
+    expect(entries).toEqual([
+      {
         petId: PET_A,
         serviceId: MAIN,
-        addonServiceIds: [ADDON],
+        addonServiceIds: [],
+        /* Nobody typed over the catalogue, so nothing is sent. */
+        durationMin: undefined,
+        groomerUserId: null,
+        internalNotes: null,
+        customerNotes: null,
+        belongings: [],
+      },
+    ]);
+  });
+
+  it("sends the same animal twice when it is on two cards with two services", () => {
+    const entries = cardsToEntries([
+      card({ serviceId: MAIN }),
+      card({ serviceId: OTHER_MAIN }),
+    ]);
+
+    expect(entries.map((entry) => [entry.petId, entry.serviceId])).toEqual([
+      [PET_A, MAIN],
+      [PET_A, OTHER_MAIN],
+    ]);
+  });
+
+  it("sends each card's own notes, groomer, duration and belongings — never an id on a create", () => {
+    const [entry] = cardsToEntries([
+      card({
+        groomerUserId: "user-1",
+        durationMin: "45",
+        internalNotes: "  Takut hairdryer  ",
+        customerNotes: "",
+        belongings: [{ name: "Carrier biru" }, { name: "   " }],
       }),
     ]);
-  });
 
-  it("writes both of the animal's notes onto each of its rows", () => {
-    // Both are "anything special about THIS animal on THIS visit" — per-animal
-    // facts stored per row. Asking once and fanning them out is what makes the
-    // screen match the fields' meaning.
-    const group = blankGroup(PET_A);
-    group.internalNotes = "  Takut hairdryer  ";
-    group.customerNotes = "  Sarankan 3 minggu sekali  ";
-    group.services = [
-      { ...blankService(), serviceId: MAIN },
-      { ...blankService(), serviceId: OTHER_MAIN },
-    ];
-
-    const rows = groupsToItems([group]);
-
-    expect(rows.map((row) => row.internalNotes)).toEqual([
-      "Takut hairdryer",
-      "Takut hairdryer",
-    ]);
-    expect(rows.map((row) => row.customerNotes)).toEqual([
-      "Sarankan 3 minggu sekali",
-      "Sarankan 3 minggu sekali",
-    ]);
-  });
-
-  it("sends null for a note nobody typed, never an empty string", () => {
-    /*
-      NULL IS THE ABSENCE OF A NOTE; "" is a note somebody wrote nothing in. The
-      screens test truthiness so the two look alike there, but a shop exporting
-      its bookings would find blanks where it expected nothing.
-    */
-    const group = blankGroup(PET_A);
-    group.internalNotes = "Takut hairdryer";
-    group.customerNotes = "   ";
-    group.services = [{ ...blankService(), serviceId: MAIN }];
-
-    expect(groupsToItems([group])[0]).toMatchObject({
+    expect(entry).toMatchObject({
+      groomerUserId: "user-1",
+      durationMin: 45,
       internalNotes: "Takut hairdryer",
       customerNotes: null,
+      belongings: [{ name: "Carrier biru" }],
     });
   });
+});
 
-  it("drops a line nobody chose a service for", () => {
-    const group = blankGroup(PET_A);
-    group.services = [{ ...blankService(), serviceId: MAIN }, blankService()];
+describe("bookingDraft — duplicates", () => {
+  it("flags the SECOND card that repeats an animal and a main service", () => {
+    const first = card();
+    const second = card();
 
-    expect(groupsToItems([group])).toHaveLength(1);
+    expect(duplicateCardKeys([first, second])).toEqual(new Set([second.key]));
   });
 
-  it("drops a card with no animal chosen", () => {
-    const group = blankGroup();
-    group.services = [{ ...blankService(), serviceId: MAIN }];
-
-    expect(groupsToItems([group])).toEqual([]);
+  it("lets the same animal have two different services", () => {
+    expect(
+      duplicateCardKeys([card(), card({ serviceId: OTHER_MAIN })]).size,
+    ).toBe(0);
   });
 
-  it("omits durationMin when nobody typed one", () => {
-    const group = blankGroup(PET_A);
-    group.services = [{ ...blankService(), serviceId: MAIN }];
-
-    expect(groupsToItems([group])[0].durationMin).toBeUndefined();
+  it("lets two animals have the same service", () => {
+    expect(duplicateCardKeys([card(), card({ petId: PET_B })]).size).toBe(0);
   });
 
-  it("turns the unassigned sentinel back into null", () => {
-    const group = blankGroup(PET_A);
-    group.groomerUserId = UNASSIGNED;
-    group.services = [{ ...blankService(), serviceId: MAIN }];
-
-    expect(groupsToItems([group])[0].groomerUserId).toBeNull();
-  });
-
-  it("writes the animal's one groomer onto each of its rows", () => {
-    /*
-      ASKED ONCE PER ANIMAL, applied to every session — the same fan-out the note
-      gets. At booking a shop says "Sinta is doing Bruno today", not one name per
-      line; who actually stands at each session is settled on the booking's page.
-    */
-    const group = blankGroup(PET_A);
-    group.groomerUserId = "groomer-1";
-    group.services = [
-      { ...blankService(), serviceId: MAIN },
-      { ...blankService(), serviceId: OTHER_MAIN },
-    ];
-
-    expect(groupsToItems([group]).map((row) => row.groomerUserId)).toEqual([
-      "groomer-1",
-      "groomer-1",
-    ]);
+  it("ignores cards that are not filled in yet", () => {
+    expect(
+      duplicateCardKeys([card({ serviceId: "" }), card({ serviceId: "" })]).size,
+    ).toBe(0);
   });
 });
 
-describe("the round trip", () => {
-  it("loads a booking and sends back what it loaded", () => {
-    /*
-      THE PROPERTY THAT MATTERS. Opening a booking, changing nothing and saving
-      must not alter it — and the add-on is the part a naive conversion loses,
-      silently, because it looks like a row nobody chose.
-    */
-    const loaded = booking({
-      items: [
-        item({ _id: "p1", groomerUserId: "groomer-1", durationMin: 90 }),
-        item({ _id: "a1", serviceId: ADDON, parentItemId: "p1" }),
-        item({ _id: "p2", petId: PET_B, serviceId: OTHER_MAIN, durationMin: 60 }),
-      ],
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      belongings: [{ petId: PET_A, name: "Carrier biru" }] as any,
-    });
-
-    const items = groupsToItems(groupsFromBooking(loaded));
-
-    expect(items).toEqual([
-      expect.objectContaining({
-        petId: PET_A,
-        serviceId: MAIN,
-        addonServiceIds: [ADDON],
-        groomerUserId: "groomer-1",
-        durationMin: 90,
-      }),
-      expect.objectContaining({
-        petId: PET_B,
-        serviceId: OTHER_MAIN,
-        durationMin: 60,
-      }),
-    ]);
-
-    expect(groupsToBelongings(groupsFromBooking(loaded))).toEqual([
-      { petId: PET_A, name: "Carrier biru" },
-    ]);
-  });
-});
-
-describe("groupsToBelongings", () => {
-  it("drops blanks and trims what is left", () => {
-    const group = blankGroup(PET_A);
-    group.belongings = ["  Kalung merah  ", "   ", ""];
-
-    expect(groupsToBelongings([group])).toEqual([
-      { petId: PET_A, name: "Kalung merah" },
-    ]);
-  });
-});
-
-describe("duplicateServiceKeys", () => {
-  it("flags the LATER line, not the one filled in first", () => {
-    const group = blankGroup(PET_A);
-    const first = { ...blankService(), serviceId: MAIN };
-    const second = { ...blankService(), serviceId: MAIN };
-    group.services = [first, second];
-
-    const duplicates = duplicateServiceKeys([group]);
-
-    expect(duplicates.has(second.key)).toBe(true);
-    expect(duplicates.has(first.key)).toBe(false);
-  });
-
-  it("allows two ANIMALS to have the same service — the case PCR-040 exists for", () => {
-    const a = blankGroup(PET_A);
-    a.services = [{ ...blankService(), serviceId: MAIN }];
-    const b = blankGroup(PET_B);
-    b.services = [{ ...blankService(), serviceId: MAIN }];
-
-    expect(duplicateServiceKeys([a, b]).size).toBe(0);
-  });
-
-  it("catches one add-on ticked under two of an animal's services", () => {
-    // One perfume, charged twice — the server refuses it, so the form has to
-    // see it too or the refusal arrives with nothing highlighted.
-    const group = blankGroup(PET_A);
-    group.services = [
-      { ...blankService(), serviceId: MAIN, addonServiceIds: [ADDON] },
-      { ...blankService(), serviceId: OTHER_MAIN, addonServiceIds: [ADDON] },
-    ];
-
-    expect(duplicateServiceKeys([group]).size).toBe(1);
-  });
-});
-
-describe("longestGroomerMinutes", () => {
-  const catalogue: Record<string, Service> = {
-    [MAIN]: { durationMin: 90 } as Service,
-    [OTHER_MAIN]: { durationMin: 60 } as Service,
-    [ADDON]: { durationMin: 30 } as Service,
-  };
-  const serviceOf = (id: string) => catalogue[id] ?? null;
-
-  it("takes the longest groomer's chain, never the sum", () => {
-    // Mochi with Sinta for 90 and Coco with Rio for 60 means the visit takes 90.
-    const a = blankGroup(PET_A);
-    a.groomerUserId = "sinta";
-    a.services = [
-      { ...blankService(), serviceId: MAIN },
-    ];
-    const b = blankGroup(PET_B);
-    b.groomerUserId = "rio";
-    b.services = [{ ...blankService(), serviceId: OTHER_MAIN }];
-
-    expect(longestGroomerMinutes([a, b], serviceOf)).toBe(90);
-  });
-
-  it("sums the lines one groomer is doing — nobody does two animals at once", () => {
-    const a = blankGroup(PET_A);
-    a.groomerUserId = "sinta";
-    a.services = [
-      { ...blankService(), serviceId: MAIN },
-    ];
-    const b = blankGroup(PET_B);
-    b.groomerUserId = "sinta";
-    b.services = [{ ...blankService(), serviceId: OTHER_MAIN }];
-
-    expect(longestGroomerMinutes([a, b], serviceOf)).toBe(150);
-  });
-
-  it("adds an add-on's minutes to the groomer doing it", () => {
-    const group = blankGroup(PET_A);
-    group.services = [
-      {
-        ...blankService(),
-        serviceId: MAIN,
-        addonServiceIds: [ADDON],
+describe("bookingDraft — what a stored booking already holds", () => {
+  it("keys the main service and every add-on by the booking's animal", () => {
+    const keys = storedPetServiceKeys(
+      booking({
+        service: {
+          addons: [
+            {
+              itemId: "ad-1",
+              serviceId: ADDON,
+              name: "Parfum",
+              price: "20000.0000",
+              durationMin: 10,
+            },
+          ],
         },
-    ];
+      }),
+    );
 
-    expect(longestGroomerMinutes([group], serviceOf)).toBe(120);
+    expect(keys).toEqual(
+      new Set([petServiceKey(PET_A, MAIN), petServiceKey(PET_A, ADDON)]),
+    );
+  });
+});
+
+describe("bookingDraft — when the customer gets their animals back", () => {
+  const services: Record<string, Service> = {
+    [MAIN]: { _id: MAIN, durationMin: 90, price: "1" } as Service,
+    [OTHER_MAIN]: { _id: OTHER_MAIN, durationMin: 60, price: "1" } as Service,
+    [ADDON]: { _id: ADDON, durationMin: 15, price: "1" } as Service,
+  };
+  const serviceOf = (id: string) => services[id] ?? null;
+  const petOf = (id: string) => ({ _id: id, size: "small" }) as Pet;
+
+  it("takes the longest groomer, not the sum", () => {
+    expect(
+      longestGroomerMinutes(
+        [
+          card({ groomerUserId: "sinta" }),
+          card({ petId: PET_B, serviceId: OTHER_MAIN, groomerUserId: "rio" }),
+        ],
+        serviceOf,
+        petOf,
+      ),
+    ).toBe(90);
   });
 
-  it("prefers a typed duration over the catalogue's, for the parent only", () => {
-    const group = blankGroup(PET_A);
-    group.services = [
-      {
-        ...blankService(),
-        serviceId: MAIN,
-        durationMin: "45",
-        addonServiceIds: [ADDON],
-      },
-    ];
+  it("sums cards that share a groomer, add-ons included", () => {
+    expect(
+      longestGroomerMinutes(
+        [
+          card({ groomerUserId: "sinta", addonServiceIds: [ADDON] }),
+          card({ petId: PET_B, serviceId: OTHER_MAIN, groomerUserId: "sinta" }),
+        ],
+        serviceOf,
+        petOf,
+      ),
+    ).toBe(90 + 15 + 60);
+  });
 
-    expect(longestGroomerMinutes([group], serviceOf)).toBe(75);
+  it("uses a typed duration over the catalogue's", () => {
+    expect(
+      longestGroomerMinutes([card({ durationMin: "120" })], serviceOf, petOf),
+    ).toBe(120);
+  });
+
+  it("reads a variant service's minutes from the animal", () => {
+    const variant = {
+      _id: MAIN,
+      price: null,
+      durationMin: null,
+      hasVariants: true,
+      variantAxes: ["sizeCategory"],
+      variants: [
+        {
+          petType: null,
+          sizeCategory: "large",
+          furType: null,
+          price: "180000.0000",
+          durationMin: 150,
+          isActive: true,
+        } as unknown as ServiceVariant,
+      ],
+    } as unknown as Service;
+
+    expect(
+      longestGroomerMinutes(
+        [card()],
+        () => variant,
+        (id) => ({ _id: id, size: "large" }) as Pet,
+      ),
+    ).toBe(150);
   });
 });

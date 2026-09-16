@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { InvoiceEditor } from "@/features/sales/components/InvoiceEditor";
@@ -58,7 +58,6 @@ const line = (overrides: Partial<CustomerInvoiceItem> = {}): CustomerInvoiceItem
   dpp: null,
   tax: null,
   bookingId: null,
-  bookingItemId: null,
   petId: null,
   petName: null,
   groomerName: null,
@@ -144,6 +143,120 @@ describe("InvoiceEditor", () => {
     expect(onSaved).toHaveBeenCalled();
   });
 
+  /*
+    THE FIELDS HOLD THE LINE'S OWN DISCOUNT (16 September 2026). A pulled
+    appointment's stored discount includes its share of "Diskon seluruh booking";
+    the editor shows the share once in the recap, and sends only the own part —
+    the server adds the share back from the booking.
+  */
+  it("shows and sends a booked line's own discount, with the booking's share in the recap", async () => {
+    const user = userEvent.setup();
+    renderEditor(
+      invoice({
+        items: [
+          line(),
+          line({
+            kind: "service",
+            refId: "s1",
+            name: "Grooming Basic",
+            sku: null,
+            qty: "1.0000",
+            unitPrice: "120000.0000",
+            lineTotal: "120000.0000",
+            discount: { mode: "amount", value: "7170.0000", resolvedAmount: "7170.0000" },
+            bookingId: "bk1",
+            petId: "pet1",
+            petName: "Miko",
+          }),
+        ],
+        bookings: [
+          {
+            _id: "bk1",
+            service: {
+              serviceId: "s1",
+              name: "Grooming Basic",
+              price: "120000.0000",
+              bookingShare: "2170.0000",
+              addons: [],
+            },
+          },
+        ],
+      } as never),
+    );
+
+    const discount = await screen.findByLabelText("Diskon Grooming Basic");
+    expect(discount).toHaveValue("5000");
+    expect(screen.getByLabelText("Jenis diskon Grooming Basic")).toHaveValue("amount");
+    expect(screen.getByText("Diskon booking").parentElement?.textContent).toContain(
+      "Rp 2.170",
+    );
+
+    const qty = screen.getByLabelText("Jumlah Kalung Nylon");
+    await user.clear(qty);
+    await user.type(qty, "3");
+    await user.click(screen.getByRole("button", { name: "Simpan faktur" }));
+
+    await waitFor(() => expect(customerInvoiceService.update).toHaveBeenCalled());
+    const [, body] = asMock(customerInvoiceService.update).mock.calls[0];
+    expect(body.items[1]).toMatchObject({
+      refId: "s1",
+      discount: { mode: "amount", value: "5000" },
+      fromIndex: 1,
+    });
+  });
+
+  /*
+    THE PPN STANDS ON ITS BASE (16 September 2026) — the same pair the read view
+    and Faktur baru draw, so a figure somebody is checking line by line can be
+    checked here too.
+  */
+  it("shows Dasar pengenaan pajak above the PPN where tax is added on top", async () => {
+    asMock(tenantService.me).mockResolvedValue({
+      _id: "t1",
+      settings: { taxRate: 11, priceIncludesTax: false },
+    } as never);
+
+    renderEditor();
+
+    /* 180.000 of goods and 150.000 of grooming, before an 11% PPN on top. */
+    const base = await screen.findByText("Dasar pengenaan pajak");
+    expect(base.parentElement?.textContent).toContain("Rp 330.000");
+    /* The recap's row (a <dt>) — every line now carries a "PPN 11%" badge too. */
+    const ppn = screen.getAllByText("PPN 11%").find((node) => node.tagName === "DT");
+    expect(ppn?.parentElement?.textContent).toContain("Rp 36.300");
+  });
+
+  /*
+    A ROW'S TOTAL IS WHAT IT WILL BE BILLED AT (16 September 2026): price × qty,
+    less its own discount, plus the PPN beside it. It used to read price × qty,
+    which disagreed with every other view of the same line.
+  */
+  it("totals a row after its discount and with its tax, and shows that tax beside it", async () => {
+    const user = userEvent.setup();
+    asMock(tenantService.me).mockResolvedValue({
+      _id: "t1",
+      settings: { taxRate: 11, priceIncludesTax: false },
+    } as never);
+
+    renderEditor();
+
+    const discount = await screen.findByLabelText("Diskon Kalung Nylon");
+    await user.clear(discount);
+    await user.type(discount, "5000");
+    await user.selectOptions(
+      screen.getByLabelText("Jenis diskon Kalung Nylon"),
+      "amount",
+    );
+
+    /* 2 × 90.000 − 5.000 = 175.000, and 11% of it is 19.250. */
+    const row = within(
+      screen.getAllByRole("row").find((one) => one.textContent?.includes("Kalung Nylon"))!,
+    );
+
+    expect(row.getByText("+Rp 19.250")).toBeInTheDocument();
+    expect(row.getByText("Rp 194.250")).toBeInTheDocument();
+  });
+
   it("leaves a removed line out of the list altogether", async () => {
     const user = userEvent.setup();
     renderEditor();
@@ -173,6 +286,50 @@ describe("InvoiceEditor", () => {
 
     expect(toast).toHaveBeenCalledWith("Belum ada yang diubah.");
     expect(customerInvoiceService.update).not.toHaveBeenCalled();
+  });
+
+  /*
+    THE SERVER NEVER RE-RESOLVES A STORED LINE (13 September 2026), so a service
+    whose variant was switched off after the invoice was issued must not hold a
+    correction to some other row.
+  */
+  it("does not hold a stored service line whose variant was switched off since", async () => {
+    asMock(serviceService.list).mockResolvedValue(
+      page([
+        {
+          _id: "s1",
+          name: "Grooming Basic",
+          price: null,
+          hasVariants: true,
+          variantAxes: ["sizeCategory"],
+          variants: [
+            {
+              petType: null,
+              sizeCategory: "medium",
+              furType: null,
+              price: "150000.0000",
+              durationMin: 60,
+              isActive: false,
+            },
+          ],
+        },
+      ]),
+    );
+    asMock(petService.list).mockResolvedValue(
+      page([{ _id: "pet1", name: "Miko", species: "dog", size: "medium" }]),
+    );
+    const user = userEvent.setup();
+    renderEditor();
+
+    const qty = await screen.findByLabelText("Jumlah Kalung Nylon");
+    await user.clear(qty);
+    await user.type(qty, "3");
+
+    expect(screen.queryByText(/sedang nonaktif/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Varian nonaktif")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Simpan faktur" }));
+    await waitFor(() => expect(customerInvoiceService.update).toHaveBeenCalled());
   });
 
   it("keeps a booked service at one per animal", async () => {

@@ -1,5 +1,6 @@
 import { Fragment } from "react";
 import Link from "next/link";
+import { CornerDownRight } from "lucide-react";
 
 import {
   Table,
@@ -9,7 +10,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { speciesLabel } from "@/features/pets";
 import {
   formatMoney,
   formatQty,
@@ -23,6 +23,8 @@ import type {
   CustomerInvoiceItem,
   CustomerInvoiceTotals,
 } from "@/types/api";
+
+import { invoiceBookingShareOf, invoiceBookingShares } from "../bookingDiscount";
 
 const ZERO = BigInt(0);
 
@@ -51,8 +53,52 @@ function taxAddedOnTop(totals: CustomerInvoiceTotals | null): boolean {
   return minor(totals.grandTotal) - beforeTax > ZERO;
 }
 
+/**
+ * One animal's lines with each ADD-ON moved directly under the service it was
+ * billed with — `parentServiceId`, which the server resolved from the catalogue.
+ *
+ * MATCHED ON THE CATALOGUE SERVICE, not a line id, the same as the till's
+ * `nestAddons`: a group is already one booking on one animal, so the service
+ * settles it. Two lines of the same service take the add-on under the FIRST.
+ *
+ * AN ORPHAN STAYS WHERE IT IS, as a line of its own — an add-on sold alone has
+ * no parent, and one that vanished from the table while staying on the total is
+ * the worst outcome available.
+ *
+ * THE ORIGINAL INDEX TRAVELS ON, unchanged — rows are keyed by it.
+ */
+function nestAddons(rows: { item: CustomerInvoiceItem; index: number }[]) {
+  const hostOf = new Map<number, number>();
+
+  rows.forEach((row) => {
+    const parentId = row.item.parentServiceId;
+    if (!parentId) return;
+
+    const host = rows.find(
+      (one) =>
+        one !== row &&
+        one.item.kind === "service" &&
+        !one.item.parentServiceId &&
+        one.item.refId === parentId,
+    );
+
+    if (host) hostOf.set(row.index, host.index);
+  });
+
+  return rows.flatMap((row) =>
+    hostOf.has(row.index)
+      ? []
+      : [
+          { ...row, isAddon: false },
+          ...rows
+            .filter((one) => hostOf.get(one.index) === row.index)
+            .map((one) => ({ ...one, isAddon: true })),
+        ],
+  );
+}
+
 /** "11" → "11", "11.5" → "11,5" — the rate as a person writes it. */
-const formatRate = (rate: number) => String(rate).replace(".", ",");
+export const formatRate = (rate: number) => String(rate).replace(".", ",");
 
 /**
  * WHAT WAS BILLED — the lines, and the arithmetic that turned them into a total.
@@ -132,8 +178,22 @@ export function InvoiceItemsTable({
   const discountLabel = (mode: string, value: string) =>
     mode === "percent" ? `${Number(value)}%` : formatMoney(value);
 
+  /*
+    THE LINE'S OWN DISCOUNT — without its part of "Diskon seluruh booking"
+    (16 September 2026). The share is shown once, as "Diskon booking" in the
+    recap under "Diskon item", so a row neither lists it nor takes it off its
+    total. The stored line discount still holds both; only the reading splits.
+  */
+  const ownOffOf = (item: CustomerInvoiceItem): string =>
+    item.discount
+      ? subtractDecimals(
+          item.discount.resolvedAmount,
+          invoiceBookingShareOf(item, bookings) ?? "0",
+        )
+      : "0";
+
   const lineAmount = (item: CustomerInvoiceItem) => {
-    let amount = minor(item.lineTotal) - minor(item.discount?.resolvedAmount);
+    let amount = minor(item.lineTotal) - minor(ownOffOf(item));
     if (addedOnTop && item.tax) amount += minor(item.tax);
     return toDecimalString(amount);
   };
@@ -143,34 +203,48 @@ export function InvoiceItemsTable({
     the way somebody reads a bill for two cats: whose grooming, then whose, then
     the food that belongs to nobody in particular.
 
-    A GROUP PER ANIMAL, NOT PER RUN OF LINES. A nail trim added after the food
-    still sits with the grooming it belongs to, so an add-on and its service read
-    as one visit. Animals keep the order they first appear in; lines with no
-    animal close the table.
+    A GROUP PER BOOKING ON AN ANIMAL, NOT PER RUN OF LINES. A nail trim added
+    after the food still sits with the grooming it belongs to, so an add-on and
+    its service read as one visit. A booking is one animal and one main service,
+    so the same animal booked for two services is two groups, each with its own
+    chip — one chip over both would name only the first. Groups keep the order
+    they first appear in; lines with no animal close the table.
 
     NO HEADINGS AT ALL on a bill with no animal on it — a single "Tanpa hewan"
     row over two bags of food is a heading for a question nobody asked.
   */
   const hasAnimals = items.some((item) => item.petId || item.petName);
+  const groupKey = (item: CustomerInvoiceItem) => {
+    if (!hasAnimals) return "__semua__";
+    const animal = item.petId ?? item.petName;
+    return animal ? `${animal}|${item.bookingId ?? ""}` : "__tanpa-hewan__";
+  };
   const groups: {
     key: string;
     petName: string | null;
-    species: CustomerInvoiceItem["petSpecies"];
+    /** The species' WORD, ready to render — see where it is read below. */
+    speciesLabel: string | null;
     bookingId: string | null;
     rows: { item: CustomerInvoiceItem; index: number }[];
   }[] = [];
 
   items.forEach((item, index) => {
-    const key = hasAnimals
-      ? (item.petId ?? item.petName ?? "__tanpa-hewan__")
-      : "__semua__";
+    const key = groupKey(item);
     let group = groups.find((one) => one.key === key);
 
     if (!group) {
       group = {
         key,
         petName: item.petName ?? null,
-        species: item.petSpecies ?? null,
+        /*
+          THE SERVER'S WORD, NOT `usePetOptions()`. Species are tenant data
+          since 14 Sep 2026, and the invoice read resolves `petSpeciesLabel`
+          beside the code — the same word a session-less reader of the bill is
+          given — so this table stays a render of the document it is handed,
+          with no list of its own to load. When the server could not resolve
+          it, the code is still a better heading than nothing.
+        */
+        speciesLabel: item.petSpeciesLabel ?? item.petSpecies ?? null,
         bookingId: item.bookingId ?? null,
         rows: [],
       };
@@ -228,9 +302,9 @@ export function InvoiceItemsTable({
                           {group.key === "__tanpa-hewan__"
                             ? "Tanpa hewan"
                             : (group.petName ?? "Hewan terhapus")}
-                          {group.species && (
+                          {group.speciesLabel && (
                             <span className="text-xs font-medium tracking-wide text-muted uppercase">
-                              {speciesLabel(group.species)}
+                              {group.speciesLabel}
                             </span>
                           )}
                           {/*
@@ -259,13 +333,30 @@ export function InvoiceItemsTable({
                     </TableRow>
                   )}
 
-                  {group.rows.map(({ item, index }) => (
+                  {nestAddons(group.rows).map(({ item, index, isAddon }) => (
                     <TableRow key={`${item.refId}-${index}`}>
                       <TableCell>
-                        <span className="font-medium">{item.name}</span>
-                        <span className="block text-xs text-muted tabular-nums">
-                          {item.sku ?? "Jasa"}
-                        </span>
+                        {isAddon ? (
+                          <span className="flex items-start gap-1.5 pl-4">
+                            <CornerDownRight
+                              aria-hidden
+                              className="mt-0.5 size-4 shrink-0 text-muted"
+                            />
+                            <span>
+                              <span className="font-medium">{item.name}</span>
+                              <span className="block text-xs text-muted">
+                                Add-on
+                              </span>
+                            </span>
+                          </span>
+                        ) : (
+                          <>
+                            <span className="font-medium">{item.name}</span>
+                            <span className="block text-xs text-muted tabular-nums">
+                              {item.sku ?? "Jasa"}
+                            </span>
+                          </>
+                        )}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         {formatMoney(item.unitPrice)}
@@ -274,7 +365,7 @@ export function InvoiceItemsTable({
                         {formatQty(item.qty)}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {item.discount ? (
+                        {item.discount && isPositive(ownOffOf(item)) ? (
                           <>
                             {/* RED, as the mockup draws a deduction. The
                                 brighter `--danger` is under 4.5:1 as plain
@@ -282,11 +373,14 @@ export function InvoiceItemsTable({
                                 paired with a word ("−") — the pairing
                                 ui-rules §13 asks for around that known debt. */}
                             <span className="font-semibold text-danger">
-                              −{formatMoney(item.discount.resolvedAmount)}
+                              −{formatMoney(ownOffOf(item))}
                             </span>
                             {/* What was TYPED, beside what it came to — "10%" is
-                                what was agreed with the customer. */}
-                            {item.discount.mode === "percent" && (
+                                what was agreed with the customer. Only when the
+                                figure is all the line's own: a share folded in
+                                makes the percent describe something else. */}
+                            {item.discount.mode === "percent" &&
+                              !invoiceBookingShareOf(item, bookings) && (
                               <span className="block text-xs text-muted">
                                 {discountLabel(
                                   item.discount.mode,
@@ -347,14 +441,40 @@ export function InvoiceItemsTable({
             <dd className="tabular-nums">{formatMoney(totals.subtotal)}</dd>
           </div>
 
-          {totals.itemDiscount !== "0.0000" && (
-            <div className="flex justify-between gap-4">
-              <dt className="text-muted">Diskon item</dt>
-              <dd className="tabular-nums font-semibold text-danger">
-                −{formatMoney(totals.itemDiscount)}
-              </dd>
-            </div>
-          )}
+          {/*
+            THE ITEM DISCOUNT, SPLIT AS THE TILL AND THE NEW-INVOICE FORM SHOW IT
+            (15 September 2026) — the lines' own, then the bookings' shares of
+            "Diskon seluruh booking" directly under it. The two add up to
+            `totals.itemDiscount`; nothing about the stored figure changes.
+          */}
+          {(() => {
+            const shares = invoiceBookingShares(
+              invoice.items ?? [],
+              invoice.bookings ?? [],
+            );
+            const own = subtractDecimals(totals.itemDiscount, shares);
+
+            return (
+              <>
+                {isPositive(own) && (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted">Diskon item</dt>
+                    <dd className="tabular-nums font-semibold text-danger">
+                      −{formatMoney(own)}
+                    </dd>
+                  </div>
+                )}
+                {isPositive(shares) && (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted">Diskon booking</dt>
+                    <dd className="tabular-nums font-semibold text-danger">
+                      −{formatMoney(shares)}
+                    </dd>
+                  </div>
+                )}
+              </>
+            );
+          })()}
 
           {/*
             KEYED ON THE AMOUNT, not on the typed discount beside it. A till sale

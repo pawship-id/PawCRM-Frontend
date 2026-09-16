@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { ServiceForm } from "@/features/services";
@@ -6,13 +6,29 @@ import { serviceService } from "@/services/service.service";
 import { businessLineService } from "@/services/businessLine.service";
 import { branchService } from "@/services/branch.service";
 import { ApiError } from "@/services/api-error";
+import { petOptionService } from "@/services/petOption.service";
+import { serviceStepService } from "@/services/serviceStep.service";
 import type { Service } from "@/types/api";
 
+import {
+  makePetOption,
+  PET_OPTION_FIXTURES,
+  primePetOptions,
+} from "./helpers/petOptions";
 import { renderWithAuth } from "./helpers/renderWithAuth";
+import {
+  makeServiceStep,
+  SERVICE_STEP_FIXTURES,
+  primeServiceSteps,
+} from "./helpers/serviceSteps";
 
 jest.mock("@/services/service.service");
 jest.mock("@/services/businessLine.service");
 jest.mock("@/services/branch.service");
+// The variant rows are the tenant's species, sizes and coats.
+jest.mock("@/services/petOption.service");
+// Tahapan are picked from the line's list.
+jest.mock("@/services/serviceStep.service");
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
 
 import { swalToast } from "@/lib/swal";
@@ -55,11 +71,13 @@ const serviceFixture: Service = {
   categoryId: null,
   price: "150000.0000",
   durationMin: 90,
+  billingUnit: "per_pet",
   description: null,
   hasVariants: false,
   variantAxes: [],
   variants: [],
   sessions: [],
+  sessionWeights: [],
   allBranches: true,
   branchIds: [],
   serviceType: "main",
@@ -85,6 +103,12 @@ const addonFixture: Service = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  primePetOptions(petOptionService.list);
+  // Mandi → Gunting → Blow dry, on this suite's line.
+  primeServiceSteps(
+    serviceStepService.list,
+    SERVICE_STEP_FIXTURES.map((step) => ({ ...step, businessLineId: LINE_ID })),
+  );
   mockedBusinessLineService.list.mockResolvedValue({
     items: [
       {
@@ -137,15 +161,28 @@ async function renderNew() {
   );
 }
 
+/** Picks a business line by name. */
+async function pickLine(label = "Grooming") {
+  await userEvent.click(
+    screen.getByRole("button", { name: /pilih lini bisnis/i }),
+  );
+  await userEvent.click(await screen.findByRole("option", { name: label }));
+}
+
 /** Name, code, line, duration — everything a create needs but the price. */
 async function fillRequiredExceptPrice(name = "Grooming") {
   await userEvent.type(screen.getByLabelText(/nama layanan/i), name);
   await userEvent.type(screen.getByLabelText(/^kode/i), "GRM-FULL");
-  await userEvent.click(
-    screen.getByRole("button", { name: /pilih lini bisnis/i }),
-  );
-  await userEvent.click(await screen.findByRole("option", { name: "Grooming" }));
+  await pickLine();
   await userEvent.type(screen.getByLabelText(/durasi/i), "90");
+}
+
+/** Opens "Tambah tahapan…" and picks each name from the line's list. */
+async function addSessions(...names: string[]) {
+  for (const name of names) {
+    await userEvent.click(screen.getByRole("button", { name: /tambah tahapan/i }));
+    await userEvent.click(await screen.findByRole("button", { name }));
+  }
 }
 
 describe("ServiceForm — creating", () => {
@@ -445,7 +482,14 @@ describe("ServiceForm — variant pricing", () => {
     ).toBeVisible();
   });
 
-  it("sends the axes and one variant per row, and no flat price", async () => {
+  /*
+    ─── EACH VARIANT ITS OWN MINUTES AND ITS OWN AKTIF (13 September 2026) ────
+
+    A variant service has no single duration: the box above the grid goes away,
+    every row carries its own minutes beside its price, and a row can be switched
+    off without leaving the grid.
+  */
+  it("sends the axes and one variant per row — price, minutes, on/off — and no flat price or duration", async () => {
     mockedServiceService.create.mockResolvedValue(serviceFixture);
     await renderNew();
 
@@ -454,6 +498,15 @@ describe("ServiceForm — variant pricing", () => {
     await userEvent.click(screen.getByLabelText(/kategori bulu/i));
     await userEvent.type(screen.getByLabelText("Harga Bulu panjang"), "180000");
     await userEvent.type(screen.getByLabelText("Harga Bulu pendek"), "150000");
+    await userEvent.type(
+      screen.getByLabelText("Durasi Bulu panjang (menit)"),
+      "120",
+    );
+    await userEvent.type(
+      screen.getByLabelText("Durasi Bulu pendek (menit)"),
+      "90",
+    );
+    await userEvent.click(screen.getByLabelText("Bulu pendek aktif"));
     await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
 
     await waitFor(() => expect(mockedServiceService.create).toHaveBeenCalled());
@@ -462,20 +515,218 @@ describe("ServiceForm — variant pricing", () => {
     expect(payload.hasVariants).toBe(true);
     expect(payload.variantAxes).toEqual(["furType"]);
     expect(payload.price).toBeUndefined();
+    expect(payload.durationMin).toBeUndefined();
     expect(payload.variants).toEqual([
       {
         petType: null,
         sizeCategory: null,
         furType: "long hair",
         price: "180000",
+        durationMin: 120,
+        isActive: true,
       },
       {
         petType: null,
         sizeCategory: null,
         furType: "short hair",
         price: "150000",
+        durationMin: 90,
+        isActive: false,
       },
     ]);
+  });
+
+  it("drops the single duration box while variants are on", async () => {
+    await renderNew();
+
+    expect(
+      screen.getByRole("spinbutton", { name: /^durasi \(menit\)/i }),
+    ).toBeVisible();
+
+    await userEvent.click(screen.getByLabelText(/harga beda per varian/i));
+
+    expect(
+      screen.queryByRole("spinbutton", { name: /^durasi \(menit\)/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("refuses to save while any variant row has no duration", async () => {
+    await renderNew();
+
+    await fillRequiredExceptPrice();
+    await userEvent.click(screen.getByLabelText(/harga beda per varian/i));
+    await userEvent.click(screen.getByLabelText(/kategori bulu/i));
+    await userEvent.type(screen.getByLabelText("Harga Bulu panjang"), "180000");
+    await userEvent.type(screen.getByLabelText("Harga Bulu pendek"), "150000");
+    await userEvent.type(
+      screen.getByLabelText("Durasi Bulu panjang (menit)"),
+      "120",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
+
+    expect(
+      await screen.findByText(/semua baris varian harus punya durasi/i),
+    ).toBeVisible();
+    expect(mockedServiceService.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("ServiceForm — the tenant's species, sizes and coats", () => {
+  /*
+    ─── THE ROWS ARE THE TENANT'S PET OPTIONS (14 September 2026) ─────────────
+
+    Not three closed lists any more: a shop can add a size, retire a coat, or
+    have enough of each that ticking every axis makes more variants than the
+    server stores.
+  */
+  const XL = makePetOption({
+    type: "size",
+    code: "xl",
+    label: "Ekstra besar",
+    sortOrder: 3,
+  });
+
+  const LONG_HAIR_RETIRED = PET_OPTION_FIXTURES.map((option) =>
+    option.code === "long hair" ? { ...option, isActive: false } : option,
+  );
+
+  const priceRows = () =>
+    screen
+      .getAllByRole("textbox", { name: /^Harga / })
+      .map((input) => input.getAttribute("aria-label"));
+
+  it("gives a size the tenant added its own row, in the tenant's order", async () => {
+    // Listed first: the order is sortOrder, not arrival.
+    primePetOptions(petOptionService.list, [XL, ...PET_OPTION_FIXTURES]);
+    await renderNew();
+
+    await userEvent.click(screen.getByLabelText(/harga beda per varian/i));
+    await userEvent.click(screen.getByLabelText(/kategori ukuran/i));
+
+    expect(await screen.findByText(/4 baris/i)).toBeVisible();
+    expect(priceRows()).toEqual([
+      "Harga Kecil",
+      "Harga Sedang",
+      "Harga Besar",
+      "Harga Ekstra besar",
+    ]);
+  });
+
+  it("keeps a priced coat whose option was retired, and saves it with the rest", async () => {
+    primePetOptions(petOptionService.list, LONG_HAIR_RETIRED);
+    mockedServiceService.getById.mockResolvedValue({
+      ...serviceFixture,
+      price: null,
+      durationMin: null,
+      hasVariants: true,
+      variantAxes: ["furType"],
+      variants: [
+        {
+          petType: null,
+          sizeCategory: null,
+          furType: "long hair",
+          price: "180000.0000",
+          durationMin: 120,
+          isActive: true,
+        },
+        {
+          petType: null,
+          sizeCategory: null,
+          furType: "short hair",
+          price: "150000.0000",
+          durationMin: 90,
+          isActive: true,
+        },
+      ],
+    });
+    mockedServiceService.update.mockResolvedValue(serviceFixture);
+
+    renderWithAuth(<ServiceForm serviceId={SERVICE_ID} />);
+
+    expect(
+      await screen.findByLabelText("Harga Bulu panjang (nonaktif)"),
+    ).toHaveValue("180000");
+    expect(priceRows()).toEqual([
+      "Harga Bulu panjang (nonaktif)",
+      "Harga Bulu pendek",
+    ]);
+
+    await userEvent.click(screen.getByRole("button", { name: /simpan layanan/i }));
+
+    await waitFor(() => expect(mockedServiceService.update).toHaveBeenCalled());
+    const [, payload] = mockedServiceService.update.mock.calls[0];
+    expect(payload.variants?.map((variant) => variant.furType)).toEqual([
+      "long hair",
+      "short hair",
+    ]);
+  });
+
+  it("does not offer a retired coat on a new service", async () => {
+    primePetOptions(petOptionService.list, LONG_HAIR_RETIRED);
+    await renderNew();
+
+    await userEvent.click(screen.getByLabelText(/harga beda per varian/i));
+    await userEvent.click(screen.getByLabelText(/kategori bulu/i));
+
+    expect(await screen.findByText(/1 baris/i)).toBeVisible();
+    expect(priceRows()).toEqual(["Harga Bulu pendek"]);
+  });
+
+  it("keeps Simpan off while the ticked axes make more than 20 variants", async () => {
+    primePetOptions(petOptionService.list, [
+      ...PET_OPTION_FIXTURES,
+      makePetOption({ type: "species", code: "rabbit", label: "Kelinci", sortOrder: 2 }),
+      XL,
+    ]);
+    await renderNew();
+
+    await fillRequiredExceptPrice();
+    await userEvent.click(screen.getByLabelText(/harga beda per varian/i));
+    await userEvent.click(screen.getByLabelText(/tipe hewan/i));
+    await userEvent.click(screen.getByLabelText(/kategori ukuran/i));
+    await userEvent.click(screen.getByLabelText(/kategori bulu/i));
+
+    // 3 species × 4 sizes × 2 coats.
+    expect(
+      await screen.findByText(
+        /kombinasinya jadi 24 varian — maksimal 20 per layanan/i,
+      ),
+    ).toBeVisible();
+    // The action bar says why its button is off.
+    expect(
+      screen.getByText("24 varian, maksimal 20 per layanan"),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: /buat layanan/i })).toBeDisabled();
+
+    // 4 × 2 = 8 fits.
+    await userEvent.click(screen.getByLabelText(/tipe hewan/i));
+
+    expect(screen.queryByText(/kombinasinya jadi/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /buat layanan/i })).toBeEnabled();
+    expect(mockedServiceService.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("ServiceForm — billing unit", () => {
+  /*
+    PER HEWAN OR PER KUNJUNGAN (13 September 2026). Stored and sent; the hint
+    under the field says billing does not act on it yet.
+  */
+  it("sends per_pet unless somebody picks per kunjungan", async () => {
+    mockedServiceService.create.mockResolvedValue(serviceFixture);
+    await renderNew();
+
+    await fillRequiredExceptPrice();
+    await userEvent.type(priceBox(), "25000");
+    await userEvent.click(screen.getByRole("combobox", { name: /ditagih/i }));
+    await userEvent.click(
+      await screen.findByRole("option", { name: "Per kunjungan" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
+
+    await waitFor(() => expect(mockedServiceService.create).toHaveBeenCalled());
+    const [payload] = mockedServiceService.create.mock.calls[0];
+    expect(payload.billingUnit).toBe("per_visit");
   });
 });
 
@@ -534,6 +785,349 @@ describe("ServiceForm — add-ons", () => {
   });
 });
 
+/*
+  ─── THE COMMISSION SPLIT BETWEEN TAHAPAN — 13 September 2026 ─────────────────
+
+  Commission is one rule for the whole shop; how a service's share divides
+  between its tahapan is the service's own. All empty splits evenly; anything
+  filled must be every box and exactly 100 — the server answers 400 otherwise.
+*/
+/*
+  ─── TAHAPAN COME FROM THE LINE'S LIST — 14 September 2026 ────────────────────
+
+  Free text until then. The server now refuses a name that is not an active step
+  of the service's line (keeping only what the service already stored there), so
+  the form offers the list, and a missing name is added to the list on the spot.
+*/
+describe("ServiceForm — tahapan from the line's list", () => {
+  const OTHER_LINE_ID = "5a7f1f77bcf86cd7994390cc";
+
+  const tahapanButton = () =>
+    screen.getByRole("button", { name: /tambah tahapan/i });
+
+  it("keeps the picker off until a business line is chosen", async () => {
+    await renderNew();
+
+    expect(tahapanButton()).toBeDisabled();
+    expect(screen.getByText("Pilih lini bisnis dulu.")).toBeVisible();
+    expect(serviceStepService.list).not.toHaveBeenCalled();
+
+    await pickLine();
+
+    expect(tahapanButton()).toBeEnabled();
+    expect(screen.queryByText("Pilih lini bisnis dulu.")).not.toBeInTheDocument();
+  });
+
+  it("offers only the line's active steps not already chosen, and sends the list's spelling", async () => {
+    primeServiceSteps(serviceStepService.list, [
+      ...SERVICE_STEP_FIXTURES.map((step) => ({ ...step, businessLineId: LINE_ID })),
+      makeServiceStep({ name: "Spa", businessLineId: LINE_ID, isActive: false, sortOrder: 3 }),
+      makeServiceStep({ name: "Kandang", businessLineId: OTHER_LINE_ID }),
+    ]);
+    mockedServiceService.create.mockResolvedValue(serviceFixture);
+    await renderNew();
+
+    await fillRequiredExceptPrice();
+    await userEvent.type(priceBox(), "150000");
+
+    await userEvent.click(tahapanButton());
+    expect(
+      (await screen.findAllByRole("button", { name: /^(Mandi|Gunting|Blow dry|Spa|Kandang)$/ })).map(
+        (button) => button.textContent,
+      ),
+    ).toEqual(["Mandi", "Gunting", "Blow dry"]);
+    await userEvent.click(screen.getByRole("button", { name: "Gunting" }));
+
+    // Chosen already: gone from the options, whatever the case it is typed in.
+    await userEvent.click(tahapanButton());
+    expect(await screen.findByRole("button", { name: "Mandi" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Gunting" })).not.toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("Cari tahapan"), "gunting");
+    expect(screen.getByText("Tahapan ini sudah ada di layanan ini.")).toBeVisible();
+
+    // A retired step typed by name is said, not offered.
+    await userEvent.clear(screen.getByLabelText("Cari tahapan"));
+    await userEvent.type(screen.getByLabelText("Cari tahapan"), "spa");
+    expect(screen.getByText(/“Spa” sudah dinonaktifkan/)).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: /ke daftar tahapan/ }),
+    ).not.toBeInTheDocument();
+
+    // Enter on an exact match picks it — in the list's spelling.
+    await userEvent.clear(screen.getByLabelText("Cari tahapan"));
+    await userEvent.type(screen.getByLabelText("Cari tahapan"), "mandi{Enter}");
+
+    await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
+
+    await waitFor(() => expect(mockedServiceService.create).toHaveBeenCalled());
+    expect(mockedServiceService.create.mock.calls[0][0].sessions).toEqual([
+      "Gunting",
+      "Mandi",
+    ]);
+  });
+
+  it("adds a name missing from the list to the line's list, and takes the name it was stored as", async () => {
+    jest
+      .mocked(serviceStepService.create)
+      .mockResolvedValue(
+        makeServiceStep({ name: "Potong kuku", businessLineId: LINE_ID, sortOrder: 3 }),
+      );
+    await renderNew();
+
+    await pickLine();
+    await userEvent.click(tahapanButton());
+    await userEvent.type(await screen.findByLabelText("Cari tahapan"), "potong kuku");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Tambah “potong kuku” ke daftar tahapan" }),
+    );
+
+    await waitFor(() =>
+      expect(serviceStepService.create).toHaveBeenCalledWith({
+        businessLineId: LINE_ID,
+        name: "potong kuku",
+      }),
+    );
+    expect(
+      await screen.findByRole("button", { name: "Hapus tahapan Potong kuku" }),
+    ).toBeInTheDocument();
+    // The list is read again, so the new step is on it for the next pick.
+    await waitFor(() =>
+      expect(serviceStepService.list).toHaveBeenCalledTimes(2),
+    );
+  });
+
+  it("says a 409 from the quick add inline, and adds nothing", async () => {
+    jest
+      .mocked(serviceStepService.create)
+      .mockRejectedValue(new ApiError("Service step already exists", 409));
+    await renderNew();
+
+    await pickLine();
+    await userEvent.click(tahapanButton());
+    await userEvent.type(await screen.findByLabelText("Cari tahapan"), "Spa");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Tambah “Spa” ke daftar tahapan" }),
+    );
+
+    expect(
+      await screen.findByText(/“Spa” ternyata sudah ada di daftar tahapan/),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "Hapus tahapan Spa" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not offer the quick add to a role that may not change services", async () => {
+    renderWithAuth(<ServiceForm />, {
+      isSuperAdmin: false,
+      permissions: [{ feature: "services", actions: ["read", "create"] }],
+    });
+    await waitFor(() => expect(mockedBusinessLineService.list).toHaveBeenCalled());
+
+    await pickLine();
+    await userEvent.click(tahapanButton());
+    await userEvent.type(await screen.findByLabelText("Cari tahapan"), "Spa");
+
+    expect(
+      screen.getByText("“Spa” belum ada di daftar tahapan lini ini."),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: /ke daftar tahapan/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("marks a stored tahapan that is retired or not on the list, and does not offer it again", async () => {
+    primeServiceSteps(serviceStepService.list, [
+      makeServiceStep({ name: "Mandi", businessLineId: LINE_ID, sortOrder: 0 }),
+      makeServiceStep({ name: "Gunting", businessLineId: LINE_ID, sortOrder: 1 }),
+      makeServiceStep({ name: "Blow dry", businessLineId: LINE_ID, sortOrder: 2, isActive: false }),
+    ]);
+    mockedServiceService.getById.mockResolvedValue({
+      ...serviceFixture,
+      sessions: ["Mandi", "Blow dry", "Spa"],
+    });
+
+    renderWithAuth(<ServiceForm serviceId={SERVICE_ID} />);
+
+    const blowDry = (
+      await screen.findByRole("button", { name: "Hapus tahapan Blow dry" })
+    ).closest("li") as HTMLElement;
+    expect(await within(blowDry).findByText("nonaktif")).toBeVisible();
+    const spa = screen
+      .getByRole("button", { name: "Hapus tahapan Spa" })
+      .closest("li") as HTMLElement;
+    expect(within(spa).getByText("belum di daftar")).toBeVisible();
+    // Stored on this same line: the server keeps them, so no warning.
+    expect(screen.queryByText(/ditolak saat disimpan/)).not.toBeInTheDocument();
+
+    await userEvent.click(tahapanButton());
+    expect(await screen.findByRole("button", { name: "Gunting" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Blow dry" })).not.toBeInTheDocument();
+
+    // Removable all the same.
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(screen.getByRole("button", { name: "Hapus tahapan Spa" }));
+    expect(
+      screen.queryByRole("button", { name: "Hapus tahapan Spa" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("warns when the chosen line's list does not have the tahapan already picked", async () => {
+    mockedBusinessLineService.list.mockResolvedValue({
+      items: [
+        { _id: LINE_ID, name: "Grooming" },
+        { _id: OTHER_LINE_ID, name: "Hotel" },
+      ],
+      pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    primeServiceSteps(serviceStepService.list, [
+      ...SERVICE_STEP_FIXTURES.map((step) => ({ ...step, businessLineId: LINE_ID })),
+      makeServiceStep({ name: "Kandang", businessLineId: OTHER_LINE_ID }),
+    ]);
+    await renderNew();
+
+    await pickLine("Grooming");
+    await addSessions("Mandi");
+    expect(screen.queryByText(/ditolak saat disimpan/)).not.toBeInTheDocument();
+
+    await pickLine("Hotel");
+
+    expect(
+      await screen.findByText(
+        /“Mandi” tidak ada di daftar tahapan aktif lini bisnis ini/,
+      ),
+    ).toBeVisible();
+    expect(screen.getByText("belum di daftar")).toBeVisible();
+  });
+
+  it("puts the server's refusal of a tahapan under the field", async () => {
+    mockedServiceService.create.mockRejectedValue(
+      new ApiError("Unknown or retired service step", 400, {
+        details: [
+          { field: "sessions", message: "Tahapan 'Mandi' sudah dinonaktifkan" },
+        ],
+      }),
+    );
+    await renderNew();
+
+    await fillRequiredExceptPrice();
+    await userEvent.type(priceBox(), "150000");
+    await addSessions("Mandi");
+    await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
+
+    expect(
+      await screen.findByText("Tahapan 'Mandi' sudah dinonaktifkan"),
+    ).toBeVisible();
+    // Not the bare banner — the sentence is bound to the field.
+    expect(
+      screen.queryByText(/Unknown or retired service step/),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("ServiceForm — commission weights per tahapan", () => {
+  async function fillValidService() {
+    await fillRequiredExceptPrice();
+    await userEvent.type(priceBox(), "150000");
+  }
+
+  it("sends [] when every weight is left empty — split evenly", async () => {
+    mockedServiceService.create.mockResolvedValue(serviceFixture);
+    await renderNew();
+
+    await fillValidService();
+    await addSessions("Mandi", "Gunting");
+    await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
+
+    await waitFor(() => expect(mockedServiceService.create).toHaveBeenCalled());
+    expect(mockedServiceService.create.mock.calls[0][0].sessionWeights).toEqual([]);
+  });
+
+  it("sends one whole per cent per tahapan, in their order", async () => {
+    mockedServiceService.create.mockResolvedValue(serviceFixture);
+    await renderNew();
+
+    await fillValidService();
+    await addSessions("Mandi", "Gunting");
+    await userEvent.type(screen.getByLabelText("Bobot Mandi (%)"), "60");
+    await userEvent.type(screen.getByLabelText("Bobot Gunting (%)"), "40");
+    await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
+
+    await waitFor(() => expect(mockedServiceService.create).toHaveBeenCalled());
+    expect(mockedServiceService.create.mock.calls[0][0].sessionWeights).toEqual([
+      60, 40,
+    ]);
+  });
+
+  it("refuses weights that do not add up to 100, and says the total", async () => {
+    await renderNew();
+
+    await fillValidService();
+    await addSessions("Mandi", "Gunting");
+    await userEvent.type(screen.getByLabelText("Bobot Mandi (%)"), "50");
+    await userEvent.type(screen.getByLabelText("Bobot Gunting (%)"), "40");
+    await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
+
+    expect(
+      await screen.findByText(/total bobotnya 90%, harus pas 100%/i),
+    ).toBeVisible();
+    expect(mockedServiceService.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses a half-filled set rather than guessing the rest", async () => {
+    await renderNew();
+
+    await fillValidService();
+    await addSessions("Mandi", "Gunting");
+    await userEvent.type(screen.getByLabelText("Bobot Mandi (%)"), "100");
+    await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
+
+    expect(await screen.findByText(/isi bobot semua tahapan/i)).toBeVisible();
+    expect(mockedServiceService.create).not.toHaveBeenCalled();
+  });
+
+  it("fills whole per cents that add up to 100 with Bagi rata", async () => {
+    await renderNew();
+
+    await pickLine();
+    await addSessions("Mandi", "Gunting", "Blow dry");
+    await userEvent.click(screen.getByRole("button", { name: "Bagi rata" }));
+
+    expect(screen.getByLabelText("Bobot Mandi (%)")).toHaveValue("34");
+    expect(screen.getByLabelText("Bobot Gunting (%)")).toHaveValue("33");
+    expect(screen.getByLabelText("Bobot Blow dry (%)")).toHaveValue("33");
+  });
+
+  it("loads stored weights on edit", async () => {
+    mockedServiceService.getById.mockResolvedValue({
+      ...serviceFixture,
+      sessions: ["Mandi", "Gunting"],
+      sessionWeights: [70, 30],
+    });
+
+    renderWithAuth(<ServiceForm serviceId={SERVICE_ID} />);
+
+    expect(await screen.findByLabelText("Bobot Mandi (%)")).toHaveValue("70");
+    expect(screen.getByLabelText("Bobot Gunting (%)")).toHaveValue("30");
+  });
+
+  it("ignores stored weights that no longer line up with the tahapan", async () => {
+    // Which number belonged to which tahapan is unknowable once the lengths
+    // differ; the empty editor says what the server does — split evenly.
+    mockedServiceService.getById.mockResolvedValue({
+      ...serviceFixture,
+      sessions: ["Mandi", "Gunting"],
+      sessionWeights: [100],
+    });
+
+    renderWithAuth(<ServiceForm serviceId={SERVICE_ID} />);
+
+    expect(await screen.findByLabelText("Bobot Mandi (%)")).toHaveValue("");
+    expect(screen.getByLabelText("Bobot Gunting (%)")).toHaveValue("");
+  });
+});
+
 describe("ServiceForm — editing", () => {
   beforeEach(() => {
     mockedServiceService.getById.mockResolvedValue(serviceFixture);
@@ -558,10 +1152,11 @@ describe("ServiceForm — editing", () => {
     expect(screen.getByDisplayValue("90")).toBeVisible();
   });
 
-  it("loads a variant-priced service back into its generated rows", async () => {
+  it("loads a variant-priced service back into its generated rows — price, minutes and on/off", async () => {
     mockedServiceService.getById.mockResolvedValue({
       ...serviceFixture,
       price: null,
+      durationMin: null,
       hasVariants: true,
       variantAxes: ["furType"],
       variants: [
@@ -570,12 +1165,16 @@ describe("ServiceForm — editing", () => {
           sizeCategory: null,
           furType: "long hair",
           price: "180000.0000",
+          durationMin: 120,
+          isActive: true,
         },
         {
           petType: null,
           sizeCategory: null,
           furType: "short hair",
           price: "150000.0000",
+          durationMin: 90,
+          isActive: false,
         },
       ],
     });
@@ -584,6 +1183,10 @@ describe("ServiceForm — editing", () => {
 
     expect(await screen.findByDisplayValue("180000")).toBeVisible();
     expect(screen.getByDisplayValue("150000")).toBeVisible();
+    expect(screen.getByLabelText("Durasi Bulu panjang (menit)")).toHaveValue(120);
+    expect(screen.getByLabelText("Durasi Bulu pendek (menit)")).toHaveValue(90);
+    expect(screen.getByLabelText("Bulu panjang aktif")).toBeChecked();
+    expect(screen.getByLabelText("Bulu pendek aktif")).not.toBeChecked();
   });
 
   it("offers the availability switch when editing", async () => {
@@ -608,7 +1211,10 @@ describe("ServiceForm — editing", () => {
         expect.objectContaining({ name: "Mandi" }),
       ),
     );
-    expect(push).toHaveBeenCalledWith("/dashboard/master/layanan");
+    // Back to the service's own detail page, not the list it was found in.
+    expect(push).toHaveBeenCalledWith(
+      `/dashboard/layanan/grooming/katalog/${SERVICE_ID}`,
+    );
   });
 
   /*

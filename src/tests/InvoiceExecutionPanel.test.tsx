@@ -32,25 +32,6 @@ const toast = swalToast as jest.MockedFunction<typeof swalToast>;
  *     invoice, so a role that raises bills and does not run the schedule still
  *     sees what is outstanding — only the two actions need the grant.
  */
-/**
- * ⚠️ THE RUNG IS THE ANIMAL'S — PCR-042. `InvoiceBooking` carries no `status` at
- * all any more, because a visit where Miko was groomed and Coco was sent home is
- * in two states at once and a single word cannot say which.
- *
- * `petItemId` IS THE KEY, not `petId`: it is the `bookingitems` document's own
- * id, and it is what stays unique when a pre-migration visit holds two documents
- * for the same animal.
- */
-const pet = (
-  overrides: Partial<InvoiceBooking["pets"][number]> = {},
-): InvoiceBooking["pets"][number] => ({
-  petItemId: "bi1",
-  petId: "pet1",
-  petName: "Miko",
-  status: "confirmed",
-  ...overrides,
-});
-
 const booking = (overrides: Partial<InvoiceBooking> = {}): InvoiceBooking => ({
   _id: "bk1",
   bookingNumber: "BK-260830-001",
@@ -58,17 +39,44 @@ const booking = (overrides: Partial<InvoiceBooking> = {}): InvoiceBooking => ({
   scheduledAt: "2026-08-30T02:00:00.000Z",
   petId: "pet1",
   petName: "Miko",
-  pets: [pet()],
-  items: [
-    {
-      serviceId: "svc1",
-      name: "Grooming Full",
-      price: "150000.0000",
-      groomerUserId: null,
-      groomerName: "Belum ditentukan",
-    },
-  ],
+  status: "confirmed",
+  service: {
+    serviceId: "svc1",
+    name: "Grooming Full",
+    price: "150000.0000",
+    addons: [],
+  },
+  groomerUserId: null,
+  groomerName: "Belum ditentukan",
   ...overrides,
+});
+
+/**
+ * What the booking endpoints answer with — a Booking DOCUMENT, carrying more
+ * than the invoice's view of it (`sessions`, `serviceType`, …). Cut down to the
+ * fields the panel reads.
+ */
+const bookingDocument = (
+  overrides: {
+    status?: string;
+    groomerName?: string;
+    groomers?: { _id: string; name: string; offReason: null }[];
+  } = {},
+) => ({
+  _id: "bk1",
+  status: overrides.status ?? "confirmed",
+  groomerName: overrides.groomerName ?? "Belum ditentukan",
+  service: {
+    serviceId: "svc1",
+    name: "Grooming Full",
+    serviceType: "Grooming",
+    price: "150000.0000",
+    durationMin: 60,
+    addons: [],
+    sessions: overrides.groomers
+      ? [{ sessionId: "ses1", sessionName: "Mandi", groomers: overrides.groomers }]
+      : [],
+  },
 });
 
 const invoice = (bookings: InvoiceBooking[]) =>
@@ -92,32 +100,50 @@ beforeEach(() => {
     limit: 200,
     totalPages: 1,
   });
-  (bookingService.assignGroomer as jest.Mock).mockResolvedValue({
-    pets: [pet()],
-    items: [
-      {
-        serviceId: "svc1",
-        name: "Grooming Full",
-        price: "150000.0000",
-        groomerUserId: "u1",
-        groomerName: "Rani",
-      },
-    ],
-  });
-  (bookingService.changeStatus as jest.Mock).mockResolvedValue({
-    pets: [pet({ status: "completed" })],
-    items: [],
-  });
+  (bookingService.assignGroomer as jest.Mock).mockResolvedValue(
+    bookingDocument({
+      groomerName: "Rani",
+      groomers: [{ _id: "u1", name: "Rani", offReason: null }],
+    }),
+  );
+  (bookingService.changeStatus as jest.Mock).mockResolvedValue(
+    bookingDocument({ status: "completed" }),
+  );
 });
 
 describe("what it shows", () => {
-  it("names the animal and the service that has to happen", async () => {
+  it("names the animal, the service that has to happen, and where it stands", async () => {
     open();
 
     expect(await screen.findByText("Miko")).toBeInTheDocument();
     expect(
       screen.getByText(/Grooming Full · Belum ditentukan/),
     ).toBeInTheDocument();
+    expect(screen.getByText("Rp 150.000")).toBeInTheDocument();
+    // Booking status names stay English — ui-rules §12.
+    expect(screen.getByText("Confirmed")).toBeInTheDocument();
+  });
+
+  /*
+    THE ADD-ONS SIT UNDER THE SERVICE, each with its own price — they bill as
+    lines of their own, so the panel says what each one is.
+  */
+  it("lists the add-ons under the service, with their prices", async () => {
+    open([
+      booking({
+        service: {
+          serviceId: "svc1",
+          name: "Grooming Full",
+          price: "150000.0000",
+          addons: [
+            { serviceId: "svc9", name: "Potong kuku", price: "30000.0000" },
+          ],
+        },
+      }),
+    ]);
+
+    expect(await screen.findByText("Potong kuku")).toBeInTheDocument();
+    expect(screen.getByText("Rp 30.000")).toBeInTheDocument();
   });
 
   /*
@@ -159,21 +185,28 @@ describe("what it lets somebody do", () => {
     );
   });
 
+  /*
+    THE PICKER'S VALUE COMES FROM THE SAME PLACE AS THE LABEL: the first person
+    on the first session. Reading it from anywhere else would leave the picker
+    naming one person beside a label naming another.
+  */
+  it("reports the new groomer from the booking's first session", async () => {
+    const user = userEvent.setup();
+    open();
+
+    await user.click(await screen.findByRole("combobox"));
+    await user.click(await screen.findByRole("option", { name: "Rani" }));
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    expect(onChanged).toHaveBeenCalledWith(
+      "bk1",
+      expect.objectContaining({ groomerUserId: "u1", groomerName: "Rani" }),
+    );
+  });
+
   it("unassigns by choosing the empty slot back", async () => {
     const user = userEvent.setup();
-    open([
-      booking({
-        items: [
-          {
-            serviceId: "svc1",
-            name: "Grooming Full",
-            price: "150000.0000",
-            groomerUserId: "u1",
-            groomerName: "Rani",
-          },
-        ],
-      }),
-    ]);
+    open([booking({ groomerUserId: "u1", groomerName: "Rani" })]);
 
     // The picker only exists once the staff list has landed — it is not
     // rendered disabled in the meantime.
@@ -207,7 +240,8 @@ describe("what it lets somebody do", () => {
   /*
     HANDS BACK JUST WHAT MOVED. The endpoints answer with a Booking document, not
     with the invoice's view of one — spreading the whole answer over the row
-    would drop the fields the invoice read assembled and this panel draws.
+    would drop the fields the invoice read assembled and this panel draws, and
+    carry in ones (`sessions`, `serviceType`) the invoice's shape has no place for.
   */
   it("reports the move as a patch, keyed by booking", async () => {
     const user = userEvent.setup();
@@ -220,8 +254,15 @@ describe("what it lets somebody do", () => {
 
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
     expect(onChanged).toHaveBeenCalledWith("bk1", {
-      pets: [pet({ status: "completed" })],
-      items: [],
+      status: "completed",
+      groomerUserId: null,
+      groomerName: "Belum ditentukan",
+      service: {
+        serviceId: "svc1",
+        name: "Grooming Full",
+        price: "150000.0000",
+        addons: [],
+      },
     });
   });
 
@@ -319,9 +360,9 @@ describe("what it refuses to offer", () => {
     offering them would be two controls that only ever answer 409.
   */
   it.each(["completed", "cancelled"] as const)(
-    "offers no actions when every animal is %s",
+    "offers no actions on a booking that is %s",
     async (status) => {
-      open([booking({ pets: [pet({ status })] })]);
+      open([booking({ status })]);
 
       expect(await screen.findByText("Miko")).toBeInTheDocument();
       expect(
@@ -330,34 +371,6 @@ describe("what it refuses to offer", () => {
       expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     },
   );
-
-  /*
-    ⚠️ THE INVERSE, AND THE REASON THIS IS READ PER ANIMAL — PCR-042. Asking one
-    summary word would grey out the buttons on exactly the visit that still needs
-    them: Miko is finished, Coco has not been touched, and somebody has to be
-    able to finish Coco.
-  */
-  it("keeps the actions while any one animal is still open", async () => {
-    open([
-      booking({
-        pets: [
-          pet({ status: "completed" }),
-          pet({
-            petItemId: "bi2",
-            petId: "pet2",
-            petName: "Coco",
-            status: "confirmed",
-          }),
-        ],
-      }),
-    ]);
-
-    expect(
-      await screen.findByRole("button", { name: "Tandai selesai" }),
-    ).toBeInTheDocument();
-    // NAMED, because two badges with no names is two words and no subjects.
-    expect(screen.getByText("Coco")).toBeInTheDocument();
-  });
 
   /*
     THE PANEL STILL DRAWS. Its data rides in with the invoice, so a role holding

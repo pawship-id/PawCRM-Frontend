@@ -165,12 +165,14 @@ export interface NavSection {
  * worked example the other three follow.
  *
  * Pengaturan is the same bargain: the mockup gives it five hub pages of cards,
- * which is page work rather than chrome. TWO OF THE FIVE EXIST NOW — Umum (a
- * hub of one-time settings) and Data Awal (the opening-figures checklist) — and
+ * which is page work rather than chrome. THREE OF THE FIVE EXIST NOW — Umum and
+ * Layanan (hubs of cards) and Data Awal (the opening-figures checklist) — and
  * the group still carries the old Master Data children beside them, relabelled
- * into Indonesian per §12, because the other three hubs are not built and those
- * routes would otherwise be reachable only by URL. Layanan, Cabang and Gudang
- * are the rows that leave when `Pengaturan › Layanan` and the rest arrive.
+ * into Indonesian per §12, because the other two hubs are not built and those
+ * routes would otherwise be reachable only by URL. Layanan's row did not move:
+ * the hub took its address, and the catalogue-wide list it used to open is gone
+ * — services are listed on Layanan › Grooming › Layanan & Harga. Cabang and
+ * Gudang are the rows that leave when the rest arrive.
  */
 export const NAV_SECTIONS: NavSection[] = [
   {
@@ -200,9 +202,9 @@ export const NAV_SECTIONS: NavSection[] = [
         children: [
           {
             /**
-             * The booking list, which is today the only real screen in this
-             * group. Prefix-matched (no `exact`) so /kalender, /new and /[id]
-             * keep the row lit.
+             * Hari Ini — the day board, every line of business on one screen
+             * (`TodayScreen`, from `buloo-hari-ini-v1.html`). Prefix-matched
+             * (no `exact`) so /kalender, /new and /[id] keep the row lit.
              *
              * Gated `bookings:read`, the same grant every booking route
              * enforces — without it a user who cannot read bookings would see

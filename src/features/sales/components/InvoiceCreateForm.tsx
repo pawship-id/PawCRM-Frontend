@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Trash2 } from "lucide-react";
+import { CornerDownRight, Trash2 } from "lucide-react";
 
 import {
   Alert,
@@ -24,11 +24,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { PetFixLink } from "@/features/pets";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
 import { petService } from "@/services/pet.service";
-import { formatMoney } from "@/utils/decimal";
+import {
+  formatMoney,
+  formatQty,
+  isPositive,
+  subtractDecimals,
+  sumDecimals,
+  toMinor,
+} from "@/utils/decimal";
 import { AXIS_LABEL, priceForPet } from "@/utils/serviceVariant";
 import type {
   Booking,
@@ -36,11 +44,109 @@ import type {
   InvoiceChannel,
   InvoiceDiscountMode,
   Pet,
+  PosCharge,
+  Service,
 } from "@/types/api";
+import type { Product } from "@/types/inventory";
 
+import { useInvoiceLineStock } from "../hooks/useInvoiceLineStock";
 import { useInvoiceLookups } from "../hooks/useInvoiceLookups";
+import { bookingShareOf } from "../bookingDiscount";
 import { previewInvoice } from "../invoicePreview";
+import { InvoiceAddItemsDialog } from "./InvoiceAddItemsDialog";
+import { InvoiceAddonPicker } from "./InvoiceAddonPicker";
+import { InvoiceBarcodeScan } from "./InvoiceBarcodeScan";
 import { InvoiceBookingPanel } from "./InvoiceBookingPanel";
+import { formatRate } from "./InvoiceItemsTable";
+
+/**
+ * WHY THIS LINE HAS NO PRICE — said under the animal that would answer it
+ * (16 September 2026, on request).
+ *
+ * A service priced by variant is quoted from the ANIMAL's own size, coat or
+ * species. Pick one whose record does not carry the fact the service varies by
+ * and the price cell reads "—", the total reads Rp 0, and nothing on the row
+ * says why. The blocked Simpan does name it, but that sentence is at the head of
+ * a form whose rows are what somebody is looking at.
+ *
+ * `PetFixLink` IS THE WAY OUT, the same one the booking form and the till
+ * already offer: it names the animal and the missing field, and opens that pet
+ * in a NEW TAB so the half-built invoice survives.
+ *
+ * NOTHING IS DRAWN when the price is known, when no animal is chosen yet (the
+ * empty picker above is the question), or when the price failed for a reason the
+ * animal cannot fix — a variant nobody priced is the catalogue's problem, and
+ * sending somebody to the pet form for it would be a wrong instruction.
+ */
+function MissingFactNote({
+  line,
+  pet,
+  service,
+}: {
+  line: { kind: "product" | "service"; petId: string };
+  pet: Pet | null;
+  service: Service | undefined;
+}) {
+  if (line.kind !== "service" || !line.petId || !pet) return null;
+
+  const missing = priceForPet(service, pet).missingAxis;
+
+  if (!missing) return null;
+
+  /*
+    THE LINK ALONE — "Lengkapi ukuran Miko →" already names the animal, the
+    missing field and the way out, so a sentence in front of it said each of
+    those a second time in a table cell that has no room for either.
+  */
+  return (
+    <span className="mt-1 block text-xs font-semibold text-danger-ink">
+      <PetFixLink pet={pet} axis={missing} />
+    </span>
+  );
+}
+
+/**
+ * The service rows, priced again from the animals as they read NOW.
+ *
+ * A row's price was worked out from the animal as it was WHEN THE ROW WAS
+ * ADDED. Fill in Miko's size through the note above — in another tab, on the
+ * pet's own form — and re-reading the animals is only half the way back: the
+ * row would still show a dash and still block Simpan, over a fact that has
+ * been answered. This is the other half, and it is the same rule `patchLine`
+ * already applies when the pet CHANGES, extended to the pet's own record
+ * changing underneath it.
+ *
+ * EVERY SERVICE ROW, not only the ones reading nought: a size corrected from
+ * Kecil to Besar moves a price that was never missing, and a row still quoting
+ * the old one would bill it.
+ *
+ * NOTHING HERE IS TYPED, so there is no hand-entered figure to overwrite. A
+ * service row's price is read-only on this form — the catalogue's answer for
+ * that animal, which the server works out again the same way.
+ *
+ * THE SAME ARRAY COMES BACK when every row already agrees, so a refresh that
+ * changed nothing costs no render.
+ */
+function repriced(lines: DraftLine[], services: Service[], pets: Pet[]) {
+  let changed = false;
+
+  const next = lines.map((line) => {
+    if (line.kind !== "service" || !line.petId) return line;
+
+    const price =
+      priceForPet(
+        services.find((one) => one._id === line.refId),
+        pets.find((one) => one._id === line.petId),
+      ).price ?? "0";
+
+    if (price === line.unitPrice) return line;
+
+    changed = true;
+    return { ...line, unitPrice: price };
+  });
+
+  return changed ? next : lines;
+}
 
 /**
  * RAISE AN INVOICE — PCR-030's form.
@@ -49,9 +155,9 @@ import { InvoiceBookingPanel } from "./InvoiceBookingPanel";
  * So the header is a two-column grid collapsing to one on a phone, the rows sit
  * below it, and Keterangan closes the header rather than the page.
  *
- * FIELD ORDER IS §16's, and it is the same order every other transaction module
- * asks in — Kapan, Di mana, Dengan siapa, klasifikasi, catatan — so nobody
- * re-scans a screen they have not opened this week.
+ * FIELD ORDER IS THE BO MOCKUP'S, not §16's Kapan-first — Pelanggan, Cabang ·
+ * Gudang, Tanggal · Jatuh tempo, Channel, Catatan. Decided 12 Sep 2026 on
+ * request and recorded in ui-rules §16; do not reorder it as a tidy-up.
  *
  * THE TOTAL IS COMPUTED IN THE BROWSER, by `invoicePreview.ts`, which mirrors the
  * server's order of operations. The server recomputes everything and is the
@@ -106,7 +212,21 @@ interface DraftLine {
    * has no grooming.
    */
   petId: string;
+  /** This row's handle — stable while rows above it come and go. */
+  key: string;
+  /**
+   * THE ROW AN ADD-ON WAS TICKED UNDER — that row's `key`, null on every other.
+   *
+   * THE FORM'S OWN BOOKKEEPING, never sent: it keeps the add-on beside its
+   * service, on the same animal, and takes it off with it. The server files the
+   * add-on under the service again from the catalogue.
+   */
+  parentKey: string | null;
 }
+
+/** Row handles — a counter, because an index shifts whenever a row is removed. */
+let lastLineKey = 0;
+const nextLineKey = () => `line-${(lastLineKey += 1)}`;
 
 const todayValue = () => new Date().toISOString().slice(0, 10);
 
@@ -126,7 +246,8 @@ export function InvoiceCreateForm() {
   const [notes, setNotes] = useState("");
 
   const [lines, setLines] = useState<DraftLine[]>([]);
-  const [picked, setPicked] = useState("");
+  /** Whether the "+ Tambah barang atau jasa" dialog is open. */
+  const [picking, setPicking] = useState(false);
   /*
     BOOKINGS ARE SENT AS IDS, not as lines. The server reads each booking's own
     frozen prices, its animal and its groomer — a client that could send those
@@ -146,10 +267,26 @@ export function InvoiceCreateForm() {
     discount that touched them.
 
     The prices here are the bridge's, which are the same frozen figures the
-    server will read from the bookings themselves.
+    server will read from the bookings themselves — the main service, then each
+    add-on as a line of its own, in the order the server assembles them.
   */
+  /*
+    THE PULLED BOOKINGS' SHARES OF "DISKON SELURUH BOOKING" (15 September 2026).
+    They ride inside each booking line's discount below, so the preview's
+    `itemDiscount` already counts them; the recap shows them apart, under
+    "Diskon baris", the way the till does.
+  */
+  const bookingShares = sumDecimals(pulledBookings.map(bookingShareOf));
+
   const bookingLines = pulledBookings.flatMap((booking) =>
-    booking.items.map((item) => ({ qty: "1", unitPrice: item.price })),
+    [booking.service, ...booking.service.addons].map((line) => ({
+      qty: "1",
+      unitPrice: line.price,
+      /* The booking's discount on this line, pulled as the server pulls it. */
+      discount: line.discountAmount
+        ? { mode: "amount" as const, value: line.discountAmount }
+        : null,
+    })),
   );
   /*
     THE CUSTOMER'S ANIMALS — PCR-035, and refetched whenever the customer
@@ -194,6 +331,68 @@ export function InvoiceCreateForm() {
     };
   }, [customerId]);
 
+  /**
+   * The same list, read again — WITHOUT the row going blank while it is in
+   * flight.
+   *
+   * `MissingFactNote` sends somebody to that pet's form in a NEW TAB, so the
+   * fact this invoice is waiting on is filled in somewhere this form cannot
+   * see. Until it re-reads, the row keeps showing a dash and Simpan keeps
+   * refusing — about a field that has already been answered — and the only way
+   * out was to reload and lose the half-built invoice.
+   *
+   * IT KEEPS WHAT IT HAS on a failed read. A refresh nobody asked for is not a
+   * reason to empty the picker underneath them.
+   */
+  const refreshPets = useCallback(async () => {
+    if (!customerId) return;
+
+    try {
+      const result = await petService.list({
+        customerId,
+        isActive: true,
+        limit: MAX_PETS,
+      });
+
+      /*
+        AND NOT ONTO SOMEBODY ELSE'S ANIMALS. A read that lands after the
+        customer has been switched answers a question nobody is asking any
+        more — the reply is dropped rather than written over the new one.
+      */
+      setPets((current) =>
+        current.forCustomer === customerId
+          ? { forCustomer: customerId, items: result.items }
+          : current,
+      );
+
+      /*
+        AND THE ROWS FOLLOW THEM. Priced from `result.items` rather than from
+        `pets`, which is the read that has only just been queued — the rows
+        would otherwise settle one refresh behind the animals they quote.
+      */
+      setLines((current) => repriced(current, lookups.services, result.items));
+    } catch {
+      /* Keep the animals already on screen — see above. */
+    }
+  }, [customerId, lookups.services]);
+
+  /*
+    BACK FROM THE OTHER TAB. `visibilitychange` RATHER THAN `focus`: focus fires
+    for a click back into the window from a devtools panel or a dropdown
+    closing, which would put a request on the wire for nothing. The same
+    listener the booking form uses, for the same detour.
+  */
+  useEffect(() => {
+    if (!customerId) return;
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refreshPets();
+    };
+
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [customerId, refreshPets]);
+
   const petOptions = useMemo(
     () =>
       pets.forCustomer === customerId
@@ -206,27 +405,44 @@ export function InvoiceCreateForm() {
     useState<InvoiceDiscountMode>("percent");
   const [invoiceDiscountValue, setInvoiceDiscountValue] = useState("");
 
+  /*
+    OTHER CHARGES — ongkir, packaging — the till's "biaya lain", on a bill
+    (14 September 2026). Added after the discounts and taxed like a line; the
+    server prices them again and credits them to 4193.
+
+    EDITED IN PLACE, WITH NOTHING TO CONFIRM (decided 14 September 2026 on
+    request): "+ Tambah biaya lain" puts an empty row on, and what is typed
+    counts toward the total straight away. A row left entirely blank is ignored;
+    a half-filled one blocks saving — see `blocking`.
+
+    `key` IS THE ROW'S OWN HANDLE, never the label: keyed on what is being typed,
+    the input would remount on every keystroke and lose the cursor.
+  */
+  const [charges, setCharges] = useState<(PosCharge & { key: string })[]>(
+    [],
+  );
+  /** The rows somebody actually typed into, trimmed — what is sent. */
+  const filledCharges = charges
+    .map((charge) => ({
+      label: charge.label.trim(),
+      amount: charge.amount.trim(),
+    }))
+    .filter((charge) => charge.label !== "" || charge.amount !== "");
+
   const [saving, setSaving] = useState(false);
 
   /**
-   * Everything sellable, in one picker.
-   *
-   * ONE LIST RATHER THAN TWO PICKERS, because the question somebody is answering
-   * is "what am I billing for", not "am I billing for a product or a service".
-   * The kind is carried on the option so the row knows which it is.
+   * Customers with their phone beside the name — the mockup's picker. Two
+   * customers called Budi are one wrong bill apart without it.
    */
-  const catalogue = useMemo(
-    () => [
-      ...lookups.products.map((product) => ({
-        value: `product:${product._id}`,
-        label: product.sku ? `${product.sku} — ${product.name}` : product.name,
+  const customerOptions = useMemo(
+    () =>
+      lookups.customers.map((customer) => ({
+        value: customer._id,
+        label: customer.name,
+        ...(customer.phone ? { meta: customer.phone } : {}),
       })),
-      ...lookups.services.map((service) => ({
-        value: `service:${service._id}`,
-        label: `${service.name} (jasa)`,
-      })),
-    ],
-    [lookups.products, lookups.services],
+    [lookups.customers],
   );
 
   /**
@@ -247,6 +463,63 @@ export function InvoiceCreateForm() {
   );
 
   const hasProductLine = lines.some((line) => line.kind === "product");
+
+  /*
+    STOCK UNDER EACH PRODUCT LINE'S SKU (14 September 2026, the BO mockup) — at
+    the warehouse the header chose, which already stands for the chosen branch.
+    See `useInvoiceLineStock` for why this is the batches' sum and the figure the
+    save is refused against.
+  */
+  const lineStock = useInvoiceLineStock(
+    lines.filter((line) => line.kind === "product").map((line) => line.refId),
+  );
+
+  /**
+   * The mockup's three notes — enough, short, none — or a nudge to pick the
+   * warehouse first. Nothing while the figure is still being read, rather than a
+   * zero that is not true yet.
+   *
+   * THE SAVE IS NOT BLOCKED HERE. The server refuses a short shelf by name, and
+   * this is a warning read while the bill is still being put together.
+   */
+  function stockNote(line: DraftLine) {
+    if (line.kind !== "product") return null;
+
+    if (!warehouseId) {
+      return (
+        <span className="block text-xs text-muted">
+          Pilih gudang untuk melihat stok
+        </span>
+      );
+    }
+
+    const onHand = lineStock.qtyAt(line.refId, warehouseId);
+    if (onHand === null) return null;
+
+    const have = toMinor(onHand) ?? BigInt(0);
+    const label = `Stok ${formatQty(onHand)}`;
+
+    if (have <= BigInt(0)) {
+      // `danger-ink`, not `danger`: 13 px text needs the 6.37:1 one (§13).
+      return (
+        <span className="block text-xs font-semibold text-danger-ink">
+          {label}
+        </span>
+      );
+    }
+
+    if (have < (toMinor(line.qty) ?? BigInt(0))) {
+      return (
+        <span className="block text-xs font-semibold text-warning">
+          {`${label} — kurang`}
+        </span>
+      );
+    }
+
+    return (
+      <span className="block text-xs font-semibold text-success">{label}</span>
+    );
+  }
   const hasServiceLine = lines.some((line) => line.kind === "service");
 
   const preview = useMemo(
@@ -266,7 +539,7 @@ export function InvoiceCreateForm() {
         invoiceDiscountValue
           ? { mode: invoiceDiscountMode, value: invoiceDiscountValue }
           : null,
-        lookups.tax,
+        { ...lookups.tax, otherCharges: charges },
       ),
     [
       lines,
@@ -274,8 +547,24 @@ export function InvoiceCreateForm() {
       invoiceDiscountMode,
       invoiceDiscountValue,
       lookups.tax,
+      charges,
     ],
   );
+
+  /*
+    A SERVICE LINE WHOSE ANIMAL'S VARIANT IS SWITCHED OFF (13 September 2026).
+    The resolver still returns its price, so the row does not read as unpriced —
+    which is exactly why it needs its own check: the server refuses a new line
+    for an inactive variant, and without this the save would go out and come
+    back refused.
+  */
+  const variantInactive = (line: DraftLine) =>
+    line.kind === "service" &&
+    line.petId !== "" &&
+    priceForPet(
+      lookups.services.find((one) => one._id === line.refId),
+      pets.items.find((one) => one._id === line.petId),
+    ).inactive;
 
   /**
    * Why Simpan is disabled, in the words of the thing that is missing.
@@ -312,6 +601,15 @@ export function InvoiceCreateForm() {
         : "Ada baris jasa yang belum dipilih hewannya.";
     }
 
+    /* Before `unpriced`, and in its own words: the price is known, the variant
+       is switched off — "tambahkan variannya" would be the wrong instruction. */
+    const inactive = lines.find(variantInactive);
+
+    if (inactive) {
+      const pet = pets.items.find((one) => one._id === inactive.petId);
+      return `Varian ${inactive.name} untuk ${pet?.name ?? "hewan ini"} sedang nonaktif — pilih layanan lain atau aktifkan variannya di katalog.`;
+    }
+
     /*
       A LINE NOBODY CAN PRICE IS BLOCKED HERE, not at the server. The animal is
       chosen and the service is priced by a fact it does not carry — a size
@@ -336,43 +634,119 @@ export function InvoiceCreateForm() {
         : `'${unpriced.name}' belum punya harga untuk ${pet?.name ?? "hewan ini"}. Tambahkan variannya di katalog.`;
     }
 
+    /*
+      A HALF-FILLED CHARGE, named by the half that is missing. A row left
+      entirely blank is not a charge and is simply not sent; one with an amount
+      and no name, or a name and nothing to charge, would bill something the
+      customer cannot read — and the server refuses a zero anyway.
+    */
+    const unnamed = filledCharges.find((charge) => charge.label === "");
+
+    if (unnamed) {
+      return `Beri nama biaya lain yang nominalnya ${formatMoney(unnamed.amount)}.`;
+    }
+
+    const nothingToCharge = filledCharges.find(
+      (charge) => !(Number(charge.amount) > 0),
+    );
+
+    if (nothingToCharge) {
+      return `Isi nominal ${nothingToCharge.label} — harus lebih dari 0.`;
+    }
+
     return null;
   })();
 
-  function addLine() {
-    if (!picked) return;
+  /**
+   * A scanned product, as a row — or one more of it.
+   *
+   * ONE MORE ON THE ROW ALREADY THERE, not a second row: scanning the same bag
+   * twice means two bags, which is the till's rule too, and the add dialog
+   * hides a product the bill already carries for the same reason.
+   *
+   * A FUNCTIONAL UPDATE, because a scanner fires faster than React renders —
+   * two scans reading one stale `lines` would both find the product missing and
+   * add it twice.
+   */
+  function addScannedProduct(product: Product) {
+    setLines((current) => {
+      const at = current.findIndex(
+        (line) => line.kind === "product" && line.refId === product._id,
+      );
 
-    const [kind, refId] = picked.split(":") as ["product" | "service", string];
-    const found =
-      kind === "product"
-        ? lookups.products.find((product) => product._id === refId)
-        : lookups.services.find((service) => service._id === refId);
+      if (at === -1) {
+        return [
+          ...current,
+          {
+            kind: "product",
+            refId: product._id,
+            name: product.name,
+            sku: product.sku,
+            unitPrice: String(product.sellPrice ?? "0"),
+            qty: "1",
+            discountMode: "percent",
+            discountValue: "",
+            petId: "",
+            key: nextLineKey(),
+            parentKey: null,
+          },
+        ];
+      }
 
-    if (!found) return;
+      return current.map((line, index) =>
+        index === at
+          ? { ...line, qty: String((Number(line.qty) || 0) + 1) }
+          : line,
+      );
+    });
+  }
 
-    setLines((current) => [
-      ...current,
-      {
-        kind,
-        refId,
-        name: found.name,
-        sku:
-          kind === "product" ? ((found as { sku?: string }).sku ?? null) : null,
-        // Read from the catalogue and shown read-only — the same figure the
-        // server will read again when it prices the invoice.
+  /**
+   * What the dialog ticked, as rows — products first, then services, each in
+   * the order it was ticked.
+   *
+   * A PRODUCT'S PRICE COMES FROM THE PICKED PRODUCT, not from `lookups`. The
+   * dialog searches the whole catalogue on the server; the lookups hold only the
+   * first hundred, so a product found past them would have read Rp 0. Shown
+   * read-only — the same figure the server reads again when it prices the
+   * invoice.
+   */
+  function addItems(picked: { products: Product[]; services: Service[] }) {
+    const rows: DraftLine[] = [
+      ...picked.products.map((product) => ({
+        kind: "product" as const,
+        refId: product._id,
+        name: product.name,
+        sku: product.sku,
+        unitPrice: String(product.sellPrice ?? "0"),
+        qty: "1",
+        discountMode: "percent" as const,
+        discountValue: "",
+        petId: "",
+        key: nextLineKey(),
+        parentKey: null,
+      })),
+      ...picked.services.map((service) => ({
+        kind: "service" as const,
+        refId: service._id,
+        name: service.name,
+        sku: null,
         /*
           NOUGHT UNTIL AN ANIMAL IS CHOSEN, for a service priced by one. The row
           draws an em-dash rather than "Rp 0" — see the Harga cell — and
           `patchLine` re-derives this the moment the pet is picked.
         */
-        unitPrice: priceOfLine({ kind, refId, petId: "" }),
+        unitPrice: priceOfService(service._id, ""),
         qty: "1",
-        discountMode: "percent",
+        discountMode: "percent" as const,
         discountValue: "",
         petId: "",
-      },
-    ]);
-    setPicked("");
+        key: nextLineKey(),
+        parentKey: null,
+      })),
+    ];
+
+    setLines((current) => [...current, ...rows]);
   }
 
   /**
@@ -390,14 +764,9 @@ export function InvoiceCreateForm() {
    * A PREVIEW. The server prices the line again from the same animal, through
    * the same rule — see `utils/serviceVariant.ts`.
    */
-  function priceOfLine(line: Pick<DraftLine, "kind" | "refId" | "petId">) {
-    if (line.kind === "product") {
-      const product = lookups.products.find((one) => one._id === line.refId);
-      return String(product?.sellPrice ?? "0");
-    }
-
-    const service = lookups.services.find((one) => one._id === line.refId);
-    const pet = pets.items.find((one) => one._id === line.petId);
+  function priceOfService(refId: string, petId: string) {
+    const service = lookups.services.find((one) => one._id === refId);
+    const pet = pets.items.find((one) => one._id === petId);
 
     /* "0" KEEPS THE ROW ARITHMETIC HONEST while the answer is unknown — the row
        shows an em-dash of its own, and the save is blocked below. */
@@ -405,21 +774,125 @@ export function InvoiceCreateForm() {
   }
 
   function patchLine(index: number, patch: Partial<DraftLine>) {
-    setLines((current) =>
-      current.map((line, at) => {
-        if (at !== index) return line;
+    setLines((current) => {
+      const target = current[index];
 
-        const next = { ...line, ...patch };
+      return current.map((line, at) => {
+        /*
+          AN ADD-ON FOLLOWS ITS SERVICE'S ANIMAL. It was ticked for that dog and
+          priced for it; left on the old one it would bill Miko's perfume under
+          Coco's bath.
+        */
+        const follows =
+          patch.petId !== undefined &&
+          target !== undefined &&
+          line.parentKey === target.key;
+
+        if (at !== index && !follows) return line;
+
+        const next =
+          at === index
+            ? { ...line, ...patch }
+            : { ...line, petId: patch.petId ?? "" };
 
         /*
           RE-PRICED WHEN THE ANIMAL CHANGES, because for a variant service that
-          IS the price. Products are unaffected — theirs does not depend on a pet
-          and `priceOfLine` reads the catalogue for them either way.
+          IS the price. Products are left alone — theirs does not depend on a
+          pet, and was read from the picked product when the row was added.
         */
-        return patch.petId === undefined
+        return patch.petId === undefined || next.kind !== "service"
           ? next
-          : { ...next, unitPrice: priceOfLine(next) };
-      }),
+          : { ...next, unitPrice: priceOfService(next.refId, next.petId) };
+      });
+    });
+  }
+
+  /** Takes a row off, and every add-on ticked under it with it. */
+  function removeLine(index: number) {
+    setLines((current) => {
+      const target = current[index];
+
+      return current.filter(
+        (line, at) =>
+          at !== index && (!target || line.parentKey !== target.key),
+      );
+    });
+  }
+
+  /**
+   * The add-ons a row may offer — only on a MAIN service's own row, never on a
+   * row that is itself an add-on (nesting is one deep, as on a booking), and
+   * only those still in the active catalogue the form loaded.
+   */
+  function addonsOffered(line: DraftLine): Service[] {
+    if (line.kind !== "service" || line.parentKey) return [];
+
+    const service = lookups.services.find((one) => one._id === line.refId);
+    if (!service || service.serviceType === "addon") return [];
+
+    return (service.addonServiceIds ?? [])
+      .map((id) => lookups.services.find((one) => one._id === id))
+      .filter(
+        (one): one is Service =>
+          one !== undefined && one.serviceType === "addon",
+      );
+  }
+
+  /**
+   * Puts exactly these add-ons under one row — what the add-on dialog saved —
+   * directly below it, in the dialog's order, on the row's animal.
+   *
+   * AN ADD-ON ALREADY ON THE BILL KEEPS ITS LINE, quantity and discount with
+   * it; only a new one is priced here, for the row's animal. One missing from
+   * the list comes off.
+   *
+   * LOOKED UP BY `key`, in a functional update: the save lands after the dialog
+   * opened, and the rows may have moved since.
+   */
+  function setAddons(parentKey: string, addonIds: string[]) {
+    setLines((current) => {
+      const parent = current.find((line) => line.key === parentKey);
+      if (!parent) return current;
+
+      const existing = current.filter((line) => line.parentKey === parentKey);
+      const children = addonIds.flatMap((id): DraftLine[] => {
+        const kept = existing.find((line) => line.refId === id);
+        if (kept) return [kept];
+
+        const addon = lookups.services.find((one) => one._id === id);
+        if (!addon) return [];
+
+        return [
+          {
+            kind: "service",
+            refId: addon._id,
+            name: addon.name,
+            sku: null,
+            unitPrice: priceOfService(addon._id, parent.petId),
+            // FREE TO CHANGE, like any line — decided 14 September 2026.
+            qty: "1",
+            discountMode: "percent",
+            discountValue: "",
+            petId: parent.petId,
+            key: nextLineKey(),
+            parentKey,
+          },
+        ];
+      });
+
+      const rest = current.filter((line) => line.parentKey !== parentKey);
+      const at = rest.findIndex((line) => line.key === parentKey) + 1;
+
+      return [...rest.slice(0, at), ...children, ...rest.slice(at)];
+    });
+  }
+
+  /** One charge row typed into, found by its own `key`. */
+  function patchCharge(key: string, patch: Partial<PosCharge>) {
+    setCharges((current) =>
+      current.map((charge) =>
+        charge.key === key ? { ...charge, ...patch } : charge,
+      ),
     );
   }
 
@@ -455,6 +928,8 @@ export function InvoiceCreateForm() {
         ...(hasProductLine ? { warehouseId } : {}),
         items,
         ...(bookingIds.length > 0 ? { bookingIds } : {}),
+        // Itemised and trimmed — blank rows dropped, left out when none remain.
+        ...(filledCharges.length > 0 ? { otherCharges: filledCharges } : {}),
         ...(invoiceDiscountValue
           ? {
               invoiceDiscount: {
@@ -518,18 +993,45 @@ export function InvoiceCreateForm() {
         description="Siapa yang ditagih, dari cabang mana, dan kapan jatuh temponya."
       >
         <div className="flex flex-col gap-4">
-          {/* KAPAN then DI MANA on the first row — §16's order, the same one
-              every transaction module opens with. */}
+          {/* THE MOCKUP'S ORDER, not §16's — Pelanggan first, then Cabang ·
+              Gudang, Tanggal · Jatuh tempo, Channel. Decided 12 Sep 2026 on
+              request; recorded in ui-rules §16. */}
           <div className="grid gap-4 sm:grid-cols-2">
-            <TextField
-              label="Tanggal faktur"
-              name="invoiceDate"
-              type="date"
-              value={invoiceDate}
-              onChange={(event) => setInvoiceDate(event.target.value)}
-              hint="Tanggal tagihannya, bukan tanggal form ini dibuka."
-              disabled={saving}
+            {/* Full width on its own — customer names run long, and the phone
+                rides beside each one. */}
+            <FilterSelect
+              layout="form"
+              label="Pelanggan"
+              ariaLabel="Pelanggan"
+              value={customerId}
+              options={customerOptions}
+              active={false}
               required
+              searchable
+              placeholder="Cari nama pelanggan…"
+              searchPlaceholder="Cari nama atau nomor HP…"
+              hint="Cari lalu pilih — nomor HP ditampilkan supaya tidak salah pilih kalau ada nama yang sama."
+              disabled={saving}
+              className="sm:col-span-2"
+              onChange={(value) => {
+                if (value === customerId) return;
+                setCustomerId(value);
+                // Every booking on offer belonged to the previous customer.
+                // Keeping one would bill this person for somebody else's grooming
+                // — which the server refuses, but only after the form was filled
+                // in.
+                setPulledBookings([]);
+                /*
+                AND EVERY ANIMAL NAMED ON A LINE, for the same reason one step
+                further in: a cat picked under the previous customer would raise
+                a booking against somebody else's pet. The server refuses that
+                — it is the check `booking.service.js` calls the one that matters
+                most — but only after the whole form has been filled in.
+              */
+                setLines((current) =>
+                  current.map((line) => ({ ...line, petId: "" })),
+                );
+              }}
             />
 
             <FilterSelect
@@ -550,63 +1052,40 @@ export function InvoiceCreateForm() {
                 setWarehouseId("");
               }}
             />
-          </div>
 
-          {/* DENGAN SIAPA, full width on its own — customer names run long. */}
-          <FilterSelect
-            layout="form"
-            label="Pelanggan"
-            ariaLabel="Pelanggan"
-            value={customerId}
-            options={namedOptions(lookups.customers)}
-            active={false}
-            required
-            placeholder="Pilih pelanggan"
-            disabled={saving}
-            onChange={(value) => {
-              if (value === customerId) return;
-              setCustomerId(value);
-              // Every booking on offer belonged to the previous customer.
-              // Keeping one would bill this person for somebody else's grooming
-              // — which the server refuses, but only after the form was filled
-              // in.
-              setPulledBookings([]);
-              /*
-                AND EVERY ANIMAL NAMED ON A LINE, for the same reason one step
-                further in: a cat picked under the previous customer would raise
-                a booking against somebody else's pet. The server refuses that
-                — it is the check `booking.service.js` calls the one that matters
-                most — but only after the whole form has been filled in.
-              */
-              setLines((current) =>
-                current.map((line) => ({ ...line, petId: "" })),
-              );
-            }}
-          />
+            <FilterSelect
+              layout="form"
+              label="Gudang"
+              ariaLabel="Gudang"
+              value={warehouseId}
+              options={namedOptions(warehousesHere)}
+              active={false}
+              // Required only once something ships — a grooming-only bill takes
+              // nothing off a shelf, and the save omits the warehouse for it.
+              required={hasProductLine}
+              placeholder={
+                branchId === "" ? "Pilih cabang dulu" : "Pilih gudang"
+              }
+              hint={
+                hasProductLine
+                  ? undefined
+                  : "Belum perlu — belum ada baris barang."
+              }
+              // Nothing to offer until a branch is named: the list IS that
+              // branch's shelves plus the central ones.
+              disabled={saving || branchId === ""}
+              onChange={setWarehouseId}
+            />
 
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div>
-              <FilterSelect
-                layout="form"
-                label="Gudang"
-                ariaLabel="Gudang"
-                value={warehouseId}
-                options={namedOptions(warehousesHere)}
-                active={false}
-                placeholder={
-                  branchId === "" ? "Pilih cabang dulu" : "Pilih gudang"
-                }
-                // Nothing to offer until a branch is named: the list IS that
-                // branch's shelves plus the central ones.
-                disabled={saving || branchId === ""}
-                onChange={setWarehouseId}
-              />
-              {!hasProductLine && (
-                <p className="mt-1.5 text-xs text-muted">
-                  Belum perlu — belum ada baris barang.
-                </p>
-              )}
-            </div>
+            <TextField
+              label="Tanggal faktur"
+              name="invoiceDate"
+              type="date"
+              value={invoiceDate}
+              onChange={(event) => setInvoiceDate(event.target.value)}
+              disabled={saving}
+              required
+            />
 
             <TextField
               label="Jatuh tempo"
@@ -631,13 +1110,13 @@ export function InvoiceCreateForm() {
             />
           </div>
 
-          {/* CATATAN CLOSES THE HEADER, above the rows — §16. */}
+          {/* CATATAN CLOSES THE HEADER, above the rows. */}
           <TextareaField
-            label="Keterangan"
+            label="Catatan"
             name="notes"
             value={notes}
             onChange={(event) => setNotes(event.target.value)}
-            hint="Opsional. Yang perlu diingat soal tagihan ini."
+            placeholder="Opsional…"
             disabled={saving}
           />
         </div>
@@ -669,46 +1148,64 @@ export function InvoiceCreateForm() {
         title="Baris faktur"
         description="Harga diambil dari katalog dan tidak bisa diubah di sini."
       >
+        {/* The same dialog the stock documents and receipts open, with a Jasa
+            tab beside the product picker. Portaled, so none of its buttons
+            sit inside this form's DOM and none can submit it. */}
+        {picking && (
+          <InvoiceAddItemsDialog
+            services={lookups.services}
+            existingProductIds={lines
+              .filter((line) => line.kind === "product")
+              .map((line) => line.refId)}
+            onAdd={addItems}
+            onClose={() => setPicking(false)}
+          />
+        )}
+
         <div className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="min-w-64 flex-1">
-              <FilterSelect
-                layout="form"
-                label="Tambah barang atau jasa"
-                ariaLabel="Tambah barang atau jasa"
-                value={picked}
-                options={catalogue}
-                active={false}
-                placeholder="Cari nama atau SKU"
-                disabled={saving}
-                onChange={setPicked}
-              />
-            </div>
-            <UIButton
-              type="button"
-              size="lg"
-              onClick={addLine}
-              disabled={saving || !picked}
-            >
-              Tambah baris
-            </UIButton>
-          </div>
+          {/* Scanned products — by their own barcode or a lot's label — land
+              straight on the bill. A counter scanner types into the field, the
+              camera opens beside it. The warehouse goes along because a lot
+              lives in one, and must live in this invoice's. */}
+          <InvoiceBarcodeScan
+            onProduct={addScannedProduct}
+            warehouseId={warehouseId}
+            warehouseName={
+              lookups.warehouses.find((one) => one._id === warehouseId)?.name
+            }
+            disabled={saving}
+          />
 
           {lines.length === 0 ? (
-            <p className="rounded-xl border border-border bg-surface px-4 py-6 text-center text-sm text-muted">
-              Belum ada baris. Pilih barang atau jasa di atas untuk menambah
-              yang pertama.
-            </p>
+            <div className="flex flex-col items-center gap-4 py-8 text-center">
+              <UIButton
+                type="button"
+                variant="secondary"
+                onClick={() => setPicking(true)}
+                disabled={saving}
+              >
+                + Tambah barang atau jasa
+              </UIButton>
+
+              <div>
+                <p className="font-medium text-foreground">Belum ada baris</p>
+                <p className="mx-auto mt-1 max-w-md text-sm text-muted">
+                  Cari dan centang beberapa barang atau jasa sekaligus —
+                  harganya diambil dari katalog.
+                </p>
+              </div>
+            </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Item</TableHead>
-                    {/* ONLY WHEN THERE IS A SERVICE ON THE BILL. A column of
+            <>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Item</TableHead>
+                      {/* ONLY WHEN THERE IS A SERVICE ON THE BILL. A column of
                         dashes on an invoice for two bags of food is a question
                         the reader never asked. */}
-                    {/*
+                      {/*
                       THE ASTERISK BELONGS TO THE COLUMN, not to each cell.
 
                       `FilterField` draws it beside a label, and the control in
@@ -717,230 +1214,441 @@ export function InvoiceCreateForm() {
                       floating above every pet select, marking nothing. It says
                       the same thing once, where the name is.
                     */}
-                    {hasServiceLine && (
-                      <TableHead className="w-44">
-                        Hewan
-                        <span className="text-danger"> *</span>
-                      </TableHead>
-                    )}
-                    <TableHead className="text-right">Harga</TableHead>
-                    <TableHead className="w-28">Jumlah</TableHead>
-                    <TableHead className="w-44">Diskon</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead className="w-12" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {lines.map((line, index) => (
-                    <TableRow key={`${line.refId}-${index}`}>
-                      <TableCell>
-                        <span className="font-medium">{line.name}</span>
-                        <span className="block text-xs text-muted">
-                          {line.sku ?? "Jasa"}
-                        </span>
-                      </TableCell>
-
                       {hasServiceLine && (
+                        <TableHead className="w-44">
+                          Hewan
+                          <span className="text-danger"> *</span>
+                        </TableHead>
+                      )}
+                      <TableHead className="text-right">Harga</TableHead>
+                      <TableHead className="w-28">Jumlah</TableHead>
+                      <TableHead className="w-44">Diskon</TableHead>
+                      <TableHead>Pajak</TableHead>
+                      <TableHead className="text-right">Total</TableHead>
+                      <TableHead className="w-12" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {lines.map((line, index) => {
+                      const offered = addonsOffered(line);
+                      const linePet = pets.items.find(
+                        (one) => one._id === line.petId,
+                      );
+
+                      return (
+                      <TableRow key={line.key}>
                         <TableCell>
-                          {line.kind === "service" ? (
-                            /*
-                              WHY IT IS HERE AT ALL — PCR-035. A grooming billed
-                              with no animal named reaches no day sheet: nobody
-                              is assigned, and the only record that the work is
-                              owed is this line on a bill the customer takes
-                              home. Naming the animal is what lets the server
-                              raise a booking for it.
-                            */
-                            <FilterSelect
-                              /*
+                          {line.parentKey ? (
+                            /* UNDER ITS SERVICE, and marked — one visit, not a
+                               second grooming to read. */
+                            <span className="flex items-start gap-1.5 pl-4">
+                              <CornerDownRight
+                                aria-hidden
+                                className="mt-0.5 size-4 shrink-0 text-muted"
+                              />
+                              <span>
+                                <span className="font-medium">{line.name}</span>
+                                <span className="block text-xs text-muted">
+                                  Add-on
+                                </span>
+                              </span>
+                            </span>
+                          ) : (
+                            <>
+                              <span className="font-medium">{line.name}</span>
+                              <span className="block text-xs text-muted">
+                                {line.sku ?? "Jasa"}
+                              </span>
+                              {stockNote(line)}
+                              {offered.length > 0 && (
+                                <InvoiceAddonPicker
+                                  idPrefix={line.key}
+                                  serviceName={line.name}
+                                  pet={linePet}
+                                  offered={offered}
+                                  tickedIds={lines
+                                    .filter((one) => one.parentKey === line.key)
+                                    .map((one) => one.refId)}
+                                  onSave={(addonIds) =>
+                                    setAddons(line.key, addonIds)
+                                  }
+                                  disabled={saving}
+                                />
+                              )}
+                            </>
+                          )}
+                        </TableCell>
+
+                        {hasServiceLine && (
+                          <TableCell>
+                            {line.parentKey ? (
+                              /* THE SERVICE'S ANIMAL, not a choice of its own —
+                                 it changes on the service's row, and follows. */
+                              <>
+                                <span className="text-sm">
+                                  {linePet?.name ?? "—"}
+                                </span>
+                                <MissingFactNote
+                                  line={line}
+                                  pet={linePet ?? null}
+                                  service={lookups.services.find(
+                                    (one) => one._id === line.refId,
+                                  )}
+                                />
+                              </>
+                            ) : line.kind === "service" ? (
+                              <>
+                                {/*
+                                  WHY IT IS HERE AT ALL — PCR-035. A grooming
+                                  billed with no animal named reaches no day
+                                  sheet: nobody is assigned, and the only record
+                                  that the work is owed is this line on a bill
+                                  the customer takes home. Naming the animal is
+                                  what lets the server raise a booking for it.
+                                */}
+                                <FilterSelect
+                                /*
                                 `field`, NOT `form` — §16: a control inside a row
                                 table sits among h-9 inputs, and 44px would tower
                                 over the row it belongs to. The column header is
                                 the visible label, so the control carries only an
                                 aria one, naming the line it belongs to.
                               */
-                              layout="field"
-                              label=""
-                              ariaLabel={`Hewan untuk ${line.name}`}
-                              value={line.petId}
-                              options={petOptions}
-                              placeholder={
-                                !customerId
-                                  ? "Pilih pelanggan dulu"
-                                  : petOptions.length === 0
-                                    ? "Belum ada hewan"
-                                    : "Pilih hewan"
-                              }
-                              // Answered fields must not go navy in a form —
-                              // that announces a filter (§16).
-                              active={false}
-                              disabled={!customerId || petOptions.length === 0}
-                              onChange={(value) =>
-                                patchLine(index, { petId: value })
-                              }
-                            />
-                          ) : (
-                            // A collar has no grooming; the server refuses a pet
-                            // on a product line rather than ignoring it.
-                            <span className="text-xs text-muted">—</span>
-                          )}
-                        </TableCell>
-                      )}
+                                layout="field"
+                                label=""
+                                ariaLabel={`Hewan untuk ${line.name}`}
+                                value={line.petId}
+                                options={petOptions}
+                                placeholder={
+                                  !customerId
+                                    ? "Pilih pelanggan dulu"
+                                    : petOptions.length === 0
+                                      ? "Belum ada hewan"
+                                      : "Pilih hewan"
+                                }
+                                // Answered fields must not go navy in a form —
+                                // that announces a filter (§16).
+                                active={false}
+                                disabled={
+                                  !customerId || petOptions.length === 0
+                                }
+                                  onChange={(value) =>
+                                    patchLine(index, { petId: value })
+                                  }
+                                />
+                                <MissingFactNote
+                                  line={line}
+                                  pet={linePet ?? null}
+                                  service={lookups.services.find(
+                                    (one) => one._id === line.refId,
+                                  )}
+                                />
+                              </>
+                            ) : (
+                              // A collar has no grooming; the server refuses a pet
+                              // on a product line rather than ignoring it.
+                              <span className="text-xs text-muted">—</span>
+                            )}
+                          </TableCell>
+                        )}
 
-                      {/* READ-ONLY, and it is a rule: a price a client can set is
+                        {/* READ-ONLY, and it is a rule: a price a client can set is
                           a discount nobody approved. */}
-                      <TableCell className="text-right tabular-nums">
-                        {/*
+                        <TableCell className="text-right tabular-nums">
+                          {/*
                           AN EM-DASH, NOT "Rp 0", while a variant service has no
                           animal on its line. Nought is a price somebody could
                           read as free; the dash says the question has not been
                           answered yet, and the Hewan cell beside it is the
                           question.
                         */}
-                        {line.kind === "service" && line.unitPrice === "0" ? (
-                          <span className="text-muted">—</span>
-                        ) : (
-                          formatMoney(line.unitPrice)
-                        )}
-                      </TableCell>
+                          {line.kind === "service" && line.unitPrice === "0" ? (
+                            <span className="text-muted">—</span>
+                          ) : (
+                            formatMoney(line.unitPrice)
+                          )}
+                          {/* The row the blocking sentence is about, in words. */}
+                          {variantInactive(line) && (
+                            <span className="block text-xs text-warning">
+                              Varian nonaktif
+                            </span>
+                          )}
+                        </TableCell>
 
-                      <TableCell>
-                        <Input
-                          aria-label={`Jumlah ${line.name}`}
-                          value={line.qty}
-                          inputMode="decimal"
-                          onChange={(event) =>
-                            patchLine(index, { qty: event.target.value })
-                          }
-                          disabled={saving}
-                        />
-                      </TableCell>
-
-                      <TableCell>
-                        <div className="flex gap-1">
-                          <select
-                            aria-label={`Jenis diskon ${line.name}`}
-                            className="h-9 rounded-md border border-border bg-surface px-2 text-sm"
-                            value={line.discountMode}
-                            onChange={(event) =>
-                              patchLine(index, {
-                                discountMode: event.target
-                                  .value as InvoiceDiscountMode,
-                              })
-                            }
-                            disabled={saving}
-                          >
-                            <option value="percent">%</option>
-                            <option value="amount">Rp</option>
-                          </select>
+                        <TableCell>
                           <Input
-                            aria-label={`Diskon ${line.name}`}
-                            value={line.discountValue}
+                            aria-label={`Jumlah ${line.name}`}
+                            value={line.qty}
                             inputMode="decimal"
-                            placeholder="0"
                             onChange={(event) =>
-                              patchLine(index, {
-                                discountValue: event.target.value,
-                              })
+                              patchLine(index, { qty: event.target.value })
                             }
                             disabled={saving}
                           />
-                        </div>
-                        {preview.lineDiscounts[index] !== "0.0000" && (
-                          <span className="mt-1 block text-xs text-success">
-                            −{formatMoney(preview.lineDiscounts[index])}
-                          </span>
-                        )}
-                      </TableCell>
+                        </TableCell>
 
-                      <TableCell className="text-right tabular-nums">
-                        {formatMoney(preview.lineTotals[index])}
-                      </TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            <select
+                              aria-label={`Jenis diskon ${line.name}`}
+                              className="h-9 rounded-md border border-border bg-surface px-2 text-sm"
+                              value={line.discountMode}
+                              onChange={(event) =>
+                                patchLine(index, {
+                                  discountMode: event.target
+                                    .value as InvoiceDiscountMode,
+                                })
+                              }
+                              disabled={saving}
+                            >
+                              <option value="percent">%</option>
+                              <option value="amount">Rp</option>
+                            </select>
+                            <Input
+                              aria-label={`Diskon ${line.name}`}
+                              value={line.discountValue}
+                              inputMode="decimal"
+                              placeholder="0"
+                              onChange={(event) =>
+                                patchLine(index, {
+                                  discountValue: event.target.value,
+                                })
+                              }
+                              disabled={saving}
+                            />
+                          </div>
+                          {/* OFFSET PAST THE BOOKING LINES, which the preview
+                              prices first — the server's order. Reading
+                              `[index]` put a booking's figures on the first
+                              typed row whenever one was pulled. */}
+                          {preview.lineDiscounts[
+                            bookingLines.length + index
+                          ] !== "0.0000" && (
+                            <span className="mt-1 block text-xs text-success">
+                              −
+                              {formatMoney(
+                                preview.lineDiscounts[
+                                  bookingLines.length + index
+                                ],
+                              )}
+                            </span>
+                          )}
+                        </TableCell>
 
-                      <TableCell>
-                        <UIButton
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          aria-label={`Hapus ${line.name}`}
-                          onClick={() =>
-                            setLines((current) =>
-                              current.filter((_, at) => at !== index),
-                            )
-                          }
-                          disabled={saving}
-                        >
-                          <Trash2 className="size-4 text-danger" />
-                        </UIButton>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </div>
-      </Card>
+                        {/*
+                          THIS LINE'S SLICE OF THE INVOICE'S PPN — the allocation
+                          the server freezes per line, drawn the way the detail
+                          page draws it: the code, then what it adds on top or
+                          carries inside. "Non-PPN" only when the tenant charges
+                          none; a dash while a line has no price yet.
+                        */}
+                        <TableCell className="tabular-nums">
+                          {lookups.tax.taxRate === 0 ? (
+                            <span className="text-xs text-muted">Non-PPN</span>
+                          ) : preview.lineTaxes[bookingLines.length + index] ===
+                            "0.0000" ? (
+                            <span className="text-muted">—</span>
+                          ) : (
+                            <>
+                              <span className="rounded-full bg-tint-brand px-2 py-0.5 text-xs font-semibold text-primary">
+                                {`PPN ${formatRate(lookups.tax.taxRate)}%`}
+                              </span>
+                              <span className="mt-1 block text-xs font-semibold text-success">
+                                {lookups.tax.priceIncludesTax
+                                  ? `termasuk ${formatMoney(preview.lineTaxes[bookingLines.length + index])}`
+                                  : `+${formatMoney(preview.lineTaxes[bookingLines.length + index])}`}
+                              </span>
+                            </>
+                          )}
+                        </TableCell>
 
-      <Card
-        title="Rekap"
-        description="Dihitung di layar dengan urutan yang sama seperti di server. Angka finalnya ditetapkan saat faktur disimpan."
-      >
-        <div className="flex flex-col gap-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <span className="text-sm font-medium">Diskon faktur</span>
-              <div className="mt-1.5 flex gap-1">
-                <select
-                  aria-label="Jenis diskon faktur"
-                  className="h-11 rounded-md border border-border bg-surface px-2 text-sm"
-                  value={invoiceDiscountMode}
-                  onChange={(event) =>
-                    setInvoiceDiscountMode(
-                      event.target.value as InvoiceDiscountMode,
-                    )
-                  }
+                        <TableCell className="text-right tabular-nums">
+                          {formatMoney(
+                            preview.lineTotals[bookingLines.length + index],
+                          )}
+                        </TableCell>
+
+                        <TableCell>
+                          <UIButton
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`Hapus ${line.name}`}
+                            onClick={() => removeLine(index)}
+                            disabled={saving}
+                          >
+                            <Trash2 className="size-4 text-danger" />
+                          </UIButton>
+                        </TableCell>
+                      </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+
+              <div className="border-t border-border/60 pt-3">
+                <UIButton
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setPicking(true)}
                   disabled={saving}
                 >
-                  <option value="percent">%</option>
-                  <option value="amount">Rp</option>
-                </select>
-                <Input
-                  aria-label="Diskon faktur"
-                  className="h-11"
-                  value={invoiceDiscountValue}
-                  inputMode="decimal"
-                  placeholder="0"
-                  onChange={(event) =>
-                    setInvoiceDiscountValue(event.target.value)
-                  }
-                  disabled={saving}
-                />
+                  + Tambah barang atau jasa
+                </UIButton>
               </div>
-              <p className="mt-1.5 text-xs text-muted">
-                Dihitung dari subtotal <strong>setelah</strong> diskon baris.
-              </p>
-            </div>
+            </>
+          )}
 
-            <dl className="flex flex-col gap-2 text-sm">
-              <div className="flex justify-between">
+          {/*
+            THE RECAP, UNDER THE ROWS IT ADDS UP — no card of its own since 14
+            September 2026, on request and matching the BO mockup (ui-rules §16).
+            Right-aligned, the way the detail page draws its own.
+
+            ALWAYS SHOWN, even before the first row: pulled bookings count
+            toward it, and the sentence under it says how the prices were set.
+          */}
+          <div className="flex flex-col gap-3 border-t border-border pt-4">
+            <dl className="flex w-full flex-col gap-2 self-end text-sm sm:w-96">
+              <div className="flex justify-between gap-4">
                 <dt className="text-muted">Subtotal</dt>
                 <dd className="tabular-nums">
                   {formatMoney(preview.subtotal)}
                 </dd>
               </div>
-              <div className="flex justify-between">
+              {/* The lines' own discounts — the bookings' shares follow. */}
+              <div className="flex justify-between gap-4">
                 <dt className="text-muted">Diskon baris</dt>
-                <dd className="tabular-nums">
-                  −{formatMoney(preview.itemDiscount)}
+                {/* Green, as the till draws a discount. */}
+                <dd className="tabular-nums text-success">
+                  −{formatMoney(subtractDecimals(preview.itemDiscount, bookingShares))}
                 </dd>
               </div>
-              <div className="flex justify-between">
+              {isPositive(bookingShares) && (
+                <div className="flex justify-between gap-4">
+                  <dt className="text-muted">Diskon booking</dt>
+                  <dd className="tabular-nums text-success">
+                    −{formatMoney(bookingShares)}
+                  </dd>
+                </div>
+              )}
+              {/* TYPED IN ITS OWN ROW, as the mockup draws it. What it comes
+                  to shows in the Total below — no line of its own under the
+                  field (removed 14 Sep 2026 on request). */}
+              <div className="flex items-center justify-between gap-4">
                 <dt className="text-muted">Diskon faktur</dt>
-                <dd className="tabular-nums">
-                  −{formatMoney(preview.invoiceDiscount)}
+                <dd>
+                  <div className="flex gap-1">
+                    <select
+                      aria-label="Jenis diskon faktur"
+                      className="h-9 rounded-md border border-border bg-surface px-2 text-sm"
+                      value={invoiceDiscountMode}
+                      onChange={(event) =>
+                        setInvoiceDiscountMode(
+                          event.target.value as InvoiceDiscountMode,
+                        )
+                      }
+                      disabled={saving}
+                    >
+                      <option value="percent">%</option>
+                      <option value="amount">Rp</option>
+                    </select>
+                    <Input
+                      aria-label="Diskon faktur"
+                      className="h-9 w-28 text-right tabular-nums"
+                      value={invoiceDiscountValue}
+                      inputMode="decimal"
+                      placeholder="0"
+                      onChange={(event) =>
+                        setInvoiceDiscountValue(event.target.value)
+                      }
+                      disabled={saving}
+                    />
+                  </div>
                 </dd>
               </div>
+
+              {/*
+                OTHER CHARGES — ongkir, packaging — one editable row each, under
+                the discount they are added after (14 September 2026, the BO
+                mockup and the till's "biaya lain"). Taxed like a line, so they
+                sit above Dasar pengenaan pajak.
+
+                NOTHING TO CONFIRM (decided 14 September 2026 on request): a row
+                counts toward the total as it is typed, and "+ Tambah biaya lain"
+                simply puts the next one on.
+
+                EACH ROW AND THE LINK KEEP A `dt` OF THEIR OWN, visually hidden:
+                a `dl` group holds a term and its details, and bare inputs in one
+                are invalid markup a screen reader stumbles over.
+              */}
+              {charges.map((charge, index) => (
+                <div key={charge.key}>
+                  <dt className="sr-only">{`Biaya lain ${index + 1}`}</dt>
+                  <dd className="flex items-center gap-1">
+                    <Input
+                      aria-label={`Nama biaya ${index + 1}`}
+                      placeholder="Ongkos kirim"
+                      className="h-9 flex-1"
+                      value={charge.label}
+                      onChange={(event) =>
+                        patchCharge(charge.key, { label: event.target.value })
+                      }
+                      disabled={saving}
+                    />
+                    <Input
+                      aria-label={`Nominal biaya ${index + 1}`}
+                      placeholder="10000"
+                      inputMode="numeric"
+                      className="h-9 w-28 text-right tabular-nums"
+                      value={charge.amount}
+                      onChange={(event) =>
+                        patchCharge(charge.key, {
+                          /* DIGITS ONLY. In Indonesian "10.000" is ten
+                             thousand; kept as typed it would be read as ten. */
+                          amount: event.target.value.replace(/\D/g, ""),
+                        })
+                      }
+                      disabled={saving}
+                    />
+                    <UIButton
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`Hapus biaya lain ${index + 1}`}
+                      onClick={() =>
+                        setCharges((current) =>
+                          current.filter((one) => one.key !== charge.key),
+                        )
+                      }
+                      disabled={saving}
+                    >
+                      <Trash2 className="size-4 text-danger" />
+                    </UIButton>
+                  </dd>
+                </div>
+              ))}
+
+              <div className="flex justify-end">
+                <dt className="sr-only">Biaya lain</dt>
+                <dd>
+                  <UIButton
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      setCharges((current) => [
+                        ...current,
+                        { key: nextLineKey(), label: "", amount: "" },
+                      ])
+                    }
+                    disabled={saving}
+                  >
+                    + Tambah biaya lain
+                  </UIButton>
+                </dd>
+              </div>
+
               {/*
                 THE ROW THAT MAKES THE LIST ADD UP. Without it the recap ran
                 Subtotal Rp 100.000 → Total Rp 111.000 with nothing between them,
@@ -952,15 +1660,31 @@ export function InvoiceCreateForm() {
                 is already inside the subtotal; a row reading "PPN Rp 0" there
                 would deny a tax that was charged.
               */}
+              {/*
+                AND IT STANDS ON ITS BASE (14 September 2026, the BO mockup):
+                Dasar pengenaan pajak directly above, under a dashed rule, so the
+                PPN can be checked against what it was charged on. Where tax is
+                added on top the base is exactly the total less that tax.
+              */}
               {preview.taxAdded !== "0.0000" && (
-                <div className="flex justify-between">
-                  {/* One template string, not `PPN {rate}%` — interpolation
-                      splits it into three text nodes, which a screen reader
-                      announces in pieces and a query cannot match as a label. */}
-                  <dt className="text-muted">{`PPN ${lookups.tax.taxRate}%`}</dt>
-                  <dd className="tabular-nums">
-                    {formatMoney(preview.taxAdded)}
-                  </dd>
+                <div className="flex flex-col gap-2 border-t border-dashed border-border pt-2">
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted">Dasar pengenaan pajak</dt>
+                    <dd className="tabular-nums">
+                      {formatMoney(
+                        subtractDecimals(preview.grandTotal, preview.taxAdded),
+                      )}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    {/* One template string, not `PPN {rate}%` — interpolation
+                        splits it into three text nodes, which a screen reader
+                        announces in pieces and a query cannot match as a label. */}
+                    <dt className="text-muted">{`PPN ${lookups.tax.taxRate}%`}</dt>
+                    <dd className="tabular-nums">
+                      {formatMoney(preview.taxAdded)}
+                    </dd>
+                  </div>
                 </div>
               )}
 
@@ -971,13 +1695,16 @@ export function InvoiceCreateForm() {
                 </dd>
               </div>
             </dl>
-          </div>
 
-          <p className="text-xs text-muted">
-            {lookups.tax.priceIncludesTax
-              ? "Harga katalog sudah termasuk PPN — rincian DPP dan PPN muncul di faktur setelah disimpan."
-              : "Rincian DPP-nya muncul di faktur setelah disimpan."}
-          </p>
+            {/* WHAT SAVING DOES — the BO mockup's own sentence, replacing the
+                note about how the recap is computed (14 September 2026, on
+                request). True to `#assertRevisable`: editable until a payment. */}
+            <p className="text-xs text-muted">
+              Faktur ini akan tersimpan berstatus Belum Lunas — masih bisa
+              diedit sampai pembayaran pertama tercatat (lihat halaman Detail
+              Faktur).
+            </p>
+          </div>
         </div>
       </Card>
     </form>

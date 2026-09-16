@@ -1,9 +1,55 @@
 /**
- * Public surface of the services feature (Master Data → Layanan).
+ * Public surface of the services feature — the service form, and what the screen
+ * that lists services borrows from it.
  *
- * Pages import from here, never from deep component paths. The screen entry
- * points map onto the three routes: list, create, edit.
+ * Pages import from here, never from deep component paths. `ServiceForm` backs
+ * `/dashboard/master/layanan/new` and `/[id]`. The hub at that prefix belongs to
+ * `features/settings`, and the list is Grooming › Layanan & Harga — there is no
+ * catalogue-wide list since 13 September 2026.
  */
-export { ServicesScreen } from "./components/ServicesScreen";
 export { ServiceForm } from "./components/ServiceForm";
-export { useServices, type ServicesQuery } from "./hooks/useServices";
+export {
+  ServiceLifecycleDialog,
+  type ServiceLifecycleAction,
+} from "./components/ServiceLifecycleDialog";
+export {
+  formatDuration,
+  formatDurationRange,
+  formatServicePrice,
+  serviceDurationBounds,
+  servicePriceBounds,
+} from "./format";
+// What a screen that READS a service needs to name its variants the way the
+// form that wrote them does — and, since 14 September 2026, the tenant's axis
+// values every one of those functions takes as an argument. See variantAxes.ts.
+export {
+  buildVariantCombos,
+  comboKey,
+  MAX_VARIANTS,
+  VARIANT_AXES,
+  variantAxisValues,
+  variantComboCount,
+  type StoredVariantValues,
+  type VariantAxisValue,
+  type VariantAxisValues,
+  type VariantCombo,
+} from "./variantAxes";
+export { useVariantAxisValues } from "./hooks/useVariantAxisValues";
+// The one tahapan picker — the line's list plus a quick add — and the word a
+// row carries when its name cannot be added again. The form and the grooming
+// detail page's Tahapan card both draw it (14 September 2026).
+export {
+  SERVICE_STEP_NAME_MAX_LENGTH,
+  ServiceStepFlagBadge,
+  serviceStepFlag,
+  ServiceStepPicker,
+  sessionsRefusal,
+  type ServiceStepFlag,
+} from "./components/ServiceStepPicker";
+// The tahapan weight rules, for the detail page that edits tahapan in place.
+export {
+  evenSessionWeights,
+  sessionWeightsError,
+  sessionWeightsPayload,
+  WEIGHTS_MIN_SESSIONS,
+} from "./components/ServiceFormFields";

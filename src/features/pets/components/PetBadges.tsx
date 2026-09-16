@@ -1,5 +1,8 @@
+"use client";
+
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { usePetOptions } from "@/hooks/usePetOptions";
 import type { PetSpecies } from "@/types/api";
 
 /**
@@ -21,53 +24,24 @@ import type { PetSpecies } from "@/types/api";
  * cleanly.
  */
 
-/** Indonesian labels — the visible word is copy, not the API's value. §12. */
-const SPECIES_LABELS: Record<PetSpecies, string> = {
-  cat: "Kucing",
-  dog: "Anjing",
-};
-
-/** The pet's species, spelled out. */
+/**
+ * The pet's species, in the tenant's own word.
+ *
+ * NO LABEL MAP HERE, and there used to be three. Species, breeds, sizes and
+ * coats became tenant data on 14 September 2026 (`petoptions`), so the word for
+ * `dog` is whatever this shop calls it — `usePetOptions().label()` is the one
+ * place that knows, falling back to the seeded word and then the code. A
+ * sentence that needs the word (the print card, the booking work screen) calls
+ * the same hook rather than a helper exported from here.
+ */
 export function PetSpeciesBadge({ species }: { species: PetSpecies }) {
+  const { label } = usePetOptions();
+
   return (
     <Badge variant="outline" className="border-transparent bg-navy-100 text-primary">
-      {SPECIES_LABELS[species]}
+      {label("species", species)}
     </Badge>
   );
-}
-
-/** Plain label for the species — for a picker or a sentence, where a badge would be noise. */
-export function speciesLabel(species: PetSpecies): string {
-  return SPECIES_LABELS[species];
-}
-
-/**
- * The two facts that decide a grooming price, spelled out.
- *
- * HERE BESIDE `speciesLabel` because they are the same kind of thing and were
- * being retyped: `PetInfoTab` had its own copies, and so did the booking form's
- * variant editor. Three spellings of "Berbulu panjang" is how one screen ends up
- * disagreeing with another about the animal in front of them.
- */
-const SIZE_LABELS: Record<string, string> = {
-  small: "Kecil",
-  medium: "Sedang",
-  large: "Besar",
-};
-
-const FUR_LABELS: Record<string, string> = {
-  "long hair": "Bulu panjang",
-  "short hair": "Bulu pendek",
-};
-
-/** `"large"` → `"Besar"`. Unknown values pass through rather than blanking. */
-export function sizeLabel(size: string | null | undefined): string | null {
-  return size ? (SIZE_LABELS[size] ?? size) : null;
-}
-
-/** `"long hair"` → `"Bulu panjang"`. */
-export function furTypeLabel(furType: string | null | undefined): string | null {
-  return furType ? (FUR_LABELS[furType] ?? furType) : null;
 }
 
 /**

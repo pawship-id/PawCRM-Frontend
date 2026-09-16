@@ -120,19 +120,18 @@ export function UserEditForm({ id }: { id: string }) {
           </Card>
 
           {/*
-            THE ROSTER AND THE RATE — FR-4 and FR-6.
+            THE ROSTER — FR-4. It decides who may be booked.
 
-            Both have been storable since this module shipped and neither had a
-            screen. The roster decides who may be booked; the rate decides what
-            they earn. Until this Card existed the only way to set either was to
-            call the API by hand.
+            The per-person rate that used to sit here went on 13 September 2026:
+            commission is one rule for the whole shop now, in Layanan › Grooming
+            › Pengaturan.
 
             ABOVE Password on purpose: it is the one somebody opens this page to
             change on an ordinary day.
           */}
           <Card
-            title="Jadwal & Komisi"
-            description="Hari libur, cuti, dan cara komisinya dihitung."
+            title="Jadwal"
+            description="Groomer atau bukan, hari libur, dan cuti."
           >
             <RosterSection user={user} onUpdated={setUser} />
           </Card>

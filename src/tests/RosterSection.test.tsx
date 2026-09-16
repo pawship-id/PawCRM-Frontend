@@ -3,7 +3,6 @@ import userEvent from "@testing-library/user-event";
 
 import { RosterSection } from "@/features/users";
 import { bookingService } from "@/services/booking.service";
-import { serviceService } from "@/services/service.service";
 import { userService } from "@/services/user.service";
 import type { User } from "@/types/api";
 
@@ -11,12 +10,10 @@ import { renderWithAuth } from "./helpers/renderWithAuth";
 
 jest.mock("@/services/user.service");
 jest.mock("@/services/booking.service");
-jest.mock("@/services/service.service");
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
 
 const users = userService as jest.Mocked<typeof userService>;
 const bookings = bookingService as jest.Mocked<typeof bookingService>;
-const services = serviceService as jest.Mocked<typeof serviceService>;
 
 const user = (overrides: Partial<User> = {}): User =>
   ({
@@ -30,24 +27,17 @@ const user = (overrides: Partial<User> = {}): User =>
 beforeEach(() => {
   jest.clearAllMocks();
   bookings.affectedByLeave.mockResolvedValue([]);
-  services.list.mockResolvedValue({
-    items: [
-      { _id: "svc-1", name: "Grooming Full Service" },
-      { _id: "svc-2", name: "Potong Kuku" },
-    ],
-    pagination: { page: 1, limit: 200, total: 2, totalPages: 1 },
-  } as never);
   users.update.mockImplementation(async (_id, patch) =>
     ({ ...user(), ...patch }) as User,
   );
 });
 
 /**
- * THE ROSTER AND THE RATE — FR-4 and FR-6, on a screen at last.
+ * THE ROSTER — FR-4, on a screen at last.
  *
- * Both have been storable since the user module shipped and neither had one.
- * The roster decides who may be booked; the rate decides what they earn. Until
- * this section existed the only way to set either was to call the API by hand.
+ * It has been storable since the user module shipped and had no screen. The
+ * roster decides who may be booked; until this section existed the only way to
+ * set it was to call the API by hand.
  */
 describe("RosterSection", () => {
   /*
@@ -144,62 +134,15 @@ describe("RosterSection", () => {
     await waitFor(() => expect(users.update).toHaveBeenCalled());
   });
 
-  /* ── the rate ────────────────────────────────────────────────────────── */
-
   /*
-    THE EXACT PAYLOAD, NOT `objectContaining` — and that distinction is why this
-    test exists in this shape.
+    ─── COMMISSION MOVED TO THE SHOP — 13 September 2026 ──────────────────────
 
-    The first version of this form sent `matrix: []` alongside every percentage,
-    and the server refused every save: "commissionRate.matrix is not allowed for
-    this commission type". The test that was supposed to catch it used
-    `objectContaining`, which passes happily on an extra key it was not asked
-    about. An assertion that cannot see a wrong extra field is not guarding the
-    payload; it is guarding a subset of it.
+    One rule for everybody, set in Layanan › Grooming › Pengaturan. The server
+    stopped reading `users.commissionRate`, so this form neither shows nor sends
+    it — and sending the stored rate back would keep alive a number that means
+    nothing.
   */
-  it("sends a percentage rate, and NOTHING else", async () => {
-    renderWithAuth(<RosterSection user={user()} onUpdated={jest.fn()} />);
-
-    await userEvent.click(screen.getByRole("combobox", { name: /komisi/i }));
-    await userEvent.click(
-      await screen.findByRole("option", { name: /persentase/i }),
-    );
-
-    await userEvent.type(screen.getByLabelText(/persen/i), "20");
-    await userEvent.click(
-      screen.getByRole("button", { name: /simpan jadwal/i }),
-    );
-
-    await waitFor(() => expect(users.update).toHaveBeenCalled());
-
-    const [, patch] = users.update.mock.calls[0];
-    expect(patch.commissionRate).toEqual({ type: "percentage", value: 20 });
-  });
-
-  it("sends a fixed rate the same way", async () => {
-    renderWithAuth(<RosterSection user={user()} onUpdated={jest.fn()} />);
-
-    await userEvent.click(screen.getByRole("combobox", { name: /komisi/i }));
-    await userEvent.click(
-      await screen.findByRole("option", { name: /nominal tetap/i }),
-    );
-
-    await userEvent.type(screen.getByLabelText(/nominal/i), "25000");
-    await userEvent.click(
-      screen.getByRole("button", { name: /simpan jadwal/i }),
-    );
-
-    await waitFor(() => expect(users.update).toHaveBeenCalled());
-
-    const [, patch] = users.update.mock.calls[0];
-    expect(patch.commissionRate).toEqual({ type: "fixed", value: 25000 });
-  });
-
-  /*
-    `null` IS THE ANSWER FOR MOST STAFF — cashiers, receptionists, a vet on
-    salary — and it says so far more clearly than a rate of zero.
-  */
-  it("clears the rate to null rather than to zero", async () => {
+  it("sends no commission rate at all, even for somebody who had one", async () => {
     renderWithAuth(
       <RosterSection
         user={user({
@@ -209,144 +152,65 @@ describe("RosterSection", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("combobox", { name: /komisi/i }));
-    await userEvent.click(
-      await screen.findByRole("option", { name: /tidak berkomisi/i }),
-    );
-    await userEvent.click(
-      screen.getByRole("button", { name: /simpan jadwal/i }),
-    );
-
-    await waitFor(() =>
-      expect(users.update).toHaveBeenCalledWith(
-        "user-1",
-        expect.objectContaining({ commissionRate: null }),
-      ),
-    );
-  });
-
-  /*
-    A MATRIX IS NOT EDITABLE HERE, and the screen says so rather than silently
-    offering a control that would wipe it. A per-service rate needs a service
-    picker with a row per service; squeezing a third mode in here would be worse
-    than a stated limit.
-  */
-  /*
-    THE PER-SERVICE MATRIX — the last thing in the booking module that was
-    storable, validated and computed with no screen to set it. Until 3 September
-    2026 this form refused to show one and warned that switching type would wipe
-    it.
-  */
-  it("opens an existing matrix as rows, by service name", async () => {
-    renderWithAuth(
-      <RosterSection
-        user={user({
-          commissionRate: {
-            type: "matrix",
-            matrix: [{ key: "svc-1", value: 30 }],
-          } as never,
-        })}
-        onUpdated={jest.fn()}
-      />,
-    );
-
-    /* The row's key is a service ID; the picker is what turns it into a name. */
-    expect(
-      await screen.findByText(/grooming full service/i),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText(/persen/i)).toHaveValue(30);
-  });
-
-  it("sends the matrix as rows, with no stray value beside it", async () => {
-    const onUpdated = jest.fn();
-
-    renderWithAuth(
-      <RosterSection
-        user={user({
-          commissionRate: {
-            type: "matrix",
-            matrix: [{ key: "svc-1", value: 30 }],
-          } as never,
-        })}
-        onUpdated={onUpdated}
-      />,
-    );
-
-    await screen.findByText(/grooming full service/i);
-    await userEvent.click(
-      screen.getByRole("button", { name: /simpan jadwal/i }),
-    );
-
-    /*
-      EXACTLY THIS SHAPE, asserted with `toEqual` rather than
-      `objectContaining`. The first version of this form sent `matrix: []`
-      alongside a percentage and was refused on every save; an
-      `objectContaining` check passed the whole time, because an extra key is
-      exactly what it is built to ignore.
-    */
-    await waitFor(() => expect(users.update).toHaveBeenCalled());
-    expect(users.update.mock.calls[0][1].commissionRate).toEqual({
-      type: "matrix",
-      matrix: [{ key: "svc-1", value: 30 }],
-    });
-  });
-
-  it("drops a half-filled row instead of letting the server refuse the save", async () => {
-    /*
-      An empty row is what an unfinished form looks like. The server answers
-      "matrix[1].key is not allowed to be empty" — a true sentence that tells
-      nobody which row to look at.
-    */
-    renderWithAuth(
-      <RosterSection
-        user={user({
-          commissionRate: {
-            type: "matrix",
-            matrix: [{ key: "svc-1", value: 30 }],
-          } as never,
-        })}
-        onUpdated={jest.fn()}
-      />,
-    );
-
-    await screen.findByText(/grooming full service/i);
-    await userEvent.click(
-      screen.getByRole("button", { name: /tambah layanan/i }),
-    );
     await userEvent.click(
       screen.getByRole("button", { name: /simpan jadwal/i }),
     );
 
     await waitFor(() => expect(users.update).toHaveBeenCalled());
-    expect(users.update.mock.calls[0][1].commissionRate).toEqual({
-      type: "matrix",
-      matrix: [{ key: "svc-1", value: 30 }],
+    expect(users.update.mock.calls[0][1]).toEqual({
+      isGroomer: false,
+      groomerLevel: null,
+      availability: { weeklyOff: [], leaveDates: [] },
     });
   });
 
-  it("says that a service with no row earns nothing", async () => {
-    /*
-      THE SERVER'S RULE, SAID OUT LOUD. `#amountFor` returns null when no row
-      matches, and no commission record is written at all — which is invisible
-      until a groomer asks why a bath was not paid.
-    */
+  /*
+    ─── THE LEVEL — the label beside a groomer's name on a booking's crew ───────
+
+    Offered only for a groomer, and sent back as it was so a save of the
+    schedule does not wipe it.
+  */
+  it("offers a level only for somebody ticked as a groomer", async () => {
+    renderWithAuth(<RosterSection user={user()} onUpdated={jest.fn()} />);
+
+    expect(
+      screen.queryByRole("combobox", { name: "Level groomer" }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByLabelText("Groomer"));
+
+    expect(
+      screen.getByRole("combobox", { name: "Level groomer" }),
+    ).toBeInTheDocument();
+  });
+
+  it("sends a stored level back on save", async () => {
     renderWithAuth(
       <RosterSection
-        user={user({
-          commissionRate: {
-            type: "matrix",
-            matrix: [{ key: "svc-1", value: 30 }],
-          } as never,
-        })}
+        user={user({ isGroomer: true, groomerLevel: "senior" })}
         onUpdated={jest.fn()}
       />,
     );
 
-    /* Scoped to the sentence, not the word — "Tidak berkomisi" is also an
-       option in the type dropdown. */
+    await userEvent.click(
+      screen.getByRole("button", { name: /simpan jadwal/i }),
+    );
+
+    await waitFor(() => expect(users.update).toHaveBeenCalled());
+    expect(users.update.mock.calls[0][1]).toEqual(
+      expect.objectContaining({ isGroomer: true, groomerLevel: "senior" }),
+    );
+  });
+
+  it("says where commission is set now, and offers no control for it", () => {
+    renderWithAuth(<RosterSection user={user()} onUpdated={jest.fn()} />);
+
     expect(
-      await screen.findByText(/layanan yang tidak ada di daftar ini/i),
+      screen.getByText(/komisi diatur untuk seluruh toko/i),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: /komisi/i }),
+    ).not.toBeInTheDocument();
   });
 
   /*
@@ -534,75 +398,5 @@ describe("RosterSection", () => {
 
     await waitFor(() => expect(users.update).toHaveBeenCalled());
     expect(users.update.mock.calls[0][1].isGroomer).toBe(false);
-  });
-
-  /*
-    ─── THE DROPDOWN THAT WAS ALWAYS EMPTY ───────────────────────────────────
-
-    Found by the BO on the first try: opening "Persen berbeda per layanan" and
-    clicking the service picker showed nothing at all.
-
-    The cause was a `limit` of 200 against a server that caps it at 100 — every
-    request refused with a 400 — and an empty `catch` that swallowed it. The only
-    symptom was a menu with nothing in it.
-  */
-  it("asks for no more services than the server allows", async () => {
-    renderWithAuth(
-      <RosterSection
-        user={user({
-          commissionRate: { type: "matrix", matrix: [] } as never,
-        })}
-        onUpdated={jest.fn()}
-      />,
-    );
-
-    await waitFor(() => expect(services.list).toHaveBeenCalled());
-    const [query] = services.list.mock.calls[0];
-    expect(query?.limit).toBeLessThanOrEqual(100);
-  });
-
-  it("says so when the service list cannot be loaded", async () => {
-    /*
-      SAID, NOT SWALLOWED. An empty dropdown that explains nothing reads as a
-      broken screen, and this one hid a 400 for a whole release.
-    */
-    services.list.mockRejectedValue(new Error("offline"));
-
-    renderWithAuth(
-      <RosterSection
-        user={user({
-          commissionRate: { type: "matrix", matrix: [] } as never,
-        })}
-        onUpdated={jest.fn()}
-      />,
-    );
-
-    expect(
-      await screen.findByText(/daftar layanan tidak bisa dimuat/i),
-    ).toBeInTheDocument();
-  });
-
-  it("points at the fix when the shop has no services yet", async () => {
-    /*
-      A DIFFERENT PROBLEM FROM A FAILED FETCH, and saying which one points at the
-      remedy instead of at a retry that cannot help.
-    */
-    services.list.mockResolvedValue({
-      items: [],
-      pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
-    } as never);
-
-    renderWithAuth(
-      <RosterSection
-        user={user({
-          commissionRate: { type: "matrix", matrix: [] } as never,
-        })}
-        onUpdated={jest.fn()}
-      />,
-    );
-
-    expect(
-      await screen.findByText(/belum ada layanan aktif/i),
-    ).toBeInTheDocument();
   });
 });

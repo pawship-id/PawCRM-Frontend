@@ -443,6 +443,19 @@ baru* and `No. [auto]` added nothing, so the bar there is only Batal and Simpan
 faktur — `FormActionBar` with no `title`. Do not put the card back as a tidy-up,
 and do not drop it from other forms without being asked.
 
+**Faktur baru's header also leaves §16's field order.** Decided 12 September 2026
+on request, to match the BO mockup (`buloo-invoice-create-v4.html`): Pelanggan
+first and full width — its picker shows each customer's phone beside the name
+(`FilterOption.meta`) — then Cabang · Gudang, Tanggal faktur · Jatuh tempo,
+Channel, and Catatan last. Do not reorder it back to Kapan-first as a tidy-up.
+
+**Faktur baru has no Rekap card.** Decided 14 September 2026 on request, to
+match the same mockup: Subtotal, Diskon baris, Diskon faktur (typed in its own
+row), one row per biaya lain with "+ Tambah biaya lain" under them, then —
+where tax is added on top — Dasar pengenaan pajak and PPN under a dashed rule,
+and Total tagihan, all right-aligned at the foot of the Baris faktur card, under
+the rows they add up. Do not split it back into a card of its own as a tidy-up.
+
 
 **One bar, two buttons, always the same places: Batal (secondary) left, Simpan (primary) right**, in a `sticky top-14 z-10` bar at the top of the form. Not `top-0` — DashboardShell's own header is already there, fixed and 56 px tall.
 

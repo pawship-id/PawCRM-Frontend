@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { formatMoney } from "@/utils/decimal";
 import type { PosItem, PosDiscountMode } from "@/types/api";
 
+import { ownDiscountOf } from "../bookingDiscount";
 import { PosDiscountPopover } from "./PosDiscountPopover";
 
 /**
@@ -134,11 +135,15 @@ export function PosCartLine({
 
           <span className="mt-0.5 block text-xs tabular-nums text-muted">
             {formatMoney(item.unitPrice)}
-            {item.discount && (
+            {/*
+              ITS OWN DISCOUNT ONLY — the booking's share of "Diskon seluruh
+              booking" is shown once, under the booking (see `PosCart`).
+            */}
+            {ownDiscountOf(item) && (
               <>
                 {" · "}
                 <span className="text-success">
-                  −{formatMoney(item.discount.resolvedAmount)}
+                  −{formatMoney(ownDiscountOf(item)!.resolvedAmount)}
                 </span>
               </>
             )}
@@ -180,9 +185,9 @@ export function PosCartLine({
                       add-on is and what its price is doing to the total. */}
                   {`+ ${addon.name}`}
                 </span>
-                {addon.discount && (
+                {ownDiscountOf(addon) && (
                   <span className="block text-xs tabular-nums text-success">
-                    −{formatMoney(addon.discount.resolvedAmount)}
+                    −{formatMoney(ownDiscountOf(addon)!.resolvedAmount)}
                   </span>
                 )}
               </span>
@@ -258,7 +263,7 @@ export function PosCartLine({
             give 10% off a grooming that was already on the table.
           */}
           <PosDiscountPopover
-            value={item.discount}
+            value={ownDiscountOf(item)}
             disabled={disabled}
             label={`Diskon ${item.name}`}
             onApply={(discount) => onDiscountChange(index, discount)}

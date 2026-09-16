@@ -46,6 +46,8 @@ export const serviceService = {
         serviceType: query.serviceType,
         branchId: query.branchId,
         isActive: query.isActive,
+        location: query.location,
+        petType: query.petType,
         search: query.search,
         includeDeleted: query.includeDeleted,
       },

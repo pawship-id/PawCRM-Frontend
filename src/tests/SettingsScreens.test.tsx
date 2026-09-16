@@ -1,6 +1,10 @@
 import { screen, waitFor } from "@testing-library/react";
 
-import { GeneralSettingsScreen, InitialDataScreen } from "@/features/settings";
+import {
+  GeneralSettingsScreen,
+  InitialDataScreen,
+  ServiceSettingsScreen,
+} from "@/features/settings";
 import { branchService } from "@/services/branch.service";
 import { customerService } from "@/services/customer.service";
 import { productService } from "@/services/product.service";
@@ -13,12 +17,13 @@ import { renderWithAuth } from "./helpers/renderWithAuth";
 jest.mock("@/services/branch.service");
 jest.mock("@/services/customer.service");
 jest.mock("@/services/product.service");
+jest.mock("@/services/service.service");
 jest.mock("@/services/stockEntry.service");
 jest.mock("@/services/supplier.service");
 jest.mock("@/services/warehouse.service");
 
 /**
- * The two Pengaturan screens the mockup asks for.
+ * The three Pengaturan screens the mockup asks for.
  *
  * WHAT THESE TESTS ARE FOR. Both screens are mostly copy, and copy does not earn
  * a suite — but three things here are logic, and each one fails silently:
@@ -164,5 +169,49 @@ describe("InitialDataScreen", () => {
     expect(warehouseService.list).not.toHaveBeenCalled();
     expect(productService.list).not.toHaveBeenCalled();
     expect(customerService.list).not.toHaveBeenCalled();
+  });
+});
+
+describe("ServiceSettingsScreen", () => {
+  it("sends Tahapan and Data hewan to their screens, Add-on to Layanan & Harga, and badges Zona", () => {
+    renderWithAuth(<ServiceSettingsScreen />);
+
+    // Tahapan became a list per business line (14 September 2026); the bobot
+    // stayed on the service, and the card says so.
+    const steps = screen.getByRole("link", { name: /Tahapan/ });
+    expect(steps).toHaveAttribute("href", "/dashboard/master/layanan/tahapan");
+    expect(steps).toHaveTextContent(/lini bisnis/);
+    expect(steps).toHaveTextContent(/diisi per layanan/);
+
+    expect(screen.getByRole("link", { name: /Add-on/ })).toHaveAttribute(
+      "href",
+      "/dashboard/layanan/grooming/katalog",
+    );
+    // Ukuran and Ras became tenant data (14 September 2026) — one card for the
+    // four lists, not two "Segera" cards.
+    expect(screen.getByRole("link", { name: /Data hewan/ })).toHaveAttribute(
+      "href",
+      "/dashboard/master/layanan/data-hewan",
+    );
+    // No catalogue card — the list lives on Grooming › Layanan & Harga.
+    expect(screen.getAllByRole("link")).toHaveLength(3);
+
+    // Zona alone — drawn so the module's shape is visible, going nowhere.
+    expect(screen.getAllByText("Segera")).toHaveLength(1);
+    expect(screen.queryByText("Ukuran")).not.toBeInTheDocument();
+    expect(screen.queryByText("Ras")).not.toBeInTheDocument();
+  });
+
+  it("keeps only Data hewan for a role without the services grant", () => {
+    renderWithAuth(<ServiceSettingsScreen />, {
+      isSuperAdmin: false,
+      permissions: [{ feature: "branches", actions: ["read"] }],
+    });
+
+    // Reading the vocabulary needs no grant, so its card does not hide with
+    // the two that lead into the service catalogue.
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expect(screen.getByRole("link", { name: /Data hewan/ })).toBeInTheDocument();
+    expect(screen.getAllByText("Segera")).toHaveLength(1);
   });
 });

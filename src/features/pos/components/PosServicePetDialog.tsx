@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { PetFixLink, PetQuickAddDialog } from "@/features/pets";
 import { Checkbox } from "@/components/ui/checkbox";
+import { usePetOptions } from "@/hooks/usePetOptions";
 import { petService } from "@/services/pet.service";
 import { formatMoney } from "@/utils/decimal";
 import {
@@ -80,6 +81,7 @@ export function PosServicePetDialog({
   const [addingPet, setAddingPet] = useState(false);
   const [nonce, setNonce] = useState(0);
   const [addons, setAddons] = useState<Set<string>>(new Set());
+  const { label: petOptionLabel } = usePetOptions();
 
   const open = service !== null;
   const chosen = pets.find((candidate) => candidate._id === petId) ?? null;
@@ -112,11 +114,22 @@ export function PosServicePetDialog({
     NULL ON A FLAT-PRICED SERVICE — there is no variant to name, and a caption
     under every ordinary grooming is noise.
   */
-  const variantLabel = variantLabelForPet(service, chosen);
+  const variantLabel = variantLabelForPet(service, chosen, petOptionLabel);
   const addonQuotes = offered.map((addon) => ({
     addon,
     quote: priceForPet(addon, chosen),
   }));
+  /*
+    A SWITCHED-OFF VARIANT IS NOT SELLABLE (13 September 2026). The resolver
+    still hands its price back, but the till refuses a new line for it — so the
+    main service and any ticked add-on on one hold the button, each with its
+    own sentence rather than the "belum punya harga" one, which would send the
+    cashier to add a variant that already exists.
+  */
+  const inactiveAddonTicked = addonQuotes.some(
+    ({ addon, quote: addonQuote }) =>
+      addonQuote.inactive && addons.has(addon._id),
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -304,7 +317,11 @@ export function PosServicePetDialog({
                       Harga untuk {chosen.name}
                     </span>
                     <span className="shrink-0 text-base font-semibold tabular-nums text-foreground">
-                      {quote.price ? formatMoney(quote.price) : "—"}
+                      {quote.inactive
+                        ? "Varian nonaktif"
+                        : quote.price
+                          ? formatMoney(quote.price)
+                          : "—"}
                     </span>
                   </div>
 
@@ -330,6 +347,13 @@ export function PosServicePetDialog({
                     points at the catalogue instead — there is nothing on the pet
                     to fix.
                   */}
+                  {quote.inactive && (
+                    <p className="mt-1 text-xs text-warning">
+                      Varian {service?.name} untuk {chosen.name} sedang nonaktif
+                      — pilih layanan lain atau aktifkan variannya di katalog.
+                    </p>
+                  )}
+
                   {!quote.price && (
                     <p className="mt-1 text-xs text-warning">
                       {quote.missingAxis ? (
@@ -375,7 +399,14 @@ export function PosServicePetDialog({
                           would name a service the cashier did not think they had
                           added.
                         */
-                        disabled={busy || !addonQuote.price}
+                        /* Nor one on a switched-off variant — but a box already
+                           ticked stays untickable, or the button would be held
+                           by a tick nobody can undo. */
+                        disabled={
+                          busy ||
+                          !addonQuote.price ||
+                          (addonQuote.inactive && !addons.has(addon._id))
+                        }
                         onCheckedChange={() => toggleAddon(addon._id)}
                       />
                       <span className="flex min-w-0 flex-1 items-baseline justify-between gap-2">
@@ -383,9 +414,11 @@ export function PosServicePetDialog({
                           {addon.name}
                         </span>
                         <span className="shrink-0 text-sm tabular-nums text-muted">
-                          {addonQuote.price
-                            ? `+ ${formatMoney(addonQuote.price)}`
-                            : "—"}
+                          {addonQuote.inactive
+                            ? "Varian nonaktif"
+                            : addonQuote.price
+                              ? `+ ${formatMoney(addonQuote.price)}`
+                              : "—"}
                         </span>
                       </span>
                     </label>
@@ -416,7 +449,13 @@ export function PosServicePetDialog({
                 basket that fails at the write — with an error naming an axis
                 nobody was asked about.
               */
-              disabled={busy || !petId || !quote.price}
+              disabled={
+                busy ||
+                !petId ||
+                !quote.price ||
+                quote.inactive ||
+                inactiveAddonTicked
+              }
               onClick={confirm}
             >
               {busy ? "Menambahkan…" : "Tambah ke keranjang"}

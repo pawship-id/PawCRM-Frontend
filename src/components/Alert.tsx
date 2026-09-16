@@ -47,8 +47,18 @@ export function Alert({ variant = "info", children, className }: AlertProps) {
       variant={isError ? "destructive" : "default"}
       className={cn(!isError && TINTS[variant], className)}
     >
-      <AlertDescription className={cn(!isError && "text-current")}>
-        {children}
+      {/*
+        ONE CHILD, ALWAYS — and the wrapper is the whole point (16 September
+        2026). shadcn's `AlertDescription` is a `grid justify-items-start`, so a
+        sentence carrying a `<strong>` arrives as THREE grid items and is drawn
+        as three stacked lines: "status faktur naik sendiri ke" / "DP sebagian" /
+        "atau". Inside one element the same sentence flows and wraps sideways.
+
+        NOT A FLEX COLUMN: that would make the pieces items again. Block siblings
+        keep their old spacing through the margin rule rather than the grid's gap.
+      */}
+      <AlertDescription className={cn(!isError && "text-current", "block")}>
+        <div className="w-full [&>*+*]:mt-1">{children}</div>
       </AlertDescription>
     </UIAlert>
   );

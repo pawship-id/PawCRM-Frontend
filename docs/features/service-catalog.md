@@ -1,7 +1,7 @@
 # Service Catalog
 
-Master Data → **Layanan**. What a tenant sells the *doing of* — grooming, penitipan,
-vaksinasi.
+The service form, reached from Grooming › **Layanan & Harga**. What a tenant sells the
+*doing of* — grooming, penitipan, vaksinasi.
 
 Backend: `PawCRM-Backend/src/models/service.model.js` and the `/api/services` routes.
 Fase 3 of the POS module.
@@ -12,9 +12,139 @@ Fase 3 of the POS module.
 
 | Route | Component | Permission |
 | --- | --- | --- |
-| `/dashboard/master/layanan` | `ServicesScreen` | `services:read` |
+| `/dashboard/master/layanan` | `ServiceSettingsScreen` (hub, `features/settings`) | `services:read` |
+| `/dashboard/layanan/grooming/katalog` | `GroomingServicesScreen` (`features/grooming`) | `services:read` |
+| `/dashboard/layanan/grooming/katalog/[id]` | `GroomingServiceDetailScreen` (`features/grooming`) | `services:read` |
 | `/dashboard/master/layanan/new` | `ServiceForm` | `services:create` |
 | `/dashboard/master/layanan/[id]` | `ServiceForm` (with `serviceId`) | `services:update` |
+
+**A row opens the service's detail page, not the form** (13 September 2026, from
+`buloo-grooming-v3.html`). The table has the mockup's columns — Layanan · Tempat · Varian ·
+Harga · Durasi · Tahapan · Status — and the detail page its four tabs (Ringkasan, Varian &
+Harga, Tahapan & Add-on, Portal). Ringkasan, Tahapan & Add-on and Portal are
+**read-only**; the header's **Ubah** opens `ServiceForm`, which returns to the detail page
+after an edit and to the list after a create. What the page does itself: Aktif / Nonaktif
+(`PATCH isActive`), **Duplikat** (a new inactive service with `-SALIN` on the code, without
+the photo), **Hapus**, and the whole Varian & Harga tab — below.
+
+**Varian & Harga is edited in place** (14 September 2026, on request, as the mockup draws
+it; `GroomingServiceVariantsEditor`, rules in `serviceVariantDraft.ts`):
+
+- **Tempat pengerjaan** — three cards: Di toko saja · Di alamat pelanggan saja · Keduanya.
+- **Opsi yang membedakan harga** — Ukuran ×3, Jenis bulu ×2, Jenis hewan ×2. Nothing ticked
+  is one Harga and one Durasi. The mockup's Tier Groomer and Zona are **not** offered: they
+  are not variant axes, and the shop asked for the three that exist.
+- **Daftar varian** — every combination a row with Harga, Durasi (mnt) and Aktif; "N varian
+  · N aktif" in the header; the active range under the table. Ticking an option splits rows
+  that **start from the row they came from**; unticking merges them back.
+- **Bulk bar** once rows are selected: Set harga, Set durasi, + % (rounded to the thousand),
+  + Rp (either may be negative; never below zero), Aktif / nonaktif. Values are typed in the
+  bar itself, not in a browser prompt. **Isi bertingkat per ukuran…** fills Kecil's price
+  and a step per size up, while Ukuran is ticked.
+- **One draft, one Simpan.** A bar at the head of the tab appears once the draft differs
+  from what is stored — Batal throws the draft away, **Simpan varian & harga** sends one
+  `PATCH` (`serviceLocations` + either `price`/`durationMin` or
+  `variantAxes`/`variants`), and is disabled with a reason while any row lacks a price or
+  1–1440 minutes. Prices are shown grouped (`139.000`); a dot is read as thousands. The tab
+  stays mounted while another is open, so a draft survives a look at Ringkasan.
+- A role without `services:update` sees the same grid, disabled, with no bulk bar.
+
+**Tahapan & Add-on is edited in place too** (14 September 2026, on request;
+`GroomingServiceStepsEditor`, rules in `serviceStepsDraft.ts`, sharing `DraftSaveBar` with
+Varian & Harga). Both cards are one draft with one **Simpan tahapan & add-on**, and the
+PATCH carries only the half that changed — an unchanged add-on list is not re-sent, so a
+save about weights is never refused over an add-on deleted since.
+
+- **Add-on yang boleh dipasang** is a grid of every active add-on: a tick, the name,
+  "+durasi · kode", and the price; ticked cards are highlighted. An add-on that is off or
+  deleted appears only while this service still lists it, marked *— nonaktif* / *—
+  terhapus*, and can be unticked but not ticked again. A service filed as an add-on says it
+  cannot have add-ons.
+- **Not drawn:** the mockup's "+15 mnt · Mandi & Basic Wash — tahapan tidak dipakai". It
+  files each add-on under a tahapan of the main service; no such link is stored (a booking
+  adds an add-on as its own line), so the card shows the add-on's code instead.
+
+- Each tahapan is a row: a drag handle (which also answers ArrowUp / ArrowDown), the name,
+  its weight in %, and ✕. The header badge reads **Total N%** (green at 100, red otherwise),
+  **Dibagi rata** while every box is empty, and one tahapan is always 100%.
+- **+ Tambah tahapan…** offers the tahapan other services of the same line already use,
+  most used first, and takes a new name typed. There is **no shop-wide tahapan list** — the
+  mockup picks from one; a name already on the service (any case) is not offered twice.
+- **Bagi rata** fills whole per cents that add up to 100 (`34 · 33 · 33`).
+- **The tahapan half of the PATCH** is `{ sessions, sessionWeights }`, with the form's
+  rules: every box empty splits evenly, otherwise all filled and exactly 100. A booking
+  already made keeps the turns and add-ons it was made with.
+- A role without `services:update` sees both cards with disabled boxes and ticks, and no
+  handle, ✕, picker or Bagi rata — and the tahapan suggestions are not fetched.
+
+**"N booking" and "Dipakai"** come from `GET /api/bookings/service-counts`
+(`bookings:read`; draft and cancelled work not counted, add-ons counted where ticked). A
+role without that grant is asked nothing and sees no figure.
+
+**Not drawn, because the data does not exist:** the Portal / Internal badge and "terbit di
+portal" (shown *Segera*), and a reason for turning a service off.
+
+**A deleted service has no detail page** — `GET /services/:id` does not return one — so its
+row opens nothing and carries **Pulihkan** beside the *Terhapus* badge. Hapus itself is on
+the detail page.
+
+**The Filter panel** (`GroomingServicesToolbar`) is the mockup's modal with the fields a
+catalogue can mean: **Cabang**, **Status**, **Jenis hewan**, **Tempat** and **Tampilkan
+terhapus**, all waiting for Terapkan and counted in `Filter (n)`. Every one is a server
+filter on `GET /api/services` (`branchId`, `isActive`, `petType`, `location`,
+`includeDeleted`), so the pager counts what was asked for. Jenis hewan means *can be sold for
+that animal* (price independent of species, or a variant for it); Tempat *di toko* includes a
+service with no location stored. The mockup's Groomer and Layanan are booking questions and
+stay on the Booking tab; the panel is not shared across tabs.
+
+**The card above the search** is the mockup's context card, drawn with the Booking tab's
+`GroomingPeriodBar`: **Cabang**, **Periode** (Hari ini / Minggu ini / Bulan ini / **Custom**)
+and **Reset filter (n)**. The date trigger appears only once Custom is pressed, starting from
+the dates of the period in force so the numbers do not move until a date does — the same bar,
+and the same behaviour, on the Booking tab. Cabang is the same value as the panel's — it narrows the
+list and the booking count, counts in `Filter (n)`, and Reset clears it. **Periode narrows
+only "N booking"** (`scheduledFrom`/`scheduledTo` on `GET /api/bookings/service-counts`): a
+service has no date, and a period that hid services would hide the ones nobody booked. The
+panel's **Tanggal booking — sama dengan Periode di atas** is that same period drawn the same
+way — the four pills, and the two dates only behind Custom, with no preset chips — drafted
+until Terapkan; it is never counted and Reset leaves it alone. Under the search, "N layanan · X
+aktif dari Y" is what is listed, then the line's whole catalogue.
+
+---
+
+## Each variant its own duration and on/off; a billing unit
+
+Decided 13 September 2026, on request.
+
+- **The duration follows the price.** A flat service has one *Durasi (menit)*. A variant
+  service has none of its own: every row of the variant grid carries its minutes beside its
+  price, and the single box disappears. The server refuses a service-level `durationMin`
+  beside `hasVariants: true`.
+- **Each variant has an Aktif tick**, and the service keeps its own *Masih ditawarkan*. An
+  inactive variant stays in the grid and on the detail page, but cannot be chosen: the
+  booking form, the till dialog and both invoice forms block a **new** line for it with a
+  sentence naming the service and the animal, and the server refuses one. A line already
+  on a booking being edited, or already stored on an invoice, keeps working.
+- **"Ditagih": Per hewan / Per kunjungan** (`billingUnit`). Stored and shown on the detail
+  page; billing still charges per animal until the antar-jemput feature — the form's hint
+  says so.
+- **What reads it:** the catalogue table's Varian is *active / total* and Durasi the range
+  across active variants ("45–115 mnt"); Harga ranges over active variants only; the detail
+  page's variant grid has Harga, Durasi and Aktif per row, editable in place; "selesai sekitar" and a booking's
+  snapshot use the animal's own variant's minutes (`priceForPet(...).durationMin`).
+- **Existing data:** run `node src/seeds/backfillServiceVariantFields.js` in the backend
+  (see its changelog). Until then the API already presents a variant with no duration as
+  the service's old one, and one with no flag as active.
+
+**There is no catalogue-wide list since 13 September 2026.** `/dashboard/master/layanan`
+used to be one (`ServicesScreen`); that address is now the Pengaturan › Layanan hub of cards
+from the navbar mockup, and the list was removed on request as a duplicate of Grooming ›
+Layanan & Harga. That tab took its **Hapus**, **Pulihkan** and *Tampilkan terhapus*
+(`ServiceLifecycleDialog`), and `ServiceForm` returns there after Simpan and Batal.
+
+**The consequence, accepted:** Layanan & Harga is filtered to the Grooming line, so a
+service on any other line — or on none — appears in no list until its line has a home of
+its own. Its form is still reachable at `/dashboard/master/layanan/[id]`.
 
 Placed beside **Hewan** in Master Data rather than under Inventory → Produk. The split is
 about **who edits**: the groomer who prices a bath is not the person pricing sacks of feed,
@@ -171,7 +301,7 @@ anything, so a service's picture is never swept out from under it.
 | | Meaning | Set from |
 | --- | --- | --- |
 | `isActive: false` | Still exists and every past sale of it stays true, but it is no longer offered at the till | The **Ketersediaan** switch on the edit form |
-| `deletedAt` | The record should never have existed | The row's **Hapus** action |
+| `deletedAt` | The record should never have existed | The row's **Hapus** action on Grooming › Layanan & Harga |
 
 Conflating them would force a shop to *delete* a discontinued service to stop it appearing
 in the POS — taking its name off every historical receipt that sold it.

@@ -4,9 +4,17 @@ import userEvent from "@testing-library/user-event";
 import { PetForm } from "@/features/pets";
 import { petService } from "@/services/pet.service";
 import { customerService } from "@/services/customer.service";
+import { petOptionService } from "@/services/petOption.service";
+
+import {
+  PET_OPTION_FIXTURES,
+  makePetOption,
+  primePetOptions,
+} from "./helpers/petOptions";
 
 jest.mock("@/services/pet.service");
 jest.mock("@/services/customer.service");
+jest.mock("@/services/petOption.service");
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
 
 const push = jest.fn();
@@ -55,6 +63,7 @@ const petFixture = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  primePetOptions(petOptionService.list);
   /*
     A LOCKED OWNER FIELD NOW FETCHES THE ONE CUSTOMER BY ID so it can show a
     NAME. Without this the edit screen rendered the raw `customerId` — which is
@@ -148,6 +157,42 @@ describe("PetForm — registering", () => {
     expect(query?.limit).toBeLessThanOrEqual(100);
   });
 
+  /*
+    THE SPECIES ARE THE SHOP'S OWN LIST since 14 Sep 2026, not a hardcoded cat
+    and dog. A species the tenant added is offered; one it retired is not — a
+    retired option stops being chosen for a new animal.
+  */
+  it("offers the species the shop added, and not the ones it retired", async () => {
+    primePetOptions(petOptionService.list, [
+      ...PET_OPTION_FIXTURES,
+      makePetOption({
+        type: "species",
+        code: "kelinci",
+        label: "Kelinci",
+        sortOrder: 2,
+      }),
+      makePetOption({
+        type: "species",
+        code: "hamster",
+        label: "Hamster",
+        sortOrder: 3,
+        isActive: false,
+      }),
+    ]);
+
+    await renderNew();
+
+    const picker = screen.getByRole("combobox", { name: "Jenis" });
+    await waitFor(() => expect(picker).toBeEnabled());
+    await userEvent.click(picker);
+
+    expect(await screen.findByRole("option", { name: "Kelinci" })).toBeVisible();
+    expect(screen.getByRole("option", { name: "Kucing" })).toBeVisible();
+    expect(
+      screen.queryByRole("option", { name: /hamster/i }),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows our own sentence when the customer list fails, never the server's", async () => {
     // "Validation failed" under a picker tells a shop owner nothing they can act
     // on — it is written for whoever reads the logs. ui-rules §12.
@@ -179,6 +224,43 @@ describe("PetForm — editing", () => {
     );
     // The ISO instant is trimmed to the date half an <input type=date> wants.
     expect(screen.getByDisplayValue("2022-03-14")).toBeVisible();
+  });
+
+  /*
+    A RETIRED VALUE THE PET ALREADY HOLDS STAYS ON THE FORM. Without it the
+    select has no item for its value, renders blank, and the next save clears a
+    fact nobody chose to change — while the server would have accepted it.
+  */
+  it("keeps a retired species the pet already has, marked nonaktif", async () => {
+    primePetOptions(petOptionService.list, [
+      ...PET_OPTION_FIXTURES,
+      makePetOption({
+        type: "species",
+        code: "kelinci",
+        label: "Kelinci",
+        sortOrder: 2,
+        isActive: false,
+      }),
+    ]);
+    mockedPetService.getById.mockResolvedValue({
+      ...petFixture,
+      species: "kelinci",
+    });
+
+    render(<PetForm petId={PET_ID} />);
+
+    await screen.findByDisplayValue("Bella");
+    const picker = screen.getByRole("combobox", { name: "Jenis" });
+    await waitFor(() => expect(picker).toHaveTextContent("Kelinci (nonaktif)"));
+
+    await userEvent.click(screen.getByRole("button", { name: /simpan hewan/i }));
+
+    await waitFor(() =>
+      expect(mockedPetService.update).toHaveBeenCalledWith(
+        PET_ID,
+        expect.objectContaining({ species: "kelinci" }),
+      ),
+    );
   });
 
   it("locks the owner — reassigning would move the pet's history", async () => {

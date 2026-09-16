@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { PetFixLink, PetQuickAddDialog } from "@/features/pets";
+import { usePetOptions } from "@/hooks/usePetOptions";
 import { petService } from "@/services/pet.service";
 import { serviceService } from "@/services/service.service";
 import { formatMoney, sumDecimals } from "@/utils/decimal";
@@ -92,6 +93,8 @@ export function AddServiceTab({
   const [formError, setFormError] = useState<string | null>(null);
 
   const [petsNonce, setPetsNonce] = useState(0);
+  // Names the variant caption in the tenant's words.
+  const { label: petOptionLabel } = usePetOptions();
 
   useEffect(() => {
     let active = true;
@@ -214,6 +217,17 @@ export function AddServiceTab({
       pets.find((pet) => pet._id === petId),
     );
 
+  /*
+    THE FIGURE THAT COUNTS TOWARDS THE BASKET — null on a switched-off variant
+    (13 September 2026). Its price still comes back from the resolver, but the
+    till refuses the line, so adding it to a total would quote a charge that can
+    never be rung up.
+  */
+  const sellablePrice = (petId: string, serviceId: string) => {
+    const quote = priceFor(petId, serviceId);
+    return quote.inactive ? null : quote.price;
+  };
+
   /**
    * Everything ticked, for every animal — what the basket is about to gain.
    *
@@ -227,7 +241,7 @@ export function AddServiceTab({
    */
   const total = sumDecimals(
     [...ticked.entries()].flatMap(([petId, set]) =>
-      [...set].map((serviceId) => priceFor(petId, serviceId).price),
+      [...set].map((serviceId) => sellablePrice(petId, serviceId)),
     ),
   );
 
@@ -237,6 +251,7 @@ export function AddServiceTab({
     ? variantLabelForPet(
         services.find((service) => service.hasVariants) ?? null,
         activePet,
+        petOptionLabel,
       )
     : null;
 
@@ -256,13 +271,13 @@ export function AddServiceTab({
     services: [...set]
       .map((serviceId) => ({
         name: services.find((service) => service._id === serviceId)?.name ?? "",
-        price: priceFor(id, serviceId).price,
+        price: sellablePrice(id, serviceId),
       }))
       .filter((one) => one.name !== ""),
     /* What this animal comes to, so the total below can be checked against its
        parts rather than taken on trust. */
     total: sumDecimals(
-      [...set].map((serviceId) => priceFor(id, serviceId).price),
+      [...set].map((serviceId) => sellablePrice(id, serviceId)),
     ),
   }));
 
@@ -352,19 +367,25 @@ export function AddServiceTab({
             {services.map((service) => {
               const quote = petId
                 ? priceFor(petId, service._id)
-                : { price: service.price, missingAxis: null };
+                : { price: service.price, missingAxis: null, inactive: false };
+              const checked = forActivePet.has(service._id);
 
               return (
                 <li key={service._id}>
                   <label className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-surface-hover">
                     <Checkbox
-                      checked={forActivePet.has(service._id)}
+                      checked={checked}
                       /*
                         A SERVICE NOBODY CAN PRICE CANNOT BE TICKED. The server
                         refuses the whole patch on it, and the refusal names an
                         axis the receptionist was never asked about.
+
+                        NOR ONE WHOSE VARIANT IS SWITCHED OFF (13 September
+                        2026) — the till refuses a new line for it. A box
+                        already ticked stays untickable, so a list re-read under
+                        the cashier cannot strand a tick they cannot undo.
                       */
-                      disabled={!quote.price}
+                      disabled={!quote.price || (quote.inactive && !checked)}
                       onCheckedChange={() => toggle(service._id)}
                       aria-label={service.name}
                     />
@@ -381,9 +402,18 @@ export function AddServiceTab({
                           />
                         </span>
                       )}
+                      {/* Why the box is grey, in words — §1.3. */}
+                      {quote.inactive && (
+                        <span className="block text-xs text-warning">
+                          Varian nonaktif — aktifkan variannya di katalog untuk
+                          menjualnya.
+                        </span>
+                      )}
                     </span>
                     <span className="shrink-0 text-sm tabular-nums text-muted">
-                      {quote.price ? formatMoney(quote.price) : "—"}
+                      {quote.price && !quote.inactive
+                        ? formatMoney(quote.price)
+                        : "—"}
                     </span>
                   </label>
                 </li>

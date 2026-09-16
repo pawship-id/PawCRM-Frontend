@@ -24,7 +24,17 @@ import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
 import { petService } from "@/services/pet.service";
-import { formatMoney, trimDecimal, trimQty } from "@/utils/decimal";
+import {
+  divideRound,
+  formatMoney,
+  isPositive,
+  subtractDecimals,
+  sumDecimals,
+  toDecimalString,
+  toMinor,
+  trimDecimal,
+  trimQty,
+} from "@/utils/decimal";
 import { AXIS_LABEL, priceForPet } from "@/utils/serviceVariant";
 import type {
   CustomerInvoiceDetail,
@@ -33,6 +43,7 @@ import type {
   UpdateCustomerInvoiceInput,
 } from "@/types/api";
 
+import { invoiceBookingShareOf } from "../bookingDiscount";
 import { useInvoiceLookups } from "../hooks/useInvoiceLookups";
 import { previewInvoice } from "../invoicePreview";
 
@@ -55,6 +66,35 @@ interface EditLine {
   petName: string | null;
   /** Billed from a booking — one per animal, so the quantity is fixed at 1. */
   booked: boolean;
+  /**
+   * The line's part of "Diskon seluruh booking" — "0" on everything else
+   * (16 September 2026). The discount fields hold the line's OWN discount; the
+   * server adds this back on save, and the recap shows it as "Diskon booking".
+   */
+  bookingShare: string;
+}
+
+const HUNDRED_MINOR = BigInt(100) * BigInt(10_000);
+
+/**
+ * What the line's own discount takes off `basisMinor` — the server's rule
+ * (`utils/discount.js`): a percent half-up and never past 100, a rupiah amount
+ * never past what it is taken from. Invalid or empty takes nothing.
+ */
+function ownDiscountMinor(
+  basisMinor: bigint,
+  mode: InvoiceDiscountMode,
+  value: string,
+): bigint {
+  const typed = value === "" ? null : toMinor(value.replace(",", "."));
+  if (typed === null || typed <= BigInt(0) || basisMinor <= BigInt(0)) return BigInt(0);
+
+  const off =
+    mode === "percent"
+      ? divideRound(basisMinor * (typed > HUNDRED_MINOR ? HUNDRED_MINOR : typed), HUNDRED_MINOR)
+      : typed;
+
+  return off > basisMinor ? basisMinor : off;
 }
 
 /** Nobody has a hundred animals; this is a ceiling, not a page size. */
@@ -105,22 +145,45 @@ export function InvoiceEditor({
 
   const initialLines = useMemo<EditLine[]>(
     () =>
-      (invoice.items ?? []).map((item, index) => ({
-        key: `simpan-${index}`,
-        fromIndex: index,
-        kind: item.kind,
-        refId: item.refId,
-        name: item.name,
-        sku: item.sku,
-        unitPrice: item.unitPrice,
-        qty: trimQty(item.qty),
-        discountMode: item.discount?.mode ?? "percent",
-        discountValue: item.discount ? trimDecimal(item.discount.value) : "",
-        petId: item.petId ?? "",
-        petName: item.petName,
-        booked: Boolean(item.bookingId),
-      })),
-    [invoice.items],
+      (invoice.items ?? []).map((item, index) => {
+        /*
+          THE LINE'S OWN DISCOUNT IN THE FIELDS — the stored figure less its
+          part of "Diskon seluruh booking", as the invoice's read view shows it.
+          A line with a share holds a nominal figure by then, so its own part is
+          shown in rupiah.
+        */
+        const share = invoiceBookingShareOf(item, invoice.bookings ?? []) ?? "0";
+        const own =
+          item.discount && isPositive(share)
+            ? subtractDecimals(item.discount.resolvedAmount, share)
+            : null;
+
+        return {
+          key: `simpan-${index}`,
+          fromIndex: index,
+          kind: item.kind,
+          refId: item.refId,
+          name: item.name,
+          sku: item.sku,
+          unitPrice: item.unitPrice,
+          qty: trimQty(item.qty),
+          discountMode:
+            own !== null ? "amount" : (item.discount?.mode ?? "percent"),
+          discountValue:
+            own !== null
+              ? isPositive(own)
+                ? trimDecimal(own)
+                : ""
+              : item.discount
+                ? trimDecimal(item.discount.value)
+                : "",
+          petId: item.petId ?? "",
+          petName: item.petName,
+          booked: Boolean(item.bookingId),
+          bookingShare: share,
+        };
+      }),
+    [invoice.items, invoice.bookings],
   );
 
   const [lines, setLines] = useState<EditLine[]>(initialLines);
@@ -193,6 +256,56 @@ export function InvoiceEditor({
 
   const hasProductLine = lines.some((line) => line.kind === "product");
   const hasServiceLine = lines.some((line) => line.kind === "service");
+
+  /*
+    WHAT THE SERVER WILL STORE ON THE LINE — its own discount, measured against
+    the price less the booking's share, plus that share, as one nominal figure.
+    The preview bills exactly that; the fields only ever hold the own part.
+  */
+  function previewDiscountOf(line: EditLine) {
+    const typed = line.discountValue
+      ? { mode: line.discountMode, value: line.discountValue }
+      : null;
+
+    if (!isPositive(line.bookingShare)) return typed;
+
+    const priceMinor = toMinor(line.unitPrice) ?? BigInt(0);
+    const shareMinor = toMinor(line.bookingShare) ?? BigInt(0);
+    const capped = shareMinor > priceMinor ? priceMinor : shareMinor;
+    const own = ownDiscountMinor(priceMinor - capped, line.discountMode, line.discountValue);
+
+    return { mode: "amount" as const, value: toDecimalString(own + capped) };
+  }
+
+  /* The bookings' shares across the edit — shown once, under "Diskon item". */
+  const bookingShares = sumDecimals(lines.map((line) => line.bookingShare));
+
+  /**
+   * Whether the PPN is charged ON TOP of the prices — see `previewInvoice`.
+   *
+   * A FUNCTION, not a const: this sits above `preview`, and reading it here
+   * would be a use before its declaration.
+   */
+  const taxOnTop = () => preview.taxAdded !== "0.0000";
+
+  /** A row's OWN discount: what the preview takes off it, less the booking's share. */
+  function ownOffAt(index: number, line: EditLine): string {
+    const own = subtractDecimals(preview.lineDiscounts[index], line.bookingShare);
+    return isPositive(own) ? own : "0";
+  }
+
+  /**
+   * WHAT THE ROW COMES TO: price × qty, less its own discount, plus its PPN
+   * where the tax is added on top (16 September 2026). Inclusive pricing has the
+   * tax inside the price already, so adding it here would charge it twice.
+   *
+   * The booking's share is NOT taken off a row — it is taken off once, in the
+   * recap — so the rows add up to the total plus that share.
+   */
+  function rowTotal(index: number, line: EditLine): string {
+    const net = subtractDecimals(preview.lineTotals[index], ownOffAt(index, line));
+    return taxOnTop() ? sumDecimals([net, preview.lineTaxes[index]]) : net;
+  }
   /*
     ASKED ONLY WHEN THE INVOICE SHIPPED NOTHING BEFORE. One that already moved
     stock keeps its warehouse: the reversal has to put its goods back on the
@@ -206,16 +319,23 @@ export function InvoiceEditor({
         lines.map((line) => ({
           qty: line.qty,
           unitPrice: line.unitPrice,
-          discount: line.discountValue
-            ? { mode: line.discountMode, value: line.discountValue }
-            : null,
+          discount: previewDiscountOf(line),
         })),
         invoiceDiscountValue
           ? { mode: invoiceDiscountMode, value: invoiceDiscountValue }
           : null,
-        lookups.tax,
+        /* THE STORED CHARGES COUNT TOWARD THE TOTAL. The editor does not change
+           them — the server keeps them when none are sent — but a total that
+           left out the ongkir would not be the bill that gets saved. */
+        { ...lookups.tax, otherCharges: invoice.otherCharges ?? [] },
       ),
-    [lines, invoiceDiscountMode, invoiceDiscountValue, lookups.tax],
+    [
+      lines,
+      invoiceDiscountMode,
+      invoiceDiscountValue,
+      lookups.tax,
+      invoice.otherCharges,
+    ],
   );
 
   function payload(): UpdateCustomerInvoiceInput {
@@ -268,6 +388,21 @@ export function InvoiceEditor({
     [initialLines, invoice.invoiceDiscount, invoice.dueDate],
   );
 
+  /*
+    A NEW SERVICE LINE ON A SWITCHED-OFF VARIANT (13 September 2026). The server
+    resolves only the rows added in this edit and refuses one of these; a line
+    already stored on the invoice is never re-resolved, so it is never flagged —
+    blocking it would hold the whole correction over a row the server accepts.
+  */
+  const variantInactive = (line: EditLine) =>
+    line.fromIndex === null &&
+    line.kind === "service" &&
+    line.petId !== "" &&
+    priceForPet(
+      lookups.services.find((one) => one._id === line.refId),
+      pets.find((one) => one._id === line.petId),
+    ).inactive;
+
   const blocking = (() => {
     if (lookups.loading) return "Sedang memuat katalog.";
     if (lines.length === 0) return "Faktur butuh minimal satu baris.";
@@ -280,6 +415,15 @@ export function InvoiceEditor({
       return petOptions.length === 0
         ? "Pelanggan ini belum punya hewan — daftarkan dulu di Master Data."
         : "Ada baris jasa yang belum dipilih hewannya.";
+    }
+
+    /* Its own sentence: the price is known, so "belum punya harga" would be
+       wrong — the variant exists and is switched off. */
+    const inactive = lines.find(variantInactive);
+
+    if (inactive) {
+      const pet = pets.find((one) => one._id === inactive.petId);
+      return `Varian ${inactive.name} untuk ${pet?.name ?? "hewan ini"} sedang nonaktif — pilih layanan lain atau aktifkan variannya di katalog.`;
     }
 
     const unpriced = lines.find(
@@ -344,6 +488,7 @@ export function InvoiceEditor({
         petId: "",
         petName: null,
         booked: false,
+        bookingShare: "0",
       },
     ]);
     setPicked("");
@@ -455,15 +600,20 @@ export function InvoiceEditor({
         )}
       </div>
 
+      {/*
+        WIDE ENOUGH FOR ITS INPUTS, scrolling sideways when the card is not —
+        a discount field squeezed to two characters cannot be read back.
+      */}
       <div className="overflow-x-auto">
-        <Table>
+        <Table className="min-w-275">
           <TableHeader>
             <TableRow>
               <TableHead>Item</TableHead>
               {hasServiceLine && <TableHead className="w-44">Hewan</TableHead>}
               <TableHead className="text-right">Harga</TableHead>
               <TableHead className="w-24">Jumlah</TableHead>
-              <TableHead className="w-44">Diskon</TableHead>
+              <TableHead className="min-w-64">Diskon</TableHead>
+              <TableHead>Pajak</TableHead>
               <TableHead className="text-right">Total</TableHead>
               <TableHead className="w-12" />
             </TableRow>
@@ -515,6 +665,12 @@ export function InvoiceEditor({
                   ) : (
                     formatMoney(line.unitPrice)
                   )}
+                  {/* The row the blocking sentence is about, marked in words. */}
+                  {variantInactive(line) && (
+                    <span className="block text-xs text-warning">
+                      Varian nonaktif
+                    </span>
+                  )}
                 </TableCell>
 
                 <TableCell>
@@ -539,7 +695,7 @@ export function InvoiceEditor({
                   <div className="flex gap-1">
                     <select
                       aria-label={`Jenis diskon ${line.name}`}
-                      className="h-9 rounded-md border border-border bg-surface px-2 text-sm focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                      className="h-9 shrink-0 rounded-md border border-border bg-surface px-2 text-sm focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
                       value={line.discountMode}
                       onChange={(event) =>
                         patchLine(line.key, {
@@ -554,6 +710,7 @@ export function InvoiceEditor({
                     </select>
                     <Input
                       aria-label={`Diskon ${line.name}`}
+                      className="min-w-32 text-right tabular-nums"
                       value={line.discountValue}
                       inputMode="decimal"
                       placeholder="0"
@@ -565,15 +722,43 @@ export function InvoiceEditor({
                       disabled={saving}
                     />
                   </div>
-                  {preview.lineDiscounts[index] !== "0.0000" && (
+                  {/* The line's own part only — the share is in the recap. */}
+                  {isPositive(
+                    subtractDecimals(preview.lineDiscounts[index], line.bookingShare),
+                  ) && (
                     <span className="mt-1 block text-xs text-danger-ink tabular-nums">
-                      −{formatMoney(preview.lineDiscounts[index])}
+                      −
+                      {formatMoney(
+                        subtractDecimals(preview.lineDiscounts[index], line.bookingShare),
+                      )}
                     </span>
                   )}
                 </TableCell>
 
+                {/*
+                  THE PPN THIS ROW WOULD CARRY, beside the discount it is charged
+                  after — the same pair the read view shows, so an edit can be
+                  checked against the bill it will become.
+                */}
+                <TableCell className="tabular-nums">
+                  {preview.lineTaxes[index] === "0.0000" ? (
+                    <span className="text-xs text-muted">Non-PPN</span>
+                  ) : (
+                    <>
+                      <span className="rounded-full bg-tint-brand px-2 py-0.5 text-xs font-semibold text-primary">
+                        {`PPN ${lookups.tax.taxRate}%`}
+                      </span>
+                      <span className="mt-1 block text-xs font-semibold text-success">
+                        {taxOnTop()
+                          ? `+${formatMoney(preview.lineTaxes[index])}`
+                          : `termasuk ${formatMoney(preview.lineTaxes[index])}`}
+                      </span>
+                    </>
+                  )}
+                </TableCell>
+
                 <TableCell className="text-right font-semibold tabular-nums">
-                  {formatMoney(preview.lineTotals[index])}
+                  {formatMoney(rowTotal(index, line))}
                 </TableCell>
 
                 <TableCell>
@@ -659,22 +844,63 @@ export function InvoiceEditor({
             <dt className="text-muted">Subtotal</dt>
             <dd className="tabular-nums">{formatMoney(preview.subtotal)}</dd>
           </div>
+          {/* The lines' own discounts, then the bookings' shares — as on the read view. */}
           <div className="flex justify-between gap-4">
             <dt className="text-muted">Diskon item</dt>
             <dd className="tabular-nums">
-              −{formatMoney(preview.itemDiscount)}
+              −{formatMoney(subtractDecimals(preview.itemDiscount, bookingShares))}
             </dd>
           </div>
+          {isPositive(bookingShares) && (
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted">Diskon booking</dt>
+              <dd className="tabular-nums">−{formatMoney(bookingShares)}</dd>
+            </div>
+          )}
           <div className="flex justify-between gap-4">
             <dt className="text-muted">Diskon faktur</dt>
             <dd className="tabular-nums">
               −{formatMoney(preview.invoiceDiscount)}
             </dd>
           </div>
+          {/* THE STORED CHARGES, read-only — this screen does not change them,
+              and the server keeps them on the revised bill. */}
+          {(invoice.otherCharges ?? []).map((charge, index) => (
+            <div
+              key={`${charge.label}-${index}`}
+              className="flex justify-between gap-4"
+            >
+              <dt className="text-muted">{charge.label}</dt>
+              <dd className="tabular-nums">+{formatMoney(charge.amount)}</dd>
+            </div>
+          ))}
+          {/*
+            THE PPN STANDS ON ITS BASE — "Dasar pengenaan pajak" directly above
+            it, under a dashed rule, as the read view and Faktur baru draw it
+            (16 September 2026). The two are a breakdown of the figure below, not
+            two more things added to it, and a tax nobody can check against what
+            it was charged on is a tax nobody can check.
+
+            ONLY WHERE TAX IS ADDED ON TOP: on inclusive pricing it is already
+            inside the subtotal, and a "PPN Rp 0" row would deny a tax that was
+            charged.
+          */}
           {preview.taxAdded !== "0.0000" && (
-            <div className="flex justify-between gap-4">
-              <dt className="text-muted">{`PPN ${lookups.tax.taxRate}%`}</dt>
-              <dd className="tabular-nums">{formatMoney(preview.taxAdded)}</dd>
+            <div className="flex flex-col gap-2 border-t border-dashed border-border pt-2">
+              <div className="flex justify-between gap-4">
+                <dt className="text-muted">Dasar pengenaan pajak</dt>
+                <dd className="tabular-nums">
+                  {formatMoney(
+                    subtractDecimals(preview.grandTotal, preview.taxAdded),
+                  )}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                {/* One template string, not `PPN {rate}%` — interpolation splits
+                    it into three text nodes a query cannot match as a label. */}
+                <dt className="text-muted">{`PPN ${lookups.tax.taxRate}%`}</dt>
+                <dd className="tabular-nums">{formatMoney(preview.taxAdded)}</dd>
+              </div>
             </div>
           )}
           <div className="flex justify-between gap-4 border-t-[1.5px] border-primary pt-2.5 text-base font-bold">

@@ -11,6 +11,8 @@ import { bookingService } from "@/services/booking.service";
 import { formatMoney } from "@/utils/decimal";
 import type { Booking } from "@/types/api";
 
+import { afterOwnDiscounts, ownDiscountOfLine } from "../bookingDiscount";
+
 /**
  * THE CUSTOMER'S BOOKINGS, ready to be billed on this invoice — PCR-034.
  *
@@ -20,10 +22,10 @@ import type { Booking } from "@/types/api";
  * panel empty for exactly the cases it exists to serve. Backwards only: an
  * appointment booked for next Friday has not been earned yet.
  *
- * ONE ROW PER ANIMAL, showing every service on that booking. A bill for three
- * cats has to say which three — the customer checking it and the groomer reading
- * it both need the names, and "Grooming ×3" tells neither of them whose bath was
- * missed.
+ * ONE ROW PER BOOKING, which is one animal and one main service with its
+ * add-ons. A bill for three cats has to say which three — the customer checking
+ * it and the groomer reading it both need the names, and "Grooming ×3" tells
+ * neither of them whose bath was missed.
  *
  * THE LIST IS ALREADY FILTERED BY THE SERVER to bookings this customer has not
  * been billed for — in a basket OR on another invoice — in any status but
@@ -142,10 +144,14 @@ export function InvoiceBookingPanel({
 
       {bookings.map((booking) => {
         const id = booking._id;
-        const total = booking.items.reduce(
-          (sum, item) => sum + Number(item.price),
-          0,
-        );
+        /*
+          AFTER EACH LINE'S OWN DISCOUNT, BEFORE THE BOOKING'S SHARE (15
+          September 2026). The lines below show their own discounts, so this is
+          what they add up to; the share of "Diskon seluruh booking" is shown
+          once, in the recap under "Diskon baris" — the till does the same.
+        */
+        const total = afterOwnDiscounts(booking);
+        const mainOwn = ownDiscountOfLine(booking.service);
 
         return (
           <label
@@ -169,22 +175,60 @@ export function InvoiceBookingPanel({
                   {booking.petName ?? "Hewan terhapus"}
                 </span>
                 <span className="tabular-nums text-sm">
-                  {formatMoney(String(total))}
+                  {formatMoney(total)}
                 </span>
               </span>
               <span className="block text-xs text-muted">
                 {booking.bookingNumber ?? "—"}
               </span>
-              <ul className="mt-1 flex flex-col gap-0.5 text-xs text-muted">
-                {booking.items.map((item, index) => (
-                  <li key={`${item.serviceId}-${index}`}>
-                    {item.name}
-                    {/* Never null — the server resolves an unassigned slot to
-                        "Belum ditentukan" once, rather than three screens each
-                        inventing their own word for it. */}
-                    {item.groomerName ? ` · ${item.groomerName}` : ""}
-                  </li>
-                ))}
+              {/*
+                PRICED LINE BY LINE, AS THE TILL DRAWS A PULLED BOOKING — each
+                line's price, and its own discount under it.
+              */}
+              <ul className="mt-1.5 flex flex-col gap-1 text-xs">
+                <li className="flex flex-col">
+                  <span className="flex justify-between gap-2">
+                    <span className="text-foreground">
+                      {booking.service.name}
+                      {/* Never null — the server resolves an unassigned slot to
+                          "Belum ditentukan" once, rather than three screens each
+                          inventing their own word for it. */}
+                      {booking.groomerName ? ` · ${booking.groomerName}` : ""}
+                    </span>
+                    <span className="tabular-nums text-muted">
+                      {formatMoney(booking.service.price)}
+                    </span>
+                  </span>
+                  {mainOwn && (
+                    <span className="tabular-nums text-success">
+                      −{formatMoney(mainOwn)}
+                    </span>
+                  )}
+                </li>
+                {/* Under the service they came with — nobody chose "Parfum"
+                    by itself. */}
+                {booking.service.addons.map((addon) => {
+                  const own = ownDiscountOfLine(addon);
+
+                  return (
+                    <li
+                      key={addon.itemId}
+                      className="ml-1 flex flex-col border-l border-border pl-2"
+                    >
+                      <span className="flex justify-between gap-2">
+                        <span className="text-foreground">+ {addon.name}</span>
+                        <span className="tabular-nums text-muted">
+                          {formatMoney(addon.price)}
+                        </span>
+                      </span>
+                      {own && (
+                        <span className="tabular-nums text-success">
+                          −{formatMoney(own)}
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </span>
           </label>

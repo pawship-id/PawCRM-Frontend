@@ -48,7 +48,7 @@ export type MediaUploadPurpose =
     reads: it deletes what nothing claims, so a session photo filed under
     `product` would be checked against the product collection, found nowhere,
     and removed. The claim that keeps them is
-    `bookingItemRepository.existsBySessionMediaKey`.
+    `bookingRepository.existsByMediaKey`.
   */
   | "booking";
 

@@ -57,7 +57,7 @@ interface UsePaymentChannelsResult {
 }
 
 /**
- * Owns the payment-channel list query and fetching. Mirrors useServices.
+ * Owns the payment-channel list query and fetching. Mirrors useCustomers.
  *
  * NO SORT KNOB: the server returns them grouped by tab and in display order,
  * which is the order the POS payment panel renders and the only order the

@@ -21,99 +21,59 @@ const CUSTOMER_ID = "5a7f1f77bcf86cd7994390c1";
 const PET_ID = "5a7f1f77bcf86cd7994390d1";
 const SERVICE_ID = "5a7f1f77bcf86cd7994390e1";
 
-const PET_ITEM_ID = "5a7f1f77bcf86cd799439171";
-
-/** The same booking with its ANIMAL standing at `status`. */
-const withPetStatus = (status: Booking["pets"][number]["status"]): Booking => {
-  const base = booking();
-  return {
-    ...base,
-    pets: base.pets.map((pet) => ({ ...pet, status })),
-  };
-};
-
 const booking = (overrides: Partial<Booking> = {}): Booking => ({
   _id: "5a7f1f77bcf86cd799439101",
   tenantId: "507f1f77bcf86cd799439011",
   branchId: "5a7f1f77bcf86cd7994390b1",
   bookingNumber: "BK-260824-001",
+  groupId: "5a7f1f77bcf86cd799439181",
   customerId: CUSTOMER_ID,
-  /* The visit's own shape: a salon booking with no trip and nothing handed in. */
+  customerName: "Ibu Rina",
+  /* One booking is one animal and one main service. */
+  petId: PET_ID,
+  petName: "Bruno",
+  petSize: "medium",
+  status: "confirmed",
+  statusHistory: [],
+  nextStatuses: [],
+  cancelReason: null,
+  /* A salon booking with no trip and nothing handed in. */
   location: "in_store",
   pickupRequested: false,
   deliveryRequested: false,
   tripAddress: null,
+  service: {
+    serviceId: SERVICE_ID,
+    name: "Grooming Full Service",
+    /* The kind of work, snapshotted as text — NOT main/addon. */
+    serviceType: "Grooming",
+    price: "150000.0000",
+    durationMin: null,
+    status: "pending",
+    statusHistory: [],
+    startedAt: null,
+    finishedAt: null,
+    sessions: [],
+    addons: [],
+  },
+  // Never blank — the server names an unassigned slot (FR-3's edge case).
+  groomerName: "Belum ditentukan",
   belongings: [],
-  createdByName: null,
-  createdByRoleName: null,
-  /*
-    AFTER PCR-040 the animals live on the rows and the header lists them; the
-    services are grouped under each on the way out. This dialog reads the flat
-    `items` — the group is empty here because the shape, not the contents, is
-    what it needs.
-  */
-  /*
-    ⚠️ THE STATUS LIVES HERE since PCR-042 — a visit where Mochi has arrived and
-    Coco was sent home is in two states, so the header has none to give. The
-    dialog draws one badge per animal from this.
-  */
-  pets: [
-    {
-      petItemId: PET_ITEM_ID,
-      petId: PET_ID,
-      petName: "Bruno",
-      status: "confirmed",
-      statusHistory: [],
-      nextStatuses: [],
-      cancelReason: null,
-      internalNotes: null,
-      customerNotes: null,
-      notes: null,
-      belongings: [],
-      media: [],
-      pulledToCartAt: null,
-      pulledToInvoiceAt: null,
-      services: [],
-    },
-  ],
-  petCount: 1,
+  internalNotes: null,
+  customerNotes: null,
+  notes: null,
+  media: [],
+  pulledToCartAt: null,
+  pulledToInvoiceAt: null,
+  billingState: "unbilled",
   totalAmount: "150000.0000",
   totalDurationMin: null,
-  billingState: "unbilled",
-  items: [
-    {
-      _id: "5a7f1f77bcf86cd799439151",
-      petId: PET_ID,
-      petName: "Bruno",
-      /* Null on a main service — an add-on names the row it hangs off. */
-      parentItemId: null,
-      /* Nobody helping: this row is one groomer's, which is the ordinary case. */
-      assistantGroomers: [],
-      /* The kind of work, snapshotted as text — NOT main/addon. See BookingItem. */
-      serviceType: "Grooming",
-      serviceId: SERVICE_ID,
-      name: "Grooming Full Service",
-      price: "150000.0000",
-      durationMin: null,
-      internalNotes: null,
-      customerNotes: null,
-      pulledToCartAt: null,
-      pulledToInvoiceAt: null,
-      groomerUserId: null,
-      // Never null — the server names an unassigned slot (FR-3's edge case).
-      groomerName: "Belum ditentukan",
-    },
-  ],
-  petName: "Bruno",
-  customerName: "Ibu Rina",
   scheduledAt: "2026-08-24T02:00:00.000Z",
-  /* ⚠️ NO `status` HERE — it moved onto the animal in PCR-042. `statusHistory`
-     survived: it is a LOG of what happened on the visit, not a state. */
-  statusHistory: [],
   origin: "booking",
   posTransactionId: null,
-  notes: null,
-  cancelReason: null,
+  createdBy: null,
+  createdByName: null,
+  createdByRoleName: null,
   createdAt: "2026-08-24T00:00:00.000Z",
   updatedAt: "2026-08-24T00:00:00.000Z",
   ...overrides,
@@ -253,13 +213,76 @@ describe("BookingBridgeDialog — pulling", () => {
     nobody confirmed — and "Selesai" and "Draft" are different conversations
     across a counter, so the row says which it is.
   */
-  /* ⚠️ ON THE ANIMAL, not on the header — `booking({ status })` sets a field
-     `Booking` no longer has, and the badge is drawn from `pets[]`. */
   it("says what state each booking is in", async () => {
-    mockedBookings.bridge.mockResolvedValue([withPetStatus("in_progress")]);
+    mockedBookings.bridge.mockResolvedValue([
+      booking({ status: "in_progress" }),
+    ]);
     open();
 
     expect(await screen.findByText("In Progress")).toBeVisible();
+  });
+
+  /*
+    ONE ROW PER BOOKING, and a booking is one animal and one main service — so
+    the row names the animal, and the add-ons sit under the service they were
+    done to, each with its own price. Pulling it charges the lot.
+  */
+  it("draws one row per booking, with its add-ons under the service", async () => {
+    const user = userEvent.setup();
+    const target = booking({
+      service: {
+        ...booking().service,
+        addons: [
+          {
+            itemId: "5a7f1f77bcf86cd799439191",
+            serviceId: "5a7f1f77bcf86cd7994390e9",
+            name: "Extra Handling",
+            price: "20000.0000",
+            durationMin: 15,
+          },
+        ],
+      },
+      totalAmount: "170000.0000",
+    });
+    mockedBookings.bridge.mockResolvedValue([target]);
+    open();
+
+    const row = await screen.findByRole("checkbox", {
+      name: "Tarik BK-260824-001 untuk Bruno",
+    });
+    expect(screen.getByText("Grooming Full Service")).toBeVisible();
+    expect(screen.getByText("+ Extra Handling")).toBeVisible();
+    expect(screen.getByText("Rp 20.000")).toBeVisible();
+
+    await user.click(row);
+
+    // The service AND its add-on — what the basket is about to gain.
+    expect(
+      screen.getByRole("button", { name: /tarik ke keranjang · rp 170\.000/i }),
+    ).toBeEnabled();
+  });
+
+  /*
+    FR-3's edge case: "hewan yang sama muncul di 2 booking berbeda pada hari yang
+    sama — keduanya tetap ditampilkan sebagai baris terpisah". A morning bath and
+    an afternoon nail trim are two bookings, and two things to tick.
+  */
+  it("keeps two bookings for one animal as two rows", async () => {
+    mockedBookings.bridge.mockResolvedValue([
+      booking(),
+      booking({
+        _id: "5a7f1f77bcf86cd799439102",
+        bookingNumber: "BK-260824-002",
+      }),
+    ]);
+    open();
+
+    expect(
+      await screen.findByRole("checkbox", { name: /BK-260824-001 untuk Bruno/ }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("checkbox", { name: /BK-260824-002 untuk Bruno/ }),
+    ).toBeVisible();
   });
 
   /*
@@ -268,7 +291,7 @@ describe("BookingBridgeDialog — pulling", () => {
   */
   it("names a draft that has no number yet", async () => {
     mockedBookings.bridge.mockResolvedValue([
-      { ...withPetStatus("draft"), bookingNumber: null },
+      booking({ status: "draft", bookingNumber: null }),
     ]);
     open();
 
@@ -502,6 +525,47 @@ describe("BookingBridgeDialog — the ad-hoc tab", () => {
     ).toHaveAttribute("href", `/dashboard/master/pets/${PET_ID}/edit`);
   });
 
+  /*
+    NOR ONE WHOSE VARIANT IS SWITCHED OFF (13 September 2026) — the till refuses
+    a new line for it. The reason is on the row, in words.
+  */
+  it("cannot tick a service whose variant for the animal is switched off", async () => {
+    mockedPets.list.mockResolvedValue(
+      page([
+        { _id: PET_ID, name: "Bella", customerId: CUSTOMER_ID, size: "large" },
+      ]),
+    );
+    mockedServices.list.mockResolvedValue(
+      page([
+        {
+          _id: SERVICE_ID,
+          name: "Grooming Full Service",
+          price: null,
+          hasVariants: true,
+          variantAxes: ["sizeCategory"],
+          variants: [
+            {
+              petType: null,
+              sizeCategory: "large",
+              furType: null,
+              price: "150000.0000",
+              durationMin: 120,
+              isActive: false,
+            },
+          ],
+        },
+      ]),
+    );
+
+    openAdhoc();
+
+    expect(
+      await screen.findByRole("checkbox", { name: /grooming full service/i }),
+    ).toBeDisabled();
+    expect(screen.getByText(/varian nonaktif/i)).toBeInTheDocument();
+    expect(screen.queryByText("Rp 150.000")).not.toBeInTheDocument();
+  });
+
   it("sends no price — the server prices the line", async () => {
     const onAdd = openAdhoc();
 
@@ -694,41 +758,5 @@ describe("BookingBridgeDialog — several animals in one opening", () => {
     expect(
       screen.getByRole("button", { name: /tambah ke keranjang/i }),
     ).toBeDisabled();
-  });
-
-  it("gives each row its own key, even when two share a service", async () => {
-    /*
-      REPORTED FROM THE TILL, 3 September 2026: React warned about two children
-      with the same key. The rows were keyed on `serviceId`, and since PCR-040
-      one booking may carry the same service twice — Mochi and Coco both having a
-      Full Service. React is entitled to drop or duplicate either row.
-
-      RENDERED WITHOUT A WARNING is the assertion: the key itself is not
-      observable, so this watches the console the way the browser did.
-    */
-    const warn = jest.spyOn(console, "error").mockImplementation(() => {});
-
-    const base = booking();
-
-    mockedBookings.bridge.mockResolvedValue([
-      {
-        ...base,
-        /* SAME service, two animals — exactly what `serviceId` could not key. */
-        items: [
-          { ...base.items[0], _id: "it-1", petName: "Mochi" },
-          { ...base.items[0], _id: "it-2", petName: "Coco" },
-        ],
-      },
-    ] as never);
-
-    open();
-
-    await screen.findByText("BK-260824-001");
-
-    expect(
-      warn.mock.calls.some((call) => String(call[0]).includes("same key")),
-    ).toBe(false);
-
-    warn.mockRestore();
   });
 });

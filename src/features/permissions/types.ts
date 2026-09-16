@@ -155,6 +155,15 @@ export const PERMISSION_CATALOG = {
   pets: ["create", "read", "update", "delete", "restore"],
 
   /**
+   * The species, breeds, sizes and coats a tenant describes animals with —
+   * Pengaturan › Layanan › Data hewan (14 September 2026).
+   *
+   * NO `read`: GET /api/pet-options needs only a session, because every screen
+   * that records an animal reads it. Only changing the lists is gated.
+   */
+  petOptions: ["create", "update", "delete", "restore"],
+
+  /**
    * The catalogue of what a tenant sells the DOING of — grooming, penitipan.
    *
    * ITS OWN FEATURE, not part of `products`, and the split is about who edits
@@ -200,6 +209,11 @@ export const PERMISSION_CATALOG = {
    * (kriteria 4.6), but pressing through one is a decision that should belong to
    * somebody senior. It was MISSING from this list while the server has had it
    * since FR-4: the role editor could not grant what the API was checking.
+   *
+   * `setPrice` IS TYPING A PRICE OR A DISCOUNT on a booking (15 September 2026).
+   * The till and the invoice bill that price, so without its own grant a booking
+   * would be a way round the cashier's discount limit. Without it the grooming
+   * booking form shows the catalogue's price, read-only.
    */
   bookings: [
     "create",
@@ -208,6 +222,7 @@ export const PERMISSION_CATALOG = {
     "advanceStatus",
     "cancel",
     "overrideClash",
+    "setPrice",
   ],
 
   /**

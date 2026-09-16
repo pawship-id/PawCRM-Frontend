@@ -16,34 +16,18 @@ import { Can } from "@/features/permissions";
 import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
 import { mediaService } from "@/services/media.service";
-import type {
-  AlbumMediaKind,
-  Booking,
-  BookingPet,
-  SessionMedia,
-} from "@/types/api";
+import type { AlbumMediaKind, Booking } from "@/types/api";
 
 /**
- * ONE ANIMAL'S PHOTOGRAPHS FROM THIS VISIT, IN ONE PLACE.
+ * THE BOOKING'S PHOTOGRAPHS FROM THIS VISIT, IN ONE PLACE.
  *
- * ─── A VIEW, NOT A SECOND STORE ────────────────────────────────────────────
+ * ─── ITS OWN ARRAY, NOT A VIEW OVER THE TURNS ─────────────────────────────
  *
- * Photos live on TURNS — `services[].sessions[].media[]` — because that is where
- * somebody takes them: during a bath, at the end of a cut. This card reads across
- * every turn of every service and lays them out the way the visit is actually
- * looked back at: what the dog came in like, what it left like, and everything
- * else.
- *
- * ⚠️ IT STORES NOTHING AND OWNS NOTHING. A second home for the same pictures is
- * a second thing to keep in step, and the first time they disagreed nobody would
- * know which was right.
- *
- * ─── PROVENANCE TRAVELS WITH EACH PHOTO ────────────────────────────────────
- *
- * A tile here has been lifted out of the turn it belongs to, so it carries the
- * turn's name back with it. Without that, an album of nine photos from a bath, a
- * cut and a blow-dry is nine pictures nobody can place — and "which session was
- * this?" is exactly the question somebody asks when a photo looks wrong.
+ * A turn's photos (`service.sessions[].media[]`) are evidence for that stretch
+ * of work and live beside its clock and its crew. This card is `booking.media`:
+ * what the dog came in like, what it left like, and everything else — the way a
+ * visit is actually looked back at. Which button somebody pressed decides where
+ * a photo lands.
  */
 
 const SECTIONS: { kind: AlbumMediaKind; title: string; empty: string }[] = [
@@ -53,12 +37,10 @@ const SECTIONS: { kind: AlbumMediaKind; title: string; empty: string }[] = [
 ];
 
 export function SessionAlbum({
-  bookingId,
-  pet,
+  booking,
   onChanged,
 }: {
-  bookingId: string;
-  pet: BookingPet;
+  booking: Booking;
   onChanged: (booking: Booking) => void;
 }) {
   const [asking, setAsking] = useState(false);
@@ -79,18 +61,14 @@ export function SessionAlbum({
   const file = useRef<HTMLInputElement>(null);
 
   /*
-    ⚠️ THE ANIMAL'S OWN ARRAY, AND ONLY IT.
-
-    A turn's `media[]` is evidence for that stretch of work and belongs to the
-    card above; `pet.media` is the visit's album. Which button somebody pressed
-    decides where a photo lands, so this card has nothing to filter.
+    ⚠️ THE BOOKING'S OWN ARRAY, AND ONLY IT — nothing to filter.
 
     THIS REPLACED A HACK. The album had no home of its own, so it wrote into the
-    animal's FIRST session and told its photos apart by a `kind` prefix — a visit
-    photo living inside a bath, which would have gone with the turn the day
-    somebody deleted it.
+    FIRST session and told its photos apart by a `kind` prefix — a visit photo
+    living inside a bath, which would have gone with the turn the day somebody
+    deleted it.
   */
-  const photos = pet.media ?? [];
+  const photos = booking.media ?? [];
 
   function close() {
     if (busy) return;
@@ -131,7 +109,7 @@ export function SessionAlbum({
       const existing = photos.map(({ uploadedByName: _name, ...rest }) => rest);
 
       onChanged(
-        await bookingService.setPetMedia(bookingId, pet.petId, [
+        await bookingService.setMedia(booking._id, [
           ...existing,
           { ...asset, kind, alt: note.trim() || null },
         ]),

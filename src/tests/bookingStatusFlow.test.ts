@@ -8,31 +8,29 @@ import {
   ladderFor,
   transitionsFor,
 } from "@/features/booking/statusFlow";
-import type { BookingLike, PetLike } from "@/features/booking/statusFlow";
+import type { BookingLike } from "@/features/booking/statusFlow";
 import type { BookingStatus } from "@/types/api";
 
 /**
- * ⚠️ TWO THINGS NOW, NOT ONE — PCR-042.
- *
- * The RUNG belongs to the animal and the TRIP belongs to the visit: a van goes
- * to an address, and both of one customer's dogs ride in it. So every verb here
- * takes the pet and the booking, and `at()` builds the pair.
+ * ONE BOOKING CARRIES BOTH HALVES: the rung, and the trip that decides which
+ * rungs exist. `at()` builds one, as a one-element tuple so every call reads
+ * `verb(...at(status, trip))`.
  */
 const at = (
   status: BookingStatus,
   trip: Partial<BookingLike> = {},
-): [PetLike, BookingLike] => [
-  { status } as PetLike,
+): [BookingLike] => [
   {
+    status,
     pickupRequested: false,
     deliveryRequested: false,
     ...trip,
   } as BookingLike,
 ];
 
-/** The visit alone, for `ladderFor` — which is about the trip, not the rung. */
+/** The booking alone, for `ladderFor` — which is about the trip, not the rung. */
 const visit = (trip: Partial<BookingLike> = {}): BookingLike =>
-  at("draft", trip)[1];
+  at("draft", trip)[0];
 
 /**
  * THE LADDER IS A FUNCTION OF THE BOOKING, NOT A CONSTANT.
