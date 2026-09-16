@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { InvoiceEditor } from "@/features/sales/components/InvoiceEditor";
@@ -203,6 +203,58 @@ describe("InvoiceEditor", () => {
       discount: { mode: "amount", value: "5000" },
       fromIndex: 1,
     });
+  });
+
+  /*
+    THE PPN STANDS ON ITS BASE (16 September 2026) — the same pair the read view
+    and Faktur baru draw, so a figure somebody is checking line by line can be
+    checked here too.
+  */
+  it("shows Dasar pengenaan pajak above the PPN where tax is added on top", async () => {
+    asMock(tenantService.me).mockResolvedValue({
+      _id: "t1",
+      settings: { taxRate: 11, priceIncludesTax: false },
+    } as never);
+
+    renderEditor();
+
+    /* 180.000 of goods and 150.000 of grooming, before an 11% PPN on top. */
+    const base = await screen.findByText("Dasar pengenaan pajak");
+    expect(base.parentElement?.textContent).toContain("Rp 330.000");
+    /* The recap's row (a <dt>) — every line now carries a "PPN 11%" badge too. */
+    const ppn = screen.getAllByText("PPN 11%").find((node) => node.tagName === "DT");
+    expect(ppn?.parentElement?.textContent).toContain("Rp 36.300");
+  });
+
+  /*
+    A ROW'S TOTAL IS WHAT IT WILL BE BILLED AT (16 September 2026): price × qty,
+    less its own discount, plus the PPN beside it. It used to read price × qty,
+    which disagreed with every other view of the same line.
+  */
+  it("totals a row after its discount and with its tax, and shows that tax beside it", async () => {
+    const user = userEvent.setup();
+    asMock(tenantService.me).mockResolvedValue({
+      _id: "t1",
+      settings: { taxRate: 11, priceIncludesTax: false },
+    } as never);
+
+    renderEditor();
+
+    const discount = await screen.findByLabelText("Diskon Kalung Nylon");
+    await user.clear(discount);
+    await user.type(discount, "5000");
+    await user.selectOptions(
+      screen.getByLabelText("Jenis diskon Kalung Nylon"),
+      "amount",
+    );
+
+    /* 2 × 90.000 − 5.000 = 175.000, and 11% of it is 19.250. */
+    const row = within(
+      screen.getAllByRole("row").find((one) => one.textContent?.includes("Kalung Nylon"))!,
+    );
+
+    expect(row.getByText("+Rp 19.250")).toBeInTheDocument();
+    expect(row.getByText("Rp 194.250")).toBeInTheDocument();
   });
 
   it("leaves a removed line out of the list altogether", async () => {

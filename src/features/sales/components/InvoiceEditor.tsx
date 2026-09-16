@@ -279,6 +279,33 @@ export function InvoiceEditor({
 
   /* The bookings' shares across the edit — shown once, under "Diskon item". */
   const bookingShares = sumDecimals(lines.map((line) => line.bookingShare));
+
+  /**
+   * Whether the PPN is charged ON TOP of the prices — see `previewInvoice`.
+   *
+   * A FUNCTION, not a const: this sits above `preview`, and reading it here
+   * would be a use before its declaration.
+   */
+  const taxOnTop = () => preview.taxAdded !== "0.0000";
+
+  /** A row's OWN discount: what the preview takes off it, less the booking's share. */
+  function ownOffAt(index: number, line: EditLine): string {
+    const own = subtractDecimals(preview.lineDiscounts[index], line.bookingShare);
+    return isPositive(own) ? own : "0";
+  }
+
+  /**
+   * WHAT THE ROW COMES TO: price × qty, less its own discount, plus its PPN
+   * where the tax is added on top (16 September 2026). Inclusive pricing has the
+   * tax inside the price already, so adding it here would charge it twice.
+   *
+   * The booking's share is NOT taken off a row — it is taken off once, in the
+   * recap — so the rows add up to the total plus that share.
+   */
+  function rowTotal(index: number, line: EditLine): string {
+    const net = subtractDecimals(preview.lineTotals[index], ownOffAt(index, line));
+    return taxOnTop() ? sumDecimals([net, preview.lineTaxes[index]]) : net;
+  }
   /*
     ASKED ONLY WHEN THE INVOICE SHIPPED NOTHING BEFORE. One that already moved
     stock keeps its warehouse: the reversal has to put its goods back on the
@@ -578,7 +605,7 @@ export function InvoiceEditor({
         a discount field squeezed to two characters cannot be read back.
       */}
       <div className="overflow-x-auto">
-        <Table className="min-w-225">
+        <Table className="min-w-275">
           <TableHeader>
             <TableRow>
               <TableHead>Item</TableHead>
@@ -586,6 +613,7 @@ export function InvoiceEditor({
               <TableHead className="text-right">Harga</TableHead>
               <TableHead className="w-24">Jumlah</TableHead>
               <TableHead className="min-w-64">Diskon</TableHead>
+              <TableHead>Pajak</TableHead>
               <TableHead className="text-right">Total</TableHead>
               <TableHead className="w-12" />
             </TableRow>
@@ -707,8 +735,30 @@ export function InvoiceEditor({
                   )}
                 </TableCell>
 
+                {/*
+                  THE PPN THIS ROW WOULD CARRY, beside the discount it is charged
+                  after — the same pair the read view shows, so an edit can be
+                  checked against the bill it will become.
+                */}
+                <TableCell className="tabular-nums">
+                  {preview.lineTaxes[index] === "0.0000" ? (
+                    <span className="text-xs text-muted">Non-PPN</span>
+                  ) : (
+                    <>
+                      <span className="rounded-full bg-tint-brand px-2 py-0.5 text-xs font-semibold text-primary">
+                        {`PPN ${lookups.tax.taxRate}%`}
+                      </span>
+                      <span className="mt-1 block text-xs font-semibold text-success">
+                        {taxOnTop()
+                          ? `+${formatMoney(preview.lineTaxes[index])}`
+                          : `termasuk ${formatMoney(preview.lineTaxes[index])}`}
+                      </span>
+                    </>
+                  )}
+                </TableCell>
+
                 <TableCell className="text-right font-semibold tabular-nums">
-                  {formatMoney(preview.lineTotals[index])}
+                  {formatMoney(rowTotal(index, line))}
                 </TableCell>
 
                 <TableCell>
@@ -824,10 +874,33 @@ export function InvoiceEditor({
               <dd className="tabular-nums">+{formatMoney(charge.amount)}</dd>
             </div>
           ))}
+          {/*
+            THE PPN STANDS ON ITS BASE — "Dasar pengenaan pajak" directly above
+            it, under a dashed rule, as the read view and Faktur baru draw it
+            (16 September 2026). The two are a breakdown of the figure below, not
+            two more things added to it, and a tax nobody can check against what
+            it was charged on is a tax nobody can check.
+
+            ONLY WHERE TAX IS ADDED ON TOP: on inclusive pricing it is already
+            inside the subtotal, and a "PPN Rp 0" row would deny a tax that was
+            charged.
+          */}
           {preview.taxAdded !== "0.0000" && (
-            <div className="flex justify-between gap-4">
-              <dt className="text-muted">{`PPN ${lookups.tax.taxRate}%`}</dt>
-              <dd className="tabular-nums">{formatMoney(preview.taxAdded)}</dd>
+            <div className="flex flex-col gap-2 border-t border-dashed border-border pt-2">
+              <div className="flex justify-between gap-4">
+                <dt className="text-muted">Dasar pengenaan pajak</dt>
+                <dd className="tabular-nums">
+                  {formatMoney(
+                    subtractDecimals(preview.grandTotal, preview.taxAdded),
+                  )}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                {/* One template string, not `PPN {rate}%` — interpolation splits
+                    it into three text nodes a query cannot match as a label. */}
+                <dt className="text-muted">{`PPN ${lookups.tax.taxRate}%`}</dt>
+                <dd className="tabular-nums">{formatMoney(preview.taxAdded)}</dd>
+              </div>
             </div>
           )}
           <div className="flex justify-between gap-4 border-t-[1.5px] border-primary pt-2.5 text-base font-bold">
