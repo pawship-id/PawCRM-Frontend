@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CornerDownRight, Trash2 } from "lucide-react";
 
@@ -24,6 +24,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { PetFixLink } from "@/features/pets";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
@@ -57,6 +58,95 @@ import { InvoiceAddonPicker } from "./InvoiceAddonPicker";
 import { InvoiceBarcodeScan } from "./InvoiceBarcodeScan";
 import { InvoiceBookingPanel } from "./InvoiceBookingPanel";
 import { formatRate } from "./InvoiceItemsTable";
+
+/**
+ * WHY THIS LINE HAS NO PRICE — said under the animal that would answer it
+ * (16 September 2026, on request).
+ *
+ * A service priced by variant is quoted from the ANIMAL's own size, coat or
+ * species. Pick one whose record does not carry the fact the service varies by
+ * and the price cell reads "—", the total reads Rp 0, and nothing on the row
+ * says why. The blocked Simpan does name it, but that sentence is at the head of
+ * a form whose rows are what somebody is looking at.
+ *
+ * `PetFixLink` IS THE WAY OUT, the same one the booking form and the till
+ * already offer: it names the animal and the missing field, and opens that pet
+ * in a NEW TAB so the half-built invoice survives.
+ *
+ * NOTHING IS DRAWN when the price is known, when no animal is chosen yet (the
+ * empty picker above is the question), or when the price failed for a reason the
+ * animal cannot fix — a variant nobody priced is the catalogue's problem, and
+ * sending somebody to the pet form for it would be a wrong instruction.
+ */
+function MissingFactNote({
+  line,
+  pet,
+  service,
+}: {
+  line: { kind: "product" | "service"; petId: string };
+  pet: Pet | null;
+  service: Service | undefined;
+}) {
+  if (line.kind !== "service" || !line.petId || !pet) return null;
+
+  const missing = priceForPet(service, pet).missingAxis;
+
+  if (!missing) return null;
+
+  /*
+    THE LINK ALONE — "Lengkapi ukuran Miko →" already names the animal, the
+    missing field and the way out, so a sentence in front of it said each of
+    those a second time in a table cell that has no room for either.
+  */
+  return (
+    <span className="mt-1 block text-xs font-semibold text-danger-ink">
+      <PetFixLink pet={pet} axis={missing} />
+    </span>
+  );
+}
+
+/**
+ * The service rows, priced again from the animals as they read NOW.
+ *
+ * A row's price was worked out from the animal as it was WHEN THE ROW WAS
+ * ADDED. Fill in Miko's size through the note above — in another tab, on the
+ * pet's own form — and re-reading the animals is only half the way back: the
+ * row would still show a dash and still block Simpan, over a fact that has
+ * been answered. This is the other half, and it is the same rule `patchLine`
+ * already applies when the pet CHANGES, extended to the pet's own record
+ * changing underneath it.
+ *
+ * EVERY SERVICE ROW, not only the ones reading nought: a size corrected from
+ * Kecil to Besar moves a price that was never missing, and a row still quoting
+ * the old one would bill it.
+ *
+ * NOTHING HERE IS TYPED, so there is no hand-entered figure to overwrite. A
+ * service row's price is read-only on this form — the catalogue's answer for
+ * that animal, which the server works out again the same way.
+ *
+ * THE SAME ARRAY COMES BACK when every row already agrees, so a refresh that
+ * changed nothing costs no render.
+ */
+function repriced(lines: DraftLine[], services: Service[], pets: Pet[]) {
+  let changed = false;
+
+  const next = lines.map((line) => {
+    if (line.kind !== "service" || !line.petId) return line;
+
+    const price =
+      priceForPet(
+        services.find((one) => one._id === line.refId),
+        pets.find((one) => one._id === line.petId),
+      ).price ?? "0";
+
+    if (price === line.unitPrice) return line;
+
+    changed = true;
+    return { ...line, unitPrice: price };
+  });
+
+  return changed ? next : lines;
+}
 
 /**
  * RAISE AN INVOICE — PCR-030's form.
@@ -240,6 +330,68 @@ export function InvoiceCreateForm() {
       active = false;
     };
   }, [customerId]);
+
+  /**
+   * The same list, read again — WITHOUT the row going blank while it is in
+   * flight.
+   *
+   * `MissingFactNote` sends somebody to that pet's form in a NEW TAB, so the
+   * fact this invoice is waiting on is filled in somewhere this form cannot
+   * see. Until it re-reads, the row keeps showing a dash and Simpan keeps
+   * refusing — about a field that has already been answered — and the only way
+   * out was to reload and lose the half-built invoice.
+   *
+   * IT KEEPS WHAT IT HAS on a failed read. A refresh nobody asked for is not a
+   * reason to empty the picker underneath them.
+   */
+  const refreshPets = useCallback(async () => {
+    if (!customerId) return;
+
+    try {
+      const result = await petService.list({
+        customerId,
+        isActive: true,
+        limit: MAX_PETS,
+      });
+
+      /*
+        AND NOT ONTO SOMEBODY ELSE'S ANIMALS. A read that lands after the
+        customer has been switched answers a question nobody is asking any
+        more — the reply is dropped rather than written over the new one.
+      */
+      setPets((current) =>
+        current.forCustomer === customerId
+          ? { forCustomer: customerId, items: result.items }
+          : current,
+      );
+
+      /*
+        AND THE ROWS FOLLOW THEM. Priced from `result.items` rather than from
+        `pets`, which is the read that has only just been queued — the rows
+        would otherwise settle one refresh behind the animals they quote.
+      */
+      setLines((current) => repriced(current, lookups.services, result.items));
+    } catch {
+      /* Keep the animals already on screen — see above. */
+    }
+  }, [customerId, lookups.services]);
+
+  /*
+    BACK FROM THE OTHER TAB. `visibilitychange` RATHER THAN `focus`: focus fires
+    for a click back into the window from a devtools panel or a dropdown
+    closing, which would put a request on the wire for nothing. The same
+    listener the booking form uses, for the same detour.
+  */
+  useEffect(() => {
+    if (!customerId) return;
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refreshPets();
+    };
+
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [customerId, refreshPets]);
 
   const petOptions = useMemo(
     () =>
@@ -1132,19 +1284,29 @@ export function InvoiceCreateForm() {
                             {line.parentKey ? (
                               /* THE SERVICE'S ANIMAL, not a choice of its own —
                                  it changes on the service's row, and follows. */
-                              <span className="text-sm">
-                                {linePet?.name ?? "—"}
-                              </span>
+                              <>
+                                <span className="text-sm">
+                                  {linePet?.name ?? "—"}
+                                </span>
+                                <MissingFactNote
+                                  line={line}
+                                  pet={linePet ?? null}
+                                  service={lookups.services.find(
+                                    (one) => one._id === line.refId,
+                                  )}
+                                />
+                              </>
                             ) : line.kind === "service" ? (
-                              /*
-                              WHY IT IS HERE AT ALL — PCR-035. A grooming billed
-                              with no animal named reaches no day sheet: nobody
-                              is assigned, and the only record that the work is
-                              owed is this line on a bill the customer takes
-                              home. Naming the animal is what lets the server
-                              raise a booking for it.
-                            */
-                              <FilterSelect
+                              <>
+                                {/*
+                                  WHY IT IS HERE AT ALL — PCR-035. A grooming
+                                  billed with no animal named reaches no day
+                                  sheet: nobody is assigned, and the only record
+                                  that the work is owed is this line on a bill
+                                  the customer takes home. Naming the animal is
+                                  what lets the server raise a booking for it.
+                                */}
+                                <FilterSelect
                                 /*
                                 `field`, NOT `form` — §16: a control inside a row
                                 table sits among h-9 inputs, and 44px would tower
@@ -1170,10 +1332,18 @@ export function InvoiceCreateForm() {
                                 disabled={
                                   !customerId || petOptions.length === 0
                                 }
-                                onChange={(value) =>
-                                  patchLine(index, { petId: value })
-                                }
-                              />
+                                  onChange={(value) =>
+                                    patchLine(index, { petId: value })
+                                  }
+                                />
+                                <MissingFactNote
+                                  line={line}
+                                  pet={linePet ?? null}
+                                  service={lookups.services.find(
+                                    (one) => one._id === line.refId,
+                                  )}
+                                />
+                              </>
                             ) : (
                               // A collar has no grooming; the server refuses a pet
                               // on a product line rather than ignoring it.

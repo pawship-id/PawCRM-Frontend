@@ -781,9 +781,167 @@ describe("the animal a service is for", () => {
     expect(
       screen.getByRole("button", { name: /^simpan faktur$/i }),
     ).toBeDisabled();
+    /*
+      THE BLOCKED SAVE'S OWN SENTENCE. "Lengkapi ukuran Miko" now appears twice —
+      here and in the row's note below — so this asserts the half only this one
+      carries.
+    */
     expect(
-      await screen.findByText(/lengkapi ukuran miko/i),
+      await screen.findByText(/ditentukan dari situ/i),
     ).toBeInTheDocument();
+  });
+
+  /*
+    AND THE ROW SAYS IT TOO (16 September 2026, on request). The blocked Simpan
+    names the missing fact at the head of the form; somebody reading the line
+    sees a dash in Harga and Rp 0 in Total with nothing to explain either. The
+    note sits under the animal — the field that answers it — and carries the same
+    way out the booking form and the till offer.
+  */
+  it("says under the animal why the price is a dash, and links to that pet", async () => {
+    jest.spyOn(serviceService, "list").mockResolvedValue(
+      page([
+        {
+          _id: "s1",
+          name: "Grooming",
+          price: null,
+          hasVariants: true,
+          variantAxes: ["sizeCategory"],
+          variants: [{ sizeCategory: "small", price: "120000" }],
+        },
+      ]) as never,
+    );
+    jest
+      .spyOn(petService, "list")
+      .mockResolvedValue(
+        page([{ _id: "pet1", name: "Miko", size: null }]) as never,
+      );
+
+    render(<InvoiceCreateForm />);
+    await fillService();
+    await pick(/^Hewan untuk Grooming$/i, /Miko/);
+
+    const row = within(await screen.findByRole("row", { name: /Grooming/ }));
+
+    /*
+      THE LINK IS THE WHOLE NOTE: it names the animal and the missing field, and
+      opens that pet in A NEW TAB so the half-built invoice survives the detour.
+    */
+    expect(
+      row.getByRole("link", { name: /lengkapi ukuran miko/i }),
+    ).toHaveAttribute("href", "/dashboard/master/pets/pet1/edit");
+  });
+
+  /*
+    AND IT NOTICES WHEN THE FACT IS FILLED IN (16 September 2026, on request).
+    The link opens that pet in another tab, so the answer arrives somewhere this
+    form cannot see. Coming back re-reads the animals and re-prices the rows,
+    without the reload that would throw the half-built invoice away.
+  */
+  it("prices the row on the way back from the pet's form, with no reload", async () => {
+    jest.spyOn(serviceService, "list").mockResolvedValue(
+      page([
+        {
+          _id: "s1",
+          name: "Grooming",
+          price: null,
+          hasVariants: true,
+          variantAxes: ["sizeCategory"],
+          variants: [{ sizeCategory: "small", price: "120000" }],
+        },
+      ]) as never,
+    );
+    const pets = jest
+      .spyOn(petService, "list")
+      .mockResolvedValue(
+        page([{ _id: "pet1", name: "Miko", size: null }]) as never,
+      );
+
+    render(<InvoiceCreateForm />);
+    await fillService();
+    await pick(/^Hewan untuk Grooming$/i, /Miko/);
+
+    expect(
+      within(await screen.findByRole("row", { name: /Grooming/ })).getByRole(
+        "link",
+        { name: /lengkapi ukuran miko/i },
+      ),
+    ).toBeInTheDocument();
+
+    /* Miko's size is filled in in the other tab, and this one comes forward. */
+    pets.mockResolvedValue(
+      page([{ _id: "pet1", name: "Miko", size: "small" }]) as never,
+    );
+    fireEvent(document, new Event("visibilitychange"));
+
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole("row", { name: /Grooming/ })).queryByRole(
+          "link",
+          { name: /lengkapi/i },
+        ),
+      ).not.toBeInTheDocument(),
+    );
+
+    const row = within(screen.getByRole("row", { name: /Grooming/ }));
+    expect(row.getAllByText("Rp 120.000").length).toBeGreaterThan(0);
+    expect(
+      screen.getByRole("button", { name: /^simpan faktur$/i }),
+    ).toBeEnabled();
+  });
+
+  /*
+    ONE ANSWER AT A TIME. A service priced by two facts names the first one
+    missing; filling that in leaves the row still unpriced, and a note that
+    simply disappeared would read as "done" over a dash. It names the NEXT one.
+  */
+  it("names the next missing fact once the first one is filled in", async () => {
+    jest.spyOn(serviceService, "list").mockResolvedValue(
+      page([
+        {
+          _id: "s1",
+          name: "Grooming",
+          price: null,
+          hasVariants: true,
+          variantAxes: ["sizeCategory", "furType"],
+          variants: [
+            { sizeCategory: "small", furType: "short", price: "120000" },
+          ],
+        },
+      ]) as never,
+    );
+    const pets = jest.spyOn(petService, "list").mockResolvedValue(
+      page([
+        { _id: "pet1", name: "Miko", size: null, furType: null },
+      ]) as never,
+    );
+
+    render(<InvoiceCreateForm />);
+    await fillService();
+    await pick(/^Hewan untuk Grooming$/i, /Miko/);
+
+    expect(
+      within(await screen.findByRole("row", { name: /Grooming/ })).getByRole(
+        "link",
+        { name: /lengkapi ukuran miko/i },
+      ),
+    ).toBeInTheDocument();
+
+    /* The size is answered; the coat is not. */
+    pets.mockResolvedValue(
+      page([
+        { _id: "pet1", name: "Miko", size: "small", furType: null },
+      ]) as never,
+    );
+    fireEvent(document, new Event("visibilitychange"));
+
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole("row", { name: /Grooming/ })).getByRole("link", {
+          name: /lengkapi jenis bulu miko/i,
+        }),
+      ).toBeInTheDocument(),
+    );
   });
 
   /*
