@@ -13,8 +13,8 @@ import type {
  * Since 15 September 2026 a booking carries a typed price and discounts, and
  * the server prices them with `utils/discount.js` and `tax.allocate`. The
  * figures here follow the same rules — percent half-up and never past 100, a
- * nominal clamped to what it is taken from, the save's discount split by what
- * each booking comes to after its own — so the rail agrees with the bill. The
+ * nominal clamped to what it is taken from, the save's discount split evenly
+ * across the bookings — so the rail agrees with the bill. The
  * payload sends what was TYPED, never a resolved amount.
  *
  * PURE: no React, no fetching. Every figure is in minor units (`bigint`, four
@@ -149,8 +149,47 @@ export function allocate(total: bigint, weights: bigint[]): bigint[] {
 }
 
 /**
+ * `total` split EVENLY, each part capped at `caps[i]` — `tax.allocateEvenly` on
+ * the server. What a capped part cannot take is split across the rest; leftover
+ * units go to the earliest parts with room.
+ */
+export function allocateEvenly(total: bigint, caps: bigint[]): bigint[] {
+  const parts = caps.map(() => 0n);
+  let left = total;
+
+  while (left > 0n) {
+    const open = caps
+      .map((_, index) => index)
+      .filter((index) => parts[index] < caps[index]);
+
+    if (open.length === 0) break;
+
+    const each = left / BigInt(open.length);
+
+    if (each === 0n) {
+      for (const index of open) {
+        if (left === 0n) break;
+        parts[index] += 1n;
+        left -= 1n;
+      }
+      break;
+    }
+
+    for (const index of open) {
+      const room = caps[index] - parts[index];
+      const give = room < each ? room : each;
+      parts[index] += give;
+      left -= give;
+    }
+  }
+
+  return parts;
+}
+
+/**
  * "Diskon seluruh booking": resolved against what the bookings come to after
- * their own discounts, and split across them by that same figure.
+ * their own discounts, and split EVENLY across them (16 September 2026) — no
+ * booking takes more than it comes to.
  */
 export function splitBookingDiscount(
   nets: bigint[],
@@ -165,7 +204,7 @@ export function splitBookingDiscount(
 
   return {
     total,
-    shares: total > 0n ? allocate(total, nets) : nets.map(() => 0n),
+    shares: total > 0n ? allocateEvenly(total, nets) : nets.map(() => 0n),
   };
 }
 

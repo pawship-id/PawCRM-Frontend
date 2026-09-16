@@ -1087,8 +1087,7 @@ export function GroomingBookingCreateScreen() {
 
                 {split.total > 0n && (
                   <p className="mt-2 text-xs text-muted">
-                    Diskon booking dibagi proporsional ke tiap hewan supaya tiap
-                    nomor membawa porsinya sendiri.
+                    Diskon booking dibagi rata ke tiap booking.
                   </p>
                 )}
                 {!mayPrice && (

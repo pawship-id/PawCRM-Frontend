@@ -67,7 +67,7 @@ describe("priceLine", () => {
   });
 });
 
-describe("allocate and splitBookingDiscount — tax.allocate on the server", () => {
+describe("allocate and splitBookingDiscount — tax.allocate / allocateEvenly on the server", () => {
   it("splits by weight and adds up exactly", () => {
     const parts = allocate(10n, [1n, 1n, 1n]);
 
@@ -75,7 +75,7 @@ describe("allocate and splitBookingDiscount — tax.allocate on the server", () 
     expect(parts).toEqual([4n, 3n, 3n]);
   });
 
-  it("splits the save's discount by what each booking comes to", () => {
+  it("splits the save's discount evenly across the bookings", () => {
     const { total, shares } = splitBookingDiscount(
       [rp("150000"), rp("35000")],
       "amount",
@@ -83,7 +83,17 @@ describe("allocate and splitBookingDiscount — tax.allocate on the server", () 
     );
 
     expect(asString(total)).toBe("18500.0000");
-    expect(shares.map(asString)).toEqual(["15000.0000", "3500.0000"]);
+    expect(shares.map(asString)).toEqual(["9250.0000", "9250.0000"]);
+  });
+
+  it("caps a booking at what it comes to and gives the rest to the others", () => {
+    const { shares } = splitBookingDiscount(
+      [rp("150000"), rp("5000")],
+      "amount",
+      "20000",
+    );
+
+    expect(shares.map(asString)).toEqual(["15000.0000", "5000.0000"]);
   });
 });
 
