@@ -306,7 +306,7 @@ function DiscountLine({ amount }: { amount?: string | null }) {
 
   return (
     <div className="flex justify-between gap-3 pl-3 text-xs text-success">
-      <span>Diskon</span>
+      <span>Diskon item</span>
       <span className="font-semibold tabular-nums">− {formatMoney(amount)}</span>
     </div>
   );

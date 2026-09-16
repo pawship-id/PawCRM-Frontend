@@ -718,7 +718,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
                 {/* THE SERVICE'S OWN DISCOUNT, on its row. */}
                 {ownDiscountOfLine(service) && (
                   <div className="flex justify-between gap-3 pl-3 text-sm">
-                    <span className="text-success">Diskon</span>
+                    <span className="text-success">Diskon item</span>
                     <span className="font-semibold tabular-nums text-success">
                       − {formatMoney(ownDiscountOfLine(service)!)}
                     </span>
@@ -743,7 +743,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
                         </span>
                         {ownDiscountOfLine(addon) && (
                           <span className="flex w-full justify-between gap-3 pl-3">
-                            <span className="text-success">Diskon</span>
+                            <span className="text-success">Diskon item</span>
                             <span className="font-semibold tabular-nums text-success">
                               − {formatMoney(ownDiscountOfLine(addon)!)}
                             </span>

@@ -121,7 +121,7 @@ describe("GroomingBookingsTable — Rincian", () => {
       }),
     );
 
-    expect(detail.getAllByText("Diskon")).toHaveLength(2);
+    expect(detail.getAllByText("Diskon item")).toHaveLength(2);
     expect(detail.getByText(`− ${formatMoney("5000.0000")}`)).toBeInTheDocument();
     expect(detail.getByText(`− ${formatMoney("2000.0000")}`)).toBeInTheDocument();
 
@@ -140,7 +140,7 @@ describe("GroomingBookingsTable — Rincian", () => {
   it("stays as it was for a booking with no discount", async () => {
     const detail = await openBreakdown(booking());
 
-    expect(detail.queryByText("Diskon")).not.toBeInTheDocument();
+    expect(detail.queryByText("Diskon item")).not.toBeInTheDocument();
     expect(detail.queryByText("Diskon booking")).not.toBeInTheDocument();
     expect(detail.queryByText("Subtotal")).not.toBeInTheDocument();
     expect(detail.getByText("Total").nextSibling).toHaveTextContent(
