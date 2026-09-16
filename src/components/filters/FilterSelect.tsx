@@ -59,15 +59,21 @@ export interface FilterSelectProps<T> {
   hint?: React.ReactNode;
   /**
    * "inline" — a trigger in a `FilterBar`, reading `Gudang: Semua ⌄`.
+   * "bar" — the same trigger showing the VALUE ONLY, for a context bar that
+   * draws the name beside it. Content-sized and 40px, exactly like "inline".
    * "field" — a labeled full-width row inside a `FilterPanel`.
    * "form" — the same row standing in a FORM: 44px, and `error` is honoured.
    *
-   * The SAME control either way. The bar and the panel are two arrangements of
+   * The SAME control every way. The bar and the panel are two arrangements of
    * one grammar (docs/ui-rules.md §8), so a screen that has both — a quick bar
    * that collapses into a panel on a phone — renders one list of fields and
    * hands it a layout, rather than keeping two lists in step by hand.
+   *
+   * "bar" DOES NOT WRAP ITSELF IN A `FilterField`: the caption beside it is the
+   * caller's, because only the caller knows what it is sitting next to. `hint`,
+   * `error` and `required` are field concerns and are ignored there.
    */
-  layout?: "inline" | "field" | "form";
+  layout?: "inline" | "bar" | "field" | "form";
   /**
    * Overrides the applied-filter state the trigger shows.
    *
@@ -150,6 +156,9 @@ export function FilterSelect<T>({
   const chosen = !Object.is(value, unsetValue);
   const active = activeOverride ?? chosen;
   const withSearch = searchable ?? options.length > 8;
+  // The two layouts that hand their label to a `FilterField`. "inline" and
+  // "bar" are both content-sized triggers standing on a row.
+  const fieldLayout = layout === "field" || layout === "form";
 
   // Falling back to the raw value keeps a stale id visible rather than silently
   // reading "Semua" while the list is still filtered by it.
@@ -173,7 +182,7 @@ export function FilterSelect<T>({
           invalid={invalid ?? Boolean(error)}
           disabled={disabled}
           aria-label={ariaLabel ?? label}
-          className={layout === "inline" ? className : undefined}
+          className={fieldLayout ? undefined : className}
         />
       </PopoverTrigger>
 
@@ -186,7 +195,7 @@ export function FilterSelect<T>({
         // reads as a stray popover rather than the field opening.
         className={cn(
           "p-0",
-          layout !== "inline" && "w-(--radix-popover-trigger-width)",
+          fieldLayout && "w-(--radix-popover-trigger-width)",
         )}
         // Radix parks focus on the content wrapper, which is the ANCESTOR of
         // the listbox — so arrow keys would fire above the handler and never
@@ -208,7 +217,7 @@ export function FilterSelect<T>({
     </Popover>
   );
 
-  if (layout !== "inline") {
+  if (fieldLayout) {
     return (
       <FilterField
         label={label}

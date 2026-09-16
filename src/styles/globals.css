@@ -129,6 +129,35 @@
   --surface-selected: var(--navy-100);
 
   /*
+   * CHART SERIES — two marks that have to stay tellable apart, and nothing else.
+   *
+   * NOT `--primary` AND `--secondary`, although they are a step away from both,
+   * and the distance is the whole reason these exist. Those two carry meaning in
+   * this product: navy is the working colour, and orange means A HUMAN MUST ACT
+   * (ui-rules §4). A line on a chart means neither — it is an identity channel,
+   * and reusing the action colour for it would spend orange's one job on a
+   * decoration. Naming them separately also keeps a chart from drifting the day
+   * somebody retunes a button.
+   *
+   * ONE STEP OFF THE BRAND STEPS, because the brand steps FAIL the checks a
+   * categorical palette has to pass. `--navy-700` is too dark and too grey to be
+   * a mark (lightness 0.354 against a 0.43–0.77 band, chroma 0.092 against a 0.1
+   * floor), and `--orange-500` is 2.27:1 on white — under the 3:1 non-text floor.
+   * `--navy-600` and `--orange-600` both land inside the band, clear 3:1 on a
+   * white card, and separate by ΔE 29 under protanopia and 35.9 in normal vision.
+   * Verified with the dataviz validator, not by eye; re-run it before changing
+   * either value.
+   *
+   * DARK MODE IS DELIBERATELY NOT STEPPED HERE. Dark is prepared and not shipped
+   * (ui-rules §15) and `--navy-600` is 2.28:1 against the dark card, so these two
+   * need their own steps chosen and validated against `#1b3157` when somebody
+   * ships it. Left inheriting the light values rather than guessed at, so the
+   * open question stays visible instead of looking answered.
+   */
+  --chart-gross: var(--navy-600);
+  --chart-net: var(--orange-600);
+
+  /*
    * MARKETING SURFACE. The deepest navy, used as a ground rather than as ink —
    * today only by the landing page's footer at `/`. It has its own name because
    * §3 asks components for a semantic token, and "the darkest thing on the page"
@@ -251,6 +280,10 @@
   --color-orange-500: var(--orange-500);
   --color-orange-100: var(--orange-100);
   --color-slate-500: var(--slate-500);
+
+  /* Chart series — see :root above. */
+  --color-chart-gross: var(--chart-gross);
+  --color-chart-net: var(--chart-net);
 
   /* shadcn/ui token bindings (see :root above). */
   --color-card: var(--card);

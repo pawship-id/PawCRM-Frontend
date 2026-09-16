@@ -3,82 +3,90 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowRight,
+  ArrowDownLeft,
+  ArrowUpRight,
   Banknote,
   Building2,
+  HandCoins,
+  Plus,
+  Receipt,
   RefreshCw,
+  Repeat,
   Scale,
-  TrendingDown,
-  TrendingUp,
+  Wallet,
   type LucideIcon,
 } from "lucide-react";
 
-import { Alert, Button, Card, Spinner } from "@/components";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Alert, Button, Card } from "@/components";
+import { Badge } from "@/components/ui/badge";
+// `asChild` lives on the vendored button, not the project one — the same import
+// CashTransactionsScreen makes for the same "a link that looks like the primary
+// action" job.
+import { Button as SlotButton } from "@/components/ui/button";
 import { usePermissions } from "@/features/permissions";
+import { PURCHASING_CRUMBS } from "@/features/purchasing";
 import { cn } from "@/lib/utils";
-import { absDecimal, formatMoney } from "@/utils/decimal";
+import { absDecimal, formatMoney, subtractDecimals } from "@/utils/decimal";
 
 import { ACCOUNTING_CRUMBS } from "../crumbs";
 import { AccountingModuleHeader } from "./AccountingModuleHeader";
 import {
+  balanceOf,
   cashPosition,
-  financeTransactions,
   formatPercent,
   lineFigures,
-  lineLabel,
   marginPct,
   reportPresets,
+  COMMISSION_PAYABLE_CODE,
   SHARED_LINE_NONE,
   type FinanceQuery,
-  type FinanceTransaction,
   type LineFigures,
 } from "../financeSummary";
-import {
-  RECENT_LIMIT,
-  useFinanceDashboard,
-} from "../hooks/useFinanceDashboard";
+import { useFinanceDashboard } from "../hooks/useFinanceDashboard";
 import { formatDate } from "../labels";
 import { FinanceReportToolbar } from "./FinanceReportToolbar";
+import { FinanceTrendChart } from "./FinanceTrendChart";
 
 /**
- * The Keuangan landing screen: where the money went this period, and the last
- * ten transactions that moved it.
+ * The Keuangan landing screen — the mockup's Ringkasan tab.
  *
- * READS THE LEDGER THROUGH THREE ENDPOINTS, and the split is deliberate.
- * `/journal-entries/summary` folds the period, `/balances` gives the cash
- * position as of its end, and the list supplies exactly ten rows. Every figure
- * here used to be summed in the browser over a paged ledger; the aggregates
- * exist so it is not. See PawCRM-Backend/docs/finance-dashboard-gaps.md.
+ * WHAT IT IS FOR: money that MOVED and money that needs doing something about.
+ * Shape and comparison belong to Laporan; this tab answers "where do we stand
+ * this period, and what is outstanding". It says none of that on screen — the
+ * standing blurb under the tabs was removed on request, so the cards are left to
+ * introduce themselves.
  *
- * THE THREE REPORTS ARE NOT HERE. Laba rugi per lini, arus kas and the full
- * transaction list each get their own screen; this page carries the summary and
- * hands off. The ten rows below the cards exist so the numbers above them are
- * explicable at a glance, not so anybody reads a ledger here.
+ * EIGHT FIGURES IN TWO ROWS, AND THE ROWS ARE NOT INTERCHANGEABLE. The first is
+ * cash — a position and the two directions that moved it. The second is what the
+ * books say: profit, the net of those two directions, and the two ledgers of
+ * things not yet settled. A reader scanning the first row learns what is in the
+ * till; scanning the second, whether the shop is actually making money and who
+ * still owes whom.
  *
- * WHAT THE PERIOD DOES NOT TOUCH: the cash card is a POSITION as of the end of
- * the range, so it ignores the start; and picking a business line narrows the
- * P&L only, because a rupiah in the bank belongs to the shop rather than to
- * grooming or retail. Both are stated on the cards themselves.
+ * NOT ONE OF THEM IS SUMMED HERE. Every figure is an aggregate its own module
+ * computed over its whole book — see `useFinanceDashboard`. The two derivations
+ * left are display arithmetic: a margin percentage and masuk − keluar.
+ *
+ * WHAT THE FILTERS DO NOT TOUCH, each stated on the card that it applies to:
+ * the cash and commission balances are POSITIONS as of the end of the range, so
+ * they ignore its start; piutang and utang are positions as of now and ignore the
+ * period entirely; the chart is always the last seven days; and a business line
+ * narrows the P&L only, because a rupiah in the bank belongs to the shop rather
+ * than to grooming or retail.
+ *
+ * NO TRANSACTION TABLE. It lived here while Keuangan had nowhere else to put a
+ * list of movements; the Transaksi tab is that place now, and a landing page that
+ * repeated its first ten rows would be a second, staler answer to a question one
+ * tab along.
  *
  * IT OPENS ON "SEMUA", like every other date filter in the product. A dashboard
  * that opened on this month answered a question nobody had asked yet — on a
  * tenant whose ledger starts in June, an August default shows an empty screen
- * that reads as "no data" rather than as "no data *this month*". The filter is
- * the same `FilterDateRange` the purchasing and inventory screens use, with the
- * same preset chips and the same Reset; only the two month presets are extra,
- * because a P&L is read a month at a time.
+ * that reads as "no data" rather than as "no data *this month*".
  *
- * `now` COMES FROM THE SERVER, and still does with no default period to compute:
- * the presets are dates too, and a client component that read the clock while
- * rendering would disagree with the HTML the server sent.
+ * `now` COMES FROM THE SERVER. The presets are dates, and so is the chart's
+ * seven-day window; a client component that read the clock while rendering would
+ * disagree with the HTML the server sent.
  */
 export function FinanceDashboardScreen({ now }: { now: string }) {
   const { can } = usePermissions();
@@ -108,11 +116,20 @@ export function FinanceDashboardScreen({ now }: { now: string }) {
     [query],
   );
 
-  // The gate is passed to the hook rather than wrapping the call: a hook cannot
-  // be called conditionally, and calling it anyway would fire three requests a
-  // user without the grant is guaranteed to be refused.
+  /*
+    ONE GRANT PER READ. They do not travel together — a bookkeeper may hold the
+    ledger and not the purchase book — and each is passed to the hook rather than
+    wrapping its call, because a hook cannot be called conditionally and would
+    otherwise fire requests the user is guaranteed to be refused.
+  */
   const readsLedger = can("journalEntries", "read");
-  const data = useFinanceDashboard(apiQuery, { enabled: readsLedger });
+  const data = useFinanceDashboard(apiQuery, {
+    now: today,
+    ledger: readsLedger,
+    cashMovement: can("cashTransactions", "read"),
+    receivables: can("customerInvoices", "read"),
+    payables: can("purchaseInvoices", "read"),
+  });
 
   const figures = useMemo(
     () =>
@@ -120,25 +137,23 @@ export function FinanceDashboardScreen({ now }: { now: string }) {
     [data.summary, data.businessLineNames],
   );
 
-  const rows = useMemo(
-    () => financeTransactions(data.entries, data.accountsById),
-    [data.entries, data.accountsById],
-  );
-
   const patch = (next: Partial<FinanceQuery>) =>
     setQuery((prev) => ({ ...prev, ...next }));
 
   return (
     <div className="flex flex-col gap-6">
-      <AccountingModuleHeader />
-
-      {/* What the module header cannot say, because it is on every tab: what
-          THIS screen is. */}
-      <p className="max-w-2xl text-[15px] text-muted">
-        Ringkasan pendapatan, beban, laba, dan posisi kas — dihitung langsung
-        dari jurnal umum. Laporan laba rugi per lini, arus kas, dan daftar
-        transaksi lengkap ada di kartu di bawah.
-      </p>
+      <AccountingModuleHeader
+        action={
+          can("cashTransactions", "create") ? (
+            <SlotButton asChild>
+              <Link href={`${ACCOUNTING_CRUMBS.transactions.href}/new`}>
+                <Plus className="size-4" aria-hidden />
+                Tambah transaksi
+              </Link>
+            </SlotButton>
+          ) : undefined
+        }
+      />
 
       {!readsLedger ? (
         <Card>
@@ -174,23 +189,30 @@ export function FinanceDashboardScreen({ now }: { now: string }) {
             </Alert>
           ) : (
             <>
-              <SummaryCards
-                summary={data.summary}
-                cash={cashPosition(data.cashAccounts)}
-                periodTo={query.dateTo}
-                loading={data.loading}
-              />
-
+              <CashRow data={data} periodTo={query.dateTo} />
+              <BooksRow data={data} />
               <MarginInsights lines={figures} />
 
-              <RecentTransactions
-                rows={rows}
-                names={data.businessLineNames}
-                total={data.entryCount}
-                loading={data.loading}
-                periodFrom={query.dateFrom}
-                periodTo={query.dateTo}
-              />
+              <Card title="Tren 7 hari — kotor vs bersih">
+                <FinanceTrendChart
+                  days={data.trend}
+                  loading={data.trendLoading}
+                  error={data.trendError}
+                  onRetry={data.refetch}
+                />
+                {/*
+                  The one thing the chart cannot say about itself: that it is NOT
+                  the period above it. A reader who set "Bulan lalu" and read
+                  this week's line off the card would be reading the wrong week.
+                */}
+                <p className="mt-3 text-xs text-muted">
+                  Selalu tujuh hari terakhir sampai{" "}
+                  {formatDate(data.trendPeriod.dateTo)} — tidak ikut filter
+                  periode, tapi ikut filter cabang dan lini bisnis.
+                </p>
+              </Card>
+
+              <RecurringNote />
             </>
           )}
         </>
@@ -218,17 +240,98 @@ function money(value: string | null | undefined): string {
     : formatMoney(value);
 }
 
-function SummaryCards({
-  summary,
-  cash,
+type DashboardData = ReturnType<typeof useFinanceDashboard>;
+
+/**
+ * Row one — the cash the shop is holding, and the two directions that moved it.
+ *
+ * SALDO IS A POSITION AND THE OTHER TWO ARE MOVEMENTS, which is why they are
+ * captioned differently and not merely formatted the same. Read as one row they
+ * are a sentence: this is what is in the till, this came in, this went out.
+ */
+function CashRow({
+  data,
   periodTo,
-  loading,
 }: {
-  summary: ReturnType<typeof useFinanceDashboard>["summary"];
-  cash: string;
+  data: DashboardData;
   periodTo: string;
-  loading: boolean;
 }) {
+  const { can } = usePermissions();
+  const movement = data.cashMovement;
+  const commission = balanceOf(data.balances, COMMISSION_PAYABLE_CODE);
+  const owesCommission = !commission.startsWith("-") && commission !== "0";
+
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <SummaryCard
+        icon={Wallet}
+        label="Saldo kas & bank"
+        value={money(cashPosition(data.cashAccounts))}
+        hint={
+          periodTo
+            ? `Posisi per ${formatDate(periodTo)}`
+            : "Posisi kas & bank saat ini"
+        }
+        loading={data.loading}
+      />
+
+      {/*
+        LEFT OUT RATHER THAN DASHED for a role that cannot read transactions.
+        A dash means "this failed to load"; an absent card means "not yours to
+        see", and the two must not look the same.
+      */}
+      {can("cashTransactions", "read") && (
+        <>
+          <SummaryCard
+            icon={ArrowDownLeft}
+            label="Uang masuk"
+            value={movement ? money(movement.in.amount) : null}
+            hint={
+              movement
+                ? `${movement.in.count} transaksi di periode ini`
+                : "Periode ini"
+            }
+            loading={data.loading}
+          />
+          <SummaryCard
+            icon={ArrowUpRight}
+            label="Uang keluar"
+            value={movement ? money(movement.out.amount) : null}
+            hint={
+              movement
+                ? `${movement.out.count} transaksi di periode ini`
+                : "Periode ini"
+            }
+            loading={data.loading}
+          />
+        </>
+      )}
+
+      <SummaryCard
+        icon={HandCoins}
+        label="Komisi belum dibayar"
+        value={money(commission)}
+        /*
+          THE LEDGER'S ANSWER, NOT PAYROLL'S — the balance of 2102 Utang Komisi,
+          which is what has been accrued and not yet paid across every month
+          still open. The recap screen answers what a MONTH earned, which is a
+          different number and a different question.
+        */
+        valueClassName={owesCommission ? "text-warning" : undefined}
+        hint="Saldo Utang Komisi — rekap per bulan ada di tab Komisi"
+        loading={data.loading}
+      />
+    </div>
+  );
+}
+
+/**
+ * Row two — what the books say: profit, net cash, and the two unsettled ledgers.
+ */
+function BooksRow({ data }: { data: DashboardData }) {
+  const { can } = usePermissions();
+  const { summary, cashMovement: movement, receivables, payables } = data;
+
   const netProfit = summary?.netProfit ?? "0";
   const loss = netProfit.startsWith("-");
   const netMargin = summary ? marginPct(summary.netProfit, summary.revenue) : null;
@@ -245,38 +348,18 @@ function SummaryCards({
    */
   const noRevenue = summary !== null && netMargin === null;
 
-  /**
-   * A negative total expense is legitimate — a stock surplus credits 5201
-   * Kerugian Persediaan, and a supplier credit note does the same — but it is
-   * rare enough that seeing it without explanation reads as a bug. The note is
-   * the diagnostic somebody would otherwise have to ask for.
-   */
-  const expenseCredited = Boolean(summary?.expense.startsWith("-"));
+  // Masuk − keluar, in minor units. The only arithmetic on this screen that is
+  // not a percentage, and it is exact: two aggregates the server computed,
+  // subtracted in BigInt rather than added up from any list of rows.
+  const netCash = movement
+    ? subtractDecimals(movement.in.amount, movement.out.amount)
+    : null;
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <SummaryCard
-        icon={TrendingUp}
-        label="Total Revenue"
-        value={money(summary?.revenue)}
-        hint="Belum termasuk PPN keluaran"
-        loading={loading}
-      />
-      <SummaryCard
-        icon={TrendingDown}
-        label="Total Expense"
-        value={money(summary?.expense)}
-        hint={
-          expenseCredited
-            ? "Beban negatif — ada akun beban yang dikredit, misalnya selisih lebih stok"
-            : "HPP ditambah beban operasional"
-        }
-        hintClassName={expenseCredited ? "text-warning" : undefined}
-        loading={loading}
-      />
-      <SummaryCard
         icon={Scale}
-        label="Net Profit"
+        label="Laba bersih periode"
         value={money(netProfit)}
         valueClassName={
           noRevenue ? undefined : loss ? "text-danger" : "text-success"
@@ -284,26 +367,95 @@ function SummaryCards({
         hint={
           noRevenue
             ? "Belum ada pendapatan di periode ini"
-            : `Margin bersih ${formatPercent(netMargin)}`
+            : `Pendapatan ${money(summary?.revenue)} · margin ${formatPercent(netMargin)}`
         }
         hintClassName={noRevenue ? "text-warning" : undefined}
-        loading={loading}
+        loading={data.loading}
       />
-      <SummaryCard
-        icon={Banknote}
-        label="Saldo Kas & Bank"
-        value={money(cash)}
-        hint={
-          periodTo
-            ? `Posisi kas & bank per ${formatDate(periodTo)}`
-            : "Posisi kas & bank saat ini"
-        }
-        loading={loading}
-      />
+
+      {can("cashTransactions", "read") && (
+        <SummaryCard
+          icon={Banknote}
+          label="Arus kas bersih"
+          value={netCash === null ? null : money(netCash)}
+          valueClassName={netCash?.startsWith("-") ? "text-danger" : undefined}
+          hint="Uang masuk dikurangi uang keluar"
+          loading={data.loading}
+        />
+      )}
+
+      {can("customerInvoices", "read") && (
+        <SummaryCard
+          icon={Receipt}
+          label="Piutang belum tertagih"
+          value={receivables ? money(receivables.totalOutstanding) : null}
+          /*
+            A POSITION, NOT A PERIOD FIGURE, and it says so by naming invoices
+            rather than a range. An invoice raised in July and still unpaid is
+            money missing today; a piutang that emptied itself when somebody
+            picked "bulan ini" would say the opposite.
+          */
+          valueClassName={
+            receivables && Number(receivables.totalOverdueInvoices) > 0
+              ? "text-warning"
+              : undefined
+          }
+          hint={
+            receivables
+              ? `${receivables.totalInvoices} faktur · ${receivables.totalOverdueInvoices} lewat jatuh tempo`
+              : "Seluruh faktur yang belum lunas"
+          }
+          loading={data.loading}
+          /*
+            THE FAKTUR LIST, NOT `/sales/piutang`. Piutang is a LENS on that
+            list — its "Belum lunas" card drills to every unpaid invoice — and
+            the tab of that name is still a placeholder. A card that opened an
+            empty screen would be worse than one that did not link at all.
+          */
+          href={
+            receivables && receivables.totalInvoices > 0
+              ? "/dashboard/sales"
+              : undefined
+          }
+        />
+      )}
+
+      {can("purchaseInvoices", "read") && (
+        <SummaryCard
+          icon={Building2}
+          label="Utang belum dibayar"
+          value={payables ? money(payables.totalOutstanding) : null}
+          valueClassName={
+            payables && Number(payables.totalOverdueInvoices) > 0
+              ? "text-warning"
+              : undefined
+          }
+          hint={
+            payables
+              ? `${payables.totalInvoices} tagihan · ${payables.totalOverdueInvoices} lewat jatuh tempo`
+              : "Seluruh tagihan supplier yang belum lunas"
+          }
+          loading={data.loading}
+          href={
+            payables && payables.totalInvoices > 0
+              ? PURCHASING_CRUMBS.payables.href
+              : undefined
+          }
+        />
+      )}
     </div>
   );
 }
 
+/**
+ * One figure, with the three states a summary tile owes a reader.
+ *
+ * A NULL VALUE IS A DASH, NEVER A ZERO. A card whose request failed and a card
+ * whose answer is genuinely nothing must not look alike: a zero standing in for
+ * an error is the most dangerous thing a summary can show, because nobody goes
+ * and looks. Same contract as `components/StatTile`; the layout differs because
+ * these carry an icon and a caveat line.
+ */
 function SummaryCard({
   icon: Icon,
   label,
@@ -312,18 +464,24 @@ function SummaryCard({
   valueClassName,
   hintClassName,
   loading,
+  href,
 }: {
   icon: LucideIcon;
   label: string;
-  value: string;
+  /** `null` when the read failed — rendered as a dash and captioned as one. */
+  value: string | null;
   hint: string;
   valueClassName?: string;
   /** For a hint that is a caveat rather than a caption. */
   hintClassName?: string;
   loading: boolean;
+  /** Where the number is acted on, when it is a number somebody acts on. */
+  href?: string;
 }) {
-  return (
-    <Card className="gap-0 py-5">
+  const failed = value === null;
+
+  const body = (
+    <>
       <div className="flex items-center gap-2 text-muted">
         <Icon className="size-4" aria-hidden />
         <span className="text-xs font-semibold tracking-wide uppercase">
@@ -339,23 +497,42 @@ function SummaryCard({
       <p
         className={cn(
           "mt-2 text-2xl font-extrabold tabular-nums text-foreground transition-opacity",
-          valueClassName,
+          !failed && valueClassName,
           loading && "opacity-50",
         )}
         aria-busy={loading}
       >
-        {value}
+        {failed ? "—" : value}
       </p>
       <p
         className={cn(
           "mt-1.5 text-xs tabular-nums text-muted",
-          hintClassName,
+          failed ? "text-warning" : hintClassName,
         )}
       >
-        {hint}
+        {failed ? "Gagal dimuat" : hint}
       </p>
-    </Card>
+    </>
   );
+
+  if (href && !failed) {
+    return (
+      <Link
+        href={href}
+        /*
+          THE SAME BOX AS `Card`, spelled out — `rounded-xl border`, `px-6 py-5`
+          and `shadow-sm` are what the vendored card resolves to under the
+          `gap-0 py-5` below. A linked card sitting a shadow off its neighbours
+          in the same row would read as a different kind of thing.
+        */
+        className="rounded-xl border border-border bg-surface px-6 py-5 shadow-sm transition hover:border-primary hover:shadow-md focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+      >
+        {body}
+      </Link>
+    );
+  }
+
+  return <Card className="gap-0 py-5">{body}</Card>;
 }
 
 /* ---------------------------------------------------------------- insights */
@@ -441,207 +618,39 @@ function MarginInsights({ lines }: { lines: LineFigures[] }) {
   );
 }
 
-/* ------------------------------------------------------------ transactions */
-
-function RecentTransactions({
-  rows,
-  names,
-  total,
-  loading,
-  periodFrom,
-  periodTo,
-}: {
-  rows: FinanceTransaction[];
-  names: Map<string, string>;
-  total: number;
-  loading: boolean;
-  periodFrom: string;
-  periodTo: string;
-}) {
-  const { can } = usePermissions();
-  // Transaksi Keuangan is where "every movement of money" lives now; the ledger
-  // stays the answer for a reader who may see entries but not transactions.
-  const allHref = can("cashTransactions", "read")
-    ? ACCOUNTING_CRUMBS.transactions.href
-    : ACCOUNTING_CRUMBS.journal.href;
-
-  return (
-    <section className="flex flex-col overflow-hidden rounded-xl border border-border bg-surface">
-      <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-5 py-3.5">
-        <h2 className="text-lg font-bold">Transaksi terakhir</h2>
-        <p className="text-xs text-muted">
-          {rows.length} dari {total} entri
-          {periodFrom && periodTo
-            ? ` · ${formatDate(periodFrom)} – ${formatDate(periodTo)}`
-            : ""}
-        </p>
-        <Link
-          href={allHref}
-          className="ml-auto inline-flex items-center gap-1 rounded-md text-sm font-semibold text-primary transition hover:text-primary-hover focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
-        >
-          Lihat semua
-          <ArrowRight className="size-4" aria-hidden />
-        </Link>
-      </header>
-
-      {loading && rows.length === 0 ? (
-        <div className="flex items-center justify-center gap-3 px-5 py-16 text-sm text-muted">
-          <Spinner size={16} />
-          Memuat transaksi…
-        </div>
-      ) : rows.length === 0 ? (
-        <div className="px-5 py-16 text-center">
-          {/*
-            The period is optional now, so the sentence cannot assume one. With
-            the filter on "Semua" there is nothing to widen, and telling somebody
-            to widen a range they never set is how a filter gets blamed for an
-            empty ledger.
-          */}
-          <p className="font-semibold text-foreground">
-            {periodFrom || periodTo
-              ? "Belum ada transaksi di periode ini."
-              : "Belum ada transaksi di jurnal umum."}
-          </p>
-          <p className="mt-1 text-sm text-muted">
-            {periodFrom || periodTo
-              ? "Coba lebarkan periodenya, atau lepas filter cabang dan lini bisnis."
-              : "Coba lepas filter cabang dan lini bisnis."}
-          </p>
-        </div>
-      ) : (
-        <div className={cn("overflow-x-auto", loading && "opacity-50")}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Tanggal</TableHead>
-                <TableHead>Keterangan</TableHead>
-                <TableHead>Kategori akun</TableHead>
-                <TableHead>Lini bisnis</TableHead>
-                <TableHead>Tipe</TableHead>
-                <TableHead className="text-right">Nominal</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row) => (
-                <TransactionRow key={row.entry._id} row={row} names={names} />
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
-
-      <p className="border-t border-border px-5 py-2.5 text-xs text-muted">
-        Hanya {RECENT_LIMIT} transaksi terakhir yang memengaruhi laba rugi.
-        Penerimaan barang dan pembayaran utang tidak muncul di sini — semuanya
-        ada di Jurnal Umum.
-      </p>
-    </section>
-  );
-}
+/* --------------------------------------------------------------- recurring */
 
 /**
- * The type badge and the amount's sign, from the two flags the fold returns.
+ * Biaya tetap — the mockup's callout, with no figures in it and a badge saying
+ * why.
  *
- * "Bertambah" is the direction that helps profit, and it is NOT the same as
- * "income": a credited cost — a reversal, a supplier refund — is an expense row
- * that raises the profit, and printing it as another "−" would make the column
- * stop adding up for anyone checking it against the cards.
+ * BADGED RATHER THAN BLANK, AND CERTAINLY NOT FILLED IN. The mockup counts the
+ * active recurring costs and names the next one due. The model carries a
+ * `recurring` subdocument and nothing executes it — there is no scheduler and no
+ * endpoint that lists them — so every number in that callout would be invented,
+ * and an invented figure on a finance screen is indistinguishable from a real
+ * one. The same treatment `PendingStatTile` gives a tile the database cannot
+ * answer yet.
+ *
+ * NEUTRAL, NOT ORANGE, although the mockup's callout is warm. Orange in this
+ * product means a human must act (§4), and "this is coming later" is the one
+ * thing on the page nobody can act on — spending the accent on it would leave
+ * two oranges competing with the chart's net-profit line.
  */
-function transactionTone(row: FinanceTransaction) {
-  const income = row.type === "income";
-  const raisesProfit = income !== row.reversal;
-
-  const label = income
-    ? row.reversal
-      ? "Retur pemasukan"
-      : "Pemasukan"
-    : row.reversal
-      ? "Koreksi beban"
-      : "Pengeluaran";
-
-  return { label, raisesProfit };
-}
-
-function TransactionRow({
-  row,
-  names,
-}: {
-  row: FinanceTransaction;
-  names: Map<string, string>;
-}) {
-  const { label, raisesProfit } = transactionTone(row);
-  const { entry } = row;
-  const [account, ...rest] = row.accounts;
-
+function RecurringNote() {
   return (
-    <TableRow>
-      <TableCell className="whitespace-nowrap tabular-nums text-muted">
-        {formatDate(entry.date)}
-      </TableCell>
-
-      <TableCell className="max-w-xs">
-        <Link
-          href={`${ACCOUNTING_CRUMBS.journal.href}/${entry._id}`}
-          className="block truncate font-medium text-foreground transition hover:text-primary-hover focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
-        >
-          {entry.description}
-        </Link>
-        <span className="tabular-nums text-xs text-muted">
-          {entry.source.reference ?? entry.entryNumber}
-          {entry.branchName ? ` · ${entry.branchName}` : ""}
-        </span>
-      </TableCell>
-
-      <TableCell className="max-w-56">
-        {account ? (
-          <>
-            <span className="tabular-nums text-muted">{account.code}</span>{" "}
-            <span className="text-foreground">{account.name}</span>
-            {rest.length > 0 && (
-              <span className="text-muted"> +{rest.length} akun</span>
-            )}
-          </>
-        ) : (
-          <span className="text-muted">—</span>
-        )}
-      </TableCell>
-
-      <TableCell>
-        <span className="flex flex-wrap gap-1">
-          {row.businessLineIds.map((id) => (
-            <span
-              key={id ?? "shared"}
-              className="rounded-full bg-tint-neutral px-2 py-0.5 text-xs font-medium text-muted"
-            >
-              {lineLabel(id, names)}
-            </span>
-          ))}
-        </span>
-      </TableCell>
-
-      <TableCell>
-        <span
-          className={cn(
-            "rounded-full px-2 py-0.5 text-xs font-medium",
-            raisesProfit
-              ? "bg-tint-success text-success"
-              : "bg-tint-danger text-danger",
-          )}
-        >
-          {label}
-        </span>
-      </TableCell>
-
-      <TableCell
-        className={cn(
-          "text-right font-semibold tabular-nums",
-          raisesProfit ? "text-success" : "text-danger",
-        )}
-      >
-        {raisesProfit ? "+" : "−"}
-        {money(row.amount)}
-      </TableCell>
-    </TableRow>
+    <div className="rounded-xl border border-border bg-tint-neutral px-5 py-4">
+      <p className="flex flex-wrap items-center gap-2 font-semibold text-foreground">
+        <Repeat className="size-4 text-muted" aria-hidden />
+        Biaya tetap
+        <Badge variant="outline">Segera</Badge>
+      </p>
+      <p className="mt-1.5 text-sm text-muted">
+        Gaji, sewa, dan langganan yang berulang tiap bulan akan tercatat sendiri
+        dan muncul di sini beserta jatuh temponya. Sampai penjadwalnya ada,
+        catat biayanya lewat Tambah transaksi seperti biasa.
+      </p>
+    </div>
   );
 }
 
@@ -726,4 +735,3 @@ function ModuleLinks() {
     </div>
   );
 }
-

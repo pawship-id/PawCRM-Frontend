@@ -5,117 +5,178 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError } from "@/services/api-error";
 import { branchService } from "@/services/branch.service";
 import { businessLineService } from "@/services/businessLine.service";
-import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
+import { cashTransactionService } from "@/services/cashTransaction.service";
+import { customerInvoiceService } from "@/services/customerInvoice.service";
+import { purchaseInvoiceService } from "@/services/purchaseInvoice.service";
 import {
   journalEntryService,
   type AccountBalance,
   type JournalSummary,
+  type JournalTrendDay,
 } from "@/services/journalEntry.service";
 import type { BusinessLine } from "@/services/businessLine.service";
-import type { Branch } from "@/types/api";
-import type { ChartOfAccount, JournalEntry } from "@/types/accounting";
+import type {
+  Branch,
+  CashTransactionTotals,
+  CustomerOutstandingSummary,
+  SupplierOutstandingSummary,
+} from "@/types/api";
 
-import { CASH_ACCOUNT_CODES, type FinanceQuery } from "../financeSummary";
+import {
+  trendWindow,
+  CASH_ACCOUNT_CODES,
+  type FinanceQuery,
+  type Period,
+} from "../financeSummary";
 
 /**
- * Everything `/dashboard/keuangan` renders, in one hook.
+ * Everything the Ringkasan tab renders, in one hook.
  *
- * THREE LEDGER CALLS AND TWO LOOKUPS, and the split is the whole design:
+ * FIVE READS ACROSS FOUR MODULES, and the split is the whole design. The mockup's
+ * Ringkasan asks one question — "what moved, and what still needs doing" — whose
+ * answer no single endpoint holds:
  *
- *   `/journal-entries/summary`  → the P&L cards and the margin chips
- *   `/journal-entries/balances` → the cash position
- *   `/journal-entries?limit=10` → the ten rows under them
- *   `/business-lines`, `/branches` → the filter options and the id→name maps
+ *   `/journal-entries/summary`        → laba bersih and the margin chips
+ *   `/journal-entries/balances`       → saldo kas & bank, komisi belum dibayar
+ *   `/journal-entries/trend`          → the 7-day kotor-vs-bersih chart
+ *   `/cash-transactions` (totals)     → uang masuk, uang keluar, arus kas bersih
+ *   `/customer-invoices/outstanding`  → piutang belum tertagih
+ *   `/purchase-invoices/outstanding`  → utang belum dibayar
  *
- * The two aggregates exist so this file does not have to page a month of entries
- * and add them up — see docs/finance-dashboard-gaps.md §2. What remains
- * client-side is the projection that turns an entry into a transaction row, which
- * is a reshape of ten records rather than arithmetic over thousands.
+ * EVERY ONE OF THEM IS AN AGGREGATE the server computed over its whole book. Not
+ * one figure on this screen is summed in the browser over a page of rows, which
+ * is the rule the whole Keuangan backend was shaped around — see
+ * PawCRM-Backend/docs/finance-dashboard-gaps.md. A total added up from a page is
+ * a lower bound wearing a total's clothes, and it grows as somebody pages.
  *
- * THE LOOKUPS ARE FETCHED ONCE AND THE LEDGER ON EVERY FILTER CHANGE. Branches
- * and business lines change when somebody edits them, not when a date picker
- * moves, and re-requesting them per filter would triple the traffic to redraw the
- * same two dropdowns.
+ * FIVE EFFECTS, KEYED ON WHAT EACH READ ACTUALLY DEPENDS ON. A single effect over
+ * the whole query would re-request piutang — which takes no period at all —
+ * every time somebody nudged a date. What each one watches is stated on it.
  *
- * PARTIAL FAILURE IS A REAL STATE, not a crash. A user may hold
- * `journalEntries:read` without `businessLines:read`, and a dashboard that
- * refused to render because it could not label a chip would be worse than one
- * that shows the ids' worth of data it does have. Only the ledger calls are
- * allowed to fail the screen.
+ * ONE GRANT PER READ, and they are genuinely independent: a bookkeeper may read
+ * the ledger and not the purchase book, a cashier the reverse. A read whose grant
+ * is missing is never FIRED — a hook cannot be called conditionally, so it has to
+ * be told — and its figure stays null, which the screen renders by leaving the
+ * card out rather than by showing a zero.
+ *
+ * PARTIAL FAILURE IS A REAL STATE, not a crash. Only the ledger may fail the
+ * screen: it is what the tab is for. A missing lookup degrades to ids instead of
+ * names; a failed piutang call leaves one card dashed; a failed trend leaves the
+ * chart with its own message and the cards above it intact.
  */
 export interface UseFinanceDashboardResult {
   summary: JournalSummary | null;
-  /** Kas and bank only — the two accounts the cash card sums. */
+  /** Kas and bank only — the accounts the cash card sums. */
   cashAccounts: AccountBalance[];
-  /** The ten most recent entries in the period, newest first. */
-  entries: JournalEntry[];
-  /** How many entries the period holds, for "10 dari 128". */
-  entryCount: number;
+  /** Every account class, for a figure read by code rather than by class. */
+  balances: AccountBalance[];
+  /**
+   * The trend chart's points — one per calendar day, zeros included.
+   *
+   * Empty both before the first response and when the read was refused, which is
+   * why the chart reads `trendError` and `trendLoading` rather than the length.
+   */
+  trend: JournalTrendDay[];
+  /** The window `trend` covers. Fixed at seven days; does not follow the period. */
+  trendPeriod: Period;
+
+  /** Σ in and Σ out over the period's posted cash transactions. */
+  cashMovement: CashTransactionTotals | null;
+  receivables: CustomerOutstandingSummary | null;
+  payables: SupplierOutstandingSummary | null;
 
   branches: Branch[];
   businessLines: BusinessLine[];
-  /** business line id → name, for the chips and the table badges. */
+  /** business line id → name, for the chips. */
   businessLineNames: Map<string, string>;
-  /** account id → account, for naming the category column. */
-  accountsById: Map<string, ChartOfAccount>;
 
+  /** True while the LEDGER is in flight — what the cards dim themselves on. */
   loading: boolean;
-  /** Set only when the LEDGER failed. A missing lookup degrades silently. */
+  /** Set only when the LEDGER failed. Everything else degrades silently. */
   error: string | null;
+  trendLoading: boolean;
+  /** Set when the chart alone failed, so it can say so without blanking the page. */
+  trendError: string | null;
   refetch: () => void;
 }
 
-/** How many rows the dashboard shows before handing off to Jurnal Umum. */
-export const RECENT_LIMIT = 10;
-
 /**
- * `enabled: false` makes the hook fetch nothing and report `loading: false`.
+ * Which reads this user is allowed to make.
  *
- * Not an optimisation — a correctness rule. The permission check that decides
- * whether this screen has anything to show lives in the component, and calling
- * the hook unconditionally would fire three requests a user without
- * `journalEntries:read` is guaranteed to get a 403 from, on every page load.
- * A hook that cannot be called conditionally has to be told.
+ * FOUR FLAGS RATHER THAN ONE `enabled`, because the screen now spans four
+ * modules and their grants do not travel together. Defaulting to true keeps the
+ * old contract for a caller that knows it may read everything; the dashboard
+ * passes what `usePermissions` actually says.
  */
+export interface FinanceDashboardGrants {
+  /** `journalEntries:read` — laba, saldo kas, komisi, the trend. */
+  ledger?: boolean;
+  /** `cashTransactions:read` — uang masuk, uang keluar, arus kas bersih. */
+  cashMovement?: boolean;
+  /** `customerInvoices:read` — piutang belum tertagih. */
+  receivables?: boolean;
+  /** `purchaseInvoices:read` — utang belum dibayar. */
+  payables?: boolean;
+}
+
 export function useFinanceDashboard(
   query: FinanceQuery,
-  { enabled = true }: { enabled?: boolean } = {},
+  {
+    now,
+    ledger = true,
+    cashMovement = true,
+    receivables = true,
+    payables = true,
+  }: FinanceDashboardGrants & {
+    /**
+     * The server's clock, as the page rendered it.
+     *
+     * REQUIRED, not defaulted to `new Date()`: the trend window is seven days
+     * ending today, and a client that read the clock while rendering would ask
+     * for a different week than the HTML the server sent described.
+     */
+    now: Date;
+  },
 ): UseFinanceDashboardResult {
   const [summary, setSummary] = useState<JournalSummary | null>(null);
-  const [cashAccounts, setCashAccounts] = useState<AccountBalance[]>([]);
-  const [entries, setEntries] = useState<JournalEntry[]>([]);
-  const [entryCount, setEntryCount] = useState(0);
+  const [balances, setBalances] = useState<AccountBalance[]>([]);
+  const [trend, setTrend] = useState<JournalTrendDay[]>([]);
+  const [movement, setMovement] = useState<CashTransactionTotals | null>(null);
+  const [arSummary, setArSummary] =
+    useState<CustomerOutstandingSummary | null>(null);
+  const [apSummary, setApSummary] =
+    useState<SupplierOutstandingSummary | null>(null);
 
   const [branches, setBranches] = useState<Branch[]>([]);
   const [businessLines, setBusinessLines] = useState<BusinessLine[]>([]);
-  const [accounts, setAccounts] = useState<ChartOfAccount[]>([]);
 
-  const [loading, setLoading] = useState(enabled);
+  const [loading, setLoading] = useState(ledger);
   const [error, setError] = useState<string | null>(null);
+  const [trendLoading, setTrendLoading] = useState(ledger);
+  const [trendError, setTrendError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 
-  // The filter is a value, not an object identity: `businessLines` is a fresh
-  // array on every render of the screen, so depending on `query` itself would
-  // re-request the ledger on every keystroke elsewhere on the page.
-  const queryKey = JSON.stringify([
-    query.dateFrom,
-    query.dateTo,
-    query.branchId,
-    query.businessLineId,
-  ]);
+  // Seven days ending on the server's today. Memoised on the ISO instant rather
+  // than the Date, which is a fresh object on every render of the screen.
+  const nowIso = now.toISOString();
+  const trendPeriod = useMemo(() => trendWindow(new Date(nowIso)), [nowIso]);
 
   /* ------------------------------------------------ lookups, fetched once */
+  /*
+    Branches and business lines change when somebody edits them, not when a date
+    picker moves. Re-requesting them per filter would triple the traffic to
+    redraw the same two dropdowns.
+  */
   useEffect(() => {
-    if (!enabled) return;
+    if (!ledger) return;
     let active = true;
 
     Promise.allSettled([
       branchService.list({ limit: 100 }),
       businessLineService.list({ limit: 100 }),
-      chartOfAccountsService.tree(),
-    ]).then(([branchResult, lineResult, accountResult]) => {
+    ]).then(([branchResult, lineResult]) => {
       if (!active) return;
 
       if (branchResult.status === "fulfilled") {
@@ -124,62 +185,55 @@ export function useFinanceDashboard(
       if (lineResult.status === "fulfilled") {
         setBusinessLines(lineResult.value.items);
       }
-      if (accountResult.status === "fulfilled") {
-        setAccounts(flattenAccounts(accountResult.value));
-      }
-      // No setError on any of these. A user without `businessLines:read` gets a
+      // No setError on either. A user without `businessLines:read` gets a
       // dashboard whose chips read as ids rather than no dashboard at all.
     });
 
     return () => {
       active = false;
     };
-  }, [enabled, nonce]);
+  }, [ledger, nonce]);
 
-  /* --------------------------------------- the ledger, on every filter change */
+  /* ------------------------------ the P&L and the balance sheet, per filter */
   useEffect(() => {
-    if (!enabled) return;
+    if (!ledger) return;
     let active = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setError(null);
 
-    const period = {
-      dateFrom: query.dateFrom || undefined,
-      dateTo: query.dateTo || undefined,
-      branchId: query.branchId || undefined,
-      businessLineId: query.businessLineId || undefined,
-    };
-
     Promise.all([
-      journalEntryService.summary(period),
-      // `asOf` is the END of the period: a balance is a position on a date, so
-      // the start of the range says nothing about it.
+      journalEntryService.summary({
+        dateFrom: query.dateFrom || undefined,
+        dateTo: query.dateTo || undefined,
+        branchId: query.branchId || undefined,
+        businessLineId: query.businessLineId || undefined,
+      }),
+      /*
+        THE WHOLE TRIAL BALANCE, not `accountType: "asset"` as this used to ask.
+        The screen now reads two figures off it — kas & bank (1101, 1102) and
+        utang komisi (2102) — which sit in different classes, and one unfiltered
+        call is cheaper than two filtered ones: the response is the accounts that
+        have any postings at all, a few dozen per tenant, ordered by code.
+
+        `asOf` is the END of the period. A balance is a position on a date, so
+        the start of the range says nothing about it — stated on the card too.
+      */
       journalEntryService.balances({
         asOf: query.dateTo || undefined,
         branchId: query.branchId || undefined,
-        accountType: "asset",
       }),
-      journalEntryService.list({ ...period, page: 1, limit: RECENT_LIMIT }),
     ])
-      .then(([summaryResult, balancesResult, listResult]) => {
+      .then(([summaryResult, balancesResult]) => {
         if (!active) return;
 
         setSummary(summaryResult);
-        setCashAccounts(
-          balancesResult.accounts.filter((account) =>
-            CASH_ACCOUNT_CODES.includes(account.code),
-          ),
-        );
-        setEntries(listResult.items);
-        setEntryCount(listResult.pagination.total);
+        setBalances(balancesResult.accounts);
       })
       .catch((err) => {
         if (!active) return;
         setSummary(null);
-        setCashAccounts([]);
-        setEntries([]);
-        setEntryCount(0);
+        setBalances([]);
         setError(
           err instanceof ApiError
             ? err.message
@@ -194,8 +248,7 @@ export function useFinanceDashboard(
       active = false;
     };
   }, [
-    enabled,
-    queryKey,
+    ledger,
     nonce,
     query.dateFrom,
     query.dateTo,
@@ -203,54 +256,173 @@ export function useFinanceDashboard(
     query.businessLineId,
   ]);
 
+  /* ------------------------------------------------------ the trend chart */
+  /*
+    ITS OWN EFFECT, AND ITS OWN ERROR. The window is fixed at seven days, so this
+    does not depend on the period at all — folding it into the effect above would
+    redraw the same chart every time somebody moved a date. And a chart that
+    failed is a chart with a message in it, not a blank page: the cards above it
+    came from a different request and are still true.
+  */
+  useEffect(() => {
+    if (!ledger) return;
+    let active = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTrendLoading(true);
+    setTrendError(null);
+
+    journalEntryService
+      .trend({
+        dateFrom: trendPeriod.dateFrom,
+        dateTo: trendPeriod.dateTo,
+        branchId: query.branchId || undefined,
+        businessLineId: query.businessLineId || undefined,
+      })
+      .then((result) => {
+        if (active) setTrend(result.days);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setTrend([]);
+        setTrendError(
+          err instanceof ApiError ? err.message : "Gagal memuat tren 7 hari.",
+        );
+      })
+      .finally(() => {
+        if (active) setTrendLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    ledger,
+    nonce,
+    trendPeriod.dateFrom,
+    trendPeriod.dateTo,
+    query.branchId,
+    query.businessLineId,
+  ]);
+
+  /* --------------------------------------------- cash in and out, per period */
+  /*
+    NOT KEYED ON THE BUSINESS LINE, because a cash transaction has none: money in
+    the till belongs to the shop, and the line is a property of what was sold.
+    `limit: 1` asks for one row nobody renders — `totals` is what this is for, and
+    it is Σ over the WHOLE filter rather than over the page.
+  */
+  useEffect(() => {
+    if (!cashMovement) return;
+    let active = true;
+
+    cashTransactionService
+      .list({
+        dateFrom: query.dateFrom || undefined,
+        dateTo: query.dateTo || undefined,
+        branchId: query.branchId || undefined,
+        status: "posted",
+        page: 1,
+        limit: 1,
+      })
+      .then((result) => {
+        if (active) setMovement(result.totals);
+      })
+      .catch(() => {
+        // Dashed on the card rather than zeroed — see StatTile. A zero standing
+        // in for a failed request is the one thing a summary must not show.
+        if (active) setMovement(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    cashMovement,
+    nonce,
+    query.dateFrom,
+    query.dateTo,
+    query.branchId,
+  ]);
+
+  /* ------------------------------------------- piutang and utang, per branch */
+  /*
+    NEITHER TAKES A PERIOD, and that is not an omission in the API. What is owed
+    is a position as of now, like a bank balance: an invoice raised in July and
+    still unpaid is money the shop is missing in September, and a piutang figure
+    that emptied itself when somebody picked "bulan ini" would say the opposite.
+    The cards say "belum tertagih" / "belum dibayar" rather than naming a period.
+
+    Utang takes no branch either — a supplier is billed to the tenant.
+  */
+  useEffect(() => {
+    if (!receivables) return;
+    let active = true;
+
+    customerInvoiceService
+      .outstanding({ branchId: query.branchId || undefined })
+      .then((result) => {
+        if (active) setArSummary(result);
+      })
+      .catch(() => {
+        if (active) setArSummary(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [receivables, nonce, query.branchId]);
+
+  useEffect(() => {
+    if (!payables) return;
+    let active = true;
+
+    purchaseInvoiceService
+      .outstandingSummary()
+      .then((result) => {
+        if (active) setApSummary(result);
+      })
+      .catch(() => {
+        if (active) setApSummary(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [payables, nonce]);
+
   const businessLineNames = useMemo(
     () => new Map(businessLines.map((line) => [line._id, line.name])),
     [businessLines],
   );
 
-  const accountsById = useMemo(
-    () => new Map(accounts.map((account) => [account._id, account])),
-    [accounts],
+  const cashAccounts = useMemo(
+    () => balances.filter((account) => CASH_CODES.has(account.code)),
+    [balances],
   );
 
   return {
     summary,
     cashAccounts,
-    entries,
-    entryCount,
+    balances,
+    trend,
+    trendPeriod,
+    cashMovement: movement,
+    receivables: arSummary,
+    payables: apSummary,
     branches,
     businessLines,
     businessLineNames,
-    accountsById,
     loading,
     error,
+    trendLoading,
+    trendError,
     refetch,
   };
 }
 
 /**
- * The COA tree flattened depth-first — the same walk `useChartOfAccounts` does.
- *
- * Only a lookup map is wanted here, so the order is incidental; the flatten is
- * shared in shape rather than in code because that hook also returns the ordered
- * array its screen renders from, and exporting a helper that serves one caller's
- * incidental need is how two screens end up disagreeing about a tree.
+ * A Set rather than the exported array, because this is a membership test run
+ * once per account in the trial balance. Built from the same constant, so the
+ * two cannot name different accounts.
  */
-function flattenAccounts(
-  nodes: Array<ChartOfAccount & { children?: unknown[] }>,
-): ChartOfAccount[] {
-  const flat: ChartOfAccount[] = [];
-
-  const walk = (list: Array<ChartOfAccount & { children?: unknown[] }>) => {
-    for (const node of list) {
-      const { children, ...account } = node;
-      flat.push(account as ChartOfAccount);
-      if (Array.isArray(children) && children.length) {
-        walk(children as Array<ChartOfAccount & { children?: unknown[] }>);
-      }
-    }
-  };
-
-  walk(nodes);
-  return flat;
-}
+const CASH_CODES = new Set(CASH_ACCOUNT_CODES);

@@ -62,6 +62,8 @@ One name per role. Both vocabularies resolve to identical values, so this is a n
 
 Colour tokens available: `background`, `foreground`, `surface`, `surface-hover`, `surface-selected`, `border`, `muted`, `primary`, `primary-hover`, `primary-foreground`, `secondary`, `secondary-hover`, `secondary-foreground`, `success`, `success-fill`, `warning`, `info`, `danger`, `danger-ink`, `danger-foreground`, plus the raw `navy-*` / `orange-*` / `slate-500` scales and the `tint-*` badge fills.
 
+**`chart-gross` and `chart-net` are for chart MARKS and nothing else** — two series that have to stay tellable apart, added for the Keuangan trend chart. They are deliberately not `primary` and `secondary`: those two carry meaning (navy is the working colour, orange means a human must act), and a line on a chart means neither. They are also one step off the brand values because the brand values fail a categorical palette's checks — `navy-700` is too dark and too grey to be a mark, `orange-500` is 2.27:1 on white. Do not use them for text, fills, or anything that is not a data mark, and re-run the validator before changing either. Rationale in `globals.css`.
+
 **Raw scale steps (`navy-700`, `orange-500`, …) are for composing tokens in `globals.css`, not for components.** In a component, reach for the semantic name. The one sanctioned exception is `bg-navy-100` for a selected row, because "selected" has no better semantic name yet.
 
 ---

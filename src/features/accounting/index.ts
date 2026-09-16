@@ -14,8 +14,13 @@
  *
  * FinanceDashboardScreen replaced AccountingHub: same landing route, but it
  * leads with the period's figures instead of two links the sidebar already has.
- * Its arithmetic lives in ./financeSummary, exported here because the P&L, arus
- * kas and daftar transaksi screens will fold the same ledger.
+ * Its arithmetic lives in ./financeSummary, exported here because the P&L and
+ * arus kas screens fold the same ledger.
+ *
+ * IT SPANS FOUR MODULES NOW, not one. The Ringkasan tab reads the ledger, the
+ * cash transactions, the customer invoices and the purchase invoices — see
+ * ./hooks/useFinanceDashboard for which figure comes from where. Nothing about
+ * that surfaces here: the screen is still one import and one prop.
  */
 /**
  * The module's shared chrome — the title and the four-tab row its screens wear.
@@ -40,9 +45,9 @@ export {
 export { BusinessLinesScreen } from "./components/BusinessLinesScreen";
 export { useBusinessLines } from "./hooks/useBusinessLines";
 export {
+  balanceOf,
   cashPosition,
   currentMonthRange,
-  financeTransactions,
   formatPercent,
   isoDate,
   lineFigures,
@@ -51,17 +56,19 @@ export {
   monthRange,
   previousMonthRange,
   reportPresets,
+  trendWindow,
   CASH_ACCOUNT_CODES,
+  COMMISSION_PAYABLE_CODE,
+  TREND_DAYS,
   SHARED_LINE_LABEL,
   SHARED_LINE_NONE,
   type FinanceQuery,
-  type FinanceTransaction,
   type LineFigures,
   type Period,
 } from "./financeSummary";
 export {
   useFinanceDashboard,
-  RECENT_LIMIT,
+  type FinanceDashboardGrants,
   type UseFinanceDashboardResult,
 } from "./hooks/useFinanceDashboard";
 export {

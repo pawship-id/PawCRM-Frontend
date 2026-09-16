@@ -1,5 +1,4 @@
 import type { DatePreset } from "@/components";
-import type { ChartOfAccount, JournalEntry } from "@/types/accounting";
 import type { AccountBalance, JournalSummary } from "@/services/journalEntry.service";
 import { toDecimalString, toMinor } from "@/utils/decimal";
 
@@ -9,15 +8,14 @@ import { toDecimalString, toMinor } from "@/utils/decimal";
  * THIS FILE USED TO FOLD THE WHOLE LEDGER. Revenue, expense, net profit, the
  * per-line split and the cash position were all sums over `JournalEntry[]`,
  * because the API offered no way to ask for them. It does now —
- * `GET /journal-entries/summary` and `/balances` — so all of that is gone, and
- * what is left is the one thing the server has no opinion about: how a ledger
- * entry reads as a row in a "transaksi terakhir" table.
+ * `GET /journal-entries/summary`, `/trend` and `/balances` — so all of that is
+ * gone, and what is left is arithmetic no server should be asked for: a
+ * percentage, a label, and the calendar dates a picker offers.
  *
- * WHY THE PROJECTION STAYED CLIENT-SIDE. It is a reshape of ten records, not
- * arithmetic over thousands, and it encodes a presentation decision — that a POS
- * sale is ONE row showing the revenue rather than two showing revenue and its
- * cost. An endpoint that made that choice would be making it for every future
- * client.
+ * THE ENTRY→ROW PROJECTION WENT WITH THE TABLE IT FED. Ringkasan no longer
+ * carries a "transaksi terakhir" list — that is the Transaksi tab, over
+ * `/cash-transactions` — so `financeTransactions` had no caller left. It is in
+ * the history if a screen ever wants the ledger folded that way again.
  *
  * MONEY IS A DECIMAL STRING throughout, parsed with utils/decimal in BigInt
  * minor units. Nothing here touches a float.
@@ -30,6 +28,21 @@ import { toDecimalString, toMinor } from "@/utils/decimal";
  * survives the account being renamed. The backend knows the same two.
  */
 export const CASH_ACCOUNT_CODES = ["1101", "1102"];
+
+/**
+ * Utang Komisi — the account "Komisi Belum Dibayar" reads.
+ *
+ * THE LEDGER'S ANSWER, NOT PAYROLL'S. The commission recap
+ * (`/reports/commissions`) says what a month EARNED; this balance is what has
+ * been accrued and not yet paid out, across every month still open. They are
+ * different questions, and the card asks this one — a shop owner wanting to know
+ * what is owed does not want it reset on the first of the month.
+ *
+ * A code rather than an id, for the reason the cash codes give: it is seeded for
+ * every tenant and survives the account being renamed. `commission.service.js`
+ * resolves the same "2102".
+ */
+export const COMMISSION_PAYABLE_CODE = "2102";
 
 /** The bucket a P&L line with no business line falls into. */
 export const SHARED_LINE_LABEL = "Bersama (HQ)";
@@ -68,29 +81,6 @@ export interface FinanceQuery {
   branchId: string;
   /** `""` = every line, which is when `byBusinessLine` is worth reading. */
   businessLineId: string;
-}
-
-/** One row of the dashboard's transaction table — a ledger entry, folded. */
-export interface FinanceTransaction {
-  entry: JournalEntry;
-  /** Which side of the P&L this entry moved. */
-  type: "income" | "expense";
-  /**
-   * True when it moved that side DOWNWARDS — a return, a reversal, a credited
-   * cost.
-   *
-   * Kept apart from `type` rather than folded into a signed amount, because the
-   * two answer different questions: `type` says which half of the P&L moved,
-   * this says which way. A row carrying only a negative number would render a
-   * refund as "Pemasukan −Rp 180.000", which reads as a mistake.
-   */
-  reversal: boolean;
-  /** Always positive: the direction lives in `type` and `reversal`. */
-  amount: string;
-  /** The income or expense accounts the amount landed on. */
-  accounts: ChartOfAccount[];
-  /** Business line ids touched; `null` for an unattributed one. */
-  businessLineIds: Array<string | null>;
 }
 
 /* ------------------------------------------------------------------ helpers */
@@ -147,6 +137,20 @@ export function cashPosition(accounts: AccountBalance[]): string {
   );
 }
 
+/**
+ * One account's balance out of a trial balance, by code — `"0"` when it has none.
+ *
+ * ABSENT AND ZERO ARE THE SAME ANSWER HERE, deliberately, and this is the one
+ * place that is true: `/balances` omits an account with no postings at all, and
+ * "nobody has ever been owed commission" and "everybody has been paid" are both
+ * honestly rendered as Rp 0 on the card. It would NOT be true of a figure whose
+ * absence meant a failed request — that is what the hook's `error` is for.
+ */
+export function balanceOf(accounts: AccountBalance[], code: string): string {
+  const account = accounts.find((item) => item.code === code);
+  return account ? account.balance : "0";
+}
+
 /* ------------------------------------------------------------- P&L reading */
 
 export interface LineFigures {
@@ -178,83 +182,6 @@ export function lineFigures(
     net: row.net,
     netMarginPct: marginPct(row.net, row.revenue),
   }));
-}
-
-/* ------------------------------------------------------------ transactions */
-
-/**
- * Ledger entries as transaction rows — the entries that moved the P&L, folded to
- * one row each.
- *
- * ONLY P&L ENTRIES. A goods receipt and a supplier payment are real
- * transactions, but neither is income or expense — booking stock is an asset
- * swap and paying a bill settles a liability — so a row for them would need an
- * empty "Tipe" column. This table sits under the revenue, expense and profit
- * cards and answers "what made those numbers"; the complete list, balance-sheet
- * movements included, is the Jurnal Umum screen the header links to.
- *
- * ONE ROW PER ENTRY, not per line. A POS recap credits revenue and debits HPP in
- * the same entry; splitting it in two would show a sale and a cost that look
- * like separate events. The row carries the revenue side, because that is the
- * transaction — the HPP is its consequence.
- *
- * AN ENTRY WHOSE ACCOUNTS ARE NOT IN `accountsById` IS DROPPED, not guessed at.
- * That happens when the chart of accounts failed to load, and a row that cannot
- * say whether it was income or expense is worse than an absent one.
- */
-export function financeTransactions(
-  entries: JournalEntry[],
-  accountsById: Map<string, ChartOfAccount>,
-): FinanceTransaction[] {
-  const rows: FinanceTransaction[] = [];
-
-  for (const entry of entries) {
-    let revenue = 0n;
-    let expense = 0n;
-    const incomeAccounts: ChartOfAccount[] = [];
-    const expenseAccounts: ChartOfAccount[] = [];
-    const incomeLines = new Set<string | null>();
-    const expenseLines = new Set<string | null>();
-
-    for (const line of entry.lines) {
-      const account = accountsById.get(line.accountId);
-      if (!account) continue;
-
-      const debit = minor(line.debit);
-      const credit = minor(line.credit);
-
-      if (account.accountType === "income") {
-        revenue += credit - debit;
-        if (!incomeAccounts.some((item) => item._id === account._id)) {
-          incomeAccounts.push(account);
-        }
-        incomeLines.add(line.businessLineId);
-      } else if (account.accountType === "expense") {
-        expense += debit - credit;
-        if (!expenseAccounts.some((item) => item._id === account._id)) {
-          expenseAccounts.push(account);
-        }
-        expenseLines.add(line.businessLineId);
-      }
-    }
-
-    // Revenue decides the row when the entry has both sides: a sale with its
-    // HPP is a sale. An entry that moved neither is not a row here at all.
-    const income = revenue !== 0n;
-    const amount = income ? revenue : expense;
-    if (amount === 0n) continue;
-
-    rows.push({
-      entry,
-      type: income ? "income" : "expense",
-      reversal: amount < 0n,
-      amount: toDecimalString(amount < 0n ? -amount : amount),
-      accounts: income ? incomeAccounts : expenseAccounts,
-      businessLineIds: [...(income ? incomeLines : expenseLines)],
-    });
-  }
-
-  return rows;
 }
 
 /* --------------------------------------------------------------- periods */
@@ -296,6 +223,30 @@ export function previousMonthRange(now: Date): Period {
 }
 
 /**
+ * Monday to Sunday of the week `now` falls in — "Minggu ini".
+ *
+ * THE INDONESIAN WORKING WEEK, and the same one the SERVER means: `rangeOf`
+ * in PawCRM-Backend/src/utils/period.js cuts a named "week" Monday-to-Sunday
+ * too. A client that started its week on Sunday would ask for a range the
+ * backend would happily answer and nobody could reconcile with a report.
+ *
+ * A WHOLE WEEK, NOT "SO FAR" — it ends on Sunday even on a Wednesday, again
+ * matching the server. An entry dated for Friday is in this week, and cutting
+ * at today would hide it until Friday arrived.
+ */
+export function weekRange(now: Date): Period {
+  const monday = new Date(now);
+  // getDay() is 0 on Sunday, so Sunday is six days after ITS Monday, not before
+  // the next one.
+  monday.setDate(monday.getDate() - ((now.getDay() + 6) % 7));
+
+  const sunday = new Date(monday);
+  sunday.setDate(sunday.getDate() + 6);
+
+  return { dateFrom: isoDate(monday), dateTo: isoDate(sunday) };
+}
+
+/**
  * A `Date` as the calendar date it is *here*.
  *
  * Local parts rather than `toISOString()`: the latter is UTC and shifts the day
@@ -306,6 +257,34 @@ export function isoDate(date: Date): string {
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
   const day = `${date.getDate()}`.padStart(2, "0");
   return `${date.getFullYear()}-${month}-${day}`;
+}
+
+/** How many days the Ringkasan tab's trend chart draws. */
+export const TREND_DAYS = 7;
+
+/**
+ * The last `days` calendar days ending today — the trend chart's window.
+ *
+ * IT DOES NOT FOLLOW THE PERIOD FILTER, and the card says so. A chart is a shape
+ * over time, and a shape needs a fixed number of points to be a shape: "Bulan
+ * lalu" would draw thirty, "Hari ini" one, and "Semua" as many as the tenant has
+ * history — three different pictures under one heading, only one of which is
+ * readable. Branch and business line DO narrow it, because those change whose
+ * money is being drawn rather than how many points there are.
+ *
+ * Inclusive of today, so `TREND_DAYS` of 7 is today and the six days before it —
+ * the same arithmetic `reportPresets`' "7 hari" chip does, and deliberately the
+ * same answer.
+ *
+ * TAKES `now` RATHER THAN READING THE CLOCK, for the reason `currentMonthRange`
+ * spells out: a client component that read `Date.now()` while rendering would
+ * disagree with the HTML the server sent.
+ */
+export function trendWindow(now: Date, days: number = TREND_DAYS): Period {
+  const start = new Date(now);
+  start.setDate(start.getDate() - (days - 1));
+
+  return { dateFrom: isoDate(start), dateTo: isoDate(now) };
 }
 
 /**
@@ -334,6 +313,7 @@ export function reportPresets(now: Date): DatePreset[] {
 
   return [
     { label: "Hari ini", from: today, to: today },
+    { label: "Minggu ini", ...month(weekRange(now)) },
     { label: "7 hari", from: back(7), to: today },
     { label: "30 hari", from: back(30), to: today },
     { label: "Bulan ini", ...month(currentMonthRange(now)) },

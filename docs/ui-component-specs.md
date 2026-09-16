@@ -128,7 +128,7 @@ Anatomy — **two shapes, one component, split at `sm`**. A full-bleed sheet fro
 
 `FilterField` is the labeled wrapper: `<label class="mb-1.5 block text-xs font-semibold">` above a full-width control. It renders a plain span rather than a `<label>` unless given `htmlFor`, because most filter controls here are a button that opens a popover.
 
-**One control, two arrangements.** `FilterSelect` (and `FilterTrigger` under it) takes `layout="inline" | "field"`: the bar's `Gudang: Semua ⌄`, or a labeled full-width row for inside a panel. A screen with both renders one list of fields and hands it a layout, rather than keeping two lists in step by hand.
+**One control, several arrangements.** `FilterSelect` (and `FilterTrigger` under it) takes `layout="inline" | "bar" | "field" | "form"`: the bar's `Gudang: Semua ⌄`, the same trigger with its name drawn beside it, or a labeled full-width row for a panel or a form. A screen with more than one renders a single list of fields and hands it a layout, rather than keeping two lists in step by hand. The full table, and when `bar` is the right one, are under [The long select is `FilterSelect layout="form"`](#the-long-select-is-filterselect-layoutform).
 
 ## `FilterSearch`
 
@@ -493,13 +493,26 @@ Renders `<SelectTrigger size="lg">` — a Buloo retune of the vendored file, bec
 
 **There is no `SearchSelect`.** One was written and deleted the same day: `FilterSelect` already had a `layout="field"` mode, and **seven forms** — `StockAdjustmentForm`, `OpeningStockForm`, `StockTransferForm`, `ReceiptForm`, `JournalEntryCreateForm`, `OpnameStartCard`, `WarehouseProductPicker` — were already opening their Gudang, Pemasok and Akun pickers from it. A second implementation would have been the fifteen-toolbars mistake with a different noun.
 
-**One trigger shell, three arrangements**, all `FilterTrigger`:
+**One trigger shell, four arrangements**, all `FilterTrigger`:
 
 | `layout` | Shape | Height | Where |
 | --- | --- | --- | --- |
 | `inline` | `Gudang: Semua ⌄`, width from content | 40 | a `FilterBar` |
+| `bar` | label BESIDE it, value only, width from content | 40 | a context bar |
 | `field` | label above, full width | 40 | a `FilterPanel` |
 | `form` | label above, full width | **44** | a form |
+
+**`bar` is a label PLACEMENT, not a fourth control**, and it is the newest of the
+four (16 September 2026, for the Keuangan context bar). `inline` stays the default
+and the grammar §8 describes; `bar` exists for the row of two or three filters that
+scopes a WHOLE PAGE rather than narrowing a list on it — `Cabang [Semua] │ Lini
+Usaha [Semua] │ Periode …` — where the names read better as captions down the row
+than as prefixes inside each pill. It is `inline`'s twin in every other respect:
+same shell, same 40 px, same popover, same focus pair. Unlike `field` and `form` it
+does **not** wrap itself in a `FilterField`, so `hint`, `error` and `required` are
+ignored — the caption beside it belongs to the caller, because only the caller knows
+what it is sitting next to. Reach for it only when the caller is drawing that
+caption; a lone trigger on an ordinary bar is `inline`.
 
 `layout="form"` also honours **`error`** — red, `role="alert"`, and it replaces the hint. That prop is new: the three stock forms each hand-wrote `<p role="alert" className="mt-1.5 text-xs text-danger">` under their pickers, ten copies of markup `TextField` already owned. Setting `error` also marks the trigger `invalid`, so the red border and the red sentence cannot disagree.
 

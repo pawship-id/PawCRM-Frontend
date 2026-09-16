@@ -1,117 +1,53 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { renderWithAuth } from "./helpers/renderWithAuth";
 import { FinanceDashboardScreen } from "@/features/accounting";
 import {
+  balanceOf,
   cashPosition,
   currentMonthRange,
-  financeTransactions,
   formatPercent,
   marginPct,
   previousMonthRange,
+  trendWindow,
 } from "@/features/accounting/financeSummary";
 import { branchService } from "@/services/branch.service";
 import { businessLineService } from "@/services/businessLine.service";
-import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
+import { cashTransactionService } from "@/services/cashTransaction.service";
+import { customerInvoiceService } from "@/services/customerInvoice.service";
 import { journalEntryService } from "@/services/journalEntry.service";
+import { purchaseInvoiceService } from "@/services/purchaseInvoice.service";
 import { ApiError } from "@/services/api-error";
-import type { ChartOfAccount, JournalEntry } from "@/types/accounting";
 
 jest.mock("@/services/journalEntry.service");
 jest.mock("@/services/branch.service");
 jest.mock("@/services/businessLine.service");
-jest.mock("@/services/chartOfAccounts.service");
+jest.mock("@/services/cashTransaction.service");
+jest.mock("@/services/customerInvoice.service");
+jest.mock("@/services/purchaseInvoice.service");
 
 /**
- * The Keuangan dashboard, and the two pure modules behind it.
+ * The Keuangan Ringkasan tab, and the pure module behind it.
  *
  * WHAT IS WORTH ASSERTING, following AccountingScreens: not a figure the demo
- * data happens to produce, but the contract between this screen and the API it
- * now reads.
+ * data happens to produce, but the contract between this screen and the four
+ * modules it now reads.
  *
- *   - the three ledger calls are made with the period the toolbar holds, and
- *     `balances` gets the END of it rather than the range, because a balance is
- *     a position;
- *   - the cards render what `/summary` returned rather than a re-derivation;
- *   - a failure says so and offers a retry, instead of showing zeroes — the
- *     failure mode that turns a broken request into a reported loss;
- *   - the transaction projection keeps its properties: only P&L entries, one row
- *     per entry, a return read as a decrease.
+ *   - each read is made with the part of the filter it actually depends on —
+ *     `balances` gets the END of the period because a balance is a position,
+ *     piutang gets no period at all, and the chart gets its own fixed week;
+ *   - the cards render what the APIs returned rather than a re-derivation;
+ *   - a failed read says so rather than showing zeroes — the failure mode that
+ *     turns a broken request into a reported loss — and a failure in one module
+ *     does not blank the others;
+ *   - a card whose grant is missing is ABSENT, which must not look like a card
+ *     whose request failed.
  */
 
 const NOW = "2026-08-16T04:00:00.000Z";
 const GROOMING = "bl-grooming";
 const RETAIL = "bl-retail";
-
-const account = (
-  _id: string,
-  code: string,
-  name: string,
-  accountType: ChartOfAccount["accountType"],
-): ChartOfAccount => ({
-  _id,
-  code,
-  name,
-  accountType,
-  parentAccountId: null,
-  businessLineId: null,
-  isDefault: false,
-  isActive: true,
-});
-
-const ACCOUNTS = [
-  account("acc-1101", "1101", "Kas", "asset"),
-  account("acc-4101", "4101", "Penjualan", "income"),
-  account("acc-5101", "5101", "Harga Pokok Penjualan", "expense"),
-  account("acc-5302", "5302", "Beban Sewa", "expense"),
-  account("acc-2101", "2101", "Utang Supplier", "liability"),
-  account("acc-1201", "1201", "Persediaan", "asset"),
-];
-
-const ACCOUNTS_BY_ID = new Map(ACCOUNTS.map((item) => [item._id, item]));
-
-const entry = (overrides: Partial<JournalEntry> = {}): JournalEntry => ({
-  _id: "je-1",
-  entryNumber: "JE-2026-08-0001",
-  date: "2026-08-10",
-  description: "Rekap penjualan POS harian",
-  branchId: "branch-kemang",
-  branchName: "Cabang Kemang",
-  source: { type: "pos", id: "pos-1", reference: null },
-  lines: [
-    {
-      accountId: "acc-1101",
-      businessLineId: null,
-      debit: "1100000.0000",
-      credit: "0.0000",
-      memo: null,
-    },
-    {
-      accountId: "acc-4101",
-      businessLineId: RETAIL,
-      debit: "0.0000",
-      credit: "1000000.0000",
-      memo: null,
-    },
-    {
-      accountId: "acc-5101",
-      businessLineId: RETAIL,
-      debit: "400000.0000",
-      credit: "0.0000",
-      memo: null,
-    },
-  ],
-  cashflowType: "operating",
-  tags: [],
-  attachmentUrl: null,
-  recurring: { enabled: false, interval: null },
-  reversedByEntryId: null,
-  reversesEntryId: null,
-  createdByName: null,
-  createdAt: "2026-08-10",
-  ...overrides,
-});
 
 const SUMMARY = {
   period: {
@@ -139,27 +75,88 @@ const SUMMARY = {
   ],
 };
 
+/** Kas and Utang Komisi — two classes, one unfiltered trial balance. */
+const BALANCES = [
+  {
+    accountId: "acc-1101",
+    code: "1101",
+    name: "Kas",
+    accountType: "asset",
+    normalBalance: "debit",
+    debit: "90000000.0000",
+    credit: "10612500.0000",
+    balance: "79387500.0000",
+  },
+  {
+    accountId: "acc-2102",
+    code: "2102",
+    name: "Utang Komisi",
+    accountType: "liability",
+    normalBalance: "credit",
+    debit: "1000000.0000",
+    credit: "4318000.0000",
+    balance: "3318000.0000",
+  },
+];
+
+const TREND_DAYS_FIXTURE = [
+  { date: "2026-08-10", revenue: "3000000.0000", expense: "1200000.0000", netProfit: "1800000.0000" },
+  { date: "2026-08-11", revenue: "0.0000", expense: "0.0000", netProfit: "0.0000" },
+  { date: "2026-08-12", revenue: "1500000.0000", expense: "0.0000", netProfit: "1500000.0000" },
+  { date: "2026-08-13", revenue: "2100000.0000", expense: "900000.0000", netProfit: "1200000.0000" },
+  { date: "2026-08-14", revenue: "2600000.0000", expense: "1100000.0000", netProfit: "1500000.0000" },
+  { date: "2026-08-15", revenue: "3400000.0000", expense: "1500000.0000", netProfit: "1900000.0000" },
+  { date: "2026-08-16", revenue: "2900000.0000", expense: "1250000.0000", netProfit: "1650000.0000" },
+];
+
 beforeEach(() => {
   (journalEntryService.summary as jest.Mock).mockResolvedValue(SUMMARY);
   (journalEntryService.balances as jest.Mock).mockResolvedValue({
     asOf: "2026-08-31",
     timezone: "Asia/Jakarta",
-    accounts: [
-      {
-        accountId: "acc-1101",
-        code: "1101",
-        name: "Kas",
-        accountType: "asset",
-        normalBalance: "debit",
-        debit: "90000000.0000",
-        credit: "10612500.0000",
-        balance: "79387500.0000",
-      },
-    ],
+    accounts: BALANCES,
   });
-  (journalEntryService.list as jest.Mock).mockResolvedValue({
-    items: [entry()],
-    pagination: { page: 1, limit: 10, total: 30, totalPages: 3 },
+  (journalEntryService.trend as jest.Mock).mockResolvedValue({
+    period: {
+      dateFrom: "2026-08-10",
+      dateTo: "2026-08-16",
+      timezone: "Asia/Jakarta",
+    },
+    days: TREND_DAYS_FIXTURE,
+  });
+  (cashTransactionService.list as jest.Mock).mockResolvedValue({
+    items: [],
+    pagination: { page: 1, limit: 1, total: 42, totalPages: 42 },
+    totals: {
+      in: { amount: "62400000.0000", count: 28 },
+      out: { amount: "38100000.0000", count: 14 },
+    },
+  });
+  (customerInvoiceService.outstanding as jest.Mock).mockResolvedValue({
+    items: [],
+    totalOutstanding: "14200000.0000",
+    totalInvoices: 6,
+    totalOverdueOutstanding: "4100000.0000",
+    totalOverdueInvoices: 2,
+    totalDueSoonOutstanding: "0.0000",
+    totalDueSoonInvoices: 0,
+    horizonDays: 7,
+    collectedThisMonth: {
+      amount: "0.0000",
+      paymentCount: 0,
+      from: "2026-08-01",
+      to: "2026-08-31",
+    },
+  });
+  (purchaseInvoiceService.outstandingSummary as jest.Mock).mockResolvedValue({
+    items: [],
+    totalOutstanding: "8600000.0000",
+    totalInvoices: 3,
+    totalOverdueOutstanding: "0.0000",
+    totalOverdueInvoices: 0,
+    totalDueSoonOutstanding: "0.0000",
+    totalDueSoonInvoices: 0,
+    horizonDays: 7,
   });
   (branchService.list as jest.Mock).mockResolvedValue({
     items: [{ _id: "branch-kemang", name: "Cabang Kemang" }],
@@ -172,9 +169,6 @@ beforeEach(() => {
     ],
     pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
   });
-  (chartOfAccountsService.tree as jest.Mock).mockResolvedValue(
-    ACCOUNTS.map((item) => ({ ...item, children: [] })),
-  );
 });
 
 describe("financeSummary", () => {
@@ -196,75 +190,16 @@ describe("financeSummary", () => {
     expect(marginPct("19070000.0000", "110750000.0000")).toBe(17.2);
   });
 
-  it("lists only entries that moved the profit and loss", () => {
-    // A goods receipt: stock in, payable up. Real, but neither income nor
-    // expense, so it has no place in a list under the P&L cards.
-    const receipt = entry({
-      _id: "je-2",
-      lines: [
-        {
-          accountId: "acc-1201",
-          businessLineId: null,
-          debit: "900000.0000",
-          credit: "0.0000",
-          memo: null,
-        },
-        {
-          accountId: "acc-2101",
-          businessLineId: null,
-          debit: "0.0000",
-          credit: "900000.0000",
-          memo: null,
-        },
-      ],
-    });
-
-    const rows = financeTransactions([entry(), receipt], ACCOUNTS_BY_ID);
-
-    expect(rows).toHaveLength(1);
-    expect(rows[0].entry._id).toBe("je-1");
-  });
-
   /**
-   * A POS recap credits revenue and debits HPP in ONE entry. Two rows would show
-   * a sale and a cost that look like separate events; the row carries the
-   * revenue, because that is the transaction.
+   * An account with no postings is ABSENT from a trial balance, and reading that
+   * as zero is correct here and only here: "nobody has ever been owed
+   * commission" and "everybody has been paid" are both honestly Rp 0. A figure
+   * whose absence meant a FAILED REQUEST would not be — that is the hook's
+   * `error`, and the card dashes rather than zeroes for it.
    */
-  it("folds an entry with both sides into one revenue row", () => {
-    const [row] = financeTransactions([entry()], ACCOUNTS_BY_ID);
-
-    expect(row.type).toBe("income");
-    expect(row.amount).toBe("1000000.0000");
-    expect(row.reversal).toBe(false);
-  });
-
-  it("marks a sales return as revenue going down, not another sale", () => {
-    const refund = entry({
-      lines: [
-        {
-          accountId: "acc-4101",
-          businessLineId: RETAIL,
-          debit: "180000.0000",
-          credit: "0.0000",
-          memo: null,
-        },
-        {
-          accountId: "acc-1101",
-          businessLineId: null,
-          debit: "0.0000",
-          credit: "180000.0000",
-          memo: null,
-        },
-      ],
-    });
-
-    const [row] = financeTransactions([refund], ACCOUNTS_BY_ID);
-
-    expect(row.type).toBe("income");
-    expect(row.reversal).toBe(true);
-    // Positive, because the direction is `reversal`'s job — the screen prints
-    // the minus sign, and printing it twice is how a column stops adding up.
-    expect(row.amount).toBe("180000.0000");
+  it("reads a balance by code, and an absent account as zero", () => {
+    expect(balanceOf(BALANCES as never, "2102")).toBe("3318000.0000");
+    expect(balanceOf(BALANCES as never, "2103")).toBe("0");
   });
 
   it("builds its month presets from the server's clock", () => {
@@ -284,7 +219,36 @@ describe("financeSummary", () => {
       dateTo: "2025-12-31",
     });
   });
+
+  // Inclusive of today, so seven days is today and the six before it — the same
+  // arithmetic the "7 hari" preset chip does, and deliberately the same answer.
+  it("counts the trend window inclusively, ending today", () => {
+    expect(trendWindow(new Date(NOW))).toEqual({
+      dateFrom: "2026-08-10",
+      dateTo: "2026-08-16",
+    });
+  });
 });
+
+/**
+ * Pick an arbitrary range: press the Custom pill, fill the two inputs it
+ * reveals, then Terapkan.
+ *
+ * `fireEvent.change` rather than `userEvent.type` — jsdom's `<input type=date>`
+ * has no text-entry behaviour to drive, and typing into one sets nothing.
+ */
+async function pickCustomRange(from: string, to: string) {
+  await userEvent.click(screen.getByRole("button", { name: "Custom" }));
+
+  fireEvent.change(await screen.findByLabelText("Periode khusus dari"), {
+    target: { value: from },
+  });
+  fireEvent.change(screen.getByLabelText("Periode khusus sampai"), {
+    target: { value: to },
+  });
+
+  await userEvent.click(screen.getByRole("button", { name: "Terapkan" }));
+}
 
 describe("FinanceDashboardScreen", () => {
   /**
@@ -303,21 +267,35 @@ describe("FinanceDashboardScreen", () => {
 
     // No period means no `asOf` either: the cash card is the position now.
     expect(journalEntryService.balances).toHaveBeenCalledWith(
-      expect.objectContaining({ asOf: undefined, accountType: "asset" }),
-    );
-
-    expect(journalEntryService.list).toHaveBeenCalledWith(
-      expect.objectContaining({ limit: 10, page: 1 }),
+      expect.objectContaining({ asOf: undefined }),
     );
   });
 
-  it("sends the period the picker applied, and the balance for its end", async () => {
+  /**
+   * ONE UNFILTERED TRIAL BALANCE, NOT ONE PER CLASS. The screen reads kas & bank
+   * (1101/1102, assets) and utang komisi (2102, a liability) off the same
+   * response; asking by `accountType` would mean two round trips for a payload
+   * of a few dozen rows.
+   */
+  it("reads every account class from one balances call", async () => {
     renderWithAuth(<FinanceDashboardScreen now={NOW} />);
-    await screen.findByText("Rp 110.750.000");
+    await screen.findByText("Rp 79.387.500");
 
-    await userEvent.click(screen.getByLabelText("Periode laporan"));
-    await userEvent.click(await screen.findByRole("button", { name: "Bulan ini" }));
-    await userEvent.click(screen.getByRole("button", { name: "Terapkan" }));
+    expect(journalEntryService.balances).not.toHaveBeenCalledWith(
+      expect.objectContaining({ accountType: expect.anything() }),
+    );
+    expect(screen.getByText("Rp 3.318.000")).toBeInTheDocument();
+  });
+
+  /**
+   * A PILL APPLIES ON CLICK — no Terapkan, which is what §8 asks of a pill row
+   * and what makes it worth the space over a dropdown.
+   */
+  it("sends the period a pill applied, and the balance for its end", async () => {
+    renderWithAuth(<FinanceDashboardScreen now={NOW} />);
+    await screen.findByText("Rp 19.070.000");
+
+    await userEvent.click(screen.getByRole("button", { name: "Bulan ini" }));
 
     await waitFor(() =>
       expect(journalEntryService.summary).toHaveBeenLastCalledWith(
@@ -331,28 +309,171 @@ describe("FinanceDashboardScreen", () => {
     // A balance is a POSITION as of a date, so only the end of the range says
     // anything about it. Sending `dateFrom` would turn it into a movement.
     expect(journalEntryService.balances).toHaveBeenLastCalledWith(
-      expect.objectContaining({ asOf: "2026-08-31", accountType: "asset" }),
+      expect.objectContaining({ asOf: "2026-08-31" }),
     );
     expect(journalEntryService.balances).not.toHaveBeenCalledWith(
       expect.objectContaining({ dateFrom: expect.anything() }),
     );
 
-    // And it is a filter now, so it says so and can be taken off again.
+    // The pill itself carries the state, so there is nothing for a chip to pay
+    // back — it conceals nothing. Pressed is the whole answer.
+    expect(screen.getByRole("button", { name: "Bulan ini" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     expect(
-      await screen.findByRole("button", {
-        name: /Hapus filter Periode 1 Ags–31 Ags/,
-      }),
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: /Hapus filter Periode/ }),
+    ).not.toBeInTheDocument();
   });
 
-  it("renders the figures the API returned, not a re-derivation", async () => {
+  /**
+   * The mirror of the above, and the reason the chip rule is worth a test of its
+   * own: a range that matches no pill is the ONE period the bar cannot show in
+   * full, so it is the one that gets a chip and a way off.
+   */
+  it("chips a custom range, which no pill can show", async () => {
+    renderWithAuth(<FinanceDashboardScreen now={NOW} />);
+    await screen.findByText("Rp 19.070.000");
+
+    await pickCustomRange("2026-07-01", "2026-07-31");
+
+    await waitFor(() =>
+      expect(journalEntryService.summary).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          dateFrom: "2026-07-01",
+          dateTo: "2026-07-31",
+        }),
+      ),
+    );
+
+    expect(
+      await screen.findByRole("button", {
+        name: /Hapus filter Periode 1 Jul–31 Jul/,
+      }),
+    ).toBeInTheDocument();
+    // And no pill claims it, because none of them is that month.
+    expect(screen.getByRole("button", { name: "Semua" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
+  /**
+   * PRESSING CUSTOM ASKS A QUESTION; it does not answer one. Re-querying on the
+   * press would move every figure on the page for a choice nobody has finished
+   * making — and again on the first of the two dates.
+   */
+  it("opens the two inputs without touching the query", async () => {
+    renderWithAuth(<FinanceDashboardScreen now={NOW} />);
+    await screen.findByText("Rp 19.070.000");
+
+    const before = (journalEntryService.summary as jest.Mock).mock.calls.length;
+
+    await userEvent.click(screen.getByRole("button", { name: "Custom" }));
+    expect(
+      await screen.findByLabelText("Periode khusus dari"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Periode khusus sampai")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Periode khusus dari"), {
+      target: { value: "2026-07-01" },
+    });
+
+    expect((journalEntryService.summary as jest.Mock).mock.calls).toHaveLength(
+      before,
+    );
+  });
+
+  /**
+   * RESET DOES NOT WAIT FOR TERAPKAN (§8). It clears and re-queries in the same
+   * click, which is what makes it safe to reach for.
+   */
+  it("clears an applied range in one click", async () => {
+    renderWithAuth(<FinanceDashboardScreen now={NOW} />);
+    await screen.findByText("Rp 19.070.000");
+
+    await pickCustomRange("2026-07-01", "2026-07-31");
+    await screen.findByRole("button", { name: /Hapus filter Periode/ });
+
+    await userEvent.click(screen.getByRole("button", { name: "Custom" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Reset" }));
+
+    await waitFor(() =>
+      expect(journalEntryService.summary).toHaveBeenLastCalledWith(
+        expect.objectContaining({ dateFrom: undefined, dateTo: undefined }),
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Semua" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  // The inputs are the pill's disclosure, so picking any other period puts them
+  // away — leaving them open would offer a range the pill above contradicts.
+  it("closes the inputs when another pill answers instead", async () => {
+    renderWithAuth(<FinanceDashboardScreen now={NOW} />);
+    await screen.findByText("Rp 19.070.000");
+
+    await userEvent.click(screen.getByRole("button", { name: "Custom" }));
+    await screen.findByLabelText("Periode khusus dari");
+
+    await userEvent.click(screen.getByRole("button", { name: "Bulan ini" }));
+
+    await waitFor(() =>
+      expect(
+        screen.queryByLabelText("Periode khusus dari"),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
+  /**
+   * THE STATE THESE SCREENS OPEN IN HAS TO BE REACHABLE. They start unfiltered
+   * on purpose, so "Semua" is a pill rather than something you get back to by
+   * clearing a chip.
+   */
+  it("gets back to every period from the pill row", async () => {
+    renderWithAuth(<FinanceDashboardScreen now={NOW} />);
+    await screen.findByText("Rp 19.070.000");
+
+    await userEvent.click(screen.getByRole("button", { name: "Hari ini" }));
+    await waitFor(() =>
+      expect(journalEntryService.summary).toHaveBeenLastCalledWith(
+        expect.objectContaining({ dateFrom: "2026-08-16" }),
+      ),
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Semua" }));
+    await waitFor(() =>
+      expect(journalEntryService.summary).toHaveBeenLastCalledWith(
+        expect.objectContaining({ dateFrom: undefined, dateTo: undefined }),
+      ),
+    );
+  });
+
+  it("renders the figures the APIs returned, not a re-derivation", async () => {
     renderWithAuth(<FinanceDashboardScreen now={NOW} />);
 
-    expect(await screen.findByText("Rp 110.750.000")).toBeInTheDocument();
-    expect(screen.getByText("Rp 91.680.000")).toBeInTheDocument();
-    expect(screen.getByText("Rp 19.070.000")).toBeInTheDocument();
-    // The cash card sums the balances of the kas/bank accounts it was given.
+    // Laba bersih, from /summary.
+    expect(await screen.findByText("Rp 19.070.000")).toBeInTheDocument();
+    // Kas & bank, summed from the balances it was given.
     expect(screen.getByText("Rp 79.387.500")).toBeInTheDocument();
+    // Masuk and keluar, from the cash transactions' own totals.
+    expect(screen.getByText("Rp 62.400.000")).toBeInTheDocument();
+    expect(screen.getByText("Rp 38.100.000")).toBeInTheDocument();
+    // Piutang and utang, each from its module's outstanding aggregate.
+    expect(screen.getByText("Rp 14.200.000")).toBeInTheDocument();
+    expect(screen.getByText("Rp 8.600.000")).toBeInTheDocument();
+  });
+
+  /**
+   * The one figure on the screen the browser computes, and it is exact: two
+   * server-side aggregates subtracted in minor units, never a sum over rows.
+   */
+  it("derives arus kas bersih from masuk minus keluar", async () => {
+    renderWithAuth(<FinanceDashboardScreen now={NOW} />);
+
+    expect(await screen.findByText("Rp 24.300.000")).toBeInTheDocument();
   });
 
   it("labels the unattributed bucket as unallocated rather than as a margin", async () => {
@@ -388,31 +509,130 @@ describe("FinanceDashboardScreen", () => {
     ).toBeInTheDocument();
   });
 
-  it("explains a negative expense instead of leaving it to be read as a bug", async () => {
-    (journalEntryService.summary as jest.Mock).mockResolvedValue({
-      ...SUMMARY,
-      revenue: "0.0000",
-      expense: "-1105100.0000",
-      netProfit: "1105100.0000",
-      byBusinessLine: [],
+  it("still colours a real profit", async () => {
+    renderWithAuth(<FinanceDashboardScreen now={NOW} />);
+
+    expect(await screen.findByText("Rp 19.070.000")).toHaveClass("text-success");
+    expect(screen.getByText(/margin 17,2%/)).toBeInTheDocument();
+  });
+
+  /* ------------------------------------------------------------- the chart */
+
+  /**
+   * SEVEN DAYS ENDING TODAY, WHATEVER THE PERIOD SAYS. A chart is a shape over
+   * time and a shape needs a fixed number of points: following the filter would
+   * draw thirty on "Bulan lalu", one on "Hari ini", and a tenant's whole history
+   * on "Semua".
+   */
+  it("asks for a fixed seven-day window rather than the filtered period", async () => {
+    renderWithAuth(<FinanceDashboardScreen now={NOW} />);
+
+    await waitFor(() =>
+      expect(journalEntryService.trend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dateFrom: "2026-08-10",
+          dateTo: "2026-08-16",
+        }),
+      ),
+    );
+
+    await pickCustomRange("2026-07-01", "2026-07-31");
+
+    await waitFor(() =>
+      expect(journalEntryService.summary).toHaveBeenLastCalledWith(
+        expect.objectContaining({ dateFrom: "2026-07-01" }),
+      ),
+    );
+
+    // The period moved and the chart did not — one call, still this week.
+    expect(journalEntryService.trend).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-draws the chart when the branch changes, because that is whose money it is", async () => {
+    renderWithAuth(<FinanceDashboardScreen now={NOW} />);
+    await screen.findByText("Rp 19.070.000");
+
+    await userEvent.click(screen.getByLabelText("Filter cabang"));
+    await userEvent.click(
+      await screen.findByRole("option", { name: "Cabang Kemang" }),
+    );
+
+    await waitFor(() =>
+      expect(journalEntryService.trend).toHaveBeenLastCalledWith(
+        expect.objectContaining({ branchId: "branch-kemang" }),
+      ),
+    );
+  });
+
+  /**
+   * Two series on one chart must not rest on colour alone, and the numbers must
+   * be reachable without a pointer — hence a legend, an end label, and a table
+   * twin behind one toggle.
+   */
+  it("names both series and offers the numbers as a table", async () => {
+    renderWithAuth(<FinanceDashboardScreen now={NOW} />);
+
+    expect(
+      await screen.findByText("Kotor (pendapatan)"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Bersih (laba)")).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Tampilkan tabel" }),
+    );
+
+    const table = await screen.findByRole("table");
+    expect(table).toHaveTextContent("16 Agu 2026");
+    expect(table).toHaveTextContent("Rp 2.900.000");
+  });
+
+  /**
+   * THE COMMON CASE ON A NEW TENANT, not an edge one. The API returns a point for
+   * every day in the range, so a shop that has not traded this week gets seven
+   * ZEROS rather than an empty array — and drawing those is two flat lines along
+   * the bottom of an axis with nothing on it, which reads as a broken chart
+   * rather than as a quiet week.
+   */
+  it("says a quiet week in words instead of drawing a flat line", async () => {
+    (journalEntryService.trend as jest.Mock).mockResolvedValue({
+      period: {
+        dateFrom: "2026-08-10",
+        dateTo: "2026-08-16",
+        timezone: "Asia/Jakarta",
+      },
+      days: TREND_DAYS_FIXTURE.map((day) => ({
+        ...day,
+        revenue: "0.0000",
+        expense: "0.0000",
+        netProfit: "0.0000",
+      })),
     });
 
     renderWithAuth(<FinanceDashboardScreen now={NOW} />);
 
     expect(
-      await screen.findByText(/ada akun beban yang dikredit/),
+      await screen.findByText(/Belum ada pendapatan atau beban tercatat/),
     ).toBeInTheDocument();
+    // And the cards above it are untouched — a quiet week is not a failure.
+    expect(screen.getByText("Rp 19.070.000")).toBeInTheDocument();
   });
 
-  it("still colours a real profit and a real loss", async () => {
+  /**
+   * The chart is one read of five. A 400 from it must not blank the cards, which
+   * came from other requests and are still true.
+   */
+  it("keeps the cards when only the chart fails", async () => {
+    (journalEntryService.trend as jest.Mock).mockRejectedValue(
+      new ApiError("Rentang terlalu panjang", 400),
+    );
+
     renderWithAuth(<FinanceDashboardScreen now={NOW} />);
 
-    // The default fixture has revenue, so the margin is meaningful again.
-    expect(await screen.findByText("Rp 19.070.000")).toHaveClass(
-      "text-success",
-    );
-    expect(screen.getByText("Margin bersih 17,2%")).toBeInTheDocument();
+    expect(await screen.findByText(/Tren 7 hari gagal dimuat/)).toBeInTheDocument();
+    expect(screen.getByText("Rp 19.070.000")).toBeInTheDocument();
   });
+
+  /* ------------------------------------------------------------- failures */
 
   /**
    * The failure mode that matters: a request that failed must not render as a
@@ -429,7 +649,24 @@ describe("FinanceDashboardScreen", () => {
       await screen.findByText(/Ringkasan keuangan gagal dimuat/),
     ).toBeInTheDocument();
     expect(screen.getByText("Server sedang bermasalah")).toBeInTheDocument();
-    expect(screen.queryByText("Total Revenue")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Laba bersih periode/i)).not.toBeInTheDocument();
+  });
+
+  /**
+   * The same rule one module down. Piutang failing is not the ledger failing, so
+   * the page stands — but its card must dash rather than read Rp 0, which is a
+   * shop that is owed nothing and a very different fact.
+   */
+  it("dashes a card whose own module failed, never zeroes it", async () => {
+    (customerInvoiceService.outstanding as jest.Mock).mockRejectedValue(
+      new ApiError("Tidak bisa dihubungi", 503),
+    );
+
+    renderWithAuth(<FinanceDashboardScreen now={NOW} />);
+
+    expect(await screen.findByText("Rp 19.070.000")).toBeInTheDocument();
+    expect(screen.getByText("Gagal dimuat")).toBeInTheDocument();
+    expect(screen.queryByText("Rp 14.200.000")).not.toBeInTheDocument();
   });
 
   it("retries on demand", async () => {
@@ -443,12 +680,12 @@ describe("FinanceDashboardScreen", () => {
       await screen.findByRole("button", { name: /Muat ulang/ }),
     );
 
-    expect(await screen.findByText("Rp 110.750.000")).toBeInTheDocument();
+    expect(await screen.findByText("Rp 19.070.000")).toBeInTheDocument();
   });
 
   it("re-queries the ledger when the branch filter changes", async () => {
     renderWithAuth(<FinanceDashboardScreen now={NOW} />);
-    await screen.findByText("Rp 110.750.000");
+    await screen.findByText("Rp 19.070.000");
 
     await userEvent.click(screen.getByLabelText("Filter cabang"));
     await userEvent.click(
@@ -462,37 +699,31 @@ describe("FinanceDashboardScreen", () => {
     );
   });
 
-  it("shows at most ten rows and hands off to Transaksi Keuangan for the rest", async () => {
-    renderWithAuth(<FinanceDashboardScreen now={NOW} />);
+  /* ---------------------------------------------------------------- gates */
 
-    const table = await screen.findByRole("table");
-    expect(within(table).getAllByRole("row").length).toBeLessThanOrEqual(11);
-
-    expect(screen.getByRole("link", { name: /Lihat semua/ })).toHaveAttribute(
-      "href",
-      "/dashboard/keuangan/transaksi",
-    );
-  });
-
-  /*
-    A LEDGER READER WITHOUT `cashTransactions:read` still gets somewhere real to
-    go: the journal, which is what "Lihat semua" meant before the Transaksi
-    screen existed.
-  */
-  it("keeps handing off to the ledger for a role that cannot read transactions", async () => {
+  /**
+   * ABSENT IS NOT DASHED. A dash means "this failed to load"; leaving the card
+   * out means "not yours to see". A role without the purchase book is also not
+   * asked to wait for a request it would be refused.
+   */
+  it("leaves out the cards a role cannot read, without firing their requests", async () => {
     renderWithAuth(<FinanceDashboardScreen now={NOW} />, {
       isSuperAdmin: false,
       permissions: [
         { feature: "journalEntries", actions: ["read"] },
-        { feature: "chartOfAccounts", actions: ["read"] },
         { feature: "businessLines", actions: ["read"] },
         { feature: "branches", actions: ["read"] },
       ],
     });
 
-    expect(
-      await screen.findByRole("link", { name: /Lihat semua/ }),
-    ).toHaveAttribute("href", "/dashboard/keuangan/journal-entries");
+    await screen.findByText("Rp 19.070.000");
+
+    expect(screen.queryByText(/Piutang belum tertagih/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Utang belum dibayar/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Uang masuk/i)).not.toBeInTheDocument();
+    expect(customerInvoiceService.outstanding).not.toHaveBeenCalled();
+    expect(purchaseInvoiceService.outstandingSummary).not.toHaveBeenCalled();
+    expect(cashTransactionService.list).not.toHaveBeenCalled();
   });
 
   it("explains itself instead of showing zeroes without ledger access", async () => {
@@ -504,7 +735,33 @@ describe("FinanceDashboardScreen", () => {
     expect(
       await screen.findByText(/belum punya akses ke jurnal umum/i),
     ).toBeInTheDocument();
-    expect(screen.queryByText("Total Revenue")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Laba bersih periode/i)).not.toBeInTheDocument();
     expect(journalEntryService.summary).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The list of movements has a home of its own now. A landing page repeating
+   * its first ten rows would be a second, staler answer one tab along — and the
+   * only table here is the chart's own twin, which is behind a toggle.
+   */
+  it("carries no transaction list — that is the Transaksi tab", async () => {
+    renderWithAuth(<FinanceDashboardScreen now={NOW} />);
+    await screen.findByText("Rp 19.070.000");
+
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Transaksi terakhir/i)).not.toBeInTheDocument();
+  });
+
+  /**
+   * The mockup counts the active recurring costs and names the next one due.
+   * Nothing executes `recurring` yet, so every one of those numbers would be
+   * invented — and an invented figure on a finance screen is indistinguishable
+   * from a real one.
+   */
+  it("badges biaya tetap as pending rather than inventing its figures", async () => {
+    renderWithAuth(<FinanceDashboardScreen now={NOW} />);
+
+    expect(await screen.findByText("Biaya tetap")).toBeInTheDocument();
+    expect(screen.getByText("Segera")).toBeInTheDocument();
   });
 });

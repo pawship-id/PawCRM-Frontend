@@ -12,14 +12,15 @@ import type { PageResult } from "@/types/api";
 /**
  * General-ledger calls against /api/journal-entries.
  *
- * THREE SHAPES, NOT ONE, and that is the point of the module. The ledger answers
- * three different questions and each has its own endpoint:
+ * FOUR SHAPES, NOT ONE, and that is the point of the module. The ledger answers
+ * four different questions and each has its own endpoint:
  *
  *   `list`     — rows, paginated. What happened, newest first.
  *   `summary`  — the period folded: revenue, expense, net profit, per line.
+ *   `trend`    — the same fold, one calendar day at a time. A chart, not a card.
  *   `balances` — a trial balance as of a date. What we have, not what we earned.
  *
- * The dashboard needs all three, and the alternative to the last two is paging
+ * The dashboard needs all four, and the alternative to the last three is paging
  * the whole period and summing it here: thirty-odd requests for a busy month,
  * arithmetic on money in a browser, and an answer that is wrong the moment one
  * page fails.
@@ -143,6 +144,48 @@ export interface JournalSummaryQuery extends LedgerPeriodQuery {
   businessLineId?: string;
 }
 
+/** One point on the trend chart — a calendar day of the ledger, folded. */
+export interface JournalTrendDay {
+  /** `"2026-09-16"`, cut in the TENANT's timezone. */
+  date: string;
+  revenue: string;
+  expense: string;
+  /** `revenue − expense`, derived server-side like the summary's. */
+  netProfit: string;
+}
+
+export interface JournalTrend {
+  period: {
+    dateFrom: string;
+    dateTo: string;
+    /** The IANA zone the days were cut in — `tenants.timezone`. */
+    timezone: string;
+  };
+  /**
+   * One entry per calendar day in the range, in order, INCLUDING the days the
+   * ledger says nothing about — those come back as zeros.
+   *
+   * Which is why a caller may draw straight from this array: a gap here would be
+   * a day the aggregation produced no bucket for, and a line drawn across it
+   * reads as a busy day nobody can see rather than as a quiet one.
+   */
+  days: JournalTrendDay[];
+}
+
+/**
+ * BOTH DATES ARE REQUIRED, where the summary's are optional.
+ *
+ * A series has one point per day, so an open-ended trend has as many points as
+ * the tenant has history. The API refuses a request missing either end, and one
+ * whose span exceeds `MAX_TREND_DAYS` (92).
+ */
+export interface JournalTrendQuery {
+  dateFrom: string;
+  dateTo: string;
+  branchId?: string;
+  businessLineId?: string;
+}
+
 export interface AccountBalance {
   accountId: string;
   code: string;
@@ -261,6 +304,26 @@ export const journalEntryService = {
   /** GET /journal-entries/summary — the period folded. No pagination. */
   summary: (query: JournalSummaryQuery = {}) =>
     apiClient.get<JournalSummary>("/journal-entries/summary", {
+      query: {
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+        branchId: query.branchId,
+        businessLineId: query.businessLineId,
+      },
+    }),
+
+  /**
+   * GET /journal-entries/trend — the same fold, one calendar day at a time.
+   *
+   * SEPARATE FROM `summary` RATHER THAN A FLAG ON IT, matching the API: the
+   * answer is a series, not a total and a split, and one call returning either
+   * depending on a parameter would have two response contracts under one name.
+   *
+   * The dates are required by the type because they are required by the server —
+   * see `JournalTrendQuery`.
+   */
+  trend: (query: JournalTrendQuery) =>
+    apiClient.get<JournalTrend>("/journal-entries/trend", {
       query: {
         dateFrom: query.dateFrom,
         dateTo: query.dateTo,
