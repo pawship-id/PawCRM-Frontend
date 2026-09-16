@@ -3,6 +3,8 @@
 import type { ReactNode } from "react";
 import { CalendarDays, Store, Warehouse } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+
 import type {
   CustomerInvoiceFilterOptions,
   CustomerInvoiceListSummary,
@@ -107,11 +109,17 @@ export function InvoiceScopeCard({
   options,
   summary,
   summaryStale,
+  filterCount,
+  onReset,
 }: {
   query: CustomerInvoicesQuery;
   options: CustomerInvoiceFilterOptions;
   summary: CustomerInvoiceListSummary | null;
   summaryStale: boolean;
+  /** How many filters narrow the list — see `countInvoiceFilters`. */
+  filterCount: number;
+  /** Clears them all in one press. Nothing is drawn while none are on. */
+  onReset: () => void;
 }) {
   const branch = scopeValue(
     query.branchIds,
@@ -164,7 +172,24 @@ export function InvoiceScopeCard({
           value={period}
         />
       </dl>
-      <p className="text-xs text-muted sm:ml-auto">Ubah lewat tombol Filter</p>
+      {/*
+        ONE WAY OUT OF A NARROWED LIST (16 September 2026, on request) — the same
+        "Reset filter (n)" the grooming catalogue puts on its own context card.
+        It appears only while something is on; with nothing on, the card is the
+        read-only thing it has always been and says where its controls live.
+      */}
+      {filterCount > 0 ? (
+        <Button
+          type="button"
+          variant="link"
+          className="min-h-11 sm:ml-auto"
+          onClick={onReset}
+        >
+          Reset filter ({filterCount})
+        </Button>
+      ) : (
+        <p className="text-xs text-muted sm:ml-auto">Ubah lewat tombol Filter</p>
+      )}
     </section>
   );
 }

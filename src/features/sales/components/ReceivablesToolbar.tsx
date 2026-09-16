@@ -111,7 +111,12 @@ interface PanelDraft {
   dateTo: string;
 }
 
-const CLEARED: Partial<CustomerInvoicesQuery> = {
+/**
+ * WHAT "RESET FILTER" PUTS BACK — the panel's fields and the period, never the
+ * search box. Exported since 16 September 2026 so the scope card's own Reset and
+ * the panel's clear the same things; two lists of fields would drift.
+ */
+export const CLEARED_INVOICE_FILTERS: Partial<CustomerInvoicesQuery> = {
   branchIds: [],
   warehouseIds: [],
   createdBy: [],
@@ -121,6 +126,30 @@ const CLEARED: Partial<CustomerInvoicesQuery> = {
   dateFrom: "",
   dateTo: "",
 };
+
+/**
+ * HOW MANY FILTERS NARROW THIS LIST — what the scope card's "Reset filter (n)"
+ * counts, the way the grooming catalogue counts its own (16 September 2026).
+ *
+ * EVERY FIELD THE PANEL HOLDS, the period included: this number is not the
+ * panel's badge — that one deliberately leaves out what the scope card already
+ * spells out — but the answer to "is anything on, and how much of it goes away
+ * if I press this".
+ *
+ * THE SEARCH BOX IS NOT IN IT. It is on screen with its own text in it, and
+ * Reset leaves it alone.
+ */
+export function countInvoiceFilters(query: CustomerInvoicesQuery): number {
+  return (
+    [
+      query.branchIds,
+      query.warehouseIds,
+      query.createdBy,
+      query.sources,
+      query.statuses,
+    ].filter((values) => values.length > 0).length + (query.period === "all" ? 0 : 1)
+  );
+}
 
 const sameSet = <T,>(a: T[], b: T[]) =>
   a.length === b.length && a.every((value) => b.includes(value));
@@ -181,11 +210,12 @@ export function ReceivablesToolbar({
  *                       than left narrowing the list to nothing.
  *   a gudang first    → its own cabang is ticked too, when it can be told.
  *
- * THE BADGE COUNTS WHAT THE SCREEN DOES NOT OTHERWISE SHOW — kasir, sumber,
- * status. Cabang, Gudang and Periode are edited here but always READ on the
- * scope card above the figures, and the badge exists to pay back what a panel
- * conceals (§8). Counting them too would put a standing number over a list
- * whose scope is already spelled out.
+ * THE BADGE COUNTS EVERY FIELD THE PANEL HOLDS — `countInvoiceFilters`, the same
+ * number the scope card's "Reset filter (n)" shows. Changed 16 September 2026 on
+ * request, reversing the first build: the badge left out cabang, gudang and
+ * periode because the scope card already spells them out, and the two numbers
+ * then disagreed on one screen — "Filter (2)" beside "Reset filter (4)" reads as
+ * a bug whatever the reasoning behind it.
  */
 function ReceivablesFilterPanel({
   query,
@@ -210,11 +240,7 @@ function ReceivablesFilterPanel({
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<PanelDraft>(seed);
 
-  const count = [
-    query.createdBy.length > 0,
-    query.sources.length > 0,
-    query.statuses.length > 0,
-  ].filter(Boolean).length;
+  const count = countInvoiceFilters(query);
 
   /*
     A TICKED GUDANG IS ALWAYS OFFERED, even when the cabang ticked beside it do
@@ -293,7 +319,7 @@ function ReceivablesFilterPanel({
   }
 
   function reset() {
-    onChange(CLEARED);
+    onChange(CLEARED_INVOICE_FILTERS);
     setOpen(false);
   }
 
