@@ -8,10 +8,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
-import { formatMoney } from "@/utils/decimal";
+import { formatMoney, isPositive, subtractDecimals } from "@/utils/decimal";
 import type { Booking } from "@/types/api";
 
-import { afterOwnDiscounts, ownDiscountOfLine } from "../bookingDiscount";
+import {
+  afterOwnDiscounts,
+  bookingShareOf,
+  ownDiscountOfLine,
+} from "../bookingDiscount";
 
 /**
  * THE CUSTOMER'S BOOKINGS, ready to be billed on this invoice — PCR-034.
@@ -145,12 +149,15 @@ export function InvoiceBookingPanel({
       {bookings.map((booking) => {
         const id = booking._id;
         /*
-          AFTER EACH LINE'S OWN DISCOUNT, BEFORE THE BOOKING'S SHARE (15
-          September 2026). The lines below show their own discounts, so this is
-          what they add up to; the share of "Diskon seluruh booking" is shown
-          once, in the recap under "Diskon baris" — the till does the same.
+          THE LINES AFTER THEIR OWN DISCOUNTS, then the booking's share of
+          "Diskon seluruh booking" at the foot of the card (16 September 2026) —
+          Total at the foot is what this booking bills, after both. The
+          recap still totals the shares once, as "Diskon booking".
         */
-        const total = afterOwnDiscounts(booking);
+        const subtotal = afterOwnDiscounts(booking);
+        const share = bookingShareOf(booking);
+        const hasShare = isPositive(share);
+        const total = hasShare ? subtractDecimals(subtotal, share) : subtotal;
         const mainOwn = ownDiscountOfLine(booking.service);
 
         return (
@@ -167,23 +174,18 @@ export function InvoiceBookingPanel({
               className="mt-0.5"
             />
             <span className="min-w-0 flex-1">
-              <span className="flex flex-wrap items-baseline justify-between gap-2">
-                {/* THE ANIMAL LEADS, not the booking number: somebody billing a
-                    grooming thinks in pets, and the number is what they quote
-                    afterwards. */}
-                <span className="font-medium">
-                  {booking.petName ?? "Hewan terhapus"}
-                </span>
-                <span className="tabular-nums text-sm">
-                  {formatMoney(total)}
-                </span>
+              {/* THE ANIMAL LEADS, not the booking number: somebody billing a
+                  grooming thinks in pets, and the number is what they quote
+                  afterwards. The total sits at the foot of the card. */}
+              <span className="block font-medium">
+                {booking.petName ?? "Hewan terhapus"}
               </span>
               <span className="block text-xs text-muted">
                 {booking.bookingNumber ?? "—"}
               </span>
               {/*
                 PRICED LINE BY LINE, AS THE TILL DRAWS A PULLED BOOKING — each
-                line's price, and its own discount under it.
+                line's price, and its own discount under it as "Diskon item".
               */}
               <ul className="mt-1.5 flex flex-col gap-1 text-xs">
                 <li className="flex flex-col">
@@ -200,8 +202,9 @@ export function InvoiceBookingPanel({
                     </span>
                   </span>
                   {mainOwn && (
-                    <span className="tabular-nums text-success">
-                      −{formatMoney(mainOwn)}
+                    <span className="flex justify-between gap-2 text-success">
+                      <span>Diskon item</span>
+                      <span className="tabular-nums">−{formatMoney(mainOwn)}</span>
                     </span>
                   )}
                 </li>
@@ -222,14 +225,39 @@ export function InvoiceBookingPanel({
                         </span>
                       </span>
                       {own && (
-                        <span className="tabular-nums text-success">
-                          −{formatMoney(own)}
+                        <span className="flex justify-between gap-2 text-success">
+                          <span>Diskon item</span>
+                          <span className="tabular-nums">−{formatMoney(own)}</span>
                         </span>
                       )}
                     </li>
                   );
                 })}
               </ul>
+              <span className="mt-1.5 flex flex-col gap-1 border-t border-border pt-1.5 text-xs">
+                {hasShare && (
+                  <>
+                    <span className="flex justify-between gap-2">
+                      <span className="text-muted">Subtotal</span>
+                      <span className="tabular-nums text-muted">
+                        {formatMoney(subtotal)}
+                      </span>
+                    </span>
+                    <span className="flex justify-between gap-2">
+                      <span className="text-success">Diskon booking</span>
+                      <span className="tabular-nums text-success">
+                        −{formatMoney(share)}
+                      </span>
+                    </span>
+                  </>
+                )}
+                <span className="flex justify-between gap-2 text-sm">
+                  <span className="font-semibold text-foreground">Total</span>
+                  <span className="font-semibold tabular-nums text-foreground">
+                    {formatMoney(total)}
+                  </span>
+                </span>
+              </span>
             </span>
           </label>
         );
