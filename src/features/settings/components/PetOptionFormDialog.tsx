@@ -149,7 +149,7 @@ export function PetOptionFormDialog({
             <DialogDescription>
               {editing
                 ? "Nama baru langsung dipakai di semua layar, termasuk hewan dan layanan yang sudah memakainya."
-                : "Kodenya dibuat otomatis dari nama dan tidak bisa diubah nanti. Namanya masih bisa diubah kapan saja."}
+                : "Namanya masih bisa diubah kapan saja."}
             </DialogDescription>
           </DialogHeader>
 
@@ -190,17 +190,6 @@ export function PetOptionFormDialog({
               ]}
               hint="Dipakai untuk menyaring pilihan ras saat mencatat hewan."
               disabled={busy}
-            />
-          )}
-
-          {editing && (
-            <TextField
-              label="Kode"
-              name="code"
-              value={option.code}
-              readOnly
-              className="text-muted"
-              hint="Kode tidak bisa diubah — data hewan dan harga layanan menyimpan kode ini, bukan namanya."
             />
           )}
 

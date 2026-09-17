@@ -188,7 +188,12 @@ export function PetOptionsTable({
             <TableRow>
               <TableHead>Nama</TableHead>
               {type === "breed" && <TableHead>Hewan</TableHead>}
-              <TableHead>Kode</TableHead>
+              {/*
+                NO KODE COLUMN (18 September 2026, on request). The code is what
+                pets, variants and commission rows store — which is why a rename
+                is safe — but nobody reads it while working, and it took a column
+                on every one of these four lists.
+              */}
               <TableHead>Status</TableHead>
               {showActions && <TableHead className="text-right">Aksi</TableHead>}
             </TableRow>
@@ -214,9 +219,6 @@ export function PetOptionsTable({
                         : "Semua hewan"}
                     </TableCell>
                   )}
-                  <TableCell className="text-sm text-muted tabular-nums">
-                    {option.code}
-                  </TableCell>
                   <TableCell>
                     <ListItemStatus item={option} />
                   </TableCell>

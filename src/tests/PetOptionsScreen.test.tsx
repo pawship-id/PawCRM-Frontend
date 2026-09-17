@@ -225,7 +225,7 @@ describe("PetOptionsScreen", () => {
     await userEvent.click(screen.getByRole("button", { name: "Tambah ukuran" }));
 
     const dialog = screen.getByRole("dialog");
-    expect(dialog).toHaveTextContent(/kodenya dibuat otomatis dari nama/i);
+    expect(dialog).toHaveTextContent(/namanya masih bisa diubah kapan saja/i);
 
     await userEvent.type(
       within(dialog).getByLabelText(/Nama ukuran/),
@@ -245,16 +245,17 @@ describe("PetOptionsScreen", () => {
     expect(invalidatePetOptions).toHaveBeenCalled();
   });
 
-  it("renames without touching the code, which it shows read-only", async () => {
+  it("renames and sends only the label — the stored code is untouched, and off screen", async () => {
     await renderOnSizes();
 
     const menu = await openRowMenu("Kecil");
     await userEvent.click(within(menu).getByRole("menuitem", { name: /Ubah nama/ }));
 
     const dialog = screen.getByRole("dialog");
-    const code = within(dialog).getByLabelText("Kode");
-    expect(code).toHaveValue("small");
-    expect(code).toHaveAttribute("readonly");
+    /* The code is what pets and variants store; nobody reads it while working,
+       so it is not on the dialog or the table (18 September 2026). */
+    expect(within(dialog).queryByLabelText("Kode")).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Kode" })).not.toBeInTheDocument();
 
     const name = within(dialog).getByLabelText(/Nama ukuran/);
     await userEvent.clear(name);
