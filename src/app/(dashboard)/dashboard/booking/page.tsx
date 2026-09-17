@@ -3,10 +3,10 @@ import type { Metadata } from "next";
 import { TodayScreen } from "@/features/booking";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Hari Ini · Buloo" };
+export const metadata: Metadata = { title: "Kalender · Buloo" };
 
 /**
- * Layanan › Hari Ini — the day board.
+ * Layanan › Kalender — the day board.
  *
  * `?tanggal=` IS READ HERE, as the other deep-linked screens read theirs: the
  * server already has it, so the screen needs no `useSearchParams` and no

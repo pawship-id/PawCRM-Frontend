@@ -54,7 +54,7 @@ describe("filterNavItems", () => {
     // The three placeholder screens are ungated, so they ride along with the
     // one grant that keeps the group open.
     expect(groupChildren(onlyBookings, "Layanan")).toEqual([
-      "Hari Ini",
+      "Kalender",
       "Grooming",
       "Hotel",
       "Antar-Jemput",

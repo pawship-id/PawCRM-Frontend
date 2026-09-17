@@ -202,7 +202,7 @@ export const NAV_SECTIONS: NavSection[] = [
         children: [
           {
             /**
-             * Hari Ini — the day board, every line of business on one screen
+             * Kalender (renamed from Hari Ini, 17 Sep 2026) — the day board, every line of business on one screen
              * (`TodayScreen`, from `buloo-hari-ini-v1.html`). Prefix-matched
              * (no `exact`) so /kalender, /new and /[id] keep the row lit.
              *
@@ -211,7 +211,7 @@ export const NAV_SECTIONS: NavSection[] = [
              * the menu, click it, and be told the list "tidak bisa dimuat",
              * which reads as a fault rather than a permission they do not have.
              */
-            label: "Hari Ini",
+            label: "Kalender",
             href: "/dashboard/booking",
             icon: CalendarDays,
             permission: { feature: "bookings", action: "read" },

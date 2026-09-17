@@ -55,7 +55,7 @@ const VIEWS: { value: TodayView; label: string }[] = [
 ];
 
 /**
- * Layanan › Hari Ini — every line of business on one operational screen, from
+ * Layanan › Kalender — every line of business on one operational screen, from
  * `buloo-hari-ini-v1.html`.
  *
  * ─── WHAT IT REPLACED, AND WHY ─────────────────────────────────────────────
@@ -173,7 +173,7 @@ export function TodayScreen({
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start gap-4">
-        <PageHeading crumbs={TODAY_CRUMBS} title="Hari Ini">
+        <PageHeading crumbs={TODAY_CRUMBS} title="Kalender">
           Semua layanan dalam satu layar operasional.
         </PageHeading>
 
