@@ -3130,6 +3130,19 @@ export interface Service {
   serviceType: ServiceType;
   /** Only a `main` service carries these, and only ids of `addon` services. */
   addonServiceIds: string[];
+  /**
+   * ─── AN ADD-ON'S OWN SETTINGS (17 September 2026) ─────────────────────────
+   * Only an `addon` carries values; the server resets all three on a `main`
+   * service. Edited on Pengaturan › Layanan › Add-on.
+   *
+   * The tahapan the add-on's work belongs to — a `ServiceStep` id of the
+   * service's own business line, or null.
+   */
+  addonStepId: string | null;
+  /** Whether selling it earns commission. Copied onto a booking when booked. */
+  commissionable: boolean;
+  /** Whether it may be chosen without a main service. Pickers do not read it yet. */
+  soldSeparately: boolean;
   /** What the price covers, for a storefront to list — not the description. */
   included: string[];
   serviceLocations: ServiceLocation[];
@@ -3256,6 +3269,10 @@ export interface UpdateServiceInput {
   branchIds?: string[];
   serviceType?: ServiceType;
   addonServiceIds?: string[];
+  /** Add-on only — see `Service.addonStepId`. */
+  addonStepId?: string | null;
+  commissionable?: boolean;
+  soldSeparately?: boolean;
   included?: string[];
   serviceLocations?: ServiceLocation[];
   pickupDeliveryAvailable?: boolean;

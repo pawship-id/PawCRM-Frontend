@@ -82,6 +82,9 @@ const serviceFixture: Service = {
   branchIds: [],
   serviceType: "main",
   addonServiceIds: [],
+  addonStepId: null,
+  commissionable: true,
+  soldSeparately: false,
   included: [],
   serviceLocations: ["in_store"],
   pickupDeliveryAvailable: false,
@@ -782,6 +785,117 @@ describe("ServiceForm — add-ons", () => {
     await userEvent.click(await screen.findByRole("option", { name: "Add-on" }));
 
     expect(screen.queryByLabelText(/parfum/i)).not.toBeInTheDocument();
+  });
+
+  it("offers Kena komisi and Dijual terpisah only on an add-on", async () => {
+    await renderNew();
+
+    expect(screen.queryByLabelText("Kena komisi")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Dijual terpisah")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("combobox", { name: /jenis layanan/i }));
+    await userEvent.click(await screen.findByRole("option", { name: "Add-on" }));
+
+    expect(screen.getByLabelText("Kena komisi")).toBeChecked();
+    expect(screen.getByLabelText("Dijual terpisah")).not.toBeChecked();
+  });
+
+  it("hides Jenis layanan when opened from Tambah add-on, and still creates an add-on", async () => {
+    mockedServiceService.create.mockResolvedValue(addonFixture);
+    renderWithAuth(<ServiceForm fixedServiceType="addon" />);
+    await waitFor(() => expect(mockedBusinessLineService.list).toHaveBeenCalled());
+
+    expect(
+      screen.queryByRole("combobox", { name: /jenis layanan/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Kena komisi")).toBeChecked();
+
+    await fillRequiredExceptPrice();
+    await userEvent.type(priceBox(), "25000");
+    await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
+
+    await waitFor(() =>
+      expect(mockedServiceService.create).toHaveBeenCalledWith(
+        expect.objectContaining({ serviceType: "addon", addonServiceIds: [] }),
+      ),
+    );
+  });
+
+  it("hides Jenis layanan when opened from Layanan baru, and creates a main service", async () => {
+    mockedServiceService.create.mockResolvedValue(serviceFixture);
+    renderWithAuth(<ServiceForm fixedServiceType="main" />);
+    await waitFor(() => expect(mockedBusinessLineService.list).toHaveBeenCalled());
+
+    expect(
+      screen.queryByRole("combobox", { name: /jenis layanan/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Kena komisi")).not.toBeInTheDocument();
+
+    await fillRequiredExceptPrice();
+    await userEvent.type(priceBox(), "150000");
+    await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
+
+    await waitFor(() =>
+      expect(mockedServiceService.create).toHaveBeenCalledWith(
+        expect.objectContaining({ serviceType: "main" }),
+      ),
+    );
+    // Batal and the save still land on Layanan & Harga.
+    expect(push).toHaveBeenCalledWith("/dashboard/layanan/grooming/katalog");
+  });
+
+  it("goes back to Pengaturan › Layanan › Add-on on Batal when opened from there", async () => {
+    renderWithAuth(<ServiceForm fixedServiceType="addon" />);
+    await waitFor(() => expect(mockedBusinessLineService.list).toHaveBeenCalled());
+
+    await userEvent.click(screen.getByRole("button", { name: "Batal" }));
+
+    expect(push).toHaveBeenCalledWith("/dashboard/master/layanan?bagian=addon");
+  });
+
+  it("keeps Batal going to Layanan & Harga on the ordinary new-service form", async () => {
+    await renderNew();
+
+    await userEvent.click(screen.getByRole("button", { name: "Batal" }));
+
+    expect(push).toHaveBeenCalledWith("/dashboard/layanan/grooming/katalog");
+  });
+
+  it("loads an add-on's two switches and saves what was changed", async () => {
+    mockedServiceService.getById.mockResolvedValue({
+      ...addonFixture,
+      _id: SERVICE_ID,
+      commissionable: false,
+      soldSeparately: false,
+    });
+    mockedServiceService.update.mockResolvedValue(addonFixture);
+    renderWithAuth(<ServiceForm serviceId={SERVICE_ID} />);
+
+    const komisi = await screen.findByLabelText("Kena komisi");
+    expect(komisi).not.toBeChecked();
+    await userEvent.click(screen.getByLabelText("Dijual terpisah"));
+    await userEvent.click(screen.getByRole("button", { name: /simpan layanan/i }));
+
+    await waitFor(() =>
+      expect(mockedServiceService.update).toHaveBeenCalledWith(
+        SERVICE_ID,
+        expect.objectContaining({ commissionable: false, soldSeparately: true }),
+      ),
+    );
+  });
+
+  it("sends neither switch when saving a main service", async () => {
+    mockedServiceService.getById.mockResolvedValue(serviceFixture);
+    mockedServiceService.update.mockResolvedValue(serviceFixture);
+    renderWithAuth(<ServiceForm serviceId={SERVICE_ID} />);
+
+    await screen.findByDisplayValue("Grooming Full Service");
+    await userEvent.click(screen.getByRole("button", { name: /simpan layanan/i }));
+
+    await waitFor(() => expect(mockedServiceService.update).toHaveBeenCalled());
+    const [, patch] = mockedServiceService.update.mock.calls[0];
+    expect(patch).not.toHaveProperty("commissionable");
+    expect(patch).not.toHaveProperty("soldSeparately");
   });
 });
 

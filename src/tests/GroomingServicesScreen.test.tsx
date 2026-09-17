@@ -187,6 +187,16 @@ describe("GroomingServicesScreen", () => {
     ).toBeInTheDocument();
   });
 
+  it("opens the new-service form as a main service from Layanan baru", async () => {
+    renderWithAuth(<GroomingServicesScreen />);
+
+    // `?jenis=utama` hides Jenis layanan on the form and files it as main.
+    expect(await screen.findByRole("link", { name: /Layanan baru/ })).toHaveAttribute(
+      "href",
+      "/dashboard/master/layanan/new?jenis=utama",
+    );
+  });
+
   it("asks for no booking count for a role that may not read bookings", async () => {
     jest.mocked(serviceService.list).mockResolvedValue(page([EXPRESS]));
 

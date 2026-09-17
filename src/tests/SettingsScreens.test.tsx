@@ -31,6 +31,11 @@ jest.mock("next/navigation", () => ({
   useRouter: () => ({ replace, push: jest.fn() }),
 }));
 
+jest.mock("@/lib/swal", () => ({
+  ...jest.requireActual("@/lib/swal"),
+  swalToast: jest.fn(),
+}));
+
 jest.mock("@/services/branch.service");
 jest.mock("@/services/businessLine.service");
 jest.mock("@/services/petOption.service");
@@ -206,6 +211,10 @@ describe("ServiceSettingsScreen", () => {
       variants: [],
       serviceType: "main",
       addonServiceIds: [],
+      businessLineId: "bl-grooming",
+      addonStepId: null,
+      commissionable: true,
+      soldSeparately: false,
       isActive: true,
       deletedAt: null,
       ...overrides,
@@ -215,7 +224,12 @@ describe("ServiceSettingsScreen", () => {
   const SERVICES: Service[] = [
     service({ _id: "basic", name: "Basic Grooming", addonServiceIds: ["kutu"] }),
     service({ _id: "spa", name: "Spa", addonServiceIds: ["kutu", "kuku"] }),
-    service({ _id: "kutu", name: "Obat Kutu", serviceType: "addon" }),
+    service({
+      _id: "kutu",
+      name: "Obat Kutu",
+      serviceType: "addon",
+      addonStepId: "step-mandi",
+    }),
     service({ _id: "kuku", name: "Potong Kuku", serviceType: "addon", isActive: false }),
   ];
 
@@ -279,21 +293,75 @@ describe("ServiceSettingsScreen", () => {
     expect(petOptionService.list).toHaveBeenCalledTimes(1);
   });
 
-  it("lists add-ons only, with how many main services carry each, and edits them in the service form", async () => {
+  it("lists add-ons only, with their price, tahapan and switches from the catalogue", async () => {
     renderWithAuth(<ServiceSettingsScreen initialSection="addon" />);
 
-    const kutu = (await screen.findByText("Obat Kutu")).closest("tr")!;
-    expect(within(kutu).getByText(/ditempel ke 2 layanan/)).toBeInTheDocument();
-    expect(within(kutu).getByRole("link", { name: "Ubah Obat Kutu" })).toHaveAttribute(
+    const kutu = (await screen.findByRole("link", { name: "Obat Kutu" })).closest("tr")!;
+    expect(within(kutu).getByText(/dipakai 2 layanan/)).toBeInTheDocument();
+    expect(within(kutu).getByRole("link", { name: "Obat Kutu" })).toHaveAttribute(
       "href",
       "/dashboard/master/layanan/kutu",
     );
+    expect(within(kutu).getByLabelText("Harga Obat Kutu")).toHaveValue("35.000");
+    expect(within(kutu).getByLabelText("Durasi Obat Kutu dalam menit")).toHaveValue(15);
+    // The tahapan is stored by id and shown by the line's own name.
+    await waitFor(() =>
+      expect(within(kutu).getByRole("combobox", { name: "Tahapan Obat Kutu" })).toHaveTextContent(
+        "Mandi",
+      ),
+    );
+    expect(within(kutu).getByRole("switch", { name: "Komisi Obat Kutu" })).toBeChecked();
+    expect(
+      within(kutu).getByRole("switch", { name: "Dijual terpisah Obat Kutu" }),
+    ).not.toBeChecked();
 
-    const kuku = screen.getByText("Potong Kuku").closest("tr")!;
-    expect(within(kuku).getByText(/ditempel ke 1 layanan/)).toBeInTheDocument();
-    expect(within(kuku).getByText("Nonaktif")).toBeInTheDocument();
+    const kuku = screen.getByRole("link", { name: "Potong Kuku" }).closest("tr")!;
+    expect(within(kuku).getByText(/dipakai 1 layanan · nonaktif/)).toBeInTheDocument();
 
     expect(screen.queryByText("Basic Grooming")).not.toBeInTheDocument();
+    // Opens the service form with Jenis layanan already on Add-on.
+    expect(screen.getByRole("link", { name: /Tambah add-on/ })).toHaveAttribute(
+      "href",
+      "/dashboard/master/layanan/new?jenis=addon",
+    );
+  });
+
+  it("saves only what changed on each row, and nothing before Simpan", async () => {
+    jest.mocked(serviceService.update).mockResolvedValue(SERVICES[2]);
+    renderWithAuth(<ServiceSettingsScreen initialSection="addon" />);
+
+    const kutu = (await screen.findByRole("link", { name: "Obat Kutu" })).closest("tr")!;
+    const price = within(kutu).getByLabelText("Harga Obat Kutu");
+    await userEvent.clear(price);
+    await userEvent.type(price, "40.000");
+    await userEvent.click(within(kutu).getByRole("switch", { name: "Komisi Obat Kutu" }));
+
+    const kuku = screen.getByRole("link", { name: "Potong Kuku" }).closest("tr")!;
+    await userEvent.click(
+      within(kuku).getByRole("switch", { name: "Dijual terpisah Potong Kuku" }),
+    );
+
+    expect(serviceService.update).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Simpan add-on" }));
+
+    await waitFor(() => expect(serviceService.update).toHaveBeenCalledTimes(2));
+    expect(serviceService.update).toHaveBeenCalledWith("kutu", {
+      price: "40000",
+      commissionable: false,
+    });
+    expect(serviceService.update).toHaveBeenCalledWith("kuku", {
+      soldSeparately: true,
+    });
+  });
+
+  it("blocks Simpan and says which box is wrong", async () => {
+    renderWithAuth(<ServiceSettingsScreen initialSection="addon" />);
+
+    const kutu = (await screen.findByRole("link", { name: "Obat Kutu" })).closest("tr")!;
+    await userEvent.clear(within(kutu).getByLabelText("Durasi Obat Kutu dalam menit"));
+
+    expect(screen.getByText(/Durasi Obat Kutu diisi menit/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Simpan add-on" })).toBeDisabled();
   });
 
   it("sends no request for lines, and says why, for a role without businessLines:read", async () => {

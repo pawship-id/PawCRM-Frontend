@@ -49,6 +49,12 @@ import {
 } from "./GroomingServicesToolbar";
 
 /**
+ * The service form for a MAIN service — Jenis layanan is not drawn and the save
+ * files it as `main`. Add-ons are made from Pengaturan › Layanan › Add-on.
+ */
+const NEW_MAIN_SERVICE_PATH = "/dashboard/master/layanan/new?jenis=utama";
+
+/**
  * Layanan › Grooming › Layanan & Harga — the Grooming line's services.
  *
  * ─── THE MOCKUP'S COLUMNS, AND A ROW OPENS THE SERVICE ─────────────────────
@@ -150,7 +156,7 @@ export function GroomingServicesScreen() {
         action={
           <Can feature="services" action="create">
             <Button asChild>
-              <Link href="/dashboard/master/layanan/new">
+              <Link href={NEW_MAIN_SERVICE_PATH}>
                 <Plus className="size-4" />
                 Layanan baru
               </Link>
@@ -236,7 +242,7 @@ export function GroomingServicesScreen() {
               Belum ada layanan grooming.{" "}
               <Can feature="services" action="create">
                 <Link
-                  href="/dashboard/master/layanan/new"
+                  href={NEW_MAIN_SERVICE_PATH}
                   className="font-semibold text-primary underline-offset-2 hover:underline"
                 >
                   Tambah yang pertama →

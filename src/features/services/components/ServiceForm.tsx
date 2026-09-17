@@ -52,6 +52,7 @@ import {
 import { sessionsRefusal } from "./ServiceStepPicker";
 // Deep, not the barrel: the grooming index imports this feature back.
 import { GROOMING_CATALOG_PATH } from "@/features/grooming/paths";
+import { serviceSettingsPath } from "@/features/settings/serviceSettingsSections";
 
 /** Backend caps — NAME_MAX_LENGTH and friends in service.model.js. */
 const NAME_MAX_LENGTH = 160;
@@ -162,7 +163,19 @@ function durationProblem(value: string): string | null {
  *    is sixty rows against a MAX_VARIANTS of twenty. Simpan says so and stays
  *    off until an axis is unticked, rather than sending a save to be refused.
  */
-export function ServiceForm({ serviceId }: { serviceId?: string }) {
+export function ServiceForm({
+  serviceId,
+  fixedServiceType,
+}: {
+  serviceId?: string;
+  /**
+   * A NEW service whose type is already decided — `addon` when opened from
+   * Pengaturan › Layanan › Add-on's "Tambah add-on" (`?jenis=addon`). The
+   * "Jenis layanan" field is then not drawn and the save sends this type.
+   * Ignored when editing: the stored service's own type is loaded and shown.
+   */
+  fixedServiceType?: ServiceType;
+}) {
   const editing = serviceId !== undefined;
   const router = useRouter();
   // Adding a missing tahapan to the line's list is `services:update`, which a
@@ -186,7 +199,10 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
   const [code, setCode] = useState("");
   const [businessLineId, setBusinessLineId] = useState("");
   const [image, setImage] = useState<MediaAsset | null>(null);
-  const [serviceType, setServiceType] = useState<ServiceType>("main");
+  const [serviceType, setServiceType] = useState<ServiceType>(
+    fixedServiceType ?? "main",
+  );
+  const serviceTypeFixed = !editing && fixedServiceType !== undefined;
   const [durationMin, setDurationMin] = useState("");
   const [billingUnit, setBillingUnit] = useState<ServiceBillingUnit>("per_pet");
   const [description, setDescription] = useState("");
@@ -220,6 +236,10 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
   const [branchIds, setBranchIds] = useState<string[]>([]);
   const [addonServiceIds, setAddonServiceIds] = useState<string[]>([]);
   const [taxExempt, setTaxExempt] = useState(false);
+  // An add-on's own settings — the same two switches as Pengaturan › Layanan ›
+  // Add-on. Defaults are the server's: earns commission, not sold on its own.
+  const [commissionable, setCommissionable] = useState(true);
+  const [soldSeparately, setSoldSeparately] = useState(false);
   const [isActive, setIsActive] = useState(true);
 
   const [nameError, setNameError] = useState<string | null>(null);
@@ -421,6 +441,8 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
         setBranchIds(result.branchIds ?? []);
         setAddonServiceIds(result.addonServiceIds ?? []);
         setTaxExempt(result.taxExempt);
+        setCommissionable(result.commissionable ?? true);
+        setSoldSeparately(result.soldSeparately ?? false);
         setIsActive(result.isActive);
       })
       .catch((error) => {
@@ -444,6 +466,19 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
   */
   function goBack() {
     router.push(editing ? `${LIST_PATH}/${serviceId}` : LIST_PATH);
+  }
+
+  /**
+   * BATAL RETURNS TO WHERE THE FORM WAS OPENED FROM when that is known: an
+   * add-on started from Pengaturan › Layanan › Add-on goes back to that
+   * section, not to the grooming catalogue it never came through.
+   */
+  function cancel() {
+    if (serviceTypeFixed && fixedServiceType === "addon") {
+      router.push(serviceSettingsPath("addon"));
+      return;
+    }
+    goBack();
   }
 
   function toggleAxis(axis: ServiceVariantAxis, checked: boolean) {
@@ -655,6 +690,11 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
       // An add-on may not carry add-ons of its own — the server empties the
       // list anyway, and sending it would ask for something it refuses to mean.
       addonServiceIds: serviceType === "main" ? addonServiceIds : [],
+      /*
+        ONLY FOR AN ADD-ON. A main service sends neither, so saving one never
+        writes them; the server would reset them on a main service anyway.
+      */
+      ...(serviceType === "addon" ? { commissionable, soldSeparately } : {}),
       taxExempt,
     };
 
@@ -753,7 +793,7 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
         submitting={saving}
         disabled={variantBlock !== null}
         blockedReason={variantBlock}
-        onCancel={goBack}
+        onCancel={cancel}
       />
 
       {formError && <Alert variant="error">{formError}</Alert>}
@@ -818,18 +858,20 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
             </p>
           </div>
 
-          <SelectField
-            label="Jenis layanan"
-            value={serviceType}
-            onChange={(next) => setServiceType(next as ServiceType)}
-            options={[
-              { value: "main", label: "Layanan utama" },
-              { value: "addon", label: "Add-on" },
-            ]}
-            hint="Layanan utama dipesan langsung. Add-on cuma bisa ditempelkan ke layanan utama."
-            disabled={saving}
-            required
-          />
+          {!serviceTypeFixed && (
+            <SelectField
+              label="Jenis layanan"
+              value={serviceType}
+              onChange={(next) => setServiceType(next as ServiceType)}
+              options={[
+                { value: "main", label: "Layanan utama" },
+                { value: "addon", label: "Add-on" },
+              ]}
+              hint="Layanan utama dipesan langsung. Add-on cuma bisa ditempelkan ke layanan utama."
+              disabled={saving}
+              required
+            />
+          )}
 
           <ImageField
             value={image}
@@ -1099,6 +1141,50 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
             disabled={saving}
             onChange={setAddonServiceIds}
           />
+        </Card>
+      )}
+
+      {/*
+        ONLY ON AN ADD-ON — the mirror of the card above. Also editable on
+        Pengaturan › Layanan › Add-on; both write the same two fields.
+      */}
+      {serviceType === "addon" && (
+        <Card
+          title="Pengaturan add-on"
+          description="Berlaku untuk add-on ini saja. Nilai komisinya diatur sekali di Grooming › Pengaturan › Komisi."
+        >
+          <div className="flex flex-col gap-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <Label htmlFor="service-commissionable">Kena komisi</Label>
+                <p className="mt-1 max-w-prose text-xs text-muted">
+                  Nyalakan kalau groomer dapat komisi dari add-on ini. Booking
+                  yang sudah dibuat tidak ikut berubah.
+                </p>
+              </div>
+              <Switch
+                id="service-commissionable"
+                checked={commissionable}
+                onCheckedChange={setCommissionable}
+                disabled={saving}
+              />
+            </div>
+
+            <div className="flex items-start justify-between gap-4 border-t border-border pt-4">
+              <div className="min-w-0">
+                <Label htmlFor="service-sold-separately">Dijual terpisah</Label>
+                <p className="mt-1 max-w-prose text-xs text-muted">
+                  Nyalakan kalau add-on ini boleh dipilih tanpa layanan utama.
+                </p>
+              </div>
+              <Switch
+                id="service-sold-separately"
+                checked={soldSeparately}
+                onCheckedChange={setSoldSeparately}
+                disabled={saving}
+              />
+            </div>
+          </div>
         </Card>
       )}
 

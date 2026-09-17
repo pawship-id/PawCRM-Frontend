@@ -51,9 +51,10 @@ function Intro({ title, children }: { title: string; children: ReactNode }) {
  * A RAIL, NOT TABS, because it is what grows: a horizontal tab row runs out at
  * about six, a vertical list does not.
  *
- * NO SIMPAN IN THE HEADER, unlike the mockup. Every write here is its own act —
- * a dialog, a row menu, the service form — and saves as it happens; a page-level
- * button would promise a draft that does not exist.
+ * NO SIMPAN IN THE HEADER, unlike the mockup. Opsi Varian, Ras and Tahapan
+ * save each act as it happens (a dialog, a row menu); Add-on keeps a draft of
+ * its table with its own Simpan bar above the rows. A page-level button would
+ * promise one draft across sections that does not exist.
  *
  * THE HUB OWNS THE LOADS, so the rail can count every section at once: pet
  * options (Opsi Varian and Ras share one load), tahapan, and the catalogue for
@@ -258,9 +259,10 @@ export function ServiceSettingsScreen({
             {section === "addon" && (
               <AddonServicesPanel
                 list={addons}
+                steps={serviceSteps.steps}
                 intro={
-                  <Intro title="Add-on adalah layanan">
-                    Dibuat dan diubah di form layanan dengan jenis Add-on. Nilai
+                  <Intro title="Dua keputusan per add-on">
+                    Ada komisi atau tidak, dan menempel ke tahapan apa. Nilai
                     komisinya diatur sekali di Grooming › Pengaturan › Komisi.
                   </Intro>
                 }
