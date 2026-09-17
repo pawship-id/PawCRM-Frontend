@@ -100,6 +100,7 @@ export function PetForm({ petId }: { petId?: string }) {
   const router = useRouter();
   const {
     pickerOptions,
+    breedOptions,
     loading: optionsLoading,
     error: optionsError,
   } = usePetPickers();
@@ -365,8 +366,10 @@ export function PetForm({ petId }: { petId?: string }) {
               label="Ras"
               value={breed}
               onChange={(next) => setBreed(next as PetBreed)}
-              options={pickerOptions("breed", pet?.breed)}
+              /* Only this animal's breeds — see `breedOptions`. */
+              options={breedOptions(species, pet?.breed)}
               placeholder={optionsLoading ? "Memuat…" : "Pilih ras"}
+              hint={species ? undefined : "Pilih jenis hewan dulu untuk menyaring rasnya."}
               disabled={saving || optionsLoading}
             />
             <TextField

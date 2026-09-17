@@ -3413,6 +3413,12 @@ export interface PetOption {
   type: PetOptionType;
   code: string;
   label: string;
+  /**
+   * WHICH ANIMAL A BREED IS FOR (18 September 2026) — a `species` option's code.
+   * Only a breed carries one; null means the shop has not said, and the breed is
+   * then offered for every animal.
+   */
+  speciesCode?: string | null;
   /** Position within its list, ascending — sizes go smallest first. */
   sortOrder: number;
   /**
@@ -3449,6 +3455,8 @@ export interface PetOptionListQuery {
 export interface CreatePetOptionInput {
   type: PetOptionType;
   label: string;
+  /** Only on a `breed` — see `PetOption.speciesCode`. */
+  speciesCode?: string | null;
   code?: string;
   sortOrder?: number;
   isActive?: boolean;
@@ -3460,6 +3468,7 @@ export interface CreatePetOptionInput {
  */
 export interface UpdatePetOptionInput {
   label?: string;
+  speciesCode?: string | null;
   sortOrder?: number;
   isActive?: boolean;
 }

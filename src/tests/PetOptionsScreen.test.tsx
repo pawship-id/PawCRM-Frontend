@@ -137,6 +137,56 @@ describe("PetOptionsScreen", () => {
     );
   });
 
+  /*
+    ─── WHICH ANIMAL A BREED IS FOR — 18 September 2026 ───────────────────────
+    "Poodle" is a dog and "Domestic" a cat. A breed that says nothing reads
+    "Semua hewan", which is what every breed was before the field.
+  */
+  it("names a breed's animal in its own column, and stores the choice", async () => {
+    listing([
+      ...PET_OPTION_FIXTURES.filter((option) => option.type !== "breed"),
+      makePetOption({ type: "breed", code: "poodle", label: "Poodle", speciesCode: "dog" }),
+      makePetOption({ type: "breed", code: "mix", label: "Mix", sortOrder: 1 }),
+    ]);
+    jest.mocked(petOptionService.create).mockResolvedValue(
+      makePetOption({ type: "breed", code: "persia", label: "Persia", speciesCode: "cat" }),
+    );
+
+    renderWithAuth(<PetOptionsScreen />);
+    await screen.findByText("Kucing");
+    await userEvent.click(pill("Ras"));
+
+    const poodle = screen.getByText("Poodle").closest("tr")!;
+    expect(within(poodle).getByText("Anjing")).toBeInTheDocument();
+    const mix = screen.getByText("Mix").closest("tr")!;
+    expect(within(mix).getByText("Semua hewan")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /Tambah ras/ }));
+    const dialog = screen.getByRole("dialog");
+    await userEvent.type(within(dialog).getByLabelText(/^Nama ras/), "Persia");
+    await userEvent.click(within(dialog).getByRole("combobox", { name: "Jenis hewan" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Kucing" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: /Tambah ras/ }));
+
+    await waitFor(() =>
+      expect(petOptionService.create).toHaveBeenCalledWith({
+        type: "breed",
+        label: "Persia",
+        speciesCode: "cat",
+      }),
+    );
+  });
+
+  it("only asks for an animal on a breed — a size has none", async () => {
+    await renderOnSizes();
+
+    await userEvent.click(screen.getByRole("button", { name: /Tambah ukuran/ }));
+
+    expect(
+      within(screen.getByRole("dialog")).queryByRole("combobox", { name: "Jenis hewan" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("reads every page before drawing the lists", async () => {
     const [first, ...rest] = PET_OPTION_FIXTURES;
     const total = PET_OPTION_FIXTURES.length;

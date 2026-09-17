@@ -193,6 +193,33 @@ describe("PetForm — registering", () => {
     ).not.toBeInTheDocument();
   });
 
+  /*
+    A BREED BELONGS TO AN ANIMAL (18 September 2026). A cat's form stops
+    offering "Golden Retriever"; a breed that says nothing stays offered for
+    every animal, which is what every breed was before the field.
+  */
+  it("offers only the chosen animal's breeds, and the ones that say nothing", async () => {
+    primePetOptions(petOptionService.list, [
+      ...PET_OPTION_FIXTURES.filter((option) => option.type !== "breed"),
+      makePetOption({ type: "breed", code: "poodle", label: "Poodle", speciesCode: "dog" }),
+      makePetOption({ type: "breed", code: "persia", label: "Persia", speciesCode: "cat", sortOrder: 1 }),
+      makePetOption({ type: "breed", code: "mix", label: "Mix", sortOrder: 2 }),
+    ]);
+
+    await renderNew();
+
+    const species = screen.getByRole("combobox", { name: "Jenis" });
+    await waitFor(() => expect(species).toBeEnabled());
+    await userEvent.click(species);
+    await userEvent.click(await screen.findByRole("option", { name: "Kucing" }));
+
+    await userEvent.click(screen.getByRole("combobox", { name: "Ras" }));
+
+    expect(await screen.findByRole("option", { name: "Persia" })).toBeVisible();
+    expect(screen.getByRole("option", { name: "Mix" })).toBeVisible();
+    expect(screen.queryByRole("option", { name: "Poodle" })).not.toBeInTheDocument();
+  });
+
   it("shows our own sentence when the customer list fails, never the server's", async () => {
     // "Validation failed" under a picker tells a shop owner nothing they can act
     // on — it is written for whoever reads the logs. ui-rules §12.

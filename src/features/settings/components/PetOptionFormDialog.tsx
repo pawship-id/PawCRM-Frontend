@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { Alert, Spinner, TextField } from "@/components";
+import { Alert, SelectField, Spinner, TextField } from "@/components";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -41,6 +41,7 @@ import {
  */
 export function PetOptionFormDialog({
   type,
+  speciesChoices = [],
   option,
   onClose,
   onSaved,
@@ -49,6 +50,11 @@ export function PetOptionFormDialog({
   type: PetOptionType;
   /** Present to rename that option; absent to add one. */
   option?: PetOption;
+  /**
+   * The tenant's animals, for a breed's "Jenis hewan" — from the SCREEN'S OWN
+   * list, so opening this dialog costs no second load of the same one.
+   */
+  speciesChoices?: { value: string; label: string }[];
   onClose: () => void;
   /** Re-read the screen's list and the app's shared one. */
   onSaved: () => void;
@@ -57,6 +63,9 @@ export function PetOptionFormDialog({
   const words = PET_OPTION_TYPE_WORDS[type];
 
   const [label, setLabel] = useState(option?.label ?? "");
+  /* A breed says which animal it is for — "" means every animal. */
+  const [speciesCode, setSpeciesCode] = useState(option?.speciesCode ?? "");
+
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -74,9 +83,11 @@ export function PetOptionFormDialog({
       setFieldError(`Maksimal ${PET_OPTION_LABEL_MAX_LENGTH} karakter.`);
       return;
     }
-    // An untouched rename closes: there is nothing to send, and the server
-    // would answer an empty patch with a 400.
-    if (editing && trimmed === option.label) {
+    // An untouched save closes: there is nothing to send, and the server would
+    // answer an empty patch with a 400.
+    const speciesChanged =
+      type === "breed" && (speciesCode || null) !== (option?.speciesCode ?? null);
+    if (editing && trimmed === option.label && !speciesChanged) {
       onClose();
       return;
     }
@@ -87,9 +98,16 @@ export function PetOptionFormDialog({
 
     try {
       if (editing) {
-        await petOptionService.update(option._id, { label: trimmed });
+        await petOptionService.update(option._id, {
+          ...(trimmed === option.label ? {} : { label: trimmed }),
+          ...(speciesChanged ? { speciesCode: speciesCode || null } : {}),
+        });
       } else {
-        await petOptionService.create({ type, label: trimmed });
+        await petOptionService.create({
+          type,
+          label: trimmed,
+          ...(type === "breed" ? { speciesCode: speciesCode || null } : {}),
+        });
       }
       onSaved();
       swalToast(
@@ -152,6 +170,28 @@ export function PetOptionFormDialog({
             disabled={busy}
             required
           />
+
+          {/*
+            WHICH ANIMAL A BREED IS FOR (18 September 2026) — "Poodle" is a dog.
+            "Semua hewan" is an honest answer: a shop that has not sorted its
+            list yet keeps offering every breed for every animal.
+          */}
+          {type === "breed" && (
+            <SelectField
+              label="Jenis hewan"
+              value={speciesCode}
+              onChange={setSpeciesCode}
+              options={[
+                { value: "", label: "Semua hewan" },
+                ...speciesChoices.map((choice) => ({
+                  value: choice.value,
+                  label: choice.label,
+                })),
+              ]}
+              hint="Dipakai untuk menyaring pilihan ras saat mencatat hewan."
+              disabled={busy}
+            />
+          )}
 
           {editing && (
             <TextField

@@ -75,10 +75,16 @@ export function PetOptionsTable({
   loading,
   onRename,
   onChanged,
+  speciesLabel,
 }: {
   type: PetOptionType;
   /** One type's options in display order — deleted ones only when shown. */
   rows: PetOption[];
+  /**
+   * The tenant's word for a species code — a breed's "Hewan" column. From the
+   * SCREEN'S OWN list, not a second load of the same one.
+   */
+  speciesLabel?: (code: string) => string | null;
   loading: boolean;
   onRename: (option: PetOption) => void;
   /** Re-read the screen's list and the app's shared one. */
@@ -181,6 +187,7 @@ export function PetOptionsTable({
           <TableHeader>
             <TableRow>
               <TableHead>Nama</TableHead>
+              {type === "breed" && <TableHead>Hewan</TableHead>}
               <TableHead>Kode</TableHead>
               <TableHead>Status</TableHead>
               {showActions && <TableHead className="text-right">Aksi</TableHead>}
@@ -200,6 +207,13 @@ export function PetOptionsTable({
                   >
                     {option.label}
                   </TableCell>
+                  {type === "breed" && (
+                    <TableCell className="text-sm text-muted">
+                      {option.speciesCode
+                        ? (speciesLabel?.(option.speciesCode) ?? option.speciesCode)
+                        : "Semua hewan"}
+                    </TableCell>
+                  )}
                   <TableCell className="text-sm text-muted tabular-nums">
                     {option.code}
                   </TableCell>

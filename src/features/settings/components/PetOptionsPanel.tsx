@@ -165,6 +165,12 @@ export function PetOptionsPanel({
             key={type}
             type={type}
             rows={rows}
+            /* A breed's animal, named from this same load. */
+            speciesLabel={(code) =>
+              options.find(
+                (option) => option.type === "species" && option.code === code,
+              )?.label ?? null
+            }
             loading={loading}
             onRename={(option) => setDialog({ mode: "rename", option })}
             onChanged={afterWrite}
@@ -183,6 +189,21 @@ export function PetOptionsPanel({
         <PetOptionFormDialog
           key={dialog.mode === "rename" ? dialog.option._id : `create-${type}`}
           type={dialog.mode === "rename" ? dialog.option.type : type}
+          /* The tenant's animals, from the list this panel already holds. */
+          speciesChoices={options
+            .filter(
+              (option) =>
+                option.type === "species" &&
+                option.deletedAt === null &&
+                (option.isActive ||
+                  option.code ===
+                    (dialog.mode === "rename" ? dialog.option.speciesCode : null)),
+            )
+            .sort(byOrder)
+            .map((option) => ({
+              value: option.code,
+              label: option.isActive ? option.label : `${option.label} (nonaktif)`,
+            }))}
           option={dialog.mode === "rename" ? dialog.option : undefined}
           onClose={() => setDialog(null)}
           onSaved={afterWrite}
