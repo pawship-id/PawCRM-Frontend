@@ -1,4 +1,5 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import {
   GeneralSettingsScreen,
@@ -6,15 +7,34 @@ import {
   ServiceSettingsScreen,
 } from "@/features/settings";
 import { branchService } from "@/services/branch.service";
+import {
+  businessLineService,
+  type BusinessLine,
+} from "@/services/businessLine.service";
 import { customerService } from "@/services/customer.service";
+import { petOptionService } from "@/services/petOption.service";
 import { productService } from "@/services/product.service";
+import { serviceService } from "@/services/service.service";
+import { serviceStepService } from "@/services/serviceStep.service";
 import { stockEntryService } from "@/services/stockEntry.service";
 import { supplierService } from "@/services/supplier.service";
 import { warehouseService } from "@/services/warehouse.service";
 
+import type { Service } from "@/types/api";
+
+import { PET_OPTION_FIXTURES, makePetOption } from "./helpers/petOptions";
 import { renderWithAuth } from "./helpers/renderWithAuth";
+import { primeServiceSteps } from "./helpers/serviceSteps";
+
+const replace = jest.fn();
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ replace, push: jest.fn() }),
+}));
 
 jest.mock("@/services/branch.service");
+jest.mock("@/services/businessLine.service");
+jest.mock("@/services/petOption.service");
+jest.mock("@/services/serviceStep.service");
 jest.mock("@/services/customer.service");
 jest.mock("@/services/product.service");
 jest.mock("@/services/service.service");
@@ -173,45 +193,122 @@ describe("InitialDataScreen", () => {
 });
 
 describe("ServiceSettingsScreen", () => {
-  it("sends Tahapan and Data hewan to their screens, Add-on to Layanan & Harga, and badges Zona", () => {
-    renderWithAuth(<ServiceSettingsScreen />);
+  const LINES: BusinessLine[] = [
+    { _id: "bl-grooming", name: "Grooming", color: "#1A2B3C" },
+  ];
 
-    // Tahapan became a list per business line (14 September 2026); the bobot
-    // stayed on the service, and the card says so.
-    const steps = screen.getByRole("link", { name: /Tahapan/ });
-    expect(steps).toHaveAttribute("href", "/dashboard/master/layanan/tahapan");
-    expect(steps).toHaveTextContent(/lini bisnis/);
-    expect(steps).toHaveTextContent(/diisi per layanan/);
+  function service(overrides: Partial<Service> & Pick<Service, "_id" | "name">) {
+    return {
+      code: overrides._id.toUpperCase(),
+      price: "35000.0000",
+      durationMin: 15,
+      hasVariants: false,
+      variants: [],
+      serviceType: "main",
+      addonServiceIds: [],
+      isActive: true,
+      deletedAt: null,
+      ...overrides,
+    } as Service;
+  }
 
-    expect(screen.getByRole("link", { name: /Add-on/ })).toHaveAttribute(
-      "href",
-      "/dashboard/layanan/grooming/katalog",
-    );
-    // Ukuran and Ras became tenant data (14 September 2026) — one card for the
-    // four lists, not two "Segera" cards.
-    expect(screen.getByRole("link", { name: /Data hewan/ })).toHaveAttribute(
-      "href",
-      "/dashboard/master/layanan/data-hewan",
-    );
-    // No catalogue card — the list lives on Grooming › Layanan & Harga.
-    expect(screen.getAllByRole("link")).toHaveLength(3);
+  const SERVICES: Service[] = [
+    service({ _id: "basic", name: "Basic Grooming", addonServiceIds: ["kutu"] }),
+    service({ _id: "spa", name: "Spa", addonServiceIds: ["kutu", "kuku"] }),
+    service({ _id: "kutu", name: "Obat Kutu", serviceType: "addon" }),
+    service({ _id: "kuku", name: "Potong Kuku", serviceType: "addon", isActive: false }),
+  ];
 
-    // Zona alone — drawn so the module's shape is visible, going nowhere.
-    expect(screen.getAllByText("Segera")).toHaveLength(1);
-    expect(screen.queryByText("Ukuran")).not.toBeInTheDocument();
-    expect(screen.queryByText("Ras")).not.toBeInTheDocument();
+  function rail(name: string) {
+    return within(
+      screen.getByRole("tablist", { name: "Bagian pengaturan layanan" }),
+    ).getByRole("tab", { name: new RegExp(`^${name}`) });
+  }
+
+  beforeEach(() => {
+    replace.mockClear();
+    jest.mocked(petOptionService.list).mockResolvedValue({
+      items: [
+        ...PET_OPTION_FIXTURES,
+        makePetOption({
+          type: "size",
+          code: "giant",
+          label: "Raksasa",
+          deletedAt: "2026-09-10T00:00:00.000Z",
+        }),
+      ],
+      pagination: { page: 1, limit: 100, total: 10, totalPages: 1 },
+    });
+    primeServiceSteps(serviceStepService.list);
+    jest.mocked(businessLineService.list).mockResolvedValue({
+      items: LINES,
+      pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+    });
+    jest.mocked(serviceService.list).mockResolvedValue({
+      items: SERVICES,
+      pagination: { page: 1, limit: 100, total: SERVICES.length, totalPages: 1 },
+    });
   });
 
-  it("keeps only Data hewan for a role without the services grant", () => {
-    renderWithAuth(<ServiceSettingsScreen />, {
+  it("opens on Opsi Varian, counts every section live from the rail, and mirrors the section to the URL", async () => {
+    renderWithAuth(<ServiceSettingsScreen />);
+
+    await screen.findByText("Kucing");
+    expect(rail("Opsi Varian")).toHaveAttribute("aria-selected", "true");
+    // Species 2 + sizes 3 (the deleted Raksasa is not counted) + coats 2.
+    expect(rail("Opsi Varian")).toHaveTextContent("7");
+    expect(rail("Ras")).toHaveTextContent("2");
+    await waitFor(() => expect(rail("Tahapan")).toHaveTextContent("3"));
+    await waitFor(() => expect(rail("Add-on")).toHaveTextContent("2"));
+    expect(rail("Zona")).toHaveTextContent("Segera");
+
+    // Breeds are not a price axis, so Opsi Varian has no Ras pill.
+    const pills = screen.getByRole("group", { name: "Jenis data hewan" });
+    expect(within(pills).queryByRole("button", { name: /^Ras/ })).toBeNull();
+
+    await userEvent.click(rail("Ras"));
+    expect(replace).toHaveBeenCalledWith("/dashboard/master/layanan?bagian=ras", {
+      scroll: false,
+    });
+    expect(screen.getByText("Poodle")).toBeInTheDocument();
+    expect(screen.queryByText("Kucing")).not.toBeInTheDocument();
+    // One type, nothing to choose between.
+    expect(screen.queryByRole("group", { name: "Jenis data hewan" })).toBeNull();
+
+    // One load feeds both sections.
+    expect(petOptionService.list).toHaveBeenCalledTimes(1);
+  });
+
+  it("lists add-ons only, with how many main services carry each, and edits them in the service form", async () => {
+    renderWithAuth(<ServiceSettingsScreen initialSection="addon" />);
+
+    const kutu = (await screen.findByText("Obat Kutu")).closest("tr")!;
+    expect(within(kutu).getByText(/ditempel ke 2 layanan/)).toBeInTheDocument();
+    expect(within(kutu).getByRole("link", { name: "Ubah Obat Kutu" })).toHaveAttribute(
+      "href",
+      "/dashboard/master/layanan/kutu",
+    );
+
+    const kuku = screen.getByText("Potong Kuku").closest("tr")!;
+    expect(within(kuku).getByText(/ditempel ke 1 layanan/)).toBeInTheDocument();
+    expect(within(kuku).getByText("Nonaktif")).toBeInTheDocument();
+
+    expect(screen.queryByText("Basic Grooming")).not.toBeInTheDocument();
+  });
+
+  it("sends no request for lines, and says why, for a role without businessLines:read", async () => {
+    renderWithAuth(<ServiceSettingsScreen initialSection="tahapan" />, {
       isSuperAdmin: false,
-      permissions: [{ feature: "branches", actions: ["read"] }],
+      permissions: [{ feature: "services", actions: ["read"] }],
     });
 
-    // Reading the vocabulary needs no grant, so its card does not hide with
-    // the two that lead into the service catalogue.
-    expect(screen.getAllByRole("link")).toHaveLength(1);
-    expect(screen.getByRole("link", { name: /Data hewan/ })).toBeInTheDocument();
-    expect(screen.getAllByText("Segera")).toHaveLength(1);
+    expect(
+      await screen.findByText(/belum bisa melihat daftar lini bisnis/),
+    ).toBeInTheDocument();
+    expect(businessLineService.list).not.toHaveBeenCalled();
+    // No figure it could not have known.
+    expect(rail("Tahapan")).toHaveTextContent(/^Tahapan$/);
+    // Nothing to press without the grants.
+    expect(screen.queryByRole("button", { name: /Tambah/ })).toBeNull();
   });
 });

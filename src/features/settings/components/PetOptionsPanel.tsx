@@ -1,11 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Plus } from "lucide-react";
 
 import {
   Alert,
-  Breadcrumb,
   FilterBar,
   FilterPills,
   FilterToggle,
@@ -16,13 +15,8 @@ import { Can, usePermissions } from "@/features/permissions";
 import { invalidatePetOptions } from "@/hooks/usePetOptions";
 import type { PetOption, PetOptionType } from "@/types/api";
 
-import { usePetOptionList } from "../hooks/usePetOptionList";
-import {
-  PET_OPTION_TYPES,
-  PET_OPTION_TYPE_WORDS,
-  SERVICE_SETTINGS_PATH,
-  byOrder,
-} from "../petOptions";
+import type { UsePetOptionListResult } from "../hooks/usePetOptionList";
+import { PET_OPTION_TYPE_WORDS, byOrder } from "../petOptions";
 import { PetOptionFormDialog } from "./PetOptionFormDialog";
 import { PetOptionsTable } from "./PetOptionsTable";
 
@@ -33,39 +27,52 @@ type DialogState =
   | null;
 
 /**
- * Pengaturan › Layanan › Data hewan — the tenant's own words for an animal:
- * jenis hewan, ras, ukuran, jenis bulu.
+ * The tenant's own words for an animal — one section of Pengaturan › Layanan.
  *
- * ONE SCREEN FOR FOUR LISTS, because the server keeps them in one collection
- * told apart by `type` (14 September 2026) and every list has the same shape —
- * a name, a code, an order, retired or not. Four screens would be four copies
- * of one table. The type is the page's main lens with four values, so it is a
- * pill row with counts (§8), opening on Jenis hewan: what an animal IS comes
- * before how it is described.
+ * TWO SECTIONS DRAW THIS PANEL (17 September 2026, mockup
+ * `buloo-pengaturan-v3`): Opsi Varian holds jenis hewan, ukuran and jenis bulu —
+ * the three a service's price may vary by (`ServiceVariantAxis`) — and Ras holds
+ * breeds alone, because a breed is never a price axis. It was one screen,
+ * Data hewan, with a pill for each of the four.
+ *
+ * WITH MORE THAN ONE TYPE the type is the panel's main lens, a pill row with
+ * counts (§8). With one there is nothing to choose and no pills are drawn.
  *
  * THE COUNTS ARE LIVE OPTIONS — active and retired, not deleted — whatever the
  * toggle says. A pill's number should not change because somebody asked to see
  * the bin.
  *
- * NO SEARCH, NO PAGINATION. A list is a handful of words; everything is loaded
- * once (see `usePetOptionList`) and narrowed here.
+ * THE LIST IS THE HUB'S, passed in: one load for all four types feeds both
+ * sections and the rail's counts (see `usePetOptionList`).
  *
- * AFTER EVERY WRITE, TWO RE-READS: this screen's list, and the app-wide store
- * behind every picker (`invalidatePetOptions`), so a size added here is in the
- * pet form without a reload.
+ * AFTER EVERY WRITE, TWO RE-READS: that list, and the app-wide store behind
+ * every picker (`invalidatePetOptions`), so a size added here is in the pet form
+ * without a reload.
  */
-export function PetOptionsScreen() {
-  const { options, loading, error, refetch } = usePetOptionList();
+export function PetOptionsPanel({
+  types,
+  list,
+  intro,
+}: {
+  /** In pill order; the first is the one the panel opens on. */
+  types: readonly PetOptionType[];
+  list: UsePetOptionListResult;
+  /** The section's callout, above everything else. */
+  intro?: ReactNode;
+}) {
+  const { options, loading, error, refetch } = list;
   const { can } = usePermissions();
 
-  const [type, setType] = useState<PetOptionType>("species");
+  const [chosenType, setType] = useState<PetOptionType>(types[0]);
+  // A panel re-used with other types must not stay on one it no longer has.
+  const type = types.includes(chosenType) ? chosenType : types[0];
   const [showDeleted, setShowDeleted] = useState(false);
   const [dialog, setDialog] = useState<DialogState>(null);
 
   const words = PET_OPTION_TYPE_WORDS[type];
   const firstLoad = loading && options.length === 0;
 
-  const pills = PET_OPTION_TYPES.map((value) => ({
+  const pills = types.map((value) => ({
     value,
     label: PET_OPTION_TYPE_WORDS[value].title,
     // No number until there is one: "0" while loading is a claim.
@@ -91,31 +98,18 @@ export function PetOptionsScreen() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <Breadcrumb
-          items={[
-            { label: "Pengaturan" },
-            { label: "Layanan", href: SERVICE_SETTINGS_PATH },
-            { label: "Data hewan" },
-          ]}
-        />
-        <h1 className="mt-1 text-2xl font-extrabold text-foreground">
-          Data hewan
-        </h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted">
-          Pilihan yang dipakai toko untuk mencatat hewan. Nama bisa diubah kapan
-          saja — data yang sudah tercatat ikut nama barunya.
-        </p>
-      </div>
+    <div className="flex flex-col gap-5">
+      {intro}
 
       <div className="flex flex-col gap-2">
-        <FilterPills
-          ariaLabel="Jenis data hewan"
-          value={type}
-          options={pills}
-          onChange={setType}
-        />
+        {types.length > 1 && (
+          <FilterPills
+            ariaLabel="Jenis data hewan"
+            value={type}
+            options={pills}
+            onChange={setType}
+          />
+        )}
         <p className="max-w-2xl text-sm text-muted">{words.usedBy}</p>
       </div>
 

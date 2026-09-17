@@ -7,7 +7,8 @@ import { SERVICE_SETTINGS_PATH } from "./petOptions";
  * its hub card and the grooming settings card share.
  */
 
-export const SERVICE_STEPS_PATH = `${SERVICE_SETTINGS_PATH}/tahapan`;
+/** A section of the hub since 17 September 2026 — `/tahapan` redirects here. */
+export const SERVICE_STEPS_PATH = `${SERVICE_SETTINGS_PATH}?bagian=tahapan`;
 
 /**
  * Backend cap — NAME_MAX_LENGTH in serviceStep.model.js, which is the booking

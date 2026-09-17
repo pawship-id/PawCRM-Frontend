@@ -6,7 +6,12 @@ import type { PetOption, PetOptionType } from "@/types/api";
  */
 
 export const SERVICE_SETTINGS_PATH = "/dashboard/master/layanan";
-export const PET_DATA_PATH = `${SERVICE_SETTINGS_PATH}/data-hewan`;
+/**
+ * Jenis hewan, ukuran and jenis bulu open on the hub's first section, Opsi
+ * Varian; ras has a section of its own (`?bagian=ras`). A route until 17
+ * September 2026 — `/data-hewan` now redirects here.
+ */
+export const PET_DATA_PATH = SERVICE_SETTINGS_PATH;
 
 /** Backend cap — LABEL_MAX_LENGTH in petOption.model.js. */
 export const PET_OPTION_LABEL_MAX_LENGTH = 60;

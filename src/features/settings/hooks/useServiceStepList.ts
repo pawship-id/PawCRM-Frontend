@@ -13,7 +13,7 @@ import type { ServiceStep } from "@/types/api";
 /** The API's page ceiling, asked for in full. */
 const LIMIT = 100;
 
-interface UseServiceStepListResult {
+export interface UseServiceStepListResult {
   /** The tenant's business lines, by name. Empty while unreadable. */
   lines: BusinessLine[];
   linesLoading: boolean;

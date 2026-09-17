@@ -172,7 +172,7 @@ describe("GroomingSettingsScreen — lists shared by every service", () => {
     renderWithAuth(<GroomingSettingsScreen />);
 
     const link = await screen.findByRole("link", { name: /Data hewan/ });
-    expect(link).toHaveAttribute("href", "/dashboard/master/layanan/data-hewan");
+    expect(link).toHaveAttribute("href", "/dashboard/master/layanan");
     expect(screen.queryByText("Opsi Varian")).not.toBeInTheDocument();
     expect(screen.queryByText("Ras")).not.toBeInTheDocument();
     // Only Zona & Perjalanan is still waiting on something.
@@ -183,7 +183,7 @@ describe("GroomingSettingsScreen — lists shared by every service", () => {
     renderWithAuth(<GroomingSettingsScreen />);
 
     const link = await screen.findByRole("link", { name: /Tahapan/ });
-    expect(link).toHaveAttribute("href", "/dashboard/master/layanan/tahapan");
+    expect(link).toHaveAttribute("href", "/dashboard/master/layanan?bagian=tahapan");
     // The bobot did not move with it.
     expect(link).toHaveTextContent(/Bobot komisinya tetap diisi per layanan/);
   });

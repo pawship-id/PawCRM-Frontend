@@ -1,7 +1,9 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { PetOptionsScreen } from "@/features/settings";
+import { PetOptionsPanel } from "@/features/settings/components/PetOptionsPanel";
+import { usePetOptionList } from "@/features/settings/hooks/usePetOptionList";
+import { PET_OPTION_TYPES } from "@/features/settings/petOptions";
 import { invalidatePetOptions } from "@/hooks/usePetOptions";
 import { ApiError } from "@/services/api-error";
 import { petOptionService } from "@/services/petOption.service";
@@ -38,6 +40,16 @@ jest.mock("sweetalert2", () => ({
  *  4. a refused delete keeps its dialog open and shows the server's counts;
  *  5. a role without `petOptions` grants sees the lists and nothing to press.
  */
+
+/**
+ * The panel with all four types and its own load — what Data hewan was before
+ * it became two sections of Pengaturan › Layanan. The hub passes the list in;
+ * here the harness does.
+ */
+function PetOptionsScreen() {
+  const list = usePetOptionList();
+  return <PetOptionsPanel types={PET_OPTION_TYPES} list={list} />;
+}
 
 function listing(items: PetOption[]) {
   jest.mocked(petOptionService.list).mockResolvedValue({
@@ -108,11 +120,6 @@ describe("PetOptionsScreen", () => {
     // The deleted Raksasa is not counted.
     expect(pill("Ukuran")).toHaveTextContent("3");
     expect(pill("Jenis bulu")).toHaveTextContent("2");
-
-    expect(screen.getByRole("link", { name: "Layanan" })).toHaveAttribute(
-      "href",
-      "/dashboard/master/layanan",
-    );
 
     await userEvent.click(pill("Ukuran"));
     expect(namesInTable()).toEqual(["Kecil", "Sedang", "Besar"]);

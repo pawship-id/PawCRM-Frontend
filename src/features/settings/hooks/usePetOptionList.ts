@@ -9,7 +9,7 @@ import type { PetOption } from "@/types/api";
 /** The API's page ceiling, asked for in full. */
 const LIMIT = 100;
 
-interface UsePetOptionListResult {
+export interface UsePetOptionListResult {
   /** Every option of every type, soft-deleted ones included, unsorted. */
   options: PetOption[];
   loading: boolean;

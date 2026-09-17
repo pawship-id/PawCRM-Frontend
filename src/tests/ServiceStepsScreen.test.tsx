@@ -1,7 +1,9 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { ServiceStepsScreen } from "@/features/settings";
+import { ServiceStepsPanel } from "@/features/settings/components/ServiceStepsPanel";
+import { useServiceStepList } from "@/features/settings/hooks/useServiceStepList";
+import { usePermissions } from "@/features/permissions";
 import { invalidateServiceSteps } from "@/hooks/useServiceSteps";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
@@ -14,6 +16,13 @@ import type { ServiceStep } from "@/types/api";
 
 import { renderWithAuth } from "./helpers/renderWithAuth";
 import { makeServiceStep, primeServiceSteps } from "./helpers/serviceSteps";
+
+/** The panel with its own load — the hub passes both in; here the harness does. */
+function ServiceStepsScreen() {
+  const mayReadLines = usePermissions().can("businessLines", "read");
+  const list = useServiceStepList(mayReadLines);
+  return <ServiceStepsPanel list={list} mayReadLines={mayReadLines} />;
+}
 
 jest.mock("@/services/serviceStep.service");
 jest.mock("@/services/businessLine.service");
@@ -136,11 +145,6 @@ describe("ServiceStepsScreen", () => {
     expect(within(mandiRow).getByText("3 layanan")).toBeInTheDocument();
     const guntingRow = screen.getByText("Gunting").closest("tr")!;
     expect(within(guntingRow).getByText("Belum dipakai")).toBeInTheDocument();
-
-    expect(screen.getByRole("link", { name: "Layanan" })).toHaveAttribute(
-      "href",
-      "/dashboard/master/layanan",
-    );
 
     await userEvent.click(screen.getByLabelText("Tampilkan yang dihapus"));
     expect(namesInTable()).toEqual(["Mandi", "Gunting", "Blow dry", "Potong kuku"]);

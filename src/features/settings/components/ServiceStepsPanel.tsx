@@ -1,12 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 
 import {
   Alert,
-  Breadcrumb,
   FilterBar,
   FilterPills,
   FilterToggle,
@@ -18,8 +17,7 @@ import { Can, usePermissions } from "@/features/permissions";
 import { invalidateServiceSteps } from "@/hooks/useServiceSteps";
 import type { ServiceStep } from "@/types/api";
 
-import { useServiceStepList } from "../hooks/useServiceStepList";
-import { SERVICE_SETTINGS_PATH } from "../petOptions";
+import type { UseServiceStepListResult } from "../hooks/useServiceStepList";
 import { byStepOrder } from "../serviceSteps";
 import { ServiceStepFormDialog } from "./ServiceStepFormDialog";
 import { ServiceStepsTable } from "./ServiceStepsTable";
@@ -34,37 +32,40 @@ type DialogState =
   | null;
 
 /**
- * Pengaturan › Layanan › Tahapan — the steps a line's services pick from:
- * Mandi, Gunting, Blow dry.
+ * Tahapan — one section of Pengaturan › Layanan: the steps a line's services
+ * pick from, Mandi, Gunting, Blow dry. A screen of its own until 17 September
+ * 2026.
  *
- * A LIST PER BUSINESS LINE, since 14 September 2026 (`servicesteps`). Until
- * then tahapan were free text typed into each service, so "Blowdry" and "Blow
- * dry" were two steps and nothing could rename one across the catalogue. A
- * grooming shop's steps are not its hotel's, so the line is the page's main
- * lens — a pill row with counts (§8), opening on the line named like Grooming
+ * A LIST PER BUSINESS LINE (`servicesteps`, 14 September 2026). A grooming
+ * shop's steps are not its hotel's, so the line is the panel's main lens — a
+ * pill row with counts (§8), opening on the line named like Grooming
  * (`pickGroomingLine`, the rule the grooming tabs already use), else the first.
  *
  * THE BOBOT IS NOT HERE. A step's commission weight belongs to its place in a
- * service (`sessionWeights[i]`) and is filled in there; this page is only the
- * vocabulary. The line under the table says so, because "where is the bobot"
- * is the first question anybody arriving from the old hub card will ask.
+ * service (`sessionWeights[i]`) and is filled in there; this panel is only the
+ * vocabulary, and the section's callout says so.
  *
  * THE COUNTS ARE LIVE STEPS — active and retired, not deleted — whatever the
- * toggle says, on Data hewan's rule: a pill's number should not change because
- * somebody asked to see the bin.
+ * toggle says, on Opsi Varian's rule.
  *
- * NO SEARCH, NO PAGINATION. A line's list is a handful of words; everything is
- * loaded once (see `useServiceStepList`) and narrowed here.
- *
- * AFTER EVERY WRITE, TWO RE-READS: this screen's list, and the line's shared
- * store (`invalidateServiceSteps(lineId)`), so a step added here is on a
- * service's Tahapan card without a reload.
+ * THE LIST IS THE HUB'S, passed in, so the rail can count it (see
+ * `useServiceStepList`). After every write, two re-reads: that list, and the
+ * line's shared store (`invalidateServiceSteps(lineId)`), so a step added here
+ * is on a service's Tahapan card without a reload.
  */
-export function ServiceStepsScreen() {
+export function ServiceStepsPanel({
+  list,
+  mayReadLines,
+  intro,
+}: {
+  list: UseServiceStepListResult;
+  /** `businessLines:read` — the hub asked the hook with the same flag. */
+  mayReadLines: boolean;
+  intro?: ReactNode;
+}) {
   const { can } = usePermissions();
-  const mayReadLines = can("businessLines", "read");
   const { lines, linesLoading, linesError, steps, loading, error, refetch } =
-    useServiceStepList(mayReadLines);
+    list;
 
   const [chosenLineId, setChosenLineId] = useState<string | null>(null);
   const [showDeleted, setShowDeleted] = useState(false);
@@ -109,22 +110,8 @@ export function ServiceStepsScreen() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <Breadcrumb
-          items={[
-            { label: "Pengaturan" },
-            { label: "Layanan", href: SERVICE_SETTINGS_PATH },
-            { label: "Tahapan" },
-          ]}
-        />
-        <h1 className="mt-1 text-2xl font-extrabold text-foreground">Tahapan</h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted">
-          Daftar tahapan tiap lini bisnis — layanan memilih tahapannya dari
-          sini. Ganti nama di sini, semua layanan lini itu ikut; booking yang
-          sudah dibuat tetap memakai nama lama.
-        </p>
-      </div>
+    <div className="flex flex-col gap-5">
+      {intro}
 
       {!mayReadLines ? (
         // No request was sent: GET /business-lines would refuse this role, and
@@ -223,8 +210,9 @@ export function ServiceStepsScreen() {
                 kalau sudah tidak mau dipilih: tidak muncul lagi saat mengisi
                 layanan, tapi layanan yang sudah memakainya tetap.{" "}
                 <b className="font-semibold text-foreground">Hapus</b> hanya
-                bisa selama belum dipakai layanan mana pun. Bobot komisi tiap
-                tahapan diisi di masing-masing layanan.
+                bisa selama belum dipakai layanan mana pun. Ganti nama di sini,
+                semua layanan lini itu ikut; booking yang sudah dibuat tetap
+                memakai nama lama.
               </p>
             </>
           )}
