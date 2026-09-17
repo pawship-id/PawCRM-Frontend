@@ -5,9 +5,9 @@ import Link from "next/link";
 import { Card } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { PET_DATA_PATH } from "@/features/settings/petOptions";
+import { serviceSettingsPath } from "@/features/settings/serviceSettingsSections";
 import { SERVICE_STEPS_PATH } from "@/features/settings/serviceSteps";
 
-import { GROOMING_CATALOG_PATH } from "../paths";
 
 interface SharedItem {
   title: string;
@@ -21,9 +21,9 @@ interface SharedItem {
 /**
  * The mockup's lists every grooming service draws from.
  *
- * THREE LEAD SOMEWHERE AND ONE SAYS "Segera", the way `GeneralSettingsScreen`
- * draws its pending cards. Leaving the pending one out would make the page look
- * finished and send people hunting.
+ * ALL FOUR LEAD SOMEWHERE since Zona & Perjalanan got its list (17 September
+ * 2026). `blockedBy` stays for the next item that is drawn before it is built,
+ * the way `GeneralSettingsScreen` draws its pending cards.
  *
  * OPSI VARIAN AND RAS ARE ONE ITEM NOW, "Data hewan" (14 September 2026). Both
  * were "Segera" while species, sizes and coats were closed enums and breeds had
@@ -39,32 +39,45 @@ interface SharedItem {
  * service — so the description still sends people there for it. Same door as
  * Data hewan, so the same `services:read` flag decides whether it is a link.
  *
- * Add-on is still a field of each service's form, so it links to Layanan &
- * Harga. Zona & Perjalanan has nothing behind it yet.
+ * RAS HAS A CARD OF ITS OWN, before Tahapan (17 September 2026), opening the
+ * hub's Ras section — Data hewan opens Opsi Varian, which no longer holds it.
+ *
+ * Add-on opens Pengaturan › Layanan › Add-on (17 September 2026), where every
+ * add-on's price, tahapan, komisi and "dijual terpisah" are edited in one
+ * table. Zona & Perjalanan opens Pengaturan › Layanan › Zona since zones became
+ * tenant data (`/api/zones`, 17 September 2026); like the others it is a link
+ * only with `services:read`, the grant that page asks for.
  */
 const ITEMS: SharedItem[] = [
   {
     title: "Data hewan",
     description:
-      "Jenis hewan, ras, ukuran, dan bulu. Ukuran yang ditambah di sana ikut muncul di Nominal per ukuran.",
+      "Jenis hewan, ukuran, dan bulu. Ukuran yang ditambah di sana ikut muncul di Nominal per ukuran.",
     href: PET_DATA_PATH,
+  },
+  {
+    title: "Ras",
+    description:
+      "Daftar ras dan ukuran bawaannya",
+    href: serviceSettingsPath("ras"),
   },
   {
     title: "Tahapan",
     description:
-      "Mandi, gunting, blow dry — daftar yang dipilih tiap layanan. Bobot komisinya tetap diisi per layanan.",
+      "Urutan kerja yang dipakai jadwal dan komisi",
     href: SERVICE_STEPS_PATH,
   },
   {
     title: "Add-on",
     description:
-      "Layanan tambahan yang bisa ditempel ke layanan utama. Diisi di form tiap layanan.",
-    href: GROOMING_CATALOG_PATH,
+      "Layanan tambahan lintas layanan",
+    href: serviceSettingsPath("addon"),
   },
   {
     title: "Zona & Perjalanan",
-    description: "Zona kunjungan rumah dan tarif perjalanannya.",
-    blockedBy: "Zona dan trip belum ada di sistem",
+    description:
+      "Zona antar-jemput dan tarifnya",
+    href: serviceSettingsPath("zona"),
   },
 ];
 

@@ -174,9 +174,35 @@ describe("GroomingSettingsScreen — lists shared by every service", () => {
     const link = await screen.findByRole("link", { name: /Data hewan/ });
     expect(link).toHaveAttribute("href", "/dashboard/master/layanan");
     expect(screen.queryByText("Opsi Varian")).not.toBeInTheDocument();
-    expect(screen.queryByText("Ras")).not.toBeInTheDocument();
-    // Only Zona & Perjalanan is still waiting on something.
-    expect(screen.getAllByText("Segera")).toHaveLength(1);
+    // Nothing is waiting on anything any more.
+    expect(screen.queryByText("Segera")).not.toBeInTheDocument();
+  });
+
+  it("leads Ras to the Ras section, right before Tahapan", async () => {
+    renderWithAuth(<GroomingSettingsScreen />);
+
+    const link = await screen.findByRole("link", { name: /^Ras/ });
+    expect(link).toHaveAttribute("href", "/dashboard/master/layanan?bagian=ras");
+
+    const titles = screen
+      .getAllByRole("link")
+      .map((item) => item.textContent ?? "")
+      .filter((text) => /^(Tahapan|Ras)/.test(text));
+    expect(titles.map((text) => text.split(/\s|Buka/)[0])).toEqual(["Ras", "Tahapan"]);
+  });
+
+  it("leads Add-on to the Add-on section, not the catalogue", async () => {
+    renderWithAuth(<GroomingSettingsScreen />);
+
+    const link = await screen.findByRole("link", { name: /^Add-on/ });
+    expect(link).toHaveAttribute("href", "/dashboard/master/layanan?bagian=addon");
+  });
+
+  it("leads Zona & Perjalanan to the Zona section", async () => {
+    renderWithAuth(<GroomingSettingsScreen />);
+
+    const link = await screen.findByRole("link", { name: /Zona & Perjalanan/ });
+    expect(link).toHaveAttribute("href", "/dashboard/master/layanan?bagian=zona");
   });
 
   it("leads to the Tahapan list, not the catalogue", async () => {
@@ -184,8 +210,7 @@ describe("GroomingSettingsScreen — lists shared by every service", () => {
 
     const link = await screen.findByRole("link", { name: /Tahapan/ });
     expect(link).toHaveAttribute("href", "/dashboard/master/layanan?bagian=tahapan");
-    // The bobot did not move with it.
-    expect(link).toHaveTextContent(/Bobot komisinya tetap diisi per layanan/);
+    expect(link).toHaveTextContent("Urutan kerja yang dipakai jadwal dan komisi");
   });
 
   it("does not link a role that may not open Pengaturan › Layanan", async () => {
