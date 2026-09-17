@@ -113,6 +113,25 @@ describe("Diskon booking", () => {
       },
     });
 
+  /* The recap's "Diskon booking" — the table has a row of the same name. */
+  const recapShare = () =>
+    screen.getAllByText("Diskon booking").find((node) => node.tagName === "DT")!;
+
+  /*
+    AND ON THE BOOKING ITSELF (17 September 2026): a "Diskon booking" row under
+    the group's last line, carrying that booking's share.
+  */
+  it("draws the booking's share on a row under its lines", () => {
+    render(
+      <InvoiceItemsTable invoice={withShares("7170.0000", "377.0000", "7547.0000")} />,
+    );
+
+    const row = screen
+      .getAllByRole("row")
+      .find((one) => one.firstElementChild?.textContent === "Diskon booking")!;
+    expect(within(row).getByText("−Rp 2.547")).toBeInTheDocument();
+  });
+
   it("shows the lines' own discount, and the bookings' share right under it", () => {
     render(
       <InvoiceItemsTable invoice={withShares("7170.0000", "377.0000", "7547.0000")} />,
@@ -121,7 +140,7 @@ describe("Diskon booking", () => {
     expect(screen.getByText("Diskon item").parentElement?.textContent).toContain(
       "Rp 5.000",
     );
-    expect(screen.getByText("Diskon booking").parentElement?.textContent).toContain(
+    expect(recapShare().parentElement?.textContent).toContain(
       "Rp 2.547",
     );
   });
@@ -158,7 +177,7 @@ describe("Diskon booking", () => {
     );
 
     expect(screen.queryByText("Diskon item")).not.toBeInTheDocument();
-    expect(screen.getByText("Diskon booking").parentElement?.textContent).toContain(
+    expect(recapShare().parentElement?.textContent).toContain(
       "Rp 1.377",
     );
   });

@@ -15,6 +15,7 @@ import {
   formatQty,
   isPositive,
   subtractDecimals,
+  sumDecimals,
   toDecimalString,
   toMinor,
 } from "@/utils/decimal";
@@ -292,6 +293,20 @@ export function InvoiceItemsTable({
               const chipLabel = bookingNumber
                 ? `Booking ${bookingNumber}`
                 : "Booking";
+              /*
+                THE BOOKING'S SHARE OF "DISKON SELURUH BOOKING", on a row of its
+                own under the group's last line (17 September 2026, on request)
+                — the way the booking card on Faktur baru draws it. The rows
+                above show only their own discounts, and the recap still
+                totals every booking's share once.
+              */
+              const groupShare = group.bookingId
+                ? sumDecimals(
+                    group.rows.map(
+                      ({ item }) => invoiceBookingShareOf(item, bookings) ?? "0",
+                    ),
+                  )
+                : "0";
 
               return (
                 <Fragment key={group.key}>
@@ -427,6 +442,23 @@ export function InvoiceItemsTable({
                       </TableCell>
                     </TableRow>
                   ))}
+
+                  {isPositive(groupShare) && (
+                    <TableRow>
+                      <TableCell className="text-sm text-muted">
+                        Diskon booking
+                      </TableCell>
+                      <TableCell />
+                      <TableCell />
+                      <TableCell className="text-right tabular-nums">
+                        <span className="font-semibold text-danger">
+                          −{formatMoney(groupShare)}
+                        </span>
+                      </TableCell>
+                      <TableCell />
+                      <TableCell />
+                    </TableRow>
+                  )}
                 </Fragment>
               );
             })}
