@@ -16,11 +16,12 @@ import { petOptionService } from "@/services/petOption.service";
 import { productService } from "@/services/product.service";
 import { serviceService } from "@/services/service.service";
 import { serviceStepService } from "@/services/serviceStep.service";
+import { zoneService } from "@/services/zone.service";
 import { stockEntryService } from "@/services/stockEntry.service";
 import { supplierService } from "@/services/supplier.service";
 import { warehouseService } from "@/services/warehouse.service";
 
-import type { Service } from "@/types/api";
+import type { Service, Zone } from "@/types/api";
 
 import { PET_OPTION_FIXTURES, makePetOption } from "./helpers/petOptions";
 import { renderWithAuth } from "./helpers/renderWithAuth";
@@ -40,6 +41,7 @@ jest.mock("@/services/branch.service");
 jest.mock("@/services/businessLine.service");
 jest.mock("@/services/petOption.service");
 jest.mock("@/services/serviceStep.service");
+jest.mock("@/services/zone.service");
 jest.mock("@/services/customer.service");
 jest.mock("@/services/product.service");
 jest.mock("@/services/service.service");
@@ -258,6 +260,14 @@ describe("ServiceSettingsScreen", () => {
       items: LINES,
       pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
     });
+    jest.mocked(zoneService.list).mockResolvedValue({
+      items: [
+        { _id: "z1", name: "Zona A", minKm: 0, maxKm: 3, deletedAt: null },
+        { _id: "z2", name: "Zona B", minKm: 3, maxKm: 5, deletedAt: null },
+        { _id: "z3", name: "Zona C", minKm: 5, maxKm: 9, deletedAt: "2026-09-10T00:00:00.000Z" },
+      ] as Zone[],
+      pagination: { page: 1, limit: 100, total: 3, totalPages: 1 },
+    });
     jest.mocked(serviceService.list).mockResolvedValue({
       items: SERVICES,
       pagination: { page: 1, limit: 100, total: SERVICES.length, totalPages: 1 },
@@ -274,7 +284,8 @@ describe("ServiceSettingsScreen", () => {
     expect(rail("Ras")).toHaveTextContent("2");
     await waitFor(() => expect(rail("Tahapan")).toHaveTextContent("3"));
     await waitFor(() => expect(rail("Add-on")).toHaveTextContent("2"));
-    expect(rail("Zona")).toHaveTextContent("Segera");
+    // Live zones only — the deleted one is not counted.
+    await waitFor(() => expect(rail("Zona")).toHaveTextContent("2"));
 
     // Breeds are not a price axis, so Opsi Varian has no Ras pill.
     const pills = screen.getByRole("group", { name: "Jenis data hewan" });

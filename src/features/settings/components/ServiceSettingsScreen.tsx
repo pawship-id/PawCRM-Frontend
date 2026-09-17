@@ -11,6 +11,7 @@ import type { PetOptionType } from "@/types/api";
 import { useAddonServiceList } from "../hooks/useAddonServiceList";
 import { usePetOptionList } from "../hooks/usePetOptionList";
 import { useServiceStepList } from "../hooks/useServiceStepList";
+import { useZoneList } from "../hooks/useZoneList";
 import {
   SERVICE_SETTINGS_SECTIONS,
   serviceSettingsPath,
@@ -19,6 +20,7 @@ import {
 import { AddonServicesPanel } from "./AddonServicesPanel";
 import { PetOptionsPanel } from "./PetOptionsPanel";
 import { ServiceStepsPanel } from "./ServiceStepsPanel";
+import { ZonesPanel } from "./ZonesPanel";
 
 /** Opsi Varian: the three a service's price may vary by (`ServiceVariantAxis`). */
 const VARIANT_OPTION_TYPES: readonly PetOptionType[] = [
@@ -57,8 +59,8 @@ function Intro({ title, children }: { title: string; children: ReactNode }) {
  * promise one draft across sections that does not exist.
  *
  * THE HUB OWNS THE LOADS, so the rail can count every section at once: pet
- * options (Opsi Varian and Ras share one load), tahapan, and the catalogue for
- * Add-on. A section switch then redraws without re-reading.
+ * options (Opsi Varian and Ras share one load), tahapan, the catalogue for
+ * Add-on, and zones. A section switch then redraws without re-reading.
  *
  * THE SECTION IS STATE, MIRRORED TO THE URL with `router.replace`, so a link or
  * a reload lands on the same section without a history entry per click.
@@ -79,6 +81,7 @@ export function ServiceSettingsScreen({
   const petOptions = usePetOptionList();
   const serviceSteps = useServiceStepList(mayReadLines);
   const addons = useAddonServiceList();
+  const zones = useZoneList();
 
   const [section, setSection] = useState<ServiceSettingsSection>(initialSection);
   const railRefs = useRef<
@@ -112,7 +115,8 @@ export function ServiceSettingsScreen({
         if (addons.loading && addons.addons.length === 0) return;
         return String(addons.addons.length);
       case "zona":
-        return "Segera";
+        if (zones.loading && zones.zones.length === 0) return;
+        return String(live(zones.zones));
     }
   }
 
@@ -270,20 +274,15 @@ export function ServiceSettingsScreen({
             )}
 
             {section === "zona" && (
-              <div className="flex flex-col gap-5">
-                <Intro title="Zona saja — tarifnya tidak di sini">
-                  Zona akan jadi opsi varian untuk layanan antar-jemput, dan
-                  tarif tiap zona diisi sebagai harga varian di layanan itu.
-                </Intro>
-                <div className="rounded-xl border border-dashed border-border bg-surface px-6 py-12 text-center">
-                  <p className="font-semibold text-foreground">
-                    Zona belum ada di sistem.
-                  </p>
-                  <p className="mt-1 text-sm text-muted">
-                    Bagian ini dibuka bersama layanan antar-jemput.
-                  </p>
-                </div>
-              </div>
+              <ZonesPanel
+                list={zones}
+                intro={
+                  <Intro title="Zona saja — tarifnya tidak di sini">
+                    Zona dipakai layanan antar-jemput. Tiap zona punya rentang
+                    jarak dari toko yang tidak boleh bertabrakan dengan zona lain.
+                  </Intro>
+                }
+              />
             )}
           </div>
         </div>

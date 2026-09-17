@@ -3382,6 +3382,47 @@ export interface ServiceStep {
   renamedServiceCount?: number;
 }
 
+/**
+ * An antar-jemput distance band, per tenant, as /api/zones returns it
+ * (17 September 2026).
+ *
+ * THE RANGE IS HALF-OPEN — `[minKm, maxKm)`: "1–3" holds 1 up to 2.999, not 3,
+ * so the next zone may start at exactly 3. No two live zones of a tenant
+ * overlap; the server answers 409 naming the zone hit.
+ */
+export interface Zone {
+  _id: string;
+  tenantId: string;
+  name: string;
+  /** The lowercased name the list is unique on. */
+  nameKey: string;
+  description: string | null;
+  /** Inclusive, in km. */
+  minKm: number;
+  /** Exclusive, in km. Always above `minKm`. */
+  maxKm: number;
+  createdBy: string | null;
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ZoneListQuery {
+  page?: number;
+  limit?: number;
+  search?: string;
+  includeDeleted?: boolean;
+}
+
+export interface CreateZoneInput {
+  name: string;
+  description?: string | null;
+  minKm: number;
+  maxKm: number;
+}
+
+export type UpdateZoneInput = Partial<CreateZoneInput>;
+
 /** Query parameters accepted by GET /api/service-steps (`services:read`). */
 export interface ServiceStepListQuery {
   page?: number;
