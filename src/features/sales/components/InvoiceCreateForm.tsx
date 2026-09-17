@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CornerDownRight, Trash2 } from "lucide-react";
 
@@ -51,7 +51,7 @@ import type { Product } from "@/types/inventory";
 
 import { useInvoiceLineStock } from "../hooks/useInvoiceLineStock";
 import { useInvoiceLookups } from "../hooks/useInvoiceLookups";
-import { bookingShareOf } from "../bookingDiscount";
+import { bookingShareOf, ownDiscountOfLine } from "../bookingDiscount";
 import { previewInvoice } from "../invoicePreview";
 import { InvoiceAddItemsDialog } from "./InvoiceAddItemsDialog";
 import { InvoiceAddonPicker } from "./InvoiceAddonPicker";
@@ -278,6 +278,30 @@ export function InvoiceCreateForm() {
   */
   const bookingShares = sumDecimals(pulledBookings.map(bookingShareOf));
 
+  /*
+    THE PULLED BOOKINGS AS ROWS OF BARIS FAKTUR (17 September 2026, on request):
+    a booking chosen above leaves the panel and is drawn here, so the total never
+    counts something the rows do not show. Read-only — their prices, add-ons and
+    discounts are the booking's own — and taken off whole, which puts the booking
+    back in the panel. `at` is each line's place in the preview, which prices
+    bookings first, in this same order.
+  */
+  const bookingRows = pulledBookings.flatMap((booking, bookingIndex) => {
+    const before = pulledBookings
+      .slice(0, bookingIndex)
+      .reduce((count, one) => count + 1 + one.service.addons.length, 0);
+
+    const all = [booking.service, ...booking.service.addons];
+
+    return all.map((line, offset) => ({
+      booking,
+      line,
+      isAddon: offset > 0,
+      isLast: offset === all.length - 1,
+      at: before + offset,
+    }));
+  });
+
   const bookingLines = pulledBookings.flatMap((booking) =>
     [booking.service, ...booking.service.addons].map((line) => ({
       qty: "1",
@@ -418,9 +442,7 @@ export function InvoiceCreateForm() {
     `key` IS THE ROW'S OWN HANDLE, never the label: keyed on what is being typed,
     the input would remount on every keystroke and lose the cursor.
   */
-  const [charges, setCharges] = useState<(PosCharge & { key: string })[]>(
-    [],
-  );
+  const [charges, setCharges] = useState<(PosCharge & { key: string })[]>([]);
   /** The rows somebody actually typed into, trimmed — what is sent. */
   const filledCharges = charges
     .map((charge) => ({
@@ -520,7 +542,8 @@ export function InvoiceCreateForm() {
       <span className="block text-xs font-semibold text-success">{label}</span>
     );
   }
-  const hasServiceLine = lines.some((line) => line.kind === "service");
+  const hasServiceLine =
+    pulledBookings.length > 0 || lines.some((line) => line.kind === "service");
 
   const preview = useMemo(
     () =>
@@ -550,6 +573,35 @@ export function InvoiceCreateForm() {
       charges,
     ],
   );
+
+  /**
+   * A line's slice of the invoice's PPN — the allocation the server freezes per
+   * line, drawn the way the detail page draws it: the code, then what it adds
+   * on top or carries inside. "Non-PPN" only when the tenant charges none; a
+   * dash while a line has no price yet. `at` is the line's place in the preview.
+   */
+  function taxCell(at: number) {
+    if (lookups.tax.taxRate === 0) {
+      return <span className="text-xs text-muted">Non-PPN</span>;
+    }
+
+    if (preview.lineTaxes[at] === "0.0000") {
+      return <span className="text-muted">—</span>;
+    }
+
+    return (
+      <>
+        <span className="rounded-full bg-tint-brand px-2 py-0.5 text-xs font-semibold text-primary">
+          {`PPN ${formatRate(lookups.tax.taxRate)}%`}
+        </span>
+        <span className="mt-1 block text-xs font-semibold text-success">
+          {lookups.tax.priceIncludesTax
+            ? `termasuk ${formatMoney(preview.lineTaxes[at])}`
+            : `+${formatMoney(preview.lineTaxes[at])}`}
+        </span>
+      </>
+    );
+  }
 
   /*
     A SERVICE LINE WHOSE ANIMAL'S VARIANT IS SWITCHED OFF (13 September 2026).
@@ -1176,7 +1228,7 @@ export function InvoiceCreateForm() {
             disabled={saving}
           />
 
-          {lines.length === 0 ? (
+          {lines.length === 0 && pulledBookings.length === 0 ? (
             <div className="flex flex-col items-center gap-4 py-8 text-center">
               <UIButton
                 type="button"
@@ -1229,6 +1281,124 @@ export function InvoiceCreateForm() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
+                    {bookingRows.map(
+                      ({ booking, line, isAddon, isLast, at }) => {
+                        const own = ownDiscountOfLine(line);
+                        const share = bookingShareOf(booking);
+
+                        return (
+                          <Fragment
+                            key={`${booking._id}-${isAddon ? (line as { itemId: string }).itemId : "main"}`}
+                          >
+                            <TableRow>
+                              <TableCell>
+                                {isAddon ? (
+                                  <span className="flex items-start gap-1.5 pl-4">
+                                    <CornerDownRight
+                                      aria-hidden
+                                      className="mt-0.5 size-4 shrink-0 text-muted"
+                                    />
+                                    <span>
+                                      <span className="font-medium">
+                                        {line.name}
+                                      </span>
+                                      <span className="block text-xs text-muted">
+                                        Add-on
+                                      </span>
+                                    </span>
+                                  </span>
+                                ) : (
+                                  <>
+                                    <span className="font-medium">
+                                      {line.name}
+                                    </span>
+                                    <span className="block text-xs text-muted tabular-nums">
+                                      {`Booking ${booking.bookingNumber ?? "—"}`}
+                                    </span>
+                                  </>
+                                )}
+                              </TableCell>
+
+                              <TableCell>
+                                <span className="text-sm">
+                                  {booking.petName ?? "Hewan terhapus"}
+                                </span>
+                              </TableCell>
+
+                              <TableCell className="text-right tabular-nums">
+                                {formatMoney(line.price)}
+                              </TableCell>
+
+                              <TableCell className="tabular-nums">1</TableCell>
+
+                              {/* THE LINE'S OWN DISCOUNT only, as the booking card
+                            draws it ("Diskon item"). The booking's share of
+                            "Diskon seluruh booking" gets its own row below the
+                            booking's last line, as on the card. Fixed when the
+                            booking was made, so text rather than inputs. */}
+                              <TableCell className="tabular-nums">
+                                {own ? (
+                                  <span className="text-xs text-success">
+                                    −{formatMoney(own)}
+                                  </span>
+                                ) : (
+                                  <span className="text-muted">—</span>
+                                )}
+                              </TableCell>
+
+                              <TableCell className="tabular-nums">
+                                {taxCell(at)}
+                              </TableCell>
+
+                              <TableCell className="text-right tabular-nums">
+                                {formatMoney(preview.lineTotals[at])}
+                              </TableCell>
+
+                              <TableCell>
+                                {/* ON THE MAIN ROW ONLY: a booking comes off whole,
+                              add-ons with it, and goes back to the panel. */}
+                                {!isAddon && (
+                                  <UIButton
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    aria-label={`Hapus booking ${booking.bookingNumber ?? line.name}`}
+                                    onClick={() =>
+                                      setPulledBookings((current) =>
+                                        current.filter(
+                                          (one) => one._id !== booking._id,
+                                        ),
+                                      )
+                                    }
+                                    disabled={saving}
+                                  >
+                                    <Trash2 className="size-4 text-danger" />
+                                  </UIButton>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                            {isLast && isPositive(share) && (
+                              <TableRow>
+                                <TableCell className="pl-4 text-sm text-success">
+                                  Diskon booking
+                                </TableCell>
+                                <TableCell />
+                                <TableCell />
+                                <TableCell />
+                                <TableCell className="tabular-nums">
+                                  <span className="text-xs text-success">
+                                    −{formatMoney(share)}
+                                  </span>
+                                </TableCell>
+                                <TableCell />
+                                <TableCell />
+                                <TableCell />
+                              </TableRow>
+                            )}
+                          </Fragment>
+                        );
+                      },
+                    )}
                     {lines.map((line, index) => {
                       const offered = addonsOffered(line);
                       const linePet = pets.items.find(
@@ -1236,69 +1406,73 @@ export function InvoiceCreateForm() {
                       );
 
                       return (
-                      <TableRow key={line.key}>
-                        <TableCell>
-                          {line.parentKey ? (
-                            /* UNDER ITS SERVICE, and marked — one visit, not a
-                               second grooming to read. */
-                            <span className="flex items-start gap-1.5 pl-4">
-                              <CornerDownRight
-                                aria-hidden
-                                className="mt-0.5 size-4 shrink-0 text-muted"
-                              />
-                              <span>
-                                <span className="font-medium">{line.name}</span>
-                                <span className="block text-xs text-muted">
-                                  Add-on
-                                </span>
-                              </span>
-                            </span>
-                          ) : (
-                            <>
-                              <span className="font-medium">{line.name}</span>
-                              <span className="block text-xs text-muted">
-                                {line.sku ?? "Jasa"}
-                              </span>
-                              {stockNote(line)}
-                              {offered.length > 0 && (
-                                <InvoiceAddonPicker
-                                  idPrefix={line.key}
-                                  serviceName={line.name}
-                                  pet={linePet}
-                                  offered={offered}
-                                  tickedIds={lines
-                                    .filter((one) => one.parentKey === line.key)
-                                    .map((one) => one.refId)}
-                                  onSave={(addonIds) =>
-                                    setAddons(line.key, addonIds)
-                                  }
-                                  disabled={saving}
-                                />
-                              )}
-                            </>
-                          )}
-                        </TableCell>
-
-                        {hasServiceLine && (
+                        <TableRow key={line.key}>
                           <TableCell>
                             {line.parentKey ? (
-                              /* THE SERVICE'S ANIMAL, not a choice of its own —
-                                 it changes on the service's row, and follows. */
-                              <>
-                                <span className="text-sm">
-                                  {linePet?.name ?? "—"}
-                                </span>
-                                <MissingFactNote
-                                  line={line}
-                                  pet={linePet ?? null}
-                                  service={lookups.services.find(
-                                    (one) => one._id === line.refId,
-                                  )}
+                              /* UNDER ITS SERVICE, and marked — one visit, not a
+                               second grooming to read. */
+                              <span className="flex items-start gap-1.5 pl-4">
+                                <CornerDownRight
+                                  aria-hidden
+                                  className="mt-0.5 size-4 shrink-0 text-muted"
                                 />
-                              </>
-                            ) : line.kind === "service" ? (
+                                <span>
+                                  <span className="font-medium">
+                                    {line.name}
+                                  </span>
+                                  <span className="block text-xs text-muted">
+                                    Add-on
+                                  </span>
+                                </span>
+                              </span>
+                            ) : (
                               <>
-                                {/*
+                                <span className="font-medium">{line.name}</span>
+                                <span className="block text-xs text-muted">
+                                  {line.sku ?? "Jasa"}
+                                </span>
+                                {stockNote(line)}
+                                {offered.length > 0 && (
+                                  <InvoiceAddonPicker
+                                    idPrefix={line.key}
+                                    serviceName={line.name}
+                                    pet={linePet}
+                                    offered={offered}
+                                    tickedIds={lines
+                                      .filter(
+                                        (one) => one.parentKey === line.key,
+                                      )
+                                      .map((one) => one.refId)}
+                                    onSave={(addonIds) =>
+                                      setAddons(line.key, addonIds)
+                                    }
+                                    disabled={saving}
+                                  />
+                                )}
+                              </>
+                            )}
+                          </TableCell>
+
+                          {hasServiceLine && (
+                            <TableCell>
+                              {line.parentKey ? (
+                                /* THE SERVICE'S ANIMAL, not a choice of its own —
+                                 it changes on the service's row, and follows. */
+                                <>
+                                  <span className="text-sm">
+                                    {linePet?.name ?? "—"}
+                                  </span>
+                                  <MissingFactNote
+                                    line={line}
+                                    pet={linePet ?? null}
+                                    service={lookups.services.find(
+                                      (one) => one._id === line.refId,
+                                    )}
+                                  />
+                                </>
+                              ) : line.kind === "service" ? (
+                                <>
+                                  {/*
                                   WHY IT IS HERE AT ALL — PCR-035. A grooming
                                   billed with no animal named reaches no day
                                   sheet: nobody is assigned, and the only record
@@ -1306,181 +1480,159 @@ export function InvoiceCreateForm() {
                                   the customer takes home. Naming the animal is
                                   what lets the server raise a booking for it.
                                 */}
-                                <FilterSelect
-                                /*
+                                  <FilterSelect
+                                    /*
                                 `field`, NOT `form` — §16: a control inside a row
                                 table sits among h-9 inputs, and 44px would tower
                                 over the row it belongs to. The column header is
                                 the visible label, so the control carries only an
                                 aria one, naming the line it belongs to.
                               */
-                                layout="field"
-                                label=""
-                                ariaLabel={`Hewan untuk ${line.name}`}
-                                value={line.petId}
-                                options={petOptions}
-                                placeholder={
-                                  !customerId
-                                    ? "Pilih pelanggan dulu"
-                                    : petOptions.length === 0
-                                      ? "Belum ada hewan"
-                                      : "Pilih hewan"
-                                }
-                                // Answered fields must not go navy in a form —
-                                // that announces a filter (§16).
-                                active={false}
-                                disabled={
-                                  !customerId || petOptions.length === 0
-                                }
-                                  onChange={(value) =>
-                                    patchLine(index, { petId: value })
-                                  }
-                                />
-                                <MissingFactNote
-                                  line={line}
-                                  pet={linePet ?? null}
-                                  service={lookups.services.find(
-                                    (one) => one._id === line.refId,
-                                  )}
-                                />
-                              </>
-                            ) : (
-                              // A collar has no grooming; the server refuses a pet
-                              // on a product line rather than ignoring it.
-                              <span className="text-xs text-muted">—</span>
-                            )}
-                          </TableCell>
-                        )}
+                                    layout="field"
+                                    label=""
+                                    ariaLabel={`Hewan untuk ${line.name}`}
+                                    value={line.petId}
+                                    options={petOptions}
+                                    placeholder={
+                                      !customerId
+                                        ? "Pilih pelanggan dulu"
+                                        : petOptions.length === 0
+                                          ? "Belum ada hewan"
+                                          : "Pilih hewan"
+                                    }
+                                    // Answered fields must not go navy in a form —
+                                    // that announces a filter (§16).
+                                    active={false}
+                                    disabled={
+                                      !customerId || petOptions.length === 0
+                                    }
+                                    onChange={(value) =>
+                                      patchLine(index, { petId: value })
+                                    }
+                                  />
+                                  <MissingFactNote
+                                    line={line}
+                                    pet={linePet ?? null}
+                                    service={lookups.services.find(
+                                      (one) => one._id === line.refId,
+                                    )}
+                                  />
+                                </>
+                              ) : (
+                                // A collar has no grooming; the server refuses a pet
+                                // on a product line rather than ignoring it.
+                                <span className="text-xs text-muted">—</span>
+                              )}
+                            </TableCell>
+                          )}
 
-                        {/* READ-ONLY, and it is a rule: a price a client can set is
+                          {/* READ-ONLY, and it is a rule: a price a client can set is
                           a discount nobody approved. */}
-                        <TableCell className="text-right tabular-nums">
-                          {/*
+                          <TableCell className="text-right tabular-nums">
+                            {/*
                           AN EM-DASH, NOT "Rp 0", while a variant service has no
                           animal on its line. Nought is a price somebody could
                           read as free; the dash says the question has not been
                           answered yet, and the Hewan cell beside it is the
                           question.
                         */}
-                          {line.kind === "service" && line.unitPrice === "0" ? (
-                            <span className="text-muted">—</span>
-                          ) : (
-                            formatMoney(line.unitPrice)
-                          )}
-                          {/* The row the blocking sentence is about, in words. */}
-                          {variantInactive(line) && (
-                            <span className="block text-xs text-warning">
-                              Varian nonaktif
-                            </span>
-                          )}
-                        </TableCell>
+                            {line.kind === "service" &&
+                            line.unitPrice === "0" ? (
+                              <span className="text-muted">—</span>
+                            ) : (
+                              formatMoney(line.unitPrice)
+                            )}
+                            {/* The row the blocking sentence is about, in words. */}
+                            {variantInactive(line) && (
+                              <span className="block text-xs text-warning">
+                                Varian nonaktif
+                              </span>
+                            )}
+                          </TableCell>
 
-                        <TableCell>
-                          <Input
-                            aria-label={`Jumlah ${line.name}`}
-                            value={line.qty}
-                            inputMode="decimal"
-                            onChange={(event) =>
-                              patchLine(index, { qty: event.target.value })
-                            }
-                            disabled={saving}
-                          />
-                        </TableCell>
-
-                        <TableCell>
-                          <div className="flex gap-1">
-                            <select
-                              aria-label={`Jenis diskon ${line.name}`}
-                              className="h-9 rounded-md border border-border bg-surface px-2 text-sm"
-                              value={line.discountMode}
-                              onChange={(event) =>
-                                patchLine(index, {
-                                  discountMode: event.target
-                                    .value as InvoiceDiscountMode,
-                                })
-                              }
-                              disabled={saving}
-                            >
-                              <option value="percent">%</option>
-                              <option value="amount">Rp</option>
-                            </select>
+                          <TableCell>
                             <Input
-                              aria-label={`Diskon ${line.name}`}
-                              value={line.discountValue}
+                              aria-label={`Jumlah ${line.name}`}
+                              value={line.qty}
                               inputMode="decimal"
-                              placeholder="0"
                               onChange={(event) =>
-                                patchLine(index, {
-                                  discountValue: event.target.value,
-                                })
+                                patchLine(index, { qty: event.target.value })
                               }
                               disabled={saving}
                             />
-                          </div>
-                          {/* OFFSET PAST THE BOOKING LINES, which the preview
+                          </TableCell>
+
+                          <TableCell>
+                            <div className="flex gap-1">
+                              <select
+                                aria-label={`Jenis diskon ${line.name}`}
+                                className="h-9 rounded-md border border-border bg-surface px-2 text-sm"
+                                value={line.discountMode}
+                                onChange={(event) =>
+                                  patchLine(index, {
+                                    discountMode: event.target
+                                      .value as InvoiceDiscountMode,
+                                  })
+                                }
+                                disabled={saving}
+                              >
+                                <option value="percent">%</option>
+                                <option value="amount">Rp</option>
+                              </select>
+                              <Input
+                                aria-label={`Diskon ${line.name}`}
+                                value={line.discountValue}
+                                inputMode="decimal"
+                                placeholder="0"
+                                onChange={(event) =>
+                                  patchLine(index, {
+                                    discountValue: event.target.value,
+                                  })
+                                }
+                                disabled={saving}
+                              />
+                            </div>
+                            {/* OFFSET PAST THE BOOKING LINES, which the preview
                               prices first — the server's order. Reading
                               `[index]` put a booking's figures on the first
                               typed row whenever one was pulled. */}
-                          {preview.lineDiscounts[
-                            bookingLines.length + index
-                          ] !== "0.0000" && (
-                            <span className="mt-1 block text-xs text-success">
-                              −
-                              {formatMoney(
-                                preview.lineDiscounts[
-                                  bookingLines.length + index
-                                ],
-                              )}
-                            </span>
-                          )}
-                        </TableCell>
-
-                        {/*
-                          THIS LINE'S SLICE OF THE INVOICE'S PPN — the allocation
-                          the server freezes per line, drawn the way the detail
-                          page draws it: the code, then what it adds on top or
-                          carries inside. "Non-PPN" only when the tenant charges
-                          none; a dash while a line has no price yet.
-                        */}
-                        <TableCell className="tabular-nums">
-                          {lookups.tax.taxRate === 0 ? (
-                            <span className="text-xs text-muted">Non-PPN</span>
-                          ) : preview.lineTaxes[bookingLines.length + index] ===
-                            "0.0000" ? (
-                            <span className="text-muted">—</span>
-                          ) : (
-                            <>
-                              <span className="rounded-full bg-tint-brand px-2 py-0.5 text-xs font-semibold text-primary">
-                                {`PPN ${formatRate(lookups.tax.taxRate)}%`}
+                            {preview.lineDiscounts[
+                              bookingLines.length + index
+                            ] !== "0.0000" && (
+                              <span className="mt-1 block text-xs text-success">
+                                −
+                                {formatMoney(
+                                  preview.lineDiscounts[
+                                    bookingLines.length + index
+                                  ],
+                                )}
                               </span>
-                              <span className="mt-1 block text-xs font-semibold text-success">
-                                {lookups.tax.priceIncludesTax
-                                  ? `termasuk ${formatMoney(preview.lineTaxes[bookingLines.length + index])}`
-                                  : `+${formatMoney(preview.lineTaxes[bookingLines.length + index])}`}
-                              </span>
-                            </>
-                          )}
-                        </TableCell>
+                            )}
+                          </TableCell>
 
-                        <TableCell className="text-right tabular-nums">
-                          {formatMoney(
-                            preview.lineTotals[bookingLines.length + index],
-                          )}
-                        </TableCell>
+                          <TableCell className="tabular-nums">
+                            {taxCell(bookingLines.length + index)}
+                          </TableCell>
 
-                        <TableCell>
-                          <UIButton
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            aria-label={`Hapus ${line.name}`}
-                            onClick={() => removeLine(index)}
-                            disabled={saving}
-                          >
-                            <Trash2 className="size-4 text-danger" />
-                          </UIButton>
-                        </TableCell>
-                      </TableRow>
+                          <TableCell className="text-right tabular-nums">
+                            {formatMoney(
+                              preview.lineTotals[bookingLines.length + index],
+                            )}
+                          </TableCell>
+
+                          <TableCell>
+                            <UIButton
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              aria-label={`Hapus ${line.name}`}
+                              onClick={() => removeLine(index)}
+                              disabled={saving}
+                            >
+                              <Trash2 className="size-4 text-danger" />
+                            </UIButton>
+                          </TableCell>
+                        </TableRow>
                       );
                     })}
                   </TableBody>
@@ -1521,7 +1673,10 @@ export function InvoiceCreateForm() {
                 <dt className="text-muted">Diskon baris</dt>
                 {/* Green, as the till draws a discount. */}
                 <dd className="tabular-nums text-success">
-                  −{formatMoney(subtractDecimals(preview.itemDiscount, bookingShares))}
+                  −
+                  {formatMoney(
+                    subtractDecimals(preview.itemDiscount, bookingShares),
+                  )}
                 </dd>
               </div>
               {isPositive(bookingShares) && (

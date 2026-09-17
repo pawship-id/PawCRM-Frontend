@@ -155,11 +155,41 @@ describe("choosing", () => {
     ]);
   });
 
-  it("takes it back out when it is unticked", async () => {
+  /*
+    A CHOSEN BOOKING LEAVES THE LIST (17 September 2026) — it is drawn in Baris
+    faktur instead, and comes back here when it is removed there.
+  */
+  it("hides a booking that is already on the invoice", async () => {
+    (bookingService.bridge as jest.Mock).mockResolvedValue([
+      booking(),
+      booking({ _id: "bk2", petName: "Oyen", bookingNumber: "BK-260828-002" }),
+    ]);
+    open({ selected: ["bk1"] });
+
+    expect(await screen.findByText("Oyen")).toBeInTheDocument();
+    expect(screen.queryByText("Miko")).not.toBeInTheDocument();
+  });
+
+  it("keeps the ones already chosen when another is added", async () => {
+    (bookingService.bridge as jest.Mock).mockResolvedValue([
+      booking(),
+      booking({ _id: "bk2", petName: "Oyen", bookingNumber: "BK-260828-002" }),
+    ]);
     open({ selected: ["bk1"] });
     await userEvent.click(await screen.findByRole("checkbox"));
 
-    expect(onChange).toHaveBeenCalledWith([]);
+    expect(onChange).toHaveBeenCalledWith([
+      expect.objectContaining({ _id: "bk1" }),
+      expect.objectContaining({ _id: "bk2" }),
+    ]);
+  });
+
+  it("says so when every booking is already on the invoice", async () => {
+    open({ selected: ["bk1"] });
+
+    expect(
+      await screen.findByText(/sudah masuk ke baris faktur/i),
+    ).toBeInTheDocument();
   });
 
   /*
@@ -228,23 +258,6 @@ describe("choosing", () => {
     /* The share is not drawn on a line. */
     expect(screen.queryByText("−Rp 377")).not.toBeInTheDocument();
     expect(screen.queryByText("−Rp 7.170")).not.toBeInTheDocument();
-  });
-
-  it("counts what will be billed", async () => {
-    open({ selected: ["bk1"] });
-
-    expect(
-      await screen.findByText(/1 booking akan ditagih/i),
-    ).toBeInTheDocument();
-  });
-
-  it("clears the lot in one click", async () => {
-    open({ selected: ["bk1"] });
-    await userEvent.click(
-      await screen.findByRole("button", { name: /kosongkan/i }),
-    );
-
-    expect(onChange).toHaveBeenCalledWith([]);
   });
 });
 

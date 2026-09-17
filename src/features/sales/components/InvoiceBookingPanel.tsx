@@ -3,9 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { Alert, Spinner } from "@/components";
-import { Button as UIButton } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
 import { formatMoney, isPositive, subtractDecimals } from "@/utils/decimal";
@@ -38,6 +36,11 @@ import {
  * requiring `confirmed` refused exactly those. Filtering here
  * would be a second definition of "already billed", and the two would eventually
  * disagree about whether a grooming had been paid for.
+ *
+ * A CHOSEN BOOKING LEAVES THIS LIST (17 September 2026, on request) and is
+ * drawn in Baris faktur instead, so the total never counts something the rows
+ * do not show. Removing it there brings it back here — this component keeps
+ * every booking it read and only hides the chosen ones.
  *
  * IT DISAPPEARS WITHOUT A CUSTOMER, rather than showing an empty state. "Which
  * bookings" has no meaning until "whose" is answered, and an empty panel above
@@ -121,13 +124,14 @@ export function InvoiceBookingPanel({
 
   if (!customerId) return null;
 
-  function toggle(id: string) {
-    const next = selected.includes(id)
-      ? selected.filter((value) => value !== id)
-      : [...selected, id];
+  /* Adds only — taking a booking off is done from its row in Baris faktur. */
+  function choose(id: string) {
+    const next = [...selected, id];
 
     onChange(bookings.filter((booking) => next.includes(booking._id)));
   }
+
+  const offered = bookings.filter((booking) => !selected.includes(booking._id));
 
   return (
     <div className="flex flex-col gap-3">
@@ -146,7 +150,13 @@ export function InvoiceBookingPanel({
         </p>
       )}
 
-      {bookings.map((booking) => {
+      {!loading && !error && bookings.length > 0 && offered.length === 0 && (
+        <p className="text-sm text-muted">
+          Semua booking pelanggan ini sudah masuk ke baris faktur.
+        </p>
+      )}
+
+      {offered.map((booking) => {
         const id = booking._id;
         /*
           THE LINES AFTER THEIR OWN DISCOUNTS, then the booking's share of
@@ -168,8 +178,8 @@ export function InvoiceBookingPanel({
           >
             <Checkbox
               id={`booking-${id}`}
-              checked={selected.includes(id)}
-              onCheckedChange={() => toggle(id)}
+              checked={false}
+              onCheckedChange={() => choose(id)}
               disabled={disabled}
               className="mt-0.5"
             />
@@ -263,22 +273,6 @@ export function InvoiceBookingPanel({
         );
       })}
 
-      {selected.length > 0 && (
-        <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
-          <Label className="text-xs text-muted">
-            {selected.length} booking akan ditagih di faktur ini
-          </Label>
-          <UIButton
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => onChange([])}
-            disabled={disabled}
-          >
-            Kosongkan
-          </UIButton>
-        </div>
-      )}
     </div>
   );
 }

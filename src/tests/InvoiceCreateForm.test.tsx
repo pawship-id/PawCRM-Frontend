@@ -1675,14 +1675,106 @@ describe("what the form shows", () => {
     await pick(/^Pelanggan$/i, /Bu Sari/);
     await pick(/^Cabang$/i, /Cabang Pusat/);
 
-    const boxes = await screen.findAllByRole("checkbox");
-    await userEvent.click(boxes[0]);
-    await userEvent.click(boxes[1]);
+    // A chosen booking leaves the panel, so the next one is always first.
+    await userEvent.click((await screen.findAllByRole("checkbox"))[0]);
+    await userEvent.click(await screen.findByRole("checkbox"));
 
     // Scoped to the Total row: with no discount the subtotal carries the same
     // figure, and a list-wide query would pass on whichever rendered first.
     const totalRow = screen.getByText(/^Total tagihan$/i).closest("div")!;
     expect(within(totalRow).getByText("Rp 260.000")).toBeInTheDocument();
+  });
+
+  /*
+    A CHOSEN BOOKING MOVES INTO BARIS FAKTUR (17 September 2026): off the panel,
+    onto the rows the total adds up — and back to the panel when removed.
+  */
+  it("moves a chosen booking into the rows, and back when removed", async () => {
+    jest.spyOn(bookingService, "bridge").mockResolvedValue([
+      {
+        _id: "bk1",
+        bookingNumber: "BK-260828-001",
+        petName: "Cici",
+        service: {
+          serviceId: "svc1",
+          name: "Grooming",
+          price: "120000.0000",
+          addons: [
+            {
+              itemId: "ad1",
+              serviceId: "svc9",
+              name: "Potong kuku",
+              price: "20000.0000",
+            },
+          ],
+        },
+        groomerName: "Rina",
+      },
+    ] as never);
+
+    render(<InvoiceCreateForm />);
+    await pick(/^Pelanggan$/i, /Bu Sari/);
+    await pick(/^Cabang$/i, /Cabang Pusat/);
+    await userEvent.click(await screen.findByRole("checkbox"));
+
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    const row = screen.getByRole("row", { name: /Booking BK-260828-001/ });
+    expect(within(row).getByText("Cici")).toBeInTheDocument();
+    expect(screen.getByRole("row", { name: /Potong kuku/ })).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /Hapus booking BK-260828-001/ }),
+    );
+
+    expect(
+      screen.queryByRole("row", { name: /Booking BK-260828-001/ }),
+    ).not.toBeInTheDocument();
+    expect(await screen.findByRole("checkbox")).toBeInTheDocument();
+  });
+
+  /*
+    THE DISCOUNTS SPLIT AS THE BOOKING CARD SPLITS THEM: each line's own under
+    Diskon, and the booking's share of "Diskon seluruh booking" once, on a
+    "Diskon booking" row after its last line.
+  */
+  it("splits a pulled booking's discounts the way the card does", async () => {
+    jest.spyOn(bookingService, "bridge").mockResolvedValue([
+      {
+        _id: "bk1",
+        bookingNumber: "BK-260828-001",
+        petName: "Mochi",
+        service: {
+          serviceId: "svc1",
+          name: "Basic Grooming",
+          price: "120000.0000",
+          discount: { mode: "amount", value: "5000.0000", resolvedAmount: "5000.0000" },
+          discountAmount: "9356.0000",
+          addons: [
+            {
+              itemId: "ad1",
+              serviceId: "svc9",
+              name: "Extra Handling",
+              price: "20000.0000",
+              discount: { mode: "amount", value: "3000.0000", resolvedAmount: "3000.0000" },
+              discountAmount: "3644.0000",
+            },
+          ],
+        },
+        groomerName: "Rina",
+      },
+    ] as never);
+
+    render(<InvoiceCreateForm />);
+    await pick(/^Pelanggan$/i, /Bu Sari/);
+    await pick(/^Cabang$/i, /Cabang Pusat/);
+    await userEvent.click(await screen.findByRole("checkbox"));
+
+    const main = screen.getByRole("row", { name: /Booking BK-260828-001/ });
+    expect(within(main).getByText("−Rp 5.000")).toBeInTheDocument();
+    const addon = screen.getByRole("row", { name: /Extra Handling/ });
+    expect(within(addon).getByText("−Rp 3.000")).toBeInTheDocument();
+    const share = screen.getByRole("row", { name: /^Diskon booking/ });
+    expect(within(share).getByText("−Rp 5.000")).toBeInTheDocument();
   });
 
   /*
