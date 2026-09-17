@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Can, usePermissions } from "@/features/permissions";
 import { PageHeading } from "@/features/purchasing";
-import { formatMoney, formatQty, toMinor } from "@/utils/decimal";
+import { formatMoney, toMinor } from "@/utils/decimal";
 import { daysUntil } from "@/utils/date";
 import { cn } from "@/lib/utils";
 
@@ -32,7 +32,6 @@ import { SALES_CRUMBS } from "../crumbs";
 import { useCustomerInvoice } from "../hooks/useCustomerInvoice";
 import { InvoiceActivityCard } from "./InvoiceActivityCard";
 import { InvoiceEditor } from "./InvoiceEditor";
-import { InvoiceExecutionPanel } from "./InvoiceExecutionPanel";
 import { InvoiceItemsTable } from "./InvoiceItemsTable";
 import { InvoiceJournalDialog } from "./InvoiceJournalDialog";
 import { InvoicePaymentTimeline } from "./InvoicePaymentTimeline";
@@ -68,9 +67,8 @@ function customerLabel(invoice: {
  * ONE INVOICE — laid out after `buloo-invoice-detail-v5`.
  *
  * LEFT IS THE DOCUMENT: the Rincian card (header, lines, recap — editable while
- * nothing is paid), then the work it still owes and how the counter settled it.
- * RIGHT IS ITS STATE: what is left to collect and what has arrived, then what it
- * did to the shelf and what the customer owes altogether. The activity log closes
+ * nothing is paid). RIGHT IS ITS STATE: what is left to collect and what has
+ * arrived, then what the customer owes altogether. The activity log closes
  * the page, folded.
  *
  * TWO COLUMNS WRITTEN OUT, not a grid the cards flow into: a card that does not
@@ -410,34 +408,6 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
               </p>
             )}
           </Card>
-
-          {/*
-            WHAT STILL HAS TO HAPPEN — PCR-035. Kept beside the lines it answers
-            for, and absent on a bill with no services on it.
-          */}
-          {invoice.bookings.length > 0 && (
-            <Card
-              title="Jadwal & pengerjaan"
-              description="Jasa di faktur ini dan siapa yang mengerjakannya."
-            >
-              <InvoiceExecutionPanel
-                invoice={invoice}
-                onChanged={(id, patch) =>
-                  applyInvoice({
-                    ...invoice,
-                    /*
-                      PATCHED IN PLACE rather than refetched: the endpoints answer
-                      with a Booking document, not with this invoice's view of
-                      one, so only the fields that moved are taken.
-                    */
-                    bookings: invoice.bookings.map((booking) =>
-                      booking._id === id ? { ...booking, ...patch } : booking,
-                    ),
-                  })
-                }
-              />
-            </Card>
-          )}
         </div>
 
         {/* ─── ITS STATE ─────────────────────────────────────────────────── */}
@@ -538,35 +508,6 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
           */}
           {!(invoice.posSettlement && payments.length === 0 && settled) && (
             <InvoicePaymentTimeline invoiceId={invoiceId} payments={payments} />
-          )}
-
-          {/*
-            WHAT LEFT THE SHELF, and WHEN — stock goes when the invoice is ISSUED,
-            not when it is paid. Absent for a bill that shipped nothing.
-          */}
-          {invoice.stockImpact.length > 0 && (
-            <Card
-              title="Dampak stok"
-              description="Dipotong saat faktur terbit, bukan saat lunas."
-            >
-              <div className="flex flex-col text-sm">
-                {invoice.stockImpact.map((row) => (
-                  <div
-                    key={row.productId}
-                    className="flex justify-between gap-3 border-t border-border py-2 first:border-t-0 first:pt-0"
-                  >
-                    <span className="min-w-0">
-                      {row.name ?? "Produk terhapus"}
-                    </span>
-                    <span className="shrink-0 tabular-nums text-muted">
-                      {row.before === null || row.after === null
-                        ? formatQty(row.qty)
-                        : `${formatQty(row.before)} → ${formatQty(row.after)}`}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </Card>
           )}
 
           {/*

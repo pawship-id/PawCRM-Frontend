@@ -1122,59 +1122,9 @@ describe("InvoiceDetail — the payment dialog", () => {
   });
 });
 
-describe("InvoiceDetail — what the invoice did to the shelf", () => {
-  const withStock = () =>
-    detail({
-      stockImpact: [
-        {
-          productId: "p1",
-          name: "Royal Canin 2kg",
-          qty: "-2.0000",
-          before: "18.0000",
-          after: "16.0000",
-        },
-      ],
-    });
-
-  /*
-    BEFORE AND AFTER, not just the quantity moved. "−2" says what happened;
-    "18 → 16" says whether it left the shelf you thought it did.
-  */
-  it("shows the shelf before and after", async () => {
-    asMock(customerInvoiceService.getById).mockResolvedValue(withStock());
-
-    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
-
-    expect(await screen.findByText("Dampak stok")).toBeInTheDocument();
-    expect(screen.getByText(/18 → 16/)).toBeInTheDocument();
-  });
-
-  /* Stock goes when the invoice is ISSUED, which is what surprises people. */
-  it("says when the stock actually left", async () => {
-    asMock(customerInvoiceService.getById).mockResolvedValue(withStock());
-
-    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
-
-    expect(
-      await screen.findByText(/Dipotong saat faktur terbit, bukan saat lunas/),
-    ).toBeInTheDocument();
-  });
-
-  /*
-    ABSENT ENTIRELY for a grooming bill. A "Dampak stok" heading over an empty
-    card invites the reader to wonder what broke.
-  */
-  it("draws no card at all when nothing shipped", async () => {
-    asMock(customerInvoiceService.getById).mockResolvedValue(detail());
-
-    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
-
-    await screen.findByText("Rincian faktur");
-    expect(screen.queryByText("Dampak stok")).not.toBeInTheDocument();
-  });
-
-  /* A guess would be a confident pair of numbers nobody can reconcile. */
-  it("falls back to the quantity when the balance is unknown", async () => {
+describe("InvoiceDetail — no stock or schedule cards", () => {
+  /* Both cards were removed from the page on request, 17 Sep 2026. */
+  it("draws neither card, even on a bill that shipped stock", async () => {
     asMock(customerInvoiceService.getById).mockResolvedValue(
       detail({
         stockImpact: [
@@ -1182,8 +1132,8 @@ describe("InvoiceDetail — what the invoice did to the shelf", () => {
             productId: "p1",
             name: "Royal Canin 2kg",
             qty: "-2.0000",
-            before: null,
-            after: null,
+            before: "18.0000",
+            after: "16.0000",
           },
         ],
       }),
@@ -1191,8 +1141,9 @@ describe("InvoiceDetail — what the invoice did to the shelf", () => {
 
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
 
-    expect(await screen.findByText("-2")).toBeInTheDocument();
-    expect(screen.queryByText(/→/)).not.toBeInTheDocument();
+    await screen.findByText("Rincian faktur");
+    expect(screen.queryByText("Dampak stok")).not.toBeInTheDocument();
+    expect(screen.queryByText("Jadwal & pengerjaan")).not.toBeInTheDocument();
   });
 });
 
