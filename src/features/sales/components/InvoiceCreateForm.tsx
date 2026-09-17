@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/table";
 import { PetFixLink } from "@/features/pets";
 import { swalToast } from "@/lib/swal";
+import { cn } from "@/lib/utils";
 import { ApiError } from "@/services/api-error";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
 import { petService } from "@/services/pet.service";
@@ -1290,7 +1291,18 @@ export function InvoiceCreateForm() {
                           <Fragment
                             key={`${booking._id}-${isAddon ? (line as { itemId: string }).itemId : "main"}`}
                           >
-                            <TableRow>
+                            {/*
+                              ONE BOOKING, ONE BLOCK: no border between its own lines — the
+                              rule is drawn only under its last row (the "Diskon booking" row
+                              when it has one), where another booking or item begins. No
+                              hover either, which would light up a single line of the block.
+                            */}
+                            <TableRow
+                              className={cn(
+                                "hover:bg-transparent",
+                                !(isLast && !isPositive(share)) && "border-b-0",
+                              )}
+                            >
                               <TableCell>
                                 {isAddon ? (
                                   <span className="flex items-start gap-1.5 pl-4">
@@ -1378,7 +1390,7 @@ export function InvoiceCreateForm() {
                               </TableCell>
                             </TableRow>
                             {isLast && isPositive(share) && (
-                              <TableRow>
+                              <TableRow className="hover:bg-transparent">
                                 <TableCell className="pl-4 text-sm text-success">
                                   Diskon booking
                                 </TableCell>
