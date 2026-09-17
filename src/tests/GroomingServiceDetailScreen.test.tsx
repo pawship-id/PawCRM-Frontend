@@ -8,6 +8,8 @@ import { branchService } from "@/services/branch.service";
 import { petOptionService } from "@/services/petOption.service";
 import { serviceService } from "@/services/service.service";
 import { serviceStepService } from "@/services/serviceStep.service";
+import { variantOptionService } from "@/services/variantOption.service";
+import { zoneService } from "@/services/zone.service";
 import type { Branch, PageResult, Service } from "@/types/api";
 
 import {
@@ -16,6 +18,11 @@ import {
   primePetOptions,
 } from "./helpers/petOptions";
 import { renderWithAuth } from "./helpers/renderWithAuth";
+import {
+  BUILT_IN_VARIANT_OPTIONS,
+  makeVariantOption,
+  primeVariantOptions,
+} from "./helpers/variantOptions";
 import {
   makeServiceStep,
   SERVICE_STEP_FIXTURES,
@@ -41,6 +48,8 @@ jest.mock("@/services/branch.service");
 jest.mock("@/services/service.service");
 // The variant grid's rows are the tenant's species, sizes and coats.
 jest.mock("@/services/petOption.service");
+jest.mock("@/services/variantOption.service");
+jest.mock("@/services/zone.service");
 // The Tahapan card picks from the line's tahapan list.
 jest.mock("@/services/serviceStep.service");
 
@@ -54,6 +63,20 @@ jest.mock("@/services/serviceStep.service");
  * body; and a role that may only read is offered nothing to press and asked no
  * question it would be refused.
  */
+const TIER = makeVariantOption({
+  _id: "vo-tier",
+  name: "Tier Groomer",
+  source: "staff",
+  axisKey: "5a7f1f77bcf86cd7994391ee",
+  sortOrder: 3,
+  values: Array.from({ length: 13 }, (_, index) => ({
+    code: `tier-${index + 1}`,
+    label: `Tier ${index + 1}`,
+    sortOrder: index,
+    isActive: true,
+  })),
+});
+
 const SERVICE = {
   _id: "svc-1",
   tenantId: "t1",
@@ -131,6 +154,7 @@ function page<T>(items: T[]): PageResult<T> {
 beforeEach(() => {
   mockPush.mockReset();
   primePetOptions(petOptionService.list);
+  primeVariantOptions(variantOptionService.list, zoneService.list);
   // Mandi → Gunting → Blow dry, on the grooming line.
   primeServiceSteps(serviceStepService.list);
   jest.mocked(serviceService.getById).mockResolvedValue(SERVICE);
@@ -336,7 +360,7 @@ describe("GroomingServiceDetailScreen", () => {
     renderDetail();
     await openVariants();
 
-    await userEvent.click(screen.getByLabelText(/Jenis bulu/));
+    await userEvent.click(screen.getByLabelText(/^Jenis Bulu/));
 
     expect(screen.getByLabelText("Harga Kecil · Bulu panjang")).toHaveValue(
       "89.000",
@@ -408,24 +432,23 @@ describe("GroomingServiceDetailScreen", () => {
   });
 
   it("refuses to save more variants than a service may have, and says so", async () => {
-    primePetOptions(petOptionService.list, [
-      ...PET_OPTION_FIXTURES,
-      makePetOption({ type: "species", code: "rabbit", label: "Kelinci", sortOrder: 2 }),
-      XL,
-    ]);
+    primePetOptions(petOptionService.list, [...PET_OPTION_FIXTURES, XL]);
+    primeVariantOptions(variantOptionService.list, zoneService.list, {
+      cards: [...BUILT_IN_VARIANT_OPTIONS, TIER],
+    });
 
     renderDetail();
     await openVariants();
 
-    await userEvent.click(await screen.findByLabelText(/Jenis bulu/));
-    await userEvent.click(screen.getByLabelText(/Jenis hewan/));
+    await userEvent.click(await screen.findByLabelText(/^Jenis Bulu/));
+    await userEvent.click(await screen.findByLabelText(/^Tier Groomer/));
 
-    // 4 sizes × 2 coats × 3 species.
+    // 4 sizes × 2 coats × 13 tiers.
     expect(
-      screen.getByText(/Kombinasinya jadi 24 varian — maksimal 20 per layanan/),
+      screen.getByText(/Kombinasinya jadi 104 varian — maksimal 100 per layanan/),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("kombinasinya jadi 24 varian, maksimal 20 per layanan"),
+      screen.getByText("kombinasinya jadi 104 varian, maksimal 100 per layanan"),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Simpan varian & harga" }),

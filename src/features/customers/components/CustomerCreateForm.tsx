@@ -3,7 +3,15 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { Alert, Button, TextField } from "@/components";
+import {
+  Alert,
+  Button,
+  LocationFields,
+  TextField,
+  toGeoLocation,
+  validateLocationFields,
+  type LocationFieldsValue,
+} from "@/components";
 import { ApiError } from "@/services/api-error";
 import { customerService } from "@/services/customer.service";
 import { swalToast } from "@/lib/swal";
@@ -33,6 +41,8 @@ export function CustomerCreateForm() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
+  // The address's pin — what a service priced by Zona is quoted from (17 September 2026).
+  const [location, setLocation] = useState<LocationFieldsValue>({ lat: "", lng: "" });
   const [vipTier, setVipTier] = useState<VipTier | "">("");
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -52,6 +62,7 @@ export function CustomerCreateForm() {
     if (emailError) nextErrors.email = emailError;
     if (phoneError) nextErrors.phone = phoneError;
     if (addressError) nextErrors.address = addressError;
+    Object.assign(nextErrors, validateLocationFields(location));
     setFieldErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
@@ -62,6 +73,7 @@ export function CustomerCreateForm() {
         email: email.trim() === "" ? null : email.trim(),
         phone: phone.trim() === "" ? null : phone.trim(),
         address: address.trim() === "" ? null : address.trim(),
+        location: toGeoLocation(location),
         vipTier: vipTier === "" ? null : vipTier,
       });
       // Redirect first, then fire the toast so it rides along on the list screen.
@@ -132,6 +144,12 @@ export function CustomerCreateForm() {
             error={fieldErrors.address}
           />
         </div>
+
+        {/* Row 4: the address's pin — paste "lat, lng" from Google Maps. */}
+        <LocationFields value={location} onChange={setLocation} errors={fieldErrors} />
+        <p className="text-xs text-muted sm:col-span-2">
+          Titik alamat dipakai untuk menentukan zona antar-jemput dari jarak ke cabang.
+        </p>
       </div>
 
       {/* Stacks on small screens (Create on top, Cancel below); row on sm+. */}

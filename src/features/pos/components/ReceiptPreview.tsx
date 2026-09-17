@@ -4,6 +4,7 @@ import { formatMoney, formatQty } from "@/utils/decimal";
 import type { PublicReceipt } from "@/types/api";
 
 import type { ReceiptSize } from "../deviceSettings";
+import { variantDetailOf } from "../variantDetail";
 
 function paidAtLabel(paidAt: string | null): string {
   if (!paidAt) return "";
@@ -146,6 +147,10 @@ export function ReceiptPreview({
                 {formatMoney(item.lineTotal)}
               </span>
             </div>
+            {/* What it was priced on beyond the pet — "Lokasi: Di Rumah · Zona A". */}
+            {variantDetailOf(item) && (
+              <p className="text-xs text-muted">{variantDetailOf(item)}</p>
+            )}
             <div className="flex justify-between gap-2 text-xs text-muted">
               <span className="tabular-nums">
                 {formatQty(item.qty)} × {formatMoney(item.unitPrice)}

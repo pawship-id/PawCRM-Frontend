@@ -8,6 +8,7 @@ import { formatMoney } from "@/utils/decimal";
 import type { PosItem, PosDiscountMode } from "@/types/api";
 
 import { ownDiscountOf } from "../bookingDiscount";
+import { variantDetailOf } from "../variantDetail";
 import { PosDiscountPopover } from "./PosDiscountPopover";
 
 /**
@@ -83,6 +84,12 @@ export function PosCartLine({
    * `cancelled`, and almost none of those is `draft` — so a pulled grooming
    * could be neither discounted nor taken back out.
    */
+  const detail = variantDetailOf(item);
+  const addonDetail = (addon: PosItem) => {
+    const own = variantDetailOf(addon);
+    return own !== detail ? own : null;
+  };
+
   const locked =
     item.bookingOwned &&
     item.bookingStatus !== null &&
@@ -106,6 +113,17 @@ export function PosCartLine({
           <span className="block truncate text-sm font-medium text-foreground">
             {item.petName ? `${item.petName} - ${item.name}` : item.name}
           </span>
+
+          {/*
+            WHAT IT WAS PRICED ON BEYOND THE ANIMAL — "Lokasi: Di Rumah · Zona
+            A". Two groomings for one dog can differ by 50.000 on where they are
+            done, and the figure below cannot say which one this is.
+          */}
+          {detail && (
+            <span className="mt-0.5 block truncate text-xs text-muted">
+              {detail}
+            </span>
+          )}
 
           {/*
             NO GROOMER HERE. Who is doing the work lives on the booking's detail
@@ -185,6 +203,14 @@ export function PosCartLine({
                       add-on is and what its price is doing to the total. */}
                   {`+ ${addon.name}`}
                 </span>
+                {/* Only when it differs from the service's — an add-on
+                    inherits the main line's choices, and repeating them under
+                    every add-on is noise. */}
+                {addonDetail(addon) && (
+                  <span className="block truncate text-xs text-muted">
+                    {addonDetail(addon)}
+                  </span>
+                )}
                 {ownDiscountOf(addon) && (
                   <span className="block text-xs tabular-nums text-success">
                     −{formatMoney(ownDiscountOf(addon)!.resolvedAmount)}

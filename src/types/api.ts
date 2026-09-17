@@ -71,6 +71,10 @@ export type ApiResponse<T> = ApiSuccess<T> | ApiFailure;
 export interface ValidationDetail {
   field: string;
   message: string;
+  /** A price refused for a missing "Dipilih staf" choice — which card (17 September 2026). */
+  optionId?: string;
+  /** A price refused because the customer's zone is unknown — why. */
+  zoneReason?: "customer_location_missing" | "branch_location_missing" | "outside_zones";
 }
 
 /** Payload of GET /api/health. */
@@ -1144,6 +1148,12 @@ export interface Customer {
   email: string | null;
   phone: string | null;
   address: string | null;
+  /**
+   * The address's coordinates (17 September 2026) — what a service priced by
+   * Zona is quoted from, measured to the transaction's branch. `{lat: null,
+   * lng: null}` = no pin. Absent on a customer read before the field existed.
+   */
+  location?: GeoLocation;
   vipTier: VipTier | null;
   /** Soft-delete marker; non-null means deleted (restorable), null means live. */
   deletedAt: string | null;
@@ -1172,6 +1182,7 @@ export interface CreateCustomerInput {
   email?: string | null;
   phone?: string | null;
   address?: string | null;
+  location?: GeoLocationInput | null;
   vipTier?: VipTier | null;
 }
 
@@ -1185,6 +1196,7 @@ export interface UpdateCustomerInput {
   email?: string | null;
   phone?: string | null;
   address?: string | null;
+  location?: GeoLocationInput | null;
   vipTier?: VipTier | null;
 }
 
@@ -1326,6 +1338,9 @@ export interface PosItem {
    * `bookingId` + `petId` + this, never on this alone.
    */
   parentServiceId: string | null;
+  /** What a walk-in service was priced on beyond the pet (17 September 2026). */
+  variantChoices?: VariantChoiceSnapshot[];
+  zone?: ZoneSnapshot | null;
   petId: string | null;
   petName: string | null;
   groomerName: string | null;
@@ -1535,7 +1550,7 @@ export interface PosCatalogAddon {
   name: string;
   price: string | null;
   hasVariants: boolean;
-  variantAxes: ServiceVariantAxis[];
+  variantAxes: VariantAxisKey[];
   variants: ServiceVariant[];
 }
 
@@ -1606,7 +1621,7 @@ export interface PosCatalogItem {
    * Absent on every product tile and on a server older than this field.
    */
   hasVariants?: boolean;
-  variantAxes?: ServiceVariantAxis[];
+  variantAxes?: VariantAxisKey[];
   variants?: ServiceVariant[];
   /**
    * The add-ons this service may be sold with, resolved to names and prices.
@@ -1736,6 +1751,9 @@ export interface PosReceiptItem {
   /** FR-8's sub-line, denormalised at sale time so a reprint survives a rename. */
   petName: string | null;
   groomerName: string | null;
+  /** What a walk-in service was priced on beyond the pet — names and labels only. */
+  variantChoices?: Pick<VariantChoiceSnapshot, "name" | "label">[];
+  zone?: Pick<ZoneSnapshot, "name" | "distanceKm"> | null;
   /**
    * The add-ons attached to THIS service, printed inside its line rather than
    * beside it — the same shape the basket shows, so the paper says what the
@@ -1978,6 +1996,8 @@ export interface PosItemInput {
   petId?: string | null;
   petName?: string | null;
   groomerName?: string | null;
+  /** The "Dipilih staf" values a walk-in service is priced on; an add-on inherits its main line's. */
+  variantChoices?: VariantChoice[];
 }
 
 /**
@@ -2414,6 +2434,13 @@ export interface BookingMainService {
   /** Who is doing it, in how many turns. Empty means nobody is assigned yet. */
   sessions: BookingSession[];
   addons: BookingAddon[];
+  /**
+   * What it was priced on beyond the pet (17 September 2026) — the "Dipilih
+   * staf" values, and the zone with the distance it was measured at. Absent on
+   * older bookings.
+   */
+  variantChoices?: VariantChoiceSnapshot[];
+  zone?: ZoneSnapshot | null;
 }
 
 /**
@@ -2433,6 +2460,8 @@ export interface BookingAddon {
   discount?: InvoiceDiscount | null;
   discountAmount?: string | null;
   durationMin: number | null;
+  /** Its own "Dipilih staf" values — inherited from the main service unless changed. */
+  variantChoices?: VariantChoiceSnapshot[];
 }
 
 /**
@@ -2831,7 +2860,14 @@ export interface CreateBookingEntry {
     serviceId: string;
     price?: string | null;
     discount?: TypedDiscountInput | null;
+    /** Overrides the main service's choices for this add-on only. */
+    variantChoices?: VariantChoice[];
   }[];
+  /**
+   * The "Dipilih staf" values the service is priced on (17 September 2026) —
+   * one per card the service declares. Add-ons inherit them.
+   */
+  variantChoices?: VariantChoice[];
   /**
    * The add-ons ticked under the service. Each must be filed `serviceType:
    * "addon"` AND listed in the service's own `addonServiceIds`; the server
@@ -2907,6 +2943,8 @@ export interface UpdateBookingInput {
   petId?: string;
   serviceId?: string;
   addonServiceIds?: string[];
+  /** New "Dipilih staf" values — re-quotes the line in its agreed zone. */
+  variantChoices?: VariantChoice[];
   durationMin?: number | null;
   groomerUserId?: string | null;
   internalNotes?: string | null;
@@ -3051,6 +3089,74 @@ export type ServiceType = "main" | "addon";
  */
 export type ServiceVariantAxis = "petType" | "sizeCategory" | "furType";
 
+/**
+ * ANY KEY A SERVICE'S `variantAxes` MAY HOLD (17 September 2026): one of the
+ * pet's three facts (`ServiceVariantAxis`), `"zone"`, or the id of a "Dipilih
+ * staf" card — see `VariantOption.axisKey`.
+ */
+export type VariantAxisKey = ServiceVariantAxis | "zone" | (string & {});
+
+/** One "Dipilih staf" value a variant is priced on, or a line was sold on. */
+export interface VariantChoice {
+  /** The card's id. */
+  optionId: string;
+  /** One of the card's `values[].code`. */
+  code: string;
+}
+
+/** A choice as a sold line remembers it — the card's name and the value's word. */
+export interface VariantChoiceSnapshot extends VariantChoice {
+  name: string;
+  label: string;
+}
+
+/** The zone a sold line was priced in, and the distance it was measured at. */
+export interface ZoneSnapshot {
+  zoneId: string;
+  name: string;
+  distanceKm: number | null;
+}
+
+/** Where a card's values come from — see `VariantOption`. */
+export type VariantOptionSource = "species" | "size" | "furType" | "zone" | "staff";
+
+/** A value of a "Dipilih staf" card. */
+export interface VariantOptionValue {
+  code: string;
+  label: string;
+  sortOrder: number;
+  /** Retired: kept for services already priced on it, not offered to new ones. */
+  isActive: boolean;
+}
+
+/**
+ * One Opsi Varian card, as GET /api/variant-options returns it.
+ *
+ * `species` / `size` / `furType` — "Otomatis" from the pet; values are the
+ * tenant's pet options of that type. `zone` — "Otomatis" from the customer's
+ * pin and the branch; values are zones. `staff` — "Dipilih staf" at booking,
+ * till and invoice; the only source whose values are on the card.
+ */
+export interface VariantOption {
+  _id: string;
+  tenantId: string;
+  name: string;
+  nameKey: string;
+  description: string | null;
+  source: VariantOptionSource;
+  /** The pet's three — seeded, never deleted. */
+  builtIn: boolean;
+  values: VariantOptionValue[];
+  sortOrder: number;
+  /** What a service's `variantAxes` uses for this card. */
+  axisKey: VariantAxisKey;
+  /** Live services declaring this axis. */
+  serviceCount: number;
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** Where a service is performed. Mirrors SERVICE_LOCATIONS. */
 export type ServiceLocation = "in_home" | "in_store";
 
@@ -3065,6 +3171,10 @@ export interface ServiceVariant {
   petType: PetSpecies | null;
   sizeCategory: PetSize | null;
   furType: PetFurType | null;
+  /** The zone this row prices, when the service varies by `"zone"`. */
+  zoneId?: string | null;
+  /** One value per "Dipilih staf" axis the service declares. */
+  choices?: VariantChoice[];
   /** Decimal as a string, e.g. "120000.0000". */
   price: string;
   /**
@@ -3114,7 +3224,7 @@ export interface Service {
   description: string | null;
   /** Whether the price depends on the pet — see `variants`. */
   hasVariants: boolean;
-  variantAxes: ServiceVariantAxis[];
+  variantAxes: VariantAxisKey[];
   variants: ServiceVariant[];
   /** The stops a booking of this service moves through. */
   sessions: string[];
@@ -3188,6 +3298,8 @@ export interface ServiceVariantInput {
   petType?: PetSpecies | null;
   sizeCategory?: PetSize | null;
   furType?: PetFurType | null;
+  zoneId?: string | null;
+  choices?: VariantChoice[];
   price: string;
   /** Required: a variant service has no service-level duration. */
   durationMin: number;
@@ -3220,7 +3332,7 @@ export interface CreateServiceInput {
   categoryId?: string | null;
   description?: string | null;
   hasVariants?: boolean;
-  variantAxes?: ServiceVariantAxis[];
+  variantAxes?: VariantAxisKey[];
   variants?: ServiceVariantInput[];
   sessions?: string[];
   /** See `Service.sessionWeights`. `[]` = split evenly. */
@@ -3260,7 +3372,7 @@ export interface UpdateServiceInput {
   billingUnit?: ServiceBillingUnit;
   description?: string | null;
   hasVariants?: boolean;
-  variantAxes?: ServiceVariantAxis[];
+  variantAxes?: VariantAxisKey[];
   variants?: ServiceVariantInput[];
   sessions?: string[];
   /** See `Service.sessionWeights`. `[]` = split evenly. */
@@ -5730,6 +5842,9 @@ export interface CustomerInvoiceItem {
    * existed do not carry the key.
    */
   parentServiceId?: string | null;
+  /** What a typed service line was priced on beyond the pet (17 September 2026). */
+  variantChoices?: VariantChoiceSnapshot[];
+  zone?: ZoneSnapshot | null;
   /** Whose animal the service is for. Null on a product line. */
   petId: string | null;
   /**
@@ -5867,6 +5982,8 @@ export interface CreateInvoiceItemInput {
    * accepting one would raise an appointment for a bag of food.
    */
   petId?: string;
+  /** The "Dipilih staf" values a service line is priced on; an add-on inherits its main line's. */
+  variantChoices?: VariantChoice[];
 }
 
 /**

@@ -16,9 +16,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { useServiceSteps } from "@/hooks/useServiceSteps";
 import { cn } from "@/lib/utils";
-import type { ServiceLocation, ServiceVariantAxis } from "@/types/api";
+import type { ServiceLocation, ServiceVariantAxis, VariantAxisKey } from "@/types/api";
 
-import { MAX_VARIANTS, type VariantCombo } from "../variantAxes";
+import { MAX_VARIANTS, type VariantAxisDef, type VariantCombo } from "../variantAxes";
 import {
   ServiceStepFlagBadge,
   serviceStepFlag,
@@ -84,8 +84,23 @@ export const VARIANT_AXIS_FIELDS: Array<{
  * of `MAX_VARIANTS`; the rows stay drawn — what was typed is not thrown away —
  * and the form's Simpan stays off until an axis is unticked.
  */
+/**
+ * The hint under an axis checkbox — the pet's three keep their reason; Zona and
+ * a staff card say where the answer comes from, then the card's own note.
+ */
+function axisHint(def: VariantAxisDef): string {
+  const pet = VARIANT_AXIS_FIELDS.find((entry) => entry.axis === def.key);
+  if (pet) return pet.hint;
+  const where =
+    def.source === "zone"
+      ? "Otomatis dari jarak alamat pelanggan ke cabang."
+      : "Dipilih staf saat booking, kasir, dan faktur.";
+  return def.description ? `${where} ${def.description}` : where;
+}
+
 export function ServiceVariantEditor({
   axes,
+  axisDefs,
   prices,
   durations,
   active,
@@ -98,7 +113,9 @@ export function ServiceVariantEditor({
   onDurationChange,
   onActiveChange,
 }: {
-  axes: ServiceVariantAxis[];
+  axes: VariantAxisKey[];
+  /** The axes offered — one per Opsi Varian card, in card order. */
+  axisDefs: VariantAxisDef[];
   prices: Record<string, string>;
   /** Combo key → minutes as typed. */
   durations: Record<string, string>;
@@ -109,7 +126,7 @@ export function ServiceVariantEditor({
   loading: boolean;
   error?: string;
   disabled: boolean;
-  onToggleAxis: (axis: ServiceVariantAxis, checked: boolean) => void;
+  onToggleAxis: (axis: VariantAxisKey, checked: boolean) => void;
   onPriceChange: (key: string, value: string) => void;
   onDurationChange: (key: string, value: string) => void;
   onActiveChange: (key: string, active: boolean) => void;
@@ -123,13 +140,13 @@ export function ServiceVariantEditor({
           dicentang.
         </p>
         <CheckRowGroup className="mt-2">
-          {VARIANT_AXIS_FIELDS.map((entry) => (
+          {axisDefs.map((def) => (
             <CheckRow
-              key={entry.axis}
-              label={entry.label}
-              description={entry.hint}
-              checked={axes.includes(entry.axis)}
-              onCheckedChange={(checked) => onToggleAxis(entry.axis, checked)}
+              key={def.key}
+              label={def.name}
+              description={axisHint(def)}
+              checked={axes.includes(def.key)}
+              onCheckedChange={(checked) => onToggleAxis(def.key, checked)}
               disabled={disabled}
             />
           ))}

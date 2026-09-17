@@ -22,6 +22,7 @@ import { Label } from "@/components/ui/label";
 import { useBranchScope } from "@/features/inventory/hooks/useBranchScope";
 import { CustomerSearchDialog } from "@/features/customers";
 import { PetQuickAddDialog } from "@/features/pets";
+import { useVariantQuote } from "@/features/services";
 import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
 import { customerService } from "@/services/customer.service";
@@ -44,13 +45,16 @@ import {
   storedPetServiceKeys,
 } from "../bookingDraft";
 import type { BookingCardDraft } from "../bookingDraft";
-import { priceForPet } from "@/utils/serviceVariant";
+import { variantRefusalOf, type VariantRefusal } from "../variantLine";
+import { priceForPet, staffAxesOf, variesByZone } from "@/utils/serviceVariant";
 import type {
   BookingLocation,
   BookingStatus,
   Customer,
   Pet,
   Service,
+  VariantChoice,
+  ZoneSnapshot,
 } from "@/types/api";
 
 /** The API's page cap. Asking for more is a 400, not a bigger page. */
@@ -283,6 +287,25 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
   const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  /*
+    A LINE THE SERVER REFUSED OVER ITS "DIPILIH STAF" CHOICES OR ITS ZONE — shown
+    on that card, under the select it names when it names one.
+  */
+  const [cardRefusal, setCardRefusal] = useState<(VariantRefusal & { key: string }) | null>(null);
+  /*
+    THE ZONE THE STORED BOOKING WAS PRICED IN. An edit is re-quoted there by the
+    server, so the preview uses it rather than measuring again.
+  */
+  const [storedZone, setStoredZone] = useState<ZoneSnapshot | null>(null);
+
+  /*
+    PRICED BEYOND THE PET (17 September 2026): the customer's pin measured from
+    the chosen branch, and the staff's choices per card.
+  */
+  const variant = useVariantQuote({
+    branchPin: scope.branches.find((branch) => branch._id === branchId)?.location,
+    customerPin: customer?.location,
+  });
 
   /*
     THE BOOKING BEING CORRECTED, when there is one.
@@ -308,6 +331,7 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
         /* Billed state is marked on the card itself — see `cardFromBooking`. */
         setCards([cardFromBooking(booking)]);
         setStoredKeys(storedPetServiceKeys(booking));
+        setStoredZone(booking.service?.zone ?? null);
         setPickedBranch(booking.branchId);
         setNotes(booking.notes ?? "");
         setLocation(booking.location ?? "in_store");
@@ -525,6 +549,7 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
     setLoadError(null);
     setFormError(null);
     setFieldErrors({});
+    setCardRefusal(null);
   }
 
   /**
@@ -554,6 +579,7 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
     setPets([]);
     setCards((prev) => prev.map((card) => ({ ...card, petId: "" })));
     setFieldErrors({});
+    setCardRefusal(null);
   }
 
   function updateCard(key: string, patch: Partial<BookingCardDraft>) {
@@ -561,6 +587,7 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
       prev.map((card) => (card.key === key ? { ...card, ...patch } : card)),
     );
     setFieldErrors({});
+    setCardRefusal(null);
 
     /*
       CHOOSING AN ANIMAL RE-READS IT. The record may have been corrected since
@@ -611,6 +638,7 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
     setSaving(true);
     setFormError(null);
     setFieldErrors({});
+    setCardRefusal(null);
 
     /*
       WHAT THE BOOKINGS SHARE — the header. On a create it is written onto every
@@ -644,14 +672,14 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
       if (editing) {
         const updated = await bookingService.update(bookingId, {
           ...header,
-          ...cardToUpdate(cards[0]),
+          ...cardToUpdate(cards[0], serviceOf),
         });
         message = `Booking ${updated.bookingNumber ?? "draf"} diperbarui.`;
       } else {
         const result = await bookingService.create({
           ...header,
           status: SAVE_AS[as],
-          bookings: cardsToEntries(cards),
+          bookings: cardsToEntries(cards, serviceOf),
         });
         const made = result.bookings;
 
@@ -692,6 +720,32 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
         /* The page it landed on already shows it. */
       }
     } catch (error) {
+      /*
+        A LINE'S CHOICE OR ZONE, REFUSED — on the card it is about: the entry the
+        path names, else the first card whose service declares that card (or is
+        priced by zone).
+      */
+      const refused = variantRefusalOf(error);
+      if (refused) {
+        const sent = cards.filter((card) => card.petId !== "" && card.serviceId !== "");
+        const card =
+          (refused.index !== null ? sent[refused.index] : undefined) ??
+          sent.find((entry) =>
+            idsOf(entry).some((id) =>
+              refused.optionId
+                ? staffAxesOf(serviceOf(id)).includes(refused.optionId)
+                : variesByZone(serviceOf(id)),
+            ),
+          ) ??
+          sent[0];
+
+        if (card) {
+          setCardRefusal({ ...refused, key: card.key });
+          setSaving(false);
+          return;
+        }
+      }
+
       if (error instanceof ApiError) {
         /*
           A 409 HERE IS THE CLASH — the one refusal this form answers by asking
@@ -727,21 +781,44 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
     }
   }
 
-  const serviceOf = (serviceId: string) =>
-    services.find((service) => service._id === serviceId) ?? null;
+  function serviceOf(serviceId: string) {
+    return services.find((service) => service._id === serviceId) ?? null;
+  }
   const petOf = (petId: string) => pets.find((pet) => pet._id === petId) ?? null;
+
+  function idsOf(card: BookingCardDraft) {
+    return [card.serviceId, ...card.addonServiceIds].filter((id) => id !== "");
+  }
+
+  /*
+    ONE LINE, QUOTED — the animal, the zone and the card's choices. An edit is
+    quoted in the zone the booking was priced in, which is where the server
+    re-quotes it.
+  */
+  const quoteFor = (
+    service: Service | null,
+    pet: Pet | null,
+    choices: readonly VariantChoice[],
+  ) =>
+    storedZone
+      ? priceForPet(service, pet, { zoneId: storedZone.zoneId, choices })
+      : variant.quote(service, pet, choices);
+
+  const quoteOn = (card: BookingCardDraft, serviceId: string) =>
+    quoteFor(serviceOf(serviceId), petOf(card.petId), card.variantChoices);
+
+  const zoneText = storedZone
+    ? `${storedZone.name}${storedZone.distanceKm === null ? "" : ` · ${String(storedZone.distanceKm).replace(".", ",")} km`}`
+    : variant.zoneText;
 
   /*
     AN INACTIVE VARIANT THE SERVER WILL REFUSE (13 September 2026) — the
     animal's variant is switched off, and the pair was not already on the stored
     booking. A pair that was is allowed through on an edit.
   */
-  const refusedInactive = (petId: string, serviceId: string) =>
-    priceForPet(serviceOf(serviceId), petOf(petId)).inactive &&
-    !storedKeys.has(petServiceKey(petId, serviceId));
-
-  const idsOf = (card: BookingCardDraft) =>
-    [card.serviceId, ...card.addonServiceIds].filter((id) => id !== "");
+  const refusedInactive = (card: BookingCardDraft, serviceId: string) =>
+    quoteOn(card, serviceId).inactive &&
+    !storedKeys.has(petServiceKey(card.petId, serviceId));
 
   /*
     Summed as decimal STRINGS — this is a quote somebody will be charged, and
@@ -754,11 +831,8 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
   const total = sumDecimals(
     cards.flatMap((card) =>
       idsOf(card)
-        .filter((serviceId) => !refusedInactive(card.petId, serviceId))
-        .map(
-          (serviceId) =>
-            priceForPet(serviceOf(serviceId), petOf(card.petId)).price,
-        )
+        .filter((serviceId) => !refusedInactive(card, serviceId))
+        .map((serviceId) => quoteOn(card, serviceId).price)
         .filter((price): price is string => Boolean(price)),
     ),
   );
@@ -770,7 +844,9 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
    * WHEN THE CUSTOMER GETS THEIR ANIMALS BACK — the longest groomer's workload,
    * never the sum (PRD 2.9). See `longestGroomerMinutes`.
    */
-  const longest = longestGroomerMinutes(cards, serviceOf, petOf);
+  const longest = longestGroomerMinutes(cards, serviceOf, petOf, (service, pet, card) =>
+    quoteFor(service, pet, card.variantChoices),
+  );
 
   /** The bookings this save would make — cards with an animal and a service. */
   const bookingCount = cardsToEntries(cards).length;
@@ -797,11 +873,27 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
   */
   const unpriceable = cards.find((card) =>
     idsOf(card).some(
-      (serviceId) =>
-        priceForPet(serviceOf(serviceId), petOf(card.petId)).missingAxis !==
-        null,
+      (serviceId) => quoteOn(card, serviceId).missingAxis !== null,
     ),
   );
+
+  /*
+    A ZONE NOBODY CAN MEASURE, OR A "DIPILIH STAF" VALUE NOBODY CHOSE — the
+    sentence the server would refuse with. A billed card is not re-quoted.
+  */
+  const unanswered = (() => {
+    for (const card of cards) {
+      if (card.locked || card.petId === "") continue;
+      for (const serviceId of idsOf(card)) {
+        const service = serviceOf(serviceId);
+        const problem = service
+          ? variant.problemOf(service, quoteOn(card, serviceId))
+          : null;
+        if (problem) return problem;
+      }
+    }
+    return null;
+  })();
 
   /*
     A NEW PAIR ON A SWITCHED-OFF VARIANT (13 September 2026) — its own sentence
@@ -810,9 +902,7 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
   */
   const inactiveLine = (() => {
     for (const card of cards) {
-      const serviceId = idsOf(card).find((id) =>
-        refusedInactive(card.petId, id),
-      );
+      const serviceId = idsOf(card).find((id) => refusedInactive(card, id));
       if (serviceId) {
         return { service: serviceOf(serviceId), pet: petOf(card.petId) };
       }
@@ -842,6 +932,8 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
             ? `Ukuran ${sizeless.name} belum diisi.`
             : unpriceable
               ? `Data ${petOf(unpriceable.petId)?.name ?? "hewan"} belum lengkap, harganya belum bisa dihitung.`
+              : unanswered
+                ? `${unanswered}.`
               : inactiveLine
                 ? `Varian ${inactiveLine.service?.name ?? "layanan"} untuk ${inactiveLine.pet?.name ?? "hewan ini"} sedang nonaktif — pilih layanan lain atau aktifkan variannya di katalog.`
                 : date === "" || time === ""
@@ -1202,6 +1294,11 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
                     removable={!editing && cards.length > 1}
                     duplicate={duplicateKeys.has(card.key)}
                     storedKeys={storedKeys}
+                    quote={(service, pet) => quoteFor(service, pet, card.variantChoices)}
+                    problemOf={variant.problemOf}
+                    cardsFor={variant.cardsFor}
+                    zoneText={zoneText}
+                    refusal={cardRefusal?.key === card.key ? cardRefusal : null}
                     onChange={(patch) => updateCard(card.key, patch)}
                     onRemove={() => removeCard(card.key)}
                   />

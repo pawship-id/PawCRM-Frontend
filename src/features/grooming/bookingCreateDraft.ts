@@ -1,7 +1,10 @@
 import { divideRound, toMinor } from "@/utils/decimal";
+import { splitChoices } from "@/features/booking/variantLine";
 import type {
   CreateBookingEntry,
+  Service,
   TypedDiscountInput,
+  VariantChoice,
 } from "@/types/api";
 
 /**
@@ -49,6 +52,11 @@ export interface PetDraft {
   main: PriceDraft;
   /** By add-on service id. An add-on without a row follows the catalogue. */
   addons: Record<string, PriceDraft>;
+  /**
+   * The "Dipilih staf" values for this line — one per card the service or its
+   * add-ons declare (17 September 2026). Emptied when the service changes.
+   */
+  variantChoices: VariantChoice[];
 }
 
 export function blankPetDraft(petId: string): PetDraft {
@@ -60,6 +68,7 @@ export function blankPetDraft(petId: string): PetDraft {
     internalNotes: "",
     main: BLANK_PRICE,
     addons: {},
+    variantChoices: [],
   };
 }
 
@@ -224,17 +233,37 @@ export function typedDiscount(
  * client that sent the rupiah could claim 10% came to Rp 90.000. An untouched row
  * sends nothing, so somebody without `bookings:setPrice` never trips the 403.
  */
-export function toEntry(draft: PetDraft): CreateBookingEntry {
+export function toEntry(
+  draft: PetDraft,
+  /*
+    THE CATALOGUE, to know which cards each service declares. Without it the
+    line sends no choices — the pet-only services every caller had before
+    17 September 2026.
+  */
+  serviceOf: (id: string) => Pick<Service, "hasVariants" | "variantAxes"> | null = () => null,
+): CreateBookingEntry {
+  /*
+    THE MAIN SERVICE'S CHOICES; an add-on inherits them on the server, and only
+    one declaring a card the main service does not gets its own.
+  */
+  const choices = splitChoices(
+    serviceOf(draft.serviceId),
+    draft.addonServiceIds.map((serviceId) => ({ serviceId, service: serviceOf(serviceId) })),
+    draft.variantChoices ?? [],
+  );
+
   const addonPricing = draft.addonServiceIds
     .map((serviceId) => {
       const row = draft.addons[serviceId] ?? BLANK_PRICE;
+      const own = choices.addons.find((addon) => addon.serviceId === serviceId);
       return {
         serviceId,
         price: row.price === "" ? null : row.price,
         discount: typedDiscount(row.discountMode, row.discountValue),
+        ...(own ? { variantChoices: own.variantChoices } : {}),
       };
     })
-    .filter((row) => row.price !== null || row.discount !== null);
+    .filter((row) => row.price !== null || row.discount !== null || "variantChoices" in row);
 
   const note = draft.internalNotes.trim();
 
@@ -247,5 +276,6 @@ export function toEntry(draft: PetDraft): CreateBookingEntry {
     price: draft.main.price === "" ? null : draft.main.price,
     discount: typedDiscount(draft.main.discountMode, draft.main.discountValue),
     ...(addonPricing.length > 0 ? { addonPricing } : {}),
+    ...(choices.main.length > 0 ? { variantChoices: choices.main } : {}),
   };
 }

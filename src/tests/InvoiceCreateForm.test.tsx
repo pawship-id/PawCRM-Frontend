@@ -21,6 +21,17 @@ import { tenantService } from "@/services/tenant.service";
 import { bookingService } from "@/services/booking.service";
 import { petService } from "@/services/pet.service";
 import { ApiError } from "@/services/api-error";
+import { variantOptionService } from "@/services/variantOption.service";
+import { zoneService } from "@/services/zone.service";
+
+import {
+  BUILT_IN_VARIANT_OPTIONS,
+  makeVariantOption,
+  primeVariantOptions,
+} from "./helpers/variantOptions";
+
+jest.mock("@/services/variantOption.service");
+jest.mock("@/services/zone.service");
 
 const push = jest.fn();
 jest.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
@@ -150,6 +161,7 @@ const sent = () =>
   (customerInvoiceService.create as jest.Mock).mock.calls[0][0];
 
 beforeEach(() => {
+  primeVariantOptions(variantOptionService.list, zoneService.list);
   push.mockClear();
   (Swal.fire as jest.Mock).mockClear();
   mockLookups();
@@ -2019,5 +2031,248 @@ describe("when the server refuses", () => {
         screen.getByRole("button", { name: /^simpan faktur$/i }),
       ).toBeEnabled(),
     );
+  });
+});
+
+/**
+ * PRICED BEYOND THE PET (17 September 2026) — a "Dipilih staf" card the staff
+ * answers on the row, and a zone measured from the branch's pin to the
+ * customer's. The form previews; the server quotes again from the same answers.
+ */
+describe("a service priced beyond the pet", () => {
+  const LOKASI_ID = "5a7f1f77bcf86cd7994391aa";
+  const LOKASI = makeVariantOption({
+    _id: "vo-lokasi",
+    name: "Lokasi",
+    source: "staff",
+    axisKey: LOKASI_ID,
+    sortOrder: 3,
+    values: [
+      { code: "di-toko", label: "Di Toko", sortOrder: 0, isActive: true },
+      { code: "di-rumah", label: "Di Rumah", sortOrder: 1, isActive: true },
+    ],
+  });
+  const ZONA_A = {
+    _id: "z1",
+    tenantId: "t1",
+    name: "Zona A",
+    nameKey: "zona a",
+    description: null,
+    minKm: 0,
+    maxKm: 10,
+    createdBy: null,
+    deletedAt: null,
+    createdAt: "2026-09-17T00:00:00.000Z",
+    updatedAt: "2026-09-17T00:00:00.000Z",
+  };
+  const BRANCH_PIN = { lat: -6.2, lng: 106.8, source: "manual" };
+
+  beforeEach(() => {
+    primeVariantOptions(variantOptionService.list, zoneService.list, {
+      cards: [...BUILT_IN_VARIANT_OPTIONS, LOKASI],
+      zones: [ZONA_A],
+    });
+    jest
+      .spyOn(branchService, "list")
+      .mockResolvedValue(page([{ ...BRANCH, location: BRANCH_PIN }]) as never);
+  });
+
+  async function fillService(name: RegExp) {
+    await pick(/^Pelanggan$/i, /Bu Sari/);
+    await pick(/^Cabang$/i, /Cabang Pusat/);
+    await addItem(name, "Jasa");
+    await pick(new RegExp(`^Hewan untuk ${name.source}$`, "i"), /Miko/);
+  }
+
+  describe("by a staff card", () => {
+    beforeEach(() => {
+      jest.spyOn(serviceService, "list").mockResolvedValue(
+        page([
+          {
+            _id: "s1",
+            name: "Grooming Rumah",
+            price: null,
+            hasVariants: true,
+            variantAxes: [LOKASI_ID],
+            variants: [
+              {
+                choices: [{ optionId: LOKASI_ID, code: "di-toko" }],
+                price: "120000",
+              },
+              {
+                choices: [{ optionId: LOKASI_ID, code: "di-rumah" }],
+                price: "175000",
+              },
+            ],
+          },
+        ]) as never,
+      );
+    });
+
+    it("asks Lokasi on the row, and blocks until it is chosen", async () => {
+      render(<InvoiceCreateForm />);
+      await fillService(/Grooming Rumah/);
+
+      const row = screen.getByRole("row", { name: /Grooming Rumah/ });
+      expect(
+        within(row).getByRole("combobox", { name: "Lokasi" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /^simpan faktur$/i }),
+      ).toBeDisabled();
+      expect(
+        screen.getAllByText(/Pilih Lokasi untuk Grooming Rumah dulu/).length,
+      ).toBeGreaterThan(0);
+    });
+
+    it("previews the chosen value's price and sends the choice", async () => {
+      render(<InvoiceCreateForm />);
+      await fillService(/Grooming Rumah/);
+
+      await userEvent.click(screen.getByRole("combobox", { name: "Lokasi" }));
+      await userEvent.click(
+        await screen.findByRole("option", { name: "Di Rumah" }),
+      );
+
+      expect(await screen.findAllByText("Rp 175.000")).not.toHaveLength(0);
+      expect(screen.queryByText("Rp 120.000")).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /^simpan faktur$/i }),
+      ).toBeEnabled();
+
+      await submit();
+
+      await waitFor(() =>
+        expect(customerInvoiceService.create).toHaveBeenCalled(),
+      );
+      expect(sent().items).toEqual([
+        {
+          kind: "service",
+          refId: "s1",
+          qty: "1",
+          discount: null,
+          petId: "pet1",
+          variantChoices: [{ optionId: LOKASI_ID, code: "di-rumah" }],
+        },
+      ]);
+    });
+
+    it("puts the server's refusal about a card on that card", async () => {
+      jest.spyOn(customerInvoiceService, "create").mockRejectedValue(
+        new ApiError("Validation failed", 400, {
+          details: [
+            {
+              field: "variantChoices",
+              message: "Pilihan Lokasi untuk Grooming Rumah tidak dikenal",
+              optionId: LOKASI_ID,
+            } as never,
+          ],
+        }),
+      );
+
+      render(<InvoiceCreateForm />);
+      await fillService(/Grooming Rumah/);
+      await userEvent.click(screen.getByRole("combobox", { name: "Lokasi" }));
+      await userEvent.click(
+        await screen.findByRole("option", { name: "Di Toko" }),
+      );
+      await submit();
+
+      const row = await screen.findByRole("row", { name: /Grooming Rumah/ });
+      expect(
+        await within(row).findByText(
+          "Pilihan Lokasi untuk Grooming Rumah tidak dikenal",
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe("by zone", () => {
+    beforeEach(() => {
+      jest.spyOn(serviceService, "list").mockResolvedValue(
+        page([
+          {
+            _id: "s1",
+            name: "Antar Jemput",
+            price: null,
+            hasVariants: true,
+            variantAxes: ["zone"],
+            variants: [{ zoneId: "z1", price: "30000" }],
+          },
+        ]) as never,
+      );
+    });
+
+    it("blocks with the zone reason when the customer has no pin", async () => {
+      render(<InvoiceCreateForm />);
+      await fillService(/Antar Jemput/);
+
+      const reason =
+        "Koordinat alamat pelanggan belum diisi — harga Antar Jemput ditentukan dari zona";
+      expect(
+        within(screen.getByRole("row", { name: /Antar Jemput/ })).getByText(
+          reason,
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /^simpan faktur$/i }),
+      ).toBeDisabled();
+      expect(screen.getByText(`${reason}.`)).toBeInTheDocument();
+    });
+
+    it("prices from the zone the customer's pin falls in, and says which", async () => {
+      jest.spyOn(customerService, "list").mockResolvedValue(
+        page([
+          {
+            _id: "c1",
+            name: "Bu Sari",
+            location: { lat: -6.21, lng: 106.8, source: "manual" },
+          },
+        ]) as never,
+      );
+
+      render(<InvoiceCreateForm />);
+      await fillService(/Antar Jemput/);
+
+      const row = screen.getByRole("row", { name: /Antar Jemput/ });
+      expect(within(row).getByText(/^Zona A · 1,1\d* km$/)).toBeInTheDocument();
+      expect(within(row).getAllByText("Rp 30.000")).not.toHaveLength(0);
+      expect(
+        screen.getByRole("button", { name: /^simpan faktur$/i }),
+      ).toBeEnabled();
+    });
+
+    it("says the server's zone refusal on the line it names", async () => {
+      jest.spyOn(customerService, "list").mockResolvedValue(
+        page([
+          {
+            _id: "c1",
+            name: "Bu Sari",
+            location: { lat: -6.21, lng: 106.8, source: "manual" },
+          },
+        ]) as never,
+      );
+      jest.spyOn(customerInvoiceService, "create").mockRejectedValue(
+        new ApiError("'Antar Jemput' is priced by zone", 400, {
+          details: [
+            {
+              field: "items[0].refId",
+              message:
+                "Jarak pelanggan di luar semua zona (12 km) — harga Antar Jemput ditentukan dari zona",
+              zoneReason: "outside_zones",
+            } as never,
+          ],
+        }),
+      );
+
+      render(<InvoiceCreateForm />);
+      await fillService(/Antar Jemput/);
+      await submit();
+
+      const row = await screen.findByRole("row", { name: /Antar Jemput/ });
+      expect(await within(row).findByRole("alert")).toHaveTextContent(
+        "Jarak pelanggan di luar semua zona (12 km)",
+      );
+    });
   });
 });

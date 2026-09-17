@@ -759,11 +759,12 @@ export function PosScreen() {
         service={cart.cart?.customer ? pendingService : null}
         customerId={cart.cart?.customer?._id ?? ""}
         customerName={cart.cart?.customer?.name}
+        branchId={session?.currentBranchId ?? cart.cart?.branchId ?? null}
         busy={cart.busy}
         onOpenChange={(next) => {
           if (!next) setPendingService(null);
         }}
-        onPick={(pet, addonServiceIds) => {
+        onPick={(pet, addonServiceIds, variantChoices) => {
           const tile = pendingService;
           if (!tile) return;
 
@@ -777,7 +778,11 @@ export function PosScreen() {
           */
           void cart
             .addServices([
-              { petId: pet._id, serviceIds: [tile._id, ...addonServiceIds] },
+              {
+                petId: pet._id,
+                serviceIds: [tile._id, ...addonServiceIds],
+                variantChoices,
+              },
             ])
             .then(() =>
               swalToast(

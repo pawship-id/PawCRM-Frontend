@@ -394,3 +394,73 @@ describe("bookingDraft — when the customer gets their animals back", () => {
     ).toBe(150);
   });
 });
+
+/* ─── PRICED BEYOND THE PET (17 September 2026) ───────────────────────────── */
+describe("bookingDraft — opsi dipilih staf", () => {
+  const LOKASI = "vo-lokasi";
+  const EXTRA = "vo-extra";
+
+  const priced = (id: string, axes: string[]) =>
+    ({ _id: id, hasVariants: true, variantAxes: axes }) as unknown as Service;
+  const catalogue: Record<string, Service> = {
+    [MAIN]: priced(MAIN, ["zone", LOKASI]),
+    [ADDON]: priced(ADDON, [LOKASI, EXTRA]),
+  };
+  const serviceOf = (id: string) => catalogue[id] ?? null;
+
+  it("loads the stored choices onto the card, without their words", () => {
+    const loaded = cardFromBooking(
+      booking({
+        service: {
+          variantChoices: [{ optionId: LOKASI, code: "rumah", name: "Lokasi", label: "Di Rumah" }],
+        },
+      }),
+    );
+
+    expect(loaded.variantChoices).toEqual([{ optionId: LOKASI, code: "rumah" }]);
+  });
+
+  it("sends the main service's choices, and an add-on's own only for a card the service lacks", () => {
+    const [entry] = cardsToEntries(
+      [
+        card({
+          addonServiceIds: [ADDON],
+          variantChoices: [
+            { optionId: LOKASI, code: "rumah" },
+            { optionId: EXTRA, code: "ya" },
+          ],
+        }),
+      ],
+      serviceOf,
+    );
+
+    expect(entry.variantChoices).toEqual([{ optionId: LOKASI, code: "rumah" }]);
+    expect(entry.addonPricing).toEqual([
+      {
+        serviceId: ADDON,
+        variantChoices: [
+          { optionId: LOKASI, code: "rumah" },
+          { optionId: EXTRA, code: "ya" },
+        ],
+      },
+    ]);
+  });
+
+  it("sends no choices for a pet-only service", () => {
+    const [entry] = cardsToEntries([card({ variantChoices: [] })]);
+
+    expect(entry).not.toHaveProperty("variantChoices");
+    expect(entry).not.toHaveProperty("addonPricing");
+  });
+
+  it("sends the choices on an edit, but never for a billed card", () => {
+    const choices = [{ optionId: LOKASI, code: "toko" }];
+
+    expect(cardToUpdate(card({ variantChoices: choices }), serviceOf)).toMatchObject({
+      variantChoices: choices,
+    });
+    expect(
+      cardToUpdate(card({ variantChoices: choices, locked: true }), serviceOf),
+    ).not.toHaveProperty("variantChoices");
+  });
+});

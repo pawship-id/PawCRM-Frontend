@@ -2,16 +2,18 @@ import {
   buildVariantCombos,
   comboKey,
   MAX_VARIANTS,
-  VARIANT_AXES,
+  orderedAxes,
   variantComboCount,
   type VariantAxisValues,
 } from "@/features/services";
 import type {
   Service,
   ServiceLocation,
-  ServiceVariantAxis,
+  ServiceVariant,
   UpdateServiceInput,
+  VariantAxisKey,
 } from "@/types/api";
+import { variantValueOn } from "@/utils/serviceVariant";
 
 import { placeOf, type ServicePlace } from "./serviceDisplay";
 
@@ -39,7 +41,7 @@ import { placeOf, type ServicePlace } from "./serviceDisplay";
 export const MAX_DURATION_MIN = 1440;
 
 /** The order the chips are drawn in — the mockup's: Ukuran, Jenis bulu, Jenis hewan. */
-export const AXIS_ORDER: ServiceVariantAxis[] = [
+export const AXIS_ORDER: VariantAxisKey[] = [
   "sizeCategory",
   "furType",
   "petType",
@@ -61,8 +63,8 @@ export interface DraftRow {
 
 export interface VariantDraft {
   place: ServicePlace;
-  /** Empty = one price and one duration for every animal. */
-  axes: ServiceVariantAxis[];
+  /** Empty = one price and one duration for every animal. Key order — see `orderedAxes`. */
+  axes: VariantAxisKey[];
   /** Keyed by `comboKey` — only the current axes' combinations matter. */
   rows: Record<string, DraftRow>;
   /** The one price and duration while `axes` is empty. */
@@ -115,7 +117,7 @@ export function rowOf(draft: VariantDraft, key: string): DraftRow {
 
 /** The draft a stored service starts as. */
 export function seedDraft(service: Service): VariantDraft {
-  const axes = service.hasVariants ? (service.variantAxes ?? []) : [];
+  const axes = service.hasVariants ? orderedAxes(service.variantAxes) : [];
 
   return {
     place: placeOf(service.serviceLocations),
@@ -156,21 +158,23 @@ export function seedDraft(service: Service): VariantDraft {
  */
 export function toggleAxis(
   draft: VariantDraft,
-  axis: ServiceVariantAxis,
+  axis: VariantAxisKey,
   on: boolean,
   table: VariantAxisValues,
 ): VariantDraft {
-  const nextAxes = VARIANT_AXES.filter((candidate) =>
-    candidate === axis ? on : draft.axes.includes(candidate),
+  const nextAxes = orderedAxes(
+    on ? [...draft.axes, axis] : draft.axes.filter((candidate) => candidate !== axis),
   );
 
   const oldCombos = buildVariantCombos(draft.axes, table);
   const shared = draft.axes.filter((candidate) => nextAxes.includes(candidate));
+  const valueOf = (combo: object, candidate: VariantAxisKey) =>
+    variantValueOn(combo as Partial<ServiceVariant>, candidate);
 
   const rows: Record<string, DraftRow> = {};
   for (const combo of buildVariantCombos(nextAxes, table)) {
     const parent = oldCombos.find((old) =>
-      shared.every((candidate) => old[candidate] === combo[candidate]),
+      shared.every((candidate) => valueOf(old, candidate) === valueOf(combo, candidate)),
     );
     const source = parent
       ? draft.rows[parent.key]
@@ -283,7 +287,7 @@ export function fillBySize(
 ): VariantDraft {
   if (!draft.axes.includes("sizeCategory")) return draft;
 
-  const sizes = table.sizeCategory.map((entry) => entry.value);
+  const sizes = (table.sizeCategory ?? []).map((entry) => entry.value);
   let next = draft;
   for (const combo of buildVariantCombos(draft.axes, table)) {
     const index = sizes.indexOf(combo.sizeCategory ?? "");
@@ -368,6 +372,9 @@ export function draftPatch(
         petType: combo.petType,
         sizeCategory: combo.sizeCategory,
         furType: combo.furType,
+        // Only on a service that varies by them — a pet-priced row stays as it was.
+        ...(combo.zoneId ? { zoneId: combo.zoneId } : {}),
+        ...(combo.choices.length > 0 ? { choices: combo.choices } : {}),
         price: priceDigits(row.price) as string,
         durationMin: durationValue(row.duration) as number,
         isActive: row.active,

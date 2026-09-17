@@ -190,6 +190,33 @@ describe("BookingDetailScreen — the header", () => {
     ).toBeInTheDocument();
   });
 
+  it("says what the service was priced on beyond the animal — the choice and the zone", async () => {
+    bookings.getById.mockResolvedValue(
+      booking({
+        service: {
+          variantChoices: [
+            { optionId: "vo-lokasi", code: "rumah", name: "Lokasi", label: "Di Rumah" },
+          ],
+          zone: { zoneId: "zone-a", name: "Zona A", distanceKm: 2.1 },
+          addons: [
+            {
+              ...PARFUM,
+              variantChoices: [
+                { optionId: "vo-lokasi", code: "rumah", name: "Lokasi", label: "Di Rumah" },
+                { optionId: "vo-wangi", code: "vanila", name: "Aroma", label: "Vanila" },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+    show();
+
+    expect(await screen.findByText("Lokasi: Di Rumah · Zona A · 2,1 km")).toBeInTheDocument();
+    /* The add-on's own choice only — the inherited Lokasi is not repeated. */
+    expect(screen.getByText("Aroma: Vanila")).toBeInTheDocument();
+  });
+
   it("names the animal, the service, and whose it is with their number", async () => {
     show();
 

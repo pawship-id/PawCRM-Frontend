@@ -18,7 +18,7 @@ import { formatMoney, sumDecimals } from "@/utils/decimal";
 import type { Booking } from "@/types/api";
 
 import { useBookingBridge } from "../hooks/useBookingBridge";
-import { AddServiceTab } from "./AddServiceTab";
+import { AddServiceTab, type AddServiceChoice } from "./AddServiceTab";
 import { BookingStatusBadge } from "./BookingStatusBadge";
 
 /** The two halves of the modal. FR-3 requires both to be reachable every time. */
@@ -99,9 +99,7 @@ export function BookingBridgeDialog({
    *
    * CHOICES, NOT BOOKINGS. Nothing has been written yet — see `AddServiceTab`.
    */
-  onAdd: (
-    choices: Array<{ petId: string; petName: string; serviceIds: string[] }>,
-  ) => void;
+  onAdd: (choices: AddServiceChoice[]) => void;
 }) {
   /*
     `refetch` is gone with the ad-hoc tab's write. That tab used to create a

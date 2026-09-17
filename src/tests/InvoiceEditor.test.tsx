@@ -14,7 +14,18 @@ import { ApiError } from "@/services/api-error";
 import { swalToast } from "@/lib/swal";
 import type { CustomerInvoiceDetail, CustomerInvoiceItem } from "@/types/api";
 
+import { variantOptionService } from "@/services/variantOption.service";
+import { zoneService } from "@/services/zone.service";
+
 import { renderWithAuth } from "./helpers/renderWithAuth";
+import {
+  BUILT_IN_VARIANT_OPTIONS,
+  makeVariantOption,
+  primeVariantOptions,
+} from "./helpers/variantOptions";
+
+jest.mock("@/services/variantOption.service");
+jest.mock("@/services/zone.service");
 
 jest.mock("@/services/customerInvoice.service");
 jest.mock("@/services/customer.service");
@@ -105,6 +116,7 @@ const renderEditor = (value = invoice()) =>
 
 beforeEach(() => {
   jest.clearAllMocks();
+  primeVariantOptions(variantOptionService.list, zoneService.list);
 
   asMock(customerService.list).mockResolvedValue(page([]));
   asMock(branchService.list).mockResolvedValue(page([]));
@@ -383,5 +395,127 @@ describe("InvoiceEditor", () => {
 
     expect(onCancel).toHaveBeenCalled();
     expect(customerInvoiceService.update).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * PRICED BEYOND THE PET (17 September 2026). A kept line keeps what it was
+ * priced on — shown, never re-quoted, never re-sent; a line added here asks its
+ * "Dipilih staf" values on the row and sends them.
+ */
+describe("InvoiceEditor — choices and zone", () => {
+  const LOKASI_ID = "5a7f1f77bcf86cd7994391aa";
+  const LOKASI = makeVariantOption({
+    _id: "vo-lokasi",
+    name: "Lokasi",
+    source: "staff",
+    axisKey: LOKASI_ID,
+    sortOrder: 3,
+    values: [
+      { code: "di-toko", label: "Di Toko", sortOrder: 0, isActive: true },
+      { code: "di-rumah", label: "Di Rumah", sortOrder: 1, isActive: true },
+    ],
+  });
+
+  beforeEach(() => {
+    primeVariantOptions(variantOptionService.list, zoneService.list, {
+      cards: [...BUILT_IN_VARIANT_OPTIONS, LOKASI],
+    });
+  });
+
+  it("shows a kept line's stored choices and zone, and sends it by index alone", async () => {
+    const user = userEvent.setup();
+    renderEditor(
+      invoice({
+        items: [
+          line(),
+          line({
+            kind: "service",
+            refId: "s1",
+            name: "Grooming Rumah",
+            sku: null,
+            qty: "1.0000",
+            unitPrice: "175000.0000",
+            lineTotal: "175000.0000",
+            petId: "pet1",
+            petName: "Miko",
+            variantChoices: [
+              { optionId: LOKASI_ID, name: "Lokasi", code: "di-rumah", label: "Di Rumah" },
+            ],
+            zone: { zoneId: "z1", name: "Zona A", distanceKm: 2.1 },
+          }),
+        ],
+      }),
+    );
+
+    expect(
+      await screen.findByText("Lokasi: Di Rumah · Zona A"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Lokasi" })).not.toBeInTheDocument();
+
+    const qty = screen.getByLabelText("Jumlah Kalung Nylon");
+    await user.clear(qty);
+    await user.type(qty, "3");
+    await user.click(screen.getByRole("button", { name: "Simpan faktur" }));
+
+    await waitFor(() => expect(customerInvoiceService.update).toHaveBeenCalled());
+    const [, body] = asMock(customerInvoiceService.update).mock.calls[0];
+    expect(body.items[1]).toEqual({
+      kind: "service",
+      refId: "s1",
+      qty: "1",
+      discount: null,
+      fromIndex: 1,
+    });
+  });
+
+  it("asks a new line's Lokasi on its row, prices it, and sends the choice", async () => {
+    asMock(serviceService.list).mockResolvedValue(
+      page([
+        {
+          _id: "s9",
+          name: "Grooming Rumah",
+          price: null,
+          hasVariants: true,
+          variantAxes: [LOKASI_ID],
+          variants: [
+            { choices: [{ optionId: LOKASI_ID, code: "di-toko" }], price: "120000" },
+            { choices: [{ optionId: LOKASI_ID, code: "di-rumah" }], price: "175000" },
+          ],
+        },
+      ]),
+    );
+    const user = userEvent.setup();
+    renderEditor();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Tambah barang atau jasa" }),
+    );
+    await user.click(await screen.findByRole("option", { name: /Grooming Rumah/ }));
+    await user.click(screen.getByRole("button", { name: "Tambah baris" }));
+    await user.click(screen.getByRole("button", { name: /^Hewan untuk Grooming Rumah$/ }));
+    await user.click(await screen.findByRole("option", { name: /Miko/ }));
+
+    expect(screen.getByRole("button", { name: "Simpan faktur" })).toBeDisabled();
+    expect(
+      screen.getAllByText(/Pilih Lokasi untuk Grooming Rumah dulu/).length,
+    ).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole("combobox", { name: "Lokasi" }));
+    await user.click(await screen.findByRole("option", { name: "Di Rumah" }));
+
+    expect(await screen.findAllByText("Rp 175.000")).not.toHaveLength(0);
+    await user.click(screen.getByRole("button", { name: "Simpan faktur" }));
+
+    await waitFor(() => expect(customerInvoiceService.update).toHaveBeenCalled());
+    const [, body] = asMock(customerInvoiceService.update).mock.calls[0];
+    expect(body.items[2]).toEqual({
+      kind: "service",
+      refId: "s9",
+      qty: "1",
+      discount: null,
+      petId: "pet1",
+      variantChoices: [{ optionId: LOKASI_ID, code: "di-rumah" }],
+    });
   });
 });

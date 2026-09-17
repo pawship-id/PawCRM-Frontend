@@ -10,6 +10,8 @@ import { customerService } from "@/services/customer.service";
 import { petService } from "@/services/pet.service";
 import { serviceService } from "@/services/service.service";
 import { userService } from "@/services/user.service";
+import { variantOptionService } from "@/services/variantOption.service";
+import { zoneService } from "@/services/zone.service";
 import type {
   Booking,
   CreateBookingResult,
@@ -17,11 +19,17 @@ import type {
   Pet,
   Service,
   User,
+  Zone,
 } from "@/types/api";
 
 import { swalToast } from "@/lib/swal";
 
 import { renderWithAuth } from "./helpers/renderWithAuth";
+import {
+  BUILT_IN_VARIANT_OPTIONS,
+  makeVariantOption,
+  primeVariantOptions,
+} from "./helpers/variantOptions";
 
 jest.mock("@/services/booking.service");
 jest.mock("@/services/customer.service");
@@ -35,6 +43,8 @@ jest.mock("@/services/user.service");
 */
 jest.mock("@/services/branch.service");
 jest.mock("@/services/businessLine.service");
+jest.mock("@/services/variantOption.service");
+jest.mock("@/services/zone.service");
 /* The house pattern: the toast is chrome, and the real Swal drags a timer into
    every test that saves. */
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
@@ -131,6 +141,7 @@ beforeEach(() => {
   bookings.availability.mockResolvedValue([
     { _id: groomer._id, fullName: groomer.fullName, offReason: null },
   ]);
+  primeVariantOptions(variantOptionService.list, zoneService.list);
 });
 
 /** Chooses Ibu Rina through the picker the dialog opens. */
@@ -1719,5 +1730,208 @@ describe("BookingForm — when no staff are marked as groomers", () => {
 
     await waitFor(() => expect(bookings.create).toHaveBeenCalled());
     expect(bookings.create.mock.calls[0][0].bookings[0].groomerUserId).toBeNull();
+  });
+});
+
+/*
+  ─── PRICED BEYOND THE PET (17 September 2026) ─────────────────────────────
+  A service may vary by the customer's zone, measured from the booking's branch,
+  and by a "Dipilih staf" card the staff answers on the card.
+*/
+describe("BookingForm — zona dan opsi dipilih staf", () => {
+  const LOKASI = "vo-lokasi";
+
+  const lokasi = makeVariantOption({
+    _id: LOKASI,
+    name: "Lokasi",
+    source: "staff",
+    axisKey: LOKASI,
+    sortOrder: 3,
+    values: [
+      { code: "toko", label: "Di Toko", sortOrder: 0, isActive: true },
+      { code: "rumah", label: "Di Rumah", sortOrder: 1, isActive: true },
+    ],
+  });
+
+  const zone = (id: string, name: string, minKm: number, maxKm: number): Zone => ({
+    _id: id,
+    tenantId: "t1",
+    name,
+    nameKey: name.toLowerCase(),
+    description: null,
+    minKm,
+    maxKm,
+    createdBy: null,
+    deletedAt: null,
+    createdAt: "2026-09-17T00:00:00.000Z",
+    updatedAt: "2026-09-17T00:00:00.000Z",
+  });
+
+  const row = (zoneId: string, code: string, price: string) => ({
+    petType: null,
+    sizeCategory: null,
+    furType: null,
+    zoneId,
+    choices: [{ optionId: LOKASI, code }],
+    price,
+    durationMin: 90,
+    isActive: true,
+  });
+
+  const homeGrooming = service({
+    _id: "svc-home",
+    name: "Grooming Rumah",
+    price: null,
+    serviceType: "main",
+    hasVariants: true,
+    variantAxes: ["zone", LOKASI],
+    variants: [
+      row("zone-a", "toko", "150000.0000"),
+      row("zone-a", "rumah", "180000.0000"),
+      row("zone-b", "rumah", "210000.0000"),
+    ],
+  } as unknown as Partial<Service>);
+
+  const pinned = {
+    ...customer,
+    location: { lat: -6.18, lng: 106.8, source: "manual" },
+  } as Customer;
+
+  beforeEach(() => {
+    primeVariantOptions(variantOptionService.list, zoneService.list, {
+      cards: [...BUILT_IN_VARIANT_OPTIONS, lokasi],
+      zones: [zone("zone-a", "Zona A", 0, 5), zone("zone-b", "Zona B", 5, 10)],
+    });
+    services.list.mockResolvedValue(page([homeGrooming]));
+    branches.list.mockResolvedValue(
+      page([
+        {
+          _id: BRANCH_ID,
+          name: "Cibubur",
+          location: { lat: -6.2, lng: 106.8, source: "manual" },
+        },
+      ]) as never,
+    );
+  });
+
+  it("asks for Lokasi, prices it in the customer's zone, and sends the choice", async () => {
+    customers.list.mockResolvedValue(page([pinned]));
+    renderWithAuth(<BookingForm />);
+
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+    await choose(/^layanan$/i, /grooming rumah/i);
+
+    /* On the card, and on the blocked Simpan. */
+    expect(await screen.findAllByText(/pilih lokasi untuk grooming rumah dulu/i)).toHaveLength(2);
+    expect(screen.getByRole("button", { name: /simpan booking/i })).toBeDisabled();
+
+    await choose(/^lokasi$/i, "Di Rumah");
+
+    /* On the card and in the bar's total — Zona A × Di Rumah. */
+    expect(await screen.findAllByText(/Rp\s?180[.,]000/)).toHaveLength(2);
+    expect(screen.getByText(/Zona A · 2,2\d* km/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+    await waitFor(() => expect(bookings.create).toHaveBeenCalled());
+    expect(bookings.create.mock.calls[0][0].bookings[0]).toMatchObject({
+      serviceId: "svc-home",
+      variantChoices: [{ optionId: LOKASI, code: "rumah" }],
+    });
+  });
+
+  it("says the customer has no pin, rather than a price, and blocks the save", async () => {
+    renderWithAuth(<BookingForm />);
+
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+    await choose(/^layanan$/i, /grooming rumah/i);
+    await choose(/^lokasi$/i, "Di Toko");
+
+    expect(
+      await screen.findAllByText(
+        /koordinat alamat pelanggan belum diisi — harga grooming rumah ditentukan dari zona/i,
+      ),
+    ).toHaveLength(2);
+    expect(screen.getByRole("button", { name: /simpan booking/i })).toBeDisabled();
+  });
+
+  it("puts the server's zone refusal on the card", async () => {
+    customers.list.mockResolvedValue(page([pinned]));
+    bookings.create.mockRejectedValue(
+      new ApiError("Validation failed", 400, {
+        details: [
+          {
+            field: "bookings[0].serviceId",
+            message: "Jarak pelanggan di luar semua zona — harga Grooming Rumah ditentukan dari zona",
+            zoneReason: "outside_zones",
+          } as never,
+        ],
+      }),
+    );
+    renderWithAuth(<BookingForm />);
+
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+    await choose(/^layanan$/i, /grooming rumah/i);
+    await choose(/^lokasi$/i, "Di Rumah");
+    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+    expect(
+      await screen.findByText(/jarak pelanggan di luar semua zona — harga grooming rumah/i),
+    ).toBeInTheDocument();
+  });
+
+  it("loads a booking's choice, prices it in its stored zone, and sends a changed one", async () => {
+    const existing = {
+      _id: "bk-9",
+      bookingNumber: "BK-260901-007",
+      customerId: "cust-1",
+      branchId: BRANCH_ID,
+      scheduledAt: new Date("2026-09-03T09:00:00").toISOString(),
+      status: "confirmed",
+      notes: null,
+      petId: "pet-1",
+      belongings: [],
+      internalNotes: null,
+      customerNotes: null,
+      pulledToCartAt: null,
+      pulledToInvoiceAt: null,
+      groomerName: "Belum ditentukan",
+      service: {
+        serviceId: "svc-home",
+        name: "Grooming Rumah",
+        price: "150000.0000",
+        durationMin: 90,
+        sessions: [],
+        addons: [],
+        variantChoices: [{ optionId: LOKASI, code: "toko", name: "Lokasi", label: "Di Toko" }],
+        /* Stored as Zona B although the customer has no pin now. */
+        zone: { zoneId: "zone-b", name: "Zona B", distanceKm: 6 },
+      },
+    } as unknown as Booking;
+    bookings.getById.mockResolvedValue(existing);
+    customers.getById.mockResolvedValue(customer);
+    bookings.update.mockResolvedValue(existing);
+
+    renderWithAuth(<BookingForm bookingId="bk-9" />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: /^lokasi$/i })).toHaveTextContent("Di Toko"),
+    );
+
+    await choose(/^lokasi$/i, "Di Rumah");
+    /* Zona B × Di Rumah — the zone it was agreed in, not a fresh measurement. */
+    expect(await screen.findAllByText(/Rp\s?210[.,]000/)).toHaveLength(2);
+    expect(screen.getByText(/Zona B · 6 km/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+    await waitFor(() => expect(bookings.update).toHaveBeenCalled());
+    expect(bookings.update.mock.calls[0][1]).toMatchObject({
+      serviceId: "svc-home",
+      variantChoices: [{ optionId: LOKASI, code: "rumah" }],
+    });
   });
 });

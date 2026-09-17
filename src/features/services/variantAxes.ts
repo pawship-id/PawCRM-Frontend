@@ -6,8 +6,12 @@ import type {
   PetSpecies,
   ServiceVariant,
   ServiceVariantAxis,
+  VariantAxisKey,
+  VariantChoice,
+  VariantOption,
+  Zone,
 } from "@/types/api";
-import { AXIS_OPTION_TYPE } from "@/utils/serviceVariant";
+import { AXIS_OPTION_TYPE, isPetAxis, variantValueOn } from "@/utils/serviceVariant";
 
 /**
  * The values a service's price can vary by, and the combinations they make.
@@ -23,9 +27,11 @@ import { AXIS_OPTION_TYPE } from "@/utils/serviceVariant";
  * `useVariantAxisValues`) and hands it to every function below, which keeps them
  * pure — a test passes a table, not a mocked store.
  *
- * WHAT STAYS FIXED IS THE AXES — three, in `VARIANT_AXES` order — because that
- * order is part of every combination's key, and a key is what a typed price is
- * held under. That is why `comboKey` takes no table: it never needed a value.
+ * THE AXES ARE THE TENANT'S TOO since 17 September 2026 (Opsi Varian): the
+ * pet's three, `"zone"`, and any "Dipilih staf" card. What stays fixed is the
+ * ORDER they are keyed in — the pet's three in `VARIANT_AXES` order, then Zona,
+ * then staff cards as the service lists them — because that order is part of
+ * every combination's key, and a key is what a typed price is held under.
  *
  * ─── A PRICED VALUE NEVER DISAPPEARS ───────────────────────────────────────
  *
@@ -38,7 +44,7 @@ import { AXIS_OPTION_TYPE } from "@/utils/serviceVariant";
  * the same word every pet picker uses for it.
  */
 
-/** Combinations are generated, and keyed, in this order. */
+/** The pet's three axes — keyed first, in this order. */
 export const VARIANT_AXES: readonly ServiceVariantAxis[] = [
   "petType",
   "sizeCategory",
@@ -46,17 +52,18 @@ export const VARIANT_AXES: readonly ServiceVariantAxis[] = [
 ];
 
 /**
- * Most variants one service may carry — MAX_VARIANTS in service.model.js.
- *
- * UNREACHABLE WHILE THE LISTS WERE CLOSED (2 × 3 × 2 is twelve). A tenant with
- * four species, five sizes and three coats makes sixty, so the screens that tick
- * axes check it before the round trip.
+ * Most variants one service may carry — MAX_VARIANTS in service.model.js, 100
+ * since axes became tenant-defined (Ukuran 4 × Lokasi 2 × Zona 3 is already 24).
+ * The screens that tick axes check it before the round trip.
  */
-export const MAX_VARIANTS = 20;
+export const MAX_VARIANTS = 100;
+
+/** Most axes one service may vary by — MAX_VARIANT_AXES in service.model.js. */
+export const MAX_VARIANT_AXES = 10;
 
 /** One value an axis offers — the shape `usePetOptions().choices` returns. */
 export interface VariantAxisValue {
-  /** The option code — what a variant stores. */
+  /** What a variant stores — an option code, a zone id, or a staff value code. */
   value: string;
   /** The tenant's word, " (nonaktif)" appended when `retired`. */
   label: string;
@@ -65,17 +72,62 @@ export interface VariantAxisValue {
 }
 
 /**
- * Each axis's values, in the order they are drawn — `sortOrder` first, so sizes
- * go smallest to largest, then any value kept only because the service prices it.
+ * Each axis's values, in the order they are drawn, keyed by axis key. The pet's
+ * three are always present; `"zone"` and staff card ids when the tenant has them
+ * (or the service already prices them).
  */
-export type VariantAxisValues = Record<ServiceVariantAxis, VariantAxisValue[]>;
+export type VariantAxisValues = Record<string, VariantAxisValue[]>;
 
-/** The axis fields of a stored variant — all the table needs from one. */
+/** The fields of a stored variant the table needs. */
 export type StoredVariantValues = Partial<
-  Pick<ServiceVariant, ServiceVariantAxis>
+  Pick<ServiceVariant, ServiceVariantAxis | "zoneId" | "choices">
 >;
 
+/** An axis a service form can tick — one Opsi Varian card. */
+export interface VariantAxisDef {
+  key: VariantAxisKey;
+  name: string;
+  /** "Otomatis" unless `staff`. */
+  source: VariantOption["source"];
+  description: string | null;
+}
+
 const RETIRED_SUFFIX = " (nonaktif)";
+const DELETED_ZONE_SUFFIX = " (dihapus)";
+
+/** The pet cards' names when the card list has not arrived. */
+const PET_AXIS_FALLBACK_NAME: Record<ServiceVariantAxis, string> = {
+  petType: "Jenis Hewan",
+  sizeCategory: "Ukuran",
+  furType: "Jenis Bulu",
+};
+
+/**
+ * The axes a service form offers, in card order. Before the cards load (or when
+ * they cannot), the pet's three by their seeded names — what every form offered
+ * before cards existed.
+ */
+export function variantAxisDefs(cards: readonly VariantOption[] | null | undefined): VariantAxisDef[] {
+  const live = (cards ?? []).filter((card) => card.deletedAt === null);
+
+  if (live.length === 0) {
+    return VARIANT_AXES.map((key) => ({
+      key,
+      name: PET_AXIS_FALLBACK_NAME[key],
+      source: AXIS_OPTION_TYPE[key] as VariantOption["source"],
+      description: null,
+    }));
+  }
+
+  return [...live]
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((card) => ({
+      key: card.axisKey,
+      name: card.name,
+      source: card.source,
+      description: card.description,
+    }));
+}
 
 /** The hook's own ordering — `sortOrder`, then the word. */
 function byOrder(a: PetOption, b: PetOption) {
@@ -84,7 +136,9 @@ function byOrder(a: PetOption, b: PetOption) {
 
 /**
  * The table for one service: `options` (the tenant's pet options, any type)
- * narrowed per axis to the active ones, plus whatever `variants` already price.
+ * narrowed per pet axis to the active ones, `extra.zones` for Zona and
+ * `extra.cards` for "Dipilih staf" cards — each plus whatever `variants` already
+ * price.
  *
  * A KEPT VALUE WHOSE OPTION STILL EXISTS KEEPS ITS PLACE in `sortOrder` — a
  * retired "Sedang" stays between Kecil and Besar, which is what "Isi bertingkat
@@ -96,8 +150,9 @@ export function variantAxisValues(
   options: readonly PetOption[],
   variants?: readonly StoredVariantValues[] | null,
   labelOf?: (type: PetOptionType, code: string) => string | null,
+  extra: { cards?: readonly VariantOption[]; zones?: readonly Zone[] } = {},
 ): VariantAxisValues {
-  const table = {} as VariantAxisValues;
+  const table: VariantAxisValues = {};
 
   for (const axis of VARIANT_AXES) {
     const type = AXIS_OPTION_TYPE[axis];
@@ -136,6 +191,51 @@ export function variantAxisValues(
     table[axis] = values;
   }
 
+  /* Zona — live zones nearest first, then a zone only a stored variant still prices. */
+  const zones = extra.zones ?? [];
+  const pricedZones = new Set(
+    (variants ?? []).map((variant) => variant.zoneId).filter((id): id is string => Boolean(id)),
+  );
+  if (zones.length > 0 || pricedZones.size > 0) {
+    const values: VariantAxisValue[] = zones
+      .filter((zone) => zone.deletedAt === null)
+      .sort((a, b) => a.minKm - b.minKm)
+      .map((zone) => ({ value: zone._id, label: zone.name, retired: false }));
+    const listed = new Set(values.map((entry) => entry.value));
+    for (const id of pricedZones) {
+      if (listed.has(id)) continue;
+      const word = zones.find((zone) => zone._id === id)?.name ?? "Zona";
+      values.push({ value: id, label: `${word}${DELETED_ZONE_SUFFIX}`, retired: true });
+    }
+    table.zone = values;
+  }
+
+  /* Dipilih staf — each card's active values in order, then retired ones still priced. */
+  for (const card of extra.cards ?? []) {
+    if (card.source !== "staff") continue;
+
+    const priced = new Set(
+      (variants ?? [])
+        .flatMap((variant) => variant.choices ?? [])
+        .filter((choice) => choice.optionId === card._id)
+        .map((choice) => choice.code),
+    );
+
+    const values: VariantAxisValue[] = [...card.values]
+      .filter((value) => value.isActive || priced.has(value.code))
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((value) => ({
+        value: value.code,
+        label: value.isActive ? value.label : `${value.label}${RETIRED_SUFFIX}`,
+        retired: !value.isActive,
+      }));
+    const listed = new Set(values.map((entry) => entry.value));
+    for (const code of priced) {
+      if (!listed.has(code)) values.push({ value: code, label: `${code}${RETIRED_SUFFIX}`, retired: true });
+    }
+    table[card.axisKey] = values;
+  }
+
   return table;
 }
 
@@ -145,18 +245,31 @@ export interface VariantCombo {
   petType: PetSpecies | null;
   sizeCategory: PetSize | null;
   furType: PetFurType | null;
+  /** Set when the service varies by Zona. */
+  zoneId: string | null;
+  /** One per "Dipilih staf" axis, in key order. */
+  choices: VariantChoice[];
   label: string;
   /** At least one of its values is kept only because the service prices it. */
   retired: boolean;
 }
 
-/** The ticked axes, deduplicated, in `VARIANT_AXES` order. */
-function orderedAxes(axes: readonly ServiceVariantAxis[] | undefined) {
-  return VARIANT_AXES.filter((axis) => (axes ?? []).includes(axis));
+/**
+ * The ticked axes, deduplicated, in KEY order: the pet's three as
+ * `VARIANT_AXES`, then Zona, then staff cards as `axes` lists them.
+ */
+export function orderedAxes(axes: readonly VariantAxisKey[] | undefined): VariantAxisKey[] {
+  const list = [...new Set(axes ?? [])];
+
+  return [
+    ...VARIANT_AXES.filter((axis) => list.includes(axis)),
+    ...(list.includes("zone") ? (["zone"] as VariantAxisKey[]) : []),
+    ...list.filter((axis) => !isPetAxis(axis) && axis !== "zone"),
+  ];
 }
 
 /**
- * `["petType", "sizeCategory"]` → every combination of the two, in axis order,
+ * `["petType", "sizeCategory"]` → every combination of the two, in key order,
  * with the values `table` gives each axis.
  *
  * GENERATED RATHER THAN TYPED IN, which is what makes three of the server's
@@ -167,12 +280,11 @@ function orderedAxes(axes: readonly ServiceVariantAxis[] | undefined) {
  * and is checked with `variantComboCount`.
  */
 export function buildVariantCombos(
-  axes: readonly ServiceVariantAxis[] | undefined,
+  axes: readonly VariantAxisKey[] | undefined,
   table: VariantAxisValues,
 ): VariantCombo[] {
   // `undefined` is a real input, not a caller bug: a service stored before
-  // `variantAxes` existed has no such key, and this used to throw on
-  // `axes.includes(...)` and blank the edit page. No axes means no rows.
+  // `variantAxes` existed has no such key. No axes means no rows.
   const ordered = orderedAxes(axes);
   if (ordered.length === 0) return [];
 
@@ -182,6 +294,8 @@ export function buildVariantCombos(
       petType: null,
       sizeCategory: null,
       furType: null,
+      zoneId: null,
+      choices: [],
       label: "",
       retired: false,
     },
@@ -191,7 +305,11 @@ export function buildVariantCombos(
     rows = rows.flatMap((row) =>
       (table[axis] ?? []).map((entry) => ({
         ...row,
-        [axis]: entry.value,
+        ...(isPetAxis(axis)
+          ? { [axis]: entry.value }
+          : axis === "zone"
+            ? { zoneId: entry.value }
+            : { choices: [...row.choices, { optionId: axis, code: entry.value }] }),
         key: `${row.key}${entry.value}|`,
         label: row.label ? `${row.label} · ${entry.label}` : entry.label,
         retired: row.retired || entry.retired,
@@ -204,7 +322,7 @@ export function buildVariantCombos(
 
 /** How many rows `buildVariantCombos` would make, without making them. */
 export function variantComboCount(
-  axes: readonly ServiceVariantAxis[] | undefined,
+  axes: readonly VariantAxisKey[] | undefined,
   table: VariantAxisValues,
 ): number {
   const ordered = orderedAxes(axes);
@@ -215,14 +333,10 @@ export function variantComboCount(
 
 /** The key a stored variant is held under — must match `buildVariantCombos`. */
 export function comboKey(
-  axes: readonly ServiceVariantAxis[] | undefined,
-  variant: {
-    petType?: string | null;
-    sizeCategory?: string | null;
-    furType?: string | null;
-  },
+  axes: readonly VariantAxisKey[] | undefined,
+  variant: StoredVariantValues | VariantCombo,
 ): string {
   return orderedAxes(axes)
-    .map((axis) => `${variant[axis] ?? ""}|`)
+    .map((axis) => `${variantValueOn(variant as Partial<ServiceVariant>, axis) ?? ""}|`)
     .join("");
 }

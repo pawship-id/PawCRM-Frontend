@@ -107,7 +107,9 @@ export function GroomingServicesScreen() {
   const { services, pagination, query, setQuery, refetch, loading, error } =
     useGroomingServices(lineId);
   // Per row, over that row's own variants — see variantRows.
-  const { valuesFor } = useVariantAxisValues();
+  const { valuesFor, axes: axisDefs } = useVariantAxisValues();
+  /* The tenant's card names — "Ukuran × Lokasi", not only the pet's three. */
+  const axisName = (key: string) => axisDefs.find((def) => def.key === key)?.name;
 
   const [period, setPeriod] = useState<GroomingPeriod>("month");
   const [custom, setCustom] = useState<DateRange>({ from: "", to: "" });
@@ -341,7 +343,7 @@ export function GroomingServicesScreen() {
                               <span className="sr-only"> varian aktif</span>
                             </Badge>
                             <span className="mt-0.5 block text-xs text-muted">
-                              {axesLabel(service)}
+                              {axesLabel(service, axisName)}
                             </span>
                           </>
                         ) : (

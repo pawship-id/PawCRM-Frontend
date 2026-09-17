@@ -12,6 +12,7 @@ import { useAddonServiceList } from "../hooks/useAddonServiceList";
 import { usePetOptionList } from "../hooks/usePetOptionList";
 import { useServiceStepList } from "../hooks/useServiceStepList";
 import { useZoneList } from "../hooks/useZoneList";
+import { useVariantOptions } from "@/hooks/useVariantOptions";
 import {
   SERVICE_SETTINGS_SECTIONS,
   serviceSettingsPath,
@@ -20,14 +21,9 @@ import {
 import { AddonServicesPanel } from "./AddonServicesPanel";
 import { PetOptionsPanel } from "./PetOptionsPanel";
 import { ServiceStepsPanel } from "./ServiceStepsPanel";
+import { VariantOptionsPanel } from "./VariantOptionsPanel";
 import { ZonesPanel } from "./ZonesPanel";
 
-/** Opsi Varian: the three a service's price may vary by (`ServiceVariantAxis`). */
-const VARIANT_OPTION_TYPES: readonly PetOptionType[] = [
-  "species",
-  "size",
-  "furType",
-];
 const BREED_TYPES: readonly PetOptionType[] = ["breed"];
 
 /** A section's callout — the mockup's navy box, as the app's info Alert. */
@@ -82,6 +78,7 @@ export function ServiceSettingsScreen({
   const serviceSteps = useServiceStepList(mayReadLines);
   const addons = useAddonServiceList();
   const zones = useZoneList();
+  const variantOptions = useVariantOptions();
 
   const [section, setSection] = useState<ServiceSettingsSection>(initialSection);
   const railRefs = useRef<
@@ -100,9 +97,11 @@ export function ServiceSettingsScreen({
 
     switch (id) {
       case "opsi":
+        if (!variantOptions.loaded) return;
+        return String(variantOptions.items.filter((card) => card.deletedAt === null).length);
       case "ras": {
         if (petOptions.loading && petOptions.options.length === 0) return;
-        const types = id === "opsi" ? VARIANT_OPTION_TYPES : BREED_TYPES;
+        const types = BREED_TYPES;
         return String(
           live(petOptions.options.filter((o) => types.includes(o.type))),
         );
@@ -221,9 +220,9 @@ export function ServiceSettingsScreen({
             className="min-w-0 p-4 sm:p-6"
           >
             {section === "opsi" && (
-              <PetOptionsPanel
-                types={VARIANT_OPTION_TYPES}
-                list={petOptions}
+              <VariantOptionsPanel
+                petOptions={petOptions}
+                zones={zones}
                 intro={
                   <Intro title="Dipakai bersama semua layanan">
                     Kalau grooming dan hotel punya daftar ukuran sendiri-sendiri,

@@ -852,3 +852,31 @@ describe("the mockup's columns", () => {
     expect(screen.queryByText("Tanpa hewan")).not.toBeInTheDocument();
   });
 });
+
+/* What a service line was priced on beyond the pet, from its snapshot. */
+describe("choices and zone", () => {
+  it("shows them muted under the line's name", () => {
+    render(
+      <InvoiceItemsTable
+        invoice={invoice({
+          items: [
+            line({
+              kind: "service",
+              refId: "s1",
+              name: "Grooming Rumah",
+              sku: null,
+              petId: "pet1",
+              petName: "Miko",
+              variantChoices: [
+                { optionId: "o1", name: "Lokasi", code: "di-rumah", label: "Di Rumah" },
+              ],
+              zone: { zoneId: "z1", name: "Zona A", distanceKm: 2.1 },
+            }),
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Lokasi: Di Rumah · Zona A")).toHaveClass("text-muted");
+  });
+});

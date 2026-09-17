@@ -9,6 +9,7 @@ import type {
   PosItemInput,
   PosTransaction,
   UpdateCartInput,
+  VariantChoice,
 } from "@/types/api";
 
 import { ownDiscountOf } from "../bookingDiscount";
@@ -98,7 +99,17 @@ interface UsePosCartResult {
    * forge onto somebody else's receipt.
    */
   addServices: (
-    choices: Array<{ petId: string; serviceIds: string[] }>,
+    choices: Array<{
+      petId: string;
+      serviceIds: string[];
+      /**
+       * The "Dipilih staf" values these services are priced on — "Lokasi: Di
+       * Rumah" (17 September 2026). Sent on every line of the animal: the
+       * server reads only the cards each service declares, and an add-on would
+       * inherit the main line's anyway.
+       */
+      variantChoices?: VariantChoice[];
+    }>,
   ) => Promise<void>;
   pullBookings: (bookingIds: string[]) => Promise<void>;
   patch: (input: UpdateCartInput) => Promise<void>;
@@ -106,6 +117,31 @@ interface UsePosCartResult {
   approve: (approverUserId: string) => Promise<void>;
   dismissApproval: () => void;
   clear: () => void;
+}
+
+/**
+ * What a refused cart write says to the cashier.
+ *
+ * A PRICE THE SERVER COULD NOT RESOLVE BEYOND THE PET (17 September 2026) —
+ * "Pilih Lokasi untuk Grooming Rumah dulu", or "Koordinat alamat pelanggan
+ * belum diisi — harga … ditentukan dari zona" — arrives as a 400 whose headline
+ * is written for a developer and whose `details[0]` is written for the counter.
+ * The detail is the sentence shown; everything else keeps the old rule.
+ */
+function cartWriteError(err: unknown): string {
+  if (!(err instanceof ApiError)) return "Terjadi kesalahan. Coba lagi.";
+
+  const pricing = Array.isArray(err.details)
+    ? err.details.find(
+        (detail) =>
+          detail.field === "variantChoices" ||
+          (detail as { zoneReason?: string }).zoneReason !== undefined,
+      )
+    : undefined;
+
+  if (pricing?.message) return pricing.message;
+
+  return err.reason ?? err.message;
 }
 
 /**
@@ -191,11 +227,7 @@ export function usePosCart(): UsePosCartResult {
             message: err.reason ?? err.message,
           });
         } else {
-          setError(
-            err instanceof ApiError
-              ? (err.reason ?? err.message)
-              : "Terjadi kesalahan. Coba lagi.",
-          );
+          setError(cartWriteError(err));
         }
       } finally {
         setBusy(false);
@@ -257,6 +289,22 @@ export function usePosCart(): UsePosCartResult {
         petId: item.petId,
         petName: item.petName,
         groomerName: item.groomerName,
+        /*
+          WHAT THE LINE WAS PRICED ON, SENT BACK (17 September 2026). The server
+          rebuilds every line from this payload on each write, so a walk-in
+          grooming at home whose "Lokasi" were left out would be refused — or
+          re-priced — the moment the cashier changed the quantity of a bag of
+          feed. The snapshot's name and label are for reading; the server wants
+          only the pair.
+        */
+        ...(item.variantChoices?.length
+          ? {
+              variantChoices: item.variantChoices.map(({ optionId, code }) => ({
+                optionId,
+                code,
+              })),
+            }
+          : {}),
       })),
     [cart],
   );
@@ -296,15 +344,23 @@ export function usePosCart(): UsePosCartResult {
   );
 
   const addServices = useCallback(
-    async (choices: Array<{ petId: string; serviceIds: string[] }>) => {
-      const lines = choices.flatMap(({ petId, serviceIds }) =>
-        // One line per animal per service (FR-3) — never bumped, never merged.
-        serviceIds.map((refId) => ({
-          kind: "service" as const,
-          refId,
-          qty: "1",
-          petId,
-        })),
+    async (
+      choices: Array<{
+        petId: string;
+        serviceIds: string[];
+        variantChoices?: VariantChoice[];
+      }>,
+    ) => {
+      const lines: PosItemInput[] = choices.flatMap(
+        ({ petId, serviceIds, variantChoices }) =>
+          // One line per animal per service (FR-3) — never bumped, never merged.
+          serviceIds.map((refId) => ({
+            kind: "service" as const,
+            refId,
+            qty: "1",
+            petId,
+            ...(variantChoices?.length ? { variantChoices } : {}),
+          })),
       );
 
       if (lines.length === 0) return;

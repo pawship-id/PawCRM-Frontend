@@ -14,19 +14,37 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { PetFixLink, PetQuickAddDialog } from "@/features/pets";
+import { useVariantQuote, VariantChoicePicker } from "@/features/services";
 import { Checkbox } from "@/components/ui/checkbox";
 import { usePetOptions } from "@/hooks/usePetOptions";
+import { branchService } from "@/services/branch.service";
+import { customerService } from "@/services/customer.service";
 import { petService } from "@/services/pet.service";
 import { formatMoney } from "@/utils/decimal";
 import {
   AXIS_LABEL,
-  priceForPet,
+  isPetAxis,
   variantLabelForPet,
 } from "@/utils/serviceVariant";
-import type { Pet, PosCatalogItem } from "@/types/api";
+import type {
+  GeoLocation,
+  Pet,
+  PosCatalogAddon,
+  PosCatalogItem,
+  VariantChoice,
+} from "@/types/api";
 
 /** The API's page cap. Asking for more is a 400, not a bigger page. */
 const FETCH_LIMIT = 100;
+
+type Pin = Pick<GeoLocation, "lat" | "lng"> | null;
+
+/** Whether a service's price depends on anything beyond the animal. */
+const pricedBeyondPet = (
+  service: PosCatalogItem | PosCatalogAddon | null | undefined,
+) =>
+  Boolean(service?.hasVariants) &&
+  (service?.variantAxes ?? []).some((axis) => !isPetAxis(axis));
 
 /**
  * Which animal a service tapped in the grid is for (FR-3).
@@ -54,6 +72,7 @@ export function PosServicePetDialog({
   service,
   customerId,
   customerName,
+  branchId,
   busy = false,
   onPick,
   onOpenChange,
@@ -62,6 +81,12 @@ export function PosServicePetDialog({
   service: PosCatalogItem | null;
   customerId: string;
   customerName?: string;
+  /**
+   * The till's branch — where a service priced by Zona is measured FROM. The
+   * server measures from the same one (the session's branch), so the preview
+   * and the charge agree.
+   */
+  branchId?: string | null;
   /** True while the cart write this dialog started is still in flight. */
   busy?: boolean;
   /**
@@ -71,7 +96,15 @@ export function PosServicePetDialog({
    * the till adds them as their own lines, and the server nests them under the
    * service they were sold with.
    */
-  onPick: (pet: Pet, addonServiceIds: string[]) => void;
+  onPick: (
+    pet: Pet,
+    addonServiceIds: string[],
+    /**
+     * The "Dipilih staf" values the service and its ticked add-ons are priced
+     * on — only the cards they declare. Empty for an ordinary grooming.
+     */
+    variantChoices: VariantChoice[],
+  ) => void;
   onOpenChange: (open: boolean) => void;
 }) {
   const [pets, setPets] = useState<Pet[]>([]);
@@ -81,11 +114,43 @@ export function PosServicePetDialog({
   const [addingPet, setAddingPet] = useState(false);
   const [nonce, setNonce] = useState(0);
   const [addons, setAddons] = useState<Set<string>>(new Set());
+  const [choices, setChoices] = useState<VariantChoice[]>([]);
+  const [pins, setPins] = useState<{ branch: Pin; customer: Pin } | null>(null);
   const { label: petOptionLabel } = usePetOptions();
 
   const open = service !== null;
   const chosen = pets.find((candidate) => candidate._id === petId) ?? null;
   const offered = service?.addons ?? [];
+  const ticked = offered.filter((addon) => addons.has(addon._id));
+
+  /*
+    ─── PRICED BEYOND THE ANIMAL (17 September 2026) ─────────────────────────
+
+    "Grooming Rumah" costs one thing in the shop and another at the customer's
+    door, and a door three kilometres away costs more than one around the
+    corner. The first is the cashier's to say — a "Dipilih staf" select — and
+    the second is measured: a straight line from THIS till's branch to the pin
+    on the customer's address, matched to a zone.
+
+    THE PINS ARE ASKED FOR ONLY WHEN SOMETHING HERE VARIES BY ZONA. The basket
+    carries the customer's name and phone and nothing else, and a bath priced
+    by size has no use for a map.
+  */
+  const variantQuote = useVariantQuote({
+    branchPin: pins?.branch,
+    customerPin: pins?.customer,
+  });
+  const zoneWanted = variantQuote.needsZone([service, ...offered]);
+  const zoneShown = variantQuote.needsZone([service, ...ticked]);
+  const cards = variantQuote.cardsFor([service, ...ticked]);
+  /*
+    STILL WORKING IT OUT — the cards, the zones or the two pins are in flight.
+    Only a service that depends on them waits: an ordinary grooming must not be
+    held up by a list it never reads.
+  */
+  const measuring =
+    [service, ...offered].some(pricedBeyondPet) &&
+    (variantQuote.loading || (zoneWanted && pins === null));
 
   /*
     ─── WHAT IT COSTS FOR THIS ANIMAL, BEFORE IT IS ADDED ────────────────────
@@ -101,7 +166,9 @@ export function PosServicePetDialog({
     tap, and a refusal that says WHICH fact is missing instead of a 400 after
     the fact.
   */
-  const quote = priceForPet(service, chosen);
+  const quote = variantQuote.quote(service, chosen, choices);
+  /* What it is missing beyond the animal, in the server's own words. */
+  const problem = service ? variantQuote.problemOf(service, quote) : null;
   /*
     WHICH VARIANT THE FIGURE CAME FROM — "Kucing · Kecil · Bulu pendek".
 
@@ -115,10 +182,23 @@ export function PosServicePetDialog({
     under every ordinary grooming is noise.
   */
   const variantLabel = variantLabelForPet(service, chosen, petOptionLabel);
-  const addonQuotes = offered.map((addon) => ({
-    addon,
-    quote: priceForPet(addon, chosen),
-  }));
+  const addonQuotes = offered.map((addon) => {
+    const addonQuote = variantQuote.quote(addon, chosen, choices);
+    return {
+      addon,
+      quote: addonQuote,
+      problem: variantQuote.problemOf(addon, addonQuote),
+    };
+  });
+  /*
+    A TICKED ADD-ON NOBODY CAN PRICE HOLDS THE BUTTON. It can only be ticked
+    unpriced when what it is missing is a "Dipilih staf" value — the select
+    appears the moment it is ticked, which is the point of letting it be.
+  */
+  const unpricedAddonTicked = addonQuotes.some(
+    ({ addon, quote: addonQuote }) =>
+      !addonQuote.price && addons.has(addon._id),
+  );
   /*
     A SWITCHED-OFF VARIANT IS NOT SELLABLE (13 September 2026). The resolver
     still hands its price back, but the till refuses a new line for it — so the
@@ -139,6 +219,7 @@ export function PosServicePetDialog({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setError(null);
+    setChoices([]);
 
     petService
       .list({ customerId, isActive: true, limit: FETCH_LIMIT })
@@ -160,6 +241,42 @@ export function PosServicePetDialog({
       active = false;
     };
   }, [open, customerId, nonce]);
+
+  /*
+    THE TWO PINS A ZONE IS MEASURED BETWEEN — the till's branch and the
+    customer's address. A failure reads as "no pin", which is what the cashier
+    can act on; the server would refuse with the same sentence.
+  */
+  useEffect(() => {
+    if (!open || !zoneWanted) return;
+
+    let active = true;
+
+    // Never the previous customer's pin while this one's is in flight.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPins(null);
+
+    const pinOf = <T extends { location?: GeoLocation | null }>(
+      load: () => Promise<T>,
+    ) =>
+      Promise.resolve()
+        .then(load)
+        .then((found) => found?.location ?? null)
+        .catch(() => null);
+
+    Promise.all([
+      branchId
+        ? pinOf(() => branchService.getById(branchId))
+        : Promise.resolve(null),
+      pinOf(() => customerService.getById(customerId)),
+    ]).then(([branch, customer]) => {
+      if (active) setPins({ branch, customer });
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [open, zoneWanted, branchId, customerId]);
 
   /*
     ─── THE FACT THEY JUST WENT AND FILLED IN ─────────────────────────────────
@@ -215,6 +332,8 @@ export function PosServicePetDialog({
       setPetId("");
       setPets([]);
       setAddons(new Set());
+      setChoices([]);
+      setPins(null);
     }
     onOpenChange(next);
   }
@@ -239,7 +358,16 @@ export function PosServicePetDialog({
   }
 
   function confirm() {
-    if (chosen) onPick(chosen, [...addons]);
+    if (!chosen) return;
+
+    /* Only the cards the lines being added declare — a value picked for an
+       add-on that was then unticked is not part of this sale. */
+    const wanted = new Set(cards.map((card) => card.axisKey));
+    onPick(
+      chosen,
+      [...addons],
+      choices.filter((choice) => wanted.has(choice.optionId)),
+    );
   }
 
   return (
@@ -310,6 +438,19 @@ export function PosServicePetDialog({
                 every dog, and a figure shown before the question is answered
                 would be one of them picked at random.
               */}
+              {/*
+                THE CASHIER'S QUESTIONS BEYOND THE ANIMAL — "Lokasi" — asked
+                beside the price they decide, once there is an animal to price.
+              */}
+              {chosen && cards.length > 0 && (
+                <VariantChoicePicker
+                  cards={cards}
+                  value={choices}
+                  onChange={setChoices}
+                  disabled={busy}
+                />
+              )}
+
               {chosen && (
                 <div className="rounded-lg border border-border p-3">
                   <div className="flex items-baseline justify-between gap-2">
@@ -319,7 +460,7 @@ export function PosServicePetDialog({
                     <span className="shrink-0 text-base font-semibold tabular-nums text-foreground">
                       {quote.inactive
                         ? "Varian nonaktif"
-                        : quote.price
+                        : quote.price && !measuring
                           ? formatMoney(quote.price)
                           : "—"}
                     </span>
@@ -329,6 +470,18 @@ export function PosServicePetDialog({
                       animal was read, which is what the name above is about. */}
                   {variantLabel && (
                     <p className="mt-0.5 text-xs text-muted">{variantLabel}</p>
+                  )}
+
+                  {/* WHERE IT WAS MEASURED TO — "Zona A · 2,1 km". A failure
+                      is said once, in the refusal below. */}
+                  {zoneShown && !measuring && variantQuote.zone.ok && (
+                    <p className="mt-0.5 text-xs text-muted">
+                      {variantQuote.zoneText}
+                    </p>
+                  )}
+
+                  {measuring && (
+                    <p className="mt-1 text-xs text-muted">Menghitung harga…</p>
                   )}
 
                   {/*
@@ -354,7 +507,7 @@ export function PosServicePetDialog({
                     </p>
                   )}
 
-                  {!quote.price && (
+                  {!quote.price && !measuring && (
                     <p className="mt-1 text-xs text-warning">
                       {quote.missingAxis ? (
                         <>
@@ -363,7 +516,8 @@ export function PosServicePetDialog({
                           <PetFixLink pet={chosen} axis={quote.missingAxis} />
                         </>
                       ) : (
-                        "Layanan ini belum punya harga untuk hewan ini. Tambahkan variannya di katalog."
+                        (problem ??
+                        "Layanan ini belum punya harga untuk hewan ini. Tambahkan variannya di katalog.")
                       )}
                     </p>
                   )}
@@ -386,43 +540,61 @@ export function PosServicePetDialog({
                     Tambahan (opsional)
                   </legend>
 
-                  {addonQuotes.map(({ addon, quote: addonQuote }) => (
-                    <label
-                      key={addon._id}
-                      className="flex cursor-pointer items-center gap-3"
-                    >
-                      <Checkbox
-                        checked={addons.has(addon._id)}
-                        /*
-                          AN ADD-ON NOBODY CAN PRICE CANNOT BE TICKED. The server
-                          would refuse the whole basket on it, and the refusal
-                          would name a service the cashier did not think they had
-                          added.
-                        */
-                        /* Nor one on a switched-off variant — but a box already
-                           ticked stays untickable, or the button would be held
-                           by a tick nobody can undo. */
-                        disabled={
-                          busy ||
-                          !addonQuote.price ||
-                          (addonQuote.inactive && !addons.has(addon._id))
-                        }
-                        onCheckedChange={() => toggleAddon(addon._id)}
-                      />
-                      <span className="flex min-w-0 flex-1 items-baseline justify-between gap-2">
-                        <span className="truncate text-sm text-foreground">
-                          {addon.name}
-                        </span>
-                        <span className="shrink-0 text-sm tabular-nums text-muted">
-                          {addonQuote.inactive
-                            ? "Varian nonaktif"
-                            : addonQuote.price
-                              ? `+ ${formatMoney(addonQuote.price)}`
-                              : "—"}
-                        </span>
-                      </span>
-                    </label>
-                  ))}
+                  {addonQuotes.map(
+                    ({ addon, quote: addonQuote, problem: addonProblem }) => (
+                      <div key={addon._id} className="flex flex-col gap-0.5">
+                        <label className="flex cursor-pointer items-center gap-3">
+                          <Checkbox
+                            checked={addons.has(addon._id)}
+                            /*
+                              AN ADD-ON NOBODY CAN PRICE CANNOT BE TICKED. The
+                              server would refuse the whole basket on it, and
+                              the refusal would name a service the cashier did
+                              not think they had added. Nor one on a
+                              switched-off variant.
+
+                              Two exceptions. A box already ticked stays
+                              untickable, or the button would be held by a tick
+                              nobody can undo. And a missing "Dipilih staf"
+                              value does not lock it: ticking it is what brings
+                              up the select that answers it.
+                            */
+                            disabled={
+                              busy ||
+                              measuring ||
+                              (!addonQuote.price &&
+                                !addonQuote.missingChoice &&
+                                !addons.has(addon._id)) ||
+                              (addonQuote.inactive && !addons.has(addon._id))
+                            }
+                            onCheckedChange={() => toggleAddon(addon._id)}
+                          />
+                          <span className="flex min-w-0 flex-1 items-baseline justify-between gap-2">
+                            <span className="truncate text-sm text-foreground">
+                              {addon.name}
+                            </span>
+                            <span className="shrink-0 text-sm tabular-nums text-muted">
+                              {addonQuote.inactive
+                                ? "Varian nonaktif"
+                                : addonQuote.price && !measuring
+                                  ? `+ ${formatMoney(addonQuote.price)}`
+                                  : "—"}
+                            </span>
+                          </span>
+                        </label>
+                        {/* Why an add-on has no figure — a missing value only
+                            once it is ticked, since that is when its select
+                            appears. */}
+                        {!measuring &&
+                          addonProblem &&
+                          (addonQuote.missingZone || addons.has(addon._id)) && (
+                            <p className="pl-7 text-xs text-warning">
+                              {addonProblem}
+                            </p>
+                          )}
+                      </div>
+                    ),
+                  )}
                 </fieldset>
               )}
             </div>
@@ -454,7 +626,9 @@ export function PosServicePetDialog({
                 !petId ||
                 !quote.price ||
                 quote.inactive ||
-                inactiveAddonTicked
+                inactiveAddonTicked ||
+                unpricedAddonTicked ||
+                measuring
               }
               onClick={confirm}
             >

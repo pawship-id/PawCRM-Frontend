@@ -24,11 +24,14 @@ import { formatMoney, isPositive, sumDecimals } from "@/utils/decimal";
 import { GROOMER_LEVEL_LABELS } from "@/types/api";
 import type {
   Booking,
+  BookingAddon,
+  BookingMainService,
   BookingSession,
   BookingStatus,
   BookingWorkStatus,
   Customer,
   Pet,
+  VariantChoiceSnapshot,
 } from "@/types/api";
 
 import { bookingActorLabel, finishClock } from "../format";
@@ -715,6 +718,13 @@ export function BookingDetailScreen({ id }: { id: string }) {
                     .filter(Boolean)
                     .join(" · ")}
                 </p>
+                {/*
+                  WHAT IT WAS PRICED ON BEYOND THE ANIMAL (17 September 2026) —
+                  the staff's choices and the zone, as the booking stored them.
+                */}
+                {pricedOn(service) && (
+                  <p className="text-xs text-muted tabular-nums">{pricedOn(service)}</p>
+                )}
                 {/* THE SERVICE'S OWN DISCOUNT, on its row. */}
                 {ownDiscountOfLine(service) && (
                   <div className="flex justify-between gap-3 pl-3 text-sm">
@@ -737,6 +747,10 @@ export function BookingDetailScreen({ id }: { id: string }) {
                           {addon.durationMin
                             ? ` · +${addon.durationMin} mnt`
                             : ""}
+                          {/* Only an add-on's OWN choices — an inherited one repeats the service's. */}
+                          {ownChoicesOf(addon, service) && (
+                            <span className="block text-xs">{ownChoicesOf(addon, service)}</span>
+                          )}
                         </span>
                         <span className="font-semibold tabular-nums text-foreground">
                           {formatMoney(addon.price)}
@@ -1274,5 +1288,37 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
       </dt>
       <dd className="text-sm font-semibold text-foreground">{value}</dd>
     </div>
+  );
+}
+
+/** "Lokasi: Di Rumah" — a line's staff choices, as it stored them. */
+function choicesWords(choices: readonly VariantChoiceSnapshot[] | undefined): string | null {
+  const words = (choices ?? []).map((choice) => `${choice.name}: ${choice.label}`);
+  return words.length > 0 ? words.join(" · ") : null;
+}
+
+/** "Lokasi: Di Rumah · Zona A · 2 km" — what the main service was priced on beyond the pet. */
+function pricedOn(service: Pick<BookingMainService, "variantChoices" | "zone">): string | null {
+  const zone = service.zone
+    ? `${service.zone.name}${
+        service.zone.distanceKm === null ? "" : ` · ${String(service.zone.distanceKm).replace(".", ",")} km`
+      }`
+    : null;
+  const words = [choicesWords(service.variantChoices), zone].filter(Boolean);
+  return words.length > 0 ? words.join(" · ") : null;
+}
+
+/** An add-on's choices, only where they are not the main service's. */
+function ownChoicesOf(
+  addon: Pick<BookingAddon, "variantChoices">,
+  service: Pick<BookingMainService, "variantChoices">,
+): string | null {
+  const inherited = new Set(
+    (service.variantChoices ?? []).map((choice) => `${choice.optionId}|${choice.code}`),
+  );
+  return choicesWords(
+    (addon.variantChoices ?? []).filter(
+      (choice) => !inherited.has(`${choice.optionId}|${choice.code}`),
+    ),
   );
 }

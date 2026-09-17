@@ -8,6 +8,7 @@ import {
   splitBookingDiscount,
   toEntry,
 } from "@/features/grooming/bookingCreateDraft";
+import type { Service } from "@/types/api";
 import { toDecimalString, toMinor } from "@/utils/decimal";
 
 const rp = (value: string) => toMinor(value)!;
@@ -131,5 +132,24 @@ describe("toEntry", () => {
     expect(entry.addonPricing).toEqual([
       { serviceId: "addon-2", price: null, discount: { mode: "amount", value: "5000" } },
     ]);
+  });
+  it("sends the main service's staff choices; an add-on sharing the card inherits them", () => {
+    const priced = (axes: string[]) =>
+      ({ hasVariants: true, variantAxes: axes }) as unknown as Service;
+    const catalogue: Record<string, Service> = {
+      "svc-1": priced(["zone", "vo-lokasi"]),
+      "addon-1": priced(["vo-lokasi"]),
+    };
+
+    const entry = toEntry(
+      {
+        ...drafted(),
+        variantChoices: [{ optionId: "vo-lokasi", code: "rumah" }],
+      },
+      (id) => catalogue[id] ?? null,
+    );
+
+    expect(entry.variantChoices).toEqual([{ optionId: "vo-lokasi", code: "rumah" }]);
+    expect(entry).not.toHaveProperty("addonPricing");
   });
 });

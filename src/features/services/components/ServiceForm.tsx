@@ -31,11 +31,12 @@ import type {
   ServiceBillingUnit,
   ServiceLocation,
   ServiceType,
-  ServiceVariantAxis,
+  VariantAxisKey,
   ServiceVariantInput,
 } from "@/types/api";
 import type { MediaAsset } from "@/types/inventory";
 
+import { invalidateVariantOptions } from "@/hooks/useVariantOptions";
 import { useVariantAxisValues } from "../hooks/useVariantAxisValues";
 import { buildVariantCombos, comboKey, MAX_VARIANTS } from "../variantAxes";
 import {
@@ -209,7 +210,7 @@ export function ServiceForm({
 
   const [hasVariants, setHasVariants] = useState(false);
   const [price, setPrice] = useState("");
-  const [variantAxes, setVariantAxes] = useState<ServiceVariantAxis[]>([]);
+  const [variantAxes, setVariantAxes] = useState<VariantAxisKey[]>([]);
   const [variantPrices, setVariantPrices] = useState<Record<string, string>>(
     {},
   );
@@ -260,7 +261,11 @@ export function ServiceForm({
     because the record holds it, not because somebody filled in its box. On a
     create there is no record, so only active options are offered.
   */
-  const { valuesFor, loading: axisValuesLoading } = useVariantAxisValues();
+  const {
+    valuesFor,
+    axes: axisDefs,
+    loading: axisValuesLoading,
+  } = useVariantAxisValues();
   const axisValues = useMemo(
     () => valuesFor(service?.variants),
     [valuesFor, service],
@@ -481,7 +486,7 @@ export function ServiceForm({
     goBack();
   }
 
-  function toggleAxis(axis: ServiceVariantAxis, checked: boolean) {
+  function toggleAxis(axis: VariantAxisKey, checked: boolean) {
     setVariantError(null);
     setVariantAxes((current) =>
       checked
@@ -584,6 +589,9 @@ export function ServiceForm({
           petType: combo.petType,
           sizeCategory: combo.sizeCategory,
           furType: combo.furType,
+          // Only on a service that varies by them — a pet-priced row stays as it was.
+          ...(combo.zoneId ? { zoneId: combo.zoneId } : {}),
+          ...(combo.choices.length > 0 ? { choices: combo.choices } : {}),
           price: (variantPrices[combo.key] ?? "").trim(),
           durationMin: Number((variantDurations[combo.key] ?? "").trim()),
           isActive: variantActive[combo.key] !== false,
@@ -705,6 +713,8 @@ export function ServiceForm({
         await serviceService.create(payload);
       }
 
+      // "N layanan" on the Opsi Varian cards counts this service now.
+      invalidateVariantOptions();
       goBack();
       swalToast(
         editing ? "Layanan diperbarui." : `Layanan ${trimmedName} dibuat.`,
@@ -934,6 +944,7 @@ export function ServiceForm({
           {hasVariants ? (
             <ServiceVariantEditor
               axes={variantAxes}
+              axisDefs={axisDefs}
               prices={variantPrices}
               durations={variantDurations}
               active={variantActive}

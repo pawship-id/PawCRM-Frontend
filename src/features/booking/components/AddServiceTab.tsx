@@ -7,19 +7,39 @@ import { Alert, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { useAuth } from "@/features/auth/hooks/useAuth";
 import { PetFixLink, PetQuickAddDialog } from "@/features/pets";
+import { useVariantQuote, VariantChoicePicker } from "@/features/services";
 import { usePetOptions } from "@/hooks/usePetOptions";
+import { branchService } from "@/services/branch.service";
+import { customerService } from "@/services/customer.service";
 import { petService } from "@/services/pet.service";
 import { serviceService } from "@/services/service.service";
 import { formatMoney, sumDecimals } from "@/utils/decimal";
-import { priceForPet, variantLabelForPet } from "@/utils/serviceVariant";
-import type { Pet, Service } from "@/types/api";
+import { variantLabelForPet, variesByZone } from "@/utils/serviceVariant";
+import type { GeoLocation, Pet, Service, VariantChoice } from "@/types/api";
+
+import { choicesFor } from "../variantLine";
 
 /** The API's page cap. Asking for more is a 400, not a bigger page. */
 const FETCH_LIMIT = 100;
 
 /** Shared empty set, so an untouched pet does not allocate one per render. */
 const EMPTY: ReadonlySet<string> = new Set();
+const NO_CHOICES: VariantChoice[] = [];
+
+/** What one animal is having, as the till's cart takes it. */
+export interface AddServiceChoice {
+  petId: string;
+  petName: string;
+  serviceIds: string[];
+  /**
+   * The "Dipilih staf" values the services are priced on (17 September 2026) —
+   * only the cards the ticked services declare; absent when none do. Each
+   * service line carries them; an add-on inherits its main line's.
+   */
+  variantChoices?: VariantChoice[];
+}
 
 /**
  * FR-3's second tab: charge for a service with no appointment behind it.
@@ -59,10 +79,16 @@ const EMPTY: ReadonlySet<string> = new Set();
  */
 export function AddServiceTab({
   customerId,
+  branchId,
   busy = false,
   onAdd,
 }: {
   customerId: string;
+  /**
+   * The branch the zone is measured from. Omitted, the till's own — the
+   * session's branch, which is exactly what a till stands in.
+   */
+  branchId?: string | null;
   /** True while the cart write this tab started is still in flight. */
   busy?: boolean;
   /**
@@ -71,9 +97,7 @@ export function AddServiceTab({
    * A LIST, because one opening may cover a customer's whole household — and it
    * reaches the server as ONE cart patch, so either all of it lands or none does.
    */
-  onAdd: (
-    choices: Array<{ petId: string; petName: string; serviceIds: string[] }>,
-  ) => void;
+  onAdd: (choices: AddServiceChoice[]) => void;
 }) {
   const [pets, setPets] = useState<Pet[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -95,6 +119,57 @@ export function AddServiceTab({
   const [petsNonce, setPetsNonce] = useState(0);
   // Names the variant caption in the tenant's words.
   const { label: petOptionLabel } = usePetOptions();
+
+  /*
+    ─── PRICED BEYOND THE PET (17 September 2026) ─────────────────────────────
+
+    A service priced by Zona is measured from the till's branch to the
+    customer's pin; one priced by a "Dipilih staf" card waits on the cashier's
+    answer, kept per animal. Both pins are best effort: without one the zone
+    cannot be said, and the row says so rather than guessing.
+  */
+  const { session } = useAuth();
+  const zoneBranchId = branchId ?? session?.currentBranchId ?? null;
+  const [branchPin, setBranchPin] = useState<GeoLocation | null>(null);
+  const [customerPin, setCustomerPin] = useState<GeoLocation | null>(null);
+  const [choices, setChoices] = useState<Map<string, VariantChoice[]>>(new Map());
+  const variant = useVariantQuote({ branchPin, customerPin });
+
+  useEffect(() => {
+    let active = true;
+
+    Promise.resolve()
+      .then(() => customerService.getById(customerId))
+      .then((customer) => {
+        if (active) setCustomerPin(customer?.location ?? null);
+      })
+      .catch(() => {
+        if (active) setCustomerPin(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [customerId]);
+
+  useEffect(() => {
+    if (!zoneBranchId) return;
+
+    let active = true;
+
+    Promise.resolve()
+      .then(() => branchService.getById(zoneBranchId))
+      .then((branch) => {
+        if (active) setBranchPin(branch?.location ?? null);
+      })
+      .catch(() => {
+        if (active) setBranchPin(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [zoneBranchId]);
 
   useEffect(() => {
     let active = true;
@@ -165,12 +240,39 @@ export function AddServiceTab({
    * somebody else's receipt.
    */
   function submit() {
-    const choices = [...ticked.entries()]
-      .map(([id, serviceIds]) => ({
-        petId: id,
-        petName: pets.find((pet) => pet._id === id)?.name ?? "",
-        serviceIds: [...serviceIds],
-      }))
+    /* A ZONE NOBODY CAN MEASURE, OR A CARD NOBODY ANSWERED — the till would refuse it. */
+    for (const [id, serviceIds] of ticked.entries()) {
+      for (const serviceId of serviceIds) {
+        const service = services.find((entry) => entry._id === serviceId);
+        const problem = service ? variant.problemOf(service, priceFor(id, serviceId)) : null;
+        if (problem) {
+          const petName = pets.find((pet) => pet._id === id)?.name;
+          setFormError(petName ? `${petName}: ${problem}.` : `${problem}.`);
+          return;
+        }
+      }
+    }
+
+    const picked: AddServiceChoice[] = [...ticked.entries()]
+      .map(([id, serviceIds]) => {
+        const declared = [...serviceIds].flatMap((serviceId) =>
+          choicesFor(
+            services.find((service) => service._id === serviceId),
+            choices.get(id) ?? NO_CHOICES,
+          ),
+        );
+        /* One per card, however many ticked services declare it. */
+        const variantChoices = [
+          ...new Map(declared.map((choice) => [choice.optionId, choice])).values(),
+        ];
+
+        return {
+          petId: id,
+          petName: pets.find((pet) => pet._id === id)?.name ?? "",
+          serviceIds: [...serviceIds],
+          ...(variantChoices.length > 0 ? { variantChoices } : {}),
+        };
+      })
       /*
         A pet added and then removed from the list between ticking and confirming
         is not something to fail over — it is one entry dropped from a request
@@ -178,12 +280,12 @@ export function AddServiceTab({
       */
       .filter((choice) => choice.petName !== "");
 
-    if (choices.length === 0) {
+    if (picked.length === 0) {
       setFormError("Centang dulu layanannya.");
       return;
     }
 
-    onAdd(choices);
+    onAdd(picked);
   }
 
   if (loading) {
@@ -211,11 +313,13 @@ export function AddServiceTab({
    * A PREVIEW, like everywhere else: the server re-resolves it from the same pet
    * when it prices the cart, and no figure here is ever sent.
    */
-  const priceFor = (petId: string, serviceId: string) =>
-    priceForPet(
+  function priceFor(petId: string, serviceId: string) {
+    return variant.quote(
       services.find((service) => service._id === serviceId),
       pets.find((pet) => pet._id === petId),
+      choices.get(petId) ?? NO_CHOICES,
     );
+  }
 
   /*
     THE FIGURE THAT COUNTS TOWARDS THE BASKET — null on a switched-off variant
@@ -247,6 +351,10 @@ export function AddServiceTab({
 
   /** The animal the list below is for, and what it is priced as. */
   const activePet = pets.find((pet) => pet._id === petId) ?? null;
+  /* The "Dipilih staf" cards the active animal's ticked services declare. */
+  const choiceCards = variant.cardsFor(
+    [...forActivePet].map((id) => services.find((service) => service._id === id)),
+  );
   const activeVariant = activePet
     ? variantLabelForPet(
         services.find((service) => service.hasVariants) ?? null,
@@ -367,8 +475,21 @@ export function AddServiceTab({
             {services.map((service) => {
               const quote = petId
                 ? priceFor(petId, service._id)
-                : { price: service.price, missingAxis: null, inactive: false };
+                : {
+                    price: service.price,
+                    missingAxis: null,
+                    missingZone: false,
+                    missingChoice: null,
+                    durationMin: null,
+                    inactive: false,
+                  };
               const checked = forActivePet.has(service._id);
+              /* The zone, or a missing zone, in words. A missing choice is answered below once ticked. */
+              const waiting = quote.missingChoice
+                ? checked
+                  ? variant.problemOf(service, quote)
+                  : "Pilih opsinya setelah dicentang."
+                : variant.problemOf(service, quote);
 
               return (
                 <li key={service._id}>
@@ -385,7 +506,10 @@ export function AddServiceTab({
                         already ticked stays untickable, so a list re-read under
                         the cashier cannot strand a tick they cannot undo.
                       */
-                      disabled={!quote.price || (quote.inactive && !checked)}
+                      disabled={
+                        (!quote.price && !quote.missingChoice && !checked) ||
+                        (quote.inactive && !checked)
+                      }
                       onCheckedChange={() => toggle(service._id)}
                       aria-label={service.name}
                     />
@@ -400,6 +524,14 @@ export function AddServiceTab({
                             pet={activePet}
                             axis={quote.missingAxis}
                           />
+                        </span>
+                      )}
+                      {!quote.price && waiting && (
+                        <span className="block text-xs text-warning">{waiting}</span>
+                      )}
+                      {quote.price && variant.zone.ok && variesByZone(service) && (
+                        <span className="block text-xs text-muted tabular-nums">
+                          {variant.zoneText}
                         </span>
                       )}
                       {/* Why the box is grey, in words — §1.3. */}
@@ -422,6 +554,22 @@ export function AddServiceTab({
           </ul>
         )}
       </div>
+
+      {/*
+        "LOKASI: DI RUMAH" for the animal in front of the cashier — one select per
+        card its ticked services are priced on.
+      */}
+      {activePet && choiceCards.length > 0 && (
+        <VariantChoicePicker
+          cards={choiceCards}
+          value={choices.get(activePet._id) ?? NO_CHOICES}
+          onChange={(next) => {
+            setFormError(null);
+            setChoices((prev) => new Map(prev).set(activePet._id, next));
+          }}
+          disabled={busy}
+        />
+      )}
 
       {/*
         WHAT EVERY ANIMAL IS HAVING, all of it at once.

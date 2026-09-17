@@ -11,6 +11,8 @@ import type {
   TenantSettings,
 } from "@/types/api";
 
+import { variantSummary } from "../variantLine";
+
 /**
  * WHAT THE SHEET READS, and nothing more.
  *
@@ -29,7 +31,14 @@ export interface InvoiceSheetInvoice {
   items?: Array<
     Pick<
       CustomerInvoiceItem,
-      "name" | "sku" | "petName" | "qty" | "unitPrice" | "lineTotal"
+      | "name"
+      | "sku"
+      | "petName"
+      | "qty"
+      | "unitPrice"
+      | "lineTotal"
+      | "variantChoices"
+      | "zone"
     >
   >;
   totals: Pick<
@@ -250,6 +259,13 @@ export function InvoiceSheet({
                   <span className="block text-xs text-muted">
                     {item.petName ?? item.sku ?? "Jasa"}
                   </span>
+                  {/* What the line was priced on beyond the pet, from its
+                      snapshot — "Lokasi: Di Rumah · Zona A". */}
+                  {variantSummary(item) && (
+                    <span className="block text-xs text-muted">
+                      {variantSummary(item)}
+                    </span>
+                  )}
                 </td>
                 <td className="p-2.5 text-right tabular-nums">
                   {formatQty(item.qty)}
@@ -502,6 +518,9 @@ function ThermalSheet({
                     say which three, on any paper. */}
                 {item.petName && (
                   <p className="text-muted">{item.petName}</p>
+                )}
+                {variantSummary(item) && (
+                  <p className="text-muted">{variantSummary(item)}</p>
                 )}
                 <TRow
                   label={`  ${formatQty(item.qty)} × ${formatMoney(item.unitPrice)}`}

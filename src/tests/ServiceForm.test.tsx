@@ -8,6 +8,8 @@ import { branchService } from "@/services/branch.service";
 import { ApiError } from "@/services/api-error";
 import { petOptionService } from "@/services/petOption.service";
 import { serviceStepService } from "@/services/serviceStep.service";
+import { variantOptionService } from "@/services/variantOption.service";
+import { zoneService } from "@/services/zone.service";
 import type { Service } from "@/types/api";
 
 import {
@@ -16,6 +18,11 @@ import {
   primePetOptions,
 } from "./helpers/petOptions";
 import { renderWithAuth } from "./helpers/renderWithAuth";
+import {
+  BUILT_IN_VARIANT_OPTIONS,
+  makeVariantOption,
+  primeVariantOptions,
+} from "./helpers/variantOptions";
 import {
   makeServiceStep,
   SERVICE_STEP_FIXTURES,
@@ -27,6 +34,9 @@ jest.mock("@/services/businessLine.service");
 jest.mock("@/services/branch.service");
 // The variant rows are the tenant's species, sizes and coats.
 jest.mock("@/services/petOption.service");
+// The axes a price may vary by are the tenant's Opsi Varian cards (17 September 2026).
+jest.mock("@/services/variantOption.service");
+jest.mock("@/services/zone.service");
 // Tahapan are picked from the line's list.
 jest.mock("@/services/serviceStep.service");
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
@@ -41,6 +51,20 @@ import { swalToast } from "@/lib/swal";
 jest.mock("@/components/ImageField", () => ({
   ImageField: () => <div>gambar layanan</div>,
 }));
+
+const TIER = makeVariantOption({
+  _id: "vo-tier",
+  name: "Tier Groomer",
+  source: "staff",
+  axisKey: "5a7f1f77bcf86cd7994391ee",
+  sortOrder: 3,
+  values: Array.from({ length: 13 }, (_, index) => ({
+    code: `tier-${index + 1}`,
+    label: `Tier ${index + 1}`,
+    sortOrder: index,
+    isActive: true,
+  })),
+});
 
 const push = jest.fn();
 jest.mock("next/navigation", () => ({
@@ -107,6 +131,7 @@ const addonFixture: Service = {
 beforeEach(() => {
   jest.clearAllMocks();
   primePetOptions(petOptionService.list);
+  primeVariantOptions(variantOptionService.list, zoneService.list);
   // Mandi → Gunting → Blow dry, on this suite's line.
   primeServiceSteps(
     serviceStepService.list,
@@ -446,8 +471,8 @@ describe("ServiceForm — variant pricing", () => {
     await renderNew();
 
     await userEvent.click(screen.getByLabelText(/harga beda per varian/i));
-    await userEvent.click(screen.getByLabelText(/tipe hewan/i));
-    await userEvent.click(screen.getByLabelText(/kategori ukuran/i));
+    await userEvent.click(screen.getByLabelText("Jenis Hewan"));
+    await userEvent.click(screen.getByLabelText("Ukuran"));
 
     // 2 pet types × 3 sizes.
     expect(await screen.findByText(/6 baris/i)).toBeVisible();
@@ -460,7 +485,7 @@ describe("ServiceForm — variant pricing", () => {
 
     await fillRequiredExceptPrice();
     await userEvent.click(screen.getByLabelText(/harga beda per varian/i));
-    await userEvent.click(screen.getByLabelText(/kategori bulu/i));
+    await userEvent.click(screen.getByLabelText("Jenis Bulu"));
     await userEvent.type(
       screen.getByLabelText("Harga Bulu panjang"),
       "150000",
@@ -498,7 +523,7 @@ describe("ServiceForm — variant pricing", () => {
 
     await fillRequiredExceptPrice();
     await userEvent.click(screen.getByLabelText(/harga beda per varian/i));
-    await userEvent.click(screen.getByLabelText(/kategori bulu/i));
+    await userEvent.click(screen.getByLabelText("Jenis Bulu"));
     await userEvent.type(screen.getByLabelText("Harga Bulu panjang"), "180000");
     await userEvent.type(screen.getByLabelText("Harga Bulu pendek"), "150000");
     await userEvent.type(
@@ -558,7 +583,7 @@ describe("ServiceForm — variant pricing", () => {
 
     await fillRequiredExceptPrice();
     await userEvent.click(screen.getByLabelText(/harga beda per varian/i));
-    await userEvent.click(screen.getByLabelText(/kategori bulu/i));
+    await userEvent.click(screen.getByLabelText("Jenis Bulu"));
     await userEvent.type(screen.getByLabelText("Harga Bulu panjang"), "180000");
     await userEvent.type(screen.getByLabelText("Harga Bulu pendek"), "150000");
     await userEvent.type(
@@ -604,7 +629,7 @@ describe("ServiceForm — the tenant's species, sizes and coats", () => {
     await renderNew();
 
     await userEvent.click(screen.getByLabelText(/harga beda per varian/i));
-    await userEvent.click(screen.getByLabelText(/kategori ukuran/i));
+    await userEvent.click(screen.getByLabelText("Ukuran"));
 
     expect(await screen.findByText(/4 baris/i)).toBeVisible();
     expect(priceRows()).toEqual([
@@ -669,44 +694,94 @@ describe("ServiceForm — the tenant's species, sizes and coats", () => {
     await renderNew();
 
     await userEvent.click(screen.getByLabelText(/harga beda per varian/i));
-    await userEvent.click(screen.getByLabelText(/kategori bulu/i));
+    await userEvent.click(screen.getByLabelText("Jenis Bulu"));
 
     expect(await screen.findByText(/1 baris/i)).toBeVisible();
     expect(priceRows()).toEqual(["Harga Bulu pendek"]);
   });
 
-  it("keeps Simpan off while the ticked axes make more than 20 variants", async () => {
-    primePetOptions(petOptionService.list, [
-      ...PET_OPTION_FIXTURES,
-      makePetOption({ type: "species", code: "rabbit", label: "Kelinci", sortOrder: 2 }),
-      XL,
-    ]);
+  it("keeps Simpan off while the ticked axes make more than 100 variants", async () => {
+    primePetOptions(petOptionService.list, [...PET_OPTION_FIXTURES, XL]);
+    primeVariantOptions(variantOptionService.list, zoneService.list, {
+      cards: [...BUILT_IN_VARIANT_OPTIONS, TIER],
+    });
     await renderNew();
 
     await fillRequiredExceptPrice();
     await userEvent.click(screen.getByLabelText(/harga beda per varian/i));
-    await userEvent.click(screen.getByLabelText(/tipe hewan/i));
-    await userEvent.click(screen.getByLabelText(/kategori ukuran/i));
-    await userEvent.click(screen.getByLabelText(/kategori bulu/i));
+    await userEvent.click(await screen.findByLabelText("Tier Groomer"));
+    await userEvent.click(screen.getByLabelText("Ukuran"));
+    await userEvent.click(screen.getByLabelText("Jenis Bulu"));
 
-    // 3 species × 4 sizes × 2 coats.
+    // 4 sizes × 2 coats × 13 tiers.
     expect(
       await screen.findByText(
-        /kombinasinya jadi 24 varian — maksimal 20 per layanan/i,
+        /kombinasinya jadi 104 varian — maksimal 100 per layanan/i,
       ),
     ).toBeVisible();
     // The action bar says why its button is off.
     expect(
-      screen.getByText("24 varian, maksimal 20 per layanan"),
+      screen.getByText("104 varian, maksimal 100 per layanan"),
     ).toBeVisible();
     expect(screen.getByRole("button", { name: /buat layanan/i })).toBeDisabled();
 
-    // 4 × 2 = 8 fits.
-    await userEvent.click(screen.getByLabelText(/tipe hewan/i));
+    // 4 × 13 = 52 fits.
+    await userEvent.click(screen.getByLabelText("Jenis Bulu"));
 
     expect(screen.queryByText(/kombinasinya jadi/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /buat layanan/i })).toBeEnabled();
     expect(mockedServiceService.create).not.toHaveBeenCalled();
+  });
+
+  it("offers every Opsi Varian card as an axis and sends a staff card's value on each row", async () => {
+    primeVariantOptions(variantOptionService.list, zoneService.list, {
+      cards: [
+        ...BUILT_IN_VARIANT_OPTIONS,
+        makeVariantOption({
+          _id: "vo-lokasi",
+          name: "Lokasi",
+          source: "staff",
+          axisKey: "5a7f1f77bcf86cd7994391aa",
+          sortOrder: 3,
+          values: [
+            { code: "di-toko", label: "Di Toko", sortOrder: 0, isActive: true },
+            { code: "di-rumah", label: "Di Rumah", sortOrder: 1, isActive: true },
+          ],
+        }),
+      ],
+    });
+    mockedServiceService.create.mockResolvedValue(serviceFixture);
+    await renderNew();
+
+    await fillRequiredExceptPrice();
+    await userEvent.click(screen.getByLabelText(/harga beda per varian/i));
+    await userEvent.click(await screen.findByLabelText("Lokasi"));
+
+    const priceBoxes = await screen.findAllByLabelText(/^Harga (Di Toko|Di Rumah)$/);
+    await userEvent.type(priceBoxes[0], "100000");
+    await userEvent.type(priceBoxes[1], "150000");
+    for (const box of screen.getAllByLabelText(/^Durasi (Di Toko|Di Rumah) \(menit\)$/)) {
+      await userEvent.type(box, "60");
+    }
+    await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
+
+    await waitFor(() =>
+      expect(mockedServiceService.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          variantAxes: ["5a7f1f77bcf86cd7994391aa"],
+          variants: [
+            expect.objectContaining({
+              price: "100000",
+              choices: [{ optionId: "5a7f1f77bcf86cd7994391aa", code: "di-toko" }],
+            }),
+            expect.objectContaining({
+              price: "150000",
+              choices: [{ optionId: "5a7f1f77bcf86cd7994391aa", code: "di-rumah" }],
+            }),
+          ],
+        }),
+      ),
+    );
   });
 });
 

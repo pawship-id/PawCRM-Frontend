@@ -25,6 +25,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { PetFixLink } from "@/features/pets";
+import { useVariantQuote } from "@/features/services";
 import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/services/api-error";
@@ -38,7 +39,7 @@ import {
   sumDecimals,
   toMinor,
 } from "@/utils/decimal";
-import { AXIS_LABEL, priceForPet } from "@/utils/serviceVariant";
+import { AXIS_LABEL, type PriceLookup } from "@/utils/serviceVariant";
 import type {
   Booking,
   CreateInvoiceItemInput,
@@ -47,6 +48,8 @@ import type {
   Pet,
   PosCharge,
   Service,
+  ServiceVariantAxis,
+  VariantChoice,
 } from "@/types/api";
 import type { Product } from "@/types/inventory";
 
@@ -54,10 +57,12 @@ import { useInvoiceLineStock } from "../hooks/useInvoiceLineStock";
 import { useInvoiceLookups } from "../hooks/useInvoiceLookups";
 import { bookingShareOf, ownDiscountOfLine } from "../bookingDiscount";
 import { previewInvoice } from "../invoicePreview";
+import { hasChoice, lineRefusalOf, type LineRefusal } from "../variantLine";
 import { InvoiceAddItemsDialog } from "./InvoiceAddItemsDialog";
 import { InvoiceAddonPicker } from "./InvoiceAddonPicker";
 import { InvoiceBarcodeScan } from "./InvoiceBarcodeScan";
 import { InvoiceBookingPanel } from "./InvoiceBookingPanel";
+import { InvoiceLineVariant } from "./InvoiceLineVariant";
 import { formatRate } from "./InvoiceItemsTable";
 
 /**
@@ -82,15 +87,14 @@ import { formatRate } from "./InvoiceItemsTable";
 function MissingFactNote({
   line,
   pet,
-  service,
+  missing,
 }: {
   line: { kind: "product" | "service"; petId: string };
   pet: Pet | null;
-  service: Service | undefined;
+  /** The line's quote's `missingAxis` — see `quoteOf`. */
+  missing: ServiceVariantAxis | null;
 }) {
   if (line.kind !== "service" || !line.petId || !pet) return null;
-
-  const missing = priceForPet(service, pet).missingAxis;
 
   if (!missing) return null;
 
@@ -104,6 +108,28 @@ function MissingFactNote({
       <PetFixLink pet={pet} axis={missing} />
     </span>
   );
+}
+
+type Quote = ReturnType<typeof useVariantQuote>["quote"];
+
+/**
+ * THE CHOICES A LINE IS QUOTED ON (17 September 2026) — its own, over its
+ * service's when it is an add-on: the server lets an add-on typed next to its
+ * main service inherit that line's "Dipilih staf" values unless it names its
+ * own, and the preview has to agree with it.
+ */
+function choicesOf(line: DraftLine, lines: DraftLine[]): VariantChoice[] {
+  const parent = line.parentKey
+    ? lines.find((one) => one.key === line.parentKey)
+    : undefined;
+
+  if (!parent) return line.choices;
+
+  const own = new Set(line.choices.map((choice) => choice.optionId));
+  return [
+    ...parent.choices.filter((choice) => !own.has(choice.optionId)),
+    ...line.choices,
+  ];
 }
 
 /**
@@ -128,16 +154,22 @@ function MissingFactNote({
  * THE SAME ARRAY COMES BACK when every row already agrees, so a refresh that
  * changed nothing costs no render.
  */
-function repriced(lines: DraftLine[], services: Service[], pets: Pet[]) {
+function repriced(
+  lines: DraftLine[],
+  services: Service[],
+  pets: Pet[],
+  quote: Quote,
+) {
   let changed = false;
 
   const next = lines.map((line) => {
     if (line.kind !== "service" || !line.petId) return line;
 
     const price =
-      priceForPet(
+      quote(
         services.find((one) => one._id === line.refId),
         pets.find((one) => one._id === line.petId),
+        choicesOf(line, lines),
       ).price ?? "0";
 
     if (price === line.unitPrice) return line;
@@ -223,6 +255,12 @@ interface DraftLine {
    * add-on under the service again from the catalogue.
    */
   parentKey: string | null;
+  /**
+   * THE "DIPILIH STAF" VALUES CHOSEN ON THIS ROW — "Lokasi: Di Rumah" (17
+   * September 2026). Sent as the line's `variantChoices`; empty on a product,
+   * and on an add-on that simply inherits its service's.
+   */
+  choices: VariantChoice[];
 }
 
 /** Row handles — a counter, because an index shifts whenever a row is removed. */
@@ -246,7 +284,16 @@ export function InvoiceCreateForm() {
   const [channel, setChannel] = useState<InvoiceChannel>("manual");
   const [notes, setNotes] = useState("");
 
-  const [lines, setLines] = useState<DraftLine[]>([]);
+  /*
+    THE ROWS AS TYPED. What the form reads is `lines` below — these, with every
+    service row priced again from the animal, the zone and the choices as they
+    stand now.
+  */
+  const [draftLines, setLines] = useState<DraftLine[]>([]);
+  /** The server's last refusal about one row, by the row's `key`. */
+  const [lineRefusals, setLineRefusals] = useState<Record<string, LineRefusal>>(
+    {},
+  );
   /** Whether the "+ Tambah barang atau jasa" dialog is open. */
   const [picking, setPicking] = useState(false);
   /*
@@ -384,22 +431,19 @@ export function InvoiceCreateForm() {
         customer has been switched answers a question nobody is asking any
         more — the reply is dropped rather than written over the new one.
       */
+      /*
+        AND THE ROWS FOLLOW THEM — `lines` is priced from the animals on every
+        render, so the new read is all it takes.
+      */
       setPets((current) =>
         current.forCustomer === customerId
           ? { forCustomer: customerId, items: result.items }
           : current,
       );
-
-      /*
-        AND THE ROWS FOLLOW THEM. Priced from `result.items` rather than from
-        `pets`, which is the read that has only just been queued — the rows
-        would otherwise settle one refresh behind the animals they quote.
-      */
-      setLines((current) => repriced(current, lookups.services, result.items));
     } catch {
       /* Keep the animals already on screen — see above. */
     }
-  }, [customerId, lookups.services]);
+  }, [customerId]);
 
   /*
     BACK FROM THE OTHER TAB. `visibilitychange` RATHER THAN `focus`: focus fires
@@ -425,6 +469,61 @@ export function InvoiceCreateForm() {
         : [],
     [pets, customerId],
   );
+
+  /*
+    PRICING BEYOND THE PET (17 September 2026): the customer's zone, measured
+    from the chosen branch's pin to the customer's, and the "Dipilih staf"
+    cards. A preview — the server measures again and stores what it finds.
+  */
+  const branchPin = lookups.branches.find((one) => one._id === branchId)?.location;
+  const customerPin = lookups.customers.find(
+    (one) => one._id === customerId,
+  )?.location;
+  const variant = useVariantQuote({ branchPin, customerPin });
+
+  const lines = useMemo(
+    () => repriced(draftLines, lookups.services, pets.items, variant.quote),
+    [draftLines, lookups.services, pets.items, variant.quote],
+  );
+
+  const serviceOf = (refId: string) =>
+    lookups.services.find((one) => one._id === refId);
+
+  /** What this row costs for its animal, zone and choices — or why not. */
+  const quoteOf = (line: DraftLine): PriceLookup =>
+    variant.quote(
+      serviceOf(line.refId),
+      pets.items.find((one) => one._id === line.petId),
+      choicesOf(line, lines),
+    );
+
+  /**
+   * The cards this row asks — its service's, less any its main service's row
+   * already asks, which an add-on inherits.
+   */
+  function cardsOf(line: DraftLine) {
+    if (line.kind !== "service") return [];
+
+    const cards = variant.cardsFor([serviceOf(line.refId)]);
+    const parent = line.parentKey
+      ? lines.find((one) => one.key === line.parentKey)
+      : undefined;
+
+    if (!parent) return cards;
+
+    const inherited = new Set(
+      variant.cardsFor([serviceOf(parent.refId)]).map((card) => card.axisKey),
+    );
+    return cards.filter((card) => !inherited.has(card.axisKey));
+  }
+
+  /** A row's choices changed — and any refusal about them is answered. */
+  function setChoices(key: string, choices: VariantChoice[]) {
+    setLineRefusals({});
+    setLines((current) =>
+      current.map((line) => (line.key === key ? { ...line, choices } : line)),
+    );
+  }
 
   const [invoiceDiscountMode, setInvoiceDiscountMode] =
     useState<InvoiceDiscountMode>("percent");
@@ -612,12 +711,7 @@ export function InvoiceCreateForm() {
     back refused.
   */
   const variantInactive = (line: DraftLine) =>
-    line.kind === "service" &&
-    line.petId !== "" &&
-    priceForPet(
-      lookups.services.find((one) => one._id === line.refId),
-      pets.items.find((one) => one._id === line.petId),
-    ).inactive;
+    line.kind === "service" && line.petId !== "" && quoteOf(line).inactive;
 
   /**
    * Why Simpan is disabled, in the words of the thing that is missing.
@@ -677,14 +771,28 @@ export function InvoiceCreateForm() {
 
     if (unpriced) {
       const pet = pets.items.find((one) => one._id === unpriced.petId);
-      const missing = priceForPet(
-        lookups.services.find((one) => one._id === unpriced.refId),
-        pet,
-      ).missingAxis;
+      const lookup = quoteOf(unpriced);
+      const missing = lookup.missingAxis;
 
-      return missing
-        ? `Lengkapi ${AXIS_LABEL[missing]} ${pet?.name ?? "hewannya"} dulu — harga '${unpriced.name}' ditentukan dari situ.`
-        : `'${unpriced.name}' belum punya harga untuk ${pet?.name ?? "hewan ini"}. Tambahkan variannya di katalog.`;
+      if (missing) {
+        return `Lengkapi ${AXIS_LABEL[missing]} ${pet?.name ?? "hewannya"} dulu — harga '${unpriced.name}' ditentukan dari situ.`;
+      }
+
+      /*
+        BEYOND THE PET (17 September 2026): the customer's zone cannot be said,
+        or a "Dipilih staf" value is not chosen yet — the server's sentence,
+        word for word. Not while the cards and zones are still arriving, when
+        either would be a claim about data this form has not read yet.
+      */
+      if (lookup.missingZone || lookup.missingChoice) {
+        if (variant.loading) return "Sedang memuat data.";
+
+        const service = serviceOf(unpriced.refId);
+        const beyond = service ? variant.problemOf(service, lookup) : null;
+        if (beyond) return `${beyond}.`;
+      }
+
+      return `'${unpriced.name}' belum punya harga untuk ${pet?.name ?? "hewan ini"}. Tambahkan variannya di katalog.`;
     }
 
     /*
@@ -742,6 +850,7 @@ export function InvoiceCreateForm() {
             petId: "",
             key: nextLineKey(),
             parentKey: null,
+            choices: [],
           },
         ];
       }
@@ -778,6 +887,7 @@ export function InvoiceCreateForm() {
         petId: "",
         key: nextLineKey(),
         parentKey: null,
+        choices: [],
       })),
       ...picked.services.map((service) => ({
         kind: "service" as const,
@@ -796,6 +906,7 @@ export function InvoiceCreateForm() {
         petId: "",
         key: nextLineKey(),
         parentKey: null,
+        choices: [],
       })),
     ];
 
@@ -822,11 +933,14 @@ export function InvoiceCreateForm() {
     const pet = pets.items.find((one) => one._id === petId);
 
     /* "0" KEEPS THE ROW ARITHMETIC HONEST while the answer is unknown — the row
-       shows an em-dash of its own, and the save is blocked below. */
-    return priceForPet(service, pet).price ?? "0";
+       shows an em-dash of its own, and the save is blocked below. The zone and
+       the row's choices are applied by `lines`, which prices every row again. */
+    return variant.quote(service, pet).price ?? "0";
   }
 
   function patchLine(index: number, patch: Partial<DraftLine>) {
+    if (patch.petId !== undefined) setLineRefusals({});
+
     setLines((current) => {
       const target = current[index];
 
@@ -929,6 +1043,7 @@ export function InvoiceCreateForm() {
             petId: parent.petId,
             key: nextLineKey(),
             parentKey,
+            choices: [],
           },
         ];
       });
@@ -954,6 +1069,7 @@ export function InvoiceCreateForm() {
     if (blocking) return;
 
     setSaving(true);
+    setLineRefusals({});
 
     try {
       const items: CreateInvoiceItemInput[] = lines.map((line) => ({
@@ -970,6 +1086,13 @@ export function InvoiceCreateForm() {
           PRODUCT line — `blocking` above stops a service with no pet.
         */
         ...(line.petId ? { petId: line.petId } : {}),
+        /*
+          THE ROW'S OWN "DIPILIH STAF" VALUES, only when it has some. An add-on
+          that asks nothing of its own inherits its service's on the server.
+        */
+        ...(line.kind === "service" && line.choices.length > 0
+          ? { variantChoices: line.choices }
+          : {}),
       }));
 
       const created = await customerInvoiceService.create({
@@ -1003,6 +1126,34 @@ export function InvoiceCreateForm() {
       router.push(`${LIST_PATH}/${created._id}`);
       swalToast(`Faktur ${created.invoiceNumber} tersimpan.`);
     } catch (error) {
+      /*
+        A REFUSAL ABOUT ONE ROW IS ALSO SAID ON THAT ROW (17 September 2026) —
+        a zone the customer's pin cannot answer, a card nobody chose. The toast
+        still carries it; the row is where it gets fixed.
+      */
+      if (error instanceof ApiError) {
+        const found = lineRefusalOf(error);
+        const optionId = found?.refusal.optionId;
+        const target = !found
+          ? undefined
+          : found.index !== null
+            ? lines[found.index]
+            : optionId
+              ? (lines.find(
+                  (line) =>
+                    cardsOf(line).some((card) => card.axisKey === optionId) &&
+                    !hasChoice(line.choices, optionId),
+                ) ??
+                lines.find((line) =>
+                  cardsOf(line).some((card) => card.axisKey === optionId),
+                ))
+              : undefined;
+
+        if (found && target) {
+          setLineRefusals({ [target.key]: found.refusal });
+        }
+      }
+
       // 8 seconds, not the default 3 — every refusal here carries an
       // instruction: which branch has no code, which product is short.
       swalToast(
@@ -1416,6 +1567,36 @@ export function InvoiceCreateForm() {
                       const linePet = pets.items.find(
                         (one) => one._id === line.petId,
                       );
+                      const lineQuote =
+                        line.kind === "service" ? quoteOf(line) : null;
+                      const lineService =
+                        line.kind === "service"
+                          ? serviceOf(line.refId)
+                          : undefined;
+                      /*
+                        THE ROW'S PRICE BEYOND THE PET — its "Dipilih staf"
+                        selects, the customer's zone, and why a quote cannot be
+                        made. Nothing for a row that asks none of these.
+                      */
+                      const variantControls = lineService && lineQuote && (
+                        <InvoiceLineVariant
+                          cards={cardsOf(line)}
+                          choices={line.choices}
+                          onChange={(next) => setChoices(line.key, next)}
+                          zoneText={
+                            variant.needsZone([lineService])
+                              ? variant.zoneText
+                              : null
+                          }
+                          problem={
+                            line.petId && !variant.loading
+                              ? variant.problemOf(lineService, lineQuote)
+                              : null
+                          }
+                          refusal={lineRefusals[line.key] ?? null}
+                          disabled={saving}
+                        />
+                      );
 
                       return (
                         <TableRow key={line.key}>
@@ -1423,20 +1604,21 @@ export function InvoiceCreateForm() {
                             {line.parentKey ? (
                               /* UNDER ITS SERVICE, and marked — one visit, not a
                                second grooming to read. */
-                              <span className="flex items-start gap-1.5 pl-4">
+                              <div className="flex items-start gap-1.5 pl-4">
                                 <CornerDownRight
                                   aria-hidden
                                   className="mt-0.5 size-4 shrink-0 text-muted"
                                 />
-                                <span>
+                                <div>
                                   <span className="font-medium">
                                     {line.name}
                                   </span>
                                   <span className="block text-xs text-muted">
                                     Add-on
                                   </span>
-                                </span>
-                              </span>
+                                  {variantControls}
+                                </div>
+                              </div>
                             ) : (
                               <>
                                 <span className="font-medium">{line.name}</span>
@@ -1444,12 +1626,17 @@ export function InvoiceCreateForm() {
                                   {line.sku ?? "Jasa"}
                                 </span>
                                 {stockNote(line)}
+                                {variantControls}
                                 {offered.length > 0 && (
                                   <InvoiceAddonPicker
                                     idPrefix={line.key}
                                     serviceName={line.name}
                                     pet={linePet}
                                     offered={offered}
+                                    quoteOf={(addon) =>
+                                      variant.quote(addon, linePet, line.choices)
+                                    }
+                                    problemOf={variant.problemOf}
                                     tickedIds={lines
                                       .filter(
                                         (one) => one.parentKey === line.key,
@@ -1477,9 +1664,7 @@ export function InvoiceCreateForm() {
                                   <MissingFactNote
                                     line={line}
                                     pet={linePet ?? null}
-                                    service={lookups.services.find(
-                                      (one) => one._id === line.refId,
-                                    )}
+                                    missing={lineQuote?.missingAxis ?? null}
                                   />
                                 </>
                               ) : line.kind === "service" ? (
@@ -1525,9 +1710,7 @@ export function InvoiceCreateForm() {
                                   <MissingFactNote
                                     line={line}
                                     pet={linePet ?? null}
-                                    service={lookups.services.find(
-                                      (one) => one._id === line.refId,
-                                    )}
+                                    missing={lineQuote?.missingAxis ?? null}
                                   />
                                 </>
                               ) : (

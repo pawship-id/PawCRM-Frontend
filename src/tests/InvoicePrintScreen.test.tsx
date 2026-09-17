@@ -397,3 +397,35 @@ describe("when the invoice cannot be read", () => {
     );
   });
 });
+
+describe("choices and zone on a line", () => {
+  it("prints what a service line was priced on under its name", async () => {
+    await open(
+      detail({
+        items: [
+          {
+            kind: "service",
+            refId: "s1",
+            name: "Grooming Rumah",
+            sku: null,
+            qty: "1.0000",
+            unitPrice: "175000.0000",
+            discount: null,
+            lineTotal: "175000.0000",
+            hppAtTime: null,
+            bookingId: null,
+            petId: "pet1",
+            petName: "Miko",
+            groomerName: null,
+            variantChoices: [
+              { optionId: "o1", name: "Lokasi", code: "di-rumah", label: "Di Rumah" },
+            ],
+            zone: { zoneId: "z1", name: "Zona A", distanceKm: 2.1 },
+          },
+        ] as CustomerInvoiceDetail["items"],
+      }),
+    );
+
+    expect(screen.getByText("Lokasi: Di Rumah · Zona A")).toBeInTheDocument();
+  });
+});

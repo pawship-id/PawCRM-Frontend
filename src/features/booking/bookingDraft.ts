@@ -1,4 +1,4 @@
-import { priceForPet } from "@/utils/serviceVariant";
+import { priceForPet, type PriceLookup } from "@/utils/serviceVariant";
 import type {
   Booking,
   BookingBelongingInput,
@@ -6,7 +6,10 @@ import type {
   Pet,
   Service,
   UpdateBookingInput,
+  VariantChoice,
 } from "@/types/api";
+
+import { choicesFor, splitChoices } from "./variantLine";
 
 /**
  * The shape the booking form holds while somebody fills it in — and the
@@ -81,6 +84,11 @@ export interface BookingCardDraft {
   /** What the owner is handing over with this animal. */
   belongings: BelongingDraft[];
   /**
+   * The "Dipilih staf" values the line is priced on — one per card its service
+   * or add-ons declare (17 September 2026). Emptied when the service changes.
+   */
+  variantChoices: VariantChoice[];
+  /**
    * Already billed, so the service may not be changed (PRD 2.12). Held on the
    * draft rather than in a side set: a locked service is a property of that
    * card, and a parallel `Set` keyed by string is how the two drift.
@@ -104,6 +112,7 @@ export function blankCard(petId = ""): BookingCardDraft {
     internalNotes: "",
     customerNotes: "",
     belongings: [],
+    variantChoices: [],
     locked: false,
   };
 }
@@ -137,6 +146,11 @@ export function cardFromBooking(booking: Booking): BookingCardDraft {
       _id: belonging._id,
       name: belonging.name,
       checkedInAt: belonging.checkedInAt,
+    })),
+    /* The snapshot's card and value, without the words it was sold under. */
+    variantChoices: (service?.variantChoices ?? []).map(({ optionId, code }) => ({
+      optionId,
+      code,
     })),
     locked: Boolean(booking.pulledToCartAt || booking.pulledToInvoiceAt),
   };
@@ -182,16 +196,34 @@ function cardFields(card: BookingCardDraft) {
  * somebody added and did not fill in is not a booking, and the server would
  * refuse it by field name. `_id` never goes on a create.
  */
-export function cardsToEntries(cards: BookingCardDraft[]): CreateBookingEntry[] {
+export function cardsToEntries(
+  cards: BookingCardDraft[],
+  /*
+    THE CATALOGUE, to know which "Dipilih staf" cards each service declares.
+    Without it no choices are sent.
+  */
+  serviceOf: (id: string) => Service | null = () => null,
+): CreateBookingEntry[] {
   return cards
     .filter((card) => card.petId !== "" && card.serviceId !== "")
-    .map((card) => ({
-      ...cardFields(card),
-      belongings: belongingsOf(card).map(({ name, checkedInAt }) => ({
-        name,
-        ...(checkedInAt ? { checkedInAt } : {}),
-      })),
-    }));
+    .map((card) => {
+      /* The main service's choices; an add-on inherits them on the server. */
+      const choices = splitChoices(
+        serviceOf(card.serviceId),
+        card.addonServiceIds.map((serviceId) => ({ serviceId, service: serviceOf(serviceId) })),
+        card.variantChoices ?? [],
+      );
+
+      return {
+        ...cardFields(card),
+        belongings: belongingsOf(card).map(({ name, checkedInAt }) => ({
+          name,
+          ...(checkedInAt ? { checkedInAt } : {}),
+        })),
+        ...(choices.main.length > 0 ? { variantChoices: choices.main } : {}),
+        ...(choices.addons.length > 0 ? { addonPricing: choices.addons } : {}),
+      };
+    });
 }
 
 /**
@@ -202,6 +234,7 @@ export function cardsToEntries(cards: BookingCardDraft[]): CreateBookingEntry[] 
  */
 export function cardToUpdate(
   card: BookingCardDraft,
+  serviceOf: (id: string) => Service | null = () => null,
 ): Pick<
   UpdateBookingInput,
   | "petId"
@@ -212,8 +245,19 @@ export function cardToUpdate(
   | "internalNotes"
   | "customerNotes"
   | "belongings"
+  | "variantChoices"
 > {
-  return { ...cardFields(card), belongings: belongingsOf(card) };
+  /*
+    THE CHOICES ONLY WHEN THERE ARE SOME, and never on a billed line — the server
+    re-quotes the line in its stored zone when they are sent.
+  */
+  const choices = card.locked ? [] : choicesFor(serviceOf(card.serviceId), card.variantChoices ?? []);
+
+  return {
+    ...cardFields(card),
+    belongings: belongingsOf(card),
+    ...(choices.length > 0 ? { variantChoices: choices } : {}),
+  };
 }
 
 /** One animal and one service, as a key. */
@@ -294,13 +338,21 @@ export function longestGroomerMinutes(
     Reading `service.durationMin` would find null and quietly count nothing.
   */
   petOf: (id: string) => Pet | null,
+  /*
+    HOW A LINE IS QUOTED — with the zone and the card's choices when the form has
+    them (17 September 2026). A variant priced by either has no length otherwise.
+  */
+  quoteOf: (service: Service | null, pet: Pet | null, card: BookingCardDraft) => PriceLookup = (
+    service,
+    pet,
+  ) => priceForPet(service, pet),
 ): number {
   const perGroomer = new Map<string, number>();
 
   for (const card of cards) {
     const pet = petOf(card.petId);
     const minutesOf = (id: string) =>
-      priceForPet(serviceOf(id), pet).durationMin ?? 0;
+      quoteOf(serviceOf(id), pet, card).durationMin ?? 0;
 
     const typed = Number(card.durationMin);
     const own =

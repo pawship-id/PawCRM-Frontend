@@ -14,6 +14,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Can, usePermissions } from "@/features/permissions";
+import { invalidateVariantOptions } from "@/hooks/useVariantOptions";
+import { invalidateZones } from "@/hooks/useZones";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { zoneService } from "@/services/zone.service";
@@ -41,7 +43,14 @@ export function ZonesPanel({
   list: UseZoneListResult;
   intro?: ReactNode;
 }) {
-  const { zones, loading, error, refetch } = list;
+  const { zones, loading, error, refetch: refetchList } = list;
+
+  /* This list, the app-wide one pickers and price grids read, and the card counts. */
+  function refetch() {
+    refetchList();
+    invalidateZones();
+    invalidateVariantOptions();
+  }
   const { can } = usePermissions();
 
   const [showDeleted, setShowDeleted] = useState(false);

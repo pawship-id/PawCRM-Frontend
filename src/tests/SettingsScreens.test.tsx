@@ -17,6 +17,11 @@ import { productService } from "@/services/product.service";
 import { serviceService } from "@/services/service.service";
 import { serviceStepService } from "@/services/serviceStep.service";
 import { zoneService } from "@/services/zone.service";
+import { variantOptionService } from "@/services/variantOption.service";
+import { ApiError } from "@/services/api-error";
+import { invalidateVariantOptions } from "@/hooks/useVariantOptions";
+import { invalidateZones } from "@/hooks/useZones";
+import { BUILT_IN_VARIANT_OPTIONS, makeVariantOption } from "./helpers/variantOptions";
 import { stockEntryService } from "@/services/stockEntry.service";
 import { supplierService } from "@/services/supplier.service";
 import { warehouseService } from "@/services/warehouse.service";
@@ -42,6 +47,7 @@ jest.mock("@/services/businessLine.service");
 jest.mock("@/services/petOption.service");
 jest.mock("@/services/serviceStep.service");
 jest.mock("@/services/zone.service");
+jest.mock("@/services/variantOption.service");
 jest.mock("@/services/customer.service");
 jest.mock("@/services/product.service");
 jest.mock("@/services/service.service");
@@ -235,6 +241,19 @@ describe("ServiceSettingsScreen", () => {
     service({ _id: "kuku", name: "Potong Kuku", serviceType: "addon", isActive: false }),
   ];
 
+  const LOKASI_CARD = makeVariantOption({
+    _id: "vo-lokasi",
+    name: "Lokasi",
+    source: "staff",
+    axisKey: "5a7f1f77bcf86cd7994391aa",
+    sortOrder: 3,
+    serviceCount: 2,
+    values: [
+      { code: "di-toko", label: "Di Toko", sortOrder: 0, isActive: true },
+      { code: "di-rumah", label: "Di Rumah", sortOrder: 1, isActive: true },
+    ],
+  });
+
   function rail(name: string) {
     return within(
       screen.getByRole("tablist", { name: "Bagian pengaturan layanan" }),
@@ -260,6 +279,16 @@ describe("ServiceSettingsScreen", () => {
       items: LINES,
       pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
     });
+    jest.mocked(variantOptionService.list).mockResolvedValue({
+      items: [
+        ...BUILT_IN_VARIANT_OPTIONS.map((card) =>
+          card.axisKey === "sizeCategory" ? { ...card, serviceCount: 6 } : card,
+        ),
+        LOKASI_CARD,
+      ],
+    });
+    invalidateVariantOptions();
+    invalidateZones();
     jest.mocked(zoneService.list).mockResolvedValue({
       items: [
         { _id: "z1", name: "Zona A", minKm: 0, maxKm: 3, deletedAt: null },
@@ -277,31 +306,150 @@ describe("ServiceSettingsScreen", () => {
   it("opens on Opsi Varian, counts every section live from the rail, and mirrors the section to the URL", async () => {
     renderWithAuth(<ServiceSettingsScreen />);
 
-    await screen.findByText("Kucing");
+    const ukuran = await screen.findByRole("listitem", { name: "Opsi Ukuran" });
     expect(rail("Opsi Varian")).toHaveAttribute("aria-selected", "true");
-    // Species 2 + sizes 3 (the deleted Raksasa is not counted) + coats 2.
-    expect(rail("Opsi Varian")).toHaveTextContent("7");
+    // Four cards: the three pet cards and Lokasi.
+    expect(rail("Opsi Varian")).toHaveTextContent("4");
     expect(rail("Ras")).toHaveTextContent("2");
     await waitFor(() => expect(rail("Tahapan")).toHaveTextContent("3"));
     await waitFor(() => expect(rail("Add-on")).toHaveTextContent("2"));
     // Live zones only — the deleted one is not counted.
     await waitFor(() => expect(rail("Zona")).toHaveTextContent("2"));
 
-    // Breeds are not a price axis, so Opsi Varian has no Ras pill.
-    const pills = screen.getByRole("group", { name: "Jenis data hewan" });
-    expect(within(pills).queryByRole("button", { name: /^Ras/ })).toBeNull();
-
     await userEvent.click(rail("Ras"));
     expect(replace).toHaveBeenCalledWith("/dashboard/master/layanan?bagian=ras", {
       scroll: false,
     });
     expect(screen.getByText("Poodle")).toBeInTheDocument();
-    expect(screen.queryByText("Kucing")).not.toBeInTheDocument();
-    // One type, nothing to choose between.
-    expect(screen.queryByRole("group", { name: "Jenis data hewan" })).toBeNull();
+    expect(screen.queryByRole("listitem", { name: "Opsi Ukuran" })).not.toBeInTheDocument();
 
     // One load feeds both sections.
     expect(petOptionService.list).toHaveBeenCalledTimes(1);
+    expect(ukuran).toBeTruthy();
+  });
+
+  it("draws each Opsi Varian card as the mockup does — badge, service count, value chips", async () => {
+    renderWithAuth(<ServiceSettingsScreen />);
+
+    const ukuran = await screen.findByRole("listitem", { name: "Opsi Ukuran" });
+    expect(within(ukuran).getByText("Otomatis")).toBeInTheDocument();
+    expect(within(ukuran).getByText("6 layanan")).toBeInTheDocument();
+    // The tenant's sizes, in order — the deleted Raksasa is not a chip.
+    expect(within(ukuran).getByText("Kecil")).toBeInTheDocument();
+    expect(within(ukuran).getByText("Besar")).toBeInTheDocument();
+    expect(within(ukuran).queryByText("Raksasa")).not.toBeInTheDocument();
+    // A built-in card cannot be deleted.
+    expect(within(ukuran).queryByRole("button", { name: "Hapus opsi Ukuran" })).toBeNull();
+
+    const lokasi = screen.getByRole("listitem", { name: "Opsi Lokasi" });
+    expect(within(lokasi).getByText("Dipilih staf")).toBeInTheDocument();
+    expect(within(lokasi).getByText("Di Toko")).toBeInTheDocument();
+    expect(within(lokasi).getByRole("button", { name: "Hapus opsi Lokasi" })).toBeInTheDocument();
+  });
+
+  it("adds a value to a staff card, and shows the server's refusal when a value is still used", async () => {
+    jest.mocked(variantOptionService.addValue).mockResolvedValue(LOKASI_CARD);
+    jest.mocked(variantOptionService.removeValue).mockRejectedValue(
+      new ApiError("Variant option value is still used by services", 409, {
+        reason: "Di Toko masih dipakai 2 layanan — nonaktifkan saja",
+      }),
+    );
+    renderWithAuth(<ServiceSettingsScreen />);
+
+    const lokasi = await screen.findByRole("listitem", { name: "Opsi Lokasi" });
+    await userEvent.click(within(lokasi).getByRole("button", { name: "Tambah nilai Lokasi" }));
+    const dialog = screen.getByRole("dialog");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /^Nilai/ }), "Di Kantor");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Tambah nilai" }));
+    await waitFor(() =>
+      expect(variantOptionService.addValue).toHaveBeenCalledWith(LOKASI_CARD._id, "Di Kantor"),
+    );
+
+    const refreshed = await screen.findByRole("listitem", { name: "Opsi Lokasi" });
+    await userEvent.click(
+      within(refreshed).getByRole("button", { name: "Hapus Di Toko dari Lokasi" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Hapus" }));
+    expect(await screen.findByText(/masih dipakai 2 layanan/)).toBeInTheDocument();
+  });
+
+  it("renames a card from its pencil, sending only what changed", async () => {
+    jest.mocked(variantOptionService.update).mockResolvedValue(LOKASI_CARD);
+    renderWithAuth(<ServiceSettingsScreen />);
+
+    const ukuran = await screen.findByRole("listitem", { name: "Opsi Ukuran" });
+    // A built-in card can be renamed, though never deleted.
+    await userEvent.click(within(ukuran).getByRole("button", { name: "Ubah opsi Ukuran" }));
+    const dialog = screen.getByRole("dialog");
+    // It is used, and the dialog says a rename reaches those services.
+    expect(within(dialog).getByText(/Dipakai 6 layanan/)).toBeInTheDocument();
+
+    const name = within(dialog).getByRole("textbox", { name: /^Nama opsi/ });
+    await userEvent.clear(name);
+    await userEvent.type(name, "Size");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Simpan opsi" }));
+
+    await waitFor(() =>
+      expect(variantOptionService.update).toHaveBeenCalledWith("vo-size", { name: "Size" }),
+    );
+  });
+
+  it("retires a staff value from its chip instead of deleting it", async () => {
+    jest.mocked(variantOptionService.updateValue).mockResolvedValue(LOKASI_CARD);
+    renderWithAuth(<ServiceSettingsScreen />);
+
+    const lokasi = await screen.findByRole("listitem", { name: "Opsi Lokasi" });
+    await userEvent.click(within(lokasi).getByRole("button", { name: "Ubah Di Toko di Lokasi" }));
+    const dialog = screen.getByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("switch", { name: /Masih ditawarkan/ }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Simpan nilai" }));
+
+    await waitFor(() =>
+      expect(variantOptionService.updateValue).toHaveBeenCalledWith(LOKASI_CARD._id, "di-toko", {
+        isActive: false,
+      }),
+    );
+  });
+
+  it("renames a size from its chip, on the pet options list the pet form reads", async () => {
+    jest.mocked(petOptionService.update).mockResolvedValue(PET_OPTION_FIXTURES[0]);
+    renderWithAuth(<ServiceSettingsScreen />);
+
+    const ukuran = await screen.findByRole("listitem", { name: "Opsi Ukuran" });
+    await userEvent.click(within(ukuran).getByRole("button", { name: "Ubah Kecil di Ukuran" }));
+    const dialog = screen.getByRole("dialog");
+    const label = within(dialog).getByRole("textbox", { name: /^Nilai/ });
+    await userEvent.clear(label);
+    await userEvent.type(label, "Mini");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Simpan nilai" }));
+
+    await waitFor(() =>
+      expect(petOptionService.update).toHaveBeenCalledWith(
+        expect.stringContaining("small"),
+        { label: "Mini" },
+      ),
+    );
+  });
+
+  it("creates a Dipilih staf card with one value per line", async () => {
+    jest.mocked(variantOptionService.create).mockResolvedValue(LOKASI_CARD);
+    renderWithAuth(<ServiceSettingsScreen />);
+
+    await screen.findByRole("listitem", { name: "Opsi Ukuran" });
+    await userEvent.click(screen.getByRole("button", { name: "Tambah opsi" }));
+    const dialog = screen.getByRole("dialog");
+    await userEvent.type(within(dialog).getByLabelText(/^Nama opsi/), "Tier Groomer");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /^Nilai/ }), "Junior{enter}Senior");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Tambah opsi" }));
+
+    await waitFor(() =>
+      expect(variantOptionService.create).toHaveBeenCalledWith({
+        name: "Tier Groomer",
+        description: null,
+        source: "staff",
+        values: ["Junior", "Senior"],
+      }),
+    );
   });
 
   it("lists add-ons only, with their price, tahapan and switches from the catalogue", async () => {

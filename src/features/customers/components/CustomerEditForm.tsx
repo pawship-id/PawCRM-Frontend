@@ -7,9 +7,14 @@ import {
   Alert,
   Button,
   Card,
+  ConfirmDialog,
+  LocationFields,
   Spinner,
   TextField,
-  ConfirmDialog,
+  toGeoLocation,
+  toLocationFieldsValue,
+  validateLocationFields,
+  type LocationFieldsValue,
 } from "@/components";
 import { ApiError } from "@/services/api-error";
 import { customerService } from "@/services/customer.service";
@@ -136,6 +141,10 @@ function DetailsSection({
   const [email, setEmail] = useState(customer.email ?? "");
   const [phone, setPhone] = useState(customer.phone ?? "");
   const [address, setAddress] = useState(customer.address ?? "");
+  // The address's pin — what a service priced by Zona is quoted from (17 September 2026).
+  const [location, setLocation] = useState<LocationFieldsValue>(() =>
+    toLocationFieldsValue(customer.location),
+  );
   const [vipTier, setVipTier] = useState<VipTier | "">(customer.vipTier ?? "");
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -157,6 +166,7 @@ function DetailsSection({
     if (emailError) nextErrors.email = emailError;
     if (phoneError) nextErrors.phone = phoneError;
     if (addressError) nextErrors.address = addressError;
+    Object.assign(nextErrors, validateLocationFields(location));
     setFieldErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
@@ -167,6 +177,7 @@ function DetailsSection({
         email: email.trim() === "" ? null : email.trim(),
         phone: phone.trim() === "" ? null : phone.trim(),
         address: address.trim() === "" ? null : address.trim(),
+        location: toGeoLocation(location),
         vipTier: vipTier === "" ? null : vipTier,
       });
       onUpdated(updated);
@@ -248,6 +259,17 @@ function DetailsSection({
             disabled={disabled}
           />
         </div>
+
+        {/* Row 4: the address's pin — paste "lat, lng" from Google Maps. */}
+        <LocationFields
+          value={location}
+          onChange={setLocation}
+          errors={fieldErrors}
+          disabled={disabled}
+        />
+        <p className="text-xs text-muted sm:col-span-2">
+          Titik alamat dipakai untuk menentukan zona antar-jemput dari jarak ke cabang.
+        </p>
       </div>
 
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">

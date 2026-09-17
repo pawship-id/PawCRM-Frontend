@@ -155,7 +155,8 @@ describe("GroomingServicesScreen", () => {
     const row = screen.getByRole("row", { name: /Express Wash/ });
     expect(within(row).getByText("Keduanya")).toBeInTheDocument();
     expect(within(row).getByText("6 / 6")).toBeInTheDocument();
-    expect(within(row).getByText("Ukuran × Jenis bulu")).toBeInTheDocument();
+    // The axes by the tenant's Opsi Varian card names (17 September 2026).
+    expect(within(row).getByText("Ukuran × Jenis Bulu")).toBeInTheDocument();
     expect(within(row).getByText("Rp 89 rb – Rp 249 rb")).toBeInTheDocument();
     // The range across the variants' own lengths.
     expect(within(row).getByText("45–105 mnt")).toBeInTheDocument();

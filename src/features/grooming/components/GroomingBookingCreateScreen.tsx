@@ -12,7 +12,6 @@ import {
   FIELD_HEIGHT,
   FilterSelect,
   FormActionBar,
-  SelectField,
   Spinner,
   TextField,
   TextareaField,
@@ -21,12 +20,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { variantRefusalOf, type VariantRefusal } from "@/features/booking/variantLine";
 import { CustomerSearchDialog } from "@/features/customers";
 import { useBranchScope } from "@/features/inventory/hooks/useBranchScope";
 import { usePermissions } from "@/features/permissions";
 import { PetFixLink, PetQuickAddDialog, PetSummaryCard } from "@/features/pets";
 // `PageHeading` is still purchasing-local, awaiting promotion (ui-rules §15).
 import { PageHeading } from "@/features/purchasing";
+import { useVariantQuote, VariantChoicePicker } from "@/features/services";
 import { usePetOptions } from "@/hooks/usePetOptions";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
@@ -36,8 +37,9 @@ import { serviceService } from "@/services/service.service";
 import { formatMoney, toDecimalString } from "@/utils/decimal";
 import {
   AXIS_LABEL,
-  priceForPet,
+  staffAxesOf,
   variantLabelForPet,
+  variesByZone,
 } from "@/utils/serviceVariant";
 import { GROOMER_LEVEL_LABELS } from "@/types/api";
 import type {
@@ -147,8 +149,9 @@ const VARIANT_ORDER = ["furType", "sizeCategory", "petType"] as const satisfies 
  *
  * ─── WHAT THE MOCKUP ASKS FOR THAT IS NOT BUILT ────────────────────────────
  *
- * Zona and biaya perjalanan are "Segera": no zone or trip fee exists on the
- * backend yet. The schedule is a date and a time, as the API stores it, not the
+ * Biaya perjalanan is "Segera": no trip fee exists on the backend yet. A
+ * service priced by Zona or by a "Dipilih staf" card is quoted here since 17
+ * September 2026 — `useVariantQuote`, and a select per card under the service. The schedule is a date and a time, as the API stores it, not the
  * mockup's Pagi/Siang blocks. Saving ASKS for the appointment (`requested`), as
  * the booking form does — confirming it is the shop's separate act.
  */
@@ -187,6 +190,20 @@ export function GroomingBookingCreateScreen() {
   const [formError, setFormError] = useState<string | null>(null);
   /* The clash the server refused, kept so saving again overrides it. */
   const [clash, setClash] = useState<string | null>(null);
+  /*
+    A LINE THE SERVER REFUSED OVER ITS CHOICES OR ITS ZONE, by animal — shown on
+    that animal's card, under the select it is about when it names one.
+  */
+  const [refusal, setRefusal] = useState<(VariantRefusal & { petId: string }) | null>(null);
+
+  /*
+    PRICED BEYOND THE PET (17 September 2026): the zone is the customer's pin
+    measured from the chosen branch; the "Dipilih staf" values are per animal.
+  */
+  const variant = useVariantQuote({
+    branchPin: scope.branches.find((branch) => branch._id === branchId)?.location,
+    customerPin: customer?.location,
+  });
 
   /* What is still offered — a retired service is not something to promise. */
   useEffect(() => {
@@ -300,6 +317,7 @@ export function GroomingBookingCreateScreen() {
     setDrafts({});
     setBookingDiscount({ mode: "amount", value: "" });
     setClash(null);
+    setRefusal(null);
   }
 
   function togglePet(petId: string) {
@@ -312,6 +330,7 @@ export function GroomingBookingCreateScreen() {
       return { ...prev, [petId]: blankPetDraft(petId) };
     });
     setClash(null);
+    setRefusal(null);
   }
 
   function patchDraft(petId: string, patch: Partial<PetDraft>) {
@@ -319,6 +338,7 @@ export function GroomingBookingCreateScreen() {
       prev[petId] ? { ...prev, [petId]: { ...prev[petId], ...patch } } : prev,
     );
     setClash(null);
+    setRefusal(null);
   }
 
   /* ─── WHAT THE FORM COMES TO ───────────────────────────────────────────── */
@@ -329,15 +349,17 @@ export function GroomingBookingCreateScreen() {
 
   const priced = picked.map(({ pet, draft }) => {
     const service = serviceOf(draft.serviceId);
-    const quote = priceForPet(service, pet);
+    const quote = variant.quote(service, pet, draft.variantChoices);
     const main = priceLine(quote.price, draft.main);
     const addons = draft.addonServiceIds.map((addonId) => {
       const addon = serviceOf(addonId);
-      const addonQuote = priceForPet(addon, pet);
+      const addonQuote = variant.quote(addon, pet, draft.variantChoices);
       return {
         addonId,
         addon,
         quote: addonQuote,
+        /* The zone or the choice this add-on is still waiting for, as a sentence. */
+        problem: addon ? variant.problemOf(addon, addonQuote) : null,
         line: priceLine(addonQuote.price, draft.addons[addonId] ?? BLANK_PRICE),
       };
     });
@@ -349,6 +371,7 @@ export function GroomingBookingCreateScreen() {
       draft,
       service,
       quote,
+      problem: service ? variant.problemOf(service, quote) : null,
       main,
       addons,
       gross: lines.reduce((sum, row) => sum + (row.price ?? 0n), 0n),
@@ -373,6 +396,10 @@ export function GroomingBookingCreateScreen() {
   const homeOnly = chosenServices.some((service) => onlyAt(service) === "in_home");
   const storeOnly = chosenServices.some((service) => onlyAt(service) === "in_store");
   const location: BookingLocation = homeOnly ? "in_home" : "in_store";
+  /* Whether anything chosen — a service or a ticked add-on — is priced by Zona. */
+  const zoneAsked = variant.needsZone(
+    priced.flatMap((row) => [row.service, ...row.addons.map((addon) => addon.addon)]),
+  );
 
   const withoutService = priced.find((row) => !row.service);
   const sizeless = priced.find((row) => !row.pet.size);
@@ -384,6 +411,10 @@ export function GroomingBookingCreateScreen() {
   const inactive = priced.find(
     (row) => row.quote.inactive || row.addons.some((addon) => addon.quote.inactive),
   );
+  /* A ZONE NOBODY CAN MEASURE, OR A "DIPILIH STAF" VALUE NOBODY CHOSE. */
+  const unanswered = priced
+    .map((row) => row.problem ?? row.addons.find((addon) => addon.problem)?.problem ?? null)
+    .find((problem): problem is string => problem !== null);
 
   const blockedReason = !branchId
     ? "Cabang belum dipilih."
@@ -397,7 +428,9 @@ export function GroomingBookingCreateScreen() {
             ? `Ukuran ${sizeless.pet.name} belum diisi.`
             : unpriceable
               ? `Data ${unpriceable.pet.name} belum lengkap, harganya belum bisa dihitung.`
-              : inactive
+              : unanswered
+                ? `${unanswered}.`
+                : inactive
                 ? `Varian layanan untuk ${inactive.pet.name} sedang nonaktif.`
                 : homeOnly && storeOnly
                   ? "Layanan di alamat dan layanan di toko tidak bisa disimpan bersama — simpan terpisah."
@@ -416,6 +449,7 @@ export function GroomingBookingCreateScreen() {
 
     setSaving(true);
     setFormError(null);
+    setRefusal(null);
 
     try {
       const result = await bookingService.create({
@@ -428,7 +462,7 @@ export function GroomingBookingCreateScreen() {
         bookingDiscount: mayPrice
           ? typedDiscount(bookingDiscount.mode, bookingDiscount.value)
           : null,
-        bookings: picked.map(({ draft }) => toEntry(draft)),
+        bookings: picked.map(({ draft }) => toEntry(draft, serviceOf)),
       });
 
       const made = result.bookings;
@@ -453,7 +487,26 @@ export function GroomingBookingCreateScreen() {
         /* The page it landed on already shows it. */
       }
     } catch (error) {
-      if (error instanceof ApiError && error.status === 409) {
+      const refused = variantRefusalOf(error);
+      /*
+        WHICH ANIMAL: the entry the path names, else the first whose service
+        declares the card — or varies by zone — the refusal is about.
+      */
+      const refusedRow = refused
+        ? ((refused.index !== null ? picked[refused.index] : undefined) ??
+          picked.find(({ draft }) =>
+            [draft.serviceId, ...draft.addonServiceIds].some((id) =>
+              refused.optionId
+                ? staffAxesOf(serviceOf(id)).includes(refused.optionId)
+                : variesByZone(serviceOf(id)),
+            ),
+          ) ??
+          picked[0])
+        : undefined;
+
+      if (refused && refusedRow) {
+        setRefusal({ ...refused, petId: refusedRow.pet._id });
+      } else if (error instanceof ApiError && error.status === 409) {
         setClash(error.fullMessage);
       } else if (error instanceof ApiError) {
         setFormError(error.fullMessage);
@@ -556,7 +609,19 @@ export function GroomingBookingCreateScreen() {
                     </Fact>
                     <Fact label="Alamat">{customer.address ?? "—"}</Fact>
                     <Fact label="Zona">
-                      <span className={`${badge} bg-tint-neutral text-muted`}>Segera</span>
+                      {/*
+                        THE CUSTOMER'S ZONE FROM THE CHOSEN BRANCH — asked only
+                        when a chosen service is priced by it, or when it can be
+                        said anyway. Otherwise a tenant with no zones would read
+                        a failure about a thing it never set up.
+                      */}
+                      {variant.zone.ok || zoneAsked ? (
+                        <span className={variant.zone.ok ? "tabular-nums" : "font-normal text-muted"}>
+                          {variant.zoneText}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
                     </Fact>
                     <Fact label="Member">
                       {customer.vipTier ? (
@@ -684,31 +749,22 @@ export function GroomingBookingCreateScreen() {
                   />
                 )}
                 {/*
-                  ZONA AND THE TRAVEL FEE — "Segera". Drawn where the mockup
-                  draws them, for a service done at the customer's address, so
-                  the shop can see what is coming; nothing is saved from them.
+                  THE TRAVEL FEE — "Segera". Drawn where the mockup draws it, for
+                  a service done at the customer's address, so the shop can see
+                  what is coming; nothing is saved from it. The zone that PRICES
+                  a service is real since 17 September 2026 and sits with the
+                  customer and the price.
                 */}
                 {homeOnly && (
-                  <>
-                    <SelectField
-                      label="Zona perjalanan"
-                      value=""
-                      onChange={() => {}}
-                      options={[]}
-                      placeholder="Segera"
-                      disabled
-                      hint="Zona belum tersedia — booking tetap bisa disimpan."
-                    />
-                    <div className="flex flex-col gap-1.5">
-                      <Label>Biaya perjalanan</Label>
-                      <div
-                        className={`flex ${FIELD_HEIGHT} items-center justify-between rounded-md border border-border bg-background px-3 text-sm text-muted`}
-                      >
-                        Dihitung sekali per kunjungan
-                        <span className={`${badge} bg-tint-neutral text-muted`}>Segera</span>
-                      </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label>Biaya perjalanan</Label>
+                    <div
+                      className={`flex ${FIELD_HEIGHT} items-center justify-between rounded-md border border-border bg-background px-3 text-sm text-muted`}
+                    >
+                      Dihitung sekali per kunjungan
+                      <span className={`${badge} bg-tint-neutral text-muted`}>Segera</span>
                     </div>
-                  </>
+                  </div>
                 )}
               </div>
             </Card>
@@ -735,6 +791,14 @@ export function GroomingBookingCreateScreen() {
                       .map((id) => serviceOf(id))
                       .filter((addon): addon is Service => addon !== null);
                     const share = split.shares[priced.indexOf(row)] ?? 0n;
+                    const cards = variant.cardsFor([
+                      service,
+                      ...draft.addonServiceIds.map((id) => serviceOf(id)),
+                    ]);
+                    const lineRefusal = refusal?.petId === pet._id ? refusal : null;
+                    /* The zone answer beside a price that depends on it. */
+                    const zoneNote = (quoted: Service | null) =>
+                      variesByZone(quoted) && variant.zone.ok ? `Zona: ${variant.zoneText}` : null;
 
                     return (
                       <li
@@ -807,6 +871,7 @@ export function GroomingBookingCreateScreen() {
                                   addonServiceIds: [],
                                   main: BLANK_PRICE,
                                   addons: {},
+                                  variantChoices: [],
                                 })
                               }
                               options={mainServices.map((item) => ({
@@ -863,6 +928,25 @@ export function GroomingBookingCreateScreen() {
                             )}
                           </div>
 
+                          {/*
+                            ONE SELECT PER "DIPILIH STAF" CARD the service and
+                            its ticked add-ons declare — "Lokasi: Di Rumah". An
+                            add-on shares the service's answer.
+                          */}
+                          <VariantChoicePicker
+                            cards={cards}
+                            value={draft.variantChoices}
+                            onChange={(next) => patchDraft(pet._id, { variantChoices: next })}
+                            disabled={saving}
+                            errorFor={(optionId) =>
+                              lineRefusal?.optionId === optionId ? lineRefusal.message : undefined
+                            }
+                          />
+
+                          {lineRefusal && !cards.some((card) => card.axisKey === lineRefusal.optionId) && (
+                            <Alert variant="error">{lineRefusal.message}</Alert>
+                          )}
+
                           {service && (
                             <div className="flex flex-col gap-2">
                               <p className="text-sm font-medium">Harga &amp; diskon per item</p>
@@ -878,8 +962,11 @@ export function GroomingBookingCreateScreen() {
                                       layanan ini mengikutinya.{" "}
                                       <PetFixLink pet={pet} axis={quote.missingAxis} />
                                     </>
-                                  ) : null
+                                  ) : (
+                                    row.problem
+                                  )
                                 }
+                                note={zoneNote(service)}
                                 inactive={quote.inactive}
                                 mayPrice={mayPrice}
                                 disabled={saving}
@@ -895,8 +982,9 @@ export function GroomingBookingCreateScreen() {
                                   missing={
                                     addonRow.quote.missingAxis
                                       ? `${pet.name} belum punya ${AXIS_LABEL[addonRow.quote.missingAxis]}.`
-                                      : null
+                                      : addonRow.problem
                                   }
+                                  note={zoneNote(addonRow.addon)}
                                   inactive={addonRow.quote.inactive}
                                   mayPrice={mayPrice}
                                   disabled={saving}
@@ -925,7 +1013,15 @@ export function GroomingBookingCreateScreen() {
                               <p className="text-sm font-medium">Add-on</p>
                               <CheckRowGroup>
                                 {offered.map((addon) => {
-                                  const addonQuote = priceForPet(addon, pet);
+                                  const addonQuote = variant.quote(addon, pet, draft.variantChoices);
+                                  /*
+                                    WAITING ON A CHOICE IS NOT A REASON TO REFUSE
+                                    THE TICK — the select for it appears once it
+                                    is ticked.
+                                  */
+                                  const waiting = addonQuote.missingChoice
+                                    ? "Pilih opsinya setelah dicentang."
+                                    : variant.problemOf(addon, addonQuote);
                                   const checked = draft.addonServiceIds.includes(addon._id);
 
                                   return (
@@ -937,7 +1033,7 @@ export function GroomingBookingCreateScreen() {
                                           ? "Varian nonaktif — tidak bisa dipilih."
                                           : addonQuote.price
                                             ? `${formatMoney(addonQuote.price)}${addonQuote.durationMin ? ` · +${addonQuote.durationMin} mnt` : ""}`
-                                            : "—"
+                                            : (waiting ?? "—")
                                       }
                                       checked={checked}
                                       disabled={saving || (addonQuote.inactive && !checked)}
@@ -1247,6 +1343,7 @@ function PriceRow({
   line,
   draft,
   missing,
+  note,
   inactive,
   mayPrice,
   disabled,
@@ -1257,6 +1354,8 @@ function PriceRow({
   line: PricedLine;
   draft: PriceDraft;
   missing: React.ReactNode;
+  /** A quiet line under the price — the zone it was quoted in. */
+  note?: string | null;
   inactive: boolean;
   mayPrice: boolean;
   disabled: boolean;
@@ -1354,6 +1453,9 @@ function PriceRow({
             </p>
           )}
         </>
+      )}
+      {note && line.price !== null && !inactive && (
+        <p className="mt-2 text-xs text-muted tabular-nums">{note}</p>
       )}
     </div>
   );

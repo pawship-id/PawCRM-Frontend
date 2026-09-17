@@ -20,8 +20,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useVariantQuote } from "@/features/services";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
+import { customerService } from "@/services/customer.service";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
 import { petService } from "@/services/pet.service";
 import {
@@ -35,17 +37,30 @@ import {
   trimDecimal,
   trimQty,
 } from "@/utils/decimal";
-import { AXIS_LABEL, priceForPet } from "@/utils/serviceVariant";
+import {
+  AXIS_LABEL,
+  variesByZone,
+  type PriceLookup,
+} from "@/utils/serviceVariant";
 import type {
   CustomerInvoiceDetail,
+  GeoLocation,
   InvoiceDiscountMode,
   Pet,
   UpdateCustomerInvoiceInput,
+  VariantChoice,
 } from "@/types/api";
 
 import { invoiceBookingShareOf } from "../bookingDiscount";
 import { useInvoiceLookups } from "../hooks/useInvoiceLookups";
 import { previewInvoice } from "../invoicePreview";
+import {
+  hasChoice,
+  lineRefusalOf,
+  variantSummary,
+  type LineRefusal,
+} from "../variantLine";
+import { InvoiceLineVariant } from "./InvoiceLineVariant";
 
 /** A line as the editor holds it. */
 interface EditLine {
@@ -72,6 +87,17 @@ interface EditLine {
    * server adds this back on save, and the recap shows it as "Diskon booking".
    */
   bookingShare: string;
+  /**
+   * THE "DIPILIH STAF" VALUES CHOSEN on a line added here (17 September 2026),
+   * sent as its `variantChoices`. Empty on a kept line — the server keeps what
+   * that line was priced on, and never re-quotes it.
+   */
+  choices: VariantChoice[];
+  /**
+   * What a KEPT line was priced on beyond the pet — "Lokasi: Di Rumah · Zona
+   * A" — shown read-only. Null on a new line and on one that asked nothing.
+   */
+  storedVariant: string | null;
 }
 
 const HUNDRED_MINOR = BigInt(100) * BigInt(10_000);
@@ -181,12 +207,18 @@ export function InvoiceEditor({
           petName: item.petName,
           booked: Boolean(item.bookingId),
           bookingShare: share,
+          choices: [],
+          storedVariant: variantSummary(item),
         };
       }),
     [invoice.items, invoice.bookings],
   );
 
-  const [lines, setLines] = useState<EditLine[]>(initialLines);
+  const [draftLines, setLines] = useState<EditLine[]>(initialLines);
+  /** The server's last refusal about one row, by the row's `key`. */
+  const [lineRefusals, setLineRefusals] = useState<Record<string, LineRefusal>>(
+    {},
+  );
   const [picked, setPicked] = useState("");
   const [dueDate, setDueDate] = useState(toDateInput(invoice.dueDate));
   const [warehouseId, setWarehouseId] = useState(invoice.warehouseId ?? "");
@@ -228,6 +260,120 @@ export function InvoiceEditor({
     () => pets.map((pet) => ({ value: pet._id, label: pet.name })),
     [pets],
   );
+
+  const serviceOf = (refId: string) =>
+    lookups.services.find((one) => one._id === refId);
+
+  /*
+    PRICING BEYOND THE PET for a line ADDED here (17 September 2026): the
+    customer's zone from the invoice's branch, and the "Dipilih staf" cards. A
+    kept line is never re-quoted — the server keeps its stored snapshot.
+
+    THE CUSTOMER'S PIN is read from the lookups when the customer is among them,
+    and otherwise fetched — but only once a new line actually varies by Zona, so
+    an edit that asks no zone costs no request.
+  */
+  const needsCustomerPin = draftLines.some(
+    (line) =>
+      line.fromIndex === null &&
+      line.kind === "service" &&
+      variesByZone(serviceOf(line.refId)),
+  );
+  const listedCustomer = lookups.customers.find(
+    (one) => one._id === invoice.customerId,
+  );
+  const [fetchedPin, setFetchedPin] = useState<{
+    forCustomer: string;
+    location: GeoLocation | undefined;
+  } | null>(null);
+
+  useEffect(() => {
+    const customerId = invoice.customerId;
+    if (!customerId || lookups.loading || listedCustomer || !needsCustomerPin) {
+      return;
+    }
+    if (fetchedPin?.forCustomer === customerId) return;
+
+    let active = true;
+
+    customerService
+      .getById(customerId)
+      .then((customer) => {
+        if (active) {
+          setFetchedPin({
+            forCustomer: customerId,
+            location: customer?.location,
+          });
+        }
+      })
+      .catch(() => {
+        /* The zone line says the pin is missing — the honest answer. */
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    lookups.loading,
+    listedCustomer,
+    needsCustomerPin,
+    fetchedPin,
+    invoice.customerId,
+  ]);
+
+  const variant = useVariantQuote({
+    branchPin: lookups.branches.find((one) => one._id === invoice.branchId)
+      ?.location,
+    customerPin:
+      listedCustomer?.location ??
+      (fetchedPin?.forCustomer === invoice.customerId
+        ? fetchedPin.location
+        : undefined),
+  });
+
+  /** A NEW line's price for its animal, zone and choices — or why not. */
+  const quoteOf = (line: EditLine): PriceLookup =>
+    variant.quote(
+      serviceOf(line.refId),
+      pets.find((one) => one._id === line.petId),
+      line.choices,
+    );
+
+  /*
+    THE ROWS AS THE EDITOR READS THEM: a new service line priced again from its
+    animal, the zone and its choices as they stand now. The same array when
+    nothing moved.
+  */
+  const lines = useMemo(() => {
+    let changed = false;
+
+    const next = draftLines.map((line) => {
+      if (line.fromIndex !== null || line.kind !== "service" || !line.petId) {
+        return line;
+      }
+
+      const price =
+        variant.quote(
+          lookups.services.find((one) => one._id === line.refId),
+          pets.find((one) => one._id === line.petId),
+          line.choices,
+        ).price ?? "0";
+
+      if (price === line.unitPrice) return line;
+
+      changed = true;
+      return { ...line, unitPrice: price };
+    });
+
+    return changed ? next : draftLines;
+  }, [draftLines, lookups.services, pets, variant]);
+
+  function setChoices(key: string, choices: VariantChoice[]) {
+    setLineRefusals({});
+    setLines((current) =>
+      current.map((line) => (line.key === key ? { ...line, choices } : line)),
+    );
+  }
 
   const catalogue = useMemo(
     () => [
@@ -351,6 +497,16 @@ export function InvoiceEditor({
         // A kept line's animal is the one it was billed for; only a new one
         // names one, and the server refuses a pet on a product line.
         ...(line.fromIndex === null && line.petId ? { petId: line.petId } : {}),
+        /*
+          ONLY ON A NEW LINE. A kept line is sent by `fromIndex`, and the server
+          keeps the choices and zone it was priced on — sending them back would
+          ask for a re-quote the revision does not do.
+        */
+        ...(line.fromIndex === null &&
+        line.kind === "service" &&
+        line.choices.length > 0
+          ? { variantChoices: line.choices }
+          : {}),
       })),
       invoiceDiscount: invoiceDiscountValue
         ? { mode: invoiceDiscountMode, value: invoiceDiscountValue }
@@ -398,10 +554,7 @@ export function InvoiceEditor({
     line.fromIndex === null &&
     line.kind === "service" &&
     line.petId !== "" &&
-    priceForPet(
-      lookups.services.find((one) => one._id === line.refId),
-      pets.find((one) => one._id === line.petId),
-    ).inactive;
+    quoteOf(line).inactive;
 
   const blocking = (() => {
     if (lookups.loading) return "Sedang memuat katalog.";
@@ -436,14 +589,23 @@ export function InvoiceEditor({
 
     if (unpriced) {
       const pet = pets.find((one) => one._id === unpriced.petId);
-      const missing = priceForPet(
-        lookups.services.find((one) => one._id === unpriced.refId),
-        pet,
-      ).missingAxis;
+      const lookup = quoteOf(unpriced);
+      const missing = lookup.missingAxis;
 
-      return missing
-        ? `Lengkapi ${AXIS_LABEL[missing]} ${pet?.name ?? "hewannya"} dulu — harga '${unpriced.name}' ditentukan dari situ.`
-        : `'${unpriced.name}' belum punya harga untuk ${pet?.name ?? "hewan ini"}.`;
+      if (missing) {
+        return `Lengkapi ${AXIS_LABEL[missing]} ${pet?.name ?? "hewannya"} dulu — harga '${unpriced.name}' ditentukan dari situ.`;
+      }
+
+      /* Beyond the pet — the server's sentence, once the cards and zones are in. */
+      if (lookup.missingZone || lookup.missingChoice) {
+        if (variant.loading) return "Sedang memuat katalog.";
+
+        const service = serviceOf(unpriced.refId);
+        const beyond = service ? variant.problemOf(service, lookup) : null;
+        if (beyond) return `${beyond}.`;
+      }
+
+      return `'${unpriced.name}' belum punya harga untuk ${pet?.name ?? "hewan ini"}.`;
     }
 
     return null;
@@ -457,7 +619,8 @@ export function InvoiceEditor({
 
     const service = lookups.services.find((one) => one._id === line.refId);
     const pet = pets.find((one) => one._id === line.petId);
-    return priceForPet(service, pet).price ?? "0";
+    // The zone and choices are applied by `lines`, which prices every new row.
+    return variant.quote(service, pet).price ?? "0";
   }
 
   function addLine() {
@@ -489,12 +652,16 @@ export function InvoiceEditor({
         petName: null,
         booked: false,
         bookingShare: "0",
+        choices: [],
+        storedVariant: null,
       },
     ]);
     setPicked("");
   }
 
   function patchLine(key: string, patch: Partial<EditLine>) {
+    if (patch.petId !== undefined) setLineRefusals({});
+
     setLines((current) =>
       current.map((line) => {
         if (line.key !== key) return line;
@@ -531,6 +698,7 @@ export function InvoiceEditor({
     }
 
     setSaving(true);
+    setLineRefusals({});
 
     try {
       const updated = await customerInvoiceService.update(invoice._id, body);
@@ -538,6 +706,28 @@ export function InvoiceEditor({
       onSaved(updated);
       swalToast(`${invoice.invoiceNumber} diperbarui.`);
     } catch (error) {
+      /* A refusal about one NEW row is also said on that row — see Faktur baru. */
+      if (error instanceof ApiError) {
+        const found = lineRefusalOf(error);
+        const optionId = found?.refusal.optionId;
+        const added = lines.filter((line) => line.fromIndex === null);
+        const asks = (line: EditLine) =>
+          Boolean(optionId) &&
+          line.kind === "service" &&
+          variant
+            .cardsFor([serviceOf(line.refId)])
+            .some((card) => card.axisKey === optionId);
+        const target = !found
+          ? undefined
+          : found.index !== null
+            ? lines[found.index]
+            : (added.find(
+                (line) => asks(line) && !hasChoice(line.choices, optionId ?? ""),
+              ) ?? added.find(asks));
+
+        if (found && target) setLineRefusals({ [target.key]: found.refusal });
+      }
+
       // Eight seconds: a short shelf or a payment that landed first is an
       // instruction, not an acknowledgement.
       swalToast(
@@ -627,6 +817,36 @@ export function InvoiceEditor({
                     {line.sku ?? "Jasa"}
                     {line.fromIndex === null && " · baru"}
                   </span>
+                  {/* WHAT A KEPT LINE WAS PRICED ON, read-only — it is not
+                      quoted again. */}
+                  {line.storedVariant && (
+                    <span className="block text-xs text-muted">
+                      {line.storedVariant}
+                    </span>
+                  )}
+                  {line.fromIndex === null && line.kind === "service" && (() => {
+                    const service = serviceOf(line.refId);
+                    if (!service) return null;
+
+                    const lookup = quoteOf(line);
+                    return (
+                      <InvoiceLineVariant
+                        cards={variant.cardsFor([service])}
+                        choices={line.choices}
+                        onChange={(next) => setChoices(line.key, next)}
+                        zoneText={
+                          variant.needsZone([service]) ? variant.zoneText : null
+                        }
+                        problem={
+                          line.petId && !variant.loading
+                            ? variant.problemOf(service, lookup)
+                            : null
+                        }
+                        refusal={lineRefusals[line.key] ?? null}
+                        disabled={saving}
+                      />
+                    );
+                  })()}
                 </TableCell>
 
                 {hasServiceLine && (

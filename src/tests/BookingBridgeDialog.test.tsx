@@ -5,13 +5,24 @@ import { BookingBridgeDialog } from "@/features/booking";
 import { bookingService } from "@/services/booking.service";
 import { petService } from "@/services/pet.service";
 import { serviceService } from "@/services/service.service";
+import { variantOptionService } from "@/services/variantOption.service";
+import { zoneService } from "@/services/zone.service";
 import type { Booking } from "@/types/api";
 
 import { renderWithAuth } from "./helpers/renderWithAuth";
+import {
+  BUILT_IN_VARIANT_OPTIONS,
+  makeVariantOption,
+  primeVariantOptions,
+} from "./helpers/variantOptions";
 
 jest.mock("@/services/booking.service");
 jest.mock("@/services/pet.service");
 jest.mock("@/services/service.service");
+jest.mock("@/services/customer.service");
+jest.mock("@/services/branch.service");
+jest.mock("@/services/variantOption.service");
+jest.mock("@/services/zone.service");
 
 const mockedBookings = bookingService as jest.Mocked<typeof bookingService>;
 const mockedPets = petService as jest.Mocked<typeof petService>;
@@ -89,6 +100,7 @@ function page<T>(items: T[]) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  primeVariantOptions(variantOptionService.list, zoneService.list);
   mockedPets.list.mockResolvedValue(
     page([{ _id: PET_ID, name: "Bella", customerId: CUSTOMER_ID }]),
   );
@@ -758,5 +770,76 @@ describe("BookingBridgeDialog — several animals in one opening", () => {
     expect(
       screen.getByRole("button", { name: /tambah ke keranjang/i }),
     ).toBeDisabled();
+  });
+});
+
+/* ─── A WALK-IN PRICED BY A "DIPILIH STAF" CARD (17 September 2026) ────────── */
+describe("BookingBridgeDialog — opsi dipilih staf", () => {
+  const LOKASI = "vo-lokasi";
+
+  beforeEach(() => {
+    primeVariantOptions(variantOptionService.list, zoneService.list, {
+      cards: [
+        ...BUILT_IN_VARIANT_OPTIONS,
+        makeVariantOption({
+          _id: LOKASI,
+          name: "Lokasi",
+          source: "staff",
+          axisKey: LOKASI,
+          sortOrder: 3,
+          values: [
+            { code: "toko", label: "Di Toko", sortOrder: 0, isActive: true },
+            { code: "rumah", label: "Di Rumah", sortOrder: 1, isActive: true },
+          ],
+        }),
+      ],
+    });
+    mockedServices.list.mockResolvedValue(
+      page([
+        {
+          _id: SERVICE_ID,
+          name: "Grooming Full Service",
+          price: null,
+          hasVariants: true,
+          variantAxes: [LOKASI],
+          variants: [
+            { petType: null, sizeCategory: null, furType: null, choices: [{ optionId: LOKASI, code: "toko" }], price: "120000.0000" },
+            { petType: null, sizeCategory: null, furType: null, choices: [{ optionId: LOKASI, code: "rumah" }], price: "175000.0000" },
+          ],
+        },
+      ]),
+    );
+  });
+
+  it("lets the service be ticked, asks for Lokasi, and hands the choice back", async () => {
+    const onAdd = openAdhoc();
+
+    await userEvent.click(
+      await screen.findByRole("checkbox", { name: /grooming full service/i }),
+    );
+
+    /* Not answered yet: the till would refuse it, so the tab says so. */
+    await userEvent.click(screen.getByRole("button", { name: /tambah ke keranjang/i }));
+    /* On the row, and in the tab's error. */
+    expect(
+      await screen.findByText("Bella: Pilih Lokasi untuk Grooming Full Service dulu."),
+    ).toBeInTheDocument();
+    expect(onAdd).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("combobox", { name: /lokasi/i }));
+    await userEvent.click(await screen.findByRole("option", { name: "Di Rumah" }));
+
+    expect((await screen.findAllByText("Rp 175.000")).length).toBeGreaterThan(0);
+
+    await userEvent.click(screen.getByRole("button", { name: /tambah ke keranjang/i }));
+
+    expect(onAdd).toHaveBeenCalledWith([
+      {
+        petId: PET_ID,
+        petName: "Bella",
+        serviceIds: [SERVICE_ID],
+        variantChoices: [{ optionId: LOKASI, code: "rumah" }],
+      },
+    ]);
   });
 });

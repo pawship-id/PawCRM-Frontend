@@ -8,8 +8,11 @@ import type {
   Service,
   ServiceBillingUnit,
   ServiceLocation,
+  ServiceVariant,
   ServiceVariantAxis,
+  VariantAxisKey,
 } from "@/types/api";
+import { isPetAxis, variantValueOn } from "@/utils/serviceVariant";
 
 import { formatMoneyShort } from "./board";
 
@@ -62,9 +65,23 @@ export const AXIS_LABELS: Record<ServiceVariantAxis, string> = {
   furType: "Jenis bulu",
 };
 
-/** "Ukuran × Jenis bulu" — the axes a service's price depends on. */
-export function axesLabel(service: Pick<Service, "variantAxes">): string {
-  return (service.variantAxes ?? []).map((axis) => AXIS_LABELS[axis]).join(" × ");
+/**
+ * "Ukuran × Lokasi" — the axes a service's price depends on. `nameOf` is the
+ * tenant's card name for a key (pass one built from `useVariantAxisValues().axes`);
+ * without it the pet's three read by their seeded names and others as "Zona" /
+ * "Opsi".
+ */
+export function axesLabel(
+  service: Pick<Service, "variantAxes">,
+  nameOf?: (axis: VariantAxisKey) => string | null | undefined,
+): string {
+  return (service.variantAxes ?? [])
+    .map(
+      (axis) =>
+        nameOf?.(axis) ??
+        (isPetAxis(axis) ? AXIS_LABELS[axis] : axis === "zone" ? "Zona" : "Opsi"),
+    )
+    .join(" × ");
 }
 
 /**
@@ -120,7 +137,11 @@ export function variantRows(
 
   return buildVariantCombos(axes, table).map((combo) => {
     const match = (service.variants ?? []).find((variant) =>
-      axes.every((axis) => variant[axis] === combo[axis]),
+      axes.every(
+        (axis) =>
+          variantValueOn(variant, axis) ===
+          variantValueOn(combo as unknown as Partial<ServiceVariant>, axis),
+      ),
     );
 
     return {

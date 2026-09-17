@@ -150,7 +150,9 @@ export function ServiceSummaryPanel({
   busy: boolean;
   onSetActive: (active: boolean) => void;
 }) {
-  const { valuesFor } = useVariantAxisValues();
+  const { valuesFor, axes: axisDefs } = useVariantAxisValues();
+  /* The tenant's card names — "Ukuran × Lokasi", not only the pet's three. */
+  const axisName = (key: string) => axisDefs.find((def) => def.key === key)?.name;
   const axisValues = valuesFor(service.variants);
   const bounds = servicePriceBounds(service);
   const duration = serviceDurationBounds(service);
@@ -251,7 +253,7 @@ export function ServiceSummaryPanel({
             {service.serviceType === "addon" ? "Add-on" : "Layanan utama"}
           </Fact>
           <Fact label="Opsi varian">
-            {service.hasVariants ? axesLabel(service) : "—"}
+            {service.hasVariants ? axesLabel(service, axisName) : "—"}
           </Fact>
           <Fact label="Cabang">{branchText}</Fact>
           <Fact label="Add-on">

@@ -70,10 +70,43 @@ describe("CustomerCreateForm", () => {
         phone: "0812-3456-7890",
         email: null,
         address: null,
+        // No pin typed — sent as "no pin", not as a pair of zeros.
+        location: null,
         vipTier: null,
       }),
     );
     expect(push).toHaveBeenCalledWith("/dashboard/master/customers");
+  });
+
+  it("sends the address's pin, pasted as one pair — what a Zona price is quoted from", async () => {
+    const create = jest
+      .spyOn(customerService, "create")
+      .mockResolvedValue({} as never);
+    render(<CustomerCreateForm />);
+
+    await userEvent.type(screen.getByLabelText(/customer name/i), "Budi");
+    await userEvent.click(screen.getByLabelText(/latitude/i));
+    await userEvent.paste("-7.2575, 112.7521");
+    await userEvent.click(
+      screen.getByRole("button", { name: /create customer/i }),
+    );
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ location: { lat: -7.2575, lng: 112.7521 } }),
+    );
+  });
+
+  it("refuses half a pin before calling create", async () => {
+    const create = jest.spyOn(customerService, "create");
+    render(<CustomerCreateForm />);
+
+    await userEvent.type(screen.getByLabelText(/customer name/i), "Budi");
+    await userEvent.type(screen.getByLabelText(/latitude/i), "-7.25");
+    await userEvent.click(
+      screen.getByRole("button", { name: /create customer/i }),
+    );
+
+    expect(create).not.toHaveBeenCalled();
   });
 
   it("surfaces a duplicate-email conflict as an alert", async () => {

@@ -14,17 +14,21 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PetFixLink, PetSummaryCard } from "@/features/pets";
+import { VariantChoicePicker } from "@/features/services";
 import { usePetOptions } from "@/hooks/usePetOptions";
 import { formatMoney } from "@/utils/decimal";
 import {
   AXIS_LABEL,
   priceForPet,
   variantLabelForPet,
+  variesByZone,
+  type PriceLookup,
 } from "@/utils/serviceVariant";
 import type { BusinessLine } from "@/services/businessLine.service";
-import type { Pet, Service } from "@/types/api";
+import type { Pet, Service, VariantOption } from "@/types/api";
 import { petServiceKey, UNASSIGNED } from "../bookingDraft";
 import type { BelongingDraft, BookingCardDraft } from "../bookingDraft";
+import type { VariantRefusal } from "../variantLine";
 
 /** Mirrors NOTES_MAX_LENGTH / BELONGING_NAME_MAX_LENGTH in the model. */
 const NOTES_MAX_LENGTH = 500;
@@ -32,6 +36,11 @@ const BELONGING_NAME_MAX_LENGTH = 120;
 
 /** Shared empty set for a card with no stored booking behind it. */
 const NO_STORED_KEYS: ReadonlySet<string> = new Set();
+
+/** The pet-only quote — what a card without the form's zone and choices falls back to. */
+const petOnlyQuote = (service: Service | null, pet: Pet | null) => priceForPet(service, pet);
+const noCards = (): VariantOption[] => [];
+const noProblem = (): string | null => null;
 
 /**
  * ONE BOOKING ON THE FORM — its animal, its one main service, the add-ons under
@@ -81,6 +90,11 @@ export function BookingCard({
   removable,
   duplicate,
   storedKeys = NO_STORED_KEYS,
+  quote: quoteOf = petOnlyQuote,
+  problemOf = noProblem,
+  cardsFor = noCards,
+  zoneText = null,
+  refusal = null,
   onChange,
   onRemove,
 }: {
@@ -106,6 +120,19 @@ export function BookingCard({
    * inactive variant; see `storedPetServiceKeys`.
    */
   storedKeys?: ReadonlySet<string>;
+  /**
+   * ─── PRICED BEYOND THE PET (17 September 2026) ─────────────────────────────
+   *
+   * The form's quote for this card — the zone and the card's choices included —
+   * and `useVariantQuote`'s sentence for what a quote still waits on, the
+   * "Dipilih staf" cards the services declare, and the zone's answer.
+   */
+  quote?: (service: Service | null, pet: Pet | null) => PriceLookup;
+  problemOf?: (service: Pick<Service, "name">, lookup: PriceLookup) => string | null;
+  cardsFor?: (services: ReadonlyArray<Service | null>) => VariantOption[];
+  zoneText?: string | null;
+  /** The server's refusal of this card's choices or zone. */
+  refusal?: VariantRefusal | null;
   onChange: (next: Partial<BookingCardDraft>) => void;
   onRemove: () => void;
 }) {
@@ -124,8 +151,12 @@ export function BookingCard({
 
   const locked = card.locked;
   const service = serviceOf(card.serviceId);
-  const quote = priceForPet(service, pet);
+  const quote = quoteOf(service, pet);
   const { price, missingAxis } = quote;
+  /* The zone or the choice the price still waits on, as a sentence. */
+  const problem = service ? problemOf(service, quote) : null;
+  /* One select per "Dipilih staf" card the service and its ticked add-ons declare. */
+  const choiceCards = cardsFor([service, ...card.addonServiceIds.map(serviceOf)]);
   const variantLabel = variantLabelForPet(service, pet, petOptionLabel);
   /*
     THE ANIMAL'S VARIANT IS SWITCHED OFF, and this pair is new (13 September
@@ -304,6 +335,7 @@ export function BookingCard({
                       businessLineId: value,
                       serviceId: "",
                       addonServiceIds: [],
+                      variantChoices: [],
                     })
                   }
                   options={businessLines.map((entry) => ({
@@ -321,7 +353,11 @@ export function BookingCard({
                 onChange={(value) =>
                   /* A different service offers different add-ons; keeping the
                      old ticks would send ones the new service does not offer. */
-                  onChange({ serviceId: value, addonServiceIds: [] })
+                  onChange({
+                    serviceId: value,
+                    addonServiceIds: [],
+                    variantChoices: [],
+                  })
                 }
                 options={mainServices.map((item) => ({
                   value: item._id,
@@ -337,6 +373,31 @@ export function BookingCard({
                 required
               />
             </div>
+
+            {/*
+              "LOKASI: DI RUMAH" — the staff's answer for each card the service
+              and its add-ons are priced on. An add-on shares the service's.
+            */}
+            {choiceCards.length > 0 && (
+              <div className="mt-3">
+                <VariantChoicePicker
+                  cards={choiceCards}
+                  value={card.variantChoices}
+                  onChange={(next) => onChange({ variantChoices: next })}
+                  disabled={disabled || locked}
+                  errorFor={(optionId) =>
+                    refusal?.optionId === optionId ? refusal.message : undefined
+                  }
+                />
+              </div>
+            )}
+
+            {refusal &&
+              !choiceCards.some((entry) => entry.axisKey === refusal.optionId) && (
+                <p role="alert" className="mt-2 text-sm font-semibold text-danger">
+                  {refusal.message}
+                </p>
+              )}
 
             {/* The price sits with the service it belongs to. */}
             {service && (
@@ -361,6 +422,10 @@ export function BookingCard({
                     {variantLabel && (
                       <span className="text-muted"> · varian {variantLabel}</span>
                     )}
+                    {/* THE ZONE THE PRICE WAS READ FROM, beside it. */}
+                    {zoneText && variesByZone(service) && (
+                      <span className="text-muted tabular-nums"> · {zoneText}</span>
+                    )}
                     {quote.inactive && (
                       <span className="text-muted">
                         {" "}
@@ -380,6 +445,8 @@ export function BookingCard({
                     {AXIS_LABEL[missingAxis]} — harga layanan ini mengikutinya.{" "}
                     <PetFixLink pet={pet} axis={missingAxis} />
                   </span>
+                ) : problem && pet ? (
+                  <span className="text-sm font-semibold text-danger">{problem}</span>
                 ) : (
                   <span className="text-muted">—</span>
                 )}
@@ -391,7 +458,14 @@ export function BookingCard({
                 <p className="text-xs font-medium text-muted">Add-on</p>
                 <CheckRowGroup>
                   {offeredAddons.map((addon) => {
-                    const addonPrice = priceForPet(addon, pet);
+                    const addonPrice = quoteOf(addon, pet);
+                    /*
+                      WAITING ON A CHOICE DOES NOT STOP THE TICK — its select
+                      appears under the service once it is ticked.
+                    */
+                    const addonProblem = addonPrice.missingChoice
+                      ? "Pilih opsinya setelah dicentang."
+                      : problemOf(addon, addonPrice);
                     const checked = card.addonServiceIds.includes(addon._id);
                     /*
                       AN ADD-ON ON A SWITCHED-OFF VARIANT cannot be ticked for a
@@ -422,6 +496,8 @@ export function BookingCard({
                                 axis={addonPrice.missingAxis}
                               />
                             </span>
+                          ) : addonProblem && pet ? (
+                            addonProblem
                           ) : (
                             "—"
                           )

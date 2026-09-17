@@ -26,9 +26,9 @@ import { cn } from "@/lib/utils";
 import { ApiError } from "@/services/api-error";
 import { serviceService } from "@/services/service.service";
 import { formatMoney } from "@/utils/decimal";
-import type { Service } from "@/types/api";
+import type { Service, VariantAxisKey } from "@/types/api";
 
-import { AXIS_LABELS, type ServicePlace } from "../serviceDisplay";
+import { type ServicePlace } from "../serviceDisplay";
 import {
   applyBulk,
   AXIS_ORDER,
@@ -147,6 +147,7 @@ export function GroomingServiceVariantsEditor({
 
   const {
     valuesFor,
+    axes: axisDefs,
     loading: optionsLoading,
     error: optionsError,
   } = useVariantAxisValues();
@@ -167,7 +168,7 @@ export function GroomingServiceVariantsEditor({
     draftSignature(seedDraft(service), axisValues);
   const problem = draftProblem(draft, axisValues);
   const tooMany = combos.length > MAX_VARIANTS;
-  const smallestSize = axisValues.sizeCategory[0]?.label ?? "ukuran terkecil";
+  const smallestSize = axisValues.sizeCategory?.[0]?.label ?? "ukuran terkecil";
   const activeCount = combos.filter((combo) => rowOf(draft, combo.key).active).length;
 
   const activePrices = combos
@@ -188,7 +189,7 @@ export function GroomingServiceVariantsEditor({
     setSaveError(null);
   }
 
-  function pickAxis(axis: (typeof AXIS_ORDER)[number], on: boolean) {
+  function pickAxis(axis: VariantAxisKey, on: boolean) {
     change(toggleAxis(draft, axis, on, axisValues));
     // The rows' keys change with the axes, so a selection would point at nothing.
     setSelected([]);
@@ -345,7 +346,18 @@ export function GroomingServiceVariantsEditor({
 
       <Card title="Opsi yang membedakan harga">
         <div className="flex flex-wrap gap-2">
-          {AXIS_ORDER.map((axis) => {
+          {/*
+            EVERY OPSI VARIAN CARD (17 September 2026) — the mockup's three pet
+            chips first in its order, then Zona and "Dipilih staf" cards in card
+            order. A card is named as the tenant named it.
+          */}
+          {[
+            ...AXIS_ORDER.map((key) => axisDefs.find((def) => def.key === key)).filter(
+              (def): def is (typeof axisDefs)[number] => Boolean(def),
+            ),
+            ...axisDefs.filter((def) => !AXIS_ORDER.includes(def.key)),
+          ].map((def) => {
+            const axis = def.key;
             const on = draft.axes.includes(axis);
 
             return (
@@ -364,9 +376,9 @@ export function GroomingServiceVariantsEditor({
                   disabled={disabled}
                   onCheckedChange={(next) => pickAxis(axis, next === true)}
                 />
-                {AXIS_LABELS[axis]}
+                {def.name}
                 <span className="font-normal text-muted">
-                  ×{axisValues[axis].length}
+                  ×{(axisValues[axis] ?? []).length}
                 </span>
               </label>
             );

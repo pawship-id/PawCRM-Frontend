@@ -26,8 +26,21 @@ import type {
 } from "@/types/api";
 
 import { invoiceBookingShareOf, invoiceBookingShares } from "../bookingDiscount";
+import { variantSummary } from "../variantLine";
 
 const ZERO = BigInt(0);
+
+/**
+ * What a service line was priced on beyond the pet — "Lokasi: Di Rumah · Zona
+ * A" — from the line's own snapshot (17 September 2026). Nothing on a line that
+ * asked neither.
+ */
+function VariantNote({ item }: { item: CustomerInvoiceItem }) {
+  const summary = variantSummary(item);
+  if (!summary) return null;
+
+  return <span className="block text-xs text-muted">{summary}</span>;
+}
 
 /** A decimal string to minor units, with anything absent read as zero. */
 const minor = (value: string | null | undefined): bigint =>
@@ -362,6 +375,7 @@ export function InvoiceItemsTable({
                               <span className="block text-xs text-muted">
                                 Add-on
                               </span>
+                              <VariantNote item={item} />
                             </span>
                           </span>
                         ) : (
@@ -370,6 +384,7 @@ export function InvoiceItemsTable({
                             <span className="block text-xs text-muted tabular-nums">
                               {item.sku ?? "Jasa"}
                             </span>
+                            <VariantNote item={item} />
                           </>
                         )}
                       </TableCell>

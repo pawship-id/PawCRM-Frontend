@@ -20,6 +20,7 @@ import {
 import type { PetOption, Service } from "@/types/api";
 
 import { makePetOption, PET_OPTION_FIXTURES } from "./helpers/petOptions";
+import { makeVariantOption } from "./helpers/variantOptions";
 
 /**
  * The Varian & Harga tab's draft — the rules of the grid without the grid.
@@ -261,20 +262,28 @@ describe("variant axis values — the tenant's lists", () => {
   });
 
   it(`refuses more than ${MAX_VARIANTS} variants, whatever is typed — and allows exactly ${MAX_VARIANTS}`, () => {
-    const species = (code: string, label: string, sortOrder: number) =>
-      makePetOption({ type: "species", code, label, sortOrder });
-    const size = (code: string, label: string, sortOrder: number) =>
-      makePetOption({ type: "size", code, label, sortOrder });
+    const TIER_KEY = "5a7f1f77bcf86cd7994391ee";
+    const tier = (count: number) =>
+      makeVariantOption({
+        _id: TIER_KEY,
+        name: "Tier",
+        source: "staff",
+        axisKey: TIER_KEY,
+        values: Array.from({ length: count }, (_, index) => ({
+          code: `t${index + 1}`,
+          label: `T${index + 1}`,
+          sortOrder: index,
+          isActive: true,
+        })),
+      });
 
-    // 3 species × 4 sizes × 2 coats = 24.
-    const wide = variantAxisValues([
-      ...PET_OPTION_FIXTURES,
-      species("rabbit", "Kelinci", 2),
-      XL,
-    ]);
-    const all = ["petType", "sizeCategory", "furType"] as const;
+    // 4 sizes × 2 coats × 13 tiers = 104.
+    const wide = variantAxisValues([...PET_OPTION_FIXTURES, XL], null, undefined, {
+      cards: [tier(13)],
+    });
+    const all = ["sizeCategory", "furType", TIER_KEY];
 
-    expect(variantComboCount([...all], wide)).toBe(24);
+    expect(variantComboCount(all, wide)).toBe(104);
 
     const tooMany = all.reduce(
       (draft, axis) => toggleAxis(draft, axis, true, wide),
@@ -282,28 +291,27 @@ describe("variant axis values — the tenant's lists", () => {
     );
     // Every row starts from the flat price, so only the count is wrong.
     expect(draftProblem(tooMany, wide)).toBe(
-      `kombinasinya jadi 24 varian, maksimal ${MAX_VARIANTS} per layanan`,
+      `kombinasinya jadi 104 varian, maksimal ${MAX_VARIANTS} per layanan`,
     );
-    expect(
-      draftProblem(toggleAxis(tooMany, "petType", false, wide), wide),
-    ).toBeNull();
+    expect(draftProblem(toggleAxis(tooMany, "furType", false, wide), wide)).toBeNull();
 
-    // 4 species × 5 sizes = 20, the limit itself.
-    const twenty = variantAxisValues([
-      ...PET_OPTION_FIXTURES,
-      species("rabbit", "Kelinci", 2),
-      species("bird", "Burung", 3),
-      XL,
-      size("xxl", "Raksasa", 4),
-    ]);
+    // 4 sizes × 25 tiers = 100, the limit itself.
+    const hundred = variantAxisValues([...PET_OPTION_FIXTURES, XL], null, undefined, {
+      cards: [tier(25)],
+    });
     const atLimit = toggleAxis(
-      toggleAxis(seedDraft(FLAT), "petType", true, twenty),
-      "sizeCategory",
+      toggleAxis(seedDraft(FLAT), "sizeCategory", true, hundred),
+      TIER_KEY,
       true,
-      twenty,
+      hundred,
     );
 
-    expect(variantComboCount(atLimit.axes, twenty)).toBe(MAX_VARIANTS);
-    expect(draftProblem(atLimit, twenty)).toBeNull();
+    expect(variantComboCount(atLimit.axes, hundred)).toBe(MAX_VARIANTS);
+    expect(draftProblem(atLimit, hundred)).toBeNull();
+    // A staff axis sends its value on every row.
+    expect(draftPatch(atLimit, hundred).variants?.[0]).toMatchObject({
+      sizeCategory: "small",
+      choices: [{ optionId: TIER_KEY, code: "t1" }],
+    });
   });
 });

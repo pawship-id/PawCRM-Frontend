@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { formatMoney } from "@/utils/decimal";
-import { priceForPet } from "@/utils/serviceVariant";
+import { priceForPet, type PriceLookup } from "@/utils/serviceVariant";
 import type { Pet, Service } from "@/types/api";
 
 /**
@@ -34,6 +34,12 @@ import type { Pet, Service } from "@/types/api";
  * variant — the server refuses both. One already on the bill can still be
  * unticked after the animal changed, so a line that lost its price can come off.
  *
+ * PRICED BEYOND THE PET TOO (17 September 2026), when the form passes
+ * `quoteOf`: the customer's zone and the service row's "Dipilih staf" values,
+ * which an add-on inherits. An add-on still waiting only on a choice of its own
+ * CAN be ticked — its row asks for that choice — while a zone nobody can say
+ * cannot.
+ *
  * WHAT A SAVE DOES IS THE FORM'S BUSINESS (`onSave`): it puts exactly those
  * add-ons under this row, for this row's animal. The server files them under the
  * service again from the catalogue — nothing here is sent as a parent.
@@ -45,6 +51,8 @@ export function InvoiceAddonPicker({
   offered,
   tickedIds,
   onSave,
+  quoteOf,
+  problemOf,
   disabled = false,
 }: {
   /** Unique per row — a customer with two cats has two of these. */
@@ -58,6 +66,10 @@ export function InvoiceAddonPicker({
   tickedIds: string[];
   /** Every add-on that should be under the row, in catalogue order. */
   onSave: (addonIds: string[]) => void;
+  /** The add-on's price for this row — defaults to the animal alone. */
+  quoteOf?: (addon: Service) => PriceLookup;
+  /** Why a quote beyond the pet cannot be made — `useVariantQuote().problemOf`. */
+  problemOf?: (addon: Service, lookup: PriceLookup) => string | null;
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -91,6 +103,8 @@ export function InvoiceAddonPicker({
           offered={offered}
           tickedIds={tickedIds}
           onSave={onSave}
+          quoteOf={quoteOf ?? ((addon) => priceForPet(addon, pet))}
+          problemOf={problemOf}
           onClose={() => setOpen(false)}
         />
       )}
@@ -105,6 +119,8 @@ function AddonDialog({
   offered,
   tickedIds,
   onSave,
+  quoteOf,
+  problemOf,
   onClose,
 }: {
   idPrefix: string;
@@ -113,6 +129,8 @@ function AddonDialog({
   offered: Service[];
   tickedIds: string[];
   onSave: (addonIds: string[]) => void;
+  quoteOf: (addon: Service) => PriceLookup;
+  problemOf?: (addon: Service, lookup: PriceLookup) => string | null;
   onClose: () => void;
 }) {
   const [draft, setDraft] = useState<Set<string>>(() => new Set(tickedIds));
@@ -138,7 +156,10 @@ function AddonDialog({
 
         <div className="max-h-72 overflow-y-auto rounded-lg border border-border">
           {offered.map((addon) => {
-            const quote = priceForPet(addon, pet);
+            const quote = quoteOf(addon);
+            /* Asked on the add-on's own row once it is on the bill. */
+            const choiceLater = !quote.price && quote.missingChoice !== null;
+            const beyond = problemOf?.(addon, quote) ?? null;
             const checked = draft.has(addon._id);
             const id = `${idPrefix}-addon-${addon._id}`;
 
@@ -150,7 +171,9 @@ function AddonDialog({
                 <Checkbox
                   id={id}
                   checked={checked}
-                  disabled={!checked && (!quote.price || quote.inactive)}
+                  disabled={
+                    !checked && ((!quote.price && !choiceLater) || quote.inactive)
+                  }
                   onCheckedChange={() => toggle(addon._id)}
                 />
                 <Label
@@ -163,7 +186,7 @@ function AddonDialog({
                       ? "Varian nonaktif"
                       : quote.price
                         ? `+ ${formatMoney(quote.price)}`
-                        : "Belum ada harga"}
+                        : (beyond ?? "Belum ada harga")}
                   </span>
                 </Label>
               </div>
