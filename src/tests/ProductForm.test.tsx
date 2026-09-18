@@ -134,18 +134,21 @@ function mockLookups() {
       code: "4103",
       name: "Penjualan Hotel",
       accountType: "income" as const,
+      accountCategory: "pendapatan" as const,
     },
     asset: {
       _id: INVENTORY_ACCOUNT,
       code: "1205",
       name: "Persediaan Hotel",
       accountType: "asset" as const,
+      accountCategory: "persediaan" as const,
     },
     expense: {
       _id: COGS_ACCOUNT,
       code: "5102",
       name: "HPP Hotel",
       accountType: "expense" as const,
+      accountCategory: "hpp" as const,
     },
   };
 

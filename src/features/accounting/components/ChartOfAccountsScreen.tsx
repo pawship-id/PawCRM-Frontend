@@ -28,8 +28,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import type { AccountType, ChartOfAccount } from "@/types/accounting";
-import { normalBalanceOf } from "@/types/accounting";
+import type { AccountCategory, ChartOfAccount } from "@/types/accounting";
+import { accountTypeOf, normalBalanceOf } from "@/types/accounting";
 
 import {
   compareAccounts,
@@ -39,9 +39,10 @@ import {
 import { useChartOfAccounts } from "../hooks/useChartOfAccounts";
 import { useBusinessLines } from "../hooks/useBusinessLines";
 import {
-  ACCOUNT_TYPES,
+  accountCategoryTone,
+  ACCOUNT_CATEGORIES,
+  ACCOUNT_CATEGORY_LABEL,
   ACCOUNT_TYPE_LABEL,
-  ACCOUNT_TYPE_TONE,
 } from "../labels";
 import { ACCOUNTING_CRUMBS } from "../crumbs";
 import { AccountingModuleHeader } from "./AccountingModuleHeader";
@@ -56,15 +57,15 @@ import { ChartOfAccountsToolbar } from "./ChartOfAccountsToolbar";
  */
 export interface ChartOfAccountsQuery {
   search: string;
-  /** "" is "semua tipe" — the unset convention the filter layer uses. */
-  accountType: AccountType | "";
+  /** "" is "semua kategori" — the unset convention the filter layer uses. */
+  accountCategory: AccountCategory | "";
   showInactive: boolean;
   sort: AccountSort;
 }
 
 const DEFAULT_QUERY: ChartOfAccountsQuery = {
   search: "",
-  accountType: "",
+  accountCategory: "",
   showInactive: false,
   sort: DEFAULT_ACCOUNT_SORT,
 };
@@ -79,16 +80,23 @@ const DEFAULT_QUERY: ChartOfAccountsQuery = {
  * exists to express, and it is the relationship the backend spends a depth check
  * and a cycle check protecting.
  *
- * THE TOP LEVEL IS THE ACCOUNT CLASS, and it is a GROUPING RATHER THAN AN
+ * THE TOP LEVEL IS THE ACCOUNT CATEGORY, and it is a GROUPING RATHER THAN AN
  * ACCOUNT. The seeded chart (backend seeds/defaultAccounts.js) is deliberately
- * flat — twelve root accounts, no 1000 Aset above them — so a tenant that has
- * not built its own hierarchy would otherwise read as twelve unrelated rows in
- * which 1101 Kas and 5101 HPP sit at the same level. Grouping by `accountType`
- * is the one division that is true of every chart, seeded or hand-built.
+ * flat — twenty-six root accounts, no 1000 Aset above them — so a tenant that
+ * has not built its own hierarchy would otherwise read as twenty-six unrelated
+ * rows in which 1101 Kas and 5101 HPP sit at the same level.
  *
- * The class row is deliberately NOT rendered as an account: no code, no status,
- * no source. Drawing "1000 Aset" there would invent a record that does not
- * exist, cannot be edited, and would collide the day a tenant creates a real
+ * CATEGORY RATHER THAN CLASS, since the categories landed. Five headings was the
+ * coarsest grouping that is true of every chart; fifteen is the one the REPORTS
+ * use, so a chart read here groups the way the laba rugi and the neraca will
+ * print. Empty categories render no heading, so a tenant that uses ten of them
+ * sees ten. The class is still named on every heading, which is what keeps "Aset
+ * Tetap" and "Persediaan" legible as two halves of one side of the balance
+ * sheet.
+ *
+ * The category row is deliberately NOT rendered as an account: no code, no
+ * status, no source. Drawing "1000 Aset" there would invent a record that does
+ * not exist, cannot be edited, and would collide the day a tenant creates a real
  * 1000. Whatever hierarchy the tenant HAS built — `parentAccountId`, which the
  * API already nests — is rendered underneath it, unchanged.
  *
@@ -119,9 +127,10 @@ export function ChartOfAccountsScreen() {
 
   const [query, setQuery] = useState<ChartOfAccountsQuery>(DEFAULT_QUERY);
   /**
-   * What is folded shut — account ids, plus a `groupKey()` per class. One set
+   * What is folded shut — account ids, plus a `groupKey()` per category. One set
    * rather than two because both answer the same question at render time, and a
-   * class key ("tipe:asset") cannot collide with a 24-character ObjectId.
+   * category key ("kategori:persediaan") cannot collide with a 24-character
+   * ObjectId.
    */
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const { can } = usePermissions();
@@ -133,17 +142,29 @@ export function ChartOfAccountsScreen() {
   );
 
   const term = query.search.trim().toLowerCase();
-  const { accountType: type, showInactive, sort } = query;
+  const { accountCategory: category, showInactive, sort } = query;
 
   const { rows, matchCount, shownCount } = useMemo(
-    () => buildRows({ accounts, byId, term, type, showInactive, sort, collapsed }),
-    [accounts, byId, term, type, showInactive, sort, collapsed],
+    () =>
+      buildRows({
+        accounts,
+        byId,
+        term,
+        category,
+        showInactive,
+        sort,
+        collapsed,
+      }),
+    [accounts, byId, term, category, showInactive, sort, collapsed],
   );
 
-  const countsByType = useMemo(() => {
-    const counts = new Map<AccountType, number>();
+  const countsByCategory = useMemo(() => {
+    const counts = new Map<AccountCategory, number>();
     for (const account of accounts) {
-      counts.set(account.accountType, (counts.get(account.accountType) ?? 0) + 1);
+      counts.set(
+        account.accountCategory,
+        (counts.get(account.accountCategory) ?? 0) + 1,
+      );
     }
     return counts;
   }, [accounts]);
@@ -187,7 +208,7 @@ export function ChartOfAccountsScreen() {
 
       <ChartOfAccountsToolbar
         query={query}
-        countsByType={countsByType}
+        countsByCategory={countsByCategory}
         inactiveCount={inactiveCount}
         onChange={patchQuery}
       />
@@ -214,7 +235,7 @@ export function ChartOfAccountsScreen() {
               <TableRow>
                 <TableHead>Kode</TableHead>
                 <TableHead>Nama akun</TableHead>
-                <TableHead>Tipe</TableHead>
+                <TableHead>Kategori</TableHead>
                 <TableHead>Saldo normal</TableHead>
                 <TableHead>Lini bisnis</TableHead>
                 <TableHead>Sumber</TableHead>
@@ -233,7 +254,7 @@ export function ChartOfAccountsScreen() {
                       Tidak ada akun yang cocok
                     </p>
                     <p className="mt-1 text-sm text-muted">
-                      Coba kata kunci lain, atau ubah filter tipe akun.
+                      Coba kata kunci lain, atau ubah filter kategori akun.
                     </p>
                   </TableCell>
                 </TableRow>
@@ -241,7 +262,7 @@ export function ChartOfAccountsScreen() {
 
               {rows.map((row) => {
                 if (row.kind === "group") {
-                  const key = groupKey(row.accountType);
+                  const key = groupKey(row.accountCategory);
                   const isCollapsed = collapsed.has(key);
 
                   return (
@@ -271,8 +292,8 @@ export function ChartOfAccountsScreen() {
                             aria-expanded={!isCollapsed}
                             aria-label={
                               isCollapsed
-                                ? `Buka kelompok ${ACCOUNT_TYPE_LABEL[row.accountType]}`
-                                : `Tutup kelompok ${ACCOUNT_TYPE_LABEL[row.accountType]}`
+                                ? `Buka kelompok ${ACCOUNT_CATEGORY_LABEL[row.accountCategory]}`
+                                : `Tutup kelompok ${ACCOUNT_CATEGORY_LABEL[row.accountCategory]}`
                             }
                             className="rounded-md text-muted transition-colors hover:text-foreground focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
                           >
@@ -283,11 +304,20 @@ export function ChartOfAccountsScreen() {
                             )}
                           </button>
                           <span className="text-sm font-bold text-foreground">
-                            {ACCOUNT_TYPE_LABEL[row.accountType]}
+                            {ACCOUNT_CATEGORY_LABEL[row.accountCategory]}
                           </span>
+                          {/* The class rides along on the heading rather than
+                              on every row: it is the same answer for all of
+                              them, and it is what keeps "Aset Tetap" and
+                              "Persediaan" readable as two parts of one side of
+                              the neraca. */}
                           <span className="text-xs text-muted tabular-nums">
-                            · {row.count} akun · saldo normal{" "}
-                            {normalBalanceOf(row.accountType) === "debit"
+                            · {row.count} akun ·{" "}
+                            {ACCOUNT_TYPE_LABEL[accountTypeOf(row.accountCategory)]}
+                            , saldo normal{" "}
+                            {normalBalanceOf(
+                              accountTypeOf(row.accountCategory),
+                            ) === "debit"
                               ? "debit"
                               : "kredit"}
                           </span>
@@ -369,10 +399,13 @@ export function ChartOfAccountsScreen() {
                       <span
                         className={cn(
                           "rounded-full px-2 py-0.5 text-xs font-medium",
-                          ACCOUNT_TYPE_TONE[account.accountType],
+                          // The tone is the CLASS's — fifteen hues would be a
+                          // paint chart, and the category is spelled out in the
+                          // badge's own text anyway. See accountCategoryTone.
+                          accountCategoryTone(account.accountCategory),
                         )}
                       >
-                        {ACCOUNT_TYPE_LABEL[account.accountType]}
+                        {ACCOUNT_CATEGORY_LABEL[account.accountCategory]}
                       </span>
                     </TableCell>
                     <TableCell className="px-4 py-2.5 text-xs text-muted">
@@ -390,7 +423,7 @@ export function ChartOfAccountsScreen() {
                     </TableCell>
                     <TableCell className="px-4 py-2.5 text-xs text-muted">
                       {account.isDefault ? (
-                        <span title="Akun bawaan tenant — kode dan tipenya tidak bisa diubah, dan tidak bisa dihapus.">
+                        <span title="Akun bawaan tenant — kode dan kategorinya tidak bisa diubah, dan tidak bisa dihapus.">
                           Bawaan sistem
                         </span>
                       ) : (
@@ -475,39 +508,40 @@ export function ChartOfAccountsScreen() {
   );
 }
 
-/** One rendered line of the tree: an account, or the class heading above it. */
+/** One rendered line of the tree: an account, or the category heading above it. */
 type Row =
   | {
       kind: "group";
-      accountType: AccountType;
-      /** Every account of this class in the current filter, folded or not. */
+      accountCategory: AccountCategory;
+      /** Every account of this category in the current filter, folded or not. */
       count: number;
     }
   | {
       kind: "account";
       account: ChartOfAccount;
-      /** Nesting level under the class heading — drives the indent only. */
+      /** Nesting level under the category heading — drives the indent only. */
       depth: number;
       hasChildren: boolean;
       /** False for an ancestor kept only so a matching child stays in place. */
       matched: boolean;
     };
 
-/** The collapsed-set key for a class heading. Cannot collide with an ObjectId. */
-function groupKey(accountType: AccountType): string {
-  return `tipe:${accountType}`;
+/** The collapsed-set key for a category heading. Cannot collide with an ObjectId. */
+function groupKey(accountCategory: AccountCategory): string {
+  return `kategori:${accountCategory}`;
 }
 
 /**
  * Flattens the chart into the rows the table renders, applying the filters.
  *
- * TWO LEVELS OF GROUPING, from two different places: the class heading is
- * derived here from `accountType`, and everything below it is the tenant's own
- * `parentAccountId` hierarchy exactly as the API nested it. A class with nothing
- * in it after filtering renders no heading at all — a heading over an empty
- * group reads as data that failed to load.
+ * TWO LEVELS OF GROUPING, from two different places: the category heading is
+ * derived here from `accountCategory`, and everything below it is the tenant's
+ * own `parentAccountId` hierarchy exactly as the API nested it. A category with
+ * nothing in it after filtering renders no heading at all — which is what keeps
+ * fifteen possible headings from becoming fifteen actual ones, and a heading
+ * over an empty group reads as data that failed to load.
  *
- * COLLAPSE IS IGNORED WHILE SEARCHING, for a class heading as much as for a
+ * COLLAPSE IS IGNORED WHILE SEARCHING, for a category heading as much as for a
  * branch. A hit hidden inside a folded group is a search that answers "nothing
  * found" while the thing is right there — so a search expands whatever it needs
  * to.
@@ -516,7 +550,7 @@ function buildRows({
   accounts,
   byId,
   term,
-  type,
+  category,
   showInactive,
   sort,
   collapsed,
@@ -524,13 +558,13 @@ function buildRows({
   accounts: ChartOfAccount[];
   byId: Map<string, ChartOfAccount>;
   term: string;
-  type: AccountType | "";
+  category: AccountCategory | "";
   showInactive: boolean;
   sort: AccountSort;
   collapsed: Set<string>;
 }): { rows: Row[]; matchCount: number; shownCount: number } {
   const matches = accounts.filter((account) => {
-    if (type !== "" && account.accountType !== type) return false;
+    if (category !== "" && account.accountCategory !== category) return false;
     if (!showInactive && !account.isActive) return false;
     if (!term) return true;
     return (
@@ -578,8 +612,8 @@ function buildRows({
   const rows: Row[] = [];
   let shownCount = 0;
 
-  // Takes the siblings rather than their parent's id, so the class headings can
-  // hand it one class's roots without the roots of the other four coming along.
+  // Takes the siblings rather than their parent's id, so a category heading can
+  // hand it one category's roots without the other fourteen coming along.
   const walk = (siblings: ChartOfAccount[], depth: number) => {
     for (const account of siblings) {
       const children = childrenOf.get(account._id) ?? [];
@@ -598,28 +632,28 @@ function buildRows({
     }
   };
 
-  // ACCOUNT_TYPES is in the order the accounting equation reads — assets,
-  // liabilities, equity, then the two P&L classes — which is also the order the
-  // leading digit of every code puts them in.
+  // ACCOUNT_CATEGORIES is in the order the REPORTS read — the neraca top to
+  // bottom, then the laba rugi top to bottom — which is also broadly the order
+  // the leading digit of every code puts them in.
   const roots = childrenOf.get(null) ?? [];
-  for (const accountType of ACCOUNT_TYPES) {
-    const classRoots = roots.filter(
-      (account) => account.accountType === accountType,
+  for (const accountCategory of ACCOUNT_CATEGORIES) {
+    const categoryRoots = roots.filter(
+      (account) => account.accountCategory === accountCategory,
     );
-    if (classRoots.length === 0) continue;
+    if (categoryRoots.length === 0) continue;
 
-    // Counted over the whole class, not just its roots: the heading has to keep
-    // saying "5 akun" while the branches under it are folded shut.
+    // Counted over the whole category, not just its roots: the heading has to
+    // keep saying "5 akun" while the branches under it are folded shut.
     const count = accounts.filter(
       (account) =>
-        account.accountType === accountType && visible.has(account._id),
+        account.accountCategory === accountCategory && visible.has(account._id),
     ).length;
 
-    rows.push({ kind: "group", accountType, count });
+    rows.push({ kind: "group", accountCategory, count });
 
-    // A class heading is depth 0, so its accounts start one level in.
-    if (term !== "" || !collapsed.has(groupKey(accountType))) {
-      walk(classRoots, 1);
+    // A category heading is depth 0, so its accounts start one level in.
+    if (term !== "" || !collapsed.has(groupKey(accountCategory))) {
+      walk(categoryRoots, 1);
     }
   }
 

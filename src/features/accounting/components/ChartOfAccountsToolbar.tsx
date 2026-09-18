@@ -16,13 +16,13 @@ import {
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
-import type { AccountType } from "@/types/accounting";
+import type { AccountCategory } from "@/types/accounting";
 
 import {
   DEFAULT_ACCOUNT_SORT,
   type AccountSort,
 } from "../accountSort";
-import { ACCOUNT_TYPES, ACCOUNT_TYPE_LABEL } from "../labels";
+import { ACCOUNT_CATEGORIES, ACCOUNT_CATEGORY_LABEL } from "../labels";
 import { ACCOUNTING_CRUMBS } from "../crumbs";
 import type { ChartOfAccountsQuery } from "./ChartOfAccountsScreen";
 
@@ -35,14 +35,20 @@ import type { ChartOfAccountsQuery } from "./ChartOfAccountsScreen";
  *
  * Purely presentational: it renders the current query and reports changes up.
  *
- * THE ACCOUNT CLASS IS A FIELD IN THE PANEL, not the tile row it replaced. What
- * the tiles carried that a plain select would not is the count per class, so
- * that came with it — `FilterOption.count`, rendered at the end of each row.
- * The other thing they showed, the class's normal balance, is a column on every
- * account row already.
+ * THE ACCOUNT CATEGORY IS A FIELD IN THE PANEL, not the tile row it replaced.
+ * What the tiles carried that a plain select would not is the count per group,
+ * so that came with it — `FilterOption.count`, rendered at the end of each row.
+ * The other thing they showed, the normal balance, is on every group heading in
+ * the table already.
+ *
+ * IT WAS THE CLASS UNTIL CATEGORIES LANDED. Fifteen options rather than five,
+ * and the trade is worth it: `asset` could not tell cash from stock from a
+ * vehicle, which is the question somebody filtering a chart of accounts actually
+ * has. The counts make the long list navigable — a category with 0 beside it is
+ * one nobody has to read.
  *
  * Being inside the panel has two consequences, and both are what makes it
- * consistent rather than a special case: the class IS counted in the
+ * consistent rather than a special case: the category IS counted in the
  * `Filter (n)` badge, and Reset clears it along with everything else.
  */
 const SORTS: FilterOption<AccountSort>[] = [
@@ -53,27 +59,32 @@ const SORTS: FilterOption<AccountSort>[] = [
 ];
 
 /**
- * The five classes, each carrying how many accounts are in it.
+ * The fifteen categories, each carrying how many accounts are in it.
  *
  * The count is why this is built per render rather than declared as a constant:
  * it is a property of the chart on screen, not of the enum.
+ *
+ * EVERY CATEGORY IS LISTED, including the ones at zero. A picker that hid them
+ * would answer "why is there no Aset Tetap filter" with silence, where a row
+ * reading `Aset Tetap 0` answers it — and the list is in report order, so a
+ * missing row would also break the reading of the ones around it.
  */
-function typeOptions(
-  counts: Map<AccountType, number>,
-): FilterOption<AccountType | "">[] {
-  return withAll<AccountType | "">(
-    ACCOUNT_TYPES.map((accountType) => ({
-      value: accountType,
-      label: ACCOUNT_TYPE_LABEL[accountType],
-      count: counts.get(accountType) ?? 0,
+function categoryOptions(
+  counts: Map<AccountCategory, number>,
+): FilterOption<AccountCategory | "">[] {
+  return withAll<AccountCategory | "">(
+    ACCOUNT_CATEGORIES.map((accountCategory) => ({
+      value: accountCategory,
+      label: ACCOUNT_CATEGORY_LABEL[accountCategory],
+      count: counts.get(accountCategory) ?? 0,
     })),
-    "Semua tipe",
+    "Semua kategori",
   );
 }
 
 /** Everything the panel edits, as one draft. */
 interface AccountFilters {
-  accountType: AccountType | "";
+  accountCategory: AccountCategory | "";
   showInactive: boolean;
   sort: AccountSort;
 }
@@ -85,20 +96,20 @@ interface AccountFilters {
  * puts it back to by-code rather than clearing it to nothing.
  */
 const CLEARED: AccountFilters = {
-  accountType: "",
+  accountCategory: "",
   showInactive: false,
   sort: DEFAULT_ACCOUNT_SORT,
 };
 
 export function ChartOfAccountsToolbar({
   query,
-  countsByType,
+  countsByCategory,
   inactiveCount,
   onChange,
 }: {
   query: ChartOfAccountsQuery;
-  /** How many accounts each class holds — shown against its option. */
-  countsByType: Map<AccountType, number>;
+  /** How many accounts each category holds — shown against its option. */
+  countsByCategory: Map<AccountCategory, number>;
   /** Shown on the toggle, so the cost of flipping it is visible first. */
   inactiveCount: number;
   onChange: (patch: Partial<ChartOfAccountsQuery>) => void;
@@ -107,7 +118,7 @@ export function ChartOfAccountsToolbar({
     <FilterBar
       // Search leads the row and takes what is left of it: with the filters
       // collapsed there is nothing else on the line that grows, and what people
-      // type here — "Persediaan Barang Dagangan" — is long.
+      // type here — "Persediaan Barang" — is long.
       searchPlacement="leading"
       searchClassName="min-w-[12rem] flex-1"
       // Below sm the row cannot hold all of it, so the buttons take a line of
@@ -142,11 +153,11 @@ export function ChartOfAccountsToolbar({
     >
       <AccountFilterPanel
         applied={{
-          accountType: query.accountType,
+          accountCategory: query.accountCategory,
           showInactive: query.showInactive,
           sort: query.sort,
         }}
-        typeOptions={typeOptions(countsByType)}
+        categoryOptions={categoryOptions(countsByCategory)}
         inactiveCount={inactiveCount}
         onApply={onChange}
       />
@@ -155,7 +166,7 @@ export function ChartOfAccountsToolbar({
 }
 
 /**
- * The ordering, the account class and the deactivated-accounts toggle, behind
+ * The ordering, the account category and the deactivated-accounts toggle, behind
  * one button.
  *
  * The fields wait for Terapkan — that is what a panel is (§8). Reset returns
@@ -164,12 +175,12 @@ export function ChartOfAccountsToolbar({
  */
 function AccountFilterPanel({
   applied,
-  typeOptions,
+  categoryOptions,
   inactiveCount,
   onApply,
 }: {
   applied: AccountFilters;
-  typeOptions: FilterOption<AccountType | "">[];
+  categoryOptions: FilterOption<AccountCategory | "">[];
   inactiveCount: number;
   onApply: (next: AccountFilters) => void;
 }) {
@@ -184,7 +195,7 @@ function AccountFilterPanel({
    * ignore the number, which is the one thing here that must stay worth
    * reading. Everything else the panel conceals IS counted.
    */
-  const count = [applied.accountType !== "", applied.showInactive].filter(
+  const count = [applied.accountCategory !== "", applied.showInactive].filter(
     Boolean,
   ).length;
 
@@ -231,12 +242,12 @@ function AccountFilterPanel({
         />
         <FilterSelect
           layout="field"
-          label="Tipe akun"
-          ariaLabel="Filter tipe akun"
-          value={draft.accountType}
-          options={typeOptions}
-          onChange={(accountType) =>
-            setDraft((prev) => ({ ...prev, accountType }))
+          label="Kategori akun"
+          ariaLabel="Filter kategori akun"
+          value={draft.accountCategory}
+          options={categoryOptions}
+          onChange={(accountCategory) =>
+            setDraft((prev) => ({ ...prev, accountCategory }))
           }
         />
         <FilterToggle

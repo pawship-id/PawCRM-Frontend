@@ -4556,7 +4556,7 @@ export interface GoodsReceiptDetailItem {
  *
  * `invoiceId` IS NULL UNTIL THE SUPPLIER'S BILL IS FILED through
  * POST /api/purchase-invoices, and permanently null for consignment. It is NOT
- * the debt: a `beli_putus` receipt credits `2101 Utang Supplier` the moment it
+ * the debt: a `beli_putus` receipt credits `2101 Utang Usaha` the moment it
  * posts. What the invoice adds is the vendor's own document number and a due
  * date. A screen that reads a null here as "nothing is owed" is wrong.
  */

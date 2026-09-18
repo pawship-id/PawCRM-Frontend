@@ -10,6 +10,7 @@ import { cashTransactionService } from "@/services/cashTransaction.service";
 import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
 import { paymentChannelService } from "@/services/paymentChannel.service";
 import type { ChartOfAccountNode } from "@/types/accounting";
+import { accountTypeOf } from "@/types/accounting";
 import type { PaymentChannelListQuery } from "@/types/api";
 
 import { cashTx, channel, channelPage } from "./helpers/cashTransactionFixture";
@@ -38,13 +39,17 @@ const asMock = <T extends (...args: never[]) => unknown>(fn: T) =>
  */
 const account = (
   overrides: Partial<ChartOfAccountNode> &
-    Pick<ChartOfAccountNode, "_id" | "code" | "name" | "accountType">,
+    Pick<ChartOfAccountNode, "_id" | "code" | "name" | "accountCategory">,
 ): ChartOfAccountNode => ({
   parentAccountId: null,
   businessLineId: null,
   isDefault: false,
   isActive: true,
   children: [],
+  // The class is DERIVED, the way the server derives it — a fixture stating
+  // both could claim a pair the API cannot produce, and the pickers here filter
+  // on the class while the chart groups on the category.
+  accountType: accountTypeOf(overrides.accountCategory),
   ...overrides,
 });
 
@@ -71,20 +76,20 @@ beforeEach(() => {
       _id: "acc-listrik",
       code: "5401",
       name: "Beban Listrik",
-      accountType: "expense",
+      accountCategory: "biaya",
     }),
     account({
       _id: "acc-lama",
       code: "5499",
       name: "Beban Lama",
-      accountType: "expense",
+      accountCategory: "biaya",
       isActive: false,
     }),
     account({
       _id: "acc-bunga",
       code: "4201",
       name: "Pendapatan Bunga",
-      accountType: "income",
+      accountCategory: "pendapatan_lainnya",
     }),
   ]);
   asMock(businessLineService.list).mockResolvedValue({

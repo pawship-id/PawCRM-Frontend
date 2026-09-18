@@ -82,6 +82,9 @@ const BALANCES = [
     code: "1101",
     name: "Kas",
     accountType: "asset",
+    // The cash card sums by CATEGORY now, not by a pair of hardcoded codes —
+    // so a tenant's own "1105 Bank Mandiri" is counted the day it is created.
+    accountCategory: "cash_bank",
     normalBalance: "debit",
     debit: "90000000.0000",
     credit: "10612500.0000",
@@ -92,6 +95,7 @@ const BALANCES = [
     code: "2102",
     name: "Utang Komisi",
     accountType: "liability",
+    accountCategory: "hutang_lainnya",
     normalBalance: "credit",
     debit: "1000000.0000",
     credit: "4318000.0000",

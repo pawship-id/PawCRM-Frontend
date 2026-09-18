@@ -10,7 +10,7 @@ import type { StockEntryKind } from "@/types/inventory";
  *
  * WHY IT EXISTS. Stok Awal and Penyesuaian are the pair somebody chooses between
  * and the wrong choice is invisible until a P&L is read: opening stock credits
- * Modal / Saldo Awal, an adjustment credits Kerugian Persediaan. What used to
+ * Modal Disetor, an adjustment credits Kerugian Persediaan. What used to
  * make the choice legible was the rail — the two rows sat one above the other —
  * and that adjacency is gone now that Penyesuaian is a tab of Koreksi Stok while
  * Stok Awal keeps its own row. Nothing else in either form mentioned the other.

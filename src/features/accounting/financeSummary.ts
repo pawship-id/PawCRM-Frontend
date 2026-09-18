@@ -22,12 +22,18 @@ import { toDecimalString, toMinor } from "@/utils/decimal";
  */
 
 /**
- * Kas and Bank — the two account codes the cash card sums.
+ * Kas and Bank — the CATEGORY the cash card sums.
  *
- * Codes, not ids: these are the seeded accounts every tenant gets, and a code
- * survives the account being renamed. The backend knows the same two.
+ * IT WAS TWO HARDCODED CODES until 18 September 2026 (`["1101", "1102"]`), and
+ * that was wrong in a way nobody could see from the card: a tenant that added
+ * "1105 Bank Mandiri" — an ordinary thing to do the day you open a second
+ * account — had its money silently left out of the figure the shop reads first.
+ *
+ * A category is the honest question. The chart of accounts knows which accounts
+ * are cash because somebody said so when they created them, and that answer
+ * follows the tenant's own chart instead of a pair of numbers in this file.
  */
-export const CASH_ACCOUNT_CODES = ["1101", "1102"];
+export const CASH_ACCOUNT_CATEGORY = "cash_bank" as const;
 
 /**
  * Utang Komisi — the account "Komisi Belum Dibayar" reads.

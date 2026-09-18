@@ -263,14 +263,14 @@ function preview(
       {
         accountId: "acc-payable",
         accountCode: "2101",
-        accountName: "Utang Supplier",
+        accountName: "Utang Usaha",
         debit: "60000.0000",
         credit: "0",
       },
       {
         accountId: "acc-inventory",
         accountCode: "1201",
-        accountName: "Persediaan Barang Dagangan",
+        accountName: "Persediaan Barang",
         debit: "0",
         credit: "60000.0000",
       },
@@ -663,7 +663,7 @@ describe("PurchaseReturnDetail", () => {
       await screen.findByText(/HPP dihitung ulang dengan HARGA BELI ASLI/i),
     ).toBeInTheDocument();
     // Labelled from the payload — no client-side account guessing.
-    expect(screen.getByText("Utang Supplier")).toBeInTheDocument();
+    expect(screen.getByText("Utang Usaha")).toBeInTheDocument();
     expect(screen.getByText("2101")).toBeInTheDocument();
   });
 

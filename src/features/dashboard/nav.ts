@@ -443,7 +443,7 @@ export const NAV_SECTIONS: NavSection[] = [
              * directly above Penyesuaian Stok because those two are the pair
              * somebody chooses between and the wrong choice is invisible until a
              * P&L is read: opening stock posts `opening_balance` and credits
-             * 3101 Modal / Saldo Awal, while an adjustment credits 5201 Kerugian
+             * 3101 Modal Disetor, while an adjustment credits 5201 Kerugian
              * Persediaan — right for goods that vanished, absurd for a shop's
              * starting inventory. The adjustment moved into Koreksi Stok, so the
              * adjacency that made the pair legible is gone and the two forms are

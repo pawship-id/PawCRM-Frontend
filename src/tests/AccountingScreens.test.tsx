@@ -16,11 +16,12 @@ import { businessLineService } from "@/services/businessLine.service";
 import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
 import { journalEntryService } from "@/services/journalEntry.service";
 import type {
-  AccountType,
+  AccountCategory,
   ChartOfAccountNode,
   JournalEntry,
   JournalLine,
 } from "@/types/accounting";
+import { accountTypeOf } from "@/types/accounting";
 import type { PageResult } from "@/types/api";
 
 // The form toasts on success; mock the library so no real dialog is created.
@@ -71,7 +72,13 @@ beforeEach(() => push.mockClear());
 function node(
   code: string,
   name: string,
-  accountType: AccountType,
+  /**
+   * THE CATEGORY, and the class is derived from it exactly as the server does.
+   * Passing both would let a fixture claim a combination the API cannot produce,
+   * and the screen groups on the category while the badge tone reads the class —
+   * so a mismatched pair would make one of the two assertions meaningless.
+   */
+  accountCategory: AccountCategory,
   {
     children = [],
     isActive = true,
@@ -84,7 +91,8 @@ function node(
     _id: code,
     code,
     name,
-    accountType,
+    accountCategory,
+    accountType: accountTypeOf(accountCategory),
     parentAccountId,
     businessLineId,
     isDefault,
@@ -94,28 +102,38 @@ function node(
 }
 
 /**
- * A chart shaped like a real one: three levels under Aset, a second class to
- * prove a search does not drag unrelated branches in, and one deactivated
- * account for the toggle.
+ * A chart shaped like a real one: three levels under one category, two more
+ * categories to prove a search does not drag unrelated branches in, and one
+ * deactivated account for the toggle.
+ *
+ * EVERY BRANCH IS ONE CATEGORY THROUGHOUT, because that is now the rule a child
+ * must satisfy — a fixture mixing categories down a branch would be a chart the
+ * API would refuse to have produced.
  */
 function chart(): ChartOfAccountNode[] {
   return [
-    node("1000", "Aset", "asset", {
+    node("1000", "Aset", "aset_lancar_lainnya", {
       children: [
-        node("1100", "Aset Lancar", "asset", {
-          children: [node("1101", "Kas", "asset", { isDefault: true })],
+        node("1100", "Aset Lancar", "aset_lancar_lainnya", {
+          children: [
+            node("1101", "Kas", "aset_lancar_lainnya", { isDefault: true }),
+          ],
         }),
-        node("1300", "Pajak Dibayar di Muka", "asset", {
-          children: [node("1301", "PPN Masukan", "asset", { isDefault: true })],
+        node("1300", "Pajak Dibayar di Muka", "aset_lancar_lainnya", {
+          children: [
+            node("1301", "PPN Masukan", "aset_lancar_lainnya", {
+              isDefault: true,
+            }),
+          ],
         }),
       ],
     }),
-    node("2000", "Kewajiban", "liability", {
-      children: [node("2101", "Utang Supplier", "liability")],
+    node("2000", "Kewajiban", "hutang_dagang", {
+      children: [node("2101", "Utang Usaha", "hutang_dagang")],
     }),
-    node("5000", "Beban", "expense", {
+    node("5000", "Beban", "biaya", {
       children: [
-        node("5401", "Beban Penyusutan", "expense", { isActive: false }),
+        node("5401", "Beban Penyusutan", "biaya", { isActive: false }),
       ],
     }),
   ];
@@ -165,6 +183,17 @@ async function openFilters() {
 /** Commits the panel's draft, which is what a panel's fields wait for. */
 async function applyFilters() {
   await userEvent.click(screen.getByRole("button", { name: "Terapkan" }));
+}
+
+/**
+ * Picks a category in the account form.
+ *
+ * The options are grouped by class (`SelectGroup`), which changes nothing for a
+ * query by option name — the group label is not an option.
+ */
+async function pickCategory(label: string) {
+  await userEvent.click(screen.getByRole("combobox", { name: "Kategori akun" }));
+  await userEvent.click(screen.getByRole("option", { name: label }));
 }
 
 /** Mounts the create form and waits for the chart its parent picker needs. */
@@ -223,11 +252,11 @@ describe("ChartOfAccountsScreen", () => {
     expect(table.getByText("PPN Masukan")).toBeInTheDocument();
     // …and the two accounts it hangs from, dragged along for context.
     expect(table.getByText("Pajak Dibayar di Muka")).toBeInTheDocument();
-    // The root, matched by code: "Aset" on its own also names the account-type
-    // badge that every asset row carries.
+    // The root, matched by code: "Aset Lancar Lainnya" on its own also names the
+    // category badge that every row of that branch carries.
     expect(table.getByText("1000")).toBeInTheDocument();
     // But nothing from an unrelated branch.
-    expect(table.queryByText("Utang Supplier")).not.toBeInTheDocument();
+    expect(table.queryByText("Utang Usaha")).not.toBeInTheDocument();
   });
 
   it("hides deactivated accounts until the panel's toggle asks for them", async () => {
@@ -290,16 +319,16 @@ describe("ChartOfAccountsScreen", () => {
     const kas = rows.findIndex((text) => text.includes("1101"));
     expect(ppn).toBeLessThan(kas);
 
-    // …but 1101 still hangs under 1100, and the classes stay in the order the
-    // accounting equation reads them rather than being reordered too.
+    // …but 1101 still hangs under 1100, and the categories stay in the order the
+    // reports read them rather than being reordered too.
     const parent = rows.findIndex((text) => text.includes("1100"));
     expect(parent).toBeLessThan(kas);
-    expect(rows.findIndex((text) => text.startsWith("Aset"))).toBeLessThan(
-      rows.findIndex((text) => text.startsWith("Kewajiban")),
-    );
+    expect(
+      rows.findIndex((text) => text.startsWith("Aset Lancar Lainnya")),
+    ).toBeLessThan(rows.findIndex((text) => text.startsWith("Hutang Dagang")));
   });
 
-  it("groups the flat seeded chart under its account classes", async () => {
+  it("groups the flat seeded chart under its account categories", async () => {
     await renderChart();
 
     const rows = screen
@@ -307,11 +336,11 @@ describe("ChartOfAccountsScreen", () => {
       .slice(1)
       .map((row) => row.textContent ?? "");
 
-    // The seeded chart has no 1000/2000 header ACCOUNTS — the class heading is
-    // the screen's own, and every account of that class follows it.
-    const aset = rows.findIndex((text) => text.startsWith("Aset"));
+    // The seeded chart has no 1000/2000 header ACCOUNTS — the category heading
+    // is the screen's own, and every account of that category follows it.
+    const aset = rows.findIndex((text) => text.startsWith("Aset Lancar Lainnya"));
     const kas = rows.findIndex((text) => text.includes("1101"));
-    const kewajiban = rows.findIndex((text) => text.startsWith("Kewajiban"));
+    const kewajiban = rows.findIndex((text) => text.startsWith("Hutang Dagang"));
     const utang = rows.findIndex((text) => text.includes("2101"));
 
     expect(aset).toBeGreaterThanOrEqual(0);
@@ -322,38 +351,40 @@ describe("ChartOfAccountsScreen", () => {
     expect(rows[aset]).toContain("5 akun");
   });
 
-  it("folds a whole class shut from its heading", async () => {
+  it("folds a whole category shut from its heading", async () => {
     await renderChart();
 
     await userEvent.click(
-      screen.getByRole("button", { name: "Tutup kelompok Aset" }),
+      screen.getByRole("button", {
+        name: "Tutup kelompok Aset Lancar Lainnya",
+      }),
     );
 
     expect(screen.queryByText("Kas")).not.toBeInTheDocument();
-    // The heading stays, so the class can be opened again — and so does the
+    // The heading stays, so the category can be opened again — and so does the
     // rest of the chart.
     expect(
-      screen.getByRole("button", { name: "Buka kelompok Aset" }),
+      screen.getByRole("button", { name: "Buka kelompok Aset Lancar Lainnya" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Utang Supplier")).toBeInTheDocument();
+    expect(screen.getByText("Utang Usaha")).toBeInTheDocument();
   });
 
-  it("narrows to one class from the panel, carrying each class's count", async () => {
+  it("narrows to one category from the panel, carrying each category's count", async () => {
     await renderChart();
 
     const panel = await openFilters();
-    await userEvent.click(within(panel).getByLabelText("Filter tipe akun"));
+    await userEvent.click(within(panel).getByLabelText("Filter kategori akun"));
 
     // The count the tile row used to show, now on the option itself — two
-    // liability accounts in the fixture, 2000 and the 2101 under it.
-    const option = screen.getByRole("option", { name: /Kewajiban/ });
+    // Hutang Dagang accounts in the fixture, 2000 and the 2101 under it.
+    const option = screen.getByRole("option", { name: /Hutang Dagang/ });
     expect(option).toHaveTextContent("2");
 
     await userEvent.click(option);
     await applyFilters();
 
     expect(screen.queryByText("Kas")).not.toBeInTheDocument();
-    expect(screen.getByText("Utang Supplier")).toBeInTheDocument();
+    expect(screen.getByText("Utang Usaha")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
       "Filter (1)",
     );
@@ -442,6 +473,7 @@ describe("ChartOfAccountForm", () => {
 
     await userEvent.type(screen.getByLabelText(/Kode akun/), "5102");
     await userEvent.type(screen.getByLabelText(/Nama akun/), "HPP Grooming");
+    await pickCategory("Harga Pokok Penjualan");
     await userEvent.click(screen.getByLabelText("Lini bisnis"));
     await userEvent.click(
       await screen.findByRole("option", { name: "Grooming" }),
@@ -475,13 +507,17 @@ describe("ChartOfAccountForm", () => {
 
     await userEvent.type(screen.getByLabelText(/Kode akun/), "1102a");
     await userEvent.type(screen.getByLabelText(/Nama akun/), "Bank BCA");
+    await pickCategory("Cash & Bank");
     await userEvent.click(screen.getByRole("button", { name: "Buat akun" }));
 
     await waitFor(() =>
       expect(create).toHaveBeenCalledWith({
         code: "1102A",
         name: "Bank BCA",
-        accountType: "asset",
+        // THE CATEGORY, AND NO CLASS. The server derives `accountType` from
+        // this; sending one would be stripped, so it is not on the payload type
+        // and must not be on the request.
+        accountCategory: "cash_bank",
         parentAccountId: null,
         // Sent explicitly rather than omitted: null is the value that means "no
         // line", the same way it means "no parent" above it.
@@ -491,6 +527,46 @@ describe("ChartOfAccountForm", () => {
     // Back to the list once it lands — the page's job, where the dialog used to
     // just close itself.
     expect(push).toHaveBeenCalledWith("/dashboard/keuangan/chart-of-accounts");
+  });
+
+  /**
+   * THE CLASS IS NOT ON THE FORM ANY MORE — the change BO asked for, asserted
+   * as an absence because that is what it is. Before this, a select labelled
+   * "Tipe akun" offered five free choices and nothing refused a wrong one.
+   */
+  it("offers no control for the account type", async () => {
+    await renderCreateForm();
+
+    expect(
+      screen.queryByRole("combobox", { name: "Tipe akun" }),
+    ).not.toBeInTheDocument();
+    // It is still READ on screen, so a mis-picked category is visible before
+    // the account is saved rather than after a report comes out wrong.
+    expect(
+      screen.getByText(/Mengikuti kategori yang dipilih/),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the class and the normal balance the chosen category implies", async () => {
+    await renderCreateForm();
+
+    await pickCategory("Biaya Lainnya");
+
+    expect(screen.getByText(/Beban · saldo normal Debit/)).toBeInTheDocument();
+  });
+
+  it("refuses to submit without a category, naming the field", async () => {
+    await renderCreateForm();
+    const create = jest.spyOn(chartOfAccountsService, "create");
+
+    await userEvent.type(screen.getByLabelText(/Kode akun/), "1102");
+    await userEvent.type(screen.getByLabelText(/Nama akun/), "Bank BCA");
+    await userEvent.click(screen.getByRole("button", { name: "Buat akun" }));
+
+    expect(
+      await screen.findByText("Kategori akun wajib dipilih."),
+    ).toBeInTheDocument();
+    expect(create).not.toHaveBeenCalled();
   });
 
   it("puts a taken code on the field, not in a banner", async () => {
@@ -503,6 +579,7 @@ describe("ChartOfAccountForm", () => {
 
     await userEvent.type(screen.getByLabelText(/Kode akun/), "1101");
     await userEvent.type(screen.getByLabelText(/Nama akun/), "Kas Kecil");
+    await pickCategory("Cash & Bank");
     await userEvent.click(screen.getByRole("button", { name: "Buat akun" }));
 
     expect(
@@ -512,22 +589,22 @@ describe("ChartOfAccountForm", () => {
     expect(push).not.toHaveBeenCalled();
   });
 
-  it("freezes the code and the type of a seeded account", async () => {
+  it("freezes the code and the category of a seeded account", async () => {
     await renderEditForm("1101");
 
     // The two fields every posting resolves against — the server answers 403.
     expect(screen.getByLabelText(/Kode akun/)).toBeDisabled();
-    expect(screen.getByLabelText("Tipe akun")).toBeDisabled();
+    expect(screen.getByLabelText("Kategori akun")).toBeDisabled();
     // The name is still editable, because relabelling moves no money.
     expect(screen.getByLabelText(/Nama akun/)).toBeEnabled();
     expect(screen.getByText(/kodenya dipakai modul lain/)).toBeInTheDocument();
   });
 
-  it("freezes only the type of an account that has sub-accounts", async () => {
+  it("freezes only the category of an account that has sub-accounts", async () => {
     await renderEditForm("1100");
 
     expect(screen.getByLabelText(/Kode akun/)).toBeEnabled();
-    expect(screen.getByLabelText("Tipe akun")).toBeDisabled();
+    expect(screen.getByLabelText("Kategori akun")).toBeDisabled();
     expect(screen.getByText(/punya sub-akun/)).toBeInTheDocument();
   });
 
@@ -658,8 +735,8 @@ function mockLedgerLookups() {
   jest
     .spyOn(chartOfAccountsService, "tree")
     .mockResolvedValue([
-      node("1101", "Kas", "asset"),
-      node("4101", "Pendapatan Penjualan", "income"),
+      node("1101", "Kas", "cash_bank"),
+      node("4101", "Pendapatan Penjualan", "pendapatan"),
     ]);
 }
 
@@ -1058,16 +1135,16 @@ describe("JournalEntryCreateForm", () => {
    */
   function ledgerChart(): ChartOfAccountNode[] {
     return [
-      node("1000", "Aset", "asset", {
-        children: [node("1201", "Persediaan Barang Dagangan", "asset")],
+      node("1000", "Aset", "persediaan", {
+        children: [node("1201", "Persediaan Barang", "persediaan")],
       }),
-      node("3000", "Ekuitas", "equity", {
-        children: [node("3101", "Modal / Saldo Awal", "equity")],
+      node("3000", "Ekuitas", "modal", {
+        children: [node("3101", "Modal Disetor", "modal")],
       }),
-      node("5000", "Beban", "expense", {
+      node("5000", "Beban", "biaya_lainnya", {
         children: [
-          node("5201", "Kerugian Persediaan", "expense"),
-          node("5401", "Beban Penyusutan", "expense", { isActive: false }),
+          node("5201", "Kerugian Persediaan", "biaya_lainnya"),
+          node("5401", "Beban Penyusutan", "biaya_lainnya", { isActive: false }),
         ],
       }),
     ];
@@ -1299,8 +1376,8 @@ describe("JournalEntryCreateForm", () => {
   /** A tenant whose chart lacks either account is not offered the shortcut. */
   it("hides the shortcut when the chart has no 3101", async () => {
     await renderForm([
-      node("5000", "Beban", "expense", {
-        children: [node("5201", "Kerugian Persediaan", "expense")],
+      node("5000", "Beban", "biaya_lainnya", {
+        children: [node("5201", "Kerugian Persediaan", "biaya_lainnya")],
       }),
     ]);
 

@@ -28,6 +28,9 @@ export default function NewChartOfAccountPage() {
             Akun baru bisa langsung dipakai sebagai tujuan posting begitu
             disimpan. Kodenya yang dipakai modul lain untuk menemukannya, jadi
             pilih nomor yang mengikuti pola daftar akun yang sudah ada.
+            Kategorinya sudah ditentukan Buloo — itu yang menentukan di baris
+            mana akun ini muncul di Laba Rugi atau Neraca, dan tipe akunnya
+            mengikuti kategori itu.
           </p>
         </div>
 

@@ -36,6 +36,61 @@ export type AccountType =
   | "expense";
 
 /**
+ * THE FIFTEEN CATEGORIES A TENANT ACTUALLY PICKS FROM — Buloo's own list,
+ * modelled on Jubelio's. Mirrors ACCOUNT_CATEGORIES in the backend model.
+ *
+ * `accountType` above is the vocabulary of the LEDGER; this is the vocabulary of
+ * the REPORTS and of the person filling in the form. It is finer — cash, stock
+ * and a vehicle are all `asset` and each belongs on its own line of a neraca —
+ * and it is the only classification a client may assert. The class is derived
+ * from it on the server, which is what stopped "Beban Iklan" from being filed as
+ * income.
+ */
+export type AccountCategory =
+  | "cash_bank"
+  | "piutang_dagang"
+  | "persediaan"
+  | "aset_lancar_lainnya"
+  | "aset_tetap"
+  | "investasi_jangka_panjang"
+  | "hutang_dagang"
+  | "hutang_lainnya"
+  | "hutang_jangka_panjang"
+  | "modal"
+  | "pendapatan"
+  | "hpp"
+  | "biaya"
+  | "pendapatan_lainnya"
+  | "biaya_lainnya";
+
+/**
+ * The class each category implies — the same map the backend derives with.
+ *
+ * MIRRORED RATHER THAN FETCHED, like every other enum in this file: the list is
+ * fixed, and an endpoint returning it would be a request on every page load for
+ * something that changes when the code does. The form uses it to show what the
+ * chosen category means before the account is saved; the server remains the
+ * authority on what is stored.
+ */
+export const CATEGORY_ACCOUNT_TYPE: Record<AccountCategory, AccountType> = {
+  cash_bank: "asset",
+  piutang_dagang: "asset",
+  persediaan: "asset",
+  aset_lancar_lainnya: "asset",
+  aset_tetap: "asset",
+  investasi_jangka_panjang: "asset",
+  hutang_dagang: "liability",
+  hutang_lainnya: "liability",
+  hutang_jangka_panjang: "liability",
+  modal: "equity",
+  pendapatan: "income",
+  pendapatan_lainnya: "income",
+  hpp: "expense",
+  biaya: "expense",
+  biaya_lainnya: "expense",
+};
+
+/**
  * Which side increases an account. DERIVED from `accountType`, never stored —
  * assets and expenses grow on the debit side, everything else on the credit
  * side, and that is a property of the class rather than a per-account setting.
@@ -48,7 +103,16 @@ export interface ChartOfAccount {
   /** The stable identifier every posting module resolves against ("1201"). */
   code: string;
   name: string;
+  /**
+   * The bookkeeping class. READ-ONLY from this client's point of view: the
+   * server derives it from `accountCategory` and no request body carries it.
+   */
   accountType: AccountType;
+  /**
+   * What the tenant chose, and the only classification a create or update
+   * sends. Everything the screens group, filter and colour by.
+   */
+  accountCategory: AccountCategory;
   /** Parent in the hierarchy, or null for a root. Max 4 levels deep. */
   parentAccountId: string | null;
   /**
@@ -229,4 +293,9 @@ export function normalBalanceOf(accountType: AccountType): NormalBalance {
   return accountType === "asset" || accountType === "expense"
     ? "debit"
     : "credit";
+}
+
+/** The class a category implies. Mirrors accountTypeForCategory on the server. */
+export function accountTypeOf(category: AccountCategory): AccountType {
+  return CATEGORY_ACCOUNT_TYPE[category];
 }

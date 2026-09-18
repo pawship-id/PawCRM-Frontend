@@ -1,5 +1,6 @@
 import { apiClient } from "./api-client";
 import type {
+  AccountCategory,
   AccountType,
   CashflowType,
   JournalEntry,
@@ -191,6 +192,12 @@ export interface AccountBalance {
   code: string;
   name: string;
   accountType: AccountType;
+  /**
+   * Which section of the neraca the row belongs to, and what Arus Kas picks its
+   * cash accounts out by. `accountType: "asset"` answers neither — it cannot
+   * tell a bank account from a vehicle.
+   */
+  accountCategory: AccountCategory;
   normalBalance: NormalBalance;
   debit: string;
   credit: string;
@@ -220,8 +227,79 @@ export interface AccountBalancesQuery {
   asOf?: string;
   branchId?: string;
   accountType?: AccountType;
+  /** The finer filter — one neraca section, or every cash and bank account. */
+  accountCategory?: AccountCategory;
   /** Repeated on the wire. The API caps this at 20. */
   accountIds?: string[];
+}
+
+/**
+ * ONE CELL of the laba rugi: what a row came to on one lini bisnis.
+ *
+ * `businessLineId: null` is the unattributed column — rent, office payroll, the
+ * electricity bill. A real answer, never an omission.
+ */
+export interface ProfitLossCell {
+  businessLineId: string | null;
+  /** Signed in the account's NORMAL direction, so ordinary figures are positive. */
+  amount: string;
+}
+
+/** A row of the report — every row has the same cells, in the same order. */
+export interface ProfitLossRow {
+  lines: ProfitLossCell[];
+  /** The consolidated column: the row summed across every lini. */
+  total: string;
+}
+
+export interface ProfitLossAccount extends ProfitLossRow {
+  accountId: string;
+  code: string;
+  name: string;
+  accountCategory: AccountCategory;
+  accountType: AccountType;
+}
+
+export interface ProfitLossGroup extends ProfitLossRow {
+  accountCategory: AccountCategory;
+}
+
+/**
+ * GET /journal-entries/profit-loss — BO's laba rugi, computed server-side.
+ *
+ * `categories` always carries all five, empty or not; `accounts` carries only
+ * what moved. The three `results` are DERIVED FROM the categories on the server
+ * rather than summed independently, so nothing on the page can disagree with
+ * anything else on it:
+ *
+ *   grossProfit     = pendapatan − hpp
+ *   operatingProfit = laba kotor − biaya
+ *   netProfit       = laba usaha + pendapatan lainnya − biaya lainnya
+ */
+export interface ProfitLossResult {
+  period: { dateFrom: string | null; dateTo: string | null; timezone: string };
+  accounts: ProfitLossAccount[];
+  categories: ProfitLossGroup[];
+  results: {
+    grossProfit: ProfitLossRow;
+    operatingProfit: ProfitLossRow;
+    netProfit: ProfitLossRow;
+  };
+}
+
+/**
+ * NEITHER END IS REQUIRED, like the summary's: "everything since we opened, as
+ * one laba rugi" is a question a shop owner genuinely asks.
+ *
+ * `businessLineId` NARROWS THE LEDGER rather than picking a column — sending one
+ * returns that line's P&L alone, where the unfiltered response carries every
+ * line as its own column.
+ */
+export interface ProfitLossQuery {
+  dateFrom?: string;
+  dateTo?: string;
+  branchId?: string;
+  businessLineId?: string;
 }
 
 /** The writable half of a manual entry — the only kind the HTTP API creates. */
@@ -344,6 +422,8 @@ export const journalEntryService = {
     if (query.asOf) params.append("asOf", query.asOf);
     if (query.branchId) params.append("branchId", query.branchId);
     if (query.accountType) params.append("accountType", query.accountType);
+    if (query.accountCategory)
+      params.append("accountCategory", query.accountCategory);
     for (const id of query.accountIds ?? []) {
       params.append("accountIds", id);
     }
@@ -354,6 +434,26 @@ export const journalEntryService = {
       search ? `/journal-entries/balances?${search}` : "/journal-entries/balances",
     );
   },
+
+  /**
+   * GET /journal-entries/profit-loss — the laba rugi as a table.
+   *
+   * NOT `summary`, which folds the same period. That one answers "did we make
+   * money" as two numbers and a split per line; this one is every account that
+   * moved, grouped into the five report categories, with the subtotals between
+   * them. `summary` cannot produce it — it groups by account CLASS, and `biaya`
+   * and `biaya_lainnya` are both `expense` while sitting on opposite sides of
+   * laba usaha.
+   */
+  profitLoss: (query: ProfitLossQuery = {}) =>
+    apiClient.get<ProfitLossResult>("/journal-entries/profit-loss", {
+      query: {
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+        branchId: query.branchId,
+        businessLineId: query.businessLineId,
+      },
+    }),
 
   /** GET /journal-entries/:id — one entry, with its labels resolved. */
   getById: (id: string) => apiClient.get<JournalEntry>(`/journal-entries/${id}`),

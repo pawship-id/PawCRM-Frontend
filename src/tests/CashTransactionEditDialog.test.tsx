@@ -201,6 +201,7 @@ describe("CashTransactionEditDialog — saving", () => {
         code: "5401",
         name: "Beban Listrik",
         accountType: "expense",
+        accountCategory: "biaya",
         parentAccountId: null,
         businessLineId: null,
         isDefault: false,

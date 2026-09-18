@@ -696,6 +696,13 @@ const MODULES = [
     feature: "journalEntries",
   },
   {
+    href: ACCOUNTING_CRUMBS.balanceSheet.href,
+    title: "Neraca",
+    description:
+      "Posisi pada satu tanggal: yang dimiliki, yang masih jadi kewajiban, dan sisanya milik pemilik.",
+    feature: "journalEntries",
+  },
+  {
     href: ACCOUNTING_CRUMBS.cashflow.href,
     title: "Arus Kas",
     description:

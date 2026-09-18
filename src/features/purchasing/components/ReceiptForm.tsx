@@ -236,7 +236,7 @@ function duplicateMessage(name: string | undefined): string {
  * authority on every number here, whether or not its workings are on display.
  *
  * BELI PUTUS vs KONSINYASI changes what the form even means. Outright, the goods
- * become the tenant's, the ledger is posted and `2101 Utang Supplier` is
+ * become the tenant's, the ledger is posted and `2101 Utang Usaha` is
  * credited. Consigned, they sit in the warehouse still belonging to the supplier
  * — stock rises, but nothing is owed and nothing is journalled, because nothing
  * has been bought. `taxAmount` is not merely hidden for consignment, it is
@@ -1684,7 +1684,7 @@ export function ReceiptForm({
                     "nothing happens" when what actually happens is a debt.
 
                     THE DEBT IS NOT WHAT THIS DECIDES. A beli-putus receipt
-                    credits 2101 Utang Supplier the moment it posts, tick or no
+                    credits 2101 Utang Usaha the moment it posts, tick or no
                     tick; the faktur is the vendor's paperwork on top of it. A
                     clerk who reads the empty box as "belum ada utang" would
                     leave a payable nobody is watching, so the text names it. */}

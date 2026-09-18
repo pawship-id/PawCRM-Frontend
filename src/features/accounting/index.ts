@@ -34,13 +34,24 @@ export { FinanceDashboardScreen } from "./components/FinanceDashboardScreen";
  */
 export { FinanceReportToolbar } from "./components/FinanceReportToolbar";
 /**
- * The two report screens, rendering FIXTURES rather than the ledger — see
- * ./data/reportFixtures.ts. They are here so the routes can reach them and the
- * layout can be reviewed; the swap to a real endpoint is a change of source
- * inside each screen, not of anything a page imports.
+ * THE THREE READING REPORTS, all of them live against the ledger since 18
+ * September 2026 — Laba Rugi over `GET /journal-entries/profit-loss`, Neraca and
+ * Arus Kas over `GET /journal-entries/balances`. The fixtures they used to
+ * render are gone, and so is the banner that said the figures were examples.
+ *
+ * They share `useFinanceReport`, which fetches the branches and the lines once
+ * and the figures per filter. Nothing a page imports changed in the swap, which
+ * is what the seam was for.
  */
 export { ProfitLossScreen } from "./components/ProfitLossScreen";
 export { CashflowScreen } from "./components/CashflowScreen";
+/**
+ * NERACA — added 18 September 2026, and the report that could not exist before
+ * categories did: `accountType: "asset"` cannot tell cash from stock from a
+ * vehicle, and a balance sheet is exactly that distinction.
+ */
+export { BalanceSheetScreen } from "./components/BalanceSheetScreen";
+export { balanceSheet, type BalanceSheet } from "./balanceSheet";
 export {
   cashflowReport,
   profitLossMatrix,
@@ -48,6 +59,11 @@ export {
   type ProfitLossMatrix,
   type ReportQuery,
 } from "./reportSummary";
+export {
+  useFinanceReport,
+  dayBefore,
+  type FinanceReportKind,
+} from "./hooks/useFinanceReport";
 export { BusinessLinesScreen } from "./components/BusinessLinesScreen";
 export { useBusinessLines } from "./hooks/useBusinessLines";
 export {
@@ -63,7 +79,7 @@ export {
   previousMonthRange,
   reportPresets,
   trendWindow,
-  CASH_ACCOUNT_CODES,
+  CASH_ACCOUNT_CATEGORY,
   COMMISSION_PAYABLE_CODE,
   TREND_DAYS,
   SHARED_LINE_LABEL,

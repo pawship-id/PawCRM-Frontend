@@ -11,7 +11,9 @@ import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -21,12 +23,18 @@ import {
   type ChartOfAccountPayload,
 } from "@/services/chartOfAccounts.service";
 import { swalToast } from "@/lib/swal";
-import type { AccountType, ChartOfAccount } from "@/types/accounting";
-import { normalBalanceOf } from "@/types/accounting";
+import type { AccountCategory, ChartOfAccount } from "@/types/accounting";
+import { accountTypeOf, normalBalanceOf } from "@/types/accounting";
 
 import { useChartOfAccounts } from "../hooks/useChartOfAccounts";
 import { useBusinessLines } from "../hooks/useBusinessLines";
-import { ACCOUNT_TYPES, ACCOUNT_TYPE_LABEL } from "../labels";
+import {
+  ACCOUNT_CATEGORIES,
+  ACCOUNT_CATEGORY_HINT,
+  ACCOUNT_CATEGORY_LABEL,
+  ACCOUNT_TYPES,
+  ACCOUNT_TYPE_LABEL,
+} from "../labels";
 import { ACCOUNTING_CRUMBS } from "../crumbs";
 
 /** Backend caps and rules — chartOfAccounts.model.js. Restated, not guessed. */
@@ -123,23 +131,34 @@ export function ChartOfAccountEditForm({ accountId }: { accountId: string }) {
  * The form itself, shared by both verbs because the fields are identical; only
  * the request and the wording differ.
  *
+ * THE CLASS IS NOT A FIELD HERE ANY MORE. A tenant picks a CATEGORY — Cash &
+ * Bank, Persediaan, Biaya Lainnya — and "Aset · saldo normal Debit" is shown
+ * underneath as a consequence of that choice. Before this, "Beban Iklan" could
+ * be filed as income and nothing anywhere refused it; the class is now derived
+ * on the server and no request body carries one.
+ *
+ * IT IS STILL SHOWN, though, and deliberately: hiding the class entirely would
+ * make a mis-picked category invisible until a report came out wrong, and the
+ * one line of feedback is what lets somebody catch it while they are still
+ * looking at the form.
+ *
  * THREE FIELDS CAN BE FROZEN, and each says so rather than merely greying out:
  *
- *   - `code` and `accountType` on a SEEDED account (`isDefault`). Every posting
- *     module resolves its target by code — "credit 1201" — so renumbering it or
- *     reclassifying it from asset to expense would silently redirect or corrupt
- *     every inventory entry in the tenant. The server answers 403; the form does
- *     not offer the field at all rather than letting someone type into it and
- *     lose the edit.
- *   - `accountType` on an account that HAS sub-accounts. A child must share its
- *     parent's class, so reclassifying would break that for all of them at once.
- *     The server refuses with a 400 naming the count and asking for the children
- *     to be reparented first.
+ *   - `code` and `accountCategory` on a SEEDED account (`isDefault`). Every
+ *     posting module resolves its target by code — "credit 1201" — so
+ *     renumbering it or refiling it from persediaan to biaya would silently
+ *     redirect or corrupt every inventory entry in the tenant. The server
+ *     answers 403; the form does not offer the field at all rather than letting
+ *     someone change it and lose the edit.
+ *   - `accountCategory` on an account that HAS sub-accounts. A child must share
+ *     its parent's category, so refiling would break that for all of them at
+ *     once. The server refuses with a 400 naming the count and asking for the
+ *     children to be reparented first.
  *
- * THE PARENT LIST IS FILTERED TO WHAT THE SERVER WOULD ACCEPT — same class, not
- * itself, not one of its own descendants, and not already at the maximum depth.
- * Mirrored rather than tightened: a list that hid a parent the API would have
- * taken is as wrong as one that offers a parent it refuses.
+ * THE PARENT LIST IS FILTERED TO WHAT THE SERVER WOULD ACCEPT — same CATEGORY,
+ * not itself, not one of its own descendants, and not already at the maximum
+ * depth. Mirrored rather than tightened: a list that hid a parent the API would
+ * have taken is as wrong as one that offers a parent it refuses.
  */
 function AccountForm({
   account,
@@ -170,8 +189,15 @@ function AccountForm({
 
   const [code, setCode] = useState(account?.code ?? "");
   const [name, setName] = useState(account?.name ?? "");
-  const [accountType, setAccountType] = useState<AccountType>(
-    account?.accountType ?? "asset",
+  /**
+   * NO DEFAULT ON A CREATE. `useState<AccountCategory | "">("")` rather than
+   * seeding "cash_bank": a pre-picked category is a category somebody can leave
+   * unread, and this is the one field the whole change exists to make people
+   * think about. The picker shows a placeholder and the submit reports it as
+   * required, the way the code and name fields already do.
+   */
+  const [accountCategory, setAccountCategory] = useState<AccountCategory | "">(
+    account?.accountCategory ?? "",
   );
   const [parentId, setParentId] = useState(account?.parentAccountId ?? ROOT);
   const [businessLineId, setBusinessLineId] = useState(
@@ -182,6 +208,7 @@ function AccountForm({
   const [fieldErrors, setFieldErrors] = useState<{
     code?: string;
     name?: string;
+    accountCategory?: string;
   }>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -197,11 +224,11 @@ function AccountForm({
   );
 
   const codeFrozen = account?.isDefault === true;
-  const typeFrozen = account?.isDefault === true || hasChildren;
+  const categoryFrozen = account?.isDefault === true || hasChildren;
 
   const parentOptions = useMemo(
-    () => eligibleParents({ accounts, byId, accountType, self: account }),
-    [accounts, byId, accountType, account],
+    () => eligibleParents({ accounts, byId, accountCategory, self: account }),
+    [accounts, byId, accountCategory, account],
   );
 
   /**
@@ -232,7 +259,13 @@ function AccountForm({
     const nextParent = parentId === ROOT ? null : parentId;
     const nextLine = businessLineId === NO_LINE ? null : businessLineId;
 
-    const errors: { code?: string; name?: string } = {};
+    const errors: {
+      code?: string;
+      name?: string;
+      accountCategory?: string;
+    } = {};
+    if (accountCategory === "")
+      errors.accountCategory = "Kategori akun wajib dipilih.";
     if (nextCode === "") errors.code = "Kode akun wajib diisi.";
     else if (nextCode.length > CODE_MAX_LENGTH)
       errors.code = `Maksimal ${CODE_MAX_LENGTH} karakter.`;
@@ -243,7 +276,10 @@ function AccountForm({
     else if (nextName.length > NAME_MAX_LENGTH)
       errors.name = `Maksimal ${NAME_MAX_LENGTH} karakter.`;
 
-    if (errors.code || errors.name) {
+    // `accountCategory === ""` rather than `errors.accountCategory`, though they
+    // are set together: this spelling is what narrows the state to a real
+    // category for the rest of the function, so the create below needs no cast.
+    if (errors.code || errors.name || accountCategory === "") {
       setFieldErrors(errors);
       return;
     }
@@ -259,7 +295,8 @@ function AccountForm({
         const patch: Partial<ChartOfAccountPayload> = {};
         if (nextCode !== account.code) patch.code = nextCode;
         if (nextName !== account.name) patch.name = nextName;
-        if (accountType !== account.accountType) patch.accountType = accountType;
+        if (accountCategory !== account.accountCategory)
+          patch.accountCategory = accountCategory;
         if (nextParent !== account.parentAccountId)
           patch.parentAccountId = nextParent;
         if (isActive !== account.isActive) patch.isActive = isActive;
@@ -275,7 +312,8 @@ function AccountForm({
         await chartOfAccountsService.create({
           code: nextCode,
           name: nextName,
-          accountType,
+          // Narrowed by the guard above: the empty string cannot reach here.
+          accountCategory,
           parentAccountId: nextParent,
           businessLineId: nextLine,
         });
@@ -290,12 +328,29 @@ function AccountForm({
       // parent rules, the frozen-field guards — is about the form as a whole and
       // is shown verbatim, because the server's message names the account or the
       // count that explains what to do next.
-      if (error instanceof ApiError && error.status === 409) {
+      /*
+        A 409 used to mean one thing. It now means two, and they belong in
+        different places on the screen: a taken CODE is a fact about the field
+        somebody just typed, while a refused recategorisation is a fact about the
+        account's history that no field can restate. Told apart by whether the
+        code is the thing that moved — the server's own message names the account
+        and the entry count, so it is shown verbatim.
+      */
+      if (
+        error instanceof ApiError &&
+        error.status === 409 &&
+        (!editing || nextCode !== account.code)
+      ) {
         setFieldErrors({ code: `Kode ${nextCode} sudah dipakai akun lain.` });
       } else {
+        // `fullMessage`, not `message`: the refusals that reach this banner carry
+        // their explanation in `reason` — which account has how many journal
+        // entries, how many sub-accounts have to move first — and the message
+        // alone ("Cannot change the category of this account") says nothing a
+        // person can act on.
         setFormError(
           error instanceof ApiError
-            ? error.message
+            ? error.fullMessage
             : "Terjadi kesalahan. Coba lagi.",
         );
       }
@@ -350,38 +405,107 @@ function AccountForm({
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
+            {/*
+              THE FIELD THIS WHOLE CHANGE IS ABOUT. "Tipe akun" used to stand
+              here as five free choices; the class is now derived from what is
+              picked below and shown underneath as a consequence.
+
+              GROUPED BY CLASS, which is what makes fifteen options scannable:
+              somebody looking for where a vehicle goes reads down the Aset
+              group rather than down a flat list of fifteen.
+            */}
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="coa-type">
-                Tipe akun<span className="text-danger"> *</span>
+              <Label htmlFor="coa-category">
+                Kategori akun<span className="text-danger"> *</span>
               </Label>
               <Select
-                value={accountType}
-                onValueChange={(value) => setAccountType(value as AccountType)}
-                disabled={busy || typeFrozen}
+                value={accountCategory}
+                onValueChange={(value) => {
+                  setAccountCategory(value as AccountCategory);
+                  setFieldErrors((prev) => ({
+                    ...prev,
+                    accountCategory: undefined,
+                  }));
+                }}
+                disabled={busy || categoryFrozen}
               >
                 {/* w-full: the shadcn trigger defaults to `w-fit`, which is
                     right for a toolbar filter and wrong in a form. */}
                 <SelectTrigger
-                  id="coa-type"
-                  aria-label="Tipe akun"
+                  id="coa-category"
+                  aria-label="Kategori akun"
+                  aria-invalid={fieldErrors.accountCategory ? true : undefined}
                   className="w-full"
                 >
-                  <SelectValue />
+                  <SelectValue placeholder="Pilih kategori" />
                 </SelectTrigger>
                 <SelectContent>
-                  {ACCOUNT_TYPES.map((type) => (
-                    <SelectItem key={type} value={type}>
-                      {ACCOUNT_TYPE_LABEL[type]}
-                    </SelectItem>
-                  ))}
+                  {ACCOUNT_TYPES.map((type) => {
+                    const inClass = ACCOUNT_CATEGORIES.filter(
+                      (category) => accountTypeOf(category) === type,
+                    );
+
+                    return (
+                      <SelectGroup key={type}>
+                        <SelectLabel>{ACCOUNT_TYPE_LABEL[type]}</SelectLabel>
+                        {inClass.map((category) => (
+                          <SelectItem key={category} value={category}>
+                            {ACCOUNT_CATEGORY_LABEL[category]}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    );
+                  })}
                 </SelectContent>
               </Select>
+              {fieldErrors.accountCategory ? (
+                <p role="alert" className="text-xs font-medium text-danger">
+                  {fieldErrors.accountCategory}
+                </p>
+              ) : (
+                <p className="text-xs text-muted">
+                  {account?.isDefault
+                    ? "Akun bawaan: kategorinya menentukan ke mana uang mendarat dan di baris mana laporannya muncul, jadi tidak bisa diubah."
+                    : hasChildren
+                      ? "Akun ini punya sub-akun, dan sub-akun wajib sekategori induknya. Pindahkan sub-akunnya dulu kalau kategorinya mau diganti."
+                      : accountCategory === ""
+                        ? "Kategori menentukan di baris mana akun ini muncul di Laba Rugi atau Neraca."
+                        : ACCOUNT_CATEGORY_HINT[accountCategory]}
+                </p>
+              )}
+            </div>
+
+            {/*
+              THE CLASS, AS A CONSEQUENCE — read-only, and deliberately still on
+              screen. Hiding it would make a mis-picked category invisible until
+              a report came out wrong; one line here is what lets somebody catch
+              it while they are still looking at the form.
+
+              Rendered as text rather than a disabled input: a greyed-out field
+              reads as something that could be filled in under other
+              circumstances, and this one never can.
+            */}
+            <div className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium text-foreground">
+                Tipe akun
+              </span>
+              <div className="flex h-9 items-center text-sm text-foreground">
+                {accountCategory === "" ? (
+                  <span className="text-muted">
+                    Mengikuti kategori yang dipilih
+                  </span>
+                ) : (
+                  <span>
+                    {ACCOUNT_TYPE_LABEL[accountTypeOf(accountCategory)]} · saldo
+                    normal{" "}
+                    {normalBalanceOf(accountTypeOf(accountCategory)) === "debit"
+                      ? "Debit"
+                      : "Kredit"}
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-muted">
-                {account?.isDefault
-                  ? "Akun bawaan: tipenya menentukan ke mana uang mendarat, jadi tidak bisa diubah."
-                  : hasChildren
-                    ? "Akun ini punya sub-akun, dan sub-akun wajib setipe induknya. Pindahkan sub-akunnya dulu kalau tipenya mau diganti."
-                    : `Saldo normal ${normalBalanceOf(accountType) === "debit" ? "debit" : "kredit"} — ikut tipe, bukan pilihan tersendiri.`}
+                Ditentukan Buloo dari kategorinya, bukan pilihan tersendiri.
               </p>
             </div>
 
@@ -419,7 +543,9 @@ function AccountForm({
               <p className="text-xs text-muted">
                 {loadError
                   ? "Daftar akun gagal dimuat, jadi induk belum bisa dipilih. Akun tetap bisa dibuat tanpa induk."
-                  : `Hanya akun bertipe ${ACCOUNT_TYPE_LABEL[accountType].toLowerCase()} yang bisa jadi induk, maksimal ${MAX_DEPTH} tingkat.`}
+                  : accountCategory === ""
+                    ? `Pilih kategorinya dulu — induk wajib sekategori, maksimal ${MAX_DEPTH} tingkat.`
+                    : `Hanya akun berkategori ${ACCOUNT_CATEGORY_LABEL[accountCategory]} yang bisa jadi induk, maksimal ${MAX_DEPTH} tingkat.`}
               </p>
             </div>
 
@@ -508,8 +634,10 @@ function AccountForm({
  * chartOfAccounts.service.js), restated here so the common refusals never reach
  * the network:
  *
- *   1. same class — a parent's balance is the sum of its children's, and summing
- *      across classes produces a number that means nothing in any report;
+ *   1. same CATEGORY — a parent's balance is the sum of its children's, and
+ *      summing across categories produces a number that means nothing in any
+ *      report. Tightened from "same class" when categories landed: both are
+ *      assets, so the old rule let a vehicle file under cash;
  *   2. not itself, and 3. not one of its own descendants — either would detach
  *      the branch from the tree and make the ancestor walk never terminate;
  *   4. depth. `chain.length >= MAX_DEPTH` is what the server refuses, where the
@@ -524,14 +652,19 @@ function AccountForm({
 function eligibleParents({
   accounts,
   byId,
-  accountType,
+  accountCategory,
   self,
 }: {
   accounts: ChartOfAccount[];
   byId: Map<string, ChartOfAccount>;
-  accountType: AccountType;
+  /** "" while a create has no category yet — nothing can be a parent then. */
+  accountCategory: AccountCategory | "";
   self?: ChartOfAccount;
 }): { item: ChartOfAccount; depth: number }[] {
+  // No category, no rule to filter by: offering the whole chart would offer
+  // parents the server refuses the moment a category is picked.
+  if (accountCategory === "") return [];
+
   const blocked = new Set<string>();
   if (self) {
     blocked.add(self._id);
@@ -554,7 +687,10 @@ function eligibleParents({
   };
 
   return accounts
-    .filter((item) => item.accountType === accountType && !blocked.has(item._id))
+    .filter(
+      (item) =>
+        item.accountCategory === accountCategory && !blocked.has(item._id),
+    )
     .map((item) => ({ item, depth: depthOf(item) }))
     // `depth` is 0-based, so this is the 1-based chain length the server checks
     // against MAX_DEPTH: a parent at chain length 4 would put its child at 5.

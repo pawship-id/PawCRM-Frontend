@@ -26,6 +26,10 @@ export const ACCOUNTING_CRUMBS = {
     label: "Laba Rugi",
     href: "/dashboard/keuangan/laba-rugi",
   },
+  balanceSheet: {
+    label: "Neraca",
+    href: "/dashboard/keuangan/neraca",
+  },
   cashflow: {
     label: "Arus Kas",
     href: "/dashboard/keuangan/arus-kas",

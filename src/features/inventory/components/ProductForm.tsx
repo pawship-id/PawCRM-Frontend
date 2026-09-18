@@ -2442,7 +2442,7 @@ function ProductFormFields({
                 is whether they may skip it and whether skipping breaks
                 anything. */}
             Opsional — boleh dikosongkan. Kalau kosong, stok produk ini masuk ke
-            1201 Persediaan Barang Dagangan dan harga pokoknya ke 5101 HPP. Isi
+            1201 Persediaan Barang dan harga pokoknya ke 5101 HPP. Isi
             kalau produk ini perlu dipisah, misalnya perlengkapan hotel.
             {mode === "variants" && " Varian mengikuti setelan induk."}
           </p>

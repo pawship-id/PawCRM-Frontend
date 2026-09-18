@@ -24,7 +24,7 @@ import type {
 
 import {
   trendWindow,
-  CASH_ACCOUNT_CODES,
+  CASH_ACCOUNT_CATEGORY,
   type FinanceQuery,
   type Period,
 } from "../financeSummary";
@@ -396,7 +396,10 @@ export function useFinanceDashboard(
   );
 
   const cashAccounts = useMemo(
-    () => balances.filter((account) => CASH_CODES.has(account.code)),
+    () =>
+      balances.filter(
+        (account) => account.accountCategory === CASH_ACCOUNT_CATEGORY,
+      ),
     [balances],
   );
 
@@ -420,9 +423,7 @@ export function useFinanceDashboard(
   };
 }
 
-/**
- * A Set rather than the exported array, because this is a membership test run
- * once per account in the trial balance. Built from the same constant, so the
- * two cannot name different accounts.
- */
-const CASH_CODES = new Set(CASH_ACCOUNT_CODES);
+/*
+  The Set of cash CODES that used to live here is gone: membership is now a field
+  on the row (`accountCategory`), so there is nothing to look up.
+*/

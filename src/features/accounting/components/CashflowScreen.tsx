@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { ArrowDownLeft, ArrowUpRight, Landmark, Wallet } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-import { Alert, Breadcrumb } from "@/components";
+import { Alert, Breadcrumb, Spinner } from "@/components";
 import {
   Table,
   TableBody,
@@ -17,12 +17,15 @@ import { cn } from "@/lib/utils";
 import { absDecimal, formatMoney } from "@/utils/decimal";
 
 import { ACCOUNTING_CRUMBS } from "../crumbs";
-import { formatPercent, reportPresets, type FinanceQuery } from "../financeSummary";
 import {
-  cashflowReport,
-  FIXTURE_BRANCHES,
-  FIXTURE_PERIOD_LABEL,
-} from "../reportSummary";
+  currentMonthRange,
+  formatPercent,
+  reportPresets,
+  type FinanceQuery,
+} from "../financeSummary";
+import { useFinanceReport } from "../hooks/useFinanceReport";
+import { formatDate } from "../labels";
+import { cashflowReport } from "../reportSummary";
 import { FinanceReportToolbar } from "./FinanceReportToolbar";
 
 /**
@@ -39,29 +42,59 @@ import { FinanceReportToolbar } from "./FinanceReportToolbar";
  * retail. The dashboard's cash card already states the same thing, and offering a
  * filter that cannot narrow anything is how somebody ends up believing it did.
  *
- * THE FIGURES ARE CONTOH. `/journal-entries/balances` gives a position as of a
- * date — it has no lower bound, on purpose, because a balance is cumulative — so
- * Saldo Akhir could be real today but Saldo Awal, Inflow and Outflow could not:
- * those are movement over a period, and no endpoint returns them per account.
- * See ../data/reportFixtures.ts for what replaces what.
+ * THE FIGURES ARE REAL as of 18 September 2026, and the note here used to say
+ * why they could not be: `/journal-entries/balances` has no lower bound, on
+ * purpose, because a balance is cumulative — so Saldo Akhir could be real but
+ * Saldo Awal, Inflow and Outflow could not.
+ *
+ * WHAT CHANGED IS THE QUESTION, NOT THE ENDPOINT. Balances returns both SIDES of
+ * each account, cumulative, so READING IT TWICE — the day before the period, and
+ * its last day — gives the movement between them by subtraction. No third
+ * endpoint, and the two reads check each other: saldo awal + masuk − keluar
+ * comes out equal to the closing read's own balance.
+ *
+ * WHICH ACCOUNTS ARE "KAS" IS NOW A CATEGORY, not a pair of hardcoded codes.
+ * Both reads ask for `accountCategory: "cash_bank"`, so a tenant that adds
+ * "1105 Bank Mandiri" sees it here the day they create it.
  */
 export function CashflowScreen({ now }: { now: string }) {
   const today = useMemo(() => new Date(now), [now]);
 
-  const [query, setQuery] = useState<FinanceQuery>(() => ({
-    dateFrom: "",
-    dateTo: "",
-    branchId: "",
-    businessLineId: "",
-  }));
-
   const presets = useMemo(() => reportPresets(today), [today]);
-  const report = useMemo(() => cashflowReport(query.branchId), [query.branchId]);
+
+  // The current month. An open-ended period is a legal answer from the API and
+  // never the one somebody came for — and with no start there is no saldo awal
+  // to read, so every balance would show as movement.
+  const [query, setQuery] = useState<FinanceQuery>(() => {
+    const month = currentMonthRange(today);
+    return {
+      dateFrom: month.dateFrom,
+      dateTo: month.dateTo,
+      branchId: "",
+      businessLineId: "",
+    };
+  });
+
+  const { branches, cashflow, loading, error } = useFinanceReport(
+    "cashflow",
+    query,
+  );
+
+  const report = useMemo(
+    () => (cashflow ? cashflowReport(cashflow.opening, cashflow.closing) : null),
+    [cashflow],
+  );
 
   const branchLabel = query.branchId
-    ? (FIXTURE_BRANCHES.find((branch) => branch._id === query.branchId)?.name ??
+    ? (branches.find((branch) => branch._id === query.branchId)?.name ??
       "Cabang terpilih")
     : "Semua cabang";
+
+  /** The period as it reads on the card, taken from what was asked for. */
+  const periodLabel =
+    query.dateFrom && query.dateTo
+      ? `${formatDate(query.dateFrom)} – ${formatDate(query.dateTo)}`
+      : "Seluruh periode";
 
   return (
     <div className="flex flex-col gap-6">
@@ -77,21 +110,51 @@ export function CashflowScreen({ now }: { now: string }) {
         </p>
       </div>
 
-      <Alert variant="info">
-        <p className="font-semibold">Angka di halaman ini masih contoh.</p>
-        <p className="mt-0.5">
-          Belum terhubung ke jurnal umum. Filter cabang sudah bekerja di data
-          contoh ini; filter periode belum, karena datanya baru satu periode (
-          {FIXTURE_PERIOD_LABEL}).
-        </p>
-      </Alert>
+      {error && <Alert variant="error">{error}</Alert>}
 
       <FinanceReportToolbar
         query={query}
-        branches={FIXTURE_BRANCHES}
+        branches={branches}
         presets={presets}
+        disabled={loading}
         onChange={(patch) => setQuery((prev) => ({ ...prev, ...patch }))}
       />
+
+      {report === null && (
+        <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
+          <Spinner /> Memuat arus kas…
+        </div>
+      )}
+
+      {report !== null && (
+        <CashflowBody
+          report={report}
+          branchLabel={branchLabel}
+          periodLabel={periodLabel}
+          loading={loading}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * The cards and the table, split out so the screen above reads as "fetch, then
+ * show" rather than nesting the whole report inside a conditional.
+ */
+function CashflowBody({
+  report,
+  branchLabel,
+  periodLabel,
+  loading,
+}: {
+  report: NonNullable<ReturnType<typeof cashflowReport>>;
+  branchLabel: string;
+  periodLabel: string;
+  loading: boolean;
+}) {
+  return (
+    <div className={cn("flex flex-col gap-6", loading && "opacity-60")}>
 
       {/* The identity is printed, not merely obeyed: four figures that do not
           visibly add up are four figures somebody has to reverse-engineer. */}
@@ -138,7 +201,7 @@ export function CashflowScreen({ now }: { now: string }) {
         <div className="flex flex-wrap items-center gap-3 border-b border-border bg-surface-hover px-4 py-3">
           <h2 className="text-base font-bold">Rincian Akun Kas &amp; Bank</h2>
           <span className="text-xs tabular-nums text-muted">
-            {FIXTURE_PERIOD_LABEL} · {branchLabel}
+            {periodLabel} · {branchLabel}
           </span>
         </div>
 

@@ -789,7 +789,7 @@ export function OpeningStockForm() {
                 </p>
                 <p className="mt-1 text-xs text-muted">
                   Sejumlah ini akan menambah <b>Persediaan</b> dan{" "}
-                  <b>Modal / Saldo Awal</b>. Laba rugi tidak tersentuh.
+                  <b>Modal Disetor</b>. Laba rugi tidak tersentuh.
                 </p>
               </div>
             </div>

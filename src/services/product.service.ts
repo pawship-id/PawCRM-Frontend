@@ -133,7 +133,7 @@ export const productService = {
    * registered without one (201).
    *
    * SEPARATE FROM AN ADJUSTMENT, and the account is the whole reason: this
-   * posts `opening_balance`, which credits 3101 Modal / Saldo Awal. A manual
+   * posts `opening_balance`, which credits 3101 Modal Disetor. A manual
    * adjustment credits 5201 Kerugian Persediaan, which is right for goods that
    * vanished and absurd for a shop's day-one inventory.
    *

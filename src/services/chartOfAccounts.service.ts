@@ -40,6 +40,12 @@ export interface ChartOfAccountListQuery {
   search?: string;
   /** `income`, `asset`, … — narrows the list to one class. */
   accountType?: ChartOfAccount["accountType"];
+  /**
+   * The finer filter, and the one the screens use — `persediaan` rather than
+   * `asset`. Both are offered because they answer different questions: a
+   * payment channel wants any asset, a neraca section wants one category.
+   */
+  accountCategory?: ChartOfAccount["accountCategory"];
   isActive?: boolean;
 }
 
@@ -53,6 +59,7 @@ export interface ChartOfAccountListQuery {
  */
 export interface ChartOfAccountTreeQuery {
   accountType?: ChartOfAccount["accountType"];
+  accountCategory?: ChartOfAccount["accountCategory"];
   isActive?: boolean;
 }
 
@@ -71,7 +78,14 @@ export interface ChartOfAccountTreeQuery {
 export interface ChartOfAccountPayload {
   code: string;
   name: string;
-  accountType: ChartOfAccount["accountType"];
+  /**
+   * WHAT REPLACED `accountType` HERE, and the reason this interface changed at
+   * all: the class is derived on the server and no longer accepted in a body.
+   * Sending one is not an error — the backend's validation strips unknown keys
+   * — it simply has no effect, which is worse than a rejection to debug. So it
+   * is not on the type.
+   */
+  accountCategory: ChartOfAccount["accountCategory"];
   parentAccountId: string | null;
   /**
    * `null` is a VALUE here too — it is how the line is CLEARED, where omitting
@@ -105,6 +119,7 @@ export const chartOfAccountsService = {
         limit: Math.min(query.limit ?? MAX_PAGE_LIMIT, MAX_PAGE_LIMIT),
         search: query.search,
         accountType: query.accountType,
+        accountCategory: query.accountCategory,
         isActive: query.isActive,
       },
     }),
@@ -126,6 +141,7 @@ export const chartOfAccountsService = {
     apiClient.get<ChartOfAccountNode[]>("/chart-of-accounts/tree", {
       query: {
         accountType: query.accountType,
+        accountCategory: query.accountCategory,
         isActive: query.isActive,
       },
     }),
@@ -151,10 +167,16 @@ export const chartOfAccountsService = {
    * changes nothing as a client bug. Callers compare against the current values
    * and skip the request entirely when nothing moved.
    *
-   * On a SEEDED account (`isDefault`), `code` and `accountType` come back 403 —
-   * every posting resolves its target by code, so renumbering 1201 would
+   * On a SEEDED account (`isDefault`), `code` and `accountCategory` come back
+   * 403 — every posting resolves its target by code, so renumbering 1201 would
    * silently redirect every inventory entry in the tenant. `name`, `isActive`
    * and the parent stay editable.
+   *
+   * ONE MORE REFUSAL ON AN ORDINARY ACCOUNT: a 409 when the new category would
+   * change the CLASS of an account that already has journal lines. Moving
+   * `biaya` → `biaya_lainnya` is fine at any time; `biaya` → `pendapatan` is
+   * not, because the class decides the normal balance and every closed period
+   * would quietly change its answer.
    */
   update: (id: string, payload: Partial<ChartOfAccountPayload>) =>
     apiClient.patch<ChartOfAccount>(`/chart-of-accounts/${id}`, payload),
