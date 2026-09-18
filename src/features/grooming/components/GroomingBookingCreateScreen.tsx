@@ -1210,6 +1210,11 @@ export function GroomingBookingCreateScreen() {
           customerName={customer.name}
           open={addingPet}
           onOpenChange={setAddingPet}
+          /* Ukuran and Jenis bulu ARE the grooming price, so a pet added here
+             without them lands straight in `PetFixLink` and the booking it was
+             added for cannot be quoted. Ask while the animal is in front of
+             them. */
+          requireTraits
           onCreated={(pet) => {
             setAddingPet(false);
             setPetsNonce((n) => n + 1);
