@@ -80,7 +80,7 @@ export function GroomingBookingsTable({
 
   return (
     <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-      <Table className={cn("min-w-[1080px]", loading && "opacity-60")}>
+      <Table className={cn("min-w-270", loading && "opacity-60")}>
         <TableHeader>
           <TableRow>
             <TableHead className="w-12">
@@ -171,7 +171,7 @@ export function GroomingBookingsTable({
                     </span>
                   </TableCell>
 
-                  <TableCell className="max-w-[22rem] whitespace-normal">
+                  <TableCell className="max-w-88 whitespace-normal">
                     <span className="block text-sm font-semibold text-foreground">
                       {service.name}
                     </span>

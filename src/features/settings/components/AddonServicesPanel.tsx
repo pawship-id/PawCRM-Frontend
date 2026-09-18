@@ -293,7 +293,7 @@ export function AddonServicesPanel({
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-          <Table className={loading ? "min-w-[860px] opacity-60" : "min-w-[860px]"}>
+          <Table className={loading ? "min-w-215 opacity-60" : "min-w-215"}>
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[24%]">Nama</TableHead>

@@ -155,7 +155,7 @@ export function BookingSessionSteps({
                   {WORK[session.status].label}
                 </Badge>
 
-                <div className="min-w-[8rem] flex-1">
+                <div className="min-w-32 flex-1">
                   <p className="text-sm font-semibold text-foreground">
                     {session.sessionName}
                   </p>

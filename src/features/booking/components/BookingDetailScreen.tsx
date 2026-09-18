@@ -430,7 +430,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
       */}
       <Card>
         <div className="flex flex-wrap items-start gap-3">
-          <div className="min-w-[200px] flex-1">
+          <div className="min-w-50 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-extrabold tabular-nums text-foreground">
                 {/* A DRAFT HAS NO NUMBER — see the model. Saying so beats a blank. */}
@@ -510,7 +510,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
         </div>
 
         <div className="mt-5 flex flex-wrap items-center gap-4 border-t border-border pt-4">
-          <div className="min-w-[180px] flex-1">
+          <div className="min-w-45 flex-1">
             <p className="text-xs font-bold uppercase tracking-wide text-muted">
               Status sejak
             </p>
