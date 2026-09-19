@@ -16,13 +16,18 @@ import {
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
-import type { AccountCategory } from "@/types/accounting";
+import type { AccountCategory, AllocationType } from "@/types/accounting";
 
 import {
   DEFAULT_ACCOUNT_SORT,
   type AccountSort,
 } from "../accountSort";
 import { ACCOUNT_CATEGORIES, ACCOUNT_CATEGORY_LABEL } from "../labels";
+import {
+  allocationChoices,
+  needsNoAllocation,
+  type TenantShape,
+} from "../allocationLabels";
 import { ACCOUNTING_CRUMBS } from "../crumbs";
 import type { ChartOfAccountsQuery } from "./ChartOfAccountsScreen";
 
@@ -82,9 +87,41 @@ function categoryOptions(
   );
 }
 
+/** What the Tipe Alokasi field narrows by. */
+type AllocationFilter = AllocationType | "unmapped" | "";
+
+/**
+ * The Tipe Alokasi options, in the order the panel reads them.
+ *
+ * "Belum dipetakan" LEADS, above the three types, because it is the reason
+ * anybody opens this filter: it is the only value that answers a question with
+ * work attached ("what have we not mapped yet"), where the others answer a
+ * question about what is already set.
+ *
+ * The TYPES come from `allocationChoices`, not from the enum, so the list
+ * narrows with the tenant exactly as the picker in the row does — a single-line
+ * tenant is not offered a Direct filter that could never match anything.
+ */
+function allocationOptions(
+  shape: TenantShape,
+  unmappedCount: number,
+): FilterOption<AllocationFilter>[] {
+  return withAll<AllocationFilter>(
+    [
+      { value: "unmapped", label: "Belum dipetakan", count: unmappedCount },
+      ...allocationChoices(shape).map((choice) => ({
+        value: choice.value as AllocationFilter,
+        label: choice.label,
+      })),
+    ],
+    "Semua",
+  );
+}
+
 /** Everything the panel edits, as one draft. */
 interface AccountFilters {
   accountCategory: AccountCategory | "";
+  allocation: AllocationFilter;
   showInactive: boolean;
   sort: AccountSort;
 }
@@ -97,6 +134,7 @@ interface AccountFilters {
  */
 const CLEARED: AccountFilters = {
   accountCategory: "",
+  allocation: "",
   showInactive: false,
   sort: DEFAULT_ACCOUNT_SORT,
 };
@@ -105,6 +143,8 @@ export function ChartOfAccountsToolbar({
   query,
   countsByCategory,
   inactiveCount,
+  unmappedCount,
+  shape,
   onChange,
 }: {
   query: ChartOfAccountsQuery;
@@ -112,6 +152,10 @@ export function ChartOfAccountsToolbar({
   countsByCategory: Map<AccountCategory, number>;
   /** Shown on the toggle, so the cost of flipping it is visible first. */
   inactiveCount: number;
+  /** How many P&L accounts nobody has mapped — the count worth chasing. */
+  unmappedCount: number;
+  /** How many lines and branches the tenant runs; decides what is offered. */
+  shape: TenantShape;
   onChange: (patch: Partial<ChartOfAccountsQuery>) => void;
 }) {
   return (
@@ -154,10 +198,16 @@ export function ChartOfAccountsToolbar({
       <AccountFilterPanel
         applied={{
           accountCategory: query.accountCategory,
+          allocation: query.allocation,
           showInactive: query.showInactive,
           sort: query.sort,
         }}
         categoryOptions={categoryOptions(countsByCategory)}
+        allocationOptions={allocationOptions(shape, unmappedCount)}
+        // A tenant with one line and one branch has nothing to allocate, so the
+        // field is withheld rather than shown with options that all match
+        // nothing — see `needsNoAllocation`.
+        showAllocationFilter={!needsNoAllocation(shape)}
         inactiveCount={inactiveCount}
         onApply={onChange}
       />
@@ -176,11 +226,15 @@ export function ChartOfAccountsToolbar({
 function AccountFilterPanel({
   applied,
   categoryOptions,
+  allocationOptions,
+  showAllocationFilter,
   inactiveCount,
   onApply,
 }: {
   applied: AccountFilters;
   categoryOptions: FilterOption<AccountCategory | "">[];
+  allocationOptions: FilterOption<AllocationFilter>[];
+  showAllocationFilter: boolean;
   inactiveCount: number;
   onApply: (next: AccountFilters) => void;
 }) {
@@ -195,9 +249,11 @@ function AccountFilterPanel({
    * ignore the number, which is the one thing here that must stay worth
    * reading. Everything else the panel conceals IS counted.
    */
-  const count = [applied.accountCategory !== "", applied.showInactive].filter(
-    Boolean,
-  ).length;
+  const count = [
+    applied.accountCategory !== "",
+    applied.allocation !== "",
+    applied.showInactive,
+  ].filter(Boolean).length;
 
   function onOpenChange(next: boolean) {
     // Seeded on every open, so clicking away abandons the draft rather than
@@ -250,6 +306,18 @@ function AccountFilterPanel({
             setDraft((prev) => ({ ...prev, accountCategory }))
           }
         />
+        {showAllocationFilter && (
+          <FilterSelect
+            layout="field"
+            label="Tipe alokasi"
+            ariaLabel="Filter tipe alokasi"
+            value={draft.allocation}
+            options={allocationOptions}
+            onChange={(allocation) =>
+              setDraft((prev) => ({ ...prev, allocation }))
+            }
+          />
+        )}
         <FilterToggle
           label={`Tampilkan akun nonaktif (${inactiveCount})`}
           checked={draft.showInactive}

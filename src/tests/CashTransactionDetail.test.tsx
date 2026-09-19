@@ -147,6 +147,8 @@ describe("CashTransactionDetail — what it shows", () => {
             amount: "75000.0000",
             businessLineId: null,
             businessLineName: null,
+            allocationId: null,
+            allocationName: null,
             memo: "Agustus",
           },
         ],

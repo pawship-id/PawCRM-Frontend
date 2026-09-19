@@ -1,5 +1,9 @@
 import { apiClient } from "./api-client";
-import type { ChartOfAccount, ChartOfAccountNode } from "@/types/accounting";
+import type {
+  AccountAllocation,
+  ChartOfAccount,
+  ChartOfAccountNode,
+} from "@/types/accounting";
 import type { PageResult } from "@/types/api";
 
 /**
@@ -88,10 +92,18 @@ export interface ChartOfAccountPayload {
   accountCategory: ChartOfAccount["accountCategory"];
   parentAccountId: string | null;
   /**
-   * `null` is a VALUE here too — it is how the line is CLEARED, where omitting
-   * the key on a PATCH leaves it in place.
+   * The account's Detil Akun, sent AS A WHOLE LIST.
+   *
+   * `[]` is a VALUE — it clears every rule and returns the account to Belum
+   * Dipetakan — where omitting the key on a PATCH leaves the rules alone, which
+   * is what an ordinary rename has to do. Both are requests somebody makes, so
+   * they cannot share a spelling.
+   *
+   * Keep the `_id` on a rule that already has one: it is how the server tells a
+   * rename from a delete-and-recreate, and a rule journal entries name cannot be
+   * recreated (409).
    */
-  businessLineId: string | null;
+  allocations?: AccountAllocation[];
   /** Defaults to true on the server — for a chart imported ahead of go-live. */
   isActive?: boolean;
 }

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { Alert, Spinner, TextField } from "@/components";
+import { Alert, CheckRow, CheckRowGroup, Spinner, TextField } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -17,6 +17,14 @@ import { ApiError } from "@/services/api-error";
 import { businessLineService } from "@/services/businessLine.service";
 import type { BusinessLine } from "@/services/businessLine.service";
 import { swalToast } from "@/lib/swal";
+import { useAllocationTargets } from "../hooks/useAllocationTargets";
+
+/** Order-insensitive comparison of two id lists. */
+function sameIds(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) return false;
+  const seen = new Set(right);
+  return left.every((id) => seen.has(id));
+}
 
 /** Backend cap — NAME_MAX_LENGTH in businessLine.model.js. */
 const NAME_MAX_LENGTH = 60;
@@ -65,8 +73,18 @@ export function BusinessLineFormDialog({
 }) {
   const editing = line !== undefined;
 
+  /**
+   * The branches this line can be marked as running at.
+   *
+   * Reused from the chart of accounts rather than fetched again: it is the same
+   * two lists, and it fails softly the same way — a refused `branches:read`
+   * leaves the section out rather than blocking a rename.
+   */
+  const { branches } = useAllocationTargets();
+
   const [name, setName] = useState(line?.name ?? "");
   const [color, setColor] = useState(line?.color ?? DEFAULT_COLOR);
+  const [branchIds, setBranchIds] = useState<string[]>(line?.branchIds ?? []);
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -93,7 +111,12 @@ export function BusinessLineFormDialog({
     // closes instead of asking the server to do nothing.
     const renamed = editing && trimmed !== line.name;
     const recoloured = editing && color !== line.color;
-    if (editing && !renamed && !recoloured) {
+    // Compared as SETS, not as arrays: ticking a box and unticking it leaves a
+    // different order and the same meaning, and a PATCH for that would be a
+    // write nobody asked for.
+    const remapped =
+      editing && !sameIds(branchIds, line.branchIds ?? []);
+    if (editing && !renamed && !recoloured && !remapped) {
       onClose();
       return;
     }
@@ -107,9 +130,10 @@ export function BusinessLineFormDialog({
         await businessLineService.update(line._id, {
           ...(renamed ? { name: trimmed } : {}),
           ...(recoloured ? { color } : {}),
+          ...(remapped ? { branchIds } : {}),
         });
       } else {
-        await businessLineService.create({ name: trimmed, color });
+        await businessLineService.create({ name: trimmed, color, branchIds });
       }
       onSaved();
       swalToast(
@@ -190,6 +214,40 @@ export function BusinessLineFormDialog({
               Dipakai untuk menandai lini ini di laporan laba rugi.
             </p>
           </div>
+
+          {/* Left out entirely when there is one branch — a checklist with one
+              box that means the same thing ticked or not is a question with no
+              answer. */}
+          {branches.length > 1 && (
+            <div className="flex flex-col gap-1.5">
+              <Label>Cabang yang menjalankan lini ini</Label>
+              <p className="text-xs text-muted">
+                Dipakai untuk membagi beban bersama: biaya yang dialokasikan
+                Shared-Lokasi hanya masuk ke lini-lini yang aktif di cabang
+                tempat transaksinya dicatat.{" "}
+                <span className="font-medium text-foreground">
+                  Kosongkan semua kalau lini ini ada di semua cabang.
+                </span>
+              </p>
+              <CheckRowGroup className="rounded-xl border border-border px-3">
+                {branches.map((branch) => (
+                  <CheckRow
+                    key={branch._id}
+                    label={branch.name}
+                    checked={branchIds.includes(branch._id)}
+                    disabled={busy}
+                    onCheckedChange={(checked) =>
+                      setBranchIds((previous) =>
+                        checked
+                          ? [...previous, branch._id]
+                          : previous.filter((id) => id !== branch._id),
+                      )
+                    }
+                  />
+                ))}
+              </CheckRowGroup>
+            </div>
+          )}
 
           <DialogFooter>
             <Button

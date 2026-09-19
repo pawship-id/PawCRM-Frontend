@@ -203,7 +203,7 @@ describe("CashTransactionEditDialog — saving", () => {
         accountType: "expense",
         accountCategory: "biaya",
         parentAccountId: null,
-        businessLineId: null,
+        allocations: [],
         isDefault: false,
         isActive: true,
         children: [],
@@ -230,6 +230,8 @@ describe("CashTransactionEditDialog — saving", () => {
             amount: "75000.0000",
             businessLineId: null,
             businessLineName: null,
+            allocationId: null,
+            allocationName: null,
             memo: null,
           },
         ],
@@ -248,7 +250,15 @@ describe("CashTransactionEditDialog — saving", () => {
 
     await waitFor(() =>
       expect(cashTransactionService.update).toHaveBeenCalledWith("ct1", {
-        lines: [{ accountId: "acc-listrik", amount: "80000", businessLineId: null }],
+        // `allocationId: null` — the account carries no Detil Akun to pick from.
+        lines: [
+          {
+            accountId: "acc-listrik",
+            amount: "80000",
+            businessLineId: null,
+            allocationId: null,
+          },
+        ],
       }),
     );
   });

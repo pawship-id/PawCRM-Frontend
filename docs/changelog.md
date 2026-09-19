@@ -7,6 +7,71 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Daftar Akun: Aturan Alokasi
+
+19 September 2026, dari mockup BO `buloo-daftar-akun-v1`.
+
+- **Daftar Akun jadi tabel datar berhalaman**, bukan pohon bergrup 15 kategori.
+  Alasannya satu: baris sekarang bisa dibuka untuk mengedit Detil Akun-nya, dan chevron
+  kedua yang melipat sub-akun akan jadi dua kontrol yang bentuknya identik dan kerjanya
+  tidak berhubungan. Hirarkinya bertahan sebagai **indentasi** kolom Kode — satu-satunya
+  hal yang pohon itu tunjukkan. Judul kategori ikut hilang karena grup yang terpotong
+  batas halaman lebih membingungkan daripada tidak ada grup; kategorinya tetap sebagai
+  kolom dan filter.
+- **Kolom Aturan Alokasi** dengan panel edit di dalam barisnya — nama detil, tipe
+  alokasi, lini, cabang, dan switch Aktif.
+  - **Panelnya draf, ada Simpan dan Batal** — ini satu-satunya tempat yang sengaja beda
+    dari mockup, yang menulis tiap ketikan. Aturannya divalidasi satu sama lain (tidak
+    boleh dua yang menuju segmen sama, tidak boleh dua yang senama), jadi daftar yang
+    setengah diketik adalah daftar yang memang ditolak server.
+  - **Satu baris terbuka pada satu waktu**: dua draf terbuka adalah dua draf yang bisa
+    dilupakan, dan Simpan yang kedua akan terlihat seperti menyimpan keduanya.
+  - Tiga keadaan yang sengaja dibedakan: **Tidak berlaku** (akun neraca), **Tidak perlu
+    alokasi** (tenant 1 lini 1 cabang), dan **Belum dipetakan** — badge oranye, satu-
+    satunya hal oranye di layar ini, karena §4: oranye berarti ada yang harus dikerjakan.
+- **Pilihannya menyusut mengikuti bentuk tenant**, dengan kalimat penjelas: 1 lini →
+  Direct disembunyikan; 1 cabang → Shared-Lokasi & Shared-Overall digabung jadi
+  "Shared"; 1 lini + 1 cabang → kolomnya berbunyi "Tidak perlu alokasi". Satu jalur
+  kode, cuma daftar pilihannya yang lebih pendek (`allocationLabels.ts`).
+- **"Nonaktifkan akun" / "Aktifkan akun" jadi baris di menu Aksi.** Menonaktifkan akun
+  adalah edit yang paling sering dilakukan di layar ini dan dulu perlu satu page load,
+  satu form dan satu save. Tidak ada yang hilang saat dinonaktifkan, jadi tidak pakai
+  dialog konfirmasi — baris menu yang sama membatalkannya.
+  - **Bukan di badge statusnya**, walau itu satu klik lebih cepat. Badge yang bisa
+    ditekan tidak bisa dibedakan dari badge yang cuma melaporkan, jadi membaca kolom
+    Status jadi sesuatu yang bisa merusak kalau salah pencet. Baris menu bernama
+    mengatakan apa yang akan terjadi sebelum terjadi.
+  - **Menonaktifkan ikut menyalakan filter "Tampilkan akun nonaktif" kalau sedang mati.**
+    Tanpa itu baris yang baru saja diubah lenyap persis saat diubah — membawa serta
+    satu-satunya cara membatalkannya, tanpa ada yang memberi tahu bahwa filternya
+    penyebabnya. Badge `Filter (n)` ikut naik dan toast-nya menyebutkannya.
+- **Filter Tipe Alokasi** di panel, dengan "Belum dipetakan" memimpin daftarnya — itu
+  satu-satunya nilai yang menjawab pertanyaan dengan pekerjaan di belakangnya.
+- **Field "Lini bisnis" hilang dari form akun.** Pemetaannya pindah ke daftar; akun
+  Pendapatan/Beban baru lahir Belum Dipetakan.
+- **Transaksi Keuangan: kolom Detil akun** di baris beban/pendapatan. Terpilih otomatis
+  kalau akunnya cuma punya satu; **Lini bisnis tidak lagi diisi otomatis dari akun** —
+  baris yang menyebut lininya sendiri dianggap final oleh laporan dan mendarat utuh di
+  cabang jurnalnya, sementara aturan `direct` tanpa cabang justru dibagi. Mengisinya
+  otomatis akan diam-diam membatalkan aturan yang jadi sumbernya.
+- **Lini Bisnis: checklist cabang** — dipakai `shared_lokasi`. Kosongkan semua berarti
+  lini ini ada di semua cabang, dan itu dikatakan di layar.
+- **Laba Rugi: switch "Bagikan beban bersama ke tiap lini".** Bukan filter — tidak
+  mengubah entri mana yang dibaca, tapi entri yang sama dilaporkan sebagai apa — jadi
+  tempatnya di luar toolbar dan berlaku saat diklik, supaya dua jawabannya bisa
+  dibandingkan bolak-balik. Default mati. Ada peringatan di laporan kalau sebagian
+  pembagian jatuh ke bagi-rata.
+
+**Dua hal dari mockup yang tidak diambil, karena `docs/ui-rules.md` mengikat:** sort
+dengan klik header (§8: "Sorting is a field in the panel, not a control of its own") —
+tetap di panel filter; dan modal Tambah/Edit akun (§16 menyebut Akun sebagai Form
+Entitas, satu halaman dengan FormActionBar) — tetap halaman `/new` dan `/[id]/edit`.
+Kolom **Sumber** ("Bawaan sistem") dipadatkan jadi ikon gembok di sebelah kode, bukan
+dibuang: tabelnya tetap lima kolom seperti mockup, tapi tetap ada yang memberi tahu akun
+mana yang kodenya terkunci sebelum server menolak mengubahnya.
+
+---
+
 ## [Unreleased] — Hari Ini: papan harian semua layanan
 
 16 September 2026, atas permintaan. Dari mockup `buloo-hari-ini-v1.html`.

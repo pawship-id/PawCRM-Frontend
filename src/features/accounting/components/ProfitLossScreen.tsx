@@ -4,6 +4,8 @@ import { Fragment, useMemo, useState } from "react";
 import { ChevronRight } from "lucide-react";
 
 import { Alert, Breadcrumb, Spinner } from "@/components";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 // The shadcn button directly, for `size="sm"` — the app-facing wrapper in
 // @/components does not carry a size prop. Same import JournalEntriesScreen makes.
 import { Button } from "@/components/ui/button";
@@ -84,6 +86,10 @@ export function ProfitLossScreen({ now }: { now: string }) {
       dateTo: month.dateTo,
       branchId: "",
       businessLineId: "",
+      // OFF. The undivided report is what every previous month was read as, so
+      // it stays what the screen opens on — the toggle is how somebody asks the
+      // other question, side by side with the answer they already know.
+      allocation: false,
     };
   });
 
@@ -138,6 +144,44 @@ export function ProfitLossScreen({ now }: { now: string }) {
       </div>
 
       {error && <Alert variant="error">{error}</Alert>}
+
+      {/*
+        THE ONE CONTROL ON THIS SCREEN THAT IS NOT A FILTER, which is why it does
+        not live in the toolbar (§8 is about narrowing a list). It does not change
+        WHICH entries are read — it changes what the same entries are reported as,
+        and the two answers are meant to be compared. Applying on the switch, with
+        no Terapkan, is what makes the comparison a flick back and forth.
+      */}
+      <div className="flex flex-wrap items-start gap-3 rounded-xl border border-border bg-surface p-4">
+        <Switch
+          id="pl-allocation"
+          checked={query.allocation === true}
+          disabled={loading}
+          onCheckedChange={(allocation) =>
+            setQuery((prev) => ({ ...prev, allocation }))
+          }
+        />
+        <div className="min-w-0 flex-1">
+          <Label htmlFor="pl-allocation">Bagikan beban bersama ke tiap lini</Label>
+          <p className="mt-1 text-xs text-muted">
+            {query.allocation
+              ? "Sewa, marketing dan gaji kantor dibagi ke tiap lini mengikuti Aturan Alokasi di Daftar Akun, sesuai porsi pendapatan periode ini. Kolom Bersama menyisakan akun yang belum dipetakan."
+              : "Beban yang tidak terikat satu lini tetap utuh di kolom Bersama — sama seperti laporan bulan-bulan sebelumnya."}
+          </p>
+        </div>
+      </div>
+
+      {/*
+        A figure that rests on an equal split rather than on trade. Said here, on
+        the report, rather than only in a tooltip: somebody who prints this page
+        has to be able to see that one of its numbers is an estimate.
+      */}
+      {profitLoss?.allocation?.estimated && (
+        <Alert variant="warning">
+          Sebagian pembagian dibagi rata, bukan sesuai porsi pendapatan — ada
+          segmen yang belum membukukan pendapatan apa pun di periode ini.
+        </Alert>
+      )}
 
       <FinanceReportToolbar
         query={query}

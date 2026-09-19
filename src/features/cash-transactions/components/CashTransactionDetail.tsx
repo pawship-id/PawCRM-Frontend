@@ -358,6 +358,13 @@ function DocumentLink({
 /** What an expense became, or where other income came from — one row per account. */
 function LinesCard({ transaction }: { transaction: CashTransaction }) {
   const lines = transaction.lines ?? [];
+  /*
+    The Detil Akun column appears only when something on THIS transaction has
+    one. A column of em dashes over every row of every old transaction would
+    teach people to ignore the column, and nothing posted before allocation
+    existed carries a detil.
+  */
+  const anyAllocation = lines.some((line) => line.allocationId);
 
   return (
     <Card title={transaction.kind === "expense" ? "Akun beban" : "Akun pendapatan"}>
@@ -366,6 +373,7 @@ function LinesCard({ transaction }: { transaction: CashTransaction }) {
           <TableHeader>
             <TableRow>
               <TableHead>Akun</TableHead>
+              {anyAllocation && <TableHead>Detil akun</TableHead>}
               <TableHead>Lini bisnis</TableHead>
               <TableHead>Memo</TableHead>
               <TableHead className="text-right">Jumlah</TableHead>
@@ -378,6 +386,16 @@ function LinesCard({ transaction }: { transaction: CashTransaction }) {
                   <span className="tabular-nums">{line.accountCode ?? ""}</span>{" "}
                   {line.accountName ?? "Akun tidak aktif"}
                 </TableCell>
+                {anyAllocation && (
+                  <TableCell className="text-sm">
+                    {/* The id rather than nothing when the rule cannot be named:
+                        it is unreachable through the API (the chart refuses to
+                        delete a rule an entry names) but it is what a direct
+                        database edit would look like, and silence there would
+                        read as "no detil". */}
+                    {line.allocationName ?? (line.allocationId ? "—" : "")}
+                  </TableCell>
+                )}
                 <TableCell className="text-sm">
                   {line.businessLineName ??
                     (line.businessLineId ? "—" : SHARED_LINE_LABEL)}
@@ -391,7 +409,10 @@ function LinesCard({ transaction }: { transaction: CashTransaction }) {
               </TableRow>
             ))}
             <TableRow className="hover:bg-transparent">
-              <TableCell colSpan={3} className="text-sm font-semibold">
+              <TableCell
+                colSpan={anyAllocation ? 4 : 3}
+                className="text-sm font-semibold"
+              >
                 Total
               </TableCell>
               <TableCell className="text-right text-sm font-bold tabular-nums">

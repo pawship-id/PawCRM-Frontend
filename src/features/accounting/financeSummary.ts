@@ -87,6 +87,15 @@ export interface FinanceQuery {
   branchId: string;
   /** `""` = every line, which is when `byBusinessLine` is worth reading. */
   businessLineId: string;
+  /**
+   * Laba rugi only: divide the shared costs across the lines using the
+   * allocation rules on each account.
+   *
+   * OFF BY DEFAULT. The undivided report is the one every previous month was
+   * read as, so it stays the thing the screen opens on and the toggle is how
+   * somebody asks the other question.
+   */
+  allocation?: boolean;
 }
 
 /* ------------------------------------------------------------------ helpers */

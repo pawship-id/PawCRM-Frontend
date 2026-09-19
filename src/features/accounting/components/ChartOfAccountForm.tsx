@@ -27,7 +27,6 @@ import type { AccountCategory, ChartOfAccount } from "@/types/accounting";
 import { accountTypeOf, normalBalanceOf } from "@/types/accounting";
 
 import { useChartOfAccounts } from "../hooks/useChartOfAccounts";
-import { useBusinessLines } from "../hooks/useBusinessLines";
 import {
   ACCOUNT_CATEGORIES,
   ACCOUNT_CATEGORY_HINT,
@@ -49,13 +48,6 @@ const MAX_DEPTH = 4;
  * there is a real value meaning "top of the tree", not an omission.
  */
 const ROOT = "root";
-
-/**
- * "No line" — the same sentinel dance `ROOT` does above, and for the same
- * reason: Radix Select forbids `value=""`, and null is a real answer here rather
- * than an absence of one.
- */
-const NO_LINE = "__none__";
 
 const LIST_HREF = ACCOUNTING_CRUMBS.accounts.href;
 
@@ -177,16 +169,6 @@ function AccountForm({
   const router = useRouter();
   const editing = account !== undefined;
 
-  /**
-   * The lines this account may belong to.
-   *
-   * READ HERE RATHER THAN PASSED IN, unlike the chart: both wrappers would have
-   * to fetch it and hand it down identically, and nothing else in either uses
-   * it. A failed read degrades to an empty picker with a note — an account saves
-   * perfectly well without a line, and `businessLines:read` is its own grant.
-   */
-  const { lines: businessLines } = useBusinessLines();
-
   const [code, setCode] = useState(account?.code ?? "");
   const [name, setName] = useState(account?.name ?? "");
   /**
@@ -200,9 +182,6 @@ function AccountForm({
     account?.accountCategory ?? "",
   );
   const [parentId, setParentId] = useState(account?.parentAccountId ?? ROOT);
-  const [businessLineId, setBusinessLineId] = useState(
-    account?.businessLineId ?? NO_LINE,
-  );
   const [isActive, setIsActive] = useState(account?.isActive ?? true);
 
   const [fieldErrors, setFieldErrors] = useState<{
@@ -257,7 +236,6 @@ function AccountForm({
     const nextCode = code.trim().toUpperCase();
     const nextName = name.trim();
     const nextParent = parentId === ROOT ? null : parentId;
-    const nextLine = businessLineId === NO_LINE ? null : businessLineId;
 
     const errors: {
       code?: string;
@@ -300,8 +278,6 @@ function AccountForm({
         if (nextParent !== account.parentAccountId)
           patch.parentAccountId = nextParent;
         if (isActive !== account.isActive) patch.isActive = isActive;
-        if (nextLine !== (account.businessLineId ?? null))
-          patch.businessLineId = nextLine;
 
         if (Object.keys(patch).length === 0) {
           router.push(LIST_HREF);
@@ -315,7 +291,11 @@ function AccountForm({
           // Narrowed by the guard above: the empty string cannot reach here.
           accountCategory,
           parentAccountId: nextParent,
-          businessLineId: nextLine,
+          // NO ALLOCATION RULES FROM HERE. A new Pendapatan or Beban account is
+          // born "Belum Dipetakan" and is mapped in the list, inside its own
+          // row — the rules are validated against each other and against the
+          // tenant's lines, which is a second thing to get wrong while creating
+          // the account itself.
         });
       }
 
@@ -549,47 +529,6 @@ function AccountForm({
               </p>
             </div>
 
-            {/*
-              THE LINE OF BUSINESS, asked here because this is where the tenant
-              knows the answer: naming it on "5102 HPP Grooming" says it once for
-              everything that ever lands there. Empty is ordinary — rent and the
-              electricity bill belong to no single line.
-            */}
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="coa-business-line">Lini bisnis</Label>
-              <Select
-                value={businessLineId}
-                onValueChange={setBusinessLineId}
-                disabled={busy || businessLines.length === 0}
-              >
-                <SelectTrigger
-                  id="coa-business-line"
-                  aria-label="Lini bisnis"
-                  className="w-full"
-                >
-                  <SelectValue
-                    placeholder={
-                      businessLines.length === 0
-                        ? "Belum ada lini bisnis"
-                        : "Tanpa lini bisnis"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NO_LINE}>Tanpa lini bisnis</SelectItem>
-                  {businessLines.map((line) => (
-                    <SelectItem key={line._id} value={line._id}>
-                      {line.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted">
-                {businessLines.length === 0
-                  ? "Buat lini bisnisnya dulu di Keuangan → Lini Bisnis."
-                  : "Menandai akun ini milik unit usaha mana. Kosongkan untuk yang dipakai bersama, misalnya listrik atau sewa."}
-              </p>
-            </div>
           </div>
 
           {editing && (

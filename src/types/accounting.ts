@@ -97,6 +97,72 @@ export const CATEGORY_ACCOUNT_TYPE: Record<AccountCategory, AccountType> = {
  */
 export type NormalBalance = "debit" | "credit";
 
+/**
+ * THE FIVE CATEGORIES A LABA RUGI IS MADE OF, in the order it is read — mirrors
+ * PROFIT_LOSS_CATEGORIES in the backend model.
+ *
+ * Doubles as the answer to "may this account carry allocation rules", which is
+ * the same question: an account that does not appear on the laba rugi has no
+ * per-line column to be divided into, and the server refuses rules on one.
+ */
+export const PROFIT_LOSS_CATEGORIES: readonly AccountCategory[] = [
+  "pendapatan",
+  "hpp",
+  "biaya",
+  "pendapatan_lainnya",
+  "biaya_lainnya",
+];
+
+/** Whether this account's amounts can be mapped to a line at all. */
+export function isProfitLossAccount(category: AccountCategory): boolean {
+  return PROFIT_LOSS_CATEGORIES.includes(category);
+}
+
+/**
+ * How one Detil Akun reaches a business line. Mirrors ALLOCATION_TYPES in the
+ * backend model.
+ *
+ *   direct         — one named line. A branch may pin it further; without one it
+ *                    is split across every branch running that line, weighted by
+ *                    what each earned.
+ *   shared_lokasi  — the lines active at the branch the entry was posted in.
+ *   shared_overall — the whole company.
+ *
+ * The two shared kinds only differ for a tenant with more than one branch; with
+ * one, they divide the same set and the screen offers a single "Shared". That is
+ * a LABEL rule and not a data rule — both values stay storable, so a tenant that
+ * opens a second branch keeps what it set.
+ */
+export type AllocationType = "direct" | "shared_lokasi" | "shared_overall";
+
+/**
+ * ONE ALLOCATION RULE — a "Detil Akun" on a Pendapatan or Beban account.
+ *
+ * `_id` IS WHAT MAKES THE LIST EDITABLE rather than merely replaceable. A save
+ * sends the whole array; a rule that goes back carrying the id it was read with
+ * is the SAME rule renamed or repointed, and one without an id is new. Drop it
+ * and every save mints fresh ids, orphaning the journal lines that name them —
+ * which the server then refuses, so this is not a silent mistake, just an
+ * unexplainable one.
+ */
+export interface AccountAllocation {
+  /** Absent on a rule the user has just added and not yet saved. */
+  _id?: string;
+  /** What a person picks from when recording a cost: "Gaji - Grooming Pusat". */
+  name: string;
+  allocationType: AllocationType;
+  /** Required when `direct`, always null otherwise. */
+  businessLineId: string | null;
+  /** Only on `direct`. Null means every branch that runs the line. */
+  branchId: string | null;
+  /**
+   * Retired rather than removed. A rule journal entries already name cannot be
+   * deleted — the entries are immutable and would be left pointing at nothing —
+   * so this is what takes it off the pickers while keeping history explicable.
+   */
+  isActive: boolean;
+}
+
 /** One account in the tenant's chart of accounts. */
 export interface ChartOfAccount {
   _id: string;
@@ -116,14 +182,28 @@ export interface ChartOfAccount {
   /** Parent in the hierarchy, or null for a root. Max 4 levels deep. */
   parentAccountId: string | null;
   /**
-   * The line of business postings against this account belong to, or null.
+   * HOW THIS ACCOUNT'S AMOUNTS REACH A BUSINESS LINE — its Detil Akun.
    *
-   * ASKED HERE because the chart is where a tenant knows the answer: naming the
-   * line on "5102 HPP Grooming" says it once for everything that ever lands
-   * there. Null is ordinary rather than missing — rent and the electricity bill
-   * belong to no single line.
+   * Replaces a single `businessLineId`, which could say "everything here is
+   * grooming's" and nothing else. One account routinely serves several segments
+   * at once: Beban Gaji carries groomers belonging to one line outright and
+   * admin staff belonging to the company as a whole, and the old shape had to
+   * record the second as "no line" — where it fell into the shared bucket of
+   * every report and stayed there.
+   *
+   * EMPTY FOR TWO DIFFERENT REASONS the screen must not blur: an account that is
+   * not on the laba rugi can never have rules (check `isProfitLossAccount`
+   * first), and one that is has simply not been mapped yet — which reads as
+   * "Belum Dipetakan" and is the thing somebody has to act on.
+   *
+   * OPTIONAL, AND ABSENT IS NOT THE SAME AS EMPTY on the wire: an account
+   * written before this field existed and not yet touched by
+   * `backfillAccountAllocations` carries no key at all. Every reader spells
+   * `allocations ?? []` for that reason — the two cases mean the same thing to a
+   * screen, and pretending the field is guaranteed is how a chart that has not
+   * been migrated yet throws instead of rendering.
    */
-  businessLineId: string | null;
+  allocations?: AccountAllocation[];
   /** True for accounts written by the per-tenant seed — undeletable. */
   isDefault: boolean;
   /** Whether the account may be picked for NEW postings. */

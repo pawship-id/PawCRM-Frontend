@@ -6298,6 +6298,15 @@ export interface CashTransactionLine {
   amount: string;
   businessLineId: string | null;
   businessLineName: string | null;
+  /**
+   * Which Detil Akun of `accountId` this line was booked to, and its name.
+   *
+   * Null whenever the account carries no rules to choose from, which is every
+   * line written before allocation existed — the laba rugi reads those as the
+   * shared bucket they always were.
+   */
+  allocationId: string | null;
+  allocationName: string | null;
   memo: string | null;
 }
 
@@ -6454,6 +6463,8 @@ export interface CashTransactionLineInput {
   accountId: string;
   amount: string;
   businessLineId?: string | null;
+  /** Must name a live rule OF `accountId` — the server checks the pairing. */
+  allocationId?: string | null;
   memo?: string;
 }
 

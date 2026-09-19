@@ -278,6 +278,20 @@ export interface ProfitLossGroup extends ProfitLossRow {
  */
 export interface ProfitLossResult {
   period: { dateFrom: string | null; dateTo: string | null; timezone: string };
+  /**
+   * Whether the shared costs were divided across the lines, and whether any of
+   * that division was a guess.
+   *
+   * REPORTED RATHER THAN IMPLIED: the same period answers differently with
+   * `applied` on, and a reader who cannot tell which one is on screen cannot
+   * reconcile either against anything. `estimated` is true when at least one
+   * figure rests on an EQUAL split because the segments it was divided across
+   * earned nothing in the period — the split had to land somewhere, and saying
+   * so is the difference between a measurement and a guess presented as one.
+   *
+   * Optional so a response from a server that predates allocation still parses.
+   */
+  allocation?: { applied: boolean; estimated: boolean };
   accounts: ProfitLossAccount[];
   categories: ProfitLossGroup[];
   results: {
@@ -296,6 +310,8 @@ export interface ProfitLossResult {
  * line as its own column.
  */
 export interface ProfitLossQuery {
+  /** Divide the shared costs across the lines. Defaults to false on the server. */
+  allocation?: boolean;
   dateFrom?: string;
   dateTo?: string;
   branchId?: string;
@@ -452,6 +468,9 @@ export const journalEntryService = {
         dateTo: query.dateTo,
         branchId: query.branchId,
         businessLineId: query.businessLineId,
+        // Sent only when ON: the server defaults it to false, and a `false` on
+        // the URL of every read would be a parameter that never means anything.
+        allocation: query.allocation ? true : undefined,
       },
     }),
 

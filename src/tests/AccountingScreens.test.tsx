@@ -84,7 +84,7 @@ function node(
     isActive = true,
     isDefault = false,
     parentAccountId = null,
-    businessLineId = null,
+    allocations = [],
   }: Partial<ChartOfAccountNode> = {},
 ): ChartOfAccountNode {
   return {
@@ -94,7 +94,7 @@ function node(
     accountCategory,
     accountType: accountTypeOf(accountCategory),
     parentAccountId,
-    businessLineId,
+    allocations,
     isDefault,
     isActive,
     children: children.map((child) => ({ ...child, parentAccountId: code })),
@@ -136,6 +136,29 @@ function chart(): ChartOfAccountNode[] {
         node("5401", "Beban Penyusutan", "biaya", { isActive: false }),
       ],
     }),
+    // A mapped expense, so the Aturan Alokasi column has all three of its states
+    // on one screen: this one, the unmapped 5000/5401 above, and the neraca
+    // accounts that can never have any.
+    node("5101", "Beban Gaji", "biaya", {
+      allocations: [
+        {
+          _id: "alloc-groom",
+          name: "Gaji - Grooming",
+          allocationType: "direct",
+          businessLineId: "bl-grooming",
+          branchId: null,
+          isActive: true,
+        },
+        {
+          _id: "alloc-admin",
+          name: "Gaji - Admin",
+          allocationType: "shared_overall",
+          businessLineId: null,
+          branchId: null,
+          isActive: true,
+        },
+      ],
+    }),
   ];
 }
 
@@ -144,17 +167,48 @@ function mockTree(roots: ChartOfAccountNode[] = chart()) {
   return jest.spyOn(chartOfAccountsService, "tree").mockResolvedValue(roots);
 }
 
-/** The line the chart labels its column with and the form offers in its picker. */
-const GROOMING = { _id: "bl-grooming", name: "Grooming", color: "#1A2B4C" };
+/** The lines an allocation rule can point at. */
+const GROOMING = {
+  _id: "bl-grooming",
+  name: "Grooming",
+  color: "#1A2B4C",
+  branchIds: [],
+};
+const RETAIL = {
+  _id: "bl-retail",
+  name: "Retail",
+  color: "#B96A05",
+  branchIds: [],
+};
+
+/** …and the branches. */
+const PUSAT = { _id: "br-pusat", name: "Pusat" };
+const BARAT = { _id: "br-barat", name: "Barat" };
 
 /**
  * Both accounting screens read `/business-lines` now. Stubbed rather than left
  * to reject: the read fails softly in production, so an unmocked rejection would
  * exercise the degraded screen and never notice the picker breaking.
  */
-function mockLines(items = [GROOMING]) {
+function mockLines(items = [GROOMING, RETAIL]) {
   return jest.spyOn(businessLineService, "list").mockResolvedValue({
     items,
+    pagination: { page: 1, limit: 100, total: items.length, totalPages: 1 },
+  });
+}
+
+/**
+ * The branches, and this one is not optional dressing.
+ *
+ * `useAllocationTargets` counts the lines AND the branches to decide whether the
+ * tenant has anything to allocate at all — one of each and the whole Aturan
+ * Alokasi column collapses to "Tidak perlu alokasi". A suite that left this
+ * unmocked would get an empty list from the swallowed rejection and silently
+ * assert the degraded screen.
+ */
+function mockBranches(items: Array<{ _id: string; name: string }> = [PUSAT, BARAT]) {
+  return jest.spyOn(branchService, "list").mockResolvedValue({
+    items: items as never,
     pagination: { page: 1, limit: 100, total: items.length, totalPages: 1 },
   });
 }
@@ -163,8 +217,13 @@ function mockLines(items = [GROOMING]) {
 async function renderChart(roots?: ChartOfAccountNode[]) {
   mockTree(roots);
   mockLines();
+  mockBranches();
   renderWithAuth(<ChartOfAccountsScreen />);
   await screen.findByRole("table");
+  // The second read settles a tick after the chart does, and the Aturan Alokasi
+  // column cannot be read until it has — without this every allocation
+  // assertion races a tenant that momentarily looks like it has no lines.
+  await screen.findByText(/Cara kerja Aturan Alokasi/);
 }
 
 /**
@@ -240,23 +299,24 @@ describe("ChartOfAccountsScreen", () => {
     expect(tree).toHaveBeenCalledWith();
   });
 
-  it("keeps a match's ancestors so it is not shown as a root account", async () => {
+  /**
+   * THE LIST IS FLAT NOW, and a search returns matches alone.
+   *
+   * It used to drag each match's ancestors along, because the screen drew a tree
+   * and a hit rendered at the root would have implied it was a top-level
+   * account. There is no tree to be misread any more — the hierarchy survives as
+   * an indent — so the ancestors would be rows nobody asked for.
+   */
+  it("searches code and name, and shows only what matched", async () => {
     await renderChart();
 
     await userEvent.type(screen.getByLabelText("Cari akun"), "PPN Masukan");
 
-    // Scoped to the table: "Aset" is also the label of a summary tile above it.
     const table = within(screen.getByRole("table"));
 
-    // The match itself…
     expect(table.getByText("PPN Masukan")).toBeInTheDocument();
-    // …and the two accounts it hangs from, dragged along for context.
-    expect(table.getByText("Pajak Dibayar di Muka")).toBeInTheDocument();
-    // The root, matched by code: "Aset Lancar Lainnya" on its own also names the
-    // category badge that every row of that branch carries.
-    expect(table.getByText("1000")).toBeInTheDocument();
-    // But nothing from an unrelated branch.
     expect(table.queryByText("Utang Usaha")).not.toBeInTheDocument();
+    expect(table.queryByText("Pajak Dibayar di Muka")).not.toBeInTheDocument();
   });
 
   it("hides deactivated accounts until the panel's toggle asks for them", async () => {
@@ -301,7 +361,8 @@ describe("ChartOfAccountsScreen", () => {
     );
   });
 
-  it("reorders siblings without detaching them from their parents", async () => {
+  /** The whole list orders together now — there are no sibling groups to keep. */
+  it("orders the whole list by the ordering chosen", async () => {
     await renderChart();
 
     const panel = await openFilters();
@@ -314,59 +375,150 @@ describe("ChartOfAccountsScreen", () => {
       .slice(1)
       .map((row) => row.textContent ?? "");
 
-    // Siblings flip…
-    const ppn = rows.findIndex((text) => text.includes("1301"));
-    const kas = rows.findIndex((text) => text.includes("1101"));
-    expect(ppn).toBeLessThan(kas);
-
-    // …but 1101 still hangs under 1100, and the categories stay in the order the
-    // reports read them rather than being reordered too.
-    const parent = rows.findIndex((text) => text.includes("1100"));
-    expect(parent).toBeLessThan(kas);
-    expect(
-      rows.findIndex((text) => text.startsWith("Aset Lancar Lainnya")),
-    ).toBeLessThan(rows.findIndex((text) => text.startsWith("Hutang Dagang")));
-  });
-
-  it("groups the flat seeded chart under its account categories", async () => {
-    await renderChart();
-
-    const rows = screen
-      .getAllByRole("row")
-      .slice(1)
-      .map((row) => row.textContent ?? "");
-
-    // The seeded chart has no 1000/2000 header ACCOUNTS — the category heading
-    // is the screen's own, and every account of that category follows it.
-    const aset = rows.findIndex((text) => text.startsWith("Aset Lancar Lainnya"));
-    const kas = rows.findIndex((text) => text.includes("1101"));
-    const kewajiban = rows.findIndex((text) => text.startsWith("Hutang Dagang"));
     const utang = rows.findIndex((text) => text.includes("2101"));
-
-    expect(aset).toBeGreaterThanOrEqual(0);
-    expect(kas).toBeGreaterThan(aset);
-    expect(kewajiban).toBeGreaterThan(kas);
-    expect(utang).toBeGreaterThan(kewajiban);
-    // …and the heading counts what is under it, folded or not.
-    expect(rows[aset]).toContain("5 akun");
+    const kas = rows.findIndex((text) => text.includes("1101"));
+    expect(utang).toBeLessThan(kas);
   });
 
-  it("folds a whole category shut from its heading", async () => {
+  /**
+   * THE THREE STATES OF THE ALLOCATION COLUMN, on one screen, because the whole
+   * feature turns on telling them apart. Two of them look alike — a grey phrase,
+   * no chevron — and mean completely different things.
+   */
+  it("says which accounts can be mapped, which cannot, and which nobody has", async () => {
     await renderChart();
+
+    const rowOf = (code: string) =>
+      within(
+        screen.getAllByRole("row").find((row) => row.textContent?.includes(code))!,
+      );
+
+    // A neraca account can never carry a line.
+    expect(rowOf("1101").getByText("Tidak berlaku")).toBeInTheDocument();
+    // A P&L account nobody has mapped — the one state with work attached.
+    expect(rowOf("5000").getByText("Belum dipetakan")).toBeInTheDocument();
+    // …and one that is mapped twice over, summarised rather than listed.
+    expect(rowOf("5101").getByText("2 aturan")).toBeInTheDocument();
+  });
+
+  it("opens an account's Detil Akun from its row", async () => {
+    await renderChart();
+
+    expect(screen.queryByText("Gaji - Grooming")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByText("2 aturan"));
+
+    expect(
+      await screen.findByDisplayValue("Gaji - Grooming"),
+    ).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Gaji - Admin")).toBeInTheDocument();
+  });
+
+  /**
+   * Retiring an account is the commonest edit anybody makes here, and it used to
+   * need a page load, a form and a save.
+   */
+  /**
+   * FROM THE KEBAB, NOT FROM THE BADGE. The badge was briefly the button — one
+   * click, and the wrong one: a badge that acts cannot be told apart from a
+   * badge that only reports, so reading down the Status column became something
+   * you could do damage with.
+   */
+  it("retires an account from the row's action menu, not from its badge", async () => {
+    await renderChart();
+    const update = jest
+      .spyOn(chartOfAccountsService, "update")
+      .mockResolvedValue({} as never);
+
+    const row = screen
+      .getAllByRole("row")
+      .find((candidate) => candidate.textContent?.includes("1101"))!;
+
+    // The status reads, and does nothing else.
+    expect(
+      within(row).queryByRole("button", { name: "Aktif" }),
+    ).not.toBeInTheDocument();
 
     await userEvent.click(
-      screen.getByRole("button", {
-        name: "Tutup kelompok Aset Lancar Lainnya",
-      }),
+      within(row).getByRole("button", { name: "Aksi untuk 1101 Kas" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("menuitem", { name: "Nonaktifkan akun" }),
     );
 
-    expect(screen.queryByText("Kas")).not.toBeInTheDocument();
-    // The heading stays, so the category can be opened again — and so does the
-    // rest of the chart.
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith("1101", { isActive: false }),
+    );
+  });
+
+  /**
+   * THE TRAP THIS EXISTS TO STOP. Inactive accounts are hidden by default, so
+   * deactivating from the row used to make that row vanish at the instant it was
+   * pressed — carrying off the only way to undo it, with nothing on screen
+   * saying the filter was why. An action must not hide its own undo.
+   */
+  it("keeps a just-deactivated account on screen so it can be reactivated", async () => {
+    await renderChart();
+    jest
+      .spyOn(chartOfAccountsService, "update")
+      .mockImplementation(async (id, patch) => {
+        // The refetch after the toggle has to answer with the NEW state, or the
+        // reactivate badge below would be the stale one.
+        mockTree(
+          chart().map((root) =>
+            root.code === "1000"
+              ? {
+                  ...root,
+                  children: root.children.map((child) =>
+                    child.code === "1100"
+                      ? {
+                          ...child,
+                          children: child.children.map((leaf) =>
+                            leaf.code === id
+                              ? { ...leaf, ...(patch as object) }
+                              : leaf,
+                          ),
+                        }
+                      : child,
+                  ),
+                }
+              : root,
+          ),
+        );
+        return {} as never;
+      });
+
+    const rowOf = (code: string) =>
+      screen
+        .getAllByRole("row")
+        .find((candidate) => candidate.textContent?.includes(code))!;
+
+    await userEvent.click(
+      within(rowOf("1101")).getByRole("button", { name: "Aksi untuk 1101 Kas" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("menuitem", { name: "Nonaktifkan akun" }),
+    );
+
+    // Still there, now reading Nonaktif.
+    await waitFor(() =>
+      expect(within(rowOf("1101")).getByText("Nonaktif")).toBeInTheDocument(),
+    );
+
+    // The filter really was switched on, and the badge says so rather than the
+    // list quietly widening. Asserted BEFORE the menu is reopened: an open Radix
+    // menu aria-hides the rest of the page, so nothing outside it is findable.
+    expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
+      "Filter (1)",
+    );
+
+    // …and the same menu now offers the way back.
+    await userEvent.click(
+      within(rowOf("1101")).getByRole("button", { name: "Aksi untuk 1101 Kas" }),
+    );
     expect(
-      screen.getByRole("button", { name: "Buka kelompok Aset Lancar Lainnya" }),
+      await screen.findByRole("menuitem", { name: "Aktifkan akun" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Utang Usaha")).toBeInTheDocument();
   });
 
   it("narrows to one category from the panel, carrying each category's count", async () => {
@@ -390,18 +542,22 @@ describe("ChartOfAccountsScreen", () => {
     );
   });
 
-  it("collapses a branch when its chevron is pressed", async () => {
+  /**
+   * ONE PANEL AT A TIME. Each holds an unsaved draft, so two open rows are two
+   * drafts somebody can forget about — and the second Simpan would look like it
+   * saved both.
+   */
+  it("closes the open Detil Akun when another row is opened", async () => {
     await renderChart();
 
-    expect(screen.getByText("Kas")).toBeInTheDocument();
+    await userEvent.click(screen.getByText("2 aturan"));
+    expect(await screen.findByDisplayValue("Gaji - Grooming")).toBeInTheDocument();
 
-    await userEvent.click(
-      screen.getByRole("button", { name: "Tutup sub-akun 1100" }),
+    await userEvent.click(screen.getAllByText("Belum dipetakan")[0]);
+
+    await waitFor(() =>
+      expect(screen.queryByDisplayValue("Gaji - Grooming")).not.toBeInTheDocument(),
     );
-
-    expect(screen.queryByText("Kas")).not.toBeInTheDocument();
-    // The parent stays, so the branch can be opened again.
-    expect(screen.getByText("Aset Lancar")).toBeInTheDocument();
   });
 
   it("reports a failed request instead of rendering an empty chart", async () => {
@@ -422,8 +578,12 @@ describe("ChartOfAccountsScreen", () => {
       screen.getByRole("button", { name: "Aksi untuk 1101 Kas" }),
     );
 
+    // Named rather than "the only menuitem" — the menu holds two rows now, Edit
+    // and the status change.
     expect(
-      within(screen.getByRole("menu")).getByRole("menuitem"),
+      within(screen.getByRole("menu")).getByRole("menuitem", {
+        name: "Edit akun",
+      }),
     ).toHaveAttribute(
       "href",
       "/dashboard/keuangan/chart-of-accounts/1101/edit",
@@ -461,42 +621,22 @@ describe("ChartOfAccountForm", () => {
   afterEach(() => jest.restoreAllMocks());
 
   /**
-   * THE MAPPING IS MADE HERE, which is the whole point of the field: a tenant
-   * naming the line on "5102 HPP Grooming" says it once for everything that ever
-   * lands there, instead of per product or per transaction.
+   * THE MAPPING IS NOT MADE HERE ANY MORE, and it is asserted as an absence
+   * because that is what it is.
+   *
+   * There used to be one "Lini bisnis" select on this form, which could say
+   * "everything landing in this account is grooming's" and nothing else. An
+   * account now carries a LIST of Detil Akun, validated against each other and
+   * against the tenant's lines — a second thing to get wrong while creating the
+   * account itself — so it is edited in the list, inside the account's own row,
+   * and a new P&L account is born "Belum Dipetakan".
    */
-  it("sends the business line the account was given", async () => {
+  it("offers no business-line control — the mapping moved to the list", async () => {
     await renderCreateForm();
-    const create = jest
-      .spyOn(chartOfAccountsService, "create")
-      .mockResolvedValue({} as never);
-
-    await userEvent.type(screen.getByLabelText(/Kode akun/), "5102");
-    await userEvent.type(screen.getByLabelText(/Nama akun/), "HPP Grooming");
-    await pickCategory("Harga Pokok Penjualan");
-    await userEvent.click(screen.getByLabelText("Lini bisnis"));
-    await userEvent.click(
-      await screen.findByRole("option", { name: "Grooming" }),
-    );
-    await userEvent.click(screen.getByRole("button", { name: "Buat akun" }));
-
-    await waitFor(() =>
-      expect(create).toHaveBeenCalledWith(
-        expect.objectContaining({ businessLineId: "bl-grooming" }),
-      ),
-    );
-  });
-
-  /** A tenant with no lines yet gets an explanation, not an empty dropdown. */
-  it("says where to make a line when the tenant has none", async () => {
-    mockTree();
-    mockLines([]);
-    renderWithAuth(<ChartOfAccountCreateForm />);
-    await screen.findByLabelText(/Kode akun/);
 
     expect(
-      await screen.findByText(/Keuangan → Lini Bisnis/),
-    ).toBeInTheDocument();
+      screen.queryByRole("combobox", { name: "Lini bisnis" }),
+    ).not.toBeInTheDocument();
   });
 
   it("creates an account from what was typed, uppercasing the code", async () => {
@@ -519,9 +659,6 @@ describe("ChartOfAccountForm", () => {
         // and must not be on the request.
         accountCategory: "cash_bank",
         parentAccountId: null,
-        // Sent explicitly rather than omitted: null is the value that means "no
-        // line", the same way it means "no parent" above it.
-        businessLineId: null,
       }),
     );
     // Back to the list once it lands — the page's job, where the dialog used to
