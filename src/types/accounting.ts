@@ -91,6 +91,43 @@ export const CATEGORY_ACCOUNT_TYPE: Record<AccountCategory, AccountType> = {
 };
 
 /**
+ * THE REFERENCE NUMBER OF EACH CATEGORY — BO's chart, matching Jubelio's.
+ * Mirrors CATEGORY_CODE in the backend model.
+ *
+ * IT IS NOT AN ACCOUNT CODE PREFIX. An account's leading digit names its CLASS
+ * (1 asset, 2 liability, 3 equity, 4 income, 5/6 expense) — which is why
+ * 1101 Kas, 1201 Persediaan and 1301 PPN Masukan all start with 1 while sitting
+ * in three different categories. This numbers the CATEGORY instead, and the two
+ * are independent on purpose: a tenant renumbering its own chart must not be
+ * able to renumber the report's sections by accident.
+ *
+ * NOT STORED. `accountCategory` carries the key (`cash_bank`); the number is
+ * read from it wherever one is shown, so correcting it later is a code change
+ * rather than a migration over every account document.
+ *
+ * MIRRORED RATHER THAN FETCHED, like CATEGORY_ACCOUNT_TYPE above and for the
+ * same reason: the list is fixed, and an endpoint returning it would be a
+ * request on every page load for something that changes when the code does.
+ */
+export const CATEGORY_CODE: Record<AccountCategory, string> = {
+  cash_bank: "110",
+  piutang_dagang: "111",
+  persediaan: "112",
+  aset_lancar_lainnya: "113",
+  aset_tetap: "120",
+  investasi_jangka_panjang: "121",
+  hutang_dagang: "220",
+  hutang_lainnya: "221",
+  hutang_jangka_panjang: "222",
+  modal: "330",
+  pendapatan: "440",
+  hpp: "550",
+  biaya: "660",
+  pendapatan_lainnya: "770",
+  biaya_lainnya: "880",
+};
+
+/**
  * Which side increases an account. DERIVED from `accountType`, never stored —
  * assets and expenses grow on the debit side, everything else on the credit
  * side, and that is a property of the class rather than a per-account setting.

@@ -28,8 +28,11 @@ import { accountTypeOf, normalBalanceOf } from "@/types/accounting";
 
 import { useChartOfAccounts } from "../hooks/useChartOfAccounts";
 import {
+  accountCategoryOption,
   ACCOUNT_CATEGORIES,
   ACCOUNT_CATEGORY_HINT,
+  // Still the PLAIN name, for the sentence about which parents are eligible —
+  // a number inside prose reads as a typo.
   ACCOUNT_CATEGORY_LABEL,
   ACCOUNT_TYPES,
   ACCOUNT_TYPE_LABEL,
@@ -428,9 +431,22 @@ function AccountForm({
                     return (
                       <SelectGroup key={type}>
                         <SelectLabel>{ACCOUNT_TYPE_LABEL[type]}</SelectLabel>
+                        {/*
+                          THE NUMBER LEADS — "110 - Cash & Bank", BO's own
+                          reference number for the category. Somebody filing an
+                          account is usually reading a chart on paper, or one
+                          exported from Jubelio, and looking DOWN a column of
+                          numbers; the number is also what makes two similar
+                          names ("Hutang Lainnya" vs "Hutang Jangka Panjang")
+                          tellable apart at a glance.
+
+                          The trigger shows the same string once a choice is
+                          made, because Radix renders the chosen item's own
+                          children there.
+                        */}
                         {inClass.map((category) => (
                           <SelectItem key={category} value={category}>
-                            {ACCOUNT_CATEGORY_LABEL[category]}
+                            {accountCategoryOption(category)}
                           </SelectItem>
                         ))}
                       </SelectGroup>

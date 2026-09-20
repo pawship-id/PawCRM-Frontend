@@ -4,7 +4,7 @@ import type {
   CashflowType,
   JournalSourceType,
 } from "@/types/accounting";
-import { accountTypeOf } from "@/types/accounting";
+import { accountTypeOf, CATEGORY_CODE } from "@/types/accounting";
 
 /**
  * The words and colours the accounting screens share.
@@ -89,6 +89,23 @@ export const ACCOUNT_CATEGORY_LABEL: Record<AccountCategory, string> = {
   pendapatan_lainnya: "Pendapatan Lainnya",
   biaya_lainnya: "Biaya Lainnya",
 };
+
+/**
+ * A category as it reads in a picker: `"110 - Cash & Bank"`.
+ *
+ * THE NUMBER LEADS, which is the whole point of showing it: somebody holding a
+ * chart of accounts on paper — BO's, or one exported from Jubelio — is looking
+ * DOWN a column of numbers, and a label that puts its number last cannot be
+ * scanned that way.
+ *
+ * A FUNCTION RATHER THAN A SECOND MAP, so the number and the label cannot drift
+ * into two spellings of one row. `ACCOUNT_CATEGORY_LABEL` stays the plain name
+ * for the places that show a category as a badge or a heading, where a leading
+ * number would be noise.
+ */
+export function accountCategoryOption(category: AccountCategory): string {
+  return `${CATEGORY_CODE[category]} - ${ACCOUNT_CATEGORY_LABEL[category]}`;
+}
 
 /**
  * One line saying what lands in a category, shown under the picker once a

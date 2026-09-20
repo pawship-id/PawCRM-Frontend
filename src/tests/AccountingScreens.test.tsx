@@ -250,9 +250,19 @@ async function applyFilters() {
  * The options are grouped by class (`SelectGroup`), which changes nothing for a
  * query by option name — the group label is not an option.
  */
+/**
+ * Picks a category by its PLAIN name.
+ *
+ * The option itself reads "110 - Cash & Bank" — BO's reference number leads it —
+ * so the match has to be a substring. Callers pass the name because that is what
+ * the test is about; pinning the number belongs in the one test below that is
+ * about the number.
+ */
 async function pickCategory(label: string) {
   await userEvent.click(screen.getByRole("combobox", { name: "Kategori akun" }));
-  await userEvent.click(screen.getByRole("option", { name: label }));
+  await userEvent.click(
+    screen.getByRole("option", { name: new RegExp(`\\d+ - ${label}$`) }),
+  );
 }
 
 /** Mounts the create form and waits for the chart its parent picker needs. */
@@ -619,6 +629,32 @@ describe("ChartOfAccountsScreen", () => {
  */
 describe("ChartOfAccountForm", () => {
   afterEach(() => jest.restoreAllMocks());
+
+  /**
+   * THE CATEGORY'S OWN REFERENCE NUMBER, in front of its name — BO's chart,
+   * matching Jubelio's.
+   *
+   * The number leads because somebody filing an account is usually reading a
+   * chart on paper and scanning DOWN a column of numbers; it is also what makes
+   * "Hutang Lainnya" and "Hutang Jangka Panjang" tellable apart at a glance.
+   */
+  it("numbers each category in the picker, number first", async () => {
+    await renderCreateForm();
+
+    await userEvent.click(
+      screen.getByRole("combobox", { name: "Kategori akun" }),
+    );
+
+    expect(
+      screen.getByRole("option", { name: "110 - Cash & Bank" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "550 - Harga Pokok Penjualan" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "880 - Biaya Lainnya" }),
+    ).toBeInTheDocument();
+  });
 
   /**
    * THE MAPPING IS NOT MADE HERE ANY MORE, and it is asserted as an absence

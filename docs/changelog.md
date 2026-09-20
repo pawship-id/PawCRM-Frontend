@@ -7,6 +7,36 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Kategori akun punya nomor
+
+20 September 2026, atas permintaan, mengikuti chart of accounts Jubelio.
+
+- **`CATEGORY_CODE`** — nomor rujukan per kategori: `110` Cash & Bank, `111` Piutang
+  Dagang, `112` Persediaan, `113` Aset Lancar Lainnya, `120` Aset Tetap, `121` Investasi
+  Jangka Panjang, `220` Hutang Dagang, `221` Hutang Lainnya, `222` Hutang Jangka Panjang,
+  `330` Modal, `440` Pendapatan, `550` Harga Pokok Penjualan, `660` Biaya,
+  `770` Pendapatan Lainnya, `880` Biaya Lainnya.
+- **Picker Kategori akun di form akun sekarang berbunyi `110 - Cash & Bank`**, nomornya
+  di depan: orang yang mengisi akun biasanya sedang membaca chart di kertas dan memindai
+  ke bawah kolom angka, dan nomornya juga yang membuat "Hutang Lainnya" dan "Hutang
+  Jangka Panjang" bisa dibedakan sekilas. Berlaku di `/new` dan `/[id]/edit` sekaligus —
+  keduanya `ChartOfAccountForm`.
+- **Bukan awalan kode akun, dan tidak akan pernah jadi itu.** Digit depan sebuah AKUN
+  menamai kelasnya (1 aset, 2 kewajiban, 3 modal, 4 pendapatan, 5/6 beban) — itu sebabnya
+  `1101 Kas`, `1201 Persediaan` dan `1301 PPN Masukan` sama-sama mulai dari 1 padahal
+  kategorinya berbeda. Dua penomoran yang sengaja berdiri sendiri: tenant yang menomori
+  ulang chart-nya tidak boleh bisa menomori ulang seksi laporan tanpa sengaja.
+- **Tidak disimpan di mana pun.** `accountCategory` tetap menyimpan key-nya (`cash_bank`);
+  nomornya dibaca dari key itu di tempat yang menampilkannya, jadi mengoreksinya nanti
+  adalah perubahan kode, bukan migrasi atas setiap dokumen akun.
+- Urutannya menaik mengikuti `ACCOUNT_CATEGORIES` — yang memang urutan baca laporan — jadi
+  setiap picker yang menyusuri array itu sudah urut nomor tanpa menyortir. Ada tesnya,
+  supaya kategori yang ditambah di posisi salah ketahuan.
+- Badge kategori di tabel dan filter panel **tetap nama polos**, tanpa nomor: di badge
+  nomor jadi noise, dan di kalimat prosa terbaca seperti salah ketik.
+
+---
+
 ## [Unreleased] — Daftar Akun: Aturan Alokasi
 
 19 September 2026, dari mockup BO `buloo-daftar-akun-v1`.
