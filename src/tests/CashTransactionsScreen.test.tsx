@@ -324,6 +324,36 @@ describe("Kas & Bank — transaksi: rows and totals", () => {
   });
 });
 
+/**
+ * ONE CARD, "Daftar transaksi", holding everything that is about the list:
+ * controls, table and footer. They were loose siblings on the page until
+ * 20 September 2026, which left the table's bordered box under an unattached
+ * search bar.
+ */
+describe("Kas & Bank — transaksi: the card", () => {
+  it("holds the controls, the table and the footer in one card", async () => {
+    renderWithAuth(<KasBankScreen now={NOW} />);
+    // The caption draws before the rows do; wait for the loaded table.
+    await screen.findByText("BKM/CBS/2609/0001");
+
+    const heading = screen.getByRole("heading", { name: "Daftar transaksi" });
+    // The vendored Card's own marker — steadier than walking parentElement.
+    const card = heading.closest<HTMLElement>('[data-slot="card"]')!;
+
+    expect(within(card).getByLabelText("Cari transaksi")).toBeInTheDocument();
+    expect(
+      within(card).getByRole("button", { name: "Filter" }),
+    ).toBeInTheDocument();
+    expect(
+      within(card).getByRole("link", { name: /Tambah transaksi/ }),
+    ).toBeInTheDocument();
+    expect(within(card).getByRole("table")).toBeInTheDocument();
+    expect(
+      within(card).getByLabelText("Baris per halaman"),
+    ).toBeInTheDocument();
+  });
+});
+
 describe("Kas & Bank — transaksi: filters", () => {
   /*
     TIPE IS IN THE PANEL since 20 September 2026 — it was a pill row above the

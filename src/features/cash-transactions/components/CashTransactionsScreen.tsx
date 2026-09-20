@@ -2,9 +2,16 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowDown, ArrowUp, ChevronsUpDown, Pencil, Plus, RotateCcw } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronsUpDown,
+  Pencil,
+  Plus,
+  RotateCcw,
+} from "lucide-react";
 
-import { Alert, HighlightText, ListFooter, Spinner } from "@/components";
+import { Alert, Card, HighlightText, ListFooter, Spinner } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -51,12 +58,14 @@ const COLUMN_COUNT = 7;
  * that sorts by something other than what it displays is worse than one that
  * does not invite the click.
  */
-const SORTABLE: Record<string, { asc: CashTransactionSort; desc: CashTransactionSort }> =
-  {
-    tanggal: { asc: "oldest", desc: "newest" },
-    cabang: { asc: "branchAsc", desc: "branchDesc" },
-    jumlah: { asc: "amountLowest", desc: "amountHighest" },
-  };
+const SORTABLE: Record<
+  string,
+  { asc: CashTransactionSort; desc: CashTransactionSort }
+> = {
+  tanggal: { asc: "oldest", desc: "newest" },
+  cabang: { asc: "branchAsc", desc: "branchDesc" },
+  jumlah: { asc: "amountLowest", desc: "amountHighest" },
+};
 
 /**
  * TRANSAKSI KEUANGAN — every numbered movement of money in one list: receipts
@@ -111,126 +120,150 @@ export function CashTransactionsPanel({
     query.documentId !== "";
 
   return (
-    <div className="flex flex-col gap-4">
-      {error && (
-        <Alert variant="error">
-          <span className="flex flex-wrap items-center gap-3">
-            {error}
-            <Button variant="secondary" size="sm" onClick={refetch}>
-              <RotateCcw className="size-4" />
-              Coba lagi
-            </Button>
-          </span>
-        </Alert>
-      )}
+    /*
+      ONE CARD HOLDS THE WHOLE LIST — caption, controls, table and footer
+      (20 September 2026, on request, from a mockup). They used to be loose
+      siblings on the page, which left the table's own bordered box floating
+      under an unattached toolbar; a reader had to infer that the search box
+      belonged to the rows below it.
 
-      {/*
+      THE STACK IS AN INNER DIV, not the Card itself: `Card` hands every child to
+      one `CardContent`, which is a plain padded box — a gap set on the Card's
+      root would be the space between its header slot and that box, and this
+      card has no header slot.
+    */
+    <Card>
+      <div className="flex flex-col gap-4">
+        {/*
+          A REAL HEADING, not the Card's `title` prop: that renders `text-lg`
+          semibold, and the mockup draws the small letter-spaced caption this
+          module already uses on its stat tiles. `h2` because `PageHeading` owns
+          the `h1` above and the tab row sits between them — somebody navigating
+          by headings should land here rather than in a run of untitled boxes.
+        */}
+        <h2 className="text-xs font-semibold tracking-widest text-muted uppercase">
+          Daftar transaksi
+        </h2>
+
+        {error && (
+          <Alert variant="error">
+            <span className="flex flex-wrap items-center gap-3">
+              {error}
+              <Button variant="secondary" size="sm" onClick={refetch}>
+                <RotateCcw className="size-4" />
+                Coba lagi
+              </Button>
+            </span>
+          </Alert>
+        )}
+
+        {/*
         TAMBAH TRANSAKSI RIDES THE BAR'S `actions` SLOT, so it sits on the search
         row level with `Filter (n)` (20 September 2026, on request). It used to
         be a sibling of the whole toolbar in an `items-start` flex, which pinned
         it to the TOP — beside the Tipe pills, a row it has nothing to do with.
       */}
-      <CashTransactionsToolbar
-        query={query}
-        cashAccounts={cashAccounts}
-        onChange={setQuery}
-        actions={
-          <Can feature="cashTransactions" action="create">
-            <Button asChild>
-              <Link href={`${CASH_TRANSACTION_DETAIL_HREF}/new`}>
-                <Plus className="size-4" />
-                Tambah transaksi
-              </Link>
-            </Button>
-          </Can>
-        }
-      />
+        <CashTransactionsToolbar
+          query={query}
+          cashAccounts={cashAccounts}
+          onChange={setQuery}
+          actions={
+            <Can feature="cashTransactions" action="create">
+              <Button asChild>
+                <Link href={`${CASH_TRANSACTION_DETAIL_HREF}/new`}>
+                  <Plus className="size-4" />
+                  Tambah transaksi
+                </Link>
+              </Button>
+            </Can>
+          }
+        />
 
-      {loading && transactions.length === 0 ? (
-        <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
-          <Spinner /> Memuat transaksi…
-        </div>
-      ) : (
-        <>
-          <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-            <Table className={loading ? "opacity-60" : undefined}>
-              <TableHeader>
-                <TableRow>
-                  <SortHead
-                    column="tanggal"
-                    label="Tanggal"
-                    sort={query.sort}
-                    onSort={(next) => setQuery({ sort: next, page: 1 })}
-                  />
-                  <TableHead>Deskripsi</TableHead>
-                  <TableHead>Akun</TableHead>
-                  <SortHead
-                    column="cabang"
-                    label="Cabang"
-                    sort={query.sort}
-                    onSort={(next) => setQuery({ sort: next, page: 1 })}
-                  />
-                  <SortHead
-                    column="jumlah"
-                    label="Jumlah"
-                    align="right"
-                    sort={query.sort}
-                    onSort={(next) => setQuery({ sort: next, page: 1 })}
-                  />
-                  <TableHead>Akun Kas/Bank</TableHead>
-                  <TableHead>Sumber</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {transactions.length === 0 && (
-                  <TableRow className="hover:bg-transparent">
-                    <TableCell
-                      colSpan={COLUMN_COUNT}
-                      className="px-4 py-16 text-center"
-                    >
-                      <p className="font-medium text-foreground">
-                        {filtered
-                          ? "Tidak ada transaksi di filter ini."
-                          : "Belum ada transaksi keuangan."}
-                      </p>
-                      <p className="mt-1 text-sm text-muted">
-                        {filtered ? (
-                          "Coba longgarkan periode atau jenisnya, atau hapus kata kuncinya."
-                        ) : can("cashTransactions", "create") ? (
-                          <Link
-                            href={`${CASH_TRANSACTION_DETAIL_HREF}/new`}
-                            className="rounded-md font-semibold text-primary underline-offset-4 hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
-                          >
-                            Catat yang pertama →
-                          </Link>
-                        ) : (
-                          "Transaksi muncul begitu ada pembayaran atau pengeluaran yang dicatat."
-                        )}
-                      </p>
-                    </TableCell>
-                  </TableRow>
-                )}
-
-                {transactions.map((transaction) => (
-                  <TransactionRow
-                    key={transaction._id}
-                    transaction={transaction}
-                    search={query.search}
-                    onOpen={() =>
-                      router.push(cashTransactionHref(transaction._id))
-                    }
-                    onEdit={() =>
-                      router.push(
-                        `${cashTransactionHref(transaction._id)}/edit`,
-                      )
-                    }
-                  />
-                ))}
-              </TableBody>
-            </Table>
+        {loading && transactions.length === 0 ? (
+          <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
+            <Spinner /> Memuat transaksi…
           </div>
+        ) : (
+          <>
+            <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+              <Table className={loading ? "opacity-60" : undefined}>
+                <TableHeader>
+                  <TableRow>
+                    <SortHead
+                      column="tanggal"
+                      label="Tanggal"
+                      sort={query.sort}
+                      onSort={(next) => setQuery({ sort: next, page: 1 })}
+                    />
+                    <TableHead>Deskripsi</TableHead>
+                    <TableHead>Akun</TableHead>
+                    <SortHead
+                      column="cabang"
+                      label="Cabang"
+                      sort={query.sort}
+                      onSort={(next) => setQuery({ sort: next, page: 1 })}
+                    />
+                    <SortHead
+                      column="jumlah"
+                      label="Jumlah"
+                      align="right"
+                      sort={query.sort}
+                      onSort={(next) => setQuery({ sort: next, page: 1 })}
+                    />
+                    <TableHead>Akun Kas/Bank</TableHead>
+                    <TableHead>Sumber</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {transactions.length === 0 && (
+                    <TableRow className="hover:bg-transparent">
+                      <TableCell
+                        colSpan={COLUMN_COUNT}
+                        className="px-4 py-16 text-center"
+                      >
+                        <p className="font-medium text-foreground">
+                          {filtered
+                            ? "Tidak ada transaksi di filter ini."
+                            : "Belum ada transaksi keuangan."}
+                        </p>
+                        <p className="mt-1 text-sm text-muted">
+                          {filtered ? (
+                            "Coba longgarkan periode atau jenisnya, atau hapus kata kuncinya."
+                          ) : can("cashTransactions", "create") ? (
+                            <Link
+                              href={`${CASH_TRANSACTION_DETAIL_HREF}/new`}
+                              className="rounded-md font-semibold text-primary underline-offset-4 hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                            >
+                              Catat yang pertama →
+                            </Link>
+                          ) : (
+                            "Transaksi muncul begitu ada pembayaran atau pengeluaran yang dicatat."
+                          )}
+                        </p>
+                      </TableCell>
+                    </TableRow>
+                  )}
 
-          {/*
+                  {transactions.map((transaction) => (
+                    <TransactionRow
+                      key={transaction._id}
+                      transaction={transaction}
+                      search={query.search}
+                      onOpen={() =>
+                        router.push(cashTransactionHref(transaction._id))
+                      }
+                      onEdit={() =>
+                        router.push(
+                          `${cashTransactionHref(transaction._id)}/edit`,
+                        )
+                      }
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/*
             THE SHARED FOOTER since 20 September 2026 — the same one Faktur
             Penjualan carries. It replaced a bare `Pagination` beside a size
             control: that component draws nothing at all on a single page, and
@@ -238,19 +271,20 @@ export function CashTransactionsPanel({
             the position line and the size control used to vanish exactly when
             somebody wanted to ask for MORE rows.
           */}
-          <ListFooter
-            page={pagination.page}
-            pageSize={query.limit}
-            pageSizes={CASH_TRANSACTION_PAGE_SIZES}
-            total={pagination.total}
-            totalPages={pagination.totalPages}
-            unit="transaksi"
-            onPageChange={(page) => setQuery({ page })}
-            onPageSizeChange={(limit) => setQuery({ limit, page: 1 })}
-          />
-        </>
-      )}
-    </div>
+            <ListFooter
+              page={pagination.page}
+              pageSize={query.limit}
+              pageSizes={CASH_TRANSACTION_PAGE_SIZES}
+              total={pagination.total}
+              totalPages={pagination.totalPages}
+              unit="transaksi"
+              onPageChange={(page) => setQuery({ page })}
+              onPageSizeChange={(limit) => setQuery({ limit, page: 1 })}
+            />
+          </>
+        )}
+      </div>
+    </Card>
   );
 }
 
@@ -278,7 +312,8 @@ function SortHead({
 }) {
   const { asc, desc } = SORTABLE[column];
   const active = sort === asc ? "asc" : sort === desc ? "desc" : null;
-  const Icon = active === "asc" ? ArrowUp : active === "desc" ? ArrowDown : ChevronsUpDown;
+  const Icon =
+    active === "asc" ? ArrowUp : active === "desc" ? ArrowDown : ChevronsUpDown;
 
   return (
     <TableHead
@@ -343,7 +378,9 @@ function TransactionRow({
     settled; a migrated row has neither, and its kind is still an answer.
   */
   const description =
-    transaction.note ?? transaction.document?.number ?? sourceLabel(transaction.kind);
+    transaction.note ??
+    transaction.document?.number ??
+    sourceLabel(transaction.kind);
 
   /*
     MANUAL ROWS CARRY A PENCIL, the rest a link to what owns them — which is the
@@ -490,7 +527,6 @@ function TransactionRow({
           )}
         </span>
       </TableCell>
-
     </TableRow>
   );
 }

@@ -604,6 +604,22 @@ stay on the page's context bar.
   sanctioned exception to "an option that can never match anything is a filter
   people stop trusting" — do not copy it to another screen.**
 
+**ONE CARD, "DAFTAR TRANSAKSI", HOLDS THE WHOLE LIST** — the caption, the
+search row with `Filter (n)` and Tambah transaksi, the table and the footer
+(20 September 2026, on request, from a mockup). They were loose siblings on the
+page, which left the table's own bordered box floating under an unattached
+search bar.
+
+The caption is an **`h2` styled as this module's small letter-spaced label**
+(`text-xs font-semibold tracking-widest text-muted uppercase`), not the Card's
+`title` prop — that renders `text-lg` semibold, which the mockup does not draw.
+A heading element and not a `<p>`, because `PageHeading` owns the `h1` and the
+tab row sits between: somebody navigating by headings should land on the list
+rather than in a run of untitled boxes. The stack lives in an inner
+`flex flex-col gap-4` div, since `Card` hands every child to one padded
+`CardContent` and a gap on its root is the space around a header slot this card
+does not use.
+
 **THE PANEL STAYS, although §8's table leans quick bar.** Four single selects
 and a search is near the boundary, and the multi-select that forced a panel is
 gone. It keeps the panel because the `Filter (n)` button is load-bearing on this
