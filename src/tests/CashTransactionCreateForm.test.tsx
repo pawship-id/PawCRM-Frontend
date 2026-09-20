@@ -8,6 +8,9 @@ import { branchService } from "@/services/branch.service";
 import { businessLineService } from "@/services/businessLine.service";
 import { cashTransactionService } from "@/services/cashTransaction.service";
 import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
+import { customerService } from "@/services/customer.service";
+import { supplierService } from "@/services/supplier.service";
+import { userService } from "@/services/user.service";
 import type { ChartOfAccountNode } from "@/types/accounting";
 import { accountTypeOf } from "@/types/accounting";
 
@@ -17,6 +20,9 @@ import { renderWithAuth } from "./helpers/renderWithAuth";
 jest.mock("@/services/cashTransaction.service");
 jest.mock("@/services/branch.service");
 jest.mock("@/services/chartOfAccounts.service");
+jest.mock("@/services/customer.service");
+jest.mock("@/services/supplier.service");
+jest.mock("@/services/user.service");
 jest.mock("@/services/businessLine.service");
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
 
@@ -57,6 +63,20 @@ beforeEach(() => {
     items: [{ _id: "b1", name: "Cabang Pusat" }],
     pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
   } as never);
+  // The three registers behind the Penerima / Pengirim picker.
+  const page = <T,>(items: T[]) => ({
+    items,
+    pagination: { page: 1, limit: 100, total: items.length, totalPages: 1 },
+  });
+  asMock(customerService.list).mockResolvedValue(
+    page([{ _id: "cus-1", name: "Pet Shop Melati" }]) as never,
+  );
+  asMock(supplierService.list).mockResolvedValue(
+    page([{ _id: "sup-1", name: "CV Grooming Supplies" }]) as never,
+  );
+  asMock(userService.list).mockResolvedValue(
+    page([{ _id: "usr-1", fullName: "Sari" }]) as never,
+  );
   asMock(chartOfAccountsService.tree).mockResolvedValue([
     // `cashType` is what decides BKM/BKK against BBM/BBK now that no channel
     // is involved — see the account model.
@@ -249,7 +269,7 @@ describe("CashTransactionCreateForm", () => {
     await screen.findByRole("button", { name: "Simpan transaksi" });
 
     await pick(user, "Akun Kas/Bank", "1101 · Kas Pusat");
-    await user.type(screen.getByLabelText("Penerima"), "PLN");
+    await pick(user, "Penerima", "CV Grooming Supplies");
     await user.type(screen.getByLabelText("Deskripsi"), "Listrik Agustus");
 
     await pick(user, "Akun baris 1", "5401 · Beban Listrik");
@@ -264,7 +284,10 @@ describe("CashTransactionCreateForm", () => {
         kind: "expense",
         branchId: "b1",
         accountId: "acc-kas",
-        partyName: "PLN",
+        // The picker sends the register and the id; the server snapshots the
+        // name, so the client never states one it could get wrong.
+        partyType: "supplier",
+        partyId: "sup-1",
         // Not a field any more; sent so the entry still lands in Arus Kas.
         cashflowType: "operating",
         note: "Listrik Agustus",
@@ -315,6 +338,70 @@ describe("CashTransactionCreateForm", () => {
         }),
       ),
     );
+  });
+
+  /**
+   * `partyType` is exactly customer | supplier | user, so the three headings are
+   * what the field can BE — and "Nama lain…" is the way out of them, for the
+   * landlords and utilities no register holds.
+   */
+  it("offers the three registers under their own headings", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<CashTransactionCreateForm />);
+
+    await user.click(await screen.findByRole("button", { name: "Penerima" }));
+
+    expect(
+      await screen.findByRole("group", { name: "Pelanggan" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Supplier" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Staf" })).toBeInTheDocument();
+    expect(
+      (await screen.findAllByRole("option")).map((row) => row.textContent),
+    ).toEqual([
+      "Pet Shop Melati",
+      "CV Grooming Supplies",
+      "Sari",
+      "Nama lain…",
+    ]);
+  });
+
+  it("asks the label of the side the money is on", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<CashTransactionCreateForm />);
+    await screen.findByRole("button", { name: "Penerima" });
+
+    await user.click(screen.getByRole("button", { name: "Uang masuk" }));
+    expect(
+      await screen.findByRole("button", { name: "Pengirim" }),
+    ).toBeInTheDocument();
+  });
+
+  it("takes a typed name for somebody no register holds", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<CashTransactionCreateForm />);
+    await screen.findByRole("button", { name: "Simpan transaksi" });
+
+    await pick(user, "Akun Kas/Bank", "1101 · Kas Pusat");
+    await pick(user, "Akun baris 1", "5401 · Beban Listrik");
+    await user.type(screen.getByLabelText("Jumlah baris 1"), "75000");
+
+    await pick(user, "Penerima", "Nama lain…");
+    // The name is then required — an escape hatch nobody filled in is a blank.
+    expect(
+      await screen.findByText("Nama penerima belum diisi"),
+    ).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/Nama penerima/), "PLN");
+    await user.click(screen.getByRole("button", { name: "Simpan transaksi" }));
+
+    await waitFor(() =>
+      expect(cashTransactionService.create).toHaveBeenCalledWith(
+        expect.objectContaining({ partyName: "PLN" }),
+      ),
+    );
+    const [sent] = asMock(cashTransactionService.create).mock.calls[0];
+    expect(sent).not.toHaveProperty("partyType");
   });
 
   it("adds up several lines into the transaction's total", async () => {

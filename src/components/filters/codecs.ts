@@ -27,6 +27,18 @@ export interface FilterOption<T> {
    * For telling apart two rows with the same name, not for decoration.
    */
   meta?: string;
+  /**
+   * A HEADING THIS OPTION SITS UNDER — "Pelanggan", "Supplier", "Staf".
+   *
+   * For a list drawn from several sources, where the same name could plausibly
+   * come from any of them and which one it is changes what it means. Options are
+   * rendered IN THE ORDER GIVEN and a heading is drawn whenever the group
+   * changes, so the caller sorts; the list does not regroup behind its back.
+   *
+   * Matched by the in-popover search like `meta`, so typing "staf" narrows to
+   * one group. Leave it off and the list renders flat, exactly as before.
+   */
+  group?: string;
   disabled?: boolean;
 }
 

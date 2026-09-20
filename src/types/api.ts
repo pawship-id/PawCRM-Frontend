@@ -6394,7 +6394,7 @@ export interface CashTransaction {
     number: string | null;
   } | null;
   party: {
-    type: "customer" | "supplier" | "user" | null;
+    type: CashTransactionPartyType | null;
     id: string | null;
     name: string | null;
   } | null;
@@ -6453,6 +6453,13 @@ export interface CashTransactionChannelSummary {
   channels: CashTransactionChannelTotals[];
 }
 
+/**
+ * WHICH REGISTER A TRANSACTION'S OTHER SIDE CAME FROM — `PARTY_TYPES` on the
+ * server. A party with no type is a name somebody typed: a landlord, PLN, an
+ * advertiser, none of which a shop keeps a record of.
+ */
+export type CashTransactionPartyType = "customer" | "supplier" | "user";
+
 /** GET /api/cash-transactions. `kind` goes out comma-joined. */
 export interface CashTransactionListQuery {
   page?: number;
@@ -6500,6 +6507,16 @@ export interface CreateCashTransactionInput {
   accountId: string;
   ref?: string;
   note?: string;
+  /**
+   * WHO THE MONEY CAME FROM OR WENT TO, in one of two shapes.
+   *
+   * `partyType` + `partyId` name a row in one of the three registers, and the
+   * server snapshots its name — that is the pair the picker sends, and the two
+   * must arrive together or not at all. `partyName` alone is the escape hatch
+   * for somebody no register holds: PLN, the landlord, an ad platform.
+   */
+  partyType?: CashTransactionPartyType;
+  partyId?: string;
   partyName?: string;
   cashflowType?: CashflowType;
   /** 1–20 lines; their sum is the amount. */

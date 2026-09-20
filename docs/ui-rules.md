@@ -495,6 +495,26 @@ already point at each account.
 Tambah transaksi's Lini Usaha sits in the header as a DEFAULT for the rows, which
 keep their own column.
 
+**Penerima / Pengirim is a grouped picker, not free text.** Decided 20 September
+2026 on request, to match the BO mockup: the three registers a shop already keeps
+— Pelanggan, Supplier, Staf — under their own headings, which is exactly
+`partyType` (`customer | supplier | user`) on the transaction, so picking one
+stores a real id and the list can filter by party instead of by however the name
+was spelled that day. The last row is **"Nama lain…"**, which reveals a text
+field: most of what a shop pays is nobody it keeps a record of (PLN, the
+landlord, an ad platform), and forcing those into the supplier register to
+record a payment would fill it with vendors nobody buys from. The server takes
+`partyType` + `partyId` as a pair and snapshots the name itself, or `partyName`
+alone — never both.
+
+**`FilterOption.group` is what draws those headings**, and it is new on the
+shared filter layer: options render IN THE ORDER GIVEN and a heading appears
+wherever the group changes, so the caller sorts and the list does not regroup
+behind it. A grouped list nests each run in a `role="group"`; a list whose
+options carry no group renders exactly the flat markup it always did. Reach for
+it when one picker draws on several sources and which source a row came from
+changes what it means — not to decorate a long list.
+
 **Faktur baru's header also leaves §16's field order.** Decided 12 September 2026
 on request, to match the BO mockup (`buloo-invoice-create-v4.html`): Pelanggan
 first and full width — its picker shows each customer's phone beside the name

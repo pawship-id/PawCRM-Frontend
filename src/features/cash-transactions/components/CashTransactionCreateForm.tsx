@@ -32,6 +32,11 @@ import {
   cashBankAccountOptions,
   cashBankAccounts,
 } from "../hooks/useCashBankAccountOptions";
+import {
+  OTHER_PARTY,
+  parseContactKey,
+  useContactOptions,
+} from "../hooks/useContactOptions";
 import { accountsForKind, useLineLookups } from "../hooks/useLineLookups";
 import {
   CASH_TRANSACTIONS_HREF,
@@ -114,11 +119,19 @@ export function CashTransactionCreateForm() {
   const router = useRouter();
   const scope = useBranchScope();
   const lookups = useLineLookups();
+  const contacts = useContactOptions();
 
   const [kind, setKind] = useState<ManualKind>("expense");
   const [date, setDate] = useState(todayValue);
   const [pickedBranch, setPickedBranch] = useState("");
   const [cashAccountId, setCashAccountId] = useState("");
+  /**
+   * WHO THE MONEY CAME FROM OR WENT TO — `"customer:abc"`, `OTHER_PARTY`, or
+   * `""` for nobody. Two states because the field has two shapes: a row out of
+   * one of the three registers, which travels as a type and an id, or a name
+   * typed for somebody no register holds.
+   */
+  const [partyKey, setPartyKey] = useState("");
   const [partyName, setPartyName] = useState("");
   const [businessLineId, setBusinessLineId] = useState("");
   const [note, setNote] = useState("");
@@ -175,8 +188,23 @@ export function CashTransactionCreateForm() {
     setLines((prev) => [...prev, { ...blankLine(), businessLineId }]);
   }
 
+  /** The party, in whichever of its two shapes — or nothing at all. */
+  function partyInput(): Partial<CreateCashTransactionInput> {
+    const contact = parseContactKey(partyKey);
+    if (contact) return { partyType: contact.type, partyId: contact.id };
+    if (partyKey === OTHER_PARTY && partyName.trim()) {
+      return { partyName: partyName.trim() };
+    }
+    return {};
+  }
+
   function blockedReason(): string | null {
     if (date === "") return "Tanggal belum diisi";
+    if (partyKey === OTHER_PARTY && partyName.trim() === "") {
+      return kind === "other_income"
+        ? "Nama pengirim belum diisi"
+        : "Nama penerima belum diisi";
+    }
     if (date > todayValue()) return "Tanggal tidak boleh di masa depan";
     if (!branchId) return "Cabang belum dipilih";
     if (!cashAccount) return "Akun kas/bank belum dipilih";
@@ -198,7 +226,7 @@ export function CashTransactionCreateForm() {
       accountId: cashAccount._id,
       // Today is left to the server, which stamps the time as well as the day.
       ...(date !== todayValue() ? { at: date } : {}),
-      ...(partyName.trim() ? { partyName: partyName.trim() } : {}),
+      ...partyInput(),
       // Not asked, always sent — see the note at the head of the file.
       cashflowType: "operating",
       ...(note.trim() ? { note: note.trim() } : {}),
@@ -222,6 +250,17 @@ export function CashTransactionCreateForm() {
   }
 
   const masuk = kind === "other_income";
+
+  /*
+    "Nama lain…" LAST, under its own heading, so it reads as an escape from the
+    three registers rather than a fourth register. `FilterSelect` draws a heading
+    wherever the group changes, in the order given.
+  */
+  const partyOptions: FilterOption<string>[] = [
+    ...contacts.options,
+    { value: OTHER_PARTY, label: "Nama lain…", group: "Tidak terdaftar" },
+  ];
+  const typedParty = partyKey === OTHER_PARTY;
 
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
@@ -272,15 +311,51 @@ export function CashTransactionCreateForm() {
               onChange={setPickedBranch}
             />
 
-            <TextField
+            {/*
+              THE THREE REGISTERS A SHOP ALREADY KEEPS, plus a way out of them.
+
+              `partyType` on the transaction is exactly customer | supplier |
+              user, so the groups are what the field CAN be rather than a tidy
+              arrangement — and picking from one stores the id, which is what
+              lets the list filter by party instead of by however the name was
+              spelled that day.
+
+              "Nama lain…" IS NOT A GAP IN THE DESIGN. Most of what a shop pays
+              is nobody it keeps a record of — PLN, the landlord, an ad platform
+              — and forcing those into the supplier register to record a
+              transaction would fill it with rows nobody ever buys from.
+            */}
+            <FilterSelect
+              layout="form"
               label={masuk ? "Pengirim" : "Penerima"}
-              name="cash-party"
-              value={partyName}
-              maxLength={120}
+              ariaLabel={masuk ? "Pengirim" : "Penerima"}
+              value={partyKey}
+              options={partyOptions}
+              active={false}
+              searchable
+              placeholder={
+                contacts.loading ? "Memuat kontak…" : "Pilih kontak…"
+              }
               disabled={saving}
-              hint="Opsional — mis. PLN, pemilik ruko."
-              onChange={(event) => setPartyName(event.target.value)}
+              hint={typedParty ? undefined : "Opsional."}
+              onChange={(next) => {
+                setPartyKey(next);
+                if (next !== OTHER_PARTY) setPartyName("");
+              }}
             />
+
+            {typedParty && (
+              <TextField
+                label={masuk ? "Nama pengirim" : "Nama penerima"}
+                name="cash-party-name"
+                value={partyName}
+                maxLength={120}
+                required
+                disabled={saving}
+                hint="Yang tidak terdaftar — mis. PLN, pemilik ruko."
+                onChange={(event) => setPartyName(event.target.value)}
+              />
+            )}
 
             <FilterSelect
               layout="form"
