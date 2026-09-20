@@ -28,9 +28,20 @@ const asMock = <T extends (...args: never[]) => unknown>(fn: T) =>
   fn as jest.MockedFunction<T>;
 
 /**
+ * A stat tile by its caption. `getByText` alone is ambiguous since the Tipe
+ * pills took the cards' own words ("Uang masuk"/"Uang keluar") — deliberately,
+ * so one screen names one thing one way. The card draws its caption in a `<p>`;
+ * the pill is a `<button>`.
+ */
+const statTile = (label: string) =>
+  screen
+    .getAllByText(label)
+    .find((node) => node.tagName === "P")!.parentElement!;
+
+/**
  * TRANSAKSI KEUANGAN — the list, now the first sub-tab of KAS & BANK. What it
  * guards: money lands in the column of its direction, the cards are the server's
- * whole-filter totals, the Arah lens applies on click outside the panel,
+ * whole-filter totals, every filter lives behind the one Filter button,
  * cancelled rows are asked out of the list by default and still render when
  * asked back in, and the empty state offers the next step.
  *
@@ -255,11 +266,12 @@ describe("Kas & Bank — transaksi: rows and totals", () => {
 
     renderWithAuth(<KasBankScreen now={NOW} />);
 
-    const inTile = (await screen.findByText("Uang masuk")).parentElement!;
+    await screen.findAllByText("Uang masuk");
+    const inTile = statTile("Uang masuk");
     expect(await within(inTile).findByText("Rp 2.500.000")).toBeInTheDocument();
     expect(within(inTile).getByText(/31 transaksi/)).toBeInTheDocument();
 
-    const outTile = screen.getByText("Uang keluar").parentElement!;
+    const outTile = statTile("Uang keluar");
     expect(within(outTile).getByText("Rp 900.000")).toBeInTheDocument();
   });
 
@@ -313,32 +325,87 @@ describe("Kas & Bank — transaksi: rows and totals", () => {
 });
 
 describe("Kas & Bank — transaksi: filters", () => {
-  it("applies the Arah pill on click, and does not count it on the Filter button", async () => {
+  /*
+    TIPE IS IN THE PANEL since 20 September 2026 — it was a pill row above the
+    table. Two things follow and both are guarded here: it waits for Terapkan
+    like every other field in a panel, and it is COUNTED on the trigger, which a
+    pill row was exempt from because it concealed nothing.
+  */
+  it("applies Tipe from the panel, and counts it on the Filter button", async () => {
     const user = userEvent.setup();
     renderWithAuth(<KasBankScreen now={NOW} />);
     await screen.findByText("BKM/CBS/2609/0001");
 
-    await user.click(screen.getByRole("button", { name: "Keluar" }));
+    expect(
+      screen.queryByRole("group", { name: "Tipe" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Filter" }));
+    const panel = await screen.findByRole("dialog");
+    await user.click(within(panel).getByLabelText("Filter tipe"));
+    await user.click(await screen.findByRole("option", { name: "Uang keluar" }));
+
+    // A panel's fields wait for Terapkan — picking one sends nothing yet.
+    expect(cashTransactionService.list).not.toHaveBeenCalledWith(
+      expect.objectContaining({ direction: "out" }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Terapkan" }));
 
     await waitFor(() =>
       expect(cashTransactionService.list).toHaveBeenLastCalledWith(
         expect.objectContaining({ direction: "out", page: 1 }),
       ),
     );
-    expect(screen.getByRole("button", { name: "Keluar" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
+    expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
+      "Filter (1)",
     );
-    expect(screen.getByRole("button", { name: "Filter" })).not.toHaveTextContent(
-      "(",
+    expect(
+      screen.getByRole("button", { name: "Hapus filter Uang keluar" }),
+    ).toBeInTheDocument();
+  });
+
+  /*
+    SUMBER IS A GROUP OF KINDS, and the server still filters by kind — so what
+    the request carries is the expansion, not the word on the control.
+  */
+  it("expands the chosen Sumber into the kinds the server filters by", async () => {
+    renderWithAuth(<KasBankScreen now={NOW} initialQuery={{ source: "manual" }} />);
+
+    await waitFor(() =>
+      expect(cashTransactionService.list).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: ["expense", "other_income"] }),
+      ),
     );
+    expect(
+      await screen.findByRole("button", { name: "Hapus filter Manual" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
+      "Filter (1)",
+    );
+  });
+
+  /*
+    TRANSFER IS DRAWN BY THE MOCKUP AND DOES NOT EXIST HERE. Asking for it must
+    answer "none" — never "all", which is what an absent `kind` means to the API.
+  */
+  it("answers Transfer with an empty list, without asking the server", async () => {
+    renderWithAuth(<KasBankScreen now={NOW} initialQuery={{ source: "transfer" }} />);
+
+    expect(
+      await screen.findByText("Tidak ada transaksi di filter ini."),
+    ).toBeInTheDocument();
+    expect(cashTransactionService.list).not.toHaveBeenCalled();
+    // The cards state a fact rather than a leftover from the last filter.
+    const inTile = statTile("Uang masuk");
+    expect(within(inTile).getByText("Rp 0")).toBeInTheDocument();
   });
 
   it("starts from a deep link's kind, as a chip and a counted filter", async () => {
     renderWithAuth(
       <KasBankScreen
         now={NOW}
-        initialQuery={{ kinds: ["commission_payment"] }} />,
+        initialQuery={{ source: "commission" }} />,
     );
 
     await waitFor(() =>
@@ -346,13 +413,19 @@ describe("Kas & Bank — transaksi: filters", () => {
         expect.objectContaining({ kind: ["commission_payment"] }),
       ),
     );
-    expect(await screen.findByText("Pembayaran komisi")).toBeInTheDocument();
+    // The chip's own remove button, not the bare word: "Komisi" is also the
+    // module nav's tab for the commission recap.
+    expect(
+      await screen.findByRole("button", { name: "Hapus filter Komisi" }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
       "Filter (1)",
     );
   });
 
   it("reads only what it recognises from the URL", () => {
+    // A legacy `?kind=` still lands on the Sumber that contains it — the komisi
+    // recap links here that way, and those links are in people's histories.
     expect(
       cashTransactionsQueryFromParams({
         kind: "commission_payment,bogus",
@@ -360,7 +433,12 @@ describe("Kas & Bank — transaksi: filters", () => {
         status: "void",
         documentId: "not-an-id",
       }),
-    ).toEqual({ kinds: ["commission_payment"], status: "void" });
+    ).toEqual({ source: "commission", status: "void" });
+
+    expect(cashTransactionsQueryFromParams({ source: "manual" })).toEqual({
+      source: "manual",
+    });
+    expect(cashTransactionsQueryFromParams({ source: "bogus" })).toEqual({});
 
     expect(
       cashTransactionsQueryFromParams({ documentId: "64b7f0c2a1b2c3d4e5f60718" }),
@@ -389,11 +467,32 @@ describe("Kas & Bank — transaksi: empty and gated", () => {
     renderWithAuth(<KasBankScreen now={NOW} />);
     await screen.findByText("Belum ada transaksi keuangan.");
 
-    await user.click(screen.getByRole("button", { name: "Masuk" }));
+    await user.click(screen.getByRole("button", { name: "Filter" }));
+    const panel = await screen.findByRole("dialog");
+    await user.click(within(panel).getByLabelText("Filter tipe"));
+    await user.click(await screen.findByRole("option", { name: "Uang masuk" }));
+    await user.click(screen.getByRole("button", { name: "Terapkan" }));
 
     expect(
       await screen.findByText("Tidak ada transaksi di filter ini."),
     ).toBeInTheDocument();
+  });
+
+  /*
+    IT SITS ON THE SEARCH ROW, level with `Filter (n)` — not above it, which is
+    where an `items-start` flex used to pin it when a pill row led the toolbar.
+  */
+  it("puts Tambah transaksi on the same row as the Filter button", async () => {
+    renderWithAuth(<KasBankScreen now={NOW} />);
+
+    const filter = await screen.findByRole("button", { name: "Filter" });
+    // `FilterTrigger` is a direct child of the bar's row, so the row is its parent.
+    const row = filter.parentElement!;
+
+    expect(
+      within(row).getByRole("link", { name: /Tambah transaksi/ }),
+    ).toBeInTheDocument();
+    expect(within(row).getByLabelText("Cari transaksi")).toBeInTheDocument();
   });
 
   it("offers Tambah transaksi only to a role that may create one", async () => {

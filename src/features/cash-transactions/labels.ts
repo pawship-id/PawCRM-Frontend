@@ -62,8 +62,10 @@ export function kindLabel(kind: CashTransactionKind): string {
 }
 
 /**
- * SUMBER — what produced the transaction, as the Kas & Bank table's last column
- * names it (BO mockup, `buloo-keuangan-v1.html`).
+ * SUMBER — what produced the transaction. The Kas & Bank table's last column and
+ * its filter are BOTH built from this one table (BO mockup,
+ * `buloo-keuangan-v1.html`), so a column and a filter option can never drift
+ * into naming the same thing differently.
  *
  * NOT A SECOND SPELLING OF `KIND_LABEL`. Jenis answers "what kind of money is
  * this" from the books' point of view — penerimaan piutang, pembayaran komisi.
@@ -72,23 +74,66 @@ export function kindLabel(kind: CashTransactionKind): string {
  * Manual is the one they can still edit, and every other value names a document
  * elsewhere in the app that owns it.
  *
- * The mockup also lists "Transfer", for money moved between two of the shop's
- * own accounts. THERE IS NO SUCH TRANSACTION in this system — nothing creates
- * one — so it is not in this map. Add it here when the feature exists, not
- * before: a filter option that can never match anything is a filter people stop
- * trusting.
+ * SUMBER IS COARSER THAN JENIS, which is the point and the reason the filter is
+ * a single select: `expense` and `other_income` are one Sumber ("Manual") because
+ * the question is "did I type this, or did a document make it", and the answer
+ * is the same for both.
+ *
+ * `transfer` HAS NO KINDS, and that is not an oversight. Money moved between two
+ * of the shop's own accounts is drawn in the mockup and DOES NOT EXIST in this
+ * system — nothing creates such a transaction. It is carried here on request
+ * (20 September 2026) so the filter matches the mockup, and an empty `kinds` is
+ * how the list knows to answer "none" rather than "all"; see the transfer
+ * short-circuit in `useCashTransactions`. Give it its kinds when the feature is
+ * built and everything below starts working on its own.
  */
-export const SOURCE_LABEL: Record<CashTransactionKind, string> = {
-  expense: "Manual",
-  other_income: "Manual",
-  customer_payment: "Pembayaran",
-  supplier_payment: "Pembelian",
-  commission_payment: "Komisi",
-  pos_refund: "Retur",
-};
+const SOURCES = {
+  manual: { label: "Manual", kinds: ["expense", "other_income"] },
+  payment: { label: "Pembayaran", kinds: ["customer_payment"] },
+  purchase: { label: "Pembelian", kinds: ["supplier_payment"] },
+  return: { label: "Retur", kinds: ["pos_refund"] },
+  commission: { label: "Komisi", kinds: ["commission_payment"] },
+  transfer: { label: "Transfer", kinds: [] },
+} as const satisfies Record<
+  string,
+  { label: string; kinds: readonly CashTransactionKind[] }
+>;
 
+export type CashTransactionSource = keyof typeof SOURCES;
+
+/** The filter's options, in the order the mockup lists them. */
+export const CASH_TRANSACTION_SOURCES = Object.keys(
+  SOURCES,
+) as CashTransactionSource[];
+
+export function sourceFilterLabel(source: CashTransactionSource): string {
+  return SOURCES[source].label;
+}
+
+/** What `?source=` expands to on the wire. Empty means "nothing can match". */
+export function sourceKinds(
+  source: CashTransactionSource,
+): readonly CashTransactionKind[] {
+  return SOURCES[source].kinds;
+}
+
+/**
+ * Which Sumber a kind belongs to — how a legacy `?kind=commission_payment` deep
+ * link (the komisi recap's "Riwayat pembayaran komisi") still lands on a filter
+ * the control can show.
+ */
+export function sourceOfKind(
+  kind: CashTransactionKind,
+): CashTransactionSource | undefined {
+  return CASH_TRANSACTION_SOURCES.find((source) =>
+    (SOURCES[source].kinds as readonly string[]).includes(kind),
+  );
+}
+
+/** The table column: the Sumber a ROW belongs to, named. */
 export function sourceLabel(kind: CashTransactionKind): string {
-  return SOURCE_LABEL[kind] ?? kindLabel(kind);
+  const source = sourceOfKind(kind);
+  return source ? SOURCES[source].label : kindLabel(kind);
 }
 
 /**

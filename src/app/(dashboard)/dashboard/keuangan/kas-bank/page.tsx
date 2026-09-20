@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 /**
- * `?kind=` / `?direction=` / `?status=` / `?documentId=` are read HERE, as the
+ * `?source=` / `?kind=` / `?direction=` / `?status=` / `?documentId=` are read HERE, as the
  * payables form reads `?receipt=`: the server already has them, so the screen
  * needs no `useSearchParams` and no Suspense boundary. `searchParams` is a
  * Promise in this version of Next — see AGENTS.md.
@@ -38,6 +38,8 @@ export default async function KasBankPage({
   searchParams,
 }: {
   searchParams: Promise<{
+    source?: string | string[];
+    /** Legacy — mapped to the Sumber that contains it. See the parser. */
     kind?: string | string[];
     direction?: string | string[];
     status?: string | string[];

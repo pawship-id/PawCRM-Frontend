@@ -5,7 +5,11 @@ import type {
   CashTransactionStatus,
 } from "@/types/api";
 
-import { CASH_TRANSACTION_KINDS } from "./labels";
+import {
+  CASH_TRANSACTION_SOURCES,
+  sourceOfKind,
+  type CashTransactionSource,
+} from "./labels";
 
 /**
  * The Transaksi screen's query, its defaults and the URL parser.
@@ -23,8 +27,16 @@ export interface CashTransactionsQuery {
   search: string;
   /** The pill row outside the panel. */
   direction: CashTransactionDirection | "";
-  /** Empty = semua jenis. */
-  kinds: CashTransactionKind[];
+  /**
+   * SUMBER — "where did this row come from". Empty = semua sumber.
+   *
+   * IT REPLACED `kinds`, a multi-select over the six accounting kinds
+   * (20 September 2026, on request). Sumber is the coarser question and the one
+   * the table's own column already answers, so the filter and the column now
+   * speak with one vocabulary; the server still takes `kind`, and the hook
+   * expands this into that.
+   */
+  source: CashTransactionSource | "";
   /** `yyyy-mm-dd`. */
   dateFrom: string;
   dateTo: string;
@@ -61,7 +73,7 @@ export const DEFAULT_CASH_TRANSACTIONS_QUERY: CashTransactionsQuery = {
   limit: 25,
   search: "",
   direction: "",
-  kinds: [],
+  source: "",
   dateFrom: "",
   dateTo: "",
   branchId: "",
@@ -91,6 +103,7 @@ export const DEFAULT_CASH_TRANSACTION_STATUS =
  * whole list.
  */
 export function cashTransactionsQueryFromParams(params: {
+  source?: string | string[];
   kind?: string | string[];
   direction?: string | string[];
   status?: string | string[];
@@ -101,12 +114,24 @@ export function cashTransactionsQueryFromParams(params: {
 
   const initial: Partial<CashTransactionsQuery> = {};
 
-  const kinds = (first(params.kind) ?? "")
-    .split(",")
-    .filter((kind): kind is CashTransactionKind =>
-      (CASH_TRANSACTION_KINDS as string[]).includes(kind),
-    );
-  if (kinds.length > 0) initial.kinds = kinds;
+  /*
+    `?source=` IS THE CURRENT SPELLING, and `?kind=` still works: the komisi
+    recap's "Riwayat pembayaran komisi" links here with
+    `?kind=commission_payment`, and those links are in people's notes and
+    browser histories. A kind is mapped to the Sumber that contains it, so the
+    control can actually show what the URL asked for — a filter the screen
+    cannot draw is worse than one it never applied.
+  */
+  const source = first(params.source);
+  if (source && (CASH_TRANSACTION_SOURCES as string[]).includes(source)) {
+    initial.source = source as CashTransactionSource;
+  } else {
+    const legacy = (first(params.kind) ?? "").split(",")[0];
+    const mapped = legacy
+      ? sourceOfKind(legacy as CashTransactionKind)
+      : undefined;
+    if (mapped) initial.source = mapped;
+  }
 
   const direction = first(params.direction);
   if (direction === "in" || direction === "out") initial.direction = direction;

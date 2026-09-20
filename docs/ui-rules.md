@@ -559,10 +559,57 @@ rather than separate Masuk and Keluar, the bukti kas number and the party on a
 second line under Deskripsi, and a pencil on the rows that were typed by hand,
 opening the same Ubah dialog the detail page opens.
 
-**Sumber** carries the mockup's values minus one: there is no `Transfer`, because
-nothing in this system moves money between two of the shop's own accounts. Add it
-when the feature exists — an option that can never match anything is a filter
-people stop trusting.
+**THE TRANSAKSI FILTERS ARE TIPE · SUMBER · AKUN KAS & BANK · STATUS**, decided
+20 September 2026 on request, from a mockup. **All four are single selects inside
+the one `Filter (n)` panel** — nothing sits outside it — and Periode and Cabang
+stay on the page's context bar.
+
+- **Tipe** reads **"Uang masuk" / "Uang keluar"**, not the bare "Masuk"/"Keluar"
+  it used to, and the labels come from `DIRECTION_TITLE` rather than a second
+  spelling: they are the same two words as the cards directly above the table,
+  the toggle on Tambah transaksi and the heading on a transaction's own page.
+- **TIPE WENT INTO THE PANEL**, later the same day and on request, and this is
+  a **recorded exception to the pill-row rule above**. §8 says a lens with small
+  cardinality stays outside as a pill row, and Transaksi is where that lost:
+  `FilterPills` draws NO VISIBLE CAPTION — its name reaches a screen reader
+  only — so three unlabelled pills sat above the table with nothing saying they
+  were "Tipe", and the person who asked for the filter could not find it. A
+  labelled field in a panel says what it is.
+
+  **Two things follow, and neither is optional.** Tipe is **counted** on
+  `Filter (n)` now — the pill-row exemption exists because a row of pills with
+  one filled in conceals nothing, and behind a button it conceals everything —
+  and the panel's **Reset clears it**, because Reset clears what its own control
+  conceals.
+
+  **This does not repeal the pill row elsewhere.** Utang Supplier's urgency lens
+  keeps its row and its two exemptions. What is repealed is using one where the
+  dimension's NAME is not otherwise on screen. If a pill row ever needs a visible
+  caption, add the prop to `FilterPills` once and decide for every screen at the
+  same time — do not grow a second arrangement one screen at a time.
+- **Sumber REPLACED Jenis**, and with it the panel's only multi-select. Jenis
+  offered the six accounting kinds; Sumber offers what the table's own Sumber
+  COLUMN shows, so the filter and the column speak one vocabulary. It is coarser
+  on purpose: `expense` and `other_income` are one option ("Manual"), because
+  "did I type this, or did a document make it" has the same answer for both.
+  The server still filters by `kind`; `SOURCES` in `features/cash-transactions/labels.ts`
+  is the one table the column, the options and that expansion are all built from.
+- **`Transfer` IS IN THE LIST AND MATCHES NOTHING.** Money moved between two of
+  the shop's own accounts is drawn in the mockup and does not exist here —
+  nothing creates such a transaction. It is carried on request so the filter
+  matches the mockup, and `useCashTransactions` SHORT-CIRCUITS it: an empty
+  expansion answers "none" without a request, because sending no `kind` would
+  ask for every kind, which is the opposite answer. Give it its kinds when the
+  feature is built and the rest starts working on its own. **This is the one
+  sanctioned exception to "an option that can never match anything is a filter
+  people stop trusting" — do not copy it to another screen.**
+
+**THE PANEL STAYS, although §8's table leans quick bar.** Four single selects
+and a search is near the boundary, and the multi-select that forced a panel is
+gone. It keeps the panel because the `Filter (n)` button is load-bearing on this
+screen: **Tambah transaksi** is aligned to it, on request, and Tipe moved behind
+it for the caption it gains there. A quick bar would undo both. Revisit them
+together or not at all.
 
 **THERE IS NO STATUS COLUMN.** It was added because the BO mockup's data has no
 cancelled transactions and this system's does, and it was **removed on request on

@@ -17,6 +17,7 @@ import type {
 
 import { CASH_ACCOUNT_CATEGORY } from "@/features/accounting";
 
+import { sourceKinds } from "../labels";
 import {
   DEFAULT_CASH_TRANSACTIONS_QUERY,
   type CashTransactionsQuery,
@@ -41,6 +42,12 @@ const EMPTY_PAGE: PageResult<CashTransaction>["pagination"] = {
   limit: DEFAULT_CASH_TRANSACTIONS_QUERY.limit,
   total: 0,
   totalPages: 0,
+};
+
+/** Σ 0 in and Σ 0 out — a real answer, for a filter nothing can match. */
+const EMPTY_TOTALS: CashTransactionTotals = {
+  in: { amount: "0.0000", count: 0 },
+  out: { amount: "0.0000", count: 0 },
 };
 
 export interface UseCashTransactionsResult {
@@ -133,6 +140,20 @@ export function useCashTransactions(
     let active = true;
     const search = settled.search.trim();
 
+    /*
+      SUMBER IS EXPANDED HERE, because the server filters by `kind` and Sumber
+      is a group of kinds ("Manual" is expense + other_income).
+
+      A SOURCE WITH NO KINDS MATCHES NOTHING, and the request is not made at all.
+      `transfer` is the only one today — the mockup draws it and this system has
+      no such transaction. Sending no `kind` would ask for EVERY kind, which is
+      the opposite answer; sending `kind: []` would do the same, since the API
+      reads an absent filter and an empty one alike. Short-circuiting also keeps
+      a dead option from costing a round trip.
+    */
+    const kinds = settled.source ? sourceKinds(settled.source) : undefined;
+    const matchesNothing = kinds !== undefined && kinds.length === 0;
+
     // Everything that narrows the set — the page, its size and the ordering do
     // not. `totals` are Σ over the whole filtered set, so they survive all three.
     const filterKey = JSON.stringify({
@@ -151,6 +172,16 @@ export function useCashTransactions(
     if (filterKey !== lastFilterKey.current) setTotals(null);
     lastFilterKey.current = filterKey;
 
+    if (matchesNothing) {
+      setTransactions([]);
+      setPagination({ ...EMPTY_PAGE, limit: settled.limit });
+      setTotals(EMPTY_TOTALS);
+      setLoading(false);
+      return () => {
+        active = false;
+      };
+    }
+
     cashTransactionService
       .list({
         page: settled.page,
@@ -158,7 +189,7 @@ export function useCashTransactions(
         sort: settled.sort,
         search: search || undefined,
         direction: settled.direction || undefined,
-        kind: settled.kinds.length > 0 ? settled.kinds : undefined,
+        kind: kinds ? [...kinds] : undefined,
         dateFrom: settled.dateFrom || undefined,
         dateTo: settled.dateTo || undefined,
         branchId: settled.branchId || undefined,

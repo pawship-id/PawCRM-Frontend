@@ -42,10 +42,14 @@ export {
   cashTransactionHref,
   cashTransactionTitle,
   channelClassOf,
-  SOURCE_LABEL,
+  CASH_TRANSACTION_SOURCES,
+  sourceFilterLabel,
+  sourceKinds,
   sourceLabel,
+  sourceOfKind,
   DIRECTION_TITLE,
   directionTitle,
   numberPrefixForClass,
   kindLabel,
 } from "./labels";
+export type { CashTransactionSource } from "./labels";

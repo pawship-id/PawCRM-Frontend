@@ -102,7 +102,7 @@ export function CashTransactionsPanel({
   const filtered =
     query.search.trim() !== "" ||
     query.direction !== "" ||
-    query.kinds.length > 0 ||
+    query.source !== "" ||
     query.dateFrom !== "" ||
     query.dateTo !== "" ||
     query.branchId !== "" ||
@@ -124,22 +124,27 @@ export function CashTransactionsPanel({
         </Alert>
       )}
 
-      <div className="flex flex-wrap items-start gap-3">
-        <CashTransactionsToolbar
-          query={query}
-          cashAccounts={cashAccounts}
-          onChange={setQuery}
-          className="min-w-0 flex-1"
-        />
-        <Can feature="cashTransactions" action="create">
-          <Button asChild>
-            <Link href={`${CASH_TRANSACTION_DETAIL_HREF}/new`}>
-              <Plus className="size-4" />
-              Tambah transaksi
-            </Link>
-          </Button>
-        </Can>
-      </div>
+      {/*
+        TAMBAH TRANSAKSI RIDES THE BAR'S `actions` SLOT, so it sits on the search
+        row level with `Filter (n)` (20 September 2026, on request). It used to
+        be a sibling of the whole toolbar in an `items-start` flex, which pinned
+        it to the TOP — beside the Tipe pills, a row it has nothing to do with.
+      */}
+      <CashTransactionsToolbar
+        query={query}
+        cashAccounts={cashAccounts}
+        onChange={setQuery}
+        actions={
+          <Can feature="cashTransactions" action="create">
+            <Button asChild>
+              <Link href={`${CASH_TRANSACTION_DETAIL_HREF}/new`}>
+                <Plus className="size-4" />
+                Tambah transaksi
+              </Link>
+            </Button>
+          </Can>
+        }
+      />
 
       {loading && transactions.length === 0 ? (
         <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
