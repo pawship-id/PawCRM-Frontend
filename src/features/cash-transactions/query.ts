@@ -35,6 +35,13 @@ export interface CashTransactionsQuery {
    * at a till, and several of them land in one account.
    */
   accountId: string;
+  /**
+   * `"posted"` BY DEFAULT — a cancelled transaction moved no money, and the list
+   * a shop reconciles a drawer or a statement against is the list of money that
+   * actually moved. `""` (semua status) brings the cancelled rows back, struck
+   * through, and `"void"` shows only those; both are a deliberate choice made in
+   * the filter panel or arrived at by a `?status=` deep link.
+   */
   status: CashTransactionStatus | "";
   /**
    * Set only by a deep link (`?documentId=`) — "the payments on this invoice".
@@ -54,10 +61,20 @@ export const DEFAULT_CASH_TRANSACTIONS_QUERY: CashTransactionsQuery = {
   dateTo: "",
   branchId: "",
   accountId: "",
-  status: "",
+  status: "posted",
   documentId: "",
   sort: "newest",
 };
+
+/**
+ * What "not filtering by status" means on this screen — NOT `""`.
+ *
+ * The toolbar's chip and its `Filter (n)` badge, and the table's empty state,
+ * all ask "has somebody narrowed this?", and every one of them would answer yes
+ * for ever if they went on comparing against the empty string.
+ */
+export const DEFAULT_CASH_TRANSACTION_STATUS =
+  DEFAULT_CASH_TRANSACTIONS_QUERY.status;
 
 /**
  * The URL's say in the first render — how another screen deep-links here

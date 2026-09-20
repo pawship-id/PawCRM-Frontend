@@ -31,7 +31,10 @@ import type {
   CashTransactionStatus,
 } from "@/types/api";
 
-import type { CashTransactionsQuery } from "../query";
+import {
+  DEFAULT_CASH_TRANSACTION_STATUS,
+  type CashTransactionsQuery,
+} from "../query";
 import { CASH_TRANSACTION_KINDS, KIND_LABEL } from "../labels";
 
 /** The lens: which way the money went. Outside the panel, applies on click. */
@@ -47,7 +50,9 @@ const STATUS_OPTIONS: FilterOption<CashTransactionStatus | "">[] = withAll(
     { value: "posted", label: "Tercatat" },
     { value: "void", label: "Dibatalkan" },
   ],
-  "Semua status",
+  // "Termasuk dibatalkan", not "Semua status": this option is the one that puts
+  // cancelled rows back on the screen, and the label should say what it does.
+  "Termasuk dibatalkan",
 );
 
 type PanelFilters = Pick<
@@ -70,7 +75,9 @@ const CLEARED: PanelFilters = {
   kinds: [],
   branchId: "",
   accountId: "",
-  status: "",
+  // BACK TO "TERCATAT", not to "". Reset returns the panel to the state it
+  // opens the screen in, and hiding the cancelled rows IS that state.
+  status: DEFAULT_CASH_TRANSACTION_STATUS,
 };
 
 /**
@@ -112,11 +119,16 @@ export function CashTransactionsToolbar({
       onRemove: () => onChange({ accountId: "" }),
     });
   }
-  if (query.status) {
+  /*
+    ONLY WHEN IT IS NOT THE DEFAULT. "Tercatat" is how the list always opens, and
+    a chip that never comes off says nothing — but "Dibatalkan" and "Semua
+    status" both put cancelled rows on screen, which is worth a chip saying so.
+  */
+  if (query.status !== DEFAULT_CASH_TRANSACTION_STATUS) {
     chips.push({
       key: "status",
-      label: query.status === "void" ? "Dibatalkan" : "Tercatat",
-      onRemove: () => onChange({ status: "" }),
+      label: query.status === "void" ? "Dibatalkan" : "Termasuk dibatalkan",
+      onRemove: () => onChange({ status: DEFAULT_CASH_TRANSACTION_STATUS }),
     });
   }
   if (query.documentId) {
@@ -151,7 +163,7 @@ export function CashTransactionsToolbar({
           onChange({
             kinds: [],
             accountId: "",
-            status: "",
+            status: DEFAULT_CASH_TRANSACTION_STATUS,
             documentId: "",
           })
         }
@@ -215,7 +227,7 @@ function TransactionsFilterPanel({
   const count = [
     applied.kinds.length > 0,
     applied.accountId !== "",
-    applied.status !== "",
+    applied.status !== DEFAULT_CASH_TRANSACTION_STATUS,
   ].filter(Boolean).length;
 
   function onOpenChange(next: boolean) {

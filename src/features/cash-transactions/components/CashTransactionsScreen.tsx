@@ -39,11 +39,12 @@ import {
   lockedReason,
   sourceLabel,
 } from "../labels";
+import { DEFAULT_CASH_TRANSACTION_STATUS } from "../query";
 import { CashTransactionStatusBadge } from "./CashTransactionStatusBadge";
 import { CashTransactionsToolbar } from "./CashTransactionsToolbar";
 
-/** Tanggal · Deskripsi · Akun · Cabang · Jumlah · Akun Kas/Bank · Sumber · Status. */
-const COLUMN_COUNT = 8;
+/** Tanggal · Deskripsi · Akun · Cabang · Jumlah · Akun Kas/Bank · Sumber. */
+const COLUMN_COUNT = 7;
 
 /**
  * THE THREE COLUMNS THE HEADER CAN ORDER BY, and only three.
@@ -77,8 +78,13 @@ const SORTABLE: Record<string, { asc: CashTransactionSort; desc: CashTransaction
  * response as the rows — a cancelled transaction moved no money, and a card
  * that summed the page would be a wrong number wearing a right label.
  *
- * A CANCELLED ROW STAYS, muted and struck through. It posted an entry and a
- * reversal, and a list that hid it would leave both pointing at nothing.
+ * CANCELLED ROWS ARE OUT OF THE LIST BY DEFAULT (20 September 2026), because
+ * this is the list a drawer and a bank statement are reconciled against and a
+ * row for money that never moved is a row somebody has to think past on every
+ * pass. They are not deleted: `Status → Dibatalkan` or `Termasuk dibatalkan` in
+ * the filter panel brings them back, still muted and struck through, and the
+ * detail they link to is unchanged. The filter is SERVER-SIDE like every other
+ * one here, so the pager and the cards agree with what the table shows.
  */
 export function CashTransactionsPanel({
   state,
@@ -107,7 +113,7 @@ export function CashTransactionsPanel({
     query.dateTo !== "" ||
     query.branchId !== "" ||
     query.accountId !== "" ||
-    query.status !== "" ||
+    query.status !== DEFAULT_CASH_TRANSACTION_STATUS ||
     query.documentId !== "";
 
   return (
@@ -174,7 +180,6 @@ export function CashTransactionsPanel({
                   />
                   <TableHead>Akun Kas/Bank</TableHead>
                   <TableHead>Sumber</TableHead>
-                  <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -380,9 +385,25 @@ function TransactionRow({
       </TableCell>
 
       <TableCell className="max-w-xs px-4 py-2.5">
-        <p className="truncate text-sm">
-          <HighlightText text={description} query={search} />
-        </p>
+        {/*
+          THE BADGES THAT OUTLIVED THE STATUS COLUMN sit beside the description,
+          not on a column of their own — and only when they have something to
+          say. "Dibatalkan" because a struck-through row must still carry the
+          WORD (§1.3), and "Kasir" because nothing else in the row says money was
+          taken at the till: Sumber is keyed on the kind, so a payment reads
+          "Pembayaran" whether a cashier took it or the back office typed it.
+          `shrink-0` keeps them whole while the description truncates.
+        */}
+        <div className="flex items-center gap-1.5">
+          <p className="truncate text-sm">
+            <HighlightText text={description} query={search} />
+          </p>
+          <CashTransactionStatusBadge
+            transaction={transaction}
+            showPosted={false}
+            className="shrink-0"
+          />
+        </div>
         {/*
           THE NUMBER AND THE PARTY ON ONE LINE UNDER IT. The bukti kas number
           lost its own column to Sumber and Akun; it keeps a link here because it
@@ -486,9 +507,6 @@ function TransactionRow({
         </span>
       </TableCell>
 
-      <TableCell className="px-4 py-2.5">
-        <CashTransactionStatusBadge transaction={transaction} />
-      </TableCell>
     </TableRow>
   );
 }

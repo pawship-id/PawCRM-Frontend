@@ -513,17 +513,56 @@ Tambah transaksi's Lini Usaha sits in the header as a DEFAULT for the rows, whic
 keep their own column.
 
 **The Transaksi table follows the mockup's columns** — Tanggal · Deskripsi ·
-Akun · Cabang · Jumlah · Akun Kas/Bank · Sumber · Status — with one signed
-Jumlah column rather than separate Masuk and Keluar, the bukti kas number and
-the party on a second line under Deskripsi, and a pencil on the rows that were
-typed by hand, opening the same Ubah dialog the detail page opens.
+Akun · Cabang · Jumlah · Akun Kas/Bank · Sumber — with one signed Jumlah column
+rather than separate Masuk and Keluar, the bukti kas number and the party on a
+second line under Deskripsi, and a pencil on the rows that were typed by hand,
+opening the same Ubah dialog the detail page opens.
 
-TWO COLUMNS ARE NOT THE MOCKUP'S. **Status** has no mockup equivalent because
-that data has no cancelled transactions; this system does, and a cancelled row
-drawn like a live one is a figure that lies. **Sumber** carries the mockup's
-values minus one: there is no `Transfer`, because nothing in this system moves
-money between two of the shop's own accounts. Add it when the feature exists —
-an option that can never match anything is a filter people stop trusting.
+**Sumber** carries the mockup's values minus one: there is no `Transfer`, because
+nothing in this system moves money between two of the shop's own accounts. Add it
+when the feature exists — an option that can never match anything is a filter
+people stop trusting.
+
+**THERE IS NO STATUS COLUMN.** It was added because the BO mockup's data has no
+cancelled transactions and this system's does, and it was **removed on request on
+20 September 2026**, the same day the list stopped showing those rows by default.
+Once "Dibatalkan" is the exception you have to ask for, a column whose every
+visible cell reads "Tercatat" is a column of one repeated word — the noise the
+default was set to be rid of, paid for in width on a table that already carries
+seven columns.
+
+THE TWO BADGES SURVIVED IT, in the Deskripsi cell and **only when they have
+something to say** (`CashTransactionStatusBadge showPosted={false}`, which
+returns `null` when neither applies):
+
+- **Dibatalkan**, on a cancelled row. Non-negotiable: the row is muted and struck
+  through, and §1.3 does not let styling carry a status on its own.
+- **Kasir**, on a row recorded at the till. Nothing else in the row says so —
+  `SOURCE_LABEL` is keyed on the transaction's KIND, so a `customer_payment`
+  reads "Pembayaran" whether a cashier took the money or the back office typed
+  it in — and a shift is reconciled against what the cashier pressed.
+
+**"Tercatat" is gone from the list and stays on the DETAIL page**, where a single
+transaction is being read and its status is a question somebody actually has.
+
+**CANCELLED ROWS ARE OUT OF THAT TABLE BY DEFAULT.** Decided 20 September 2026
+on request: `status` starts at `posted`, so the list opens on money that actually
+moved — which is what a drawer and a bank statement are reconciled against, and
+a row for money that never moved is one more thing to think past on every pass.
+The two cards were already posted-only on the server, so the table and the
+figures above it now answer the same question.
+
+They are HIDDEN, NOT DROPPED. The Status field in the filter panel carries
+**Dibatalkan** and **Termasuk dibatalkan** (the "semua" option, renamed — the
+label should say what pressing it does), either one brings them back still muted
+and struck through, and the detail page they link to is untouched. The filter is
+SERVER-SIDE like every other one here; never sift the rows in the client, or the
+pager will count rows the table does not show.
+
+`DEFAULT_CASH_TRANSACTION_STATUS` is what "not filtering by status" means on this
+screen — **not `""`**. The chip, the `Filter (n)` badge, the panel's Reset and
+the table's empty state all compare against it; a comparison left on the empty
+string answers "yes, narrowed" for ever.
 
 **The transaction DETAIL follows the mockup too** (20 September 2026): the
 heading is "Uang keluar – BKK/…", an **Ubah** button sits beside a **≡** menu,

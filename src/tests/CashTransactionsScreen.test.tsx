@@ -30,8 +30,9 @@ const asMock = <T extends (...args: never[]) => unknown>(fn: T) =>
 /**
  * TRANSAKSI KEUANGAN — the list, now the first sub-tab of KAS & BANK. What it
  * guards: money lands in the column of its direction, the cards are the server's
- * whole-filter totals, the Arah lens applies on click outside the panel, a
- * cancelled row stays visible, and the empty state offers the next step.
+ * whole-filter totals, the Arah lens applies on click outside the panel,
+ * cancelled rows are asked out of the list by default and still render when
+ * asked back in, and the empty state offers the next step.
  *
  * DRIVEN THROUGH `KasBankScreen`, which is the screen the route renders — the
  * panel no longer owns its own state, and testing it with a hand-made one would
@@ -86,7 +87,8 @@ beforeEach(() => {
 describe("Kas & Bank — transaksi: rows and totals", () => {
   /**
    * THE MOCKUP'S COLUMNS — Tanggal · Deskripsi · Akun · Cabang · Jumlah · Akun
-   * Kas/Bank · Sumber · Status. One signed amount column, not two.
+   * Kas/Bank · Sumber. One signed amount column, not two, and NO Status: it went
+   * on 20 September 2026 with the cancelled rows it labelled.
    */
   it("lays each row out in the mockup's columns", async () => {
     renderWithAuth(<KasBankScreen now={NOW} />);
@@ -103,7 +105,11 @@ describe("Kas & Bank — transaksi: rows and totals", () => {
     expect(inCells[4]).toHaveTextContent("+ Rp 150.000");
     expect(inCells[5]).toHaveTextContent("Kas");
     expect(inCells[6]).toHaveTextContent("Pembayaran");
-    expect(inCells[7]).toHaveTextContent("Tercatat");
+    // Seven cells, and the last of them is Sumber.
+    expect(inCells).toHaveLength(7);
+    // A posted row wears no chip at all — "Tercatat" on every row is the noise
+    // the column was dropped to be rid of.
+    expect(within(inRow).queryByText("Tercatat")).not.toBeInTheDocument();
 
     const outRow = screen.getByText("BKK/CBS/2609/0003").closest("tr")!;
     const outCells = within(outRow).getAllByRole("cell");
@@ -197,17 +203,42 @@ describe("Kas & Bank — transaksi: rows and totals", () => {
     expect(within(outTile).getByText("Rp 900.000")).toBeInTheDocument();
   });
 
-  it("keeps a cancelled row, struck through and labelled", async () => {
+  /*
+    THE LIST ASKS THE SERVER FOR POSTED ROWS and does not sift them itself: the
+    pager and the two cards come from the same response, so a row hidden in the
+    client would be a row the pager still counted.
+  */
+  it("leaves the cancelled rows out of the list by default", async () => {
+    renderWithAuth(<KasBankScreen now={NOW} />);
+    await screen.findByText("BKM/CBS/2609/0001");
+
+    expect(cashTransactionService.list).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "posted" }),
+    );
+    // And the default costs nothing on the Filter button — it narrows nothing
+    // somebody chose.
+    expect(screen.getByRole("button", { name: "Filter" })).not.toHaveTextContent(
+      "(",
+    );
+  });
+
+  it("draws a cancelled row struck through when one is asked for", async () => {
     asMock(cashTransactionService.list).mockResolvedValue(
       cashPage([cashTx({ status: "void", isVoided: true, recordedVia: "pos" })]),
     );
 
-    renderWithAuth(<KasBankScreen now={NOW} />);
+    renderWithAuth(<KasBankScreen now={NOW} initialQuery={{ status: "void" }} />);
 
     const row = (await screen.findByText("BKM/CBS/2609/0001")).closest("tr")!;
-    expect(within(row).getByText("Dibatalkan")).toBeInTheDocument();
-    expect(within(row).getByText("Kasir")).toBeInTheDocument();
-    expect(within(row).getAllByRole("cell")[4]).toHaveClass("line-through");
+    // Both chips moved into Deskripsi when the Status column went: the row is
+    // struck through, and §1.3 wants the WORD beside it either way.
+    const cells = within(row).getAllByRole("cell");
+    expect(within(cells[1]).getByText("Dibatalkan")).toBeInTheDocument();
+    expect(within(cells[1]).getByText("Kasir")).toBeInTheDocument();
+    expect(cells[4]).toHaveClass("line-through");
+    expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
+      "Filter (1)",
+    );
   });
 
   it("opens the detail when a row is clicked", async () => {
