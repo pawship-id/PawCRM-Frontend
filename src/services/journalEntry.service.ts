@@ -13,15 +13,19 @@ import type { PageResult } from "@/types/api";
 /**
  * General-ledger calls against /api/journal-entries.
  *
- * FOUR SHAPES, NOT ONE, and that is the point of the module. The ledger answers
- * four different questions and each has its own endpoint:
+ * FIVE SHAPES, NOT ONE, and that is the point of the module. The ledger answers
+ * five different questions and each has its own endpoint:
  *
  *   `list`     — rows, paginated. What happened, newest first.
  *   `summary`  — the period folded: revenue, expense, net profit, per line.
  *   `trend`    — the same fold, one calendar day at a time. A chart, not a card.
  *   `balances` — a trial balance as of a date. What we have, not what we earned.
+ *   `movement` — Σ per account WITHIN a period. What moved, not what is there.
  *
- * The dashboard needs all four, and the alternative to the last three is paging
+ * The last two are a pair and Kas & Bank reads both: Masuk and Keluar are the
+ * movement, Saldo is the balance at the period's end.
+ *
+ * The dashboard needs all of them, and the alternative to the folds is paging
  * the whole period and summing it here: thirty-odd requests for a busy month,
  * arithmetic on money in a browser, and an answer that is wrong the moment one
  * page fails.
@@ -221,13 +225,68 @@ export interface AccountBalancesResult {
  *
  * A balance is cumulative from inception; a `dateFrom` would return a period
  * MOVEMENT wearing the word "balance", which is the one thing a cash figure must
- * never be mistaken for. For movement, use `list` with a date range.
+ * never be mistaken for. For movement, use `movement` below.
  */
 export interface AccountBalancesQuery {
   asOf?: string;
   branchId?: string;
   accountType?: AccountType;
   /** The finer filter — one neraca section, or every cash and bank account. */
+  accountCategory?: AccountCategory;
+  /** Repeated on the wire. The API caps this at 20. */
+  accountIds?: string[];
+}
+
+/**
+ * One account's movement WITHIN a period — `AccountBalance`'s other half.
+ *
+ * `masuk`/`keluar` RATHER THAN THINKING IN DEBIT AND CREDIT. Money arriving in a
+ * cash account is a debit and money leaving is a credit, but that holds only for
+ * a debit-normal account; the server maps the sides by each account's normal
+ * balance so a revenue account's credits are not labelled "keluar". `debit` and
+ * `credit` are carried too, for a reader who wants the bookkeeping words.
+ */
+export interface AccountMovement {
+  accountId: string;
+  code: string;
+  name: string;
+  accountType: AccountType;
+  accountCategory: AccountCategory;
+  normalBalance: NormalBalance;
+  debit: string;
+  credit: string;
+  /** Σ on the account's normal side — money in, for cash and bank. */
+  masuk: string;
+  keluar: string;
+}
+
+export interface AccountMovementResult {
+  period: {
+    dateFrom: string | null;
+    dateTo: string | null;
+    timezone: string;
+  };
+  /**
+   * ACCOUNTS THAT DID NOT MOVE DO NOT APPEAR. This folds journal lines, and an
+   * account with none in the period has nothing to fold — join the result onto
+   * the chart of accounts rather than the other way round if a quiet account
+   * still needs a row.
+   */
+  accounts: AccountMovement[];
+}
+
+/**
+ * BOTH BOUNDS, where `AccountBalancesQuery` takes neither.
+ *
+ * That is the whole difference between the two endpoints, and it is in the URL
+ * rather than in an optional parameter on one of them — a movement mistaken for
+ * a balance is the most expensive misreading a finance screen can invite.
+ */
+export interface AccountMovementQuery {
+  dateFrom?: string;
+  dateTo?: string;
+  branchId?: string;
+  accountType?: AccountType;
   accountCategory?: AccountCategory;
   /** Repeated on the wire. The API caps this at 20. */
   accountIds?: string[];
@@ -455,6 +514,36 @@ export const journalEntryService = {
 
     return apiClient.get<AccountBalancesResult>(
       search ? `/journal-entries/balances?${search}` : "/journal-entries/balances",
+    );
+  },
+
+  /**
+   * GET /journal-entries/movement — what moved, per account, within a period.
+   *
+   * READ WITH `balances`, never instead of it: Kas & Bank prints this period's
+   * Masuk and Keluar beside the Saldo at its end, and passing the two calls the
+   * same `branchId` and `accountCategory` is what keeps a row's three figures
+   * about one account.
+   *
+   * `accountIds` is repeated on the wire, same as `balances` — hence the manual
+   * URLSearchParams rather than apiClient's `query`.
+   */
+  movement: (query: AccountMovementQuery = {}) => {
+    const params = new URLSearchParams();
+    if (query.dateFrom) params.append("dateFrom", query.dateFrom);
+    if (query.dateTo) params.append("dateTo", query.dateTo);
+    if (query.branchId) params.append("branchId", query.branchId);
+    if (query.accountType) params.append("accountType", query.accountType);
+    if (query.accountCategory)
+      params.append("accountCategory", query.accountCategory);
+    for (const id of query.accountIds ?? []) {
+      params.append("accountIds", id);
+    }
+
+    const search = params.toString();
+
+    return apiClient.get<AccountMovementResult>(
+      search ? `/journal-entries/movement?${search}` : "/journal-entries/movement",
     );
   },
 

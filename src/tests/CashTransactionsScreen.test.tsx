@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { cashTransactionsQueryFromParams } from "@/features/cash-transactions";
-import { KasBankScreen } from "@/features/payment-channels";
+import { KasBankScreen } from "@/features/accounting";
 import { branchService } from "@/services/branch.service";
 import { cashTransactionService } from "@/services/cashTransaction.service";
 import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
@@ -66,14 +66,15 @@ beforeEach(() => {
     pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
   });
   asMock(paymentChannelService.list).mockResolvedValue(channelPage([]));
-  // The Kas & Bank half of the page. Empty is fine — these tests are about the
-  // list below it, and the table has a suite of its own.
-  asMock(cashTransactionService.summaryByChannel).mockResolvedValue({
-    channels: [],
-  });
+  // The Kas & Bank half of the page — the account table. Empty is fine: these
+  // tests are about the list below it, and the table has a suite of its own.
   asMock(chartOfAccountsService.list).mockResolvedValue({
     items: [],
     pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
+  });
+  asMock(journalEntryService.movement).mockResolvedValue({
+    period: { dateFrom: null, dateTo: null, timezone: "Asia/Jakarta" },
+    accounts: [],
   });
   asMock(journalEntryService.balances).mockResolvedValue({
     asOf: null,

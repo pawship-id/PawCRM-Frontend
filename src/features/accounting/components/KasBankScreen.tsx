@@ -2,17 +2,11 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Plus, Repeat, RotateCcw } from "lucide-react";
+import { CreditCard, Repeat, RotateCcw } from "lucide-react";
 
 import { Alert, Card, FilterToggle, PageTabs, StatTile } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  AccountingModuleHeader,
-  FinanceReportToolbar,
-  reportPresets,
-  type FinanceQuery,
-} from "@/features/accounting";
 import {
   CashTransactionsPanel,
   useCashTransactions,
@@ -21,13 +15,19 @@ import {
 import { Can, usePermissions } from "@/features/permissions";
 import { formatMoney, subtractDecimals } from "@/utils/decimal";
 
-import { useCashAccounts } from "../hooks/useCashAccounts";
-import { PaymentChannelsTable } from "./PaymentChannelsTable";
+import { reportPresets, type FinanceQuery } from "../financeSummary";
+import { useCashBankAccounts } from "../hooks/useCashBankAccounts";
+import { AccountingModuleHeader } from "./AccountingModuleHeader";
+import { CashBankAccountsTable } from "./CashBankAccountsTable";
+import { FinanceReportToolbar } from "./FinanceReportToolbar";
 
 /** The two halves of Kas & Bank, as the mockup names them. */
 export type KasBankSection = "transaksi" | "biaya-tetap";
 
 const KAS_BANK_HREF = "/dashboard/keuangan/kas-bank";
+
+/** Where the channel list moved to on 20 September 2026 — see the header. */
+const CHANNELS_HREF = "/dashboard/pengaturan/channel-pembayaran";
 
 /**
  * KAS & BANK — where the shop's money sits, and everything that moved it.
@@ -37,9 +37,17 @@ const KAS_BANK_HREF = "/dashboard/keuangan/kas-bank";
  * sub-tab here, because a list of movements is only readable next to the
  * accounts they moved through. Biaya Tetap is the second.
  *
- * WHAT IS ABOVE THE SUB-TABS IS TRUE OF BOTH: the three cards and the channel
+ * WHAT IS ABOVE THE SUB-TABS IS TRUE OF BOTH: the three cards and the account
  * table are the page's subject, and the sub-tab chooses what to say about it.
  * That is also why the context bar sits above them rather than inside either.
+ *
+ * ACCOUNTS, NOT CHANNELS (20 September 2026). The table used to list payment
+ * channels and now lists the ledger accounts filed under Kas & Bank. A channel
+ * is a BUTTON A CASHIER PRESSES — "QRIS Xendit", "BCA 8730…" — and several of
+ * them land in one account, so a table of channels could not print a saldo
+ * column that added up. The channels moved to Pengaturan › Channel Pembayaran,
+ * beside the other things configured once and then referred to; this page kept
+ * the question it was named for, which is where the money is.
  *
  * ONE CONTEXT BAR, ONE QUERY. Cabang and Periode are the page's, and they edit
  * the SAME `useCashTransactions` state the list below reads — so the cards, the
@@ -72,23 +80,23 @@ export function KasBankScreen({
   const readsTransactions = can("cashTransactions", "read");
 
   /*
-    LOCAL, NOT PART OF THE QUERY. "Tampilkan terhapus" is about which CHANNELS
+    LOCAL, NOT PART OF THE QUERY. "Tampilkan nonaktif" is about which ACCOUNTS
     the table lists; it says nothing about which transactions the rows below are.
-    Putting it on the shared query would re-request the list every time somebody
-    went looking for a channel to restore.
+    Putting it on the shared query would re-request the transaction list every
+    time somebody went looking for a retired account.
   */
-  const [includeDeleted, setIncludeDeleted] = useState(false);
+  const [includeInactive, setIncludeInactive] = useState(false);
   const state = useCashTransactions(initialQuery);
   const { query, setQuery, totals, branches } = state;
 
-  const accounts = useCashAccounts(
+  const accounts = useCashBankAccounts(
     {
       dateFrom: query.dateFrom,
       dateTo: query.dateTo,
       branchId: query.branchId,
-      includeDeleted,
+      includeInactive,
     },
-    { enabled: can("paymentChannels", "read") },
+    { enabled: can("chartOfAccounts", "read") },
   );
 
   /*
@@ -118,11 +126,17 @@ export function KasBankScreen({
     <div className="flex flex-col gap-6">
       <AccountingModuleHeader
         action={
-          <Can feature="paymentChannels" action="create">
+          /*
+            A POINTER, NOT A FORM. Channels are configured in Pengaturan now, and
+            this link is here because the person who came looking for "Channel
+            baru" on this page for the last four days has to be told where it
+            went — once, in the place they looked.
+          */
+          <Can feature="paymentChannels" action="read">
             <Button variant="secondary" asChild>
-              <Link href={`${KAS_BANK_HREF}/new`}>
-                <Plus className="size-4" />
-                Channel baru
+              <Link href={CHANNELS_HREF}>
+                <CreditCard className="size-4" />
+                Channel pembayaran
               </Link>
             </Button>
           </Can>
@@ -177,14 +191,14 @@ export function KasBankScreen({
         </div>
       )}
 
-      <Can feature="paymentChannels" action="read">
+      <Can feature="chartOfAccounts" action="read">
         <Card
           title="Akun Kas &amp; Bank"
           action={
             <FilterToggle
-              label="Tampilkan terhapus"
-              checked={includeDeleted}
-              onChange={setIncludeDeleted}
+              label="Tampilkan nonaktif"
+              checked={includeInactive}
+              onChange={setIncludeInactive}
             />
           }
         >
@@ -199,10 +213,9 @@ export function KasBankScreen({
               </span>
             </Alert>
           )}
-          <PaymentChannelsTable
+          <CashBankAccountsTable
             rows={accounts.rows}
             loading={accounts.loading}
-            onChanged={accounts.refetch}
           />
         </Card>
       </Can>

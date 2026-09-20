@@ -67,10 +67,17 @@ export const cashTransactionService = {
    * GET /cash-transactions/summary — Σ in and Σ out PER CHANNEL, over the whole
    * filter rather than the page.
    *
-   * WHY NOT ONE `channelId` REQUEST PER ROW, which is what the Kas & Bank table
-   * would otherwise do: that is a fan-out that grows with the tenant's own list
-   * of channels — six channels is six scans of the same period to draw one
-   * table, re-run on every filter change.
+   * NOTHING CALLS THIS SINCE 20 SEPTEMBER 2026, and that is not an oversight.
+   * Its one caller was Kas & Bank's channel table, which now lists LEDGER
+   * ACCOUNTS and folds the same period with `journalEntryService.movement`.
+   * Kept because the endpoint is live and tested, and because "per channel" is
+   * the question a channel-performance report would ask — delete it with the
+   * route, not before.
+   *
+   * WHY NOT ONE `channelId` REQUEST PER ROW, which is what that table would
+   * otherwise have done: a fan-out that grows with the tenant's own list of
+   * channels — six channels is six scans of the same period to draw one table,
+   * re-run on every filter change.
    *
    * Takes the list's filters minus its pagination and sort. A channel with no
    * movement is ABSENT; key by `channelId` and read a miss as zero.

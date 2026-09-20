@@ -21,6 +21,7 @@ import {
   Car,
   ChartColumn,
   ClipboardList,
+  CreditCard,
   FileClock,
   House,
   Package,
@@ -556,6 +557,23 @@ export const NAV_SECTIONS: NavSection[] = [
             href: "/dashboard/pengaturan/daftar-akun",
             icon: BookOpen,
             permission: { feature: "chartOfAccounts", action: "read" },
+          },
+          {
+            /**
+             * MOVED HERE FROM KEUANGAN › KAS & BANK on 20 September 2026, on
+             * request — and placed directly under Daftar Akun, because that is
+             * the pair: a channel is a named place money arrives, and the row
+             * above is the account it lands in. Nobody edits one without
+             * looking at the other.
+             *
+             * Kas & Bank kept the question it is named for and answers it per
+             * account now, so the two screens no longer overlap. The old
+             * addresses redirect.
+             */
+            label: "Channel Pembayaran",
+            href: "/dashboard/pengaturan/channel-pembayaran",
+            icon: CreditCard,
+            permission: { feature: "paymentChannels", action: "read" },
           },
           {
             // Beside the customer register rather than under Inventori → Produk,

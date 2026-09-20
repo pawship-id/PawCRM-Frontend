@@ -7,6 +7,72 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Channel Pembayaran pindah ke Pengaturan, Kas & Bank jadi tabel akun
+
+20 September 2026, atas permintaan. Empat hari sebelumnya Channel Pembayaran diserap
+jadi badan layar Kas & Bank (lihat entri 16 September); ini mengembalikannya jadi layar
+pengaturan tersendiri — tapi **kolom uangnya tidak ikut kembali**.
+
+### Channel Pembayaran
+
+- Rutenya jadi **`/dashboard/pengaturan/channel-pembayaran`** (`/new` dan `/[id]` ikut),
+  di sidebar persis di bawah Daftar Akun yang pindah lebih dulu hari itu. Itu memang
+  pasangannya: channel adalah tempat uang masuk, baris di atasnya adalah akun yang
+  menampungnya, dan tidak ada yang mengubah satu tanpa melihat yang lain.
+- **Rute lama `redirect()`** — `/keuangan/kas-bank/new` dan `/keuangan/kas-bank/[id]`,
+  dengan id dibawa menyeberang. Bookmark ke satu channel harus mendarat di form channel
+  itu, bukan di daftar berisi enam baris tanpa petunjuk mana yang dimaksud.
+- **Tanpa kolom Masuk, Keluar dan Saldo.** Hilangnya justru intinya: beberapa channel
+  bisa menunjuk satu akun, jadi kolom saldo per channel tidak pernah boleh dijumlahkan —
+  dulu diakali dengan menulis saldo sekali lalu "ikut <channel pembawa>" di baris
+  sisanya. Layar pengaturan juga tidak punya periode, jadi angka pergerakan tidak punya
+  rentang untuk dibicarakan.
+- Yang tersisa adalah yang memang diedit orang: nama yang dibaca kasir, tab tempatnya
+  duduk, cabang pemiliknya, dan akun yang didebit. **MDR tetap di bawah nama**, bukan
+  kolom — hanya QRIS dan EDC yang boleh punya, dan kolom yang isinya kebanyakan strip
+  adalah kolom yang lebih baik tidak ada.
+- Bar filternya **quick bar** (ui-rules §8): pencarian + satu toggle "Tampilkan
+  terhapus", keduanya berlaku di tempat. Toggle itu satu-satunya jalan pulih bagi
+  channel yang sudah dihapus, jadi ia kontrol yang terlihat — bukan query parameter yang
+  harus diketahui orang.
+- Hook baru **`usePaymentChannelList`** (`useCashAccounts` dihapus). File
+  `hooks/usePaymentChannels.ts` sudah lama tidak berisi hook apa pun, jadi sekalian jadi
+  **`labels.ts`**; isinya tetap `CHANNEL_TYPE_LABELS` dan `CHANNEL_TYPE_ORDER` yang
+  dipinjam panel pembayaran POS.
+
+### Kas & Bank menjawab per akun
+
+- Tabelnya sekarang berisi **akun buku besar** berkategori `cash_bank`, bukan channel —
+  `features/accounting/CashBankAccountsTable`, disuapi `useCashBankAccounts`. Masuk dan
+  keluar dari `journalEntryService.movement`, saldo dari `balances`. Baris yang isinya
+  akun punya saldo masing-masing, jadi **kolomnya boleh dijumlahkan**, dan aturan "ikut
+  channel pembawa" hilang bersama masalah yang melahirkannya.
+- Akun yang sebulan itu tidak dilewati uang **tetap dapat baris**, terbaca nol. Akun yang
+  tidak disebut `movement` artinya diam, bukan hilang.
+- **Gerbangnya ikut pindah:** tabel itu dibuka `chartOfAccounts:read`, bukan
+  `paymentChannels:read`. Peran yang hanya bisa membaca transaksi tetap dapat daftarnya,
+  dan reads milik tabel tidak ikut jalan untuknya.
+- `KasBankScreen` pindah rumah ke `features/accounting` — ia layar akuntansi sekarang —
+  dan menyimpan **satu pointer** ke Pengaturan › Channel Pembayaran untuk orang yang
+  datang mencari layar lama. Pointer, bukan form.
+- **`GET /api/cash-transactions/summary` jadi tanpa pemanggil di frontend.** Endpoint-nya
+  tetap hidup dan tetap ada tesnya; wrapper-nya di `cashTransaction.service.ts` sengaja
+  disimpan dengan catatan kenapa, supaya tidak terbaca sebagai sisa yang lupa dihapus.
+
+### Tes
+
+- **`PaymentChannelsScreen.test.tsx` baru (10 tes)** — perilaku channel yang dulu diuji di
+  `KasBankScreen.test.tsx` dan ikut terhapus waktu tabelnya berganti isi: label akun per
+  baris, `branchId: null` terbaca "Semua cabang", baris tetap hidup dengan strip waktu
+  bagan akun gagal dibaca, "Tidak aktif" vs "Terhapus" beserta tombol Pulihkan,
+  pencarian yang menunggu ketikan berhenti, toggle yang justru tidak menunggu, retry, dan
+  tombol "Channel baru" yang hilang untuk peran read-only. Satu tes menjaga agar kolom
+  Masuk/Keluar/Saldo tidak kembali.
+- `KasBankScreen.test.tsx` ditulis ulang di bagian tabelnya; `CashTransactionsScreen` dan
+  `PaymentChannelForm` menyesuaikan mock dan alamat barunya.
+
+---
+
 ## [Unreleased] — Daftar Akun pindah ke Pengaturan, dan sorting pindah ke header
 
 20 September 2026, atas permintaan. Dua hal yang sebelumnya ditandai "tidak diambil"

@@ -46,6 +46,24 @@ export { FinanceReportToolbar } from "./components/FinanceReportToolbar";
 export { ProfitLossScreen } from "./components/ProfitLossScreen";
 export { CashflowScreen } from "./components/CashflowScreen";
 /**
+ * KAS & BANK LIVES HERE NOW (20 September 2026). It moved out of
+ * `features/payment-channels` when its table stopped listing channels and
+ * started listing the ledger accounts money sits in — which is an accounting
+ * screen wherever the file happens to sit. The channels moved the other way, to
+ * Pengaturan.
+ */
+export {
+  KasBankScreen,
+  type KasBankSection,
+} from "./components/KasBankScreen";
+export { CashBankAccountsTable } from "./components/CashBankAccountsTable";
+export {
+  useCashBankAccounts,
+  sumColumn,
+  type CashBankAccountRow,
+  type CashBankAccountsQuery,
+} from "./hooks/useCashBankAccounts";
+/**
  * NERACA — added 18 September 2026, and the report that could not exist before
  * categories did: `accountType: "asset"` cannot tell cash from stock from a
  * vehicle, and a balance sheet is exactly that distinction.

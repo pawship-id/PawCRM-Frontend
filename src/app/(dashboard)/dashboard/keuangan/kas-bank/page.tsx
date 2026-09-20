@@ -1,9 +1,6 @@
 import type { Metadata } from "next";
 
-import {
-  KasBankScreen,
-  type KasBankSection,
-} from "@/features/payment-channels";
+import { KasBankScreen, type KasBankSection } from "@/features/accounting";
 import { cashTransactionsQueryFromParams } from "@/features/cash-transactions";
 import { RequirePermission } from "@/features/permissions";
 
@@ -28,10 +25,14 @@ export const dynamic = "force-dynamic";
  * (the komisi screen's "Riwayat pembayaran komisi") starts from the new filter
  * instead of keeping the old state.
  *
- * EITHER GRANT OPENS IT. The page is two halves — the channel table needs
- * `paymentChannels:read`, the cards and the list need `cashTransactions:read` —
+ * EITHER GRANT OPENS IT. The page is two halves — the account table needs
+ * `chartOfAccounts:read`, the cards and the list need `cashTransactions:read` —
  * and each is gated again inside, so a reader with one and not the other gets
  * the half they may see rather than an access-denied panel.
+ *
+ * `chartOfAccounts` REPLACED `paymentChannels` HERE on 20 September 2026, with
+ * the table it gates: the rows are ledger accounts now, and the channels moved
+ * to Pengaturan.
  */
 export default async function KasBankPage({
   searchParams,
@@ -48,7 +49,7 @@ export default async function KasBankPage({
   return (
     <RequirePermission
       anyOf={[
-        { feature: "paymentChannels" },
+        { feature: "chartOfAccounts" },
         { feature: "cashTransactions" },
       ]}
     >

@@ -244,6 +244,10 @@ describe("PaymentChannelForm — editing", () => {
         expect.objectContaining({ name: "QRIS BCA" }),
       ),
     );
-    expect(push).toHaveBeenCalledWith("/dashboard/keuangan/kas-bank");
+    // The list moved to Pengaturan on 20 September 2026 — see
+    // PaymentChannelsScreen. Kas & Bank lists ledger accounts now.
+    expect(push).toHaveBeenCalledWith(
+      "/dashboard/pengaturan/channel-pembayaran",
+    );
   });
 });
