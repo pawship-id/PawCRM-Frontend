@@ -16,9 +16,19 @@ import {
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
-import type { AccountCategory, AllocationType } from "@/types/accounting";
+import type {
+  AccountCategory,
+  AccountType,
+  AllocationType,
+} from "@/types/accounting";
+import { accountTypeOf } from "@/types/accounting";
 
-import { ACCOUNT_CATEGORIES, ACCOUNT_CATEGORY_LABEL } from "../labels";
+import {
+  ACCOUNT_CATEGORIES,
+  ACCOUNT_CATEGORY_LABEL,
+  ACCOUNT_TYPES,
+  ACCOUNT_TYPE_LABEL,
+} from "../labels";
 import {
   allocationChoices,
   needsNoAllocation,
@@ -72,14 +82,47 @@ import type { ChartOfAccountsQuery } from "./ChartOfAccountsScreen";
  */
 function categoryOptions(
   counts: Map<AccountCategory, number>,
+  accountType: AccountType | "",
 ): FilterOption<AccountCategory | "">[] {
   return withAll<AccountCategory | "">(
-    ACCOUNT_CATEGORIES.map((accountCategory) => ({
-      value: accountCategory,
-      label: ACCOUNT_CATEGORY_LABEL[accountCategory],
-      count: counts.get(accountCategory) ?? 0,
-    })),
+    ACCOUNT_CATEGORIES
+      // NARROWED BY THE CLASS ABOVE IT, which is what stops the two fields from
+      // contradicting each other. They are not independent — every category
+      // belongs to exactly one class — so offering "Cash & Bank" under a chosen
+      // "Beban" would be offering a pair that can never match a single row, and
+      // the reader would blame the list rather than the combination.
+      .filter(
+        (accountCategory) =>
+          accountType === "" || accountTypeOf(accountCategory) === accountType,
+      )
+      .map((accountCategory) => ({
+        value: accountCategory,
+        label: ACCOUNT_CATEGORY_LABEL[accountCategory],
+        count: counts.get(accountCategory) ?? 0,
+      })),
     "Semua kategori",
+  );
+}
+
+/**
+ * The five classes, each carrying how many accounts are in it.
+ *
+ * IN THE ORDER THE ACCOUNTING EQUATION READS THEM — Aset, Kewajiban, Ekuitas,
+ * Pendapatan, Beban — and not alphabetically, matching the group headings in the
+ * account form's own category picker. The TABLE's Tipe akun column sorts
+ * alphabetically, which is a different question: that one orders rows somebody
+ * is scanning, this one is a fixed list of five they are choosing from.
+ */
+function typeOptions(
+  counts: Map<AccountType, number>,
+): FilterOption<AccountType | "">[] {
+  return withAll<AccountType | "">(
+    ACCOUNT_TYPES.map((accountType) => ({
+      value: accountType,
+      label: ACCOUNT_TYPE_LABEL[accountType],
+      count: counts.get(accountType) ?? 0,
+    })),
+    "Semua tipe",
   );
 }
 
@@ -116,6 +159,7 @@ function allocationOptions(
 
 /** Everything the panel edits, as one draft. */
 interface AccountFilters {
+  accountType: AccountType | "";
   accountCategory: AccountCategory | "";
   allocation: AllocationFilter;
   showInactive: boolean;
@@ -130,6 +174,7 @@ interface AccountFilters {
  * to be about.
  */
 const CLEARED: AccountFilters = {
+  accountType: "",
   accountCategory: "",
   allocation: "",
   showInactive: false,
@@ -137,6 +182,7 @@ const CLEARED: AccountFilters = {
 
 export function ChartOfAccountsToolbar({
   query,
+  countsByType,
   countsByCategory,
   inactiveCount,
   unmappedCount,
@@ -144,6 +190,8 @@ export function ChartOfAccountsToolbar({
   onChange,
 }: {
   query: ChartOfAccountsQuery;
+  /** How many accounts each class holds — shown against its option. */
+  countsByType: Map<AccountType, number>;
   /** How many accounts each category holds — shown against its option. */
   countsByCategory: Map<AccountCategory, number>;
   /** Shown on the toggle, so the cost of flipping it is visible first. */
@@ -193,11 +241,13 @@ export function ChartOfAccountsToolbar({
     >
       <AccountFilterPanel
         applied={{
+          accountType: query.accountType,
           accountCategory: query.accountCategory,
           allocation: query.allocation,
           showInactive: query.showInactive,
         }}
-        categoryOptions={categoryOptions(countsByCategory)}
+        typeOptions={typeOptions(countsByType)}
+        countsByCategory={countsByCategory}
         allocationOptions={allocationOptions(shape, unmappedCount)}
         // A tenant with one line and one branch has nothing to allocate, so the
         // field is withheld rather than shown with options that all match
@@ -220,14 +270,17 @@ export function ChartOfAccountsToolbar({
  */
 function AccountFilterPanel({
   applied,
-  categoryOptions,
+  typeOptions,
+  countsByCategory,
   allocationOptions,
   showAllocationFilter,
   inactiveCount,
   onApply,
 }: {
   applied: AccountFilters;
-  categoryOptions: FilterOption<AccountCategory | "">[];
+  typeOptions: FilterOption<AccountType | "">[];
+  /** Built inside, because the category list narrows with the class in the draft. */
+  countsByCategory: Map<AccountCategory, number>;
   allocationOptions: FilterOption<AllocationFilter>[];
   showAllocationFilter: boolean;
   inactiveCount: number;
@@ -245,6 +298,7 @@ function AccountFilterPanel({
    * reading. Everything else the panel conceals IS counted.
    */
   const count = [
+    applied.accountType !== "",
     applied.accountCategory !== "",
     applied.allocation !== "",
     applied.showInactive,
@@ -279,12 +333,36 @@ function AccountFilterPanel({
           setOpen(false);
         }}
       >
+        {/* The class leads the category: coarse before fine, and the field the
+            one below narrows with. */}
+        <FilterSelect
+          layout="field"
+          label="Tipe akun"
+          ariaLabel="Filter tipe akun"
+          value={draft.accountType}
+          options={typeOptions}
+          onChange={(accountType) =>
+            setDraft((prev) => ({
+              ...prev,
+              accountType,
+              // A category that does not belong to the new class is dropped
+              // rather than left set-but-unofferable: it would keep narrowing
+              // the list from a field whose own picker no longer shows it.
+              accountCategory:
+                prev.accountCategory !== "" &&
+                accountType !== "" &&
+                accountTypeOf(prev.accountCategory) !== accountType
+                  ? ""
+                  : prev.accountCategory,
+            }))
+          }
+        />
         <FilterSelect
           layout="field"
           label="Kategori akun"
           ariaLabel="Filter kategori akun"
           value={draft.accountCategory}
-          options={categoryOptions}
+          options={categoryOptions(countsByCategory, draft.accountType)}
           onChange={(accountCategory) =>
             setDraft((prev) => ({ ...prev, accountCategory }))
           }

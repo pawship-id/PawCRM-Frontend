@@ -52,6 +52,15 @@ karena bentrok aturan, sekarang diputuskan diambil.
   tidak kelihatan: kolomnya menampilkan kata, nomornya tidak ada di baris itu. Di dalam
   satu kategori atau satu tipe, urutannya jatuh ke kode — dan tie-break itu tetap menaik
   di kedua arah, jadi kelompoknya yang terbalik, bukan isinya.
+- **Filter "Tipe akun"** di panel, di atas Kategori: coarse dulu, baru fine. **Picker
+  kategorinya menyempit mengikuti tipe yang dipilih** — keduanya bukan filter bebas
+  (setiap kategori milik tepat satu tipe), jadi menawarkan "Cash & Bank" di bawah tipe
+  "Beban" berarti menawarkan pasangan yang tidak akan pernah cocok dengan satu baris pun,
+  dan pembacanya akan menyalahkan daftarnya, bukan kombinasinya. Kategori yang tidak lagi
+  muat dengan tipe barunya ikut dikosongkan, bukan dibiarkan terpasang tapi tidak
+  ditawarkan. Isinya urutan persamaan akuntansi — sama seperti judul grup di picker form
+  akun, dan sengaja beda dari kolom tabelnya yang abjad: yang satu daftar tetap berisi
+  lima pilihan, yang satu mengurutkan baris yang sedang dipindai orang.
 - **Field "Urutkan" dihapus dari panel filter**, dan `Reset` tidak lagi menyentuh
   urutan: tombol Reset di dalam panel filter tidak boleh diam-diam mengurutkan ulang
   tabel yang diurutkan orang dari header yang kelihatan.

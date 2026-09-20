@@ -39,6 +39,7 @@ import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
 import { swalToast } from "@/lib/swal";
 import type {
   AccountCategory,
+  AccountType,
   AllocationType,
   ChartOfAccount,
 } from "@/types/accounting";
@@ -79,6 +80,12 @@ import { ChartOfAccountsToolbar } from "./ChartOfAccountsToolbar";
  */
 export interface ChartOfAccountsQuery {
   search: string;
+  /**
+   * "" is "semua tipe". COARSER THAN THE CATEGORY and kept as its own filter
+   * anyway: five groups is how somebody reads a long chart when they do not yet
+   * know which of the fifteen they want ("show me everything that is a Beban").
+   */
+  accountType: AccountType | "";
   /** "" is "semua kategori" — the unset convention the filter layer uses. */
   accountCategory: AccountCategory | "";
   /** "" is any; `"unmapped"` is the one state somebody has to act on. */
@@ -89,6 +96,7 @@ export interface ChartOfAccountsQuery {
 
 const DEFAULT_QUERY: ChartOfAccountsQuery = {
   search: "",
+  accountType: "",
   accountCategory: "",
   allocation: "",
   showInactive: false,
@@ -199,6 +207,9 @@ export function ChartOfAccountsScreen() {
 
   const filtered = useMemo(() => {
     const matches = accounts.filter((account) => {
+      if (query.accountType !== "" && account.accountType !== query.accountType) {
+        return false;
+      }
       if (
         query.accountCategory !== "" &&
         account.accountCategory !== query.accountCategory
@@ -224,6 +235,14 @@ export function ChartOfAccountsScreen() {
         account.accountCategory,
         (counts.get(account.accountCategory) ?? 0) + 1,
       );
+    }
+    return counts;
+  }, [accounts]);
+
+  const countsByType = useMemo(() => {
+    const counts = new Map<AccountType, number>();
+    for (const account of accounts) {
+      counts.set(account.accountType, (counts.get(account.accountType) ?? 0) + 1);
     }
     return counts;
   }, [accounts]);
@@ -378,6 +397,7 @@ export function ChartOfAccountsScreen() {
 
       <ChartOfAccountsToolbar
         query={query}
+        countsByType={countsByType}
         countsByCategory={countsByCategory}
         inactiveCount={inactiveCount}
         unmappedCount={unmappedCount}

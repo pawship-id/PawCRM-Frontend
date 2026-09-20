@@ -474,6 +474,51 @@ describe("ChartOfAccountsScreen", () => {
     expect(rowOf("5101").getByText("Beban")).toBeInTheDocument();
   });
 
+  /**
+   * THE CLASS FILTER, and the thing that makes it safe to sit beside the
+   * category one: the two are NOT independent — every category belongs to
+   * exactly one class — so the category picker narrows to whatever class is
+   * chosen. Offering "Cash & Bank" under a chosen "Beban" would be offering a
+   * pair no row can ever satisfy.
+   */
+  it("narrows the category picker to the class chosen above it", async () => {
+    await renderChart();
+    const panel = await openFilters();
+
+    await userEvent.click(within(panel).getByLabelText("Filter tipe akun"));
+    await userEvent.click(screen.getByRole("option", { name: /^Beban/ }));
+
+    await userEvent.click(within(panel).getByLabelText("Filter kategori akun"));
+
+    // Read as a list: "Biaya" and "Biaya Lainnya" are both real options, so a
+    // prefix matcher would find two and say nothing about either.
+    const offered = screen
+      .getAllByRole("option")
+      .map((option) => option.textContent ?? "");
+
+    expect(offered.some((text) => text.includes("Biaya Lainnya"))).toBe(true);
+    expect(offered.some((text) => text.includes("Harga Pokok"))).toBe(true);
+    // Every asset category is gone — the class above cannot hold them.
+    expect(offered.some((text) => text.includes("Cash & Bank"))).toBe(false);
+    expect(offered.some((text) => text.includes("Persediaan"))).toBe(false);
+  });
+
+  it("filters the table by the class, and counts it on the trigger", async () => {
+    await renderChart();
+
+    const panel = await openFilters();
+    await userEvent.click(within(panel).getByLabelText("Filter tipe akun"));
+    await userEvent.click(screen.getByRole("option", { name: /^Kewajiban/ }));
+    await applyFilters();
+
+    const table = within(screen.getByRole("table"));
+    expect(table.getByText("Utang Usaha")).toBeInTheDocument();
+    expect(table.queryByText("Kas")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
+      "Filter (1)",
+    );
+  });
+
   /** The panel stopped offering an ordering when the headers took it over. */
   it("no longer offers Urutkan in the filter panel", async () => {
     await renderChart();
