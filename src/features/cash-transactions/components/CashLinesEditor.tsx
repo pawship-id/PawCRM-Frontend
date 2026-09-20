@@ -9,6 +9,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
@@ -152,6 +153,7 @@ export function CashLinesEditor({
   accounts,
   businessLines,
   disabled = false,
+  showAddButton = true,
 }: {
   kind: "expense" | "other_income";
   lines: DraftLine[];
@@ -159,6 +161,12 @@ export function CashLinesEditor({
   accounts: ChartOfAccount[];
   businessLines: BusinessLine[];
   disabled?: boolean;
+  /**
+   * Off when the CALLER hosts "+ Tambah baris" — the create form puts it in the
+   * card header, where the mockup draws it. The dialog, which has no card header
+   * to put it in, keeps it under the table.
+   */
+  showAddButton?: boolean;
 }) {
   const accountOptions = accounts.map((account) => ({
     value: account._id,
@@ -358,11 +366,31 @@ export function CashLinesEditor({
               );
             })}
           </TableBody>
+          {/*
+            THE TOTAL IS THE TABLE'S LAST ROW, not a line under it (mockup,
+            Rincian Akun). It is the sum of the column it sits in, and a figure
+            that is a column's sum belongs in that column — floated to the right
+            of a toolbar it read as a second, unrelated number.
+          */}
+          <TableFooter>
+            <TableRow className="hover:bg-transparent">
+              <TableCell
+                colSpan={anyAccountMapped ? 3 : 2}
+                className="text-right text-xs font-bold tracking-wide text-muted uppercase"
+              >
+                Total
+              </TableCell>
+              <TableCell className="text-right text-base font-bold tabular-nums">
+                {formatMoney(toDecimalString(total))}
+              </TableCell>
+              <TableCell colSpan={2} />
+            </TableRow>
+          </TableFooter>
         </Table>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        {lines.length < MAX_LINES && (
+      {showAddButton && canAddLine(lines) && (
+        <div>
           <Button
             type="button"
             variant="secondary"
@@ -372,14 +400,13 @@ export function CashLinesEditor({
             <Plus className="size-4" />
             Tambah baris
           </Button>
-        )}
-        <p className="ml-auto text-sm text-muted">
-          Total{" "}
-          <b className="text-base font-bold text-foreground tabular-nums">
-            {formatMoney(toDecimalString(total))}
-          </b>
-        </p>
-      </div>
+        </div>
+      )}
     </div>
   );
+}
+
+/** Whether another line may be added — the caller's button asks this too. */
+export function canAddLine(lines: DraftLine[]): boolean {
+  return lines.length < MAX_LINES;
 }

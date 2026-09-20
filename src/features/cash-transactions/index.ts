@@ -38,5 +38,6 @@ export {
   cashTransactionHref,
   cashTransactionTitle,
   channelClassOf,
+  numberPrefixForClass,
   kindLabel,
 } from "./labels";

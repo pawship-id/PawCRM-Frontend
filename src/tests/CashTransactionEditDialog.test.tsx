@@ -8,6 +8,8 @@ import { businessLineService } from "@/services/businessLine.service";
 import { cashTransactionService } from "@/services/cashTransaction.service";
 import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
 import { paymentChannelService } from "@/services/paymentChannel.service";
+import type { ChartOfAccountNode } from "@/types/accounting";
+import { accountTypeOf } from "@/types/accounting";
 import type { CashTransaction } from "@/types/api";
 
 import { cashTx, channel, channelPage } from "./helpers/cashTransactionFixture";
@@ -23,8 +25,9 @@ const asMock = <T extends (...args: never[]) => unknown>(fn: T) =>
   fn as jest.MockedFunction<T>;
 
 /**
- * UBAH — the shared edit dialog. What it guards: the channel picker never
- * offers a move across kas ↔ bank (the number would lie), the dialog says the
+ * UBAH — the shared edit dialog. What it guards: the cash-side picker never
+ * offers a move across kas ↔ bank (the number would lie), a TILL row still moves
+ * by its channel while everything else moves by its ACCOUNT, the dialog says the
  * number stays and the journal is reversed, it sends only what changed, and a
  * server refusal stays readable in the dialog.
  */
@@ -33,6 +36,50 @@ const CHANNELS = [
   channel({ _id: "ch-cash2", name: "Kas Cabang Dua", type: "cash" }),
   channel({ _id: "ch-bca", name: "BCA Operasional", type: "transfer" }),
   channel({ _id: "ch-qris", name: "QRIS BCA", type: "qris" }),
+];
+
+/** The chart the pickers are built from — `cashType` is what sorts kas from bank. */
+const account = (
+  overrides: Partial<ChartOfAccountNode> &
+    Pick<ChartOfAccountNode, "_id" | "code" | "name" | "accountCategory">,
+): ChartOfAccountNode => ({
+  parentAccountId: null,
+  allocations: [],
+  isDefault: false,
+  isActive: true,
+  children: [],
+  accountType: accountTypeOf(overrides.accountCategory),
+  ...overrides,
+});
+
+const CHART: ChartOfAccountNode[] = [
+  account({
+    _id: "acc-cash",
+    code: "1101",
+    name: "Kas",
+    accountCategory: "cash_bank",
+    cashType: "cash",
+  }),
+  account({
+    _id: "acc-cash2",
+    code: "1102",
+    name: "Kas Cabang Dua",
+    accountCategory: "cash_bank",
+    cashType: "cash",
+  }),
+  account({
+    _id: "acc-bca",
+    code: "1103",
+    name: "Bank BCA",
+    accountCategory: "cash_bank",
+    cashType: "bank",
+  }),
+  account({
+    _id: "acc-listrik",
+    code: "5401",
+    name: "Beban Listrik",
+    accountCategory: "biaya",
+  }),
 ];
 
 const onClose = jest.fn();
@@ -51,60 +98,97 @@ const renderDialog = (transaction: CashTransaction) =>
 beforeEach(() => {
   jest.clearAllMocks();
   asMock(paymentChannelService.list).mockResolvedValue(channelPage(CHANNELS));
+  // Read on every edit now — it is what the Akun Kas/Bank picker is built from.
+  asMock(chartOfAccountsService.tree).mockResolvedValue(CHART);
+  asMock(businessLineService.list).mockResolvedValue({
+    items: [],
+    pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
+  });
 });
 
-async function openChannels(user: ReturnType<typeof userEvent.setup>) {
+async function openAccounts(user: ReturnType<typeof userEvent.setup>) {
   const dialog = within(await screen.findByRole("dialog"));
-  // Wait for the list to arrive before opening the picker.
-  await waitFor(() => expect(paymentChannelService.list).toHaveBeenCalled());
-  await user.click(dialog.getByRole("button", { name: "Channel" }));
+  const trigger = await dialog.findByRole("button", { name: "Akun Kas/Bank" });
+  await waitFor(() => expect(trigger).toBeEnabled());
+  await user.click(trigger);
   return dialog;
 }
 
-describe("CashTransactionEditDialog — the same-class channel rule", () => {
-  it("offers only cash channels for a cash transaction", async () => {
+describe("CashTransactionEditDialog — the same-class cash side", () => {
+  it("offers only kas accounts for a kas transaction", async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderDialog(cashTx());
 
-    await openChannels(user);
+    await openAccounts(user);
 
     expect(
-      await screen.findByRole("option", { name: "Kas Cabang Dua" }),
+      await screen.findByRole("option", { name: "1102 · Kas Cabang Dua" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Kas Laci" })).toBeInTheDocument();
     expect(
-      screen.queryByRole("option", { name: "BCA Operasional" }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("option", { name: "1101 · Kas" }),
+    ).toBeInTheDocument();
     expect(
-      screen.queryByRole("option", { name: "QRIS BCA" }),
+      screen.queryByRole("option", { name: "1103 · Bank BCA" }),
     ).not.toBeInTheDocument();
-    expect(screen.getByText(/Hanya channel kas/)).toBeInTheDocument();
+    // And nothing that is not a Kas & Bank account at all.
+    expect(
+      screen.queryByRole("option", { name: /Beban Listrik/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/Hanya akun kas/)).toBeInTheDocument();
   });
 
-  it("offers only bank-type channels for a bank transaction — transfer, QRIS, EDC, giro", async () => {
+  it("offers only bank accounts for a bank transaction", async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     renderDialog(
       cashTx({
         number: "BBM/CBS/2609/0005",
+        cashAccountId: "acc-bca",
+        cashAccountCode: "1103",
+        cashAccountName: "Bank BCA",
         channelId: "ch-bca",
         channelType: "transfer",
         channelName: "BCA Operasional",
       }),
     );
 
-    await openChannels(user);
+    await openAccounts(user);
 
-    expect(await screen.findByRole("option", { name: "QRIS BCA" })).toBeInTheDocument();
     expect(
-      screen.getByRole("option", { name: "BCA Operasional" }),
+      await screen.findByRole("option", { name: "1103 · Bank BCA" }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("option", { name: "Kas Laci" }),
+      screen.queryByRole("option", { name: "1101 · Kas" }),
+    ).not.toBeInTheDocument();
+  });
+
+  /**
+   * A shift is reconciled against the buttons a cashier pressed, so a till row
+   * is moved by its CHANNEL — the thing that was actually wrong — and never onto
+   * a bare account. The server refuses the other way round.
+   */
+  it("keeps the channel picker for a payment recorded at the till", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderDialog(cashTx({ recordedVia: "pos" }));
+
+    const dialog = within(await screen.findByRole("dialog"));
+    await waitFor(() => expect(paymentChannelService.list).toHaveBeenCalled());
+    expect(
+      dialog.queryByRole("button", { name: "Akun Kas/Bank" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(dialog.getByRole("button", { name: "Channel" }));
+    expect(
+      await screen.findByRole("option", { name: "Kas Cabang Dua" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "BCA Operasional" }),
     ).not.toBeInTheDocument();
   });
 
   it("asks only for channels usable in the transaction's direction at its branch", async () => {
-    renderDialog(cashTx({ direction: "out", kind: "supplier_payment" }));
+    renderDialog(
+      cashTx({ direction: "out", kind: "supplier_payment", recordedVia: "pos" }),
+    );
 
     await waitFor(() =>
       expect(paymentChannelService.list).toHaveBeenCalledWith(
@@ -115,6 +199,14 @@ describe("CashTransactionEditDialog — the same-class channel rule", () => {
         }),
       ),
     );
+  });
+
+  /** Nothing to reconcile at a till, so no channel list is asked for at all. */
+  it("does not read the channel list for a back-office transaction", async () => {
+    renderDialog(cashTx());
+
+    await screen.findByRole("button", { name: "Akun Kas/Bank" });
+    expect(paymentChannelService.list).not.toHaveBeenCalled();
   });
 });
 
@@ -133,18 +225,23 @@ describe("CashTransactionEditDialog — saving", () => {
 
   it("sends only what changed, with the reason", async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
-    const updated = cashTx({ channelId: "ch-cash2", channelName: "Kas Cabang Dua" });
+    const updated = cashTx({
+      cashAccountId: "acc-cash2",
+      cashAccountName: "Kas Cabang Dua",
+    });
     asMock(cashTransactionService.update).mockResolvedValue(updated);
 
     renderDialog(cashTx());
-    const dialog = await openChannels(user);
-    await user.click(await screen.findByRole("option", { name: "Kas Cabang Dua" }));
+    const dialog = await openAccounts(user);
+    await user.click(
+      await screen.findByRole("option", { name: "1102 · Kas Cabang Dua" }),
+    );
     await user.type(dialog.getByLabelText(/Alasan perubahan/), "Salah laci");
     await user.click(dialog.getByRole("button", { name: "Simpan transaksi" }));
 
     await waitFor(() =>
       expect(cashTransactionService.update).toHaveBeenCalledWith("ct1", {
-        channelId: "ch-cash2",
+        accountId: "acc-cash2",
         reason: "Salah laci",
       }),
     );
@@ -195,24 +292,6 @@ describe("CashTransactionEditDialog — saving", () => {
 
   it("edits an expense through its lines, never through an amount", async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
-    asMock(chartOfAccountsService.tree).mockResolvedValue([
-      {
-        _id: "acc-listrik",
-        code: "5401",
-        name: "Beban Listrik",
-        accountType: "expense",
-        accountCategory: "biaya",
-        parentAccountId: null,
-        allocations: [],
-        isDefault: false,
-        isActive: true,
-        children: [],
-      },
-    ]);
-    asMock(businessLineService.list).mockResolvedValue({
-      items: [],
-      pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
-    });
     asMock(cashTransactionService.update).mockResolvedValue(cashTx());
 
     renderDialog(

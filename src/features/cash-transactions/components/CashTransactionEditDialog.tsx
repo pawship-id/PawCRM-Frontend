@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { ApiError } from "@/services/api-error";
 import { cashTransactionService } from "@/services/cashTransaction.service";
 import { paymentChannelService } from "@/services/paymentChannel.service";
+import { cashTypeOf } from "@/types/accounting";
 import type {
   CashTransaction,
   PaymentChannel,
@@ -30,6 +31,7 @@ import type {
 } from "@/types/api";
 import { isDecimal, toMinor, trimDecimal } from "@/utils/decimal";
 
+import { cashBankAccounts } from "../hooks/useCashBankAccountOptions";
 import { accountsForKind, useLineLookups } from "../hooks/useLineLookups";
 import {
   cashTransactionTitle,
@@ -61,10 +63,17 @@ const REASON_MAX_LENGTH = 200;
  * reversed and posted again. Somebody who expects an edit to rewrite history
  * should learn otherwise here, not from two new rows in Jurnal Umum.
  *
- * THE CHANNEL LIST IS THE SAME CLASS ONLY — kas stays kas, bank stays bank —
- * and only channels usable for this direction at this branch. Crossing kas ↔
- * bank would leave a BKM number on bank money; the server refuses it, and the
- * picker never offers the refusal.
+ * AKUN KAS/BANK, EXCEPT AT THE TILL. Since 20 September 2026 the cash side of a
+ * transaction is a ledger account, so this dialog moves one by naming another
+ * account — and the channel picker survives for exactly one case: a row a
+ * CASHIER recorded (`recordedVia: "pos"`). A shift is reconciled against the
+ * buttons that were pressed, so re-filing such a row onto a bare account would
+ * leave the shift's total unexplainable; it is moved by its channel, which is
+ * the thing that was actually wrong. The server refuses the other way round.
+ *
+ * EITHER PICKER OFFERS THE SAME CLASS ONLY — kas stays kas, bank stays bank.
+ * Crossing kas ↔ bank would leave a BKM number on bank money; the server refuses
+ * it, and the picker never offers the refusal.
  *
  * Sends only what changed. Server 400/409s stay in the dialog, verbatim.
  */
@@ -173,12 +182,19 @@ function EditForm({
   // The server pays exactly what its books say is owed — see CommissionRecapScreen.
   const amountLocked = transaction.kind === "commission_payment";
   const originalDate = toDateInputValue(transaction.at);
-  const channelClass = channelClassOf(transaction.channelType);
   const locked = lockedReason(transaction);
+  /*
+    THE ONE ROW THAT STILL MOVES BY ITS CHANNEL — see the header. Judged on how
+    it was RECORDED, not on whether it happens to carry a channel: an invoice
+    settled from the back office through a bank channel is ordinary back-office
+    money and moves to another account like anything else.
+  */
+  const viaTill = transaction.recordedVia === "pos";
 
   const [date, setDate] = useState(originalDate);
   const [amount, setAmount] = useState(trimDecimal(transaction.amount));
   const [channelId, setChannelId] = useState(transaction.channelId ?? "");
+  const [accountId, setAccountId] = useState(transaction.cashAccountId ?? "");
   const [ref, setRef] = useState(transaction.ref ?? "");
   const [note, setNote] = useState(transaction.note ?? "");
   const [lines, setLines] = useState<DraftLine[]>(() =>
@@ -190,10 +206,15 @@ function EditForm({
   const [saving, setSaving] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
-  const lookups = useLineLookups(withLines && !locked);
+  /*
+    THE CHART IS READ ON EVERY EDIT NOW, not only for the two kinds with rows:
+    the Akun Kas/Bank picker is built from it, and so is the kas/bank class of a
+    transaction that has no channel to read one off. One request either way.
+  */
+  const lookups = useLineLookups(!locked);
 
   useEffect(() => {
-    if (locked) return;
+    if (locked || !viaTill) return;
     let active = true;
 
     paymentChannelService
@@ -216,7 +237,49 @@ function EditForm({
     return () => {
       active = false;
     };
-  }, [locked, transaction.direction, transaction.branchId]);
+  }, [locked, viaTill, transaction.direction, transaction.branchId]);
+
+  /*
+    KAS OR BANK, from whichever of the two recorded it — the channel's type on a
+    till row, the account's own jenis on everything else. The picker below offers
+    only the accounts on this side of that line.
+  */
+  const cashAccountsAll = useMemo(
+    () => cashBankAccounts(lookups.accounts),
+    [lookups.accounts],
+  );
+  const currentAccount = cashAccountsAll.find(
+    (account) => account._id === transaction.cashAccountId,
+  );
+  const channelClass = transaction.channelType
+    ? channelClassOf(transaction.channelType)
+    : cashTypeOf(currentAccount);
+
+  const accountOptions = useMemo(() => {
+    const options = cashAccountsAll
+      .filter((account) => cashTypeOf(account) === channelClass)
+      .map((account) => ({
+        value: account._id,
+        label: `${account.code} · ${account.name}`,
+      }));
+    // The account it already uses stays choosable even if since retired —
+    // keeping it is not a change.
+    if (
+      transaction.cashAccountId &&
+      !options.some((option) => option.value === transaction.cashAccountId)
+    ) {
+      options.unshift({
+        value: transaction.cashAccountId,
+        label: transaction.cashAccountName ?? "Akun saat ini",
+      });
+    }
+    return options;
+  }, [
+    cashAccountsAll,
+    channelClass,
+    transaction.cashAccountId,
+    transaction.cashAccountName,
+  ]);
 
   const channelOptions = useMemo(() => {
     const options = channels
@@ -272,8 +335,15 @@ function EditForm({
       if (minor !== toMinor(transaction.amount)) patch.amount = trimmed;
     }
 
-    if (!channelId) return { patch, problem: "Channel belum dipilih" };
-    if (channelId !== (transaction.channelId ?? "")) patch.channelId = channelId;
+    if (viaTill) {
+      if (!channelId) return { patch, problem: "Channel belum dipilih" };
+      if (channelId !== (transaction.channelId ?? "")) patch.channelId = channelId;
+    } else {
+      if (!accountId) return { patch, problem: "Akun kas/bank belum dipilih" };
+      if (accountId !== (transaction.cashAccountId ?? "")) {
+        patch.accountId = accountId;
+      }
+    }
 
     if (ref.trim() !== (transaction.ref ?? "")) patch.ref = ref.trim();
     if (note.trim() !== (transaction.note ?? "")) patch.note = note.trim();
@@ -370,22 +440,40 @@ function EditForm({
         )}
 
         <div>
-          <FilterSelect
-            layout="form"
-            label="Channel"
-            ariaLabel="Channel"
-            value={channelId}
-            options={channelOptions}
-            active={false}
-            placeholder={channelsLoading ? "Memuat channel…" : "Pilih channel"}
-            required
-            disabled={saving}
-            onChange={setChannelId}
-          />
+          {viaTill ? (
+            <FilterSelect
+              layout="form"
+              label="Channel"
+              ariaLabel="Channel"
+              value={channelId}
+              options={channelOptions}
+              active={false}
+              placeholder={channelsLoading ? "Memuat channel…" : "Pilih channel"}
+              required
+              disabled={saving}
+              onChange={setChannelId}
+            />
+          ) : (
+            <FilterSelect
+              layout="form"
+              label="Akun Kas/Bank"
+              ariaLabel="Akun Kas/Bank"
+              value={accountId}
+              options={accountOptions}
+              active={false}
+              searchable
+              placeholder={lookups.loading ? "Memuat akun…" : "Pilih akun"}
+              required
+              disabled={saving || lookups.loading}
+              onChange={setAccountId}
+            />
+          )}
           <p className="mt-1.5 text-xs text-muted">
-            {channelClass === "cash"
-              ? "Hanya channel kas. Pindah ke rekening bank berarti batalkan transaksi ini lalu catat ulang."
-              : "Hanya channel bank (transfer, QRIS, EDC, giro). Pindah ke kas berarti batalkan transaksi ini lalu catat ulang."}
+            {viaTill
+              ? "Transaksi dari kasir dipindah lewat channelnya, supaya total shift tetap cocok."
+              : channelClass === "cash"
+                ? "Hanya akun kas. Pindah ke rekening bank berarti batalkan transaksi ini lalu catat ulang."
+                : "Hanya akun bank. Pindah ke kas berarti batalkan transaksi ini lalu catat ulang."}
           </p>
         </div>
 

@@ -23,8 +23,12 @@ import {
   type ChartOfAccountPayload,
 } from "@/services/chartOfAccounts.service";
 import { swalToast } from "@/lib/swal";
-import type { AccountCategory, ChartOfAccount } from "@/types/accounting";
-import { accountTypeOf, normalBalanceOf } from "@/types/accounting";
+import type {
+  AccountCategory,
+  CashType,
+  ChartOfAccount,
+} from "@/types/accounting";
+import { accountTypeOf, cashTypeOf, normalBalanceOf } from "@/types/accounting";
 
 import { useChartOfAccounts } from "../hooks/useChartOfAccounts";
 import {
@@ -38,6 +42,7 @@ import {
   ACCOUNT_TYPE_LABEL,
 } from "../labels";
 import { ACCOUNTING_CRUMBS } from "../crumbs";
+import { CASH_ACCOUNT_CATEGORY } from "../financeSummary";
 
 /** Backend caps and rules — chartOfAccounts.model.js. Restated, not guessed. */
 const CODE_MAX_LENGTH = 20;
@@ -184,6 +189,15 @@ function AccountForm({
   const [accountCategory, setAccountCategory] = useState<AccountCategory | "">(
     account?.accountCategory ?? "",
   );
+  /**
+   * KAS OR BANK — asked only for a Kas & Bank account, and it decides the bukti
+   * kas series a transaction on the account draws: BKM/BKK for a till, BBM/BBK
+   * for a bank account. Defaults to `bank`, the server's own default, and is
+   * never guessed from the name — "Kas Bon Karyawan" is not a till.
+   */
+  const [cashType, setCashType] = useState<CashType>(
+    account?.cashType === "cash" ? "cash" : "bank",
+  );
   const [parentId, setParentId] = useState(account?.parentAccountId ?? ROOT);
   const [isActive, setIsActive] = useState(account?.isActive ?? true);
 
@@ -204,6 +218,9 @@ function AccountForm({
     () => editing && accounts.some((item) => item.parentAccountId === account._id),
     [accounts, account, editing],
   );
+
+  /** Whether the jenis question exists at all — see the control below. */
+  const isCashBank = accountCategory === CASH_ACCOUNT_CATEGORY;
 
   const codeFrozen = account?.isDefault === true;
   const categoryFrozen = account?.isDefault === true || hasChildren;
@@ -280,6 +297,11 @@ function AccountForm({
           patch.accountCategory = accountCategory;
         if (nextParent !== account.parentAccountId)
           patch.parentAccountId = nextParent;
+        // Only where the question exists. Re-filing an account out of Kas & Bank
+        // clears the jenis on the server; sending one would be refused.
+        if (isCashBank && cashType !== cashTypeOf(account)) {
+          patch.cashType = cashType;
+        }
         if (isActive !== account.isActive) patch.isActive = isActive;
 
         if (Object.keys(patch).length === 0) {
@@ -293,6 +315,7 @@ function AccountForm({
           name: nextName,
           // Narrowed by the guard above: the empty string cannot reach here.
           accountCategory,
+          ...(isCashBank ? { cashType } : {}),
           parentAccountId: nextParent,
           // NO ALLOCATION RULES FROM HERE. A new Pendapatan or Beban account is
           // born "Belum Dipetakan" and is mapped in the list, inside its own
@@ -470,6 +493,41 @@ function AccountForm({
                 </p>
               )}
             </div>
+
+            {/*
+              ASKED ONLY WHERE IT MEANS SOMETHING. Every other category has no
+              kas/bank half, and a control that is always on screen with nothing
+              to say is a control people stop reading. It appears the moment
+              Kas & Bank is picked and goes away again if the category moves.
+            */}
+            {isCashBank && (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="coa-cash-type">Jenis</Label>
+                <Select
+                  value={cashType}
+                  onValueChange={(next) => setCashType(next as CashType)}
+                  disabled={busy}
+                >
+                  <SelectTrigger
+                    id="coa-cash-type"
+                    aria-label="Jenis"
+                    className="w-full"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">Kas</SelectItem>
+                    <SelectItem value="bank">Bank</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted">
+                  Menentukan nomor bukti kas transaksi di akun ini —{" "}
+                  {cashType === "cash"
+                    ? "BKM untuk uang masuk, BKK untuk uang keluar."
+                    : "BBM untuk uang masuk, BBK untuk uang keluar."}
+                </p>
+              </div>
+            )}
 
             {/*
               THE CLASS, AS A CONSEQUENCE — read-only, and deliberately still on

@@ -456,11 +456,44 @@ What the bar is *for* survives the change: a document says what it is, what its
 number is, and what can be done with it **at its head** — not in a strip of
 buttons discovered after everything else has been read.
 
-**The one form whose bar has no card: Faktur baru** (`InvoiceCreateForm`).
-Decided 11 September 2026 on request: the page heading already says *Faktur
-baru* and `No. [auto]` added nothing, so the bar there is only Batal and Simpan
-faktur — `FormActionBar` with no `title`. Do not put the card back as a tidy-up,
-and do not drop it from other forms without being asked.
+**Two forms have a bar with no card: Faktur baru** (`InvoiceCreateForm`) **and
+Tambah transaksi** (`CashTransactionCreateForm`). Decided 11 September 2026 on
+request for the first, and 20 September 2026 for the second: in both the page
+heading already names the document and `No. [auto]` added nothing, so the bar is
+only Batal and Simpan — `FormActionBar` with no `title`. Do not put the card
+back as a tidy-up, and do not drop it from the remaining forms without being
+asked.
+
+**Tambah transaksi drops Arus kas and No. referensi from its header.** Decided
+20 September 2026 on request, to match the BO mockup (`buloo-keuangan-v1.html`,
+Keuangan / Kas & Bank / Transaksi / Tambah Transaksi) — neither field is drawn
+there. `cashflowType` is still SENT, hardcoded to `operating`: left out, the
+journal entry lands with no cash flow section and the transaction drops out of
+Arus Kas altogether. A transaction that belongs under Investasi or Pendanaan is
+re-filed from Jurnal Umum. Do not put either field back as a tidy-up.
+
+**Transaksi Keuangan names an ACCOUNT, and a channel is the cashier's.** Decided
+20 September 2026 on request, and it went all the way through: `POST
+/cash-transactions` takes `accountId`, not `channelId`. Every screen in the
+module — the form, the Ubah dialog, the list's column and its filter — is about
+the Kas & Bank account now, and every picker offers **every active account filed
+under `accountCategory: cash_bank`**, in code order, the same list the Akun Kas &
+Bank table is built from.
+
+ONE EXCEPTION, AND IT IS NOT COSMETIC: a row recorded at the till
+(`recordedVia: "pos"`) still moves by its CHANNEL, in the Ubah dialog and on the
+server. A shift is reconciled against the buttons a cashier pressed, so re-filing
+such a row onto a bare account leaves the shift's total unexplainable.
+
+**`cashType` on the account is what decides the bukti kas series** — BKM/BKK for
+a till, BBM/BBK for a bank account — because `cash_bank` cannot tell "1101 Kas"
+from "1102 Bank". It is a field in Daftar Akun, shown only for that category,
+defaulting to `bank` and never guessed from the name. Existing charts are filled
+in by `seeds/backfillCashAccountTypes.js`, which reads it off the channels that
+already point at each account.
+
+Tambah transaksi's Lini Usaha sits in the header as a DEFAULT for the rows, which
+keep their own column.
 
 **Faktur baru's header also leaves §16's field order.** Decided 12 September 2026
 on request, to match the BO mockup (`buloo-invoice-create-v4.html`): Pelanggan

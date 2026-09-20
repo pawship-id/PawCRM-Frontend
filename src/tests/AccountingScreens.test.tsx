@@ -812,6 +812,24 @@ describe("ChartOfAccountForm", () => {
     ).not.toBeInTheDocument();
   });
 
+  /**
+   * THE JENIS ONLY EXISTS FOR KAS & BANK. It is what decides BKM/BKK against
+   * BBM/BBK, and no other category has a cash side to ask about.
+   */
+  it("asks kas or bank only for a Kas & Bank account", async () => {
+    await renderCreateForm();
+
+    expect(screen.queryByLabelText("Jenis")).not.toBeInTheDocument();
+
+    await pickCategory("Cash & Bank");
+    expect(await screen.findByLabelText("Jenis")).toBeInTheDocument();
+
+    await pickCategory("Biaya");
+    await waitFor(() =>
+      expect(screen.queryByLabelText("Jenis")).not.toBeInTheDocument(),
+    );
+  });
+
   it("creates an account from what was typed, uppercasing the code", async () => {
     await renderCreateForm();
     const create = jest
@@ -831,6 +849,9 @@ describe("ChartOfAccountForm", () => {
         // this; sending one would be stripped, so it is not on the payload type
         // and must not be on the request.
         accountCategory: "cash_bank",
+        // The jenis rides along for this category only, and defaults to Bank —
+        // the server never guesses it from the name.
+        cashType: "bank",
         parentAccountId: null,
       }),
     );

@@ -12,7 +12,6 @@ import {
   FilterSearch,
   FilterSelect,
   FilterTrigger,
-  namedOptions,
   withAll,
   type AppliedFilter,
   type FilterOption,
@@ -25,12 +24,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import type { ChartOfAccount } from "@/types/accounting";
 import type {
   CashTransactionDirection,
   CashTransactionKind,
   CashTransactionSort,
   CashTransactionStatus,
-  PaymentChannel,
 } from "@/types/api";
 
 import type { CashTransactionsQuery } from "../query";
@@ -61,7 +60,7 @@ const STATUS_OPTIONS: FilterOption<CashTransactionStatus | "">[] = withAll(
 
 type PanelFilters = Pick<
   CashTransactionsQuery,
-  "sort" | "dateFrom" | "dateTo" | "kinds" | "branchId" | "channelId" | "status"
+  "sort" | "dateFrom" | "dateTo" | "kinds" | "branchId" | "accountId" | "status"
 >;
 
 /**
@@ -74,14 +73,14 @@ const CLEARED: PanelFilters = {
   dateTo: "",
   kinds: [],
   branchId: "",
-  channelId: "",
+  accountId: "",
   status: "",
 };
 
 /**
  * The Transaksi controls (§8): the Arah pill row on its own line, then search and
- * one `Filter (n)` button over Urutkan · Periode · Jenis · Cabang · Channel ·
- * Status.
+ * one `Filter (n)` button over Urutkan · Periode · Jenis · Cabang ·
+ * Akun Kas/Bank · Status.
  *
  * A PANEL, on both counts — six fields, and a date range and a multi-select that
  * each hold a draft. Arah stays outside as the page's lens, is not in the count,
@@ -89,12 +88,12 @@ const CLEARED: PanelFilters = {
  */
 export function CashTransactionsToolbar({
   query,
-  channels,
+  cashAccounts,
   onChange,
   className,
 }: {
   query: CashTransactionsQuery;
-  channels: PaymentChannel[];
+  cashAccounts: ChartOfAccount[];
   onChange: (patch: Partial<CashTransactionsQuery>) => void;
   className?: string;
 }) {
@@ -107,13 +106,14 @@ export function CashTransactionsToolbar({
       onRemove: () => onChange({ kinds: [] }),
     });
   }
-  if (query.channelId) {
+  if (query.accountId) {
+    const account = cashAccounts.find((row) => row._id === query.accountId);
     chips.push({
-      key: "channel",
-      label:
-        channels.find((channel) => channel._id === query.channelId)?.name ??
-        "Channel terpilih",
-      onRemove: () => onChange({ channelId: "" }),
+      key: "account",
+      label: account
+        ? `${account.code} · ${account.name}`
+        : "Akun kas/bank terpilih",
+      onRemove: () => onChange({ accountId: "" }),
     });
   }
   if (query.status) {
@@ -154,7 +154,7 @@ export function CashTransactionsToolbar({
         onClearAll={() =>
           onChange({
             kinds: [],
-            channelId: "",
+            accountId: "",
             status: "",
             documentId: "",
           })
@@ -176,10 +176,10 @@ export function CashTransactionsToolbar({
             dateTo: query.dateTo,
             kinds: query.kinds,
             branchId: query.branchId,
-            channelId: query.channelId,
+            accountId: query.accountId,
             status: query.status,
           }}
-          channels={channels}
+          cashAccounts={cashAccounts}
           onApply={(next) => {
             // Only what moved — setQuery re-queries on any new object.
             const patch: Partial<CashTransactionsQuery> = {};
@@ -189,8 +189,8 @@ export function CashTransactionsToolbar({
             if (next.kinds.join(",") !== query.kinds.join(","))
               patch.kinds = next.kinds;
             if (next.branchId !== query.branchId) patch.branchId = next.branchId;
-            if (next.channelId !== query.channelId)
-              patch.channelId = next.channelId;
+            if (next.accountId !== query.accountId)
+              patch.accountId = next.accountId;
             if (next.status !== query.status) patch.status = next.status;
             if (Object.keys(patch).length > 0) onChange(patch);
           }}
@@ -202,11 +202,11 @@ export function CashTransactionsToolbar({
 
 function TransactionsFilterPanel({
   applied,
-  channels,
+  cashAccounts,
   onApply,
 }: {
   applied: PanelFilters;
-  channels: PaymentChannel[];
+  cashAccounts: ChartOfAccount[];
   onApply: (next: PanelFilters) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -219,7 +219,7 @@ function TransactionsFilterPanel({
   */
   const count = [
     applied.kinds.length > 0,
-    applied.channelId !== "",
+    applied.accountId !== "",
     applied.status !== "",
   ].filter(Boolean).length;
 
@@ -228,18 +228,18 @@ function TransactionsFilterPanel({
     setOpen(next);
   }
 
-  // A picked branch narrows the channels to its own and the tenant-wide ones —
-  // the same rule the server uses to decide which channels a branch may use.
-  const channelOptions = withAll(
-    namedOptions(
-      channels.filter(
-        (channel) =>
-          !draft.branchId ||
-          !channel.branchId ||
-          channel.branchId === draft.branchId,
-      ),
-    ),
-    "Semua channel",
+  /*
+    NOT NARROWED BY THE BRANCH, unlike the channel list it replaced. A channel
+    belongs to a till and a branch may be barred from it; an ACCOUNT belongs to
+    the company — the same bank account pays the landlord whichever branch signed
+    the lease — so filtering it by branch would hide rows that genuinely exist.
+  */
+  const accountOptions = withAll(
+    cashAccounts.map((account) => ({
+      value: account._id,
+      label: `${account.code} · ${account.name}`,
+    })),
+    "Semua akun",
   );
 
   return (
@@ -279,11 +279,12 @@ function TransactionsFilterPanel({
         />
         <FilterSelect
           layout="field"
-          label="Channel"
-          ariaLabel="Filter channel"
-          value={draft.channelId}
-          options={channelOptions}
-          onChange={(channelId) => setDraft((prev) => ({ ...prev, channelId }))}
+          label="Akun Kas/Bank"
+          ariaLabel="Filter akun kas/bank"
+          value={draft.accountId}
+          options={accountOptions}
+          searchable
+          onChange={(accountId) => setDraft((prev) => ({ ...prev, accountId }))}
         />
         <FilterSelect
           layout="field"

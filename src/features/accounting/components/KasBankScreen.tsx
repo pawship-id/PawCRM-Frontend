@@ -265,7 +265,7 @@ function RecurringSection() {
       <p className="mt-1.5 max-w-2xl text-sm text-muted">
         Gaji, sewa, dan langganan yang berulang tiap bulan akan tercatat sendiri
         dan muncul di sini beserta jatuh temponya — masuk maupun keluar. Sampai
-        penjadwalnya ada, catat biayanya lewat Catat transaksi seperti biasa dan
+        penjadwalnya ada, catat biayanya lewat Tambah transaksi seperti biasa dan
         transaksinya tetap masuk ke daftar di tab sebelah.
       </p>
     </Card>

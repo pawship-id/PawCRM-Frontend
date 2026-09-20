@@ -201,6 +201,16 @@ export interface AccountAllocation {
 }
 
 /** One account in the tenant's chart of accounts. */
+/** The two kinds of Kas & Bank account. See `ChartOfAccount.cashType`. */
+export type CashType = "cash" | "bank";
+
+/** What a Kas & Bank account is, with the pre-`cashType` default. */
+export function cashTypeOf(
+  account: Pick<ChartOfAccount, "cashType"> | null | undefined,
+): CashType {
+  return account?.cashType === "cash" ? "cash" : "bank";
+}
+
 export interface ChartOfAccount {
   _id: string;
   /** The stable identifier every posting module resolves against ("1201"). */
@@ -216,6 +226,16 @@ export interface ChartOfAccount {
    * sends. Everything the screens group, filter and colour by.
    */
   accountCategory: AccountCategory;
+  /**
+   * KAS OR BANK — only on a `cash_bank` account, null on every other.
+   *
+   * What it decides is the bukti kas series a transaction on the account draws:
+   * BKM/BKK for a till, BBM/BBK for a bank account. Added 20 September 2026,
+   * when Transaksi Keuangan stopped going through a payment channel and the
+   * channel's type stopped being there to read it off. Defaults to `bank` on the
+   * server, never guessed from the name.
+   */
+  cashType?: CashType | null;
   /** Parent in the hierarchy, or null for a root. Max 4 levels deep. */
   parentAccountId: string | null;
   /**

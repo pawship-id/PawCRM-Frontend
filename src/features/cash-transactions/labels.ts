@@ -125,14 +125,30 @@ export function channelClassOf(
   return type === "cash" ? "cash" : "bank";
 }
 
-/** The series prefix a new transaction will draw — for the form's meta line. */
+/**
+ * The series prefix a transaction draws, from the kas/bank class itself.
+ *
+ * TWO THINGS DECIDE THAT CLASS and they are asked in different places: a till
+ * payment reads it off its CHANNEL's type, and a back-office transaction off the
+ * ACCOUNT's own `cashType` (20 September 2026, when Transaksi Keuangan stopped
+ * going through a channel). Both land here, so the two paths cannot come to
+ * disagree about what a BKM is.
+ */
+export function numberPrefixForClass(
+  direction: CashTransactionDirection,
+  ledgerClass: ChannelClass,
+): string {
+  const cash = ledgerClass === "cash";
+  if (direction === "in") return cash ? "BKM" : "BBM";
+  return cash ? "BKK" : "BBK";
+}
+
+/** The prefix a payment through this CHANNEL will draw. */
 export function numberPrefix(
   direction: CashTransactionDirection,
   type: PaymentChannelType | null | undefined,
 ): string {
-  const cash = channelClassOf(type) === "cash";
-  if (direction === "in") return cash ? "BKM" : "BBM";
-  return cash ? "BKK" : "BBK";
+  return numberPrefixForClass(direction, channelClassOf(type));
 }
 
 /**

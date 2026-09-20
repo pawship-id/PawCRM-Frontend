@@ -92,7 +92,8 @@ describe("Kas & Bank — transaksi: rows and totals", () => {
     expect(inCells[2]).toHaveTextContent("Penerimaan piutang");
     expect(inCells[3]).toHaveTextContent("Bu Sari");
     expect(inCells[3]).toHaveTextContent("INV/CBS/2609/0012");
-    expect(inCells[4]).toHaveTextContent("Kas Laci");
+    // The column is the ledger account now, not the till's button.
+    expect(inCells[4]).toHaveTextContent("Kas");
     expect(inCells[5]).toHaveTextContent("Rp 150.000");
     expect(inCells[6]).toHaveTextContent("");
     expect(inCells[7]).toHaveTextContent("Tercatat");
@@ -230,10 +231,10 @@ describe("Kas & Bank — transaksi: empty and gated", () => {
     ).toBeInTheDocument();
   });
 
-  it("offers Catat transaksi only to a role that may create one", async () => {
+  it("offers Tambah transaksi only to a role that may create one", async () => {
     const { unmount } = renderWithAuth(<KasBankScreen now={NOW} />);
     expect(
-      await screen.findByRole("link", { name: /Catat transaksi/ }),
+      await screen.findByRole("link", { name: /Tambah transaksi/ }),
     ).toHaveAttribute("href", "/dashboard/keuangan/kas-bank/transaksi/new");
     unmount();
 
@@ -243,7 +244,7 @@ describe("Kas & Bank — transaksi: empty and gated", () => {
     });
     await screen.findByText("BKM/CBS/2609/0001");
     expect(
-      screen.queryByRole("link", { name: /Catat transaksi/ }),
+      screen.queryByRole("link", { name: /Tambah transaksi/ }),
     ).not.toBeInTheDocument();
   });
 });

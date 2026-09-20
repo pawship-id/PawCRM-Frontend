@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Plus } from "lucide-react";
 
 import {
   Alert,
@@ -9,70 +10,105 @@ import {
   FilterPills,
   FilterSelect,
   FormActionBar,
-  SelectField,
   Spinner,
   TextField,
   TextareaField,
   namedOptions,
+  type FilterOption,
   type PillOption,
 } from "@/components";
-import { CASHFLOW_LABEL } from "@/features/accounting/labels";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { SHARED_LINE_LABEL } from "@/features/accounting";
 import { useBranchScope } from "@/features/inventory/hooks/useBranchScope";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { cashTransactionService } from "@/services/cashTransaction.service";
-import { paymentChannelService } from "@/services/paymentChannel.service";
-import type { CashflowType } from "@/types/accounting";
-import type { CreateCashTransactionInput, PaymentChannel } from "@/types/api";
-import { formatMoney, toDecimalString } from "@/utils/decimal";
+import { cashTypeOf } from "@/types/accounting";
+import type { CreateCashTransactionInput } from "@/types/api";
 
+import {
+  cashBankAccountOptions,
+  cashBankAccounts,
+} from "../hooks/useCashBankAccountOptions";
 import { accountsForKind, useLineLookups } from "../hooks/useLineLookups";
 import {
   CASH_TRANSACTIONS_HREF,
   cashTransactionHref,
   cashTransactionTitle,
-  numberPrefix,
+  numberPrefixForClass,
   todayValue,
 } from "../labels";
 import {
   CashLinesEditor,
   blankLine,
+  canAddLine,
   linesProblem,
-  linesTotal,
   toLineInputs,
   type DraftLine,
 } from "./CashLinesEditor";
 
 type ManualKind = "expense" | "other_income";
 
+/**
+ * MASUK FIRST, and the words are the mockup's — the same two the Kas & Bank
+ * cards above the list are labelled with, so the toggle on the form and the
+ * figures it lands in are named the same thing.
+ */
 const KIND_OPTIONS: PillOption<ManualKind>[] = [
-  { value: "expense", label: "Pengeluaran" },
-  { value: "other_income", label: "Pemasukan" },
+  { value: "other_income", label: "Uang masuk" },
+  { value: "expense", label: "Uang keluar" },
 ];
 
-const CASHFLOW_TYPES: CashflowType[] = ["operating", "investing", "financing"];
-const CASHFLOW_OPTIONS = CASHFLOW_TYPES.map((value) => ({
-  value,
-  label: CASHFLOW_LABEL[value],
-}));
-
 /**
- * CATAT TRANSAKSI — money that has no invoice behind it: rent, electricity,
+ * TAMBAH TRANSAKSI — money that has no invoice behind it: rent, electricity,
  * wages paid outside commission, interest, a sold fixture.
  *
- * FORM TRANSAKSI (§16): the action bar at the head, a two-column header —
- * Tanggal · Cabang, then who and through which channel, then Arus kas and No.
- * referensi, Keterangan closing the header — and the row table of accounts
- * underneath. THE ROWS ARE THE AMOUNT: there is no Jumlah field to disagree
- * with them.
+ * ADOPTED FROM THE MOCKUP on 20 September 2026 (Keuangan / Kas & Bank /
+ * Transaksi / Tambah Transaksi): the Uang masuk / Uang keluar toggle at the head
+ * of the card, an Akun Kas/Bank picker in place of the channel one, one Lini
+ * Usaha in the header, the Biaya Tetap switch closing it, and Rincian Akun as
+ * its own card underneath with "+ Tambah baris" in its header and the total as
+ * the row table's last line. THE ROWS ARE THE AMOUNT: there is no Jumlah field
+ * to disagree with them.
  *
- * WHAT THE PICKERS OFFER IS WHAT THE SERVER ACCEPTS. Channels usable for this
- * direction at this branch; accounts that are active and of the right class
- * (beban for Pengeluaran, pendapatan for Pemasukan). Flipping the toggle clears
- * the chosen accounts, because none of them is valid on the other side.
+ * TWO PLACES IT DOES NOT FOLLOW THE MOCKUP, both because §16 of
+ * docs/ui-rules.md says otherwise and the rule wins:
  *
- * No number field: BKK/BBK or BKM/BBM is drawn by the server from the channel,
- * and the bar's meta says which series it will be.
+ *   No. Transaksi is NOT a field. "A read-only number is not a field somebody
+ *   fills in, so it does not get a slot in the grid" — and the page heading
+ *   already names the document, so the bar carries no title for it to sit under
+ *   either (the Faktur baru precedent, 11 September 2026). What is knowable
+ *   before saving is the SERIES, and that is said as a hint under the account
+ *   that decides it: BKK for kas out, BBM for bank in.
+ *
+ *   The grid keeps §16's field order — kapan, di mana, dengan siapa, then the
+ *   secondary classification — rather than the mockup's pairing, which only
+ *   differs in which two fields share a row.
+ *
+ * AKUN KAS/BANK, AND NO CHANNEL AT ALL. The picker lists every active account
+ * filed under Kas & Bank in Daftar Akun — the same `accountCategory` the table
+ * on the page above is built from — and that is what `POST /cash-transactions`
+ * now takes. A CHANNEL IS THE CASHIER'S: "QRIS Xendit", "BCA 8730…" are buttons
+ * pressed at a till, several of them routinely settle into one account, and a
+ * back-office transaction has no till to press them at. The account's own
+ * `cashType` decides the BKM/BKK or BBM/BBK series that the channel's type used
+ * to decide.
+ *
+ * WHAT THE PICKERS OFFER IS WHAT THE SERVER ACCEPTS. Active Kas & Bank accounts
+ * for the cash side; line accounts that are active and of the right class (beban
+ * for Keluar, pendapatan for Masuk). Flipping the toggle clears the chosen line
+ * accounts, because none of them is valid on the other side. THE CASH ACCOUNT
+ * SURVIVES THE FLIP — an account has no direction, and a bank account both
+ * receives and pays.
+ *
+ * NO ARUS KAS FIELD AND NO NO. REFERENSI — neither is in the mockup, dropped on
+ * request. The cash flow statement still needs a section, so every transaction
+ * typed here is filed under Operasi, which is what all but a handful of them
+ * are; left unsent the entry would carry no section at all and drop out of Arus
+ * Kas entirely. One that belongs under Investasi or Pendanaan is re-filed from
+ * Jurnal Umum.
  */
 export function CashTransactionCreateForm() {
   const router = useRouter();
@@ -82,14 +118,11 @@ export function CashTransactionCreateForm() {
   const [kind, setKind] = useState<ManualKind>("expense");
   const [date, setDate] = useState(todayValue);
   const [pickedBranch, setPickedBranch] = useState("");
-  const [channelId, setChannelId] = useState("");
+  const [cashAccountId, setCashAccountId] = useState("");
   const [partyName, setPartyName] = useState("");
-  const [cashflowType, setCashflowType] = useState<CashflowType>("operating");
-  const [ref, setRef] = useState("");
+  const [businessLineId, setBusinessLineId] = useState("");
   const [note, setNote] = useState("");
   const [lines, setLines] = useState<DraftLine[]>(() => [blankLine()]);
-  const [channels, setChannels] = useState<PaymentChannel[]>([]);
-  const [channelsLoading, setChannelsLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -97,34 +130,22 @@ export function CashTransactionCreateForm() {
   const branchId = pickedBranch || scope.soleBranch;
   const direction = kind === "expense" ? "out" : "in";
 
-  useEffect(() => {
-    if (!branchId) return;
-    let active = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setChannelsLoading(true);
+  const cashAccountOptions: FilterOption<string>[] = cashBankAccountOptions(
+    lookups.accounts,
+  );
 
-    paymentChannelService
-      .list({ isActive: true, usableFor: direction, branchId, limit: 100 })
-      .then((result) => {
-        if (active) setChannels(result.items);
-      })
-      .catch(() => {
-        if (active) setChannels([]);
-      })
-      .finally(() => {
-        if (active) setChannelsLoading(false);
-      });
+  // Derived, not held twice: a chart that reloads without the chosen account —
+  // retired in Daftar Akun in another tab — simply stops having a selection, and
+  // the bar says the field is unanswered.
+  const cashAccount =
+    cashBankAccounts(lookups.accounts).find(
+      (account) => account._id === cashAccountId,
+    ) ?? null;
 
-    return () => {
-      active = false;
-    };
-  }, [branchId, direction]);
-
-  // Derived, not reset in an effect: a channel the new branch or direction does
-  // not offer simply stops being the selection.
-  const channel = branchId
-    ? (channels.find((item) => item._id === channelId) ?? null)
-    : null;
+  const lineOptions: FilterOption<string>[] = [
+    { value: "", label: SHARED_LINE_LABEL },
+    ...namedOptions(lookups.businessLines),
+  ];
 
   function switchKind(next: ManualKind) {
     if (next === kind) return;
@@ -132,20 +153,41 @@ export function CashTransactionCreateForm() {
     setLines((prev) => prev.map((line) => ({ ...line, accountId: "" })));
   }
 
+  /*
+    THE HEADER'S LINI USAHA IS A DEFAULT, NOT AN OVERRIDE. It seeds new rows, and
+    changing it carries along every row that still agreed with it — a row somebody
+    set by hand keeps what they set. Filling the header in after typing three rows
+    has to do something, or it reads as a dead control; silently overwriting a
+    deliberate per-row choice is the other way to get this wrong.
+  */
+  function changeBusinessLine(next: string) {
+    setLines((prev) =>
+      prev.map((line) =>
+        line.businessLineId === businessLineId
+          ? { ...line, businessLineId: next }
+          : line,
+      ),
+    );
+    setBusinessLineId(next);
+  }
+
+  function addLine() {
+    setLines((prev) => [...prev, { ...blankLine(), businessLineId }]);
+  }
+
   function blockedReason(): string | null {
     if (date === "") return "Tanggal belum diisi";
     if (date > todayValue()) return "Tanggal tidak boleh di masa depan";
     if (!branchId) return "Cabang belum dipilih";
-    if (!channel) return "Channel belum dipilih";
+    if (!cashAccount) return "Akun kas/bank belum dipilih";
     return linesProblem(lines);
   }
 
   const blocked = blockedReason();
-  const total = linesTotal(lines);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    if (blocked || saving || !channel) return;
+    if (blocked || saving || !cashAccount) return;
 
     setSaving(true);
     setFormError(null);
@@ -153,12 +195,12 @@ export function CashTransactionCreateForm() {
     const input: CreateCashTransactionInput = {
       kind,
       branchId,
-      channelId: channel._id,
+      accountId: cashAccount._id,
       // Today is left to the server, which stamps the time as well as the day.
       ...(date !== todayValue() ? { at: date } : {}),
       ...(partyName.trim() ? { partyName: partyName.trim() } : {}),
-      cashflowType,
-      ...(ref.trim() ? { ref: ref.trim() } : {}),
+      // Not asked, always sent — see the note at the head of the file.
+      cashflowType: "operating",
       ...(note.trim() ? { note: note.trim() } : {}),
       lines: toLineInputs(lines),
     };
@@ -179,18 +221,14 @@ export function CashTransactionCreateForm() {
     }
   }
 
-  const channelOptions = namedOptions(channels);
+  const masuk = kind === "other_income";
 
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
+      {/* No title: the page heading already names the document, so the bar is
+          the two buttons the mockup draws beside it. */}
       <FormActionBar
-        title="Transaksi baru"
-        meta={
-          channel
-            ? `No. ${numberPrefix(direction, channel.type)}/… · total ${formatMoney(toDecimalString(total))}`
-            : "No. diberikan saat disimpan"
-        }
-        submitLabel={kind === "expense" ? "Simpan pengeluaran" : "Simpan pemasukan"}
+        submitLabel="Simpan transaksi"
         submitting={saving}
         disabled={blocked !== null}
         blockedReason={blocked}
@@ -235,7 +273,7 @@ export function CashTransactionCreateForm() {
             />
 
             <TextField
-              label="Nama pihak"
+              label={masuk ? "Pengirim" : "Penerima"}
               name="cash-party"
               value={partyName}
               maxLength={120}
@@ -246,65 +284,104 @@ export function CashTransactionCreateForm() {
 
             <FilterSelect
               layout="form"
-              label="Channel"
-              ariaLabel="Channel"
-              value={channel?._id ?? ""}
-              options={channelOptions}
+              label="Akun Kas/Bank"
+              ariaLabel="Akun Kas/Bank"
+              value={cashAccountId}
+              options={cashAccountOptions}
               active={false}
+              searchable
               placeholder={
-                channelsLoading
-                  ? "Memuat channel…"
-                  : kind === "expense"
-                    ? "Dibayar dari"
-                    : "Diterima di"
+                lookups.loading
+                  ? "Memuat akun…"
+                  : masuk
+                    ? "Diterima di"
+                    : "Dibayar dari"
               }
               required
-              disabled={saving || !branchId}
-              disabledHint="Pilih cabang dulu."
-              onChange={setChannelId}
+              disabled={saving || lookups.loading}
+              hint={
+                cashAccount
+                  ? `Nomornya seri ${numberPrefixForClass(direction, cashTypeOf(cashAccount))}, diberikan saat disimpan.`
+                  : undefined
+              }
+              onChange={setCashAccountId}
             />
 
-            <SelectField
-              label="Arus kas"
-              value={cashflowType}
-              options={CASHFLOW_OPTIONS}
+            <FilterSelect
+              layout="form"
+              label="Lini Usaha"
+              ariaLabel="Lini Usaha"
+              value={businessLineId}
+              options={lineOptions}
+              active={false}
+              placeholder={SHARED_LINE_LABEL}
               disabled={saving}
-              hint="Kebanyakan pengeluaran toko masuk Operasi."
-              onChange={(value) => setCashflowType(value as CashflowType)}
-            />
-
-            <TextField
-              label="No. referensi"
-              name="cash-ref"
-              value={ref}
-              maxLength={100}
-              disabled={saving}
-              hint="Opsional — no. transfer atau no. nota."
-              onChange={(event) => setRef(event.target.value)}
+              hint="Dipakai untuk baris baru di Rincian Akun; tiap baris masih bisa diubah sendiri."
+              onChange={changeBusinessLine}
             />
 
             <div className="sm:col-span-2">
               <TextareaField
-                label="Keterangan"
+                label="Deskripsi"
                 name="cash-note"
                 value={note}
                 rows={3}
                 maxLength={500}
                 disabled={saving}
-                placeholder="mis. Listrik Agustus, cabang Bogor"
+                placeholder="cth: Gaji staff Oktober"
                 onChange={(event) => setNote(event.target.value)}
               />
+            </div>
+          </div>
+
+          {/*
+            SHOWN, OFF, AND BADGED "SEGERA" — the mockup's switch, over a field
+            the API does not have. The Biaya Tetap sub-tab in Kas & Bank carries
+            the same badge for the same reason: there is no scheduler behind it
+            yet, and a switch that saved nothing would be worse than one that
+            says so.
+          */}
+          <div className="flex items-start gap-3 rounded-xl border border-border bg-surface-hover px-4 py-3">
+            <Switch
+              checked={false}
+              disabled
+              aria-label="Jadikan biaya tetap"
+              className="mt-1"
+            />
+            <div className="min-w-0">
+              <p className="flex flex-wrap items-center gap-2 font-semibold text-foreground">
+                Jadikan biaya tetap
+                <Badge variant="outline">Segera</Badge>
+              </p>
+              <p className="mt-0.5 text-sm text-muted">
+                Otomatis tercatat tiap bulan dan muncul di tab Biaya Tetap.
+                Penjadwalnya belum ada — sampai itu, catat transaksinya lagi tiap
+                bulan lewat layar ini.
+              </p>
             </div>
           </div>
         </div>
       </Card>
 
       <Card
-        title={kind === "expense" ? "Untuk apa uangnya keluar" : "Dari mana uangnya masuk"}
+        title="Rincian Akun"
         description={
-          kind === "expense"
-            ? "Satu baris per akun beban. Totalnya adalah jumlah yang keluar dari channel."
-            : "Satu baris per akun pendapatan. Totalnya adalah jumlah yang masuk ke channel."
+          masuk
+            ? "Satu baris per akun pendapatan. Totalnya adalah jumlah yang masuk ke akun kas/bank di atas."
+            : "Satu baris per akun beban. Totalnya adalah jumlah yang keluar dari akun kas/bank di atas."
+        }
+        action={
+          canAddLine(lines) ? (
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={saving || lookups.loading}
+              onClick={addLine}
+            >
+              <Plus className="size-4" />
+              Tambah baris
+            </Button>
+          ) : null
         }
       >
         {lookups.loading ? (
@@ -314,14 +391,22 @@ export function CashTransactionCreateForm() {
         ) : lookups.error ? (
           <Alert variant="error">{lookups.error}</Alert>
         ) : (
-          <CashLinesEditor
-            kind={kind}
-            lines={lines}
-            onChange={setLines}
-            accounts={accountsForKind(lookups.accounts, kind)}
-            businessLines={lookups.businessLines}
-            disabled={saving}
-          />
+          <>
+            <CashLinesEditor
+              kind={kind}
+              lines={lines}
+              onChange={setLines}
+              accounts={accountsForKind(lookups.accounts, kind)}
+              businessLines={lookups.businessLines}
+              disabled={saving}
+              showAddButton={false}
+            />
+            <p className="mt-3 text-sm text-muted">
+              Detil akun hanya muncul untuk akun yang punya beberapa aturan
+              alokasi (cth. Beban Gaji) — dipakai untuk laporan per lini, tidak
+              memengaruhi jurnal. Total dihitung otomatis dari baris di atas.
+            </p>
+          </>
         )}
       </Card>
     </form>

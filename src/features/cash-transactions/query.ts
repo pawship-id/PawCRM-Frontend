@@ -27,7 +27,12 @@ export interface CashTransactionsQuery {
   dateFrom: string;
   dateTo: string;
   branchId: string;
-  channelId: string;
+  /**
+   * THE KAS/BANK ACCOUNT, not the channel (20 September 2026). "Which account is
+   * this money in" is the question the list is read with; a channel is a button
+   * at a till, and several of them land in one account.
+   */
+  accountId: string;
   status: CashTransactionStatus | "";
   /**
    * Set only by a deep link (`?documentId=`) — "the payments on this invoice".
@@ -45,7 +50,7 @@ export const DEFAULT_CASH_TRANSACTIONS_QUERY: CashTransactionsQuery = {
   dateFrom: "",
   dateTo: "",
   branchId: "",
-  channelId: "",
+  accountId: "",
   status: "",
   documentId: "",
   sort: "newest",

@@ -42,7 +42,10 @@ describe("CashTransactionDetail — what it shows", () => {
       await screen.findByRole("heading", { name: "BKM/CBS/2609/0001" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Tercatat")).toBeInTheDocument();
-    expect(screen.getByText("Kas Laci")).toBeInTheDocument();
+    // Akun Kas/Bank is the fact; the channel is how the money got there.
+    expect(screen.getByText("Akun Kas/Bank").parentElement).toHaveTextContent(
+      "1101 Kas · lewat Kas Laci",
+    );
     expect(screen.getByText("Back office")).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: /INV\/CBS\/2609\/0012/ }),

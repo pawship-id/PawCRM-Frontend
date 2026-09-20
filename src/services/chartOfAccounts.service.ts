@@ -90,6 +90,12 @@ export interface ChartOfAccountPayload {
    * is not on the type.
    */
   accountCategory: ChartOfAccount["accountCategory"];
+  /**
+   * Kas or bank — accepted only on a `cash_bank` account, and the server refuses
+   * it on any other category. Omitted on a create it defaults to `bank`; omitted
+   * on a PATCH the account keeps what it has.
+   */
+  cashType?: ChartOfAccount["cashType"];
   parentAccountId: string | null;
   /**
    * The account's Detil Akun, sent AS A WHOLE LIST.

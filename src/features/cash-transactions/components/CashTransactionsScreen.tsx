@@ -34,7 +34,7 @@ import {
 import { CashTransactionStatusBadge } from "./CashTransactionStatusBadge";
 import { CashTransactionsToolbar } from "./CashTransactionsToolbar";
 
-/** Tanggal · No. · Jenis · Pihak / Dokumen · Channel · Masuk · Keluar · Status. */
+/** Tanggal · No. · Jenis · Pihak / Dokumen · Akun Kas/Bank · Masuk · Keluar · Status. */
 const COLUMN_COUNT = 8;
 
 /**
@@ -43,7 +43,7 @@ const COLUMN_COUNT = 8;
  * payments, expenses and other income.
  *
  * NOT THE LEDGER. Jurnal Umum answers "what did the books record"; this answers
- * "what money moved, through which channel, under which bukti number" — the
+ * "what money moved, out of which account, under which bukti number" — the
  * list a shop reconciles a bank statement or a cash drawer against. Every row
  * has a journal entry behind it, one click away on its detail.
  *
@@ -66,7 +66,7 @@ export function CashTransactionsPanel({
     transactions,
     pagination,
     query,
-    channels,
+    cashAccounts,
     loading,
     error,
     setQuery,
@@ -80,7 +80,7 @@ export function CashTransactionsPanel({
     query.dateFrom !== "" ||
     query.dateTo !== "" ||
     query.branchId !== "" ||
-    query.channelId !== "" ||
+    query.accountId !== "" ||
     query.status !== "" ||
     query.documentId !== "";
 
@@ -101,7 +101,7 @@ export function CashTransactionsPanel({
       <div className="flex flex-wrap items-start gap-3">
         <CashTransactionsToolbar
           query={query}
-          channels={channels}
+          cashAccounts={cashAccounts}
           onChange={setQuery}
           className="min-w-0 flex-1"
         />
@@ -109,7 +109,7 @@ export function CashTransactionsPanel({
           <Button asChild>
             <Link href={`${CASH_TRANSACTION_DETAIL_HREF}/new`}>
               <Plus className="size-4" />
-              Catat transaksi
+              Tambah transaksi
             </Link>
           </Button>
         </Can>
@@ -129,7 +129,7 @@ export function CashTransactionsPanel({
                   <TableHead>No.</TableHead>
                   <TableHead>Jenis</TableHead>
                   <TableHead>Pihak / Dokumen</TableHead>
-                  <TableHead>Channel</TableHead>
+                  <TableHead>Akun Kas/Bank</TableHead>
                   <TableHead className="text-right">Masuk</TableHead>
                   <TableHead className="text-right">Keluar</TableHead>
                   <TableHead>Status</TableHead>
@@ -272,7 +272,7 @@ function TransactionRow({
         ))}
       </TableCell>
       <TableCell className="px-4 py-2.5 text-sm whitespace-nowrap">
-        {transaction.channelName ?? "—"}
+        {transaction.cashAccountName ?? "—"}
       </TableCell>
       <TableCell className="px-4 py-2.5 text-right text-sm font-semibold tabular-nums whitespace-nowrap">
         {transaction.direction === "in" ? amount : ""}

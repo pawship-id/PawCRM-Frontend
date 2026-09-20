@@ -8,16 +8,13 @@ import { branchService } from "@/services/branch.service";
 import { businessLineService } from "@/services/businessLine.service";
 import { cashTransactionService } from "@/services/cashTransaction.service";
 import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
-import { paymentChannelService } from "@/services/paymentChannel.service";
 import type { ChartOfAccountNode } from "@/types/accounting";
 import { accountTypeOf } from "@/types/accounting";
-import type { PaymentChannelListQuery } from "@/types/api";
 
-import { cashTx, channel, channelPage } from "./helpers/cashTransactionFixture";
+import { cashTx } from "./helpers/cashTransactionFixture";
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
 jest.mock("@/services/cashTransaction.service");
-jest.mock("@/services/paymentChannel.service");
 jest.mock("@/services/branch.service");
 jest.mock("@/services/chartOfAccounts.service");
 jest.mock("@/services/businessLine.service");
@@ -32,10 +29,11 @@ const asMock = <T extends (...args: never[]) => unknown>(fn: T) =>
   fn as jest.MockedFunction<T>;
 
 /**
- * CATAT TRANSAKSI. What it guards: Simpan stays off — and says why — until the
- * required fields are answered; the pickers offer only what the server accepts
- * (active accounts of the right class, channels usable in the right direction
- * at the branch); and the payload is exactly the contract.
+ * TAMBAH TRANSAKSI. What it guards: Simpan stays off — and says why — until the
+ * required fields are answered; the Akun Kas/Bank picker offers every active
+ * account filed under Kas & Bank and NO channels at all; the account's own jenis
+ * decides the series; the header's Lini Usaha seeds the rows; and the payload is
+ * exactly the contract, Operasi included.
  */
 const account = (
   overrides: Partial<ChartOfAccountNode> &
@@ -59,19 +57,32 @@ beforeEach(() => {
     items: [{ _id: "b1", name: "Cabang Pusat" }],
     pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
   } as never);
-  asMock(paymentChannelService.list).mockImplementation(
-    async (query?: PaymentChannelListQuery) =>
-      query?.usableFor === "in"
-        ? channelPage([
-            channel({ _id: "ch-kas", name: "Kas Laci", type: "cash" }),
-            channel({ _id: "ch-qris", name: "QRIS BCA", type: "qris" }),
-          ])
-        : channelPage([
-            channel({ _id: "ch-kas", name: "Kas Laci", type: "cash" }),
-            channel({ _id: "ch-bca", name: "BCA Operasional", type: "transfer" }),
-          ]),
-  );
   asMock(chartOfAccountsService.tree).mockResolvedValue([
+    // `cashType` is what decides BKM/BKK against BBM/BBK now that no channel
+    // is involved — see the account model.
+    account({
+      _id: "acc-kas",
+      code: "1101",
+      name: "Kas Pusat",
+      accountCategory: "cash_bank",
+      cashType: "cash",
+    }),
+    account({
+      _id: "acc-bca",
+      code: "1102",
+      name: "Bank BCA",
+      accountCategory: "cash_bank",
+      cashType: "bank",
+    }),
+    // Retired in Daftar Akun — offered by neither picker.
+    account({
+      _id: "acc-lama-kas",
+      code: "1109",
+      name: "Kas Lama",
+      accountCategory: "cash_bank",
+      cashType: "cash",
+      isActive: false,
+    }),
     account({
       _id: "acc-listrik",
       code: "5401",
@@ -93,8 +104,11 @@ beforeEach(() => {
     }),
   ]);
   asMock(businessLineService.list).mockResolvedValue({
-    items: [{ _id: "bl-groom", name: "Grooming", color: "navy" }],
-    pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+    items: [
+      { _id: "bl-groom", name: "Grooming", color: "navy" },
+      { _id: "bl-retail", name: "Retail", color: "navy" },
+    ],
+    pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
   });
   asMock(cashTransactionService.create).mockResolvedValue(
     cashTx({
@@ -123,13 +137,15 @@ describe("CashTransactionCreateForm", () => {
     renderWithAuth(<CashTransactionCreateForm />);
 
     const submit = await screen.findByRole("button", {
-      name: "Simpan pengeluaran",
+      name: "Simpan transaksi",
     });
-    // The one branch is filled in; the channel is not.
-    expect(await screen.findByText("Channel belum dipilih")).toBeInTheDocument();
+    // The one branch is filled in; the cash account is not.
+    expect(
+      await screen.findByText("Akun kas/bank belum dipilih"),
+    ).toBeInTheDocument();
     expect(submit).toBeDisabled();
 
-    await pick(user, "Channel", "Kas Laci");
+    await pick(user, "Akun Kas/Bank", "1101 · Kas Pusat");
     expect(
       await screen.findByText("Akun di baris 1 belum dipilih"),
     ).toBeInTheDocument();
@@ -144,15 +160,75 @@ describe("CashTransactionCreateForm", () => {
     expect(submit).toBeEnabled();
   });
 
-  it("offers only active expense accounts and out-going channels for Pengeluaran", async () => {
+  it("lists every active Kas & Bank account and no channels at all", async () => {
     const user = userEvent.setup();
     renderWithAuth(<CashTransactionCreateForm />);
 
-    await waitFor(() =>
-      expect(paymentChannelService.list).toHaveBeenCalledWith(
-        expect.objectContaining({ usableFor: "out", branchId: "b1", isActive: true }),
-      ),
+    await user.click(
+      await screen.findByRole("button", { name: "Akun Kas/Bank" }),
     );
+
+    // Accounts, in code order. The retired one is not offered, and neither is
+    // anything that is not filed under Kas & Bank.
+    expect(
+      (await screen.findAllByRole("option")).map((row) => row.textContent),
+    ).toEqual(["1101 · Kas Pusat", "1102 · Bank BCA"]);
+  });
+
+  /** No channel states the class any more, so the account's own jenis does. */
+  it("reads the bukti kas series off the account's jenis", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<CashTransactionCreateForm />);
+    await screen.findByRole("button", { name: "Simpan transaksi" });
+
+    await pick(user, "Akun Kas/Bank", "1101 · Kas Pusat");
+    expect(await screen.findByText(/seri BKK/)).toBeInTheDocument();
+
+    await pick(user, "Akun Kas/Bank", "1102 · Bank BCA");
+    expect(await screen.findByText(/seri BBK/)).toBeInTheDocument();
+  });
+
+  /**
+   * An account has no direction — a bank account both receives and pays — so
+   * flipping the toggle must not silently unpick it, the way the channel it
+   * replaced had to be.
+   */
+  it("keeps the chosen account when the direction flips", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<CashTransactionCreateForm />);
+    await screen.findByRole("button", { name: "Simpan transaksi" });
+
+    await pick(user, "Akun Kas/Bank", "1102 · Bank BCA");
+    await user.click(screen.getByRole("button", { name: "Uang masuk" }));
+
+    expect(await screen.findByText(/seri BBM/)).toBeInTheDocument();
+    expect(
+      screen.queryByText("Akun kas/bank belum dipilih"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("switches to income accounts for Uang masuk", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<CashTransactionCreateForm />);
+    await screen.findByRole("button", { name: "Simpan transaksi" });
+
+    await user.click(screen.getByRole("button", { name: "Uang masuk" }));
+
+    // The party field asks the other question.
+    expect(screen.getByLabelText("Pengirim")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Akun baris 1" }));
+    expect(
+      await screen.findByRole("option", { name: "4201 · Pendapatan Bunga" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "5401 · Beban Listrik" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers only active expense accounts for Uang keluar", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<CashTransactionCreateForm />);
 
     const accountTrigger = await screen.findByRole("button", { name: "Akun baris 1" });
     await user.click(accountTrigger);
@@ -167,57 +243,30 @@ describe("CashTransactionCreateForm", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("switches to income accounts and receiving channels for Pemasukan", async () => {
-    const user = userEvent.setup();
-    renderWithAuth(<CashTransactionCreateForm />);
-    await screen.findByRole("button", { name: "Simpan pengeluaran" });
-
-    await user.click(screen.getByRole("button", { name: "Pemasukan" }));
-
-    expect(
-      screen.getByRole("button", { name: "Simpan pemasukan" }),
-    ).toBeInTheDocument();
-    await waitFor(() =>
-      expect(paymentChannelService.list).toHaveBeenLastCalledWith(
-        expect.objectContaining({ usableFor: "in", branchId: "b1" }),
-      ),
-    );
-
-    await pick(user, "Channel", "QRIS BCA");
-    await user.click(screen.getByRole("button", { name: "Akun baris 1" }));
-    expect(
-      await screen.findByRole("option", { name: "4201 · Pendapatan Bunga" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "5401 · Beban Listrik" }),
-    ).not.toBeInTheDocument();
-  });
-
   it("sends the contract's payload, then opens the new transaction", async () => {
     const user = userEvent.setup();
     renderWithAuth(<CashTransactionCreateForm />);
-    await screen.findByRole("button", { name: "Simpan pengeluaran" });
+    await screen.findByRole("button", { name: "Simpan transaksi" });
 
-    await pick(user, "Channel", "Kas Laci");
-    await user.type(screen.getByLabelText("Nama pihak"), "PLN");
-    await user.type(screen.getByLabelText("No. referensi"), "NOTA-88");
-    await user.type(screen.getByLabelText("Keterangan"), "Listrik Agustus");
+    await pick(user, "Akun Kas/Bank", "1101 · Kas Pusat");
+    await user.type(screen.getByLabelText("Penerima"), "PLN");
+    await user.type(screen.getByLabelText("Deskripsi"), "Listrik Agustus");
 
     await pick(user, "Akun baris 1", "5401 · Beban Listrik");
     await pick(user, "Lini bisnis baris 1", "Grooming");
     await user.type(screen.getByLabelText("Jumlah baris 1"), "75000");
     await user.type(screen.getByLabelText("Memo baris 1"), "Agustus");
 
-    await user.click(screen.getByRole("button", { name: "Simpan pengeluaran" }));
+    await user.click(screen.getByRole("button", { name: "Simpan transaksi" }));
 
     await waitFor(() =>
       expect(cashTransactionService.create).toHaveBeenCalledWith({
         kind: "expense",
         branchId: "b1",
-        channelId: "ch-kas",
+        accountId: "acc-kas",
         partyName: "PLN",
+        // Not a field any more; sent so the entry still lands in Arus Kas.
         cashflowType: "operating",
-        ref: "NOTA-88",
         note: "Listrik Agustus",
         // Today is not sent — the server stamps the time as well.
         lines: [
@@ -236,10 +285,42 @@ describe("CashTransactionCreateForm", () => {
     expect(mockPush).toHaveBeenCalledWith("/dashboard/keuangan/kas-bank/transaksi/ct9");
   });
 
+  it("uses the header's Lini Usaha for the rows, and leaves an edited row alone", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<CashTransactionCreateForm />);
+    await screen.findByRole("button", { name: "Simpan transaksi" });
+
+    await pick(user, "Akun Kas/Bank", "1101 · Kas Pusat");
+    await pick(user, "Akun baris 1", "5401 · Beban Listrik");
+    await user.type(screen.getByLabelText("Jumlah baris 1"), "75000");
+
+    // The header carries the untouched first row along…
+    await pick(user, "Lini Usaha", "Grooming");
+    // …and seeds the row added after it.
+    await user.click(screen.getByRole("button", { name: "Tambah baris" }));
+    await pick(user, "Akun baris 2", "5401 · Beban Listrik");
+    await user.type(screen.getByLabelText("Jumlah baris 2"), "25000");
+    // A row set by hand keeps what it was set to.
+    await pick(user, "Lini bisnis baris 2", "Retail");
+
+    await user.click(screen.getByRole("button", { name: "Simpan transaksi" }));
+
+    await waitFor(() =>
+      expect(cashTransactionService.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          lines: [
+            expect.objectContaining({ amount: "75000", businessLineId: "bl-groom" }),
+            expect.objectContaining({ amount: "25000", businessLineId: "bl-retail" }),
+          ],
+        }),
+      ),
+    );
+  });
+
   it("adds up several lines into the transaction's total", async () => {
     const user = userEvent.setup();
     renderWithAuth(<CashTransactionCreateForm />);
-    await screen.findByRole("button", { name: "Simpan pengeluaran" });
+    await screen.findByRole("button", { name: "Simpan transaksi" });
 
     await user.click(await screen.findByRole("button", { name: "Tambah baris" }));
     await user.type(screen.getByLabelText("Jumlah baris 1"), "75000");
@@ -255,12 +336,12 @@ describe("CashTransactionCreateForm", () => {
     );
 
     renderWithAuth(<CashTransactionCreateForm />);
-    await screen.findByRole("button", { name: "Simpan pengeluaran" });
+    await screen.findByRole("button", { name: "Simpan transaksi" });
 
-    await pick(user, "Channel", "Kas Laci");
+    await pick(user, "Akun Kas/Bank", "1101 · Kas Pusat");
     await pick(user, "Akun baris 1", "5401 · Beban Listrik");
     await user.type(screen.getByLabelText("Jumlah baris 1"), "75000");
-    await user.click(screen.getByRole("button", { name: "Simpan pengeluaran" }));
+    await user.click(screen.getByRole("button", { name: "Simpan transaksi" }));
 
     expect(
       await screen.findByText(/not an active expense account/),

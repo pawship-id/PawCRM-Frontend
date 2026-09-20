@@ -6,14 +6,16 @@ import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 import { ApiError } from "@/services/api-error";
 import { branchService } from "@/services/branch.service";
 import { cashTransactionService } from "@/services/cashTransaction.service";
-import { paymentChannelService } from "@/services/paymentChannel.service";
+import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
+import type { ChartOfAccount } from "@/types/accounting";
 import type {
   Branch,
   CashTransaction,
   CashTransactionTotals,
   PageResult,
-  PaymentChannel,
 } from "@/types/api";
+
+import { CASH_ACCOUNT_CATEGORY } from "@/features/accounting";
 
 import {
   DEFAULT_CASH_TRANSACTIONS_QUERY,
@@ -41,7 +43,8 @@ export interface UseCashTransactionsResult {
   query: CashTransactionsQuery;
   /** Filter options. Empty when the user cannot read them — never an error. */
   branches: Branch[];
-  channels: PaymentChannel[];
+  /** For labelling the Akun Kas/Bank filter — inactive ones included. */
+  cashAccounts: ChartOfAccount[];
   loading: boolean;
   error: string | null;
   /** Merge a change; anything but `page` returns to page 1. */
@@ -59,7 +62,7 @@ export interface UseCashTransactionsResult {
  * THE TOTALS CLEAR ON A FILTER CHANGE, not on a page turn: they do not depend on
  * the page, and a stale figure under a new filter looks exactly like a right one.
  *
- * Branches and channels only label filters, so they are fetched once and fail
+ * Branches and kas/bank accounts only label filters, so they are fetched once and fail
  * quietly — a user may read transactions without `branches:read`.
  */
 export function useCashTransactions(
@@ -73,7 +76,7 @@ export function useCashTransactions(
   const [pagination, setPagination] = useState(EMPTY_PAGE);
   const [totals, setTotals] = useState<CashTransactionTotals | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
-  const [channels, setChannels] = useState<PaymentChannel[]>([]);
+  const [cashAccounts, setCashAccounts] = useState<ChartOfAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
@@ -101,11 +104,11 @@ export function useCashTransactions(
       })
       .catch(() => undefined);
 
-    // Inactive channels included: last year's rows still name them.
-    paymentChannelService
-      .list({ limit: 100 })
+    // Inactive accounts included: last year's rows still name them.
+    chartOfAccountsService
+      .list({ accountCategory: CASH_ACCOUNT_CATEGORY, limit: 100 })
       .then((result) => {
-        if (active) setChannels(result.items);
+        if (active) setCashAccounts(result.items);
       })
       .catch(() => undefined);
 
@@ -145,7 +148,7 @@ export function useCashTransactions(
         dateFrom: settled.dateFrom || undefined,
         dateTo: settled.dateTo || undefined,
         branchId: settled.branchId || undefined,
-        channelId: settled.channelId || undefined,
+        accountId: settled.accountId || undefined,
         status: settled.status || undefined,
         documentId: settled.documentId || undefined,
       })
@@ -181,7 +184,7 @@ export function useCashTransactions(
     totals,
     query,
     branches,
-    channels,
+    cashAccounts,
     loading,
     error,
     setQuery,

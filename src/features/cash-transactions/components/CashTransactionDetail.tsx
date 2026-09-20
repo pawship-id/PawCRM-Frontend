@@ -178,7 +178,32 @@ export function CashTransactionDetail({
           <Field label="Jenis">{kindLabel(transaction.kind)}</Field>
           <Field label="Arah">{DIRECTION_LABEL[transaction.direction]}</Field>
           <Field label="Cabang">{transaction.branchName ?? "—"}</Field>
-          <Field label="Channel">{transaction.channelName ?? "—"}</Field>
+          {/*
+            AKUN KAS/BANK IS THE FACT; the channel is how it got there and only
+            some rows have one. Naming both where both exist keeps a till payment
+            explicable — "1101 Kas, lewat QRIS Xendit" — without a second field
+            that reads as empty on every transaction typed by hand.
+          */}
+          <Field label="Akun Kas/Bank">
+            {transaction.cashAccountName ? (
+              <>
+                {transaction.cashAccountCode ? (
+                  <span className="tabular-nums">
+                    {transaction.cashAccountCode}{" "}
+                  </span>
+                ) : null}
+                {transaction.cashAccountName}
+                {transaction.channelName ? (
+                  <span className="text-muted">
+                    {" "}
+                    · lewat {transaction.channelName}
+                  </span>
+                ) : null}
+              </>
+            ) : (
+              "—"
+            )}
+          </Field>
           <Field label="Jumlah">
             <span
               className={cn(
@@ -462,7 +487,10 @@ function RevisionsCard({
                 {formatDate(revision.before.at)} ·{" "}
                 {formatMoney(revision.before.amount)}
               </span>{" "}
-              · {revision.before.channelName ?? "—"}
+              ·{" "}
+              {revision.before.cashAccountName ??
+                revision.before.channelName ??
+                "—"}
               {revision.before.ref ? (
                 <>
                   {" "}

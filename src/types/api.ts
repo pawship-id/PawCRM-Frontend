@@ -6323,6 +6323,9 @@ export interface CashTransactionRevision {
   before: {
     at: string;
     amount: string;
+    /** Absent on revisions recorded before 20 September 2026. */
+    cashAccountId?: string | null;
+    cashAccountName?: string | null;
     channelId: string | null;
     channelName: string | null;
     ref: string | null;
@@ -6366,6 +6369,19 @@ export interface CashTransaction {
    */
   tenderedAmount?: string | null;
   changeAmount?: string | null;
+  /**
+   * WHERE THE MONEY SAT — the ledger account, on every row that has one.
+   *
+   * Since 20 September 2026 a back-office transaction names an ACCOUNT and has
+   * no channel at all; a till payment fills this in from its channel's account,
+   * so the Akun Kas/Bank column is about the same thing on every row.
+   * `cashAccountName` falls back to the channel's name for history written
+   * before the field existed.
+   */
+  cashAccountId: string | null;
+  cashAccountCode: string | null;
+  cashAccountName: string | null;
+  /** The till's button, where there was one. Null on anything typed by hand. */
   channelId: string | null;
   channelType: PaymentChannelType | null;
   channelName: string | null;
@@ -6449,6 +6465,8 @@ export interface CashTransactionListQuery {
   kind?: CashTransactionKind | CashTransactionKind[];
   branchId?: string;
   channelId?: string;
+  /** The kas/bank account the money moved through — matches `cashAccountId`. */
+  accountId?: string;
   status?: CashTransactionStatus;
   partyId?: string;
   documentType?: CashTransactionDocumentType;
@@ -6473,7 +6491,13 @@ export interface CreateCashTransactionInput {
   kind: "expense" | "other_income";
   branchId: string;
   at?: string;
-  channelId: string;
+  /**
+   * The Kas & Bank ACCOUNT the money moves through — active, and filed under
+   * `accountCategory: "cash_bank"`. Replaced `channelId` on 20 September 2026:
+   * a channel is the button a cashier presses, and this form is the back
+   * office's. Its `cashType` decides the BKM/BKK or BBM/BBK series.
+   */
+  accountId: string;
   ref?: string;
   note?: string;
   partyName?: string;
@@ -6483,13 +6507,17 @@ export interface CreateCashTransactionInput {
 }
 
 /**
- * PATCH /api/cash-transactions/:id — at least one of at/amount/channelId/ref/
- * note/lines. `amount` is refused on expense/other_income (send `lines`), and
- * `lines` on every other kind.
+ * PATCH /api/cash-transactions/:id — at least one of at/amount/accountId/
+ * channelId/ref/note/lines, and never `accountId` and `channelId` together.
+ * `amount` is refused on expense/other_income (send `lines`), and `lines` on
+ * every other kind.
  */
 export interface UpdateCashTransactionInput {
   at?: string;
   amount?: string;
+  /** Moves the cash side to another Kas & Bank account. Refused on a till row. */
+  accountId?: string;
+  /** Re-points a row that HAS a channel at a different one. */
   channelId?: string;
   ref?: string;
   note?: string;
