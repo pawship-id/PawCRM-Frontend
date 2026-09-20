@@ -22,8 +22,19 @@ import {
   type CashTransactionsQuery,
 } from "../query";
 
-/** What the rows-per-page control offers. The server's own cap is 100. */
-export const CASH_TRANSACTION_PAGE_SIZES = [10, 25, 50, 100];
+/**
+ * What the rows-per-page control offers.
+ *
+ * STARTS AT 25, like Faktur Penjualan (20 September 2026, on request) — the two
+ * lists with a page size are read by the same person in the same sitting, and
+ * 10 rows of a cash book is half a screen.
+ *
+ * IT STOPS AT 100 WHERE FAKTUR GOES TO 200, and that is the server's rule, not a
+ * taste: `LIST_MAX_LIMIT` is 100 on `cashTransaction.model.js` and 200 on
+ * `customerInvoice.model.js`, so a 200 here would be rejected by Joi before the
+ * query ran. Raise it there first if it ever needs to match.
+ */
+export const CASH_TRANSACTION_PAGE_SIZES = [25, 50, 100];
 
 const EMPTY_PAGE: PageResult<CashTransaction>["pagination"] = {
   page: 1,

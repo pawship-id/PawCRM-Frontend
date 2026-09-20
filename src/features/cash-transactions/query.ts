@@ -53,7 +53,12 @@ export interface CashTransactionsQuery {
 
 export const DEFAULT_CASH_TRANSACTIONS_QUERY: CashTransactionsQuery = {
   page: 1,
-  limit: 20,
+  /*
+    25, MATCHING FAKTUR PENJUALAN (20 September 2026, on request). It was 20 —
+    a number the rows-per-page control never offered, so the footer opened
+    reading a size its own menu could not give back.
+  */
+  limit: 25,
   search: "",
   direction: "",
   kinds: [],

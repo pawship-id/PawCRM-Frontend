@@ -22,6 +22,7 @@ export { ImageField } from "./ImageField";
 export { Spinner } from "./Spinner";
 export { HighlightText } from "./HighlightText";
 export { Pagination } from "./Pagination";
+export { ListFooter } from "./ListFooter";
 export { JournalLink } from "./JournalLink";
 export { ConfirmDialog } from "./ConfirmDialog";
 export {

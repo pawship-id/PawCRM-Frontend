@@ -237,6 +237,47 @@ does not invite the click.
 
 Applied filters render as removable chips below the bar or panel. Anatomy and props: [`docs/ui-component-specs.md`](./ui-component-specs.md).
 
+### The foot of a list
+
+**Two lists in the app let somebody choose how many rows a page holds — Transaksi
+(Kas & Bank) and Faktur Penjualan — and they share one `ListFooter`.** Decided
+20 September 2026 on request, from a mockup. Everywhere else, `Pagination` is
+still correct and has no page size.
+
+```
+Menampilkan 1–10 dari 14 transaksi · Tampilkan [10 ⌄] / halaman    ‹ Sebelumnya · 1 · 2 · 3 · Berikutnya ›
+```
+
+- **The left-hand side never hides.** "Menampilkan 1–14 dari 14" and the size
+  control are exactly what is still worth saying when everything fits — and the
+  old Transaksi footer put a bare `Pagination` beside its size control, which
+  draws nothing at one page, so both vanished precisely when somebody wanted to
+  ask for MORE rows.
+- **The pager hides at one page**, and it is NUMBERED. Sebelumnya and Berikutnya
+  alone make somebody press a button five times to reach page six.
+- **"Tampilkan" and "/ halaman" are the FOOTER's words**, not the control's:
+  `FilterSelect layout="bar"` draws the value alone so a caption can sit either
+  side of it, which is what makes the row read as a sentence. `active={false}` —
+  a page size is a choice, not a filter, and a navy trigger would announce an
+  applied filter nobody set.
+- **The current size is folded into the options** even when the caller's list
+  omits it. Without it the trigger can read a number the popover cannot offer
+  back, and picking anything is a one-way door out of the size the list started
+  in — which is how Transaksi shipped for months, opening on 20 rows with
+  10/25/50/100 on the menu.
+
+**BOTH LISTS START AT 25** (20 September 2026, on request): Transaksi was on 20
+by default and offered 10, and a cash book at 10 rows is half a screen. Its menu
+is **25/50/100 and stops there** where Faktur goes to 200 — that is the server's
+rule, not a taste. `LIST_MAX_LIMIT` is 100 on `cashTransaction.model.js` and 200
+on `customerInvoice.model.js`, and Joi rejects anything above it before the query
+runs, so raise it there first if the two ever need to match.
+
+It replaced `InvoiceListFooter`, which is deleted. The two footers had agreed on
+nothing — "Tampilkan" vs "Per halaman", options reading "25 / halaman" vs "25",
+the control on opposite sides, different page sizes — and they are read by the
+same person in the same sitting.
+
 ---
 
 ## 9. Status and feedback

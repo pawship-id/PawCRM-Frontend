@@ -175,14 +175,74 @@ describe("Kas & Bank — transaksi: rows and totals", () => {
     renderWithAuth(<KasBankScreen now={NOW} />);
     await screen.findByText("BKM/CBS/2609/0001");
 
+    // The shared `ListFooter` reads "Tampilkan [50] / halaman": the captions are
+    // the footer's, so the option itself is the bare number.
     await user.click(screen.getByLabelText("Baris per halaman"));
-    await user.click(await screen.findByRole("option", { name: "50 / halaman" }));
+    await user.click(await screen.findByRole("option", { name: "50" }));
 
     await waitFor(() =>
       expect(cashTransactionService.list).toHaveBeenLastCalledWith(
         expect.objectContaining({ limit: 50, page: 1 }),
       ),
     );
+  });
+
+  /*
+    THE FOOTER IS SHARED WITH FAKTUR PENJUALAN (`ListFooter`). What is worth
+    guarding here is the pair of rules the two old footers disagreed about: the
+    position line never goes away, and the pager does when there is one page.
+  */
+  it("states the range and hides the pager when everything fits on one page", async () => {
+    renderWithAuth(<KasBankScreen now={NOW} />);
+
+    expect(
+      await screen.findByText("Menampilkan 1–2 dari 2 transaksi"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Baris per halaman")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("navigation", { name: "Paginasi" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("numbers the pages, and does not stop at Sebelumnya/Berikutnya", async () => {
+    const base = cashPage([receipt, expense]);
+    asMock(cashTransactionService.list).mockResolvedValue({
+      ...base,
+      pagination: { page: 2, limit: 10, total: 44, totalPages: 5 },
+    });
+
+    renderWithAuth(<KasBankScreen now={NOW} />);
+
+    const pager = await screen.findByRole("navigation", { name: "Paginasi" });
+    expect(within(pager).getByText("Sebelumnya")).toBeInTheDocument();
+    expect(within(pager).getByText("Berikutnya")).toBeInTheDocument();
+    // Five pages fit inside `getPageItems`' uncollapsed window, so all five are
+    // there — the windowing itself is `Pagination`'s to guard, not this footer's.
+    for (const page of [1, 2, 3, 4, 5]) {
+      expect(
+        within(pager).getByRole("button", { name: `Halaman ${page}` }),
+      ).toBeInTheDocument();
+    }
+    expect(
+      within(pager).getByRole("button", { name: "Halaman 2" }),
+    ).toHaveAttribute("aria-current", "page");
+  });
+
+  /*
+    A SIZE THE MENU DOES NOT NAME still has to be offered back, or picking any
+    option is a one-way door out of the size the list started in. 25/50/100 are
+    the menu; 20 can still arrive from a stored query or a deep link.
+  */
+  it("offers the size it started on, even though the list does not name it", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithAuth(<KasBankScreen now={NOW} initialQuery={{ limit: 20 }} />);
+    await screen.findByText("BKM/CBS/2609/0001");
+
+    await user.click(screen.getByLabelText("Baris per halaman"));
+
+    expect(
+      await screen.findByRole("option", { name: "20" }),
+    ).toBeInTheDocument();
   });
 
   it("shows the server's totals for the whole filter, not a sum of the page", async () => {

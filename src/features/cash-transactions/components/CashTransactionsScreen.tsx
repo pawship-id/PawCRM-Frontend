@@ -4,13 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, ChevronsUpDown, Pencil, Plus, RotateCcw } from "lucide-react";
 
-import {
-  Alert,
-  FilterSelect,
-  HighlightText,
-  Pagination,
-  Spinner,
-} from "@/components";
+import { Alert, HighlightText, ListFooter, Spinner } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -231,39 +225,24 @@ export function CashTransactionsPanel({
             </Table>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            {/*
-              ROWS PER PAGE, from the mockup's pager. Outside `Pagination`
-              because that component draws nothing at all on a single page —
-              which is exactly when somebody wants to ask for MORE rows.
-            */}
-            {/*
-              A LIST CONTROL, so it wears the filter layer's inline trigger
-              rather than a form field: it reads "Tampilkan: 25 / halaman ⌄" on
-              the row, which is the mockup's own wording, and `active={false}`
-              keeps it from going navy as though a filter were on.
-            */}
-            <FilterSelect
-              layout="inline"
-              label="Tampilkan"
-              ariaLabel="Baris per halaman"
-              value={String(query.limit)}
-              active={false}
-              options={CASH_TRANSACTION_PAGE_SIZES.map((size) => ({
-                value: String(size),
-                label: `${size} / halaman`,
-              }))}
-              onChange={(value) => setQuery({ limit: Number(value), page: 1 })}
-            />
-
-            <Pagination
-              page={pagination.page}
-              totalPages={pagination.totalPages}
-              total={pagination.total}
-              unit="transaksi"
-              onPageChange={(page) => setQuery({ page })}
-            />
-          </div>
+          {/*
+            THE SHARED FOOTER since 20 September 2026 — the same one Faktur
+            Penjualan carries. It replaced a bare `Pagination` beside a size
+            control: that component draws nothing at all on a single page, and
+            with this list's page size the single page is the ordinary case, so
+            the position line and the size control used to vanish exactly when
+            somebody wanted to ask for MORE rows.
+          */}
+          <ListFooter
+            page={pagination.page}
+            pageSize={query.limit}
+            pageSizes={CASH_TRANSACTION_PAGE_SIZES}
+            total={pagination.total}
+            totalPages={pagination.totalPages}
+            unit="transaksi"
+            onPageChange={(page) => setQuery({ page })}
+            onPageSizeChange={(limit) => setQuery({ limit, page: 1 })}
+          />
         </>
       )}
     </div>
