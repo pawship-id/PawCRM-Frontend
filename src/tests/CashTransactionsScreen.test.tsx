@@ -84,26 +84,99 @@ beforeEach(() => {
 });
 
 describe("Kas & Bank — transaksi: rows and totals", () => {
-  it("puts each amount in the column of its direction", async () => {
+  /**
+   * THE MOCKUP'S COLUMNS — Tanggal · Deskripsi · Akun · Cabang · Jumlah · Akun
+   * Kas/Bank · Sumber · Status. One signed amount column, not two.
+   */
+  it("lays each row out in the mockup's columns", async () => {
     renderWithAuth(<KasBankScreen now={NOW} />);
 
     const inRow = (await screen.findByText("BKM/CBS/2609/0001")).closest("tr")!;
     const inCells = within(inRow).getAllByRole("cell");
-    expect(inCells[2]).toHaveTextContent("Penerimaan piutang");
-    expect(inCells[3]).toHaveTextContent("Bu Sari");
-    expect(inCells[3]).toHaveTextContent("INV/CBS/2609/0012");
-    // The column is the ledger account now, not the till's button.
-    expect(inCells[4]).toHaveTextContent("Kas");
-    expect(inCells[5]).toHaveTextContent("Rp 150.000");
-    expect(inCells[6]).toHaveTextContent("");
+    // Deskripsi falls back to the document it settled, with the bukti number
+    // and the party underneath it.
+    expect(inCells[1]).toHaveTextContent("INV/CBS/2609/0012");
+    expect(inCells[1]).toHaveTextContent("BKM/CBS/2609/0001");
+    expect(inCells[1]).toHaveTextContent("Bu Sari");
+    expect(inCells[2]).toHaveTextContent("Piutang Usaha");
+    expect(inCells[3]).toHaveTextContent("Cabang Pusat");
+    expect(inCells[4]).toHaveTextContent("+ Rp 150.000");
+    expect(inCells[5]).toHaveTextContent("Kas");
+    expect(inCells[6]).toHaveTextContent("Pembayaran");
     expect(inCells[7]).toHaveTextContent("Tercatat");
 
     const outRow = screen.getByText("BKK/CBS/2609/0003").closest("tr")!;
     const outCells = within(outRow).getAllByRole("cell");
-    expect(outCells[2]).toHaveTextContent("Pengeluaran");
-    expect(outCells[3]).toHaveTextContent("Listrik Agustus");
-    expect(outCells[5]).toHaveTextContent("");
-    expect(outCells[6]).toHaveTextContent("Rp 75.000");
+    expect(outCells[1]).toHaveTextContent("Listrik Agustus");
+    expect(outCells[4]).toHaveTextContent("− Rp 75.000");
+    // Typed by hand, so it says so — and carries the pencil that edits it.
+    expect(outCells[6]).toHaveTextContent("Manual");
+    expect(
+      within(outRow).getByRole("button", { name: /Ubah BKK/ }),
+    ).toBeInTheDocument();
+  });
+
+  /** Several lines cannot be named in one cell, so they are counted. */
+  it("counts the accounts when an expense names more than one", async () => {
+    asMock(cashTransactionService.list).mockResolvedValue(
+      cashPage([
+        cashTx({
+          ...expense,
+          counterAccounts: [
+            { id: "a1", code: "6103", name: "Beban Utilitas" },
+            { id: "a2", code: "6102", name: "Beban Sewa" },
+          ],
+        }),
+      ]),
+    );
+
+    renderWithAuth(<KasBankScreen now={NOW} />);
+
+    const row = (await screen.findByText("BKK/CBS/2609/0003")).closest("tr")!;
+    expect(within(row).getAllByRole("cell")[2]).toHaveTextContent("2 akun");
+  });
+
+  /** Only the three the server can order correctly — see `SORTABLE`. */
+  it("orders from the column headers it can order by", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<KasBankScreen now={NOW} />);
+    await screen.findByText("BKM/CBS/2609/0001");
+
+    await user.click(screen.getByRole("button", { name: /Cabang/ }));
+    await waitFor(() =>
+      expect(cashTransactionService.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "branchDesc", page: 1 }),
+      ),
+    );
+
+    // A second click on the same column flips it.
+    await user.click(screen.getByRole("button", { name: /Cabang/ }));
+    await waitFor(() =>
+      expect(cashTransactionService.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "branchAsc" }),
+      ),
+    );
+
+    // Deskripsi and Akun are plain headers — the server has no ordering for
+    // what those cells actually show.
+    expect(
+      screen.queryByRole("button", { name: /Deskripsi/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("asks for a bigger page when the size is changed", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithAuth(<KasBankScreen now={NOW} />);
+    await screen.findByText("BKM/CBS/2609/0001");
+
+    await user.click(screen.getByLabelText("Baris per halaman"));
+    await user.click(await screen.findByRole("option", { name: "50 / halaman" }));
+
+    await waitFor(() =>
+      expect(cashTransactionService.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ limit: 50, page: 1 }),
+      ),
+    );
   });
 
   it("shows the server's totals for the whole filter, not a sum of the page", async () => {
@@ -134,14 +207,15 @@ describe("Kas & Bank — transaksi: rows and totals", () => {
     const row = (await screen.findByText("BKM/CBS/2609/0001")).closest("tr")!;
     expect(within(row).getByText("Dibatalkan")).toBeInTheDocument();
     expect(within(row).getByText("Kasir")).toBeInTheDocument();
-    expect(within(row).getByText("Rp 150.000")).toHaveClass("line-through");
+    expect(within(row).getAllByRole("cell")[4]).toHaveClass("line-through");
   });
 
   it("opens the detail when a row is clicked", async () => {
     const user = userEvent.setup();
     renderWithAuth(<KasBankScreen now={NOW} />);
 
-    await user.click(await screen.findByText("Bu Sari"));
+    // Any cell opens it; the description is the one somebody reads first.
+    await user.click(await screen.findByText("INV/CBS/2609/0012"));
 
     expect(mockPush).toHaveBeenCalledWith("/dashboard/keuangan/kas-bank/transaksi/ct1");
   });

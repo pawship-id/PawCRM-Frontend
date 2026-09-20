@@ -18,6 +18,8 @@ import { CASH_TRANSACTION_KINDS } from "./labels";
 /** What the Transaksi screen drives. `""` is the filter layer's "not filtering". */
 export interface CashTransactionsQuery {
   page: number;
+  /** Rows per page. The server caps it at 100. */
+  limit: number;
   search: string;
   /** The pill row outside the panel. */
   direction: CashTransactionDirection | "";
@@ -44,6 +46,7 @@ export interface CashTransactionsQuery {
 
 export const DEFAULT_CASH_TRANSACTIONS_QUERY: CashTransactionsQuery = {
   page: 1,
+  limit: 20,
   search: "",
   direction: "",
   kinds: [],

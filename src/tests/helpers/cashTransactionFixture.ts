@@ -27,6 +27,7 @@ export const cashTx = (
   netAmount: "150000.0000",
   tenderedAmount: null,
   changeAmount: null,
+  counterAccounts: [{ id: "acc-ar", code: "1103", name: "Piutang Usaha" }],
   cashAccountId: "acc-cash",
   cashAccountCode: "1101",
   cashAccountName: "Kas",

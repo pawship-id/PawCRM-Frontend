@@ -61,6 +61,36 @@ export function kindLabel(kind: CashTransactionKind): string {
   return KIND_LABEL[kind] ?? kind;
 }
 
+/**
+ * SUMBER — what produced the transaction, as the Kas & Bank table's last column
+ * names it (BO mockup, `buloo-keuangan-v1.html`).
+ *
+ * NOT A SECOND SPELLING OF `KIND_LABEL`. Jenis answers "what kind of money is
+ * this" from the books' point of view — penerimaan piutang, pembayaran komisi.
+ * Sumber answers "where did this row come from", which is what somebody
+ * scanning a cash book for the thing they typed last Tuesday is actually asking:
+ * Manual is the one they can still edit, and every other value names a document
+ * elsewhere in the app that owns it.
+ *
+ * The mockup also lists "Transfer", for money moved between two of the shop's
+ * own accounts. THERE IS NO SUCH TRANSACTION in this system — nothing creates
+ * one — so it is not in this map. Add it here when the feature exists, not
+ * before: a filter option that can never match anything is a filter people stop
+ * trusting.
+ */
+export const SOURCE_LABEL: Record<CashTransactionKind, string> = {
+  expense: "Manual",
+  other_income: "Manual",
+  customer_payment: "Pembayaran",
+  supplier_payment: "Pembelian",
+  commission_payment: "Komisi",
+  pos_refund: "Retur",
+};
+
+export function sourceLabel(kind: CashTransactionKind): string {
+  return SOURCE_LABEL[kind] ?? kindLabel(kind);
+}
+
 export const DIRECTION_LABEL: Record<CashTransactionDirection, string> = {
   in: "Masuk",
   out: "Keluar",

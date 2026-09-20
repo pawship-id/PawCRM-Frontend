@@ -216,6 +216,23 @@ its three sortable columns are all visible at once. **Do not spread this to the
 other lists as a tidy-up**, and do not put `Urutkan` back into this one. If a
 second screen ever earns it, add it here first.
 
+**THE SECOND SCREEN: Transaksi, in Kas & Bank.** Decided 20 September 2026 on
+request, with the BO mockup (`buloo-keuangan-v1.html`), which draws the header
+row sortable. Same shape as Daftar Akun — arrow on every sortable header, greyed
+when that column is not the active one, first click takes the column's natural
+direction — `Urutkan` is out of its filter panel, and that panel's `Reset` no
+longer touches the ordering.
+
+**ONLY THREE OF ITS EIGHT COLUMNS ARE CLICKABLE**, and that is the interesting
+part. Tanggal, Cabang and Jumlah are in `CASH_TRANSACTION_SORTS` on the server,
+each with an index; Cabang joins the branch collection in for those two orderings
+and for no others. **Deskripsi and Akun are deliberately plain.** What those two
+cells show is assembled at render time — a note, or the document number, or the
+kind; one account name, or a count of several — so any field the server could
+actually sort would order the rows by something other than the text somebody is
+reading. A header that sorts by what it does not display is worse than one that
+does not invite the click.
+
 **A collapsed bar owes you its count.** A quick bar shows its values on its triggers; a panel hides them behind a button, and a hidden filter is one people forget is on and then read the wrong numbers from. `Filter (2)` is not decoration — it is what makes the collapsed form safe, and a panel button without it is a bug.
 
 Applied filters render as removable chips below the bar or panel. Anatomy and props: [`docs/ui-component-specs.md`](./ui-component-specs.md).
@@ -494,6 +511,19 @@ already point at each account.
 
 Tambah transaksi's Lini Usaha sits in the header as a DEFAULT for the rows, which
 keep their own column.
+
+**The Transaksi table follows the mockup's columns** — Tanggal · Deskripsi ·
+Akun · Cabang · Jumlah · Akun Kas/Bank · Sumber · Status — with one signed
+Jumlah column rather than separate Masuk and Keluar, the bukti kas number and
+the party on a second line under Deskripsi, and a pencil on the rows that were
+typed by hand, opening the same Ubah dialog the detail page opens.
+
+TWO COLUMNS ARE NOT THE MOCKUP'S. **Status** has no mockup equivalent because
+that data has no cancelled transactions; this system does, and a cancelled row
+drawn like a live one is a figure that lies. **Sumber** carries the mockup's
+values minus one: there is no `Transfer`, because nothing in this system moves
+money between two of the shop's own accounts. Add it when the feature exists —
+an option that can never match anything is a filter people stop trusting.
 
 **Penerima / Pengirim is a grouped picker, not free text.** Decided 20 September
 2026 on request, to match the BO mockup: the three registers a shop already keeps

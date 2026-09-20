@@ -28,7 +28,6 @@ import type { ChartOfAccount } from "@/types/accounting";
 import type {
   CashTransactionDirection,
   CashTransactionKind,
-  CashTransactionSort,
   CashTransactionStatus,
 } from "@/types/api";
 
@@ -42,13 +41,6 @@ const DIRECTIONS: PillOption<CashTransactionDirection | "">[] = [
   { value: "out", label: "Keluar" },
 ];
 
-/** The orderings the API names (`CASH_TRANSACTION_SORTS`), nothing more. */
-const SORTS: FilterOption<CashTransactionSort>[] = [
-  { value: "newest", label: "Tanggal terbaru" },
-  { value: "oldest", label: "Tanggal terlama" },
-  { value: "amountHighest", label: "Jumlah terbesar" },
-  { value: "amountLowest", label: "Jumlah terkecil" },
-];
 
 const STATUS_OPTIONS: FilterOption<CashTransactionStatus | "">[] = withAll(
   [
@@ -60,15 +52,19 @@ const STATUS_OPTIONS: FilterOption<CashTransactionStatus | "">[] = withAll(
 
 type PanelFilters = Pick<
   CashTransactionsQuery,
-  "sort" | "dateFrom" | "dateTo" | "kinds" | "branchId" | "accountId" | "status"
+  "dateFrom" | "dateTo" | "kinds" | "branchId" | "accountId" | "status"
 >;
 
 /**
- * What the panel's Reset returns to. The ordering is RESTORED, not cleared; the
- * direction pill and a deep-linked document are not the panel's to touch.
+ * What the panel's Reset returns to.
+ *
+ * THE ORDERING IS NOT IN HERE ANY MORE. It moved onto the column headers on
+ * 20 September 2026, and a Reset inside a filter panel must not silently
+ * re-sort a table somebody ordered from the headers they can see — the same
+ * rule Daftar Akun's Reset follows (§8). The direction pill and a deep-linked
+ * document are likewise not the panel's to touch.
  */
 const CLEARED: PanelFilters = {
-  sort: "newest",
   dateFrom: "",
   dateTo: "",
   kinds: [],
@@ -79,8 +75,8 @@ const CLEARED: PanelFilters = {
 
 /**
  * The Transaksi controls (§8): the Arah pill row on its own line, then search and
- * one `Filter (n)` button over Urutkan · Periode · Jenis · Cabang ·
- * Akun Kas/Bank · Status.
+ * one `Filter (n)` button over Jenis · Akun Kas/Bank · Status. Periode and
+ * Cabang are the page's context bar, and the ORDERING is on the column headers.
  *
  * A PANEL, on both counts — six fields, and a date range and a multi-select that
  * each hold a draft. Arah stays outside as the page's lens, is not in the count,
@@ -171,7 +167,6 @@ export function CashTransactionsToolbar({
       >
         <TransactionsFilterPanel
           applied={{
-            sort: query.sort,
             dateFrom: query.dateFrom,
             dateTo: query.dateTo,
             kinds: query.kinds,
@@ -183,7 +178,6 @@ export function CashTransactionsToolbar({
           onApply={(next) => {
             // Only what moved — setQuery re-queries on any new object.
             const patch: Partial<CashTransactionsQuery> = {};
-            if (next.sort !== query.sort) patch.sort = next.sort;
             if (next.dateFrom !== query.dateFrom) patch.dateFrom = next.dateFrom;
             if (next.dateTo !== query.dateTo) patch.dateTo = next.dateTo;
             if (next.kinds.join(",") !== query.kinds.join(","))
@@ -213,9 +207,10 @@ function TransactionsFilterPanel({
   const [draft, setDraft] = useState(applied);
 
   /*
-    Urutkan is never unset, so it is not counted (§8). NEITHER ARE PERIODE AND
-    CABANG any more: they moved to the context bar above, where they are visible
-    on the row — and the badge exists to pay back what a panel CONCEALS.
+    PERIODE AND CABANG are not counted: they moved to the context bar above,
+    where they are visible on the row — and the badge exists to pay back what a
+    panel CONCEALS. The ordering is not counted either, and is no longer even
+    here: it is on the column headers.
   */
   const count = [
     applied.kinds.length > 0,
@@ -264,15 +259,6 @@ function TransactionsFilterPanel({
           setOpen(false);
         }}
       >
-        <FilterSelect
-          layout="field"
-          label="Urutkan"
-          ariaLabel="Urutkan"
-          value={draft.sort}
-          options={SORTS}
-          unsetValue="newest"
-          onChange={(sort) => setDraft((prev) => ({ ...prev, sort }))}
-        />
         <KindField
           selected={draft.kinds}
           onChange={(kinds) => setDraft((prev) => ({ ...prev, kinds }))}

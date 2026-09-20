@@ -6280,7 +6280,10 @@ export type CashTransactionSort =
   | "newest"
   | "oldest"
   | "amountHighest"
-  | "amountLowest";
+  | "amountLowest"
+  /** By the branch's NAME — the server joins the branch in for these two only. */
+  | "branchAsc"
+  | "branchDesc";
 
 export type CashTransactionDocumentType =
   | "customer_invoice"
@@ -6381,6 +6384,14 @@ export interface CashTransaction {
   cashAccountId: string | null;
   cashAccountCode: string | null;
   cashAccountName: string | null;
+  /**
+   * THE OTHER SIDE — what the money was for, opposite the kas/bank account.
+   *
+   * An array because one transaction can name several: an expense typed by hand
+   * carries a line per account. A document payment has exactly one entry, and a
+   * row whose accounts have since been deleted has none.
+   */
+  counterAccounts: Array<{ id: string; code: string; name: string }>;
   /** The till's button, where there was one. Null on anything typed by hand. */
   channelId: string | null;
   channelType: PaymentChannelType | null;

@@ -22,11 +22,12 @@ import {
   type CashTransactionsQuery,
 } from "../query";
 
-const PAGE_SIZE = 20;
+/** What the rows-per-page control offers. The server's own cap is 100. */
+export const CASH_TRANSACTION_PAGE_SIZES = [10, 25, 50, 100];
 
 const EMPTY_PAGE: PageResult<CashTransaction>["pagination"] = {
   page: 1,
-  limit: PAGE_SIZE,
+  limit: DEFAULT_CASH_TRANSACTIONS_QUERY.limit,
   total: 0,
   totalPages: 0,
 };
@@ -121,11 +122,13 @@ export function useCashTransactions(
     let active = true;
     const search = settled.search.trim();
 
-    // Everything that narrows the set — the page and the ordering do not.
+    // Everything that narrows the set — the page, its size and the ordering do
+    // not. `totals` are Σ over the whole filtered set, so they survive all three.
     const filterKey = JSON.stringify({
       ...settled,
       search,
       page: undefined,
+      limit: undefined,
       sort: undefined,
     });
 
@@ -140,7 +143,7 @@ export function useCashTransactions(
     cashTransactionService
       .list({
         page: settled.page,
-        limit: PAGE_SIZE,
+        limit: settled.limit,
         sort: settled.sort,
         search: search || undefined,
         direction: settled.direction || undefined,
