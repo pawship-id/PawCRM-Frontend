@@ -1,7 +1,10 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { CashTransactionEditDialog } from "@/features/cash-transactions";
+import {
+  CashTransactionEditDialog,
+  CashTransactionEditScreen,
+} from "@/features/cash-transactions";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { businessLineService } from "@/services/businessLine.service";
@@ -20,6 +23,11 @@ jest.mock("@/services/paymentChannel.service");
 jest.mock("@/services/chartOfAccounts.service");
 jest.mock("@/services/businessLine.service");
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
+
+const mockPush = jest.fn();
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: (href: string) => mockPush(href) }),
+}));
 
 const asMock = <T extends (...args: never[]) => unknown>(fn: T) =>
   fn as jest.MockedFunction<T>;
@@ -105,6 +113,18 @@ beforeEach(() => {
     pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
   });
 });
+
+/** Open a picker anywhere on screen and choose one of its options. */
+async function pick(
+  user: ReturnType<typeof userEvent.setup>,
+  trigger: string,
+  option: string,
+) {
+  const button = await screen.findByRole("button", { name: trigger });
+  await waitFor(() => expect(button).toBeEnabled());
+  await user.click(button);
+  await user.click(await screen.findByRole("option", { name: option }));
+}
 
 async function openAccounts(user: ReturnType<typeof userEvent.setup>) {
   const dialog = within(await screen.findByRole("dialog"));
@@ -369,5 +389,55 @@ describe("CashTransactionEditDialog — saving", () => {
       await dialog.findByRole("button", { name: "Simpan transaksi" }),
     ).toBeInTheDocument();
     expect(cashTransactionService.getById).toHaveBeenCalledWith("ct1");
+  });
+});
+
+/**
+ * THE SAME FORM, ON A PAGE (20 September 2026, on request). Only the chrome
+ * differs — the buttons move to a `FormActionBar` at the head of the form, per
+ * §16, and there is no overlay to scroll inside.
+ */
+describe("CashTransactionEditScreen — the form as a page", () => {
+  it("loads the transaction and saves it, then returns to the detail", async () => {
+    const user = userEvent.setup();
+    asMock(cashTransactionService.getById).mockResolvedValue(cashTx());
+    asMock(cashTransactionService.update).mockResolvedValue(cashTx());
+
+    renderWithAuth(<CashTransactionEditScreen transactionId="ct1" />);
+
+    // No dialog anywhere — the point of the change.
+    expect(
+      await screen.findByRole("heading", { name: /Ubah uang masuk/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    // The bar is at the HEAD of the form and says why Simpan is off.
+    expect(screen.getByText(/Belum ada yang diubah/)).toBeInTheDocument();
+
+    await pick(user, "Akun Kas/Bank", "1102 · Kas Cabang Dua");
+    await user.click(screen.getByRole("button", { name: "Simpan transaksi" }));
+
+    await waitFor(() =>
+      expect(cashTransactionService.update).toHaveBeenCalledWith("ct1", {
+        accountId: "acc-cash2",
+      }),
+    );
+    expect(mockPush).toHaveBeenCalledWith(
+      "/dashboard/keuangan/kas-bank/transaksi/ct1",
+    );
+  });
+
+  it("returns to the detail on Batal, without writing", async () => {
+    const user = userEvent.setup();
+    asMock(cashTransactionService.getById).mockResolvedValue(cashTx());
+
+    renderWithAuth(<CashTransactionEditScreen transactionId="ct1" />);
+
+    await user.click(await screen.findByRole("button", { name: "Batal" }));
+
+    expect(mockPush).toHaveBeenCalledWith(
+      "/dashboard/keuangan/kas-bank/transaksi/ct1",
+    );
+    expect(cashTransactionService.update).not.toHaveBeenCalled();
   });
 });

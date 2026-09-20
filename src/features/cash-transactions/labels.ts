@@ -91,6 +91,27 @@ export function sourceLabel(kind: CashTransactionKind): string {
   return SOURCE_LABEL[kind] ?? kindLabel(kind);
 }
 
+/**
+ * WHAT A TRANSACTION IS CALLED AT THE TOP OF ITS OWN PAGE — "Uang keluar", the
+ * same two words the toggle on the form and the cards above the list use.
+ *
+ * Not `KIND_LABEL`: a heading answers "what am I looking at" before it answers
+ * "how is it filed", and every one of the six kinds is one of these two.
+ */
+export const DIRECTION_TITLE: Record<CashTransactionDirection, string> = {
+  in: "Uang masuk",
+  out: "Uang keluar",
+};
+
+export function directionTitle(
+  transaction: Pick<CashTransaction, "direction" | "number" | "kind" | "amount">,
+): string {
+  const name = DIRECTION_TITLE[transaction.direction];
+  return transaction.number
+    ? `${name} – ${transaction.number}`
+    : `${name} – ${cashTransactionTitle(transaction)}`;
+}
+
 export const DIRECTION_LABEL: Record<CashTransactionDirection, string> = {
   in: "Masuk",
   out: "Keluar",

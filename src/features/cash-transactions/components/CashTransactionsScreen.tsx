@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, ChevronsUpDown, Pencil, Plus, RotateCcw } from "lucide-react";
@@ -40,7 +39,6 @@ import {
   lockedReason,
   sourceLabel,
 } from "../labels";
-import { CashTransactionEditDialog } from "./CashTransactionEditDialog";
 import { CashTransactionStatusBadge } from "./CashTransactionStatusBadge";
 import { CashTransactionsToolbar } from "./CashTransactionsToolbar";
 
@@ -90,13 +88,6 @@ export function CashTransactionsPanel({
 }) {
   const router = useRouter();
   const { can } = usePermissions();
-  /*
-    THE ROW'S PENCIL OPENS THE SAME DIALOG the detail page opens — it is shared
-    for this reason. Correcting a typo in an expense was three clicks and a page
-    load away; the mockup puts it on the row, and the dialog already knows which
-    rows may not be touched.
-  */
-  const [editing, setEditing] = useState<CashTransaction | null>(null);
   const {
     transactions,
     pagination,
@@ -224,7 +215,11 @@ export function CashTransactionsPanel({
                     onOpen={() =>
                       router.push(cashTransactionHref(transaction._id))
                     }
-                    onEdit={() => setEditing(transaction)}
+                    onEdit={() =>
+                      router.push(
+                        `${cashTransactionHref(transaction._id)}/edit`,
+                      )
+                    }
                   />
                 ))}
               </TableBody>
@@ -266,21 +261,6 @@ export function CashTransactionsPanel({
           </div>
         </>
       )}
-
-      {/*
-        RE-READ, NOT PATCHED IN PLACE. An edit reverses the journal and posts a
-        new one, and the totals above the list are the server's Σ over the whole
-        filter — so the honest way to show the result is to ask again.
-      */}
-      <CashTransactionEditDialog
-        open={editing !== null}
-        transaction={editing}
-        onClose={() => setEditing(null)}
-        onSaved={() => {
-          setEditing(null);
-          refetch();
-        }}
-      />
     </div>
   );
 }

@@ -124,6 +124,11 @@ export { ChartOfAccountsScreen } from "./components/ChartOfAccountsScreen";
 export { allocationOptionsFor } from "./allocationLabels";
 export { JournalEntriesScreen } from "./components/JournalEntriesScreen";
 export { JournalEntryDetail } from "./components/JournalEntryDetail";
+/** Also read by Kas & Bank's "Jurnal terkait" dialog, not only by the page. */
+export {
+  useJournalEntry,
+  type UseJournalEntryResult,
+} from "./hooks/useJournalEntry";
 /**
  * The manual-entry form — the only kind of posting a human writes. Everything
  * else reaches the ledger service-to-service from the module that owns the

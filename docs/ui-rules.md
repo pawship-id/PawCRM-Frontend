@@ -525,6 +525,51 @@ values minus one: there is no `Transfer`, because nothing in this system moves
 money between two of the shop's own accounts. Add it when the feature exists —
 an option that can never match anything is a filter people stop trusting.
 
+**The transaction DETAIL follows the mockup too** (20 September 2026): the
+heading is "Uang keluar – BKK/…", an **Ubah** button sits beside a **≡** menu,
+and the first card is the mockup's eight fields — No. transaksi · Tipe, Tanggal ·
+Penerima/Pengirim, Akun Kas/Bank · Cabang, Lini usaha · Biaya tetap, then
+Deskripsi across the width. Everything else a transaction knows (Jenis, No.
+referensi, Dokumen, MDR, Diserahkan/Kembalian, who recorded it) moved to a second
+card, **Informasi lain** — kept, not dropped.
+
+**"Lihat jurnal terkait" opens a DIALOG**, not the ledger page: four lines and a
+total answer "did this land on the right accounts", and navigating away costs the
+page being checked against. **The entry number inside it is the link** to the
+full entry — the one thing in that dialog with more to say. The entry is fetched
+when the dialog opens and not before, because most visits never ask. Disabled
+rather than hidden for a reader without `journalEntries:read`.
+
+**Ubah is a PAGE**, `…/transaksi/:id/edit`, since 20 September 2026 on request.
+An expense's editor is a document — eight header fields and a row table that can
+run to twenty accounts — and a form somebody scrolls inside a scrolling overlay
+is a form whose buttons are never where the eye expects them. The form itself is
+the same component either way (`chrome="page"` swaps the dialog's header and
+footer for a `FormActionBar` at the head, per §16); **the dialog survives for the
+invoice's payment page**, where the edit is a step inside another document's
+journey and bouncing out to Kas & Bank would lose the invoice being read. Saving
+returns to the transaction, not to the list.
+
+**The page has no Jurnal card**, removed on request once that dialog existed:
+its two links were the same entry the ≡ menu now opens, and a reversal is still
+named where it belongs — inside the cancelled banner, and per revision under
+Riwayat perubahan.
+
+THREE THINGS THE MOCKUP DOES NOT GET. **"Hapus transaksi" is never built**: a
+posted transaction has a journal entry, deleting the row would leave that entry
+pointing at nothing and every closed period would change its answer silently, so
+the ≡ menu carries **Batalkan transaksi** in that slot and the row is reversed
+and kept. The **status badge stays in the heading**, where the mockup has none,
+because a reversed transaction whose page looks ordinary is the one mistake this
+screen cannot afford. And the **amount is in the heading**, because the mockup's
+detail card leaves it to the Rincian Akun total — and a payment against an
+invoice has no Rincian Akun card at all.
+
+**Lini usaha on that card is READ OFF THE ROWS**, which is the only place one is
+recorded: one name when every row agrees, "Bersama (HQ)" when they agree none
+applies, and a count ("2 lini") when they do not. Never the first row's — a
+transaction that paid for grooming and retail has no single line.
+
 **Penerima / Pengirim is a grouped picker, not free text.** Decided 20 September
 2026 on request, to match the BO mockup: the three registers a shop already keeps
 — Pelanggan, Supplier, Staf — under their own headings, which is exactly

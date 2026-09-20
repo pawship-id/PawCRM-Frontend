@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   FilterSelect,
+  FormActionBar,
   Spinner,
   TextField,
   TextareaField,
@@ -138,7 +139,7 @@ export function CashTransactionEditDialog({
         className={cn("max-h-[90vh] overflow-y-auto", wide && "sm:max-w-4xl")}
       >
         {target ? (
-          <EditForm
+          <CashTransactionEditForm
             key={`${target._id}-${target.updatedAt}`}
             transaction={target}
             onClose={onClose}
@@ -169,15 +170,27 @@ export function CashTransactionEditDialog({
   );
 }
 
-function EditForm({
+/**
+ * THE FORM ITSELF, WITHOUT DECIDING WHERE IT SITS.
+ *
+ * `chrome` is the only thing two callers disagree about: in a dialog the title
+ * and the buttons are Radix's header and footer; on a PAGE the heading belongs
+ * to the route and the buttons belong at the head of the form, in a
+ * `FormActionBar` (§16). Everything between them — the fields, the rules, the
+ * patch — is the same code, which is the point of the prop.
+ */
+export function CashTransactionEditForm({
   transaction,
+  chrome = "dialog",
   onClose,
   onSaved,
 }: {
   transaction: CashTransaction;
+  chrome?: "dialog" | "page";
   onClose: () => void;
   onSaved: (updated: CashTransaction) => void;
 }) {
+  const asPage = chrome === "page";
   const withLines = hasLines(transaction.kind);
   // The server pays exactly what its books say is owed — see CommissionRecapScreen.
   const amountLocked = transaction.kind === "commission_payment";
@@ -302,16 +315,20 @@ function EditForm({
   if (locked) {
     return (
       <>
-        <DialogHeader>
-          <DialogTitle>Ubah transaksi</DialogTitle>
-          <DialogDescription>{cashTransactionTitle(transaction)}</DialogDescription>
-        </DialogHeader>
+        {!asPage && (
+          <DialogHeader>
+            <DialogTitle>Ubah transaksi</DialogTitle>
+            <DialogDescription>
+              {cashTransactionTitle(transaction)}
+            </DialogDescription>
+          </DialogHeader>
+        )}
         <Alert variant="info">Transaksi ini tidak bisa diubah. {locked}</Alert>
-        <DialogFooter>
+        <div className="flex justify-end">
           <Button type="button" variant="secondary" onClick={onClose}>
             Kembali
           </Button>
-        </DialogFooter>
+        </div>
       </>
     );
   }
@@ -392,12 +409,25 @@ function EditForm({
 
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-4">
-      <DialogHeader>
-        <DialogTitle>Ubah transaksi</DialogTitle>
-        <DialogDescription>
-          {cashTransactionTitle(transaction)} · {kindLabel(transaction.kind)}
-        </DialogDescription>
-      </DialogHeader>
+      {/* §16: on a page the buttons sit at the HEAD of the form, and the route
+          already names the document — so the bar carries no title. */}
+      {asPage ? (
+        <FormActionBar
+          submitLabel="Simpan transaksi"
+          submitting={saving}
+          disabled={problem !== null}
+          blockedReason={problem}
+          onCancel={onClose}
+          cancelLabel="Batal"
+        />
+      ) : (
+        <DialogHeader>
+          <DialogTitle>Ubah transaksi</DialogTitle>
+          <DialogDescription>
+            {cashTransactionTitle(transaction)} · {kindLabel(transaction.kind)}
+          </DialogDescription>
+        </DialogHeader>
+      )}
 
       <div className="rounded-lg border border-border bg-surface-hover px-4 py-3 text-sm">
         Nomor{" "}
@@ -531,24 +561,26 @@ function EditForm({
         onChange={(event) => setReason(event.target.value)}
       />
 
-      <DialogFooter className="items-center">
-        {problem && !saving && (
-          <p className="mr-auto text-xs text-muted">
-            Belum bisa disimpan: <b className="font-semibold">{problem}</b>
-          </p>
-        )}
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={onClose}
-          disabled={saving}
-        >
-          Kembali
-        </Button>
-        <Button type="submit" disabled={problem !== null || saving}>
-          {saving ? "Menyimpan…" : "Simpan transaksi"}
-        </Button>
-      </DialogFooter>
+      {!asPage && (
+        <DialogFooter className="items-center">
+          {problem && !saving && (
+            <p className="mr-auto text-xs text-muted">
+              Belum bisa disimpan: <b className="font-semibold">{problem}</b>
+            </p>
+          )}
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={onClose}
+            disabled={saving}
+          >
+            Kembali
+          </Button>
+          <Button type="submit" disabled={problem !== null || saving}>
+            {saving ? "Menyimpan…" : "Simpan transaksi"}
+          </Button>
+        </DialogFooter>
+      )}
     </form>
   );
 }
