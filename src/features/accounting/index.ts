@@ -98,6 +98,12 @@ export {
   ChartOfAccountEditForm,
 } from "./components/ChartOfAccountForm";
 export { ChartOfAccountsScreen } from "./components/ChartOfAccountsScreen";
+/**
+ * The Detil Akun a posting may name. Exported because Transaksi Keuangan asks
+ * the same question of the same accounts, and a second copy there is how the two
+ * would drift on whether a retired rule is still offered.
+ */
+export { allocationOptionsFor } from "./allocationLabels";
 export { JournalEntriesScreen } from "./components/JournalEntriesScreen";
 export { JournalEntryDetail } from "./components/JournalEntryDetail";
 /**

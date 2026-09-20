@@ -18,10 +18,6 @@ import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
 import type { AccountCategory, AllocationType } from "@/types/accounting";
 
-import {
-  DEFAULT_ACCOUNT_SORT,
-  type AccountSort,
-} from "../accountSort";
 import { ACCOUNT_CATEGORIES, ACCOUNT_CATEGORY_LABEL } from "../labels";
 import {
   allocationChoices,
@@ -55,14 +51,14 @@ import type { ChartOfAccountsQuery } from "./ChartOfAccountsScreen";
  * Being inside the panel has two consequences, and both are what makes it
  * consistent rather than a special case: the category IS counted in the
  * `Filter (n)` badge, and Reset clears it along with everything else.
+ *
+ * THE ORDERING IS NOT IN HERE ANY MORE — it moved onto the column headers on 20
+ * September 2026, on request, against the BO mockup. ui-rules §8 says sorting is
+ * a panel field, and the exception is recorded there rather than only here. The
+ * consequence for this file: `Reset` no longer touches the ordering, because a
+ * button labelled Reset inside a filter panel should not silently re-sort a
+ * table somebody ordered from its headers.
  */
-const SORTS: FilterOption<AccountSort>[] = [
-  { value: "codeAsc", label: "Kode 0–9" },
-  { value: "codeDesc", label: "Kode 9–0" },
-  { value: "nameAsc", label: "Nama A–Z" },
-  { value: "nameDesc", label: "Nama Z–A" },
-];
-
 /**
  * The fifteen categories, each carrying how many accounts are in it.
  *
@@ -123,20 +119,20 @@ interface AccountFilters {
   accountCategory: AccountCategory | "";
   allocation: AllocationFilter;
   showInactive: boolean;
-  sort: AccountSort;
 }
 
 /**
  * What Reset returns to — the screen's defaults, not "empty".
  *
- * The ordering is included: a list with no ordering is not a thing, so Reset
- * puts it back to by-code rather than clearing it to nothing.
+ * The ORDERING IS NOT HERE, unlike every other list's panel: it is set from the
+ * column headers, which are visible whether this panel is open or not, so a
+ * Reset that re-sorted the table would undo a choice the button does not appear
+ * to be about.
  */
 const CLEARED: AccountFilters = {
   accountCategory: "",
   allocation: "",
   showInactive: false,
-  sort: DEFAULT_ACCOUNT_SORT,
 };
 
 export function ChartOfAccountsToolbar({
@@ -200,7 +196,6 @@ export function ChartOfAccountsToolbar({
           accountCategory: query.accountCategory,
           allocation: query.allocation,
           showInactive: query.showInactive,
-          sort: query.sort,
         }}
         categoryOptions={categoryOptions(countsByCategory)}
         allocationOptions={allocationOptions(shape, unmappedCount)}
@@ -284,18 +279,6 @@ function AccountFilterPanel({
           setOpen(false);
         }}
       >
-        {/* Sort leads: it is the one field here that is always set, and the
-            only one that changes what the top of the list is rather than what
-            is in it. */}
-        <FilterSelect
-          layout="field"
-          label="Urutkan"
-          ariaLabel="Urutkan"
-          value={draft.sort}
-          options={SORTS}
-          unsetValue={DEFAULT_ACCOUNT_SORT}
-          onChange={(sort) => setDraft((prev) => ({ ...prev, sort }))}
-        />
         <FilterSelect
           layout="field"
           label="Kategori akun"

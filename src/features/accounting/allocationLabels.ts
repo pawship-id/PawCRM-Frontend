@@ -160,6 +160,28 @@ export function countByType(
   return [...counts.entries()].map(([type, count]) => ({ type, count }));
 }
 
+/**
+ * The Detil Akun a line may be POSTED to: the account's rules, minus the retired
+ * ones.
+ *
+ * INACTIVE RULES ARE DROPPED rather than greyed out — the server refuses a
+ * posting to one, so offering it is offering a 400. They still exist so the
+ * entries already posted to them stay explicable; that is the whole point of
+ * retiring rather than deleting.
+ *
+ * LIVES HERE rather than beside either form that uses it. Transaksi Keuangan and
+ * the manual journal both post to accounts, both need exactly this list, and a
+ * copy in each is how the two would come to disagree about whether an inactive
+ * rule is offered.
+ */
+export function allocationOptionsFor(
+  account: Pick<ChartOfAccount, "allocations"> | undefined,
+): Array<{ value: string; label: string }> {
+  return (account?.allocations ?? [])
+    .filter((rule) => rule.isActive && rule._id)
+    .map((rule) => ({ value: rule._id as string, label: rule.name }));
+}
+
 /** What the Aturan Alokasi cell is showing — one enum, so the screen never re-derives it. */
 export type AllocationState =
   /** Not a laba rugi account. Cash has no line and never will. */

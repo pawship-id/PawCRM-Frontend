@@ -101,6 +101,9 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
     );
   }
 
+  /** Whether any line on this entry names a Detil Akun — see the column below. */
+  const anyAllocation = entry.lines.some((line) => line.allocationId);
+
   const totalDebit = sumDecimals(entry.lines.map((line) => line.debit));
   const totalCredit = sumDecimals(entry.lines.map((line) => line.credit));
   const balanced = totalDebit === totalCredit;
@@ -287,6 +290,10 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
               <TableHead>Akun</TableHead>
               <TableHead>Tipe</TableHead>
               <TableHead>Lini bisnis</TableHead>
+              {/* Only when a line on THIS entry names one — a column of em
+                  dashes over every entry posted before allocation existed is a
+                  column people learn to skip. */}
+              {anyAllocation && <TableHead>Detil akun</TableHead>}
               <TableHead>Memo</TableHead>
               <TableHead className="text-right">Debit</TableHead>
               <TableHead className="text-right">Kredit</TableHead>
@@ -333,6 +340,23 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
                         line.businessLineId)
                       : "—"}
                   </TableCell>
+                  {anyAllocation && (
+                    <TableCell className="px-4 py-2.5 text-xs text-muted">
+                      {/*
+                        Resolved against the account's CURRENT rules, which may
+                        since have been renamed — the entry is immutable, the
+                        chart is not. A rule that cannot be found at all falls
+                        back to a dash rather than an ObjectId; the chart refuses
+                        to delete one a live line names, so this is only reachable
+                        through a direct database edit.
+                      */}
+                      {line.allocationId
+                        ? ((account?.allocations ?? []).find(
+                            (rule) => rule._id === line.allocationId,
+                          )?.name ?? "—")
+                        : "—"}
+                    </TableCell>
+                  )}
                   <TableCell className="px-4 py-2.5 text-xs text-muted">
                     {line.memo ?? "—"}
                   </TableCell>

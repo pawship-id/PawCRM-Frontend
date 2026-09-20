@@ -15,9 +15,13 @@ import { usePermissions } from "@/features/permissions";
  * Bisnis, `Laporan` for the other two). A tab row that matched the mockup while
  * quietly stranding three screens would be the wrong kind of faithful.
  *
- * DAFTAR AKUN IS A TAB, added 12 September 2026 on request. The mockup files it
- * under `Pengaturan › Keuangan`, which is not built, and a card at the foot of
- * Ringkasan was too far down for the screen every journal line depends on.
+ * DAFTAR AKUN IS NO LONGER A TAB. It was one from 12 September 2026, as a
+ * stopgap: the mockup files it under Pengaturan, that section did not exist yet,
+ * and a card at the foot of Ringkasan was too far down for the screen every
+ * journal line depends on. It moved on 20 September, on request, to
+ * /dashboard/pengaturan/daftar-akun — the old address redirects, and Ringkasan's
+ * card list still reaches it, which is how the other three non-tab screens are
+ * reached too.
  *
  * KOMISI IS THE ONE TAB THAT MOVED HOUSE. The recap already existed as a card on
  * the reports hub; the mockup files it under Keuangan, so its route moved to
@@ -67,11 +71,6 @@ export function AccountingModuleHeader({
     */
     ...(can("users", "read")
       ? [{ label: "Komisi", href: "/dashboard/keuangan/komisi" }]
-      : []),
-    // Before Jurnal, the order the sidebar's comment gives: a journal line has
-    // nowhere to land without an account.
-    ...(can("chartOfAccounts", "read")
-      ? [{ label: "Daftar Akun", href: "/dashboard/keuangan/chart-of-accounts" }]
       : []),
     ...(can("journalEntries", "read")
       ? [{ label: "Jurnal", href: "/dashboard/keuangan/journal-entries" }]

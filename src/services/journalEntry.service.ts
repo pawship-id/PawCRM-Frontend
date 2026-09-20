@@ -326,6 +326,13 @@ export interface JournalEntryInput {
   lines: Array<{
     accountId: string;
     businessLineId?: string | null;
+    /**
+     * Which Detil Akun of `accountId` this line is posted to.
+     *
+     * Checked against THAT account's rules on the server — an id belonging to
+     * another account is a 400, not a silently misfiled cost.
+     */
+    allocationId?: string | null;
     debit?: string;
     credit?: string;
     memo?: string | null;

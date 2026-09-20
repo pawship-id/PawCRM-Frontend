@@ -34,9 +34,15 @@ export const ACCOUNTING_CRUMBS = {
     label: "Arus Kas",
     href: "/dashboard/keuangan/arus-kas",
   },
+  /**
+   * THE ONE ENTRY THAT IS NOT UNDER /keuangan — the chart of accounts moved to
+   * Pengaturan on 20 September 2026, per the BO mockup. It stays in this map
+   * because it is still the accounting feature's screen and half a dozen files
+   * link to it from inside the module; the old address redirects.
+   */
   accounts: {
     label: "Daftar Akun",
-    href: "/dashboard/keuangan/chart-of-accounts",
+    href: "/dashboard/pengaturan/daftar-akun",
   },
   journal: {
     label: "Jurnal Umum",

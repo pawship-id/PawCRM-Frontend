@@ -13,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { SHARED_LINE_LABEL } from "@/features/accounting";
+import { allocationOptionsFor, SHARED_LINE_LABEL } from "@/features/accounting";
 import type { BusinessLine } from "@/services/businessLine.service";
 import type { ChartOfAccount } from "@/types/accounting";
 import type {
@@ -95,23 +95,6 @@ export function linesProblem(lines: DraftLine[]): string | null {
     }
   }
   return null;
-}
-
-/**
- * The Detil Akun a line may be booked to: the account's rules, minus the retired
- * ones.
- *
- * INACTIVE RULES ARE DROPPED rather than shown greyed out — the server refuses a
- * posting to one, so offering it is offering a 400. They still exist so the
- * entries already posted to them stay explicable; that is the whole point of
- * retiring rather than deleting.
- */
-export function allocationOptionsFor(
-  account: ChartOfAccount | undefined,
-): Array<{ value: string; label: string }> {
-  return (account?.allocations ?? [])
-    .filter((rule) => rule.isActive && rule._id)
-    .map((rule) => ({ value: rule._id as string, label: rule.name }));
 }
 
 export function toLineInputs(lines: DraftLine[]): CashTransactionLineInput[] {

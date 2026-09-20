@@ -3,6 +3,9 @@
 import { Fragment, useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   Ban,
   ChevronDown,
   ChevronRight,
@@ -43,7 +46,10 @@ import type {
 import {
   compareAccounts,
   DEFAULT_ACCOUNT_SORT,
+  SORT_BY_COLUMN,
+  sortState,
   type AccountSort,
+  type SortColumn,
 } from "../accountSort";
 import {
   ALLOCATION_TYPE_LABEL,
@@ -60,10 +66,10 @@ import { useAllocationTargets } from "../hooks/useAllocationTargets";
 import {
   accountCategoryTone,
   ACCOUNT_CATEGORY_LABEL,
+  ACCOUNT_TYPE_LABEL,
 } from "../labels";
 import { ACCOUNTING_CRUMBS } from "../crumbs";
 import { AccountAllocationPanel } from "./AccountAllocationPanel";
-import { AccountingModuleHeader } from "./AccountingModuleHeader";
 import { ChartOfAccountsToolbar } from "./ChartOfAccountsToolbar";
 
 /**
@@ -158,6 +164,29 @@ export function ChartOfAccountsScreen() {
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const { can } = usePermissions();
+
+  /**
+   * Re-order on a header click: a new column opens ascending, the current one
+   * flips.
+   *
+   * ASCENDING FIRST because every column here reads that way — 1101 upward, A to
+   * Z, category 110 upward — so the first click gives the ordering somebody
+   * meant and the second gives the other one. Paging returns to 1: the rows on
+   * page 3 of one ordering have nothing to do with page 3 of another.
+   */
+  const sortBy = useCallback((column: SortColumn) => {
+    setQuery((previous) => {
+      const current = sortState(previous.sort);
+      const pair = SORT_BY_COLUMN[column];
+
+      return {
+        ...previous,
+        sort:
+          current.column === column && current.ascending ? pair.desc : pair.asc,
+      };
+    });
+    setPage(1);
+  }, []);
 
   const patchQuery = useCallback((patch: Partial<ChartOfAccountsQuery>) => {
     setQuery((previous) => ({ ...previous, ...patch }));
@@ -291,12 +320,23 @@ export function ChartOfAccountsScreen() {
   }
 
   const canUpdate = can("chartOfAccounts", "update");
-  const columnCount = canUpdate ? 6 : 5;
+  const columnCount = canUpdate ? 7 : 6;
   const note = shapeNote(shape);
 
   return (
     <div className="flex flex-col gap-6">
-      <AccountingModuleHeader />
+      {/*
+        ITS OWN HEADING, not the Keuangan module's tab row — the screen moved to
+        Pengaturan on 20 September 2026 and now sits beside Umum and Data Awal,
+        which each carry a plain h1 and no breadcrumb.
+
+        NO BREADCRUMB, for the reason those two have none: /dashboard/pengaturan
+        has no page of its own, so the only ancestor a crumb could name is one
+        nobody can open. The nav's own highlight is what says where this is.
+      */}
+      <div>
+        <h1 className="text-2xl font-extrabold text-foreground">Daftar Akun</h1>
+      </div>
 
       {/* What the Aturan Alokasi column is for, before anybody clicks a row.
           Only where it applies: a tenant with one line and one branch gets the
@@ -361,13 +401,39 @@ export function ChartOfAccountsScreen() {
           </p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-border bg-surface">
+        // `overflow-x-auto`, not `overflow-hidden`: seven columns do not fit a
+        // phone, and clipping them would hide the ones on the right with no way
+        // to reach them. The rounded corners survive either way.
+        <div className="overflow-x-auto rounded-xl border border-border bg-surface">
           <Table className={loading ? "opacity-60" : undefined}>
             <TableHeader>
               <TableRow>
-                <TableHead>Kode</TableHead>
-                <TableHead>Nama akun</TableHead>
-                <TableHead>Kategori</TableHead>
+                <SortableHead
+                  column="code"
+                  label="Kode"
+                  sort={query.sort}
+                  onSort={sortBy}
+                />
+                <SortableHead
+                  column="name"
+                  label="Nama akun"
+                  sort={query.sort}
+                  onSort={sortBy}
+                />
+                <SortableHead
+                  column="category"
+                  label="Kategori"
+                  sort={query.sort}
+                  onSort={sortBy}
+                />
+                <SortableHead
+                  column="type"
+                  label="Tipe akun"
+                  sort={query.sort}
+                  onSort={sortBy}
+                />
+                {/* Not sortable: a cell that is a badge, a phrase or a count of
+                    rules has no ordering anybody would ask for. */}
                 <TableHead>Aturan alokasi</TableHead>
                 <TableHead>Status</TableHead>
                 {canUpdate && <TableHead className="text-right">Aksi</TableHead>}
@@ -462,6 +528,18 @@ export function ChartOfAccountsScreen() {
                         >
                           {ACCOUNT_CATEGORY_LABEL[account.accountCategory]}
                         </span>
+                      </TableCell>
+
+                      {/*
+                        THE CLASS, AS PLAIN TEXT BESIDE THE BADGE. Two badges on
+                        one row would read as two statuses of equal weight, and
+                        they are not: the category is what the tenant chose and
+                        what the reports group by, the class is derived from it.
+                        Its own column because it is now sortable — five groups
+                        is the coarsest useful way to read a long chart.
+                      */}
+                      <TableCell className="px-4 py-2.5 text-sm text-muted">
+                        {ACCOUNT_TYPE_LABEL[account.accountType]}
                       </TableCell>
 
                       <TableCell className="px-4 py-2.5">
@@ -614,6 +692,51 @@ export function ChartOfAccountsScreen() {
         />
       )}
     </div>
+  );
+}
+
+/**
+ * A column header that re-orders the table.
+ *
+ * THE ARROW IS ALWAYS THERE, greyed when the column is not the active one. An
+ * arrow that appears only on the sorted column says which ordering is on but not
+ * which columns could be clicked — and a control nobody can see is a control
+ * nobody uses. `aria-sort` carries the same fact to a screen reader, which the
+ * arrow alone cannot.
+ */
+function SortableHead({
+  column,
+  label,
+  sort,
+  onSort,
+}: {
+  column: SortColumn;
+  label: string;
+  sort: AccountSort;
+  onSort: (column: SortColumn) => void;
+}) {
+  const current = sortState(sort);
+  const active = current.column === column;
+  const Arrow = !active ? ArrowUpDown : current.ascending ? ArrowUp : ArrowDown;
+
+  return (
+    <TableHead
+      aria-sort={
+        active ? (current.ascending ? "ascending" : "descending") : "none"
+      }
+    >
+      <button
+        type="button"
+        onClick={() => onSort(column)}
+        className={cn(
+          "-mx-1 flex items-center gap-1 rounded-md px-1 py-0.5 transition-colors hover:text-foreground focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
+          active && "text-foreground",
+        )}
+      >
+        {label}
+        <Arrow className={cn("size-3.5", !active && "opacity-40")} />
+      </button>
+    </TableHead>
   );
 }
 

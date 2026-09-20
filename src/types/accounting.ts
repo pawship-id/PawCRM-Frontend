@@ -360,6 +360,23 @@ export interface JournalLine {
    * is resolved against the COA.
    */
   businessLineId: string | null;
+  /**
+   * Which Detil Akun of `accountId` this line was posted to — the `_id` of one
+   * rule in that account's `allocations[]`.
+   *
+   * NULL IS ORDINARY AND MEANS TWO THINGS, both fine: the account carries no
+   * rules to choose from (every asset and liability, and any P&L account still
+   * Belum Dipetakan), or the line was attributed directly at posting time and
+   * needs none — a POS sale already knows the product's line, and a fact beats a
+   * mapping. Every entry written before allocation existed reads as null and
+   * reports exactly as it always did.
+   *
+   * RESOLVED AGAINST THE ACCOUNT'S CURRENT RULES when a name is shown. The entry
+   * is immutable and the chart is not, so the rule may since have been renamed —
+   * but it cannot have been deleted, because the chart refuses to remove one a
+   * live line names.
+   */
+  allocationId: string | null;
   /** Decimal string. "0" when the amount sits on the other side. */
   debit: string;
   credit: string;

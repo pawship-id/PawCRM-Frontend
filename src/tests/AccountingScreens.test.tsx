@@ -371,23 +371,115 @@ describe("ChartOfAccountsScreen", () => {
     );
   });
 
-  /** The whole list orders together now — there are no sibling groups to keep. */
-  it("orders the whole list by the ordering chosen", async () => {
+  /**
+   * SORTED FROM THE HEADERS, not from a field in the filter panel — the one
+   * screen in the app that does, recorded as an exception in ui-rules §8.
+   *
+   * First click orders ascending, second flips it. Ascending first because every
+   * column here reads that way, so one click gives the ordering somebody meant.
+   */
+  it("orders the whole list from a column header, and flips on a second click", async () => {
     await renderChart();
 
-    const panel = await openFilters();
-    await userEvent.click(within(panel).getByLabelText("Urutkan"));
-    await userEvent.click(screen.getByRole("option", { name: "Kode 9–0" }));
-    await applyFilters();
+    const codesNow = () =>
+      screen
+        .getAllByRole("row")
+        .slice(1)
+        .map((row) => row.textContent ?? "");
+
+    // Opens by code ascending, so 1101 is already above 2101.
+    expect(codesNow().findIndex((t) => t.includes("1101"))).toBeLessThan(
+      codesNow().findIndex((t) => t.includes("2101")),
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /^Kode/ }));
+
+    const flipped = codesNow();
+    expect(flipped.findIndex((t) => t.includes("2101"))).toBeLessThan(
+      flipped.findIndex((t) => t.includes("1101")),
+    );
+  });
+
+  /**
+   * THE CATEGORY COLUMN SORTS ALPHABETICALLY, by the word on the badge.
+   *
+   * By the stored KEY it would read `aset_lancar_lainnya, aset_tetap, biaya, …`
+   * — close enough to look right, and wrong wherever key and label part company:
+   * "hpp" sorts between "hutang_lainnya" and "investasi…", while the label it
+   * shows, "Harga Pokok Penjualan", belongs near the front.
+   */
+  it("orders the Kategori column by the word on the badge", async () => {
+    await renderChart();
+
+    await userEvent.click(screen.getByRole("button", { name: /^Kategori/ }));
 
     const rows = screen
       .getAllByRole("row")
       .slice(1)
       .map((row) => row.textContent ?? "");
 
-    const utang = rows.findIndex((text) => text.includes("2101"));
-    const kas = rows.findIndex((text) => text.includes("1101"));
-    expect(utang).toBeLessThan(kas);
+    // Aset Lancar Lainnya · Biaya · Hutang Dagang.
+    expect(rows.findIndex((t) => t.includes("1101"))).toBeLessThan(
+      rows.findIndex((t) => t.includes("5101")),
+    );
+    expect(rows.findIndex((t) => t.includes("5101"))).toBeLessThan(
+      rows.findIndex((t) => t.includes("2101")),
+    );
+  });
+
+  /**
+   * THE CLASS SORTS ALPHABETICALLY, BY THE VISIBLE WORD — Aset, Beban, Ekuitas,
+   * Kewajiban, Pendapatan.
+   *
+   * Sorting the stored KEYS would give `asset, equity, expense, income,
+   * liability`, which on screen reads Aset, Ekuitas, Beban, Pendapatan,
+   * Kewajiban — alphabetical in a language nobody is looking at. That is the
+   * mistake this pins.
+   */
+  it("orders the Tipe akun column by the word on screen, not the stored key", async () => {
+    await renderChart();
+
+    await userEvent.click(screen.getByRole("button", { name: /^Tipe akun/ }));
+
+    const rows = screen
+      .getAllByRole("row")
+      .slice(1)
+      .map((row) => row.textContent ?? "");
+
+    // 1101 Aset · 5101 Beban · 2101 Kewajiban.
+    expect(rows.findIndex((t) => t.includes("1101"))).toBeLessThan(
+      rows.findIndex((t) => t.includes("5101")),
+    );
+    expect(rows.findIndex((t) => t.includes("5101"))).toBeLessThan(
+      rows.findIndex((t) => t.includes("2101")),
+    );
+  });
+
+  /**
+   * THE CLASS IS PLAIN TEXT BESIDE THE CATEGORY BADGE. Two badges on one row
+   * would read as two statuses of equal weight, and they are not: the category
+   * is what the tenant chose, the class is derived from it.
+   */
+  it("shows the class of each account beside its category", async () => {
+    await renderChart();
+
+    const rowOf = (code: string) =>
+      within(
+        screen.getAllByRole("row").find((row) => row.textContent?.includes(code))!,
+      );
+
+    expect(rowOf("1101").getByText("Aset Lancar Lainnya")).toBeInTheDocument();
+    expect(rowOf("1101").getByText("Aset")).toBeInTheDocument();
+    expect(rowOf("2101").getByText("Kewajiban")).toBeInTheDocument();
+    expect(rowOf("5101").getByText("Beban")).toBeInTheDocument();
+  });
+
+  /** The panel stopped offering an ordering when the headers took it over. */
+  it("no longer offers Urutkan in the filter panel", async () => {
+    await renderChart();
+    const panel = await openFilters();
+
+    expect(within(panel).queryByLabelText("Urutkan")).not.toBeInTheDocument();
   });
 
   /**
@@ -596,7 +688,7 @@ describe("ChartOfAccountsScreen", () => {
       }),
     ).toHaveAttribute(
       "href",
-      "/dashboard/keuangan/chart-of-accounts/1101/edit",
+      "/dashboard/pengaturan/daftar-akun/1101/edit",
     );
   });
 
@@ -699,7 +791,7 @@ describe("ChartOfAccountForm", () => {
     );
     // Back to the list once it lands — the page's job, where the dialog used to
     // just close itself.
-    expect(push).toHaveBeenCalledWith("/dashboard/keuangan/chart-of-accounts");
+    expect(push).toHaveBeenCalledWith("/dashboard/pengaturan/daftar-akun");
   });
 
   /**
@@ -836,7 +928,16 @@ describe("ChartOfAccountForm", () => {
  * real screen.
  */
 function line(accountId: string, debit: string, credit: string): JournalLine {
-  return { accountId, businessLineId: null, debit, credit, memo: null };
+  return {
+    accountId,
+    businessLineId: null,
+    // Null because the account carries no Detil Akun to pick from — which is
+    // what every entry written before allocation existed looks like.
+    allocationId: null,
+    debit,
+    credit,
+    memo: null,
+  };
 }
 
 /**
@@ -1334,6 +1435,92 @@ describe("JournalEntryCreateForm", () => {
     await userEvent.click(screen.getByLabelText(`Akun baris ${line}`));
     await userEvent.click(await screen.findByRole("option", { name: label }));
   }
+
+  /**
+   * A MANUAL ENTRY CAN NAME A DETIL AKUN, and until this it could not: the
+   * server accepted `allocationId`, the form never sent one, so every cost
+   * posted here landed in the shared column of the laba rugi with nothing to say
+   * which lini should have carried it. The manual entry is the escape hatch
+   * every cost that does not fit a form goes through, so that was the hole.
+   *
+   * THE FIELD APPEARS ONLY WHERE THE ACCOUNT HAS RULES. Most accounts a manual
+   * entry touches — kas, utang, modal — can never carry one, and an empty field
+   * on every line is a control people learn to skip.
+   */
+  it("offers the Detil Akun only on an account that has one, and sends it", async () => {
+    const mapped = ledgerChart();
+    mapped[2].children[0] = node(
+      "5201",
+      "Kerugian Persediaan",
+      "biaya_lainnya",
+      {
+        allocations: [
+          {
+            _id: "alloc-susut",
+            name: "Susut - Grooming",
+            allocationType: "direct",
+            businessLineId: "bl-grooming",
+            branchId: null,
+            isActive: true,
+          },
+          {
+            _id: "alloc-retired",
+            name: "Susut - lama",
+            allocationType: "shared_overall",
+            businessLineId: null,
+            branchId: null,
+            isActive: false,
+          },
+        ],
+      },
+    );
+
+    await renderForm(mapped);
+    const create = jest
+      .spyOn(journalEntryService, "create")
+      .mockResolvedValue({ _id: "je1", entryNumber: "JE-1" } as never);
+
+    // Nothing picked yet, so there is no account to have rules.
+    expect(screen.queryByLabelText("Detil akun baris 1")).not.toBeInTheDocument();
+
+    await pickAccount(1, /5201 · Kerugian Persediaan/ as unknown as string);
+
+    // One ACTIVE rule, so it is pre-picked — a choice with one option is not a
+    // choice — and the retired one is not offered at all.
+    const detil = await screen.findByLabelText("Detil akun baris 1");
+    expect(detil).toHaveTextContent("Susut - Grooming");
+    await userEvent.click(detil);
+    expect(
+      screen.queryByRole("option", { name: "Susut - lama" }),
+    ).not.toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+
+    // The second line's account has no rules, so it gets no field.
+    await pickAccount(2, /3101 · Modal/ as unknown as string);
+    expect(screen.queryByLabelText("Detil akun baris 2")).not.toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText(/Keterangan/), "Koreksi");
+    const debits = screen.getAllByLabelText(/^Debit$/, { selector: "input" });
+    const credits = screen.getAllByLabelText(/^Kredit$/, { selector: "input" });
+    await userEvent.type(debits[0], "100000");
+    await userEvent.type(credits[1], "100000");
+    await userEvent.click(screen.getByRole("button", { name: /Simpan jurnal/ }));
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          lines: expect.arrayContaining([
+            expect.objectContaining({
+              accountId: "5201",
+              allocationId: "alloc-susut",
+            }),
+          ]),
+        }),
+      ),
+    );
+    // …and the line whose account has no rules sends no key at all.
+    expect(create.mock.calls[0][0].lines[1]).not.toHaveProperty("allocationId");
+  });
 
   /**
    * THE PICKER IS THE GUARD. The API accepts the request and only then refuses

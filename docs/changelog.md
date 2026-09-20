@@ -7,6 +7,61 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Daftar Akun pindah ke Pengaturan, dan sorting pindah ke header
+
+20 September 2026, atas permintaan. Dua hal yang sebelumnya ditandai "tidak diambil"
+karena bentrok aturan, sekarang diputuskan diambil.
+
+### Pindah ke Pengaturan
+
+- Rutenya jadi **`/dashboard/pengaturan/daftar-akun`** (`/new` dan `/[id]/edit` ikut).
+  Segmennya Bahasa, mengikuti tetangganya `pengaturan/umum` dan `pengaturan/data-awal`.
+- **Rute lama `redirect()`, tidak dihapus** — alamat itu dipakai tab Keuangan, panel
+  impor inventori, dan apa pun yang dibookmark orang sejak layarnya rilis. 404 akan
+  menghukum mereka atas perpindahan yang bukan mereka lakukan. Redirect `[id]/edit`
+  membawa id-nya: link ke satu akun adalah yang paling mungkin dibookmark.
+- **Bukan tab Keuangan lagi.** Komentar di `AccountingModuleHeader` sejak 12 September
+  memang sudah menulis bahwa mockup menaruhnya di Pengaturan dan tab itu cuma sementara
+  sampai seksinya ada. Ringkasan Keuangan tetap punya kartunya, sama seperti tiga layar
+  non-tab yang lain.
+- **Sidebar:** baris "Daftar Akun" di grup Pengaturan, gated `chartOfAccounts:read` —
+  dan grant itu **keluar** dari `permissionAny` baris Keuangan. Tidak ada lagi yang bisa
+  dibaca di bawah `/keuangan` dengan grant itu saja, dan baris yang menuju hub berisi
+  kartu yang tidak boleh dibuka pembacanya cuma bikin kecewa.
+- **Judulnya h1 polos tanpa breadcrumb**, seperti Umum dan Data Awal: `/dashboard/
+  pengaturan` tidak punya halaman sendiri, jadi satu-satunya leluhur yang bisa disebut
+  breadcrumb adalah halaman yang tidak bisa dibuka siapa pun. Form `/new` dan `/[id]/
+  edit` tetap punya breadcrumb, dengan "Pengaturan" sebagai label — bukan link.
+
+### Sorting dari header kolom
+
+- **Kolom "Tipe akun" baru**, di sebelah Kategori: Aset · Kewajiban · Ekuitas ·
+  Pendapatan · Beban. Teks polos, bukan badge — dua badge dalam satu baris terbaca
+  sebagai dua status setara, padahal kategorinya yang dipilih tenant dan kelasnya cuma
+  turunan. Urutannya abjad — Aset, Beban, Ekuitas, Kewajiban, Pendapatan.
+  Pembungkus tabelnya ikut jadi `overflow-x-auto` — tujuh kolom tidak muat di layar
+  ponsel, dan `overflow-hidden` akan memotongnya tanpa cara mencapainya.
+- **Kode, Nama akun, Kategori dan Tipe akun bisa diklik.** Klik pertama menaik, klik kedua membalik.
+  Panahnya ada di setiap header yang bisa diurutkan — pudar kalau kolom itu bukan yang
+  aktif — supaya barisnya mengatakan kolom mana yang bisa diklik, bukan cuma mana yang
+  sedang aktif. `aria-sort` membawa fakta yang sama ke pembaca layar.
+- **Kategori dan Tipe akun sama-sama diurutkan ABJAD, dari kata yang tampil** — bukan
+  dari key yang disimpan, dan bukan dari nomor kategorinya. Key-nya berbeda urutan di
+  beberapa tempat (`hpp` jatuh di antara `hutang_lainnya` dan `investasi…`, padahal
+  labelnya "Harga Pokok Penjualan" ada di depan), dan nomor kategori adalah logika yang
+  tidak kelihatan: kolomnya menampilkan kata, nomornya tidak ada di baris itu. Di dalam
+  satu kategori atau satu tipe, urutannya jatuh ke kode — dan tie-break itu tetap menaik
+  di kedua arah, jadi kelompoknya yang terbalik, bukan isinya.
+- **Field "Urutkan" dihapus dari panel filter**, dan `Reset` tidak lagi menyentuh
+  urutan: tombol Reset di dalam panel filter tidak boleh diam-diam mengurutkan ulang
+  tabel yang diurutkan orang dari header yang kelihatan.
+- **`docs/ui-rules.md` §8 ikut diperbarui.** Aturannya berbunyi "sorting adalah field di
+  panel, bukan kontrol tersendiri" — sekarang dengan satu pengecualian tercatat, lengkap
+  dengan alasannya dan larangan menyebarkannya ke layar lain sebagai rapi-rapi. Tanpa
+  itu, sesi berikutnya akan "memperbaikinya" kembali.
+
+---
+
 ## [Unreleased] — Kategori akun punya nomor
 
 20 September 2026, atas permintaan, mengikuti chart of accounts Jubelio.
@@ -79,6 +134,12 @@ This project uses [Semantic Versioning](https://semver.org/).
   satu-satunya nilai yang menjawab pertanyaan dengan pekerjaan di belakangnya.
 - **Field "Lini bisnis" hilang dari form akun.** Pemetaannya pindah ke daftar; akun
   Pendapatan/Beban baru lahir Belum Dipetakan.
+- **Jurnal Umum manual: field Detil akun** per baris, muncul hanya kalau akun yang
+  dipilih punya aturan aktif. Ditambahkan 20 September setelah ketahuan tertinggal:
+  backend sudah menerima `allocationId`, formnya tidak pernah mengirimnya — jadi setiap
+  beban yang diposting lewat jurnal manual mendarat di kolom Bersama tanpa cara menyebut
+  lini mana yang menanggungnya, padahal jurnal manual adalah jalan keluar untuk setiap
+  biaya yang tidak muat di form lain. Detail jurnal ikut menampilkan kolomnya.
 - **Transaksi Keuangan: kolom Detil akun** di baris beban/pendapatan. Terpilih otomatis
   kalau akunnya cuma punya satu; **Lini bisnis tidak lagi diisi otomatis dari akun** —
   baris yang menyebut lininya sendiri dianggap final oleh laporan dan mendarat utuh di

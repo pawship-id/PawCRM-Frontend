@@ -31,17 +31,15 @@ describe("AccountingModuleHeader", () => {
     // Transaksi is NOT among them: it became the first sub-tab of Kas & Bank,
     // because a list of movements is only readable next to the accounts they
     // moved through.
+    // Daftar Akun is NOT among them either: it moved to Pengaturan on 20
+    // September 2026, per the mockup, and is reached from the sidebar and from
+    // Ringkasan's card list.
     expect(tabNames()).toEqual([
       "Ringkasan",
       "Kas & Bank",
       "Komisi",
-      "Daftar Akun",
       "Jurnal",
     ]);
-    expect(screen.getByRole("link", { name: "Daftar Akun" })).toHaveAttribute(
-      "href",
-      "/dashboard/keuangan/chart-of-accounts",
-    );
     expect(screen.getByRole("link", { name: "Kas & Bank" })).toHaveAttribute(
       "href",
       "/dashboard/keuangan/kas-bank",
@@ -87,22 +85,23 @@ describe("AccountingModuleHeader", () => {
     expect(tabNames()).toEqual(["Ringkasan", "Jurnal"]);
   });
 
-  it("gives the chart-of-accounts grant the Daftar Akun tab and nothing else", () => {
+  /**
+   * THE CHART OF ACCOUNTS IS NOT A TAB ANY MORE. It was one from 12 September
+   * 2026 as a stopgap — the mockup files it under Pengaturan, and that section
+   * did not exist yet. It does now, so the grant that used to earn a tab here
+   * earns nothing here.
+   *
+   * Asserted as an absence rather than dropped, because "this grant no longer
+   * opens a finance tab" is the fact the move turns on, and a deleted test would
+   * let the tab drift back in unnoticed.
+   */
+  it("gives the chart-of-accounts grant no tab of its own", () => {
     renderWithAuth(<AccountingModuleHeader />, {
       isSuperAdmin: false,
       permissions: [{ feature: "chartOfAccounts", actions: ["read"] }],
     });
 
-    expect(tabNames()).toEqual(["Ringkasan", "Daftar Akun"]);
-  });
-
-  it("keeps Daftar Akun lit on the form nested under it", () => {
-    pathname.mockReturnValue("/dashboard/keuangan/chart-of-accounts/new");
-    renderWithAuth(<AccountingModuleHeader />);
-
-    expect(
-      screen.getByRole("link", { name: "Daftar Akun" }),
-    ).toHaveAttribute("aria-current", "page");
+    expect(tabNames()).toEqual(["Ringkasan"]);
   });
 
   /**

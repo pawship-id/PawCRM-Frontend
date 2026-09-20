@@ -25,6 +25,7 @@ import {
   toMinor,
 } from "@/utils/decimal";
 
+import { allocationOptionsFor } from "../allocationLabels";
 import { ACCOUNTING_CRUMBS } from "../crumbs";
 import { useChartOfAccounts } from "../hooks/useChartOfAccounts";
 
@@ -94,6 +95,15 @@ interface DraftLine {
   /** Local key — the array index is not stable across a removal. */
   key: string;
   accountId: string;
+  /**
+   * Which Detil Akun of `accountId` this line is posted to, or `""`.
+   *
+   * ASKED HERE TOO, not only on Transaksi Keuangan, because a manual entry is
+   * the escape hatch every cost that does not fit a form goes through — and a
+   * cost posted to Beban Gaji with no detil lands in the shared bucket of the
+   * laba rugi with nothing to say which lini should have carried it.
+   */
+  allocationId: string;
   debit: string;
   credit: string;
   memo: string;
@@ -117,6 +127,7 @@ function blankLine(): DraftLine {
   return {
     key: `line-${lineSeq}`,
     accountId: "",
+    allocationId: "",
     debit: "",
     credit: "",
     memo: "",
@@ -352,6 +363,9 @@ export function JournalEntryCreateForm() {
         description: description.trim(),
         lines: lines.map((line) => ({
           accountId: line.accountId,
+          // Omitted rather than sent as null when nothing was picked: the server
+          // defaults it, and an account with no rules has nothing to send.
+          ...(line.allocationId ? { allocationId: line.allocationId } : {}),
           // Only the side that carries a value is sent. Both keys default to
           // "0" on the server, so omitting one is how a credit-only line is
           // expressed — not a zero it then has to reject.
@@ -541,9 +555,25 @@ export function JournalEntryCreateForm() {
                       placeholder="Pilih akun"
                       searchable
                       options={accountOptions}
-                      onChange={(value) =>
-                        patchLine(line.key, { accountId: value })
-                      }
+                      onChange={(value) => {
+                        /*
+                          THE DETIL IS RESET WITH THE ACCOUNT, always: a rule id
+                          belongs to one account, and carrying it across would be
+                          a pairing the server rejects.
+
+                          Pre-picked when there is exactly one, for the reason
+                          CashLinesEditor gives: a choice with one option is not
+                          a choice, and leaving it empty would send an unmapped
+                          cost nobody decided to leave unmapped.
+                        */
+                        const options = allocationOptionsFor(byId.get(value));
+
+                        patchLine(line.key, {
+                          accountId: value,
+                          allocationId:
+                            options.length === 1 ? options[0].value : "",
+                        });
+                      }}
                     />
                     {fieldErrors[`${key}.account`] && (
                       <p role="alert" className="mt-1.5 text-xs text-danger">
@@ -557,6 +587,33 @@ export function JournalEntryCreateForm() {
                       </p>
                     )}
                   </div>
+
+                  {/*
+                    THE DETIL AKUN, and only where the chosen account has one.
+                    An empty field on every line of every entry would be a
+                    control people learn to skip, and most accounts a manual
+                    entry touches (kas, utang, modal) can never carry a rule.
+                  */}
+                  {allocationOptionsFor(account).length > 0 && (
+                    <div>
+                      <FilterSelect
+                        layout="field"
+                        label="Detil akun"
+                        ariaLabel={`Detil akun baris ${index + 1}`}
+                        value={line.allocationId}
+                        active={line.allocationId !== ""}
+                        placeholder="Pilih detil"
+                        options={allocationOptionsFor(account)}
+                        onChange={(value) =>
+                          patchLine(line.key, { allocationId: value })
+                        }
+                      />
+                      <p className="mt-1.5 text-xs text-muted">
+                        Menentukan segmen mana yang menanggung baris ini di Laba
+                        Rugi. Kosongkan kalau memang belum diputuskan.
+                      </p>
+                    </div>
+                  )}
 
                   <div className="grid gap-4 sm:grid-cols-2">
                     <TextField

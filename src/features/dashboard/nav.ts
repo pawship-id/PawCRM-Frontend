@@ -13,6 +13,7 @@ import type { ComponentType, SVGProps } from "react";
 import {
   ArrowRightLeft,
   Bed,
+  BookOpen,
   Boxes,
   Building2,
   Calculator,
@@ -509,8 +510,14 @@ export const NAV_SECTIONS: NavSection[] = [
           // Transaksi Keuangan — a Staff account that records petty cash and
           // holds no ledger grant still needs the way in.
           { feature: "cashTransactions", action: "read" },
-          // Daftar Akun is a tab, so its grant alone is a way in too.
-          { feature: "chartOfAccounts", action: "read" },
+          /*
+            `chartOfAccounts:read` LEFT THIS LIST on 20 September 2026, when
+            Daftar Akun moved to Pengaturan. It was here because the screen was a
+            tab of this module; it is not any more, so the grant alone no longer
+            opens anything under /keuangan — and a Keuangan row that led to a hub
+            of cards the reader may not open is a row that only disappoints.
+            Somebody holding it now sees Pengaturan › Daftar Akun instead.
+          */
         ],
       },
       {
@@ -534,6 +541,22 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: Settings,
         children: [
           { label: "Umum", href: "/dashboard/pengaturan/umum", icon: Wrench },
+          {
+            /**
+             * MOVED HERE FROM KEUANGAN on 20 September 2026, on request and per
+             * the BO mockup, which files the chart of accounts under Pengaturan.
+             *
+             * It belongs with the setup screens rather than with the reports: a
+             * chart of accounts is configured once and then referred to, which
+             * is what every other row in this group is. The old address
+             * redirects, and Keuangan › Ringkasan still carries a card to it for
+             * anybody who reads the module top to bottom.
+             */
+            label: "Daftar Akun",
+            href: "/dashboard/pengaturan/daftar-akun",
+            icon: BookOpen,
+            permission: { feature: "chartOfAccounts", action: "read" },
+          },
           {
             // Beside the customer register rather than under Inventori → Produk,
             // because the split is about who edits: the groomer who prices a
