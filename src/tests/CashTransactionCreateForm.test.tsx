@@ -7,6 +7,7 @@ import { ApiError } from "@/services/api-error";
 import { branchService } from "@/services/branch.service";
 import { businessLineService } from "@/services/businessLine.service";
 import { cashTransactionService } from "@/services/cashTransaction.service";
+import { fixedCostService } from "@/services/fixedCost.service";
 import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
 import { customerService } from "@/services/customer.service";
 import { supplierService } from "@/services/supplier.service";
@@ -24,6 +25,7 @@ jest.mock("@/services/customer.service");
 jest.mock("@/services/supplier.service");
 jest.mock("@/services/user.service");
 jest.mock("@/services/businessLine.service");
+jest.mock("@/services/fixedCost.service");
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
 
 const mockPush = jest.fn();
@@ -261,6 +263,173 @@ describe("CashTransactionCreateForm", () => {
     expect(
       screen.queryByRole("option", { name: "4201 · Pendapatan Bunga" }),
     ).not.toBeInTheDocument();
+  });
+
+  /*
+    ONE FORM, TWO DOORS (21 September 2026, on request). A fixed cost IS a
+    transaction somebody also means to repeat, so Tambah biaya tetap is this
+    form with the switch pre-answered — the URL is the difference.
+  */
+  describe("as biaya tetap", () => {
+    async function fillMinimum(user: ReturnType<typeof userEvent.setup>) {
+      await pick(user, "Akun Kas/Bank", "1101 · Kas Pusat");
+      await pick(user, "Akun baris 1", "5401 · Beban Listrik");
+      await user.type(screen.getByLabelText("Jumlah baris 1"), "3500000");
+    }
+
+    /*
+      THE SWITCH IS THE ONLY DIFFERENCE. `/kas-bank/biaya-tetap/new` was a
+      second route that opened this form with it pre-answered; it is gone, so
+      every case here turns it on for itself.
+    */
+    async function turnOn(user: ReturnType<typeof userEvent.setup>) {
+      await user.click(screen.getByLabelText("Jadikan biaya tetap"));
+    }
+
+    it("hides the schedule's fields until the switch is on", async () => {
+      const user = userEvent.setup();
+      renderWithAuth(<CashTransactionCreateForm />);
+      await screen.findByRole("button", { name: "Simpan transaksi" });
+
+      expect(
+        screen.queryByLabelText(/Nama biaya tetap/),
+      ).not.toBeInTheDocument();
+
+      await user.click(screen.getByLabelText("Jadikan biaya tetap"));
+
+      expect(screen.getByLabelText(/Nama biaya tetap/)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Pengulangan/)).toBeInTheDocument();
+    });
+
+    it("opens with the switch off, whichever tab somebody came from", async () => {
+      renderWithAuth(<CashTransactionCreateForm />);
+      await screen.findByRole("button", { name: "Simpan transaksi" });
+
+      expect(screen.getByLabelText("Jadikan biaya tetap")).not.toBeChecked();
+    });
+
+    /*
+      A SCHEDULE NEEDS A NAME, which a transaction does not: a transaction is
+      identified by its number, and a template recurs, so the name is the only
+      stable handle anybody has on it.
+    */
+    it("will not save a schedule with no name, and says so", async () => {
+      const user = userEvent.setup();
+      renderWithAuth(<CashTransactionCreateForm />);
+      await screen.findByRole("button", { name: "Simpan transaksi" });
+
+      await turnOn(user);
+      // Everything a plain transaction needs is answered; only the schedule's
+      // own field is missing.
+      await fillMinimum(user);
+
+      expect(
+        screen.getByRole("button", { name: "Simpan transaksi" }),
+      ).toBeDisabled();
+      expect(
+        await screen.findByText("Nama biaya tetap belum diisi"),
+      ).toBeInTheDocument();
+    });
+
+    /*
+      THE OCCURRENCE IS POSTED THROUGH THE SCHEDULE, not written beside it:
+      that is what moves `nextDueAt` on, so the row lands in Biaya Tetap showing
+      next month rather than a month in arrears for a rent just paid.
+    */
+    it("writes the schedule, then records its first occurrence through it", async () => {
+      const user = userEvent.setup();
+      asMock(fixedCostService.create).mockResolvedValue({
+        _id: "fc9",
+        name: "Sewa toko",
+      } as never);
+      asMock(fixedCostService.post).mockResolvedValue({} as never);
+
+      renderWithAuth(<CashTransactionCreateForm />);
+      await screen.findByRole("button", { name: "Simpan transaksi" });
+
+      await turnOn(user);
+      await fillMinimum(user);
+      await user.type(
+        screen.getByLabelText(/Nama biaya tetap/),
+        "Sewa toko",
+      );
+
+      await user.click(screen.getByRole("button", { name: "Simpan transaksi" }));
+
+      await waitFor(() =>
+        expect(fixedCostService.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            name: "Sewa toko",
+            kind: "expense",
+            accountId: "acc-kas",
+            interval: "monthly",
+          }),
+        ),
+      );
+      await waitFor(() =>
+        expect(fixedCostService.post).toHaveBeenCalledWith(
+          "fc9",
+          expect.objectContaining({ at: expect.any(String) }),
+        ),
+      );
+      // The plain transaction endpoint is NOT also called — one occurrence, one
+      // path, and no chance of the money landing twice.
+      expect(cashTransactionService.create).not.toHaveBeenCalled();
+      expect(mockPush).toHaveBeenCalledWith(
+        "/dashboard/keuangan/kas-bank/biaya-tetap/fc9",
+      );
+    });
+
+    /*
+      THE SCHEDULE EXISTS even when its first occurrence does not. Saying
+      otherwise would send somebody to make the same schedule again.
+    */
+    it("says the schedule survived when only the first occurrence failed", async () => {
+      const user = userEvent.setup();
+      asMock(fixedCostService.create).mockResolvedValue({
+        _id: "fc9",
+        name: "Sewa toko",
+      } as never);
+      asMock(fixedCostService.post).mockRejectedValue(
+        new Error("account closed"),
+      );
+
+      renderWithAuth(<CashTransactionCreateForm />);
+      await screen.findByRole("button", { name: "Simpan transaksi" });
+
+      await turnOn(user);
+      await fillMinimum(user);
+      await user.type(screen.getByLabelText(/Nama biaya tetap/), "Sewa toko");
+      await user.click(screen.getByRole("button", { name: "Simpan transaksi" }));
+
+      expect(
+        await screen.findByText(/tersimpan, tapi transaksi pertamanya gagal/),
+      ).toBeInTheDocument();
+      expect(mockPush).not.toHaveBeenCalled();
+    });
+
+    /*
+      SAVING HERE IS TWO ACTS AND TWO GRANTS. Blocking up front beats letting
+      the second call fail on a form somebody has already filled in.
+    */
+    it("blocks Simpan for a role that may not post", async () => {
+      const user = userEvent.setup();
+      renderWithAuth(<CashTransactionCreateForm />, {
+        isSuperAdmin: false,
+        permissions: [
+          { feature: "cashTransactions", actions: ["read", "create"] },
+          { feature: "fixedCosts", actions: ["read", "create"] },
+          { feature: "chartOfAccounts", actions: ["read"] },
+          { feature: "branches", actions: ["read"] },
+        ],
+      });
+      await screen.findByRole("button", { name: "Simpan transaksi" });
+      await turnOn(user);
+
+      expect(
+        await screen.findByText("Kamu belum boleh mencatat biaya tetap"),
+      ).toBeInTheDocument();
+    });
   });
 
   it("sends the contract's payload, then opens the new transaction", async () => {

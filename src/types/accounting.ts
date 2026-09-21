@@ -453,3 +453,140 @@ export function normalBalanceOf(accountType: AccountType): NormalBalance {
 export function accountTypeOf(category: AccountCategory): AccountType {
   return CATEGORY_ACCOUNT_TYPE[category];
 }
+
+/* ---------------------------------------------------------------------- *
+ * BIAYA TETAP — the costs a shop knows it will meet again.
+ * ---------------------------------------------------------------------- */
+
+/** The two kinds a fixed cost can post as — the two a hand-raised one may take. */
+export type FixedCostKind = "expense" | "other_income";
+
+/** How often it comes round. The server's `INTERVALS`, same four words. */
+export type FixedCostInterval = "daily" | "weekly" | "monthly" | "yearly";
+
+export type FixedCostSort =
+  | "dueSoonest"
+  | "dueLatest"
+  | "newest"
+  | "oldest"
+  | "amountHighest"
+  | "amountLowest"
+  | "nameAsc"
+  | "nameDesc";
+
+export interface FixedCostLine {
+  accountId: string;
+  /** Decimal string — see utils/decimal. */
+  amount: string;
+  businessLineId: string | null;
+  allocationId: string | null;
+  memo: string | null;
+}
+
+/**
+ * A TEMPLATE, NOT A TRANSACTION. Nothing here has touched the ledger: it says
+ * "this is due every month and it looks like this". Posting one creates a real
+ * `CashTransaction`, and THAT is the money.
+ */
+export interface FixedCost {
+  _id: string;
+  /** What a person calls it — "Gaji staff". Unique per tenant. */
+  name: string;
+  kind: FixedCostKind;
+  direction: "in" | "out";
+  branchId: string;
+  branchName: string | null;
+  /** The Kas & Bank account the money moves through. */
+  accountId: string;
+  /** "1102 · Bank BCA", or null when the account no longer resolves. */
+  accountName: string | null;
+  /**
+   * The non-cash side, NAMED — the mockup's "Kategori" column. One is named and
+   * several are counted: a column printing the first of three misfiles the rest.
+   * An id the chart no longer holds is dropped, not rendered as hex.
+   */
+  counterAccounts: { id: string; code: string; name: string }[];
+  /** Σ `lines[].amount`, as a decimal string. */
+  amount: string;
+  lines: FixedCostLine[];
+  partyType: "customer" | "supplier" | "user" | null;
+  partyId: string | null;
+  partyName: string | null;
+  cashflowType: string;
+  ref: string | null;
+  note: string | null;
+  interval: FixedCostInterval;
+  /** The anchor of the schedule, and its first occurrence. */
+  startDate: string;
+  nextDueAt: string;
+  postedCount: number;
+  lastPostedAt: string | null;
+  lastTransactionId: string | null;
+  /**
+   * PAUSED RATHER THAN DELETED — a lease on hold. An inactive row keeps its
+   * due date, is not offered for posting and is not counted in the totals.
+   */
+  isActive: boolean;
+  /**
+   * HOW MANY OCCURRENCES ARE WAITING, derived by the server against its own
+   * clock — not merely whether one is. A rent entered three months late owes
+   * three payments, and a screen that said only "jatuh tempo" would let two of
+   * them disappear the moment the first was recorded. `0` on a paused row.
+   */
+  dueCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FixedCostListQuery {
+  page?: number;
+  limit?: number;
+  sort?: FixedCostSort;
+  branchId?: string;
+  accountId?: string;
+  kind?: FixedCostKind;
+  interval?: FixedCostInterval;
+  isActive?: boolean;
+  dueFrom?: string;
+  dueTo?: string;
+  search?: string;
+}
+
+export interface FixedCostTotals {
+  /** Σ of the ACTIVE rows, per direction. Decimal strings. */
+  in: { amount: string; count: number };
+  out: { amount: string; count: number };
+}
+
+export interface FixedCostListResponse {
+  items: FixedCost[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+  totals: FixedCostTotals;
+}
+
+export interface FixedCostLineInput {
+  accountId: string;
+  amount: string;
+  businessLineId?: string | null;
+  allocationId?: string | null;
+  memo?: string | null;
+}
+
+export interface CreateFixedCostInput {
+  name: string;
+  kind: FixedCostKind;
+  branchId: string;
+  accountId: string;
+  interval: FixedCostInterval;
+  startDate: string;
+  lines: FixedCostLineInput[];
+  ref?: string | null;
+  note?: string | null;
+  partyType?: "customer" | "supplier" | "user";
+  partyId?: string;
+  partyName?: string | null;
+  cashflowType?: string;
+  isActive?: boolean;
+}
+
+export type UpdateFixedCostInput = Partial<CreateFixedCostInput>;

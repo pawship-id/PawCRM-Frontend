@@ -514,6 +514,62 @@ What the bar is *for* survives the change: a document says what it is, what its
 number is, and what can be done with it **at its head** — not in a strip of
 buttons discovered after everything else has been read.
 
+**TAMBAH TRANSAKSI AND TAMBAH BIAYA TETAP ARE ONE FORM**, decided 21 September
+2026 on request, from the mockup's own `btnAddRecur`. A fixed cost IS a
+transaction somebody also means to repeat, so a second form was a second place
+for the party rules, the account rules and the line editor to drift.
+
+**ONE URL, AND THE SWITCH IS THE ONLY DIFFERENCE.** Both tabs' buttons open
+`/kas-bank/transaksi/new`, the switch starts OFF for everybody, and
+`/kas-bank/biaya-tetap/new` is **deleted**. A first pass kept that second route
+opening the same form with the switch pre-answered; it was a second name for one
+screen, and — worse — a page titled "Tambah biaya tetap" that wrote a plain
+transaction whenever somebody turned the switch off. One URL cannot disagree
+with what it saves.
+
+The switch reveals exactly two fields — **Nama biaya tetap** and
+**Pengulangan**. The name is the one thing a schedule needs that a transaction
+does not: a transaction is identified by its number, a template recurs, so the
+name is the only stable handle anybody has on it.
+
+**SAVING WITH IT ON WRITES THE SCHEDULE AND THEN POSTS THROUGH IT** —
+`POST /fixed-costs` followed by `POST /fixed-costs/:id/post` — never a
+transaction written beside a template. Posting through the schedule is what sets
+`postedCount` and moves `nextDueAt` on, so the row lands in Biaya Tetap showing
+next month rather than a month in arrears for a rent that was just paid. The two
+calls are not atomic and the failure they can leave is benign: a schedule whose
+first occurrence is still outstanding, which the list draws with a Catat button.
+The message says so rather than reporting the save as failed.
+
+It is also TWO GRANTS (`fixedCosts:create` + `fixedCosts:post`), checked in
+`blockedReason` **ahead of every empty field**: a reason somebody cannot fix by
+typing belongs above the ones they can.
+
+**UBAH BIAYA TETAP KEEPS ITS OWN FORM** (`FixedCostForm`, edit only), and that is
+not an oversight. A revision moves no money, and a form that recorded a payment
+every time a rent went up would post one nobody asked for. The create form's
+switch has no meaning on an edit either: the document already exists and its
+kind is settled, so there is nothing for the switch to decide.
+
+**THE EDIT URL IS ALSO ONE** — `/kas-bank/transaksi/:id/edit` serves both, and
+`/kas-bank/biaya-tetap/:id/edit` is deleted. **It has to TRY rather than know**:
+the two live in different collections and their ids are both opaque 24-hex
+strings, so nothing in the URL says which one `:id` belongs to. The route renders
+`CashTransactionEditScreen` first and swaps to `FixedCostEditScreen` when that
+screen reports `onNotFound`. The transaction is tried first because editing one
+is by far the common case and **its own fetch is the probe** — that path costs
+nothing extra; only a fixed cost pays a second request, and the first was going
+to be made anyway. While a handler is present the screen suppresses its "tidak
+ditemukan" panel, because a flash of it before a fixed cost renders would be a
+lie.
+
+**AND THE GRANT MOVED OFF THAT ROUTE, which is not optional.** Which grant
+applies is unknown until one of the two fetches answers, so `RequirePermission`
+on the route would lock out whoever holds the other one. **Each screen now checks
+its own** — `cashTransactions:update` and `fixedCosts:update` — and in
+`CashTransactionEditScreen` the check sits AFTER `notFound`, or a fixed cost's
+owner would be refused a document that is not a transaction.
+
 **Two forms have a bar with no card: Faktur baru** (`InvoiceCreateForm`) **and
 Tambah transaksi** (`CashTransactionCreateForm`). Decided 11 September 2026 on
 request for the first, and 20 September 2026 for the second: in both the page

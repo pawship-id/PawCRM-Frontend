@@ -125,6 +125,12 @@ export const PERMISSION_CATALOG = {
    * and are supervisory.
    */
   cashTransactions: ["read", "create", "update", "void"],
+  /*
+    Biaya Tetap. `post` IS ITS OWN GRANT and the important one: everything else
+    edits a plan that has never touched the ledger, while `post` writes a real
+    transaction and its journal entry. Mirrors the server's catalog.
+  */
+  fixedCosts: ["read", "create", "update", "delete", "post"],
   chartOfAccounts: ["create", "read", "update", "delete", "restore"],
   // A posted journal entry is immutable: no delete, no restore. `reverse` is
   // its own action because correcting the ledger is a different privilege from

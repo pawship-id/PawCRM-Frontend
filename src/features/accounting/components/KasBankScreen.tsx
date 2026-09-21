@@ -2,16 +2,16 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { CreditCard, Repeat, RotateCcw } from "lucide-react";
+import { CreditCard, RotateCcw } from "lucide-react";
 
 import { Alert, Card, FilterToggle, PageTabs, StatTile } from "@/components";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   CashTransactionsPanel,
   useCashTransactions,
   type CashTransactionsQuery,
 } from "@/features/cash-transactions";
+import { FixedCostsPanel, useFixedCosts } from "@/features/fixed-costs";
 import { Can, usePermissions } from "@/features/permissions";
 import { formatMoney, subtractDecimals } from "@/utils/decimal";
 
@@ -78,6 +78,7 @@ export function KasBankScreen({
   const presets = useMemo(() => reportPresets(today), [today]);
 
   const readsTransactions = can("cashTransactions", "read");
+  const readsFixedCosts = can("fixedCosts", "read");
 
   /*
     LOCAL, NOT PART OF THE QUERY. "Tampilkan nonaktif" is about which ACCOUNTS
@@ -87,6 +88,12 @@ export function KasBankScreen({
   */
   const [includeInactive, setIncludeInactive] = useState(false);
   const state = useCashTransactions(initialQuery);
+  /*
+    BOTH SUB-TABS ARE FETCHED BY THIS SCREEN, as the transactions are: a panel
+    that owned its own fetch would re-request on every re-render of the page
+    around it, and the two tabs share the card and the heading above them.
+  */
+  const fixedCosts = useFixedCosts({}, { enabled: readsFixedCosts });
   const { query, setQuery, totals, branches } = state;
 
   const accounts = useCashBankAccounts(
@@ -233,41 +240,17 @@ export function KasBankScreen({
             </p>
           </Card>
         )
+      ) : readsFixedCosts ? (
+        <FixedCostsPanel state={fixedCosts} />
       ) : (
-        <RecurringSection />
+        <Card>
+          <p className="text-sm text-muted">
+            Kamu belum punya akses ke daftar biaya tetap. Minta admin
+            menambahkan izin baca biaya tetap.
+          </p>
+        </Card>
       )}
     </div>
   );
 }
 
-/**
- * Biaya Tetap — the sub-tab the mockup draws with figures in it, and this one
- * does not.
- *
- * BADGED, NOT BLANK, AND CERTAINLY NOT FILLED IN. The model carries a
- * `recurring` subdocument and nothing executes it: there is no scheduler and no
- * endpoint that lists them, so every number the mockup shows here — the count,
- * the monthly total, the next due date — would be invented. An invented figure
- * on a finance screen is indistinguishable from a real one.
- *
- * A TAB RATHER THAN A HIDDEN ROW, for the reason `PageTabs` gives: the row is
- * this page's table of contents, and drawing a two-part page as a one-part one
- * sends people looking for the other half in Pengaturan.
- */
-function RecurringSection() {
-  return (
-    <Card>
-      <p className="flex flex-wrap items-center gap-2 font-semibold text-foreground">
-        <Repeat className="size-4 text-muted" aria-hidden />
-        Biaya tetap
-        <Badge variant="outline">Segera</Badge>
-      </p>
-      <p className="mt-1.5 max-w-2xl text-sm text-muted">
-        Gaji, sewa, dan langganan yang berulang tiap bulan akan tercatat sendiri
-        dan muncul di sini beserta jatuh temponya — masuk maupun keluar. Sampai
-        penjadwalnya ada, catat biayanya lewat Tambah transaksi seperti biasa dan
-        transaksinya tetap masuk ke daftar di tab sebelah.
-      </p>
-    </Card>
-  );
-}

@@ -10,6 +10,7 @@ import {
   FilterPills,
   FilterSelect,
   FormActionBar,
+  SelectField,
   Spinner,
   TextField,
   TextareaField,
@@ -17,15 +18,20 @@ import {
   type FilterOption,
   type PillOption,
 } from "@/components";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { SHARED_LINE_LABEL } from "@/features/accounting";
 import { useBranchScope } from "@/features/inventory/hooks/useBranchScope";
+import { usePermissions } from "@/features/permissions";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { cashTransactionService } from "@/services/cashTransaction.service";
-import { cashTypeOf } from "@/types/accounting";
+import { fixedCostService } from "@/services/fixedCost.service";
+import {
+  fixedCostHref,
+  INTERVAL_LABEL,
+} from "@/features/fixed-costs/labels";
+import { cashTypeOf, type FixedCostInterval } from "@/types/accounting";
 import type { CreateCashTransactionInput } from "@/types/api";
 
 import {
@@ -115,8 +121,13 @@ const KIND_OPTIONS: PillOption<ManualKind>[] = [
  * Kas entirely. One that belongs under Investasi or Pendanaan is re-filed from
  * Jurnal Umum.
  */
+const INTERVAL_OPTIONS = (
+  ["monthly", "weekly", "daily", "yearly"] as FixedCostInterval[]
+).map((value) => ({ value, label: INTERVAL_LABEL[value] }));
+
 export function CashTransactionCreateForm() {
   const router = useRouter();
+  const { can } = usePermissions();
   const scope = useBranchScope();
   const lookups = useLineLookups();
   const contacts = useContactOptions();
@@ -136,6 +147,25 @@ export function CashTransactionCreateForm() {
   const [businessLineId, setBusinessLineId] = useState("");
   const [note, setNote] = useState("");
   const [lines, setLines] = useState<DraftLine[]>(() => [blankLine()]);
+  /*
+    THE SWITCH, AND THE TWO FIELDS IT REVEALS. A schedule needs one thing a
+    transaction does not — a NAME — because a transaction is identified by its
+    number and a template recurs, so the only stable handle anybody has on it is
+    what they called it.
+  */
+  /*
+    OFF, WHICHEVER TAB SOMEBODY CAME FROM.
+
+    `/kas-bank/biaya-tetap/new` was a second route that opened this same form
+    with the switch pre-answered; it is gone (21 September 2026, on request).
+    One form, one URL, and the switch is the only thing that decides which of
+    the two documents gets written — so it starts from the same answer for
+    everybody and is never pre-set by where somebody clicked.
+  */
+  const [recur, setRecur] = useState(false);
+  const [recurName, setRecurName] = useState("");
+  const [recurInterval, setRecurInterval] =
+    useState<FixedCostInterval>("monthly");
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -199,6 +229,21 @@ export function CashTransactionCreateForm() {
   }
 
   function blockedReason(): string | null {
+    /*
+      THE GRANTS FIRST, ahead of every empty field. Saving with the switch on is
+      two acts — writing the schedule and recording its first occurrence — and
+      they are two grants. A reason somebody cannot fix by typing belongs above
+      the ones they can, or they fill in the whole form to be told they were
+      never allowed to save it.
+    */
+    if (recur) {
+      if (!can("fixedCosts", "create")) {
+        return "Kamu belum boleh membuat biaya tetap";
+      }
+      if (!can("fixedCosts", "post")) {
+        return "Kamu belum boleh mencatat biaya tetap";
+      }
+    }
     if (date === "") return "Tanggal belum diisi";
     if (partyKey === OTHER_PARTY && partyName.trim() === "") {
       return kind === "other_income"
@@ -208,6 +253,7 @@ export function CashTransactionCreateForm() {
     if (date > todayValue()) return "Tanggal tidak boleh di masa depan";
     if (!branchId) return "Cabang belum dipilih";
     if (!cashAccount) return "Akun kas/bank belum dipilih";
+    if (recur && recurName.trim() === "") return "Nama biaya tetap belum diisi";
     return linesProblem(lines);
   }
 
@@ -233,10 +279,76 @@ export function CashTransactionCreateForm() {
       lines: toLineInputs(lines),
     };
 
+    /*
+      TWO DIFFERENT SAVES BEHIND ONE BUTTON.
+
+      Switch OFF — one transaction, as this form has always done.
+
+      Switch ON — the SCHEDULE is written first and its first occurrence is then
+      recorded THROUGH it (`POST /fixed-costs/:id/post`). Not a transaction plus
+      a template written beside it: posting through the schedule is what sets
+      `postedCount` and moves `nextDueAt` on, so the row lands in Biaya Tetap
+      already showing next month rather than opening a month in arrears for a
+      rent that was just paid.
+
+      The two calls are not atomic, and the failure they can leave is a benign
+      one: a schedule whose first occurrence is still outstanding, which the
+      list draws as "Jatuh tempo" with a Catat button. Money is never recorded
+      twice, and nothing is silently lost.
+    */
+    if (recur) {
+      let fixedCostId: string;
+
+      try {
+        const schedule = await fixedCostService.create({
+          name: recurName.trim(),
+          kind,
+          branchId,
+          accountId: cashAccount._id,
+          interval: recurInterval,
+          // The transaction's own date anchors the schedule, so the month it
+          // next falls due is counted from the one just paid.
+          startDate: new Date(`${date}T00:00:00.000Z`).toISOString(),
+          lines: toLineInputs(lines),
+          ...partyInput(),
+          cashflowType: "operating",
+          ...(note.trim() ? { note: note.trim() } : {}),
+        });
+        fixedCostId = schedule._id;
+      } catch (error) {
+        setFormError(
+          error instanceof ApiError
+            ? error.fullMessage
+            : "Gagal menyimpan biaya tetap. Coba lagi.",
+        );
+        setSaving(false);
+        return;
+      }
+
+      try {
+        await fixedCostService.post(fixedCostId, { at: date });
+      } catch (error) {
+        // The schedule EXISTS — saying otherwise would send somebody to make it
+        // again. What failed is only its first occurrence, which the list
+        // offers to record.
+        setFormError(
+          `Biaya tetap "${recurName.trim()}" tersimpan, tapi transaksi pertamanya gagal dicatat. Catat dari daftar Biaya Tetap. ${
+            error instanceof ApiError ? error.fullMessage : ""
+          }`.trim(),
+        );
+        setSaving(false);
+        return;
+      }
+
+      swalToast(`Transaksi & biaya tetap "${recurName.trim()}" tersimpan.`);
+      router.push(fixedCostHref(fixedCostId));
+      return;
+    }
+
+    let created;
+
     try {
-      const created = await cashTransactionService.create(input);
-      swalToast(`Transaksi ${cashTransactionTitle(created)} tersimpan.`);
-      router.push(cashTransactionHref(created._id));
+      created = await cashTransactionService.create(input);
     } catch (error) {
       // The refusals name what to fix — an account of the wrong class, a
       // channel not usable here — so they are shown verbatim.
@@ -246,7 +358,11 @@ export function CashTransactionCreateForm() {
           : "Gagal menyimpan transaksi. Coba lagi.",
       );
       setSaving(false);
+      return;
     }
+
+    swalToast(`Transaksi ${cashTransactionTitle(created)} tersimpan.`);
+    router.push(cashTransactionHref(created._id));
   }
 
   const masuk = kind === "other_income";
@@ -410,30 +526,60 @@ export function CashTransactionCreateForm() {
           </div>
 
           {/*
-            SHOWN, OFF, AND BADGED "SEGERA" — the mockup's switch, over a field
-            the API does not have. The Biaya Tetap sub-tab in Kas & Bank carries
-            the same badge for the same reason: there is no scheduler behind it
-            yet, and a switch that saved nothing would be worse than one that
-            says so.
+            THE MOCKUP'S SWITCH, LIVE SINCE 21 SEPTEMBER 2026. It was shown,
+            disabled and badged "Segera" while nothing stored a schedule.
+
+            ITS COPY DOES NOT PROMISE AUTOMATION, because there still is no
+            scheduler: turning it on records this transaction AND remembers the
+            arrangement, and each month's occurrence is pressed by a person in
+            the Biaya Tetap tab. A switch that said "otomatis" would be a promise
+            the system cannot keep.
           */}
-          <div className="flex items-start gap-3 rounded-xl border border-border bg-surface-hover px-4 py-3">
-            <Switch
-              checked={false}
-              disabled
-              aria-label="Jadikan biaya tetap"
-              className="mt-1"
-            />
-            <div className="min-w-0">
-              <p className="flex flex-wrap items-center gap-2 font-semibold text-foreground">
-                Jadikan biaya tetap
-                <Badge variant="outline">Segera</Badge>
-              </p>
-              <p className="mt-0.5 text-sm text-muted">
-                Otomatis tercatat tiap bulan dan muncul di tab Biaya Tetap.
-                Penjadwalnya belum ada — sampai itu, catat transaksinya lagi tiap
-                bulan lewat layar ini.
-              </p>
+          <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface-hover px-4 py-3">
+            <div className="flex items-start gap-3">
+              <Switch
+                checked={recur}
+                onCheckedChange={setRecur}
+                disabled={saving}
+                aria-label="Jadikan biaya tetap"
+                className="mt-1"
+              />
+              <div className="min-w-0">
+                <p className="font-semibold text-foreground">
+                  Jadikan biaya tetap
+                </p>
+                <p className="mt-0.5 text-sm text-muted">
+                  Transaksinya tetap dicatat sekarang, dan jadwalnya diingat —
+                  jatuh tempo berikutnya muncul di tab Biaya Tetap untuk dicatat
+                  di sana.
+                </p>
+              </div>
             </div>
+
+            {recur && (
+              <div className="grid gap-4 border-t border-border pt-3 sm:grid-cols-2">
+                <TextField
+                  label="Nama biaya tetap"
+                  value={recurName}
+                  onChange={(event) => setRecurName(event.target.value)}
+                  placeholder="cth: Sewa toko Pusat"
+                  disabled={saving}
+                  required
+                  hint="Nama ini yang dipakai daftar Biaya Tetap, dan harus unik."
+                />
+                <SelectField
+                  label="Pengulangan"
+                  value={recurInterval}
+                  options={INTERVAL_OPTIONS}
+                  onChange={(value) =>
+                    setRecurInterval(value as FixedCostInterval)
+                  }
+                  disabled={saving}
+                  required
+                  hint={`Dihitung dari tanggal transaksi ini, ${date || "hari ini"}.`}
+                />
+              </div>
+            )}
           </div>
         </div>
       </Card>

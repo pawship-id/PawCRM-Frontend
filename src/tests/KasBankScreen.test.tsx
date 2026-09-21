@@ -311,17 +311,19 @@ describe("Kas & Bank — the sub-tabs", () => {
   });
 
   /**
-   * The mockup counts the active recurring costs and names the next one due.
-   * Nothing executes `recurring` yet, so every one of those figures would be
-   * invented — and an invented figure on a finance screen is indistinguishable
-   * from a real one.
+   * Biaya Tetap is a real list since 21 September 2026 — it was a "Segera"
+   * badge while nothing executed a schedule. It still does not execute one:
+   * what changed is that the templates are stored and each is recorded by
+   * hand, so the figures on it are the shop's own rather than invented.
    */
-  it("badges Biaya Tetap as pending rather than inventing its figures", async () => {
+  it("gives Biaya Tetap its own list, not the transactions one", async () => {
     renderWithAuth(<KasBankScreen now={NOW} section="biaya-tetap" />);
 
-    expect(await screen.findByText("Segera")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Cari biaya tetap")).toBeInTheDocument();
     expect(screen.queryByLabelText("Cari transaksi")).not.toBeInTheDocument();
-    // The cards and the table are the page's subject, so they stay on both.
+    expect(screen.queryByText("Segera")).not.toBeInTheDocument();
+    // The cards and the account table are the page's subject, so they stay on
+    // both halves.
     expect(screen.getByText("Rp 166.300.000")).toBeInTheDocument();
   });
 });
