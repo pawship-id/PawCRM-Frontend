@@ -382,7 +382,28 @@ export function CashTransactionEditForm({
     return { patch, problem: null };
   }
 
-  const { problem } = build();
+  const { patch: draftPatch, problem } = build();
+
+  /*
+    WHAT THIS EDIT WILL ACTUALLY DO TO THE LEDGER — the same split the server
+    makes in `cashTransaction.service.update`.
+
+    `note` IS THE ONLY FIELD THE LEDGER NEVER SEES, so a note-only edit posts
+    nothing at all. `ref` is NOT on that list and the omission is deliberate:
+    the server writes it into the cash line's memo, so changing it genuinely
+    changes what the entry says. `reason` is metadata about the edit itself.
+  */
+  const ledgerKeys: (keyof UpdateCashTransactionInput)[] = [
+    "at",
+    "amount",
+    "channelId",
+    "accountId",
+    "ref",
+    "lines",
+  ];
+  const touchesLedger = ledgerKeys.some((key) => draftPatch[key] !== undefined);
+  const noteOnly =
+    !touchesLedger && Object.keys(draftPatch).length > 0;
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -429,12 +450,29 @@ export function CashTransactionEditForm({
         </DialogHeader>
       )}
 
+      {/*
+        IT SAYS WHAT THIS EDIT WILL DO, not what an edit does in general (21
+        September 2026, on request). The unconditional version was written when
+        every edit reversed; since a note-only edit posts nothing, leaving it
+        would have promised two journal entries for correcting a typo.
+      */}
       <div className="rounded-lg border border-border bg-surface-hover px-4 py-3 text-sm">
         Nomor{" "}
         <b className="tabular-nums">{transaction.number ?? "transaksi ini"}</b>{" "}
-        tetap sama. Jurnal yang berlaku sekarang <b>dibalik</b>, lalu jurnal baru{" "}
-        <b>diposting ulang</b> dengan isi yang baru — keduanya tetap terlihat di
-        Jurnal Umum dan di riwayat perubahan.
+        tetap sama.{" "}
+        {noteOnly ? (
+          <>
+            Mengubah catatan saja <b>tidak membuat jurnal</b> — buku besar tidak
+            pernah mencatat catatan. Perubahannya tetap masuk riwayat perubahan.
+          </>
+        ) : (
+          <>
+            Mengubah <b>akun, nominal, tanggal, atau no. referensi</b> membuat
+            jurnal yang berlaku sekarang <b>dibalik</b> dan jurnal baru{" "}
+            <b>diposting ulang</b> — keduanya tetap terlihat di Jurnal Umum dan
+            di riwayat perubahan. Mengubah catatan saja tidak membuat jurnal.
+          </>
+        )}
       </div>
 
       {serverError && <Alert variant="error">{serverError}</Alert>}

@@ -231,16 +231,60 @@ describe("CashTransactionEditDialog — the same-class cash side", () => {
 });
 
 describe("CashTransactionEditDialog — saving", () => {
-  it("says the number stays and the journal is reversed, and waits for a change", async () => {
+  it("says the number stays and names what causes a reversal, and waits for a change", async () => {
     renderDialog(cashTx());
 
     const dialog = within(await screen.findByRole("dialog"));
     expect(dialog.getByText(/tetap sama/)).toBeInTheDocument();
+    // The fields that DO reverse are named, rather than promising it for any
+    // edit at all.
+    expect(
+      dialog.getByText(/akun, nominal, tanggal, atau no. referensi/i),
+    ).toBeInTheDocument();
     expect(dialog.getByText("dibalik")).toBeInTheDocument();
     expect(dialog.getByText("Belum ada yang diubah")).toBeInTheDocument();
     expect(
       dialog.getByRole("button", { name: "Simpan transaksi" }),
     ).toBeDisabled();
+  });
+
+  /*
+    THE NOTICE SAYS WHAT THIS EDIT WILL DO, not what an edit does in general.
+    The unconditional copy was written when every edit reversed; since a
+    note-only edit posts nothing, it would promise two journal entries for
+    correcting a typo.
+  */
+  it("promises no journal at all once only the note has changed", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderDialog(cashTx());
+
+    const dialog = within(await screen.findByRole("dialog"));
+    await user.type(dialog.getByLabelText(/Catatan/), " sore");
+
+    expect(
+      dialog.getByText(/buku besar tidak pernah mencatat catatan/i),
+    ).toBeInTheDocument();
+    expect(dialog.queryByText("dibalik")).not.toBeInTheDocument();
+    expect(dialog.queryByText("diposting ulang")).not.toBeInTheDocument();
+  });
+
+  /* `ref` IS the ledger's — the server writes it into the cash line's memo. */
+  it("goes back to promising a reversal when the reference changes too", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderDialog(cashTx());
+
+    const dialog = within(await screen.findByRole("dialog"));
+    await user.type(dialog.getByLabelText(/Catatan/), " sore");
+    await user.type(dialog.getByLabelText(/No. referensi/), "TRF-99");
+
+    expect(dialog.getByText("dibalik")).toBeInTheDocument();
+    expect(dialog.getByText("diposting ulang")).toBeInTheDocument();
+    // The reversal wording keeps its closing sentence about notes — it is the
+    // rule, not a claim about this edit — so the distinguishing phrase is the
+    // one the note-only branch owns.
+    expect(
+      dialog.queryByText(/buku besar tidak pernah mencatat catatan/i),
+    ).not.toBeInTheDocument();
   });
 
   it("sends only what changed, with the reason", async () => {
