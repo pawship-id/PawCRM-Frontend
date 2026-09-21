@@ -30,6 +30,7 @@ export {
   orderedAxes,
   VARIANT_AXES,
   variantAxisDefs,
+  axisDefsForLine,
   variantAxisValues,
   variantComboCount,
   type StoredVariantValues,

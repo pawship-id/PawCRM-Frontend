@@ -467,6 +467,29 @@ describe("ServiceForm — variant pricing", () => {
     expect(screen.getByText(/harga dibedakan berdasarkan/i)).toBeVisible();
   });
 
+  it("asks for an option first when the chosen line has none (22 September 2026)", async () => {
+    /* Every card belongs to another line. */
+    primeVariantOptions(variantOptionService.list, zoneService.list, {
+      cards: BUILT_IN_VARIANT_OPTIONS.map((card) => ({
+        ...card,
+        businessLineIds: ["5a7f1f77bcf86cd7994390ee"],
+      })),
+    });
+    await renderNew();
+    await pickLine();
+    await userEvent.click(screen.getByLabelText(/harga beda per varian/i));
+
+    expect(
+      await screen.findByText(/lini grooming belum punya opsi varian/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/pilih minimal satu/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /buka opsi varian/i })).toHaveAttribute(
+      "href",
+      /* Opsi Varian is the page's default section. */
+      "/dashboard/master/layanan",
+    );
+  });
+
   it("generates one priced row per combination of the ticked axes", async () => {
     await renderNew();
 

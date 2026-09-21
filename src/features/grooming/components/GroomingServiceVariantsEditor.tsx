@@ -17,6 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  axisDefsForLine,
   buildVariantCombos,
   MAX_VARIANTS,
   useVariantAxisValues,
@@ -147,10 +148,12 @@ export function GroomingServiceVariantsEditor({
 
   const {
     valuesFor,
-    axes: axisDefs,
+    axes: allAxisDefs,
     loading: optionsLoading,
     error: optionsError,
   } = useVariantAxisValues();
+  /* This line's options, plus the ones the draft already prices on (22 Sep 2026). */
+  const axisDefs = axisDefsForLine(allAxisDefs, service.businessLineId, draft.axes);
   const axisValues = useMemo(
     () => valuesFor(service.variants),
     [valuesFor, service.variants],

@@ -19,9 +19,19 @@ export const variantOptionService = {
     description?: string | null;
     source: "staff" | "zone";
     values?: string[];
+    /** Empty = every line. */
+    businessLineIds?: string[];
   }) => apiClient.post<VariantOption>("/variant-options", input),
 
-  update: (id: string, patch: { name?: string; description?: string | null; sortOrder?: number }) =>
+  update: (
+    id: string,
+    patch: {
+      name?: string;
+      description?: string | null;
+      sortOrder?: number;
+      businessLineIds?: string[];
+    },
+  ) =>
     apiClient.patch<VariantOption>(`/variant-options/${id}`, patch),
 
   remove: (id: string) => apiClient.delete<VariantOption>(`/variant-options/${id}`),

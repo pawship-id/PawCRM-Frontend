@@ -3353,6 +3353,12 @@ export interface VariantOption {
   sortOrder: number;
   /** What a service's `variantAxes` uses for this card. */
   axisKey: VariantAxisKey;
+  /**
+   * The lines of business this card is offered for (22 September 2026) — EMPTY
+   * MEANS EVERY LINE. A filter for the service form, not a rule the server
+   * enforces. Optional for older responses.
+   */
+  businessLineIds?: string[];
   /** Live services declaring this axis. */
   serviceCount: number;
   deletedAt: string | null;

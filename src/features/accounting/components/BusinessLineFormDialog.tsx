@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ApiError } from "@/services/api-error";
+import { invalidateBusinessLines } from "@/hooks/useBusinessLines";
 import { businessLineService } from "@/services/businessLine.service";
 import type { BusinessLine } from "@/services/businessLine.service";
 import { swalToast } from "@/lib/swal";
@@ -135,6 +136,8 @@ export function BusinessLineFormDialog({
       } else {
         await businessLineService.create({ name: trimmed, color, branchIds });
       }
+      /* Opsi Varian's "Lini bisnis" reads the shared list — refresh it. */
+      invalidateBusinessLines();
       onSaved();
       swalToast(
         editing ? "Lini bisnis diperbarui." : `Lini bisnis ${trimmed} dibuat.`,

@@ -90,6 +90,8 @@ export interface VariantAxisDef {
   /** "Otomatis" unless `staff`. */
   source: VariantOption["source"];
   description: string | null;
+  /** The lines the card is for — empty is every line. */
+  businessLineIds: string[];
 }
 
 const RETIRED_SUFFIX = " (nonaktif)";
@@ -116,6 +118,7 @@ export function variantAxisDefs(cards: readonly VariantOption[] | null | undefin
       name: PET_AXIS_FALLBACK_NAME[key],
       source: AXIS_OPTION_TYPE[key] as VariantOption["source"],
       description: null,
+      businessLineIds: [],
     }));
   }
 
@@ -126,7 +129,30 @@ export function variantAxisDefs(cards: readonly VariantOption[] | null | undefin
       name: card.name,
       source: card.source,
       description: card.description,
+      businessLineIds: card.businessLineIds ?? [],
     }));
+}
+
+/**
+ * THE AXES A SERVICE ON THIS LINE IS OFFERED (22 September 2026) — a card for
+ * every line, or one naming this line: Ukuran for Grooming, Zona and Arah for
+ * Antar-Jemput. An axis the service already `keep`s is offered whatever its
+ * card says now, so moving a card to another line never hides a price a
+ * service is already priced on. No line chosen yet → every card.
+ */
+export function axisDefsForLine(
+  defs: readonly VariantAxisDef[],
+  lineId: string | null | undefined,
+  keep: readonly string[] = [],
+): VariantAxisDef[] {
+  if (!lineId) return [...defs];
+
+  return defs.filter(
+    (def) =>
+      def.businessLineIds.length === 0 ||
+      def.businessLineIds.includes(lineId) ||
+      keep.includes(def.key),
+  );
 }
 
 /** The hook's own ordering — `sortOrder`, then the word. */

@@ -38,7 +38,12 @@ import type { MediaAsset } from "@/types/inventory";
 
 import { invalidateVariantOptions } from "@/hooks/useVariantOptions";
 import { useVariantAxisValues } from "../hooks/useVariantAxisValues";
-import { buildVariantCombos, comboKey, MAX_VARIANTS } from "../variantAxes";
+import {
+  axisDefsForLine,
+  buildVariantCombos,
+  comboKey,
+  MAX_VARIANTS,
+} from "../variantAxes";
 import {
   LOCATION_LABELS,
   ServiceAddonPicker,
@@ -956,7 +961,13 @@ export function ServiceForm({
           {hasVariants ? (
             <ServiceVariantEditor
               axes={variantAxes}
-              axisDefs={axisDefs}
+              /*
+                ONLY THIS LINE'S OPTIONS (22 September 2026): Ukuran for a
+                grooming, Zona and Arah for a ride — plus whatever is ticked.
+              */
+              axisDefs={axisDefsForLine(axisDefs, businessLineId, variantAxes)}
+              lineName={lines.find((line) => line.value === businessLineId)?.label ?? null}
+              onReloadOptions={invalidateVariantOptions}
               prices={variantPrices}
               durations={variantDurations}
               active={variantActive}

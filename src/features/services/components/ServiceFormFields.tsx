@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, X } from "lucide-react";
+import Link from "next/link";
+import { Plus, RotateCcw, X } from "lucide-react";
 
 import {
   Alert,
@@ -14,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { serviceSettingsPath } from "@/features/settings/serviceSettingsSections";
 import { useServiceSteps } from "@/hooks/useServiceSteps";
 import { cn } from "@/lib/utils";
 import type { ServiceLocation, ServiceVariantAxis, VariantAxisKey } from "@/types/api";
@@ -112,7 +114,17 @@ export function ServiceVariantEditor({
   onPriceChange,
   onDurationChange,
   onActiveChange,
+  lineName = null,
+  onReloadOptions,
 }: {
+  /**
+   * The chosen line's name — said when it has no options yet (22 September
+   * 2026), so the empty list reads as "set this line up" rather than as a
+   * checklist with nothing in it.
+   */
+  lineName?: string | null;
+  /** Re-reads the Opsi Varian cards, after one was made in another tab. */
+  onReloadOptions?: () => void;
   axes: VariantAxisKey[];
   /** The axes offered — one per Opsi Varian card, in card order. */
   axisDefs: VariantAxisDef[];
@@ -135,10 +147,44 @@ export function ServiceVariantEditor({
     <div className="flex flex-col gap-4">
       <div>
         <p className="text-sm font-medium">Harga dibedakan berdasarkan</p>
-        <p className="mt-1 text-xs text-muted">
-          Pilih minimal satu. Barisnya dibuat otomatis dari kombinasi yang
-          dicentang.
-        </p>
+        {axisDefs.length === 0 ? (
+          /*
+            THE LINE HAS NO OPTIONS YET — every card is for other lines. Say
+            where they are made rather than drawing an empty checklist, and
+            open that page in a new tab so this form is not lost.
+          */
+          <div className="mt-1">
+            <p className="text-xs text-muted">
+              {lineName ? `Lini ${lineName}` : "Lini bisnis ini"} belum punya opsi
+              varian. Buat dulu di Layanan › Pengaturan › Opsi Varian dan centang
+              lini ini — atau matikan harga bervariasi dan pakai satu harga.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button asChild variant="secondary" size="sm">
+                <Link href={serviceSettingsPath("opsi")} target="_blank" rel="noreferrer">
+                  Buka Opsi Varian (tab baru)
+                </Link>
+              </Button>
+              {onReloadOptions && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={onReloadOptions}
+                  disabled={disabled}
+                >
+                  <RotateCcw className="size-4" aria-hidden />
+                  Muat ulang opsi
+                </Button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p className="mt-1 text-xs text-muted">
+            Pilih minimal satu. Barisnya dibuat otomatis dari kombinasi yang
+            dicentang.
+          </p>
+        )}
         <CheckRowGroup className="mt-2">
           {axisDefs.map((def) => (
             <CheckRow

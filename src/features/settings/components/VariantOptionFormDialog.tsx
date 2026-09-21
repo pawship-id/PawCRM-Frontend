@@ -18,6 +18,8 @@ import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { variantOptionService } from "@/services/variantOption.service";
 
+import { BusinessLinesField } from "./BusinessLinesField";
+
 const NAME_MAX_LENGTH = 60;
 const DESCRIPTION_MAX_LENGTH = 200;
 
@@ -42,6 +44,7 @@ export function VariantOptionFormDialog({
   const [description, setDescription] = useState("");
   const [source, setSource] = useState<"staff" | "zone">("staff");
   const [valuesText, setValuesText] = useState("");
+  const [businessLineIds, setBusinessLineIds] = useState<string[]>([]);
   const [nameError, setNameError] = useState<string | null>(null);
   const [valuesError, setValuesError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -80,6 +83,7 @@ export function VariantOptionFormDialog({
         name: cleaned,
         description: description.trim() || null,
         source,
+        businessLineIds,
         ...(source === "staff" ? { values } : {}),
       });
       swalToast(`Opsi ${cleaned} ditambahkan.`);
@@ -168,6 +172,12 @@ export function VariantOptionFormDialog({
               alamatnya ke cabang transaksi.
             </p>
           )}
+
+          <BusinessLinesField
+            value={businessLineIds}
+            onChange={setBusinessLineIds}
+            disabled={busy}
+          />
 
           <TextField
             label="Keterangan"
@@ -294,12 +304,21 @@ export function VariantOptionEditDialog({
   onClose,
   onSaved,
 }: {
-  option: { _id: string; name: string; description: string | null; serviceCount: number };
+  option: {
+    _id: string;
+    name: string;
+    description: string | null;
+    serviceCount: number;
+    businessLineIds?: string[];
+  };
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [name, setName] = useState(option.name);
   const [description, setDescription] = useState(option.description ?? "");
+  const [businessLineIds, setBusinessLineIds] = useState<string[]>(
+    option.businessLineIds ?? [],
+  );
   const [nameError, setNameError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -312,7 +331,13 @@ export function VariantOptionEditDialog({
       return;
     }
 
+    const stored = option.businessLineIds ?? [];
+    const linesChanged =
+      stored.length !== businessLineIds.length ||
+      stored.some((id) => !businessLineIds.includes(id));
+
     const patch = {
+      ...(linesChanged ? { businessLineIds } : {}),
       ...(cleaned !== option.name ? { name: cleaned } : {}),
       ...((description.trim() || null) !== option.description
         ? { description: description.trim() || null }
@@ -381,6 +406,12 @@ export function VariantOptionEditDialog({
             value={description}
             onChange={(event) => setDescription(event.target.value)}
             maxLength={DESCRIPTION_MAX_LENGTH}
+            disabled={busy}
+          />
+
+          <BusinessLinesField
+            value={businessLineIds}
+            onChange={setBusinessLineIds}
             disabled={busy}
           />
 
