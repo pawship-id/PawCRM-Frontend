@@ -58,7 +58,7 @@ export interface LedgerPeriodQuery {
 export interface JournalEntryListQuery extends LedgerPeriodQuery {
   page?: number;
   limit?: number;
-  /** Substring over `entryNumber` and `description`. */
+  /** Substring over the entry number, description, source document number and branch name. */
   search?: string;
   sourceType?: JournalSourceType;
   sourceId?: string;

@@ -7,6 +7,26 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Jurnal mengikuti mockup
+
+21 September 2026, dari `Buloo - jurnal (2).html`. Akses tidak berubah (mockup menandai
+Jurnal khusus Owner; itu sengaja belum diikuti).
+
+- **Daftar:** bar konteks modul (Cabang, Periode) di atas; satu kartu "Jurnal umum" berisi
+  pencarian (no. jurnal, keterangan, **no. sumber, cabang**), filter Sumber, tabel yang
+  diurut dari **header kolom** (Tanggal, No. jurnal, Keterangan, Cabang, Nilai), dan
+  `ListFooter` 25/50/100. Kelompok per bulan dan kotak Entri/Total debit dihapus; kolom
+  Status tetap. Baris bisa diklik. Tombol "Tambah jurnal manual" pindah ke kepala halaman.
+- **Tambah jurnal manual:** `FormActionBar`, callout "Untuk penyesuaian non-kas saja",
+  Tanggal · Cabang (baru, dikirim sebagai `branchId`), Keterangan, lalu tabel baris
+  Akun · Detil · Keterangan · Debit · Kredit dengan baris Total dan catatan seimbang.
+  Akun Kas & Bank tidak ditawarkan; pilihan akun dikelompokkan per kategori.
+- **Detail:** judul "Jurnal — <no>", tombol "Kembali ke Jurnal", callout dokumen sumber
+  dengan tautan "Buka <no> →" (dari `source.document`).
+- Label sumber `manual` sekarang **"Jurnal manual"**; crumb `Jurnal Umum` → **`Jurnal`**.
+
+---
+
 ## [Unreleased] — Channel Pembayaran pindah ke Pengaturan, Kas & Bank jadi tabel akun
 
 20 September 2026, atas permintaan. Empat hari sebelumnya Channel Pembayaran diserap

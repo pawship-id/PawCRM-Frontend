@@ -1021,7 +1021,8 @@ function entry(
     description: "Penjualan POS",
     branchId: "b1",
     branchName: "Cabang Kemang",
-    source: { type: "pos", id: null, reference: null },
+    source: { type: "pos", id: null, reference: null, document: null },
+    total: null,
     lines: [
       line("1101", "150000.0000", "0.0000"),
       line("4101", "0.0000", "150000.0000"),
@@ -1080,81 +1081,84 @@ function mockLedgerLookups() {
     ]);
 }
 
+/** The server's clock, as the page passes it — the period pills are dates. */
+const NOW = "2026-08-20T03:00:00.000Z";
+
 describe("JournalEntriesScreen", () => {
   afterEach(() => jest.restoreAllMocks());
 
   /** Mounts the ledger over one page of entries and waits for it to land. */
-  async function renderLedger(items: JournalEntry[]) {
+  async function renderLedger(
+    items: JournalEntry[],
+    auth?: Parameters<typeof renderWithAuth>[1],
+  ) {
     mockLedgerLookups();
     const list = jest
       .spyOn(journalEntryService, "list")
       .mockResolvedValue(ledgerPage(items));
 
-    renderWithAuth(<JournalEntriesScreen />);
+    renderWithAuth(<JournalEntriesScreen now={NOW} />, auth);
     await waitFor(() => expect(list).toHaveBeenCalled());
 
     return list;
   }
 
   /**
-   * The ledger's ONE writable action, and it lives on this screen because
-   * POST /journal-entries only ever produces a manual entry — no other list
-   * could offer a "new" button that meant anything.
-   *
-   * It was a disabled placeholder until the form existed. Asserted as a LINK
-   * rather than by its label alone: a button that reads right and goes nowhere
-   * is the state this replaced.
+   * The ledger's ONE writable action, in the page head where the mockup puts
+   * it, named for what it makes. Asserted as a LINK: a button that reads right
+   * and goes nowhere is the state this once was.
    */
-  it("offers the new-entry form, gated on create", async () => {
+  it("offers Tambah jurnal manual, gated on create", async () => {
     await renderLedger([entry({ _id: "1" })]);
 
     expect(
-      await screen.findByRole("link", { name: /Jurnal baru/ }),
+      await screen.findByRole("link", { name: /Tambah jurnal manual/ }),
     ).toHaveAttribute("href", "/dashboard/keuangan/journal-entries/new");
   });
 
   /** Paging the ledger is not the same privilege as adding to it. */
   it("hides the new-entry action from a read-only role", async () => {
-    mockLedgerLookups();
-    jest
-      .spyOn(journalEntryService, "list")
-      .mockResolvedValue(ledgerPage([entry({ _id: "1" })]));
-
-    renderWithAuth(<JournalEntriesScreen />, {
+    await renderLedger([entry({ _id: "1" })], {
       isSuperAdmin: false,
       permissions: [{ feature: "journalEntries", actions: ["read"] }],
     });
-    await screen.findByText("Agustus 2026");
+    await screen.findByText("Penjualan POS");
 
     expect(
-      screen.queryByRole("link", { name: /Jurnal baru/ }),
+      screen.queryByRole("link", { name: /Tambah jurnal manual/ }),
     ).not.toBeInTheDocument();
   });
 
-  it("groups the page by month", async () => {
+  /**
+   * The mockup's list: no month group headers and no total tiles. Their
+   * subtotals could only ever cover the page they were on.
+   */
+  it("lists entries flat, without month headers or total tiles", async () => {
     await renderLedger([
       entry({ _id: "1", date: "2026-08-07T00:00:00.000Z" }),
       entry({ _id: "2", date: "2026-07-30T00:00:00.000Z" }),
     ]);
 
-    expect(await screen.findByText("Agustus 2026")).toBeInTheDocument();
-    expect(screen.getByText("Juli 2026")).toBeInTheDocument();
+    expect(await screen.findAllByText("Penjualan POS")).toHaveLength(2);
+    expect(screen.queryByText("Agustus 2026")).not.toBeInTheDocument();
+    expect(screen.queryByText("Total debit")).not.toBeInTheDocument();
+    expect(journalEntryService.totals).not.toHaveBeenCalled();
   });
 
   /**
-   * The filter goes to the SERVER, which is the whole difference from the
-   * fixture-backed screen this replaced. Narrowing a 20-row page in the browser
-   * would silently answer "manual entries" with "the manual entries that
-   * happened to be on page 1".
+   * The filter goes to the SERVER. Narrowing a page in the browser would
+   * answer "manual entries" with "the manual entries that were on page 1".
    */
   it("asks the server for the source the panel picked", async () => {
     const list = await renderLedger([entry({ _id: "1" })]);
-    await screen.findByText("Agustus 2026");
+    await screen.findByText("Penjualan POS");
 
     await userEvent.click(screen.getByRole("button", { name: "Filter" }));
     const panel = await screen.findByRole("dialog");
     await userEvent.click(within(panel).getByLabelText("Filter sumber entri"));
-    await userEvent.click(screen.getByRole("option", { name: "Manual" }));
+    await userEvent.click(
+      screen.getByRole("option", { name: "Jurnal manual" }),
+    );
 
     // A panel's fields wait for Terapkan — picking one sends nothing yet.
     expect(list).toHaveBeenCalledTimes(1);
@@ -1166,112 +1170,138 @@ describe("JournalEntriesScreen", () => {
         expect.objectContaining({ sourceType: "manual", page: 1 }),
       ),
     );
-    // And the choice is visible on the trigger, because a hidden filter is one
-    // people forget is on and then read the wrong numbers from.
     expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
       "Filter (1)",
     );
   });
 
+  /** Urutkan left the panel for the column headers (mockup). */
+  it("no longer offers Urutkan in the filter panel", async () => {
+    await renderLedger([entry({ _id: "1" })]);
+    await screen.findByText("Penjualan POS");
+
+    await userEvent.click(screen.getByRole("button", { name: "Filter" }));
+    const panel = await screen.findByRole("dialog");
+
+    expect(within(panel).queryByLabelText("Urutkan")).not.toBeInTheDocument();
+  });
+
   /**
-   * The ordering goes to the SERVER too, for the same reason the filters do:
-   * reordering in the browser would only reorder the twenty rows that already
-   * arrived, which on a paged list is not a sort but a lie.
+   * The headers order the list ON THE SERVER — reordering the rows that
+   * arrived would sort one page and call it the list. Nilai takes the largest
+   * first, and a second click flips it.
    */
-  it("asks the server to reorder rather than reordering the page", async () => {
+  it("orders from the column headers, largest amount first", async () => {
     const list = await renderLedger([entry({ _id: "1" })]);
-    await screen.findByText("Agustus 2026");
+    await screen.findByText("Penjualan POS");
 
     // Every list starts ordered — the default is sent, not left implicit.
     expect(list).toHaveBeenLastCalledWith(
       expect.objectContaining({ sort: "newest" }),
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "Filter" }));
-    const panel = await screen.findByRole("dialog");
-    await userEvent.click(within(panel).getByLabelText("Urutkan"));
-    await userEvent.click(
-      screen.getByRole("option", { name: "Nomor jurnal A–Z" }),
+    await userEvent.click(screen.getByRole("button", { name: /^Nilai/ }));
+    await waitFor(() =>
+      expect(list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "totalDesc", page: 1 }),
+      ),
     );
-    await userEvent.click(screen.getByRole("button", { name: "Terapkan" }));
+
+    await userEvent.click(screen.getByRole("button", { name: /^Nilai/ }));
+    await waitFor(() =>
+      expect(list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "totalAsc" }),
+      ),
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /^Cabang/ }));
+    await waitFor(() =>
+      expect(list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "branchAsc" }),
+      ),
+    );
+  });
+
+  /**
+   * Sumber shows a label while the server could only sort by the code behind
+   * it, so its header does not invite the click.
+   */
+  it("does not make Sumber sortable", async () => {
+    await renderLedger([entry({ _id: "1" })]);
+    await screen.findByText("Penjualan POS");
+
+    expect(
+      screen.queryByRole("button", { name: /^Sumber/ }),
+    ).not.toBeInTheDocument();
+    // Its neighbours are buttons — the header row is sortable, just not here.
+    expect(
+      screen.getByRole("button", { name: /^Cabang/ }),
+    ).toBeInTheDocument();
+  });
+
+  /** Cabang lives on the module's context bar now, not in the panel. */
+  it("narrows to a branch from the context bar", async () => {
+    const list = await renderLedger([entry({ _id: "1" })]);
+    await screen.findByText("Penjualan POS");
+
+    await userEvent.click(screen.getByLabelText("Filter cabang"));
+    await userEvent.click(
+      screen.getByRole("option", { name: "Cabang Kemang" }),
+    );
 
     await waitFor(() =>
       expect(list).toHaveBeenLastCalledWith(
-        expect.objectContaining({ sort: "numberAsc", page: 1 }),
+        expect.objectContaining({ branchId: "b1", page: 1 }),
       ),
     );
   });
 
+  /** The footer's page size is Kas & Bank's, and it starts at 25. */
+  it("asks for a page of 25 by default", async () => {
+    const list = await renderLedger([entry({ _id: "1" })]);
+
+    expect(list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ limit: 25 }),
+    );
+  });
+
   /**
-   * §8: the badge pays back what a panel CONCEALS, and it only does that if the
-   * number means "this list is narrowed". Every list has an ordering, so counting
-   * it would put a standing "(1)" over an unnarrowed ledger and teach people to
-   * ignore the one control that tells them a filter is on.
+   * Nilai prints the stored total when there is one — it is what the column
+   * sorts by — and the lines' own sum for an entry the backfill has not
+   * reached.
    */
-  it("leaves the ordering out of the filter count", async () => {
+  it("prints the stored total, falling back to the lines", async () => {
+    await renderLedger([
+      entry({ _id: "1", total: "275000.0000" }),
+      entry({ _id: "2", description: "Belum di-backfill" }),
+    ]);
+
+    expect(await screen.findByText("Rp 275.000")).toBeInTheDocument();
+    expect(screen.getByText("Rp 150.000")).toBeInTheDocument();
+  });
+
+  /** The whole row opens the entry, as the mockup's does. */
+  it("opens the entry from its row", async () => {
     await renderLedger([entry({ _id: "1" })]);
-    await screen.findByText("Agustus 2026");
 
-    await userEvent.click(screen.getByRole("button", { name: "Filter" }));
-    const panel = await screen.findByRole("dialog");
-    await userEvent.click(within(panel).getByLabelText("Urutkan"));
-    await userEvent.click(
-      screen.getByRole("option", { name: "Tanggal terlama" }),
-    );
-    await userEvent.click(screen.getByRole("button", { name: "Terapkan" }));
+    await userEvent.click(await screen.findByText("Penjualan POS"));
 
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
-        "Filter",
-      ),
-    );
-    expect(
-      screen.getByRole("button", { name: "Filter" }),
-    ).not.toHaveTextContent("(1)");
-  });
-
-  /**
-   * A total is the same number whichever end of the list you read from, so
-   * reordering must not send the server off to re-aggregate the whole book.
-   */
-  it("does not re-ask for the total when only the ordering changes", async () => {
-    mockLedgerLookups();
-    const totals = jest.spyOn(journalEntryService, "totals");
-    jest
-      .spyOn(journalEntryService, "list")
-      .mockResolvedValue(ledgerPage([entry({ _id: "1" })]));
-
-    renderWithAuth(<JournalEntriesScreen />);
-    await screen.findByText("Agustus 2026");
-    await waitFor(() => expect(totals).toHaveBeenCalledTimes(1));
-
-    await userEvent.click(screen.getByRole("button", { name: "Filter" }));
-    const panel = await screen.findByRole("dialog");
-    await userEvent.click(within(panel).getByLabelText("Urutkan"));
-    await userEvent.click(
-      screen.getByRole("option", { name: "Tanggal terlama" }),
-    );
-    await userEvent.click(screen.getByRole("button", { name: "Terapkan" }));
-
-    await waitFor(() =>
-      expect(journalEntryService.list).toHaveBeenLastCalledWith(
-        expect.objectContaining({ sort: "oldest" }),
-      ),
-    );
-    expect(totals).toHaveBeenCalledTimes(1);
+    expect(push).toHaveBeenCalledWith("/dashboard/keuangan/journal-entries/1");
   });
 
   it("distinguishes an empty book from an empty filter", async () => {
     const list = await renderLedger([]);
 
     expect(
-      await screen.findByText("Belum ada entri di buku besar."),
+      await screen.findByText("Belum ada entri jurnal."),
     ).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Filter" }));
     const panel = await screen.findByRole("dialog");
     await userEvent.click(within(panel).getByLabelText("Filter sumber entri"));
-    await userEvent.click(screen.getByRole("option", { name: "Manual" }));
+    await userEvent.click(
+      screen.getByRole("option", { name: "Jurnal manual" }),
+    );
     await userEvent.click(screen.getByRole("button", { name: "Terapkan" }));
 
     await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
@@ -1287,90 +1317,24 @@ describe("JournalEntriesScreen", () => {
       .mockRejectedValueOnce(new ApiError("Server sedang sibuk", 503))
       .mockResolvedValue(ledgerPage([entry({ _id: "1" })]));
 
-    renderWithAuth(<JournalEntriesScreen />);
+    renderWithAuth(<JournalEntriesScreen now={NOW} />);
     await screen.findByText("Server sedang sibuk");
 
     await userEvent.click(screen.getByRole("button", { name: /Coba lagi/ }));
 
     await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
-    expect(await screen.findByText("Agustus 2026")).toBeInTheDocument();
+    expect(await screen.findByText("Penjualan POS")).toBeInTheDocument();
     expect(screen.queryByText("Server sedang sibuk")).not.toBeInTheDocument();
   });
 
-  /** "dibalik" is the row's most important word — its amounts reach no report. */
+  /**
+   * The Status column stays though the mockup has none: "dibalik" is the row's
+   * most important word — its amounts reach no report.
+   */
   it("marks a reversed entry before anyone reads its amount", async () => {
     await renderLedger([entry({ _id: "1", reversedByEntryId: "2" })]);
 
     expect(await screen.findByText("dibalik")).toBeInTheDocument();
-  });
-
-  /**
-   * The headline total comes from the AGGREGATE endpoint, not from adding up the
-   * page. Summing the rows on screen would give 150.000 here and call it the
-   * total — a figure that changes with the page while its label does not.
-   */
-  it("takes the total from the server, not from the rows on screen", async () => {
-    await renderLedger([entry({ _id: "1" })]);
-
-    expect(await screen.findByText("Rp 300.000")).toBeInTheDocument();
-    expect(screen.getAllByText("seluruh buku besar").length).toBe(2);
-  });
-
-  it("re-asks for the total when the filter changes, but not when the page does", async () => {
-    mockLedgerLookups();
-    const totals = jest.spyOn(journalEntryService, "totals");
-    jest.spyOn(journalEntryService, "list").mockResolvedValue({
-      items: [entry({ _id: "1" })],
-      // Two pages, so the pager renders and can be clicked.
-      pagination: { page: 1, limit: 20, total: 40, totalPages: 2 },
-    });
-
-    renderWithAuth(<JournalEntriesScreen />);
-    await screen.findByText("Agustus 2026");
-    await waitFor(() => expect(totals).toHaveBeenCalledTimes(1));
-
-    // Paging asks for rows, not for a figure that cannot have changed.
-    await userEvent.click(screen.getByRole("button", { name: "Halaman 2" }));
-    await waitFor(() =>
-      expect(journalEntryService.list).toHaveBeenLastCalledWith(
-        expect.objectContaining({ page: 2 }),
-      ),
-    );
-    expect(totals).toHaveBeenCalledTimes(1);
-
-    // A filter does change it, and it goes with the same narrowing the list got.
-    await userEvent.click(screen.getByRole("button", { name: "Filter" }));
-    const panel = await screen.findByRole("dialog");
-    await userEvent.click(within(panel).getByLabelText("Filter sumber entri"));
-    await userEvent.click(screen.getByRole("option", { name: "Manual" }));
-    await userEvent.click(screen.getByRole("button", { name: "Terapkan" }));
-
-    await waitFor(() =>
-      expect(totals).toHaveBeenLastCalledWith(
-        expect.objectContaining({ sourceType: "manual" }),
-      ),
-    );
-    // And it carries no page — a page is not a scope.
-    const [sent] = totals.mock.calls.at(-1)!;
-    expect(sent).not.toHaveProperty("page");
-  });
-
-  /** Rendering 0 would state a fact about the books that was never checked. */
-  it("shows an em dash rather than zero when the total could not be read", async () => {
-    mockLedgerLookups();
-    jest
-      .spyOn(journalEntryService, "totals")
-      .mockRejectedValue(new ApiError("Forbidden", 403));
-    jest
-      .spyOn(journalEntryService, "list")
-      .mockResolvedValue(ledgerPage([entry({ _id: "1" })]));
-
-    renderWithAuth(<JournalEntriesScreen />);
-
-    // The rows still render — a missing headline figure does not fail the screen.
-    expect(await screen.findByText("Agustus 2026")).toBeInTheDocument();
-    expect(screen.getByText("—")).toBeInTheDocument();
-    expect(screen.queryByText("Forbidden")).not.toBeInTheDocument();
   });
 });
 
@@ -1392,6 +1356,79 @@ describe("JournalEntryDetail", () => {
       });
   }
 
+  /** The mockup's head: the number in the title, and the way back. */
+  it("names the entry in its heading, with the way back to the list", async () => {
+    mockBook([entry({ _id: "1" })]);
+    renderWithAuth(<JournalEntryDetail entryId="1" />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Jurnal — JE-2026-08-1" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /Kembali ke Jurnal/ }),
+    ).toHaveAttribute("href", "/dashboard/keuangan/journal-entries");
+  });
+
+  /**
+   * The source document opens from the entry — by the DOCUMENT's id, which for
+   * a cash transaction is not `source.id`.
+   */
+  it("links the source document it came from", async () => {
+    mockBook([
+      entry({
+        _id: "1",
+        source: {
+          type: "expense",
+          id: "ref-1",
+          reference: "BKK/PST/2609/0001",
+          document: { kind: "cash_transaction", id: "tx-1" },
+        },
+      }),
+    ]);
+    renderWithAuth(<JournalEntryDetail entryId="1" />);
+
+    expect(
+      await screen.findByRole("link", { name: /Buka BKK\/PST\/2609\/0001/ }),
+    ).toHaveAttribute("href", "/dashboard/keuangan/kas-bank/transaksi/tx-1");
+  });
+
+  it("says a manual entry has no source document", async () => {
+    mockBook([
+      entry({
+        _id: "1",
+        source: { type: "manual", id: null, reference: null, document: null },
+      }),
+    ]);
+    renderWithAuth(<JournalEntryDetail entryId="1" />);
+
+    expect(
+      await screen.findByText("Tidak ada dokumen sumber"),
+    ).toBeInTheDocument();
+  });
+
+  /** A document with no page of its own gets a sentence, not a dead link. */
+  it("draws no link for a document that has no page", async () => {
+    mockBook([
+      entry({
+        _id: "1",
+        source: {
+          type: "return",
+          id: "rtn-1",
+          reference: "RTN-001",
+          document: { kind: "pos_return", id: "rtn-1" },
+        },
+      }),
+    ]);
+    renderWithAuth(<JournalEntryDetail entryId="1" />);
+
+    expect(
+      await screen.findByText(/belum punya halaman/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /Buka RTN-001/ }),
+    ).not.toBeInTheDocument();
+  });
+
   /** Σdebit === Σcredit is what makes a row a journal entry. */
   it("checks the balance against the lines the API sent", async () => {
     mockBook([entry({ _id: "1" })]);
@@ -1401,13 +1438,8 @@ describe("JournalEntryDetail", () => {
   });
 
   /**
-   * The credit column carries the credit.
-   *
-   * Not a tautology: the side was picked with `line.debit !== "0"`, and the API
-   * writes an unused side as `"0.0000"`, so every credit landed in the debit
-   * column as "Rp 0" while the amount itself was printed nowhere. The totals row
-   * sums the decimals properly, so the page went on saying "seimbang" over a
-   * table in which no credit had a number.
+   * The credit column carries the credit. The API writes an unused side as
+   * `"0.0000"`, and a `!== "0"` check once put every credit in the debit column.
    */
   it("prints a credit as a credit rather than as a zero debit", async () => {
     mockBook([entry({ _id: "1" })]);
@@ -1435,8 +1467,6 @@ describe("JournalEntryDetail", () => {
       "div",
     )!;
 
-    // The link's TEXT comes from a second request for the counterpart — the
-    // entry itself only carries the id.
     expect(
       await within(banner).findByRole("link", { name: "JE-2026-08-0002" }),
     ).toHaveAttribute("href", "/dashboard/keuangan/journal-entries/2");
@@ -1471,12 +1501,16 @@ describe("JournalEntryCreateForm", () => {
 
   /**
    * A chart with the two accounts the stock-awal correction moves value
-   * between, plus one retired account the picker must not offer.
+   * between, one retired account and one Kas & Bank account — the picker must
+   * offer neither of the last two.
    */
   function ledgerChart(): ChartOfAccountNode[] {
     return [
       node("1000", "Aset", "persediaan", {
         children: [node("1201", "Persediaan Barang", "persediaan")],
+      }),
+      node("1100", "Kas & Bank", "cash_bank", {
+        children: [node("1101", "Kas", "cash_bank")],
       }),
       node("3000", "Ekuitas", "modal", {
         children: [node("3101", "Modal Disetor", "modal")],
@@ -1490,32 +1524,109 @@ describe("JournalEntryCreateForm", () => {
     ];
   }
 
+  const BRANCHES = [
+    { _id: "b1", name: "Cabang Kemang" },
+    { _id: "b2", name: "Cabang Bogor" },
+  ];
+
   async function renderForm(roots: ChartOfAccountNode[] = ledgerChart()) {
     mockTree(roots);
+    jest.spyOn(branchService, "list").mockResolvedValue({
+      items: BRANCHES,
+      pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
+    } as never);
     renderWithAuth(<JournalEntryCreateForm />);
-    await screen.findByLabelText(/Keterangan/);
+    await screen.findByLabelText(/^Keterangan/, { selector: "textarea" });
+    // The session's branch is picked once the branch list lands.
+    await waitFor(() =>
+      expect(screen.getByLabelText("Cabang")).toHaveTextContent(
+        "Cabang Kemang",
+      ),
+    );
   }
 
+  const description = () =>
+    screen.getByLabelText(/^Keterangan/, { selector: "textarea" });
+  const debits = () => screen.getAllByLabelText(/^Debit baris/);
+  const credits = () => screen.getAllByLabelText(/^Kredit baris/);
+
   /** Picks an account on one line through the searchable popover. */
-  async function pickAccount(line: number, label: string) {
+  async function pickAccount(line: number, label: RegExp) {
     await userEvent.click(screen.getByLabelText(`Akun baris ${line}`));
     await userEvent.click(await screen.findByRole("option", { name: label }));
   }
 
+  /** Fills a balanced two-line correction, ready to save. */
+  async function fillBalanced(amount = "1000") {
+    await userEvent.type(description(), "Koreksi");
+    await pickAccount(1, /5201 · Kerugian Persediaan/);
+    await pickAccount(2, /3101 · Modal/);
+    await userEvent.type(debits()[0], amount);
+    await userEvent.type(credits()[1], amount);
+  }
+
   /**
-   * A MANUAL ENTRY CAN NAME A DETIL AKUN, and until this it could not: the
-   * server accepted `allocationId`, the form never sent one, so every cost
-   * posted here landed in the shared column of the laba rugi with nothing to say
-   * which lini should have carried it. The manual entry is the escape hatch
-   * every cost that does not fit a form goes through, so that was the hole.
-   *
-   * THE FIELD APPEARS ONLY WHERE THE ACCOUNT HAS RULES. Most accounts a manual
-   * entry touches — kas, utang, modal — can never carry one, and an empty field
-   * on every line is a control people learn to skip.
+   * NON-CASH ONLY (21 September 2026). Money that moves is a Tambah transaksi
+   * with a bukti kas number; the server refuses Kas & Bank on a manual entry,
+   * and the picker never offers it, so nobody types an entry that cannot post.
+   */
+  it("does not offer Kas & Bank accounts", async () => {
+    await renderForm();
+
+    await userEvent.click(screen.getByLabelText("Akun baris 1"));
+
+    expect(
+      await screen.findByRole("option", { name: /5201 · Kerugian Persediaan/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: /1101 · Kas/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/Untuk penyesuaian non-kas saja/)).toBeInTheDocument();
+  });
+
+  /** The picker groups accounts under their category, as the mockup does. */
+  it("groups the accounts by category", async () => {
+    await renderForm();
+
+    await userEvent.click(screen.getByLabelText("Akun baris 1"));
+
+    const group = await screen.findByRole("group", { name: "Modal" });
+    expect(
+      within(group).getByRole("option", { name: /3101 · Modal Disetor/ }),
+    ).toBeInTheDocument();
+  });
+
+  /**
+   * The branch is asked for now, starting where the session stands, and it is
+   * SENT — the server no longer has to guess it from the session.
+   */
+  it("sends the branch picked in the form", async () => {
+    await renderForm();
+    const create = jest
+      .spyOn(journalEntryService, "create")
+      .mockResolvedValue({ _id: "je1", entryNumber: "JE-1" } as never);
+
+    await userEvent.click(screen.getByLabelText("Cabang"));
+    await userEvent.click(
+      screen.getByRole("option", { name: "Cabang Bogor" }),
+    );
+    await fillBalanced();
+    await userEvent.click(screen.getByRole("button", { name: /Simpan jurnal/ }));
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ branchId: "b2" }),
+      ),
+    );
+  });
+
+  /**
+   * A MANUAL ENTRY CAN NAME A DETIL AKUN, and the field appears only where the
+   * account has rules — an empty control on every line is one people skip.
    */
   it("offers the Detil Akun only on an account that has one, and sends it", async () => {
     const mapped = ledgerChart();
-    mapped[2].children[0] = node(
+    mapped[3].children[0] = node(
       "5201",
       "Kerugian Persediaan",
       "biaya_lainnya",
@@ -1549,10 +1660,9 @@ describe("JournalEntryCreateForm", () => {
     // Nothing picked yet, so there is no account to have rules.
     expect(screen.queryByLabelText("Detil akun baris 1")).not.toBeInTheDocument();
 
-    await pickAccount(1, /5201 · Kerugian Persediaan/ as unknown as string);
+    await pickAccount(1, /5201 · Kerugian Persediaan/);
 
-    // One ACTIVE rule, so it is pre-picked — a choice with one option is not a
-    // choice — and the retired one is not offered at all.
+    // One ACTIVE rule, so it is pre-picked, and the retired one is not offered.
     const detil = await screen.findByLabelText("Detil akun baris 1");
     expect(detil).toHaveTextContent("Susut - Grooming");
     await userEvent.click(detil);
@@ -1562,14 +1672,12 @@ describe("JournalEntryCreateForm", () => {
     await userEvent.keyboard("{Escape}");
 
     // The second line's account has no rules, so it gets no field.
-    await pickAccount(2, /3101 · Modal/ as unknown as string);
+    await pickAccount(2, /3101 · Modal/);
     expect(screen.queryByLabelText("Detil akun baris 2")).not.toBeInTheDocument();
 
-    await userEvent.type(screen.getByLabelText(/Keterangan/), "Koreksi");
-    const debits = screen.getAllByLabelText(/^Debit$/, { selector: "input" });
-    const credits = screen.getAllByLabelText(/^Kredit$/, { selector: "input" });
-    await userEvent.type(debits[0], "100000");
-    await userEvent.type(credits[1], "100000");
+    await userEvent.type(description(), "Koreksi");
+    await userEvent.type(debits()[0], "100000");
+    await userEvent.type(credits()[1], "100000");
     await userEvent.click(screen.getByRole("button", { name: /Simpan jurnal/ }));
 
     await waitFor(() =>
@@ -1584,15 +1692,10 @@ describe("JournalEntryCreateForm", () => {
         }),
       ),
     );
-    // …and the line whose account has no rules sends no key at all.
     expect(create.mock.calls[0][0].lines[1]).not.toHaveProperty("allocationId");
   });
 
-  /**
-   * THE PICKER IS THE GUARD. The API accepts the request and only then refuses
-   * an inactive account, by code — so an offered-and-rejected account is a whole
-   * entry typed before anyone learns it could not be posted to.
-   */
+  /** An inactive account is refused by code AFTER the whole entry was typed. */
   it("does not offer accounts that have been retired", async () => {
     await renderForm();
 
@@ -1606,56 +1709,53 @@ describe("JournalEntryCreateForm", () => {
     ).not.toBeInTheDocument();
   });
 
-  /**
-   * ONE SIDE PER LINE, and the fields enforce it rather than the error message:
-   * the API refuses a line carrying both, so the form never assembles one.
-   */
+  /** ONE SIDE PER LINE, enforced by the fields rather than an error message. */
   it("clears the credit when a debit is typed on the same line", async () => {
     await renderForm();
 
-    const credit = screen.getAllByLabelText(/^Kredit$/, {
-      selector: "input",
-    })[0];
+    const credit = credits()[0];
     await userEvent.type(credit, "50000");
     expect(credit).toHaveValue("50000");
 
-    await userEvent.type(
-      screen.getAllByLabelText(/^Debit$/, { selector: "input" })[0],
-      "70000",
-    );
+    await userEvent.type(debits()[0], "70000");
     expect(credit).toHaveValue("");
   });
 
   /**
    * Σdebit === Σcredit is the invariant the server refuses on. The button reads
-   * the same result the messages do, so an unbalanced entry cannot be sent at
-   * all — and the panel says which side is short rather than only that it is.
+   * the same result, and the note under the totals says by how much.
    */
   it("refuses to submit while the two sides disagree", async () => {
     await renderForm();
     const create = jest.spyOn(journalEntryService, "create");
 
-    await userEvent.type(screen.getByLabelText(/Keterangan/), "Koreksi");
-    await pickAccount(1, /5201 · Kerugian Persediaan/ as unknown as string);
-    await pickAccount(2, /3101 · Modal/ as unknown as string);
-
-    const debits = screen.getAllByLabelText(/^Debit$/, { selector: "input" });
-    const credits = screen.getAllByLabelText(/^Kredit$/, { selector: "input" });
-    await userEvent.type(debits[0], "100000");
-    await userEvent.type(credits[1], "60000");
+    await userEvent.type(description(), "Koreksi");
+    await pickAccount(1, /5201 · Kerugian Persediaan/);
+    await pickAccount(2, /3101 · Modal/);
+    await userEvent.type(debits()[0], "100000");
+    await userEvent.type(credits()[1], "60000");
 
     expect(
       screen.getByRole("button", { name: /Simpan jurnal/ }),
     ).toBeDisabled();
-    expect(screen.getByText(/Sisi kredit kurang/)).toBeInTheDocument();
+    expect(screen.getByText("Belum seimbang")).toBeInTheDocument();
+    expect(screen.getByText(/Selisih Rp 40\.000/)).toBeInTheDocument();
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it("says so once the two sides meet", async () => {
+    await renderForm();
+    await fillBalanced("250000");
+
+    expect(screen.getByText("✓ Seimbang")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Simpan jurnal/ }),
+    ).toBeEnabled();
   });
 
   /**
    * ONLY THE SIDE THAT CARRIES A VALUE IS SENT. Both keys default to "0" on the
-   * server, so a credit-only line omits `debit` entirely — sending an explicit
-   * zero would be a value the service then has to reject as "one of debit or
-   * credit must be greater than zero".
+   * server, so a credit-only line omits `debit` entirely.
    */
   it("sends each line with only the side it carries", async () => {
     await renderForm();
@@ -1663,18 +1763,7 @@ describe("JournalEntryCreateForm", () => {
       .spyOn(journalEntryService, "create")
       .mockResolvedValue({ _id: "je-1", entryNumber: "JE-1" } as never);
 
-    await userEvent.type(
-      screen.getByLabelText(/Keterangan/),
-      "Koreksi stok awal",
-    );
-    await pickAccount(1, /5201 · Kerugian Persediaan/ as unknown as string);
-    await pickAccount(2, /3101 · Modal/ as unknown as string);
-
-    const debits = screen.getAllByLabelText(/^Debit$/, { selector: "input" });
-    const credits = screen.getAllByLabelText(/^Kredit$/, { selector: "input" });
-    await userEvent.type(debits[0], "5000000");
-    await userEvent.type(credits[1], "5000000");
-
+    await fillBalanced("5000000");
     await userEvent.click(
       screen.getByRole("button", { name: /Simpan jurnal/ }),
     );
@@ -1687,13 +1776,12 @@ describe("JournalEntryCreateForm", () => {
     ]);
     expect(sent.lines[0]).not.toHaveProperty("credit");
     expect(sent.lines[1]).not.toHaveProperty("debit");
+    expect(push).toHaveBeenCalledWith("/dashboard/keuangan/journal-entries/je-1");
   });
 
   /**
-   * The shortcut supplies the ACCOUNTS AND THE DIRECTION — the half that is hard
-   * to get right — and deliberately no amounts: only the tenant knows what its
-   * opening stock was worth, and a number filled in for them is one they would
-   * approve without checking.
+   * The shortcut supplies the ACCOUNTS AND THE DIRECTION and deliberately no
+   * amounts: only the tenant knows what its opening stock was worth.
    */
   it("prefills the stok-awal correction without inventing an amount", async () => {
     await renderForm();
@@ -1706,34 +1794,23 @@ describe("JournalEntryCreateForm", () => {
       /Kerugian Persediaan/,
     );
     expect(screen.getByLabelText("Akun baris 2")).toHaveTextContent(/Modal/);
-    for (const input of [
-      ...screen.getAllByLabelText(/^Debit$/, { selector: "input" }),
-      ...screen.getAllByLabelText(/^Kredit$/, { selector: "input" }),
-    ]) {
+    for (const input of [...debits(), ...credits()]) {
       expect(input).toHaveValue("");
     }
   });
 
-  /**
-   * The accounts alone do not say WHICH COLUMN each line is waiting for, and
-   * getting that backwards produces an entry that balances and moves the value
-   * the wrong way. The hint sits on the field being typed into, not in a note
-   * above the row.
-   */
+  /** The hint sits on the field being typed into, not in a note above the row. */
   it("says which column each prefilled line is waiting for", async () => {
     await renderForm();
     await userEvent.click(
       screen.getByRole("button", { name: /Isi contohnya/ }),
     );
 
-    const debits = screen.getAllByLabelText(/^Debit$/, { selector: "input" });
-    const credits = screen.getAllByLabelText(/^Kredit$/, { selector: "input" });
-
     // Line 1 (5201) takes the debit; line 2 (3101) takes the credit.
-    expect(debits[0]).toHaveAccessibleDescription(/Isi di sini/);
-    expect(credits[1]).toHaveAccessibleDescription(/Isi di sini/);
-    expect(credits[0]).not.toHaveAccessibleDescription(/Isi di sini/);
-    expect(debits[1]).not.toHaveAccessibleDescription(/Isi di sini/);
+    expect(debits()[0]).toHaveAccessibleDescription(/Isi di sini/);
+    expect(credits()[1]).toHaveAccessibleDescription(/Isi di sini/);
+    expect(credits()[0]).not.toHaveAccessibleDescription(/Isi di sini/);
+    expect(debits()[1]).not.toHaveAccessibleDescription(/Isi di sini/);
   });
 
   /** Scaffolding, not a fact about the entry: it goes once the line is filled. */
@@ -1743,29 +1820,21 @@ describe("JournalEntryCreateForm", () => {
       screen.getByRole("button", { name: /Isi contohnya/ }),
     );
 
-    const debit = screen.getAllByLabelText(/^Debit$/, { selector: "input" })[0];
-    expect(debit).toHaveAccessibleDescription(/Isi di sini/);
+    expect(debits()[0]).toHaveAccessibleDescription(/Isi di sini/);
 
-    await userEvent.type(debit, "5000000");
-    expect(debit).not.toHaveAccessibleDescription(/Isi di sini/);
+    await userEvent.type(debits()[0], "5000000");
+    expect(debits()[0]).not.toHaveAccessibleDescription(/Isi di sini/);
   });
 
-  /**
-   * THE MEMO IS LEDGER TEXT, not instructions. It is stored on the posting and
-   * read months later by somebody auditing it — "isi di kolom debit" parked
-   * there would be the accounting note for the line.
-   */
+  /** THE MEMO IS LEDGER TEXT, read months later — never form instructions. */
   it("keeps the prefilled memos free of form instructions", async () => {
     await renderForm();
     await userEvent.click(
       screen.getByRole("button", { name: /Isi contohnya/ }),
     );
 
-    // Read the values out and assert on them directly. `not.toHaveValue` with
-    // an asymmetric matcher passes even when the text DOES match, so a negative
-    // written that way would guard nothing.
     const memos = screen
-      .getAllByLabelText(/Catatan baris/)
+      .getAllByLabelText(/^Keterangan baris/)
       .map((field) => (field as HTMLInputElement).value);
 
     for (const memo of memos) {
@@ -1777,12 +1846,7 @@ describe("JournalEntryCreateForm", () => {
     expect(memos[1]).toBe("Pengakuan stok awal sebagai modal pemilik");
   });
 
-  /**
-   * The date defaults to today, which is usually the WRONG period for this
-   * correction: posted a month later it leaves one month overstated and the
-   * next understated. Saying so is the difference between an entry that
-   * cancels the mistake and one that moves it.
-   */
+  /** Posted a month late, the correction moves the mistake instead of undoing it. */
   it("warns about the date and where the amount comes from", async () => {
     await renderForm();
 
@@ -1812,33 +1876,25 @@ describe("JournalEntryCreateForm", () => {
     ).not.toBeInTheDocument();
   });
 
-  /**
-   * The server's refusals name the account code or the two totals, which is the
-   * part that says what to fix. Shown verbatim rather than paraphrased.
-   */
+  /** The server's refusals name what to fix, so they are shown verbatim. */
   it("shows the server's refusal as written", async () => {
     await renderForm();
     jest
       .spyOn(journalEntryService, "create")
       .mockRejectedValue(
-        new ApiError("Cannot post to inactive account(s): 5401", 400),
+        new ApiError(
+          "Manual journal entries cannot post to Kas & Bank accounts (1101); record the movement as a cash transaction instead",
+          400,
+        ),
       );
 
-    await userEvent.type(screen.getByLabelText(/Keterangan/), "Koreksi");
-    await pickAccount(1, /5201 · Kerugian Persediaan/ as unknown as string);
-    await pickAccount(2, /3101 · Modal/ as unknown as string);
-
-    const debits = screen.getAllByLabelText(/^Debit$/, { selector: "input" });
-    const credits = screen.getAllByLabelText(/^Kredit$/, { selector: "input" });
-    await userEvent.type(debits[0], "1000");
-    await userEvent.type(credits[1], "1000");
-
+    await fillBalanced();
     await userEvent.click(
       screen.getByRole("button", { name: /Simpan jurnal/ }),
     );
 
     expect(
-      await screen.findByText(/Cannot post to inactive account\(s\): 5401/),
+      await screen.findByText(/cannot post to Kas & Bank accounts \(1101\)/),
     ).toBeInTheDocument();
   });
 });

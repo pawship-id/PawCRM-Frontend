@@ -45,7 +45,9 @@ export const ACCOUNTING_CRUMBS = {
     href: "/dashboard/pengaturan/daftar-akun",
   },
   journal: {
-    label: "Jurnal Umum",
+    // "Jurnal", the tab's own name — the mockup's trail and the tab it came
+    // from read the same word (21 September 2026).
+    label: "Jurnal",
     href: "/dashboard/keuangan/journal-entries",
   },
   businessLines: {

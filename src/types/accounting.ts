@@ -354,7 +354,35 @@ export type JournalSourceType =
  * is not a stored field — it is Σdebit over its lines — so there is nothing to
  * index and the server would have to sum the tenant's whole book to order it.
  */
-export type JournalEntrySort = "newest" | "oldest" | "numberDesc" | "numberAsc";
+export type JournalEntrySort =
+  | "newest"
+  | "oldest"
+  | "numberDesc"
+  | "numberAsc"
+  // The column orderings of the Jurnal list (mockup, 21 September 2026).
+  | "descriptionAsc"
+  | "descriptionDesc"
+  | "branchAsc"
+  | "branchDesc"
+  | "totalDesc"
+  | "totalAsc";
+
+/**
+ * The document a journal entry can be opened back to — `source.document`.
+ *
+ * `id` is the DOCUMENT's own, which for a cash transaction is not `source.id`
+ * (that is a posting ref that stops matching after an edit).
+ */
+export interface JournalSourceDocument {
+  kind:
+    | "goods_receipt"
+    | "purchase_return"
+    | "pos_return"
+    | "stock_opname"
+    | "cash_transaction"
+    | "customer_invoice";
+  id: string;
+}
 
 /** Which section of the cash flow statement an entry belongs to, if any. */
 export type CashflowType = "operating" | "investing" | "financing";
@@ -428,8 +456,15 @@ export interface JournalEntry {
      * no document we can resolve", and a client renders the type it already has.
      */
     reference: string | null;
+    /** What a reader can open from this entry, or null. See the type. */
+    document: JournalSourceDocument | null;
   };
   lines: JournalLine[];
+  /**
+   * Σdebit as a decimal string, stored so the list can sort by it. Null on an
+   * entry older than the field until the backfill has run.
+   */
+  total: string | null;
   cashflowType: CashflowType | null;
   tags: string[];
   attachmentUrl: string | null;

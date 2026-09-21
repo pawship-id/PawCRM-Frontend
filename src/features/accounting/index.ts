@@ -142,6 +142,7 @@ export {
 export {
   useJournalEntries,
   DEFAULT_JOURNAL_QUERY,
+  JOURNAL_PAGE_SIZES,
   type JournalEntriesQuery,
   type UseJournalEntriesResult,
 } from "./hooks/useJournalEntries";

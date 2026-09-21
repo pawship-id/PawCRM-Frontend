@@ -247,17 +247,34 @@ mockup put it behind a Filter button: one field is below the floor (a button
 that hides one thing is worse than showing it — Transfer Stok's reasoning).
 Cabang, Lini Usaha and Periode are the module's context bar above it.
 
+**THE FOURTH SCREEN: Jurnal, in Keuangan.** Decided 21 September 2026 with the
+BO mockup (`Buloo - jurnal (2).html`). Tanggal, No. jurnal, Keterangan, Cabang
+and Nilai are clickable — Nilai sorts on the stored `total` the server keeps for
+exactly this. **Sumber is deliberately plain**: the cell shows a label ("Faktur",
+"Jurnal manual") and the server could only order by the code behind it —
+Transaksi's rule. First click: newest date and largest amount first, A first for
+a number, a name or a keterangan.
+
+Its one filter, Sumber, **stays behind `Filter (n)`** although that is one field
+below the floor — a recorded exception: the mockup draws the button, and the
+panel is where the next ledger filter lands. Cabang and Periode are the module's
+context bar; **there is no Lini Usaha there**, as on Kas & Bank and Arus Kas — an
+entry is not in a line, its lines are, and a shared cost is split by the laba
+rugi rather than stamped with one. **The Status column stays** though the mockup
+has none: its data never reverses an entry, the ledger does.
+
 **A collapsed bar owes you its count.** A quick bar shows its values on its triggers; a panel hides them behind a button, and a hidden filter is one people forget is on and then read the wrong numbers from. `Filter (2)` is not decoration — it is what makes the collapsed form safe, and a panel button without it is a bug.
 
 Applied filters render as removable chips below the bar or panel. Anatomy and props: [`docs/ui-component-specs.md`](./ui-component-specs.md).
 
 ### The foot of a list
 
-**Three lists in the app let somebody choose how many rows a page holds — Transaksi
-(Kas & Bank), Faktur Penjualan and Komisi — and they share one `ListFooter`.**
+**Four lists in the app let somebody choose how many rows a page holds — Transaksi
+(Kas & Bank), Faktur Penjualan, Komisi and Jurnal — and they share one `ListFooter`.**
 Decided 20 September 2026 on request, from a mockup; Komisi joined on
 21 September and opens at 10 with 10/25/50/100, the mockup's own numbers (the
-server caps it at 100). Everywhere else, `Pagination` is still correct and has
+server caps it at 100). Jurnal joined the same day with Transaksi's 25/50/100,
+not its mockup's 10 — the two lists of one module offer one choice. Everywhere else, `Pagination` is still correct and has
 no page size.
 
 ```
@@ -446,7 +463,7 @@ From [`docs/architecture.md`](./architecture.md), unchanged: a component lives i
 - 15 forms with their buttons at the foot of the page → `<FormActionBar>` at the head (§16). `ReceiptForm` also still has Simpan to the LEFT of Batal.
 - 2 buttons still reading `Simpan perubahan` — `SupplierEditForm`, `PurchaseReturnDetail`. That names the act, not the object; §16 wants `Simpan supplier`, `Simpan retur`.
 - 23 files still using the banned `text-[10px]` (§1.6). `OpnameSheet` is done; the rest are opportunistic.
-- 2 form headers still on `layout="field"` with a hand-written `role="alert"` beneath — `ReceiptForm`, `JournalEntryCreateForm` — → `layout="form"` + its `error` prop. (`OpnameStartCard` stays on `"field"`; it is a bar, see §16.) (`WarehouseProductPicker` and the per-row batch picker inside `StockAdjustmentForm` stay on `"field"`: a control in a table cell sits among `h-9` inputs, and 44 would tower over them.)
+- 1 form header still on `layout="field"` with a hand-written `role="alert"` beneath — `ReceiptForm` — → `layout="form"` + its `error` prop. (`JournalEntryCreateForm` is done: rebuilt on 21 September 2026 as a Form Transaksi with a row table, per §16.) (`OpnameStartCard` stays on `"field"`; it is a bar, see §16.) (`WarehouseProductPicker` and the per-row batch picker inside `StockAdjustmentForm` stay on `"field"`: a control in a table cell sits among `h-9` inputs, and 44 would tower over them.)
 - ~25 hand-rolled page headings → promoted `PageHeading`
 - 52 hand-written `rounded-xl border border-border bg-surface` → `<Card>`
 - 15 feature status badges with 3 tinting conventions → `StatusBadge`

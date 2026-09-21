@@ -191,7 +191,10 @@ export const SOURCE_LABEL: Record<JournalSourceType, string> = {
   commission_payment: "Bayar komisi",
   expense: "Pengeluaran",
   other_income: "Pemasukan lain",
-  manual: "Manual",
+  // "Jurnal manual", the mockup's word — and not bare "Manual", which the
+  // Kas & Bank list already uses for a hand-typed TRANSACTION. A journal list
+  // that said "Manual" too would put one word on two different things.
+  manual: "Jurnal manual",
 };
 
 /**

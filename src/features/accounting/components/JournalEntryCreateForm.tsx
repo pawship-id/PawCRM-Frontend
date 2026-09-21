@@ -6,13 +6,28 @@ import { Plus, Trash2 } from "lucide-react";
 
 import {
   Alert,
-  Button,
   Card,
   FilterSelect,
+  FormActionBar,
+  namedOptions,
   Spinner,
+  TextareaField,
   TextField,
+  type FilterOption,
 } from "@/components";
-import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableFooter,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { useAuth } from "@/features/auth";
+import { useBranchScope } from "@/features/inventory/hooks/useBranchScope";
 import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/services/api-error";
@@ -28,50 +43,44 @@ import {
 import { allocationOptionsFor } from "../allocationLabels";
 import { ACCOUNTING_CRUMBS } from "../crumbs";
 import { useChartOfAccounts } from "../hooks/useChartOfAccounts";
+import { ACCOUNT_CATEGORIES, ACCOUNT_CATEGORY_LABEL } from "../labels";
 
 /**
  * A MANUAL journal entry — the one kind of ledger posting a human writes.
  *
+ * LAID OUT AS THE MOCKUP'S "Tambah Jurnal Manual" (21 September 2026): Tanggal
+ * and Cabang side by side, Keterangan under them, then the lines as a TABLE —
+ * Akun · Detil · Keterangan · Debit · Kredit — with the totals as its last row
+ * and a note under it that says whether the two sides meet. A journal is a
+ * document with rows, so it takes the Form Transaksi pattern (ui-rules §16).
+ *
  * EVERY OTHER ENTRY IS POSTED BY THE MODULE THAT OWNS THE DOCUMENT. A sale, a
  * receipt, an opname: each posts service-to-service and stamps its own source,
  * so nothing typed here can disguise itself as one. `POST /journal-entries`
- * always produces `source.type: "manual"`, enforced twice on the server — the
- * schema does not accept `source` and the service overwrites it regardless.
+ * always produces `source.type: "manual"`, enforced twice on the server.
  *
- * WHAT THIS SCREEN IS FOR is the correction nothing else can express: moving a
- * value from the account it landed on to the one it belonged on. Stock, sales
- * and purchases each have a screen that knows their rules; a reclassification
- * has no document behind it, which is exactly why it is typed.
+ * NON-CASH ONLY. Kas & Bank accounts are not offered, and the server refuses
+ * them too: money that actually moves is recorded through Tambah transaksi,
+ * which numbers it as a bukti kas and puts it in the list the shop reconciles
+ * against. What is left for this screen is the correction nothing else can
+ * express — a reclass, depreciation, the stock-awal fix.
  *
- * THE FORM TEACHES DOUBLE ENTRY RATHER THAN ASSUMING IT. A running Σdebit,
- * Σcredit and the difference between them sit under the lines and update as
- * somebody types, because "does not balance" discovered at submit is a rule
- * learned by rejection. The same three numbers are what the server refuses on,
- * so the panel is not a friendlier restatement of the rule — it is the rule.
+ * THE BRANCH IS ASKED FOR, where it used to be the session's. It is what a
+ * Shared-Lokasi cost splits by (standing in for the wallet a cash transaction
+ * would have supplied), and what a branch-less Direct rule is pinned to — the
+ * mockup's rules 2 and 3, applied by the laba rugi. One field for the whole
+ * entry, on purpose: manual entries are reclasses and modal/utang postings,
+ * which rarely need two branches at once.
  *
  * ONE SIDE PER LINE, ENFORCED BY THE FIELDS. Typing a debit clears that line's
- * credit and the other way round: the API refuses a line carrying both, and a
- * form that lets somebody fill both and then explains the refusal has taught
- * them nothing they could not have been shown.
+ * credit and the other way round: the API refuses a line carrying both.
  *
- * NO CASH FLOW CLASSIFICATION IS ASKED FOR, though the API accepts one. The
- * field labels which section of the cash flow statement an entry belongs to —
- * and no report reads it: Arus Kas still renders ./data/reportFixtures rather
- * than the ledger, so the answer would be filed away unseen.
+ * NO CASH FLOW CLASSIFICATION IS ASKED FOR, though the API accepts one — it can
+ * be patched later without reversing anything, so it is omitted rather than
+ * guessed.
  *
- * ASKING LATER COSTS NOTHING, which is what settles it. `cashflowType` is one
- * of the five fields PATCH /journal-entries/:id accepts, so an entry can be
- * classified at any point without being reversed or rewritten — there is no
- * backfill to dread, only a patch. And the shape of the question is not settled
- * either: how the report groups its sections is a decision that has not been
- * made, and a value collected against an unbuilt report is a guess somebody
- * would have to re-examine anyway. It is omitted rather than defaulted, so the
- * server stores null and the day the report exists, it says what it needs.
- *
- * NOTHING IS EDITABLE AFTER IT POSTS. A ledger entry is immutable and there is
- * no delete route — a wrong entry is corrected by reversing it, which leaves the
- * error and the correction both visible. That is stated on the form, before the
- * button, rather than discovered afterwards.
+ * NOTHING IS EDITABLE AFTER IT POSTS. A wrong entry is corrected by reversing
+ * it, and that is said under the lines, before the save rather than after.
  */
 
 /** Backend limits, mirrored so the form refuses what the API would. */
@@ -98,10 +107,9 @@ interface DraftLine {
   /**
    * Which Detil Akun of `accountId` this line is posted to, or `""`.
    *
-   * ASKED HERE TOO, not only on Transaksi Keuangan, because a manual entry is
-   * the escape hatch every cost that does not fit a form goes through — and a
-   * cost posted to Beban Gaji with no detil lands in the shared bucket of the
-   * laba rugi with nothing to say which lini should have carried it.
+   * ASKED HERE TOO, not only on Transaksi Keuangan: a cost posted to Beban Gaji
+   * with no detil lands in the shared bucket of the laba rugi with nothing to
+   * say which lini should have carried it.
    */
   allocationId: string;
   debit: string;
@@ -112,11 +120,7 @@ interface DraftLine {
    *
    * UI ONLY, and never `memo`: the memo is stored on the ledger line, so an
    * instruction parked there would be read six months later as the accounting
-   * note for the posting. The hint belongs on the field somebody is about to
-   * type into and nowhere else — it is scaffolding, not a fact about the entry.
-   *
-   * Cleared the moment either side of the line carries a value: by then the
-   * hint is telling somebody to do what they have just done.
+   * note for the posting. Cleared the moment either side carries a value.
    */
   expects?: "debit" | "credit";
 }
@@ -146,7 +150,7 @@ function todayValue(): string {
  *
  * Blank and malformed both contribute nothing rather than throwing: the totals
  * are rendered on every keystroke, including the one in the middle of typing
- * "12." — and a panel that goes blank while somebody types is a panel they stop
+ * "12." — and a total that goes blank while somebody types is one they stop
  * reading.
  */
 function sumColumn(values: string[]): bigint {
@@ -158,11 +162,38 @@ function sumColumn(values: string[]): bigint {
   return total;
 }
 
+/**
+ * The account picker's options, GROUPED BY CATEGORY as the mockup draws them.
+ *
+ * In the reports' category order (ACCOUNT_CATEGORIES), then by code inside a
+ * group — the order a chart of accounts is read in. `FilterSelect` draws a
+ * heading wherever `group` changes, so the sort IS the grouping.
+ */
+function groupedAccountOptions(
+  accounts: ChartOfAccount[],
+): FilterOption<string>[] {
+  return [...accounts]
+    .sort(
+      (a, b) =>
+        ACCOUNT_CATEGORIES.indexOf(a.accountCategory) -
+          ACCOUNT_CATEGORIES.indexOf(b.accountCategory) ||
+        a.code.localeCompare(b.code, "id", { numeric: true }),
+    )
+    .map((account) => ({
+      value: account._id,
+      label: `${account.code} · ${account.name}`,
+      group: ACCOUNT_CATEGORY_LABEL[account.accountCategory],
+    }));
+}
+
 export function JournalEntryCreateForm() {
   const router = useRouter();
   const chart = useChartOfAccounts();
+  const scope = useBranchScope();
+  const { session } = useAuth();
 
   const [date, setDate] = useState(todayValue);
+  const [pickedBranch, setPickedBranch] = useState("");
   const [description, setDescription] = useState("");
   const [lines, setLines] = useState<DraftLine[]>(() => [
     blankLine(),
@@ -176,29 +207,51 @@ export function JournalEntryCreateForm() {
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  /*
+    THE BRANCH STARTS WHERE THE SESSION STANDS, when the user may post there —
+    that is the branch they are working in and the one the old form used without
+    asking. Otherwise the one branch they have, or nothing: a blank the form
+    refuses beats a branch nobody chose.
+  */
+  const sessionBranch = scope.branches.some(
+    (branch) => branch._id === session?.currentBranchId,
+  )
+    ? (session?.currentBranchId ?? "")
+    : "";
+  const branchId = pickedBranch || sessionBranch || scope.soleBranch;
+
   /**
-   * Only accounts that can actually receive a posting.
+   * Only accounts that can receive a MANUAL posting: active, and not Kas & Bank.
    *
-   * The API refuses an inactive account by CODE, having already accepted the
-   * request — so offering one here would produce a rejection after the whole
-   * entry was typed. Parents are deliberately NOT excluded: the ledger permits
-   * posting to them, and a picker that hid them would be inventing a rule.
+   * Inactive ones are refused by the API after the whole entry was typed, so
+   * offering one would be a rejection waiting to happen. Kas & Bank is refused
+   * too — see the header — and hiding it here is what makes that a rule people
+   * never run into rather than an error they meet at the end.
    */
   const postable = useMemo(
-    () => chart.accounts.filter((account) => account.isActive),
+    () =>
+      chart.accounts.filter(
+        (account) =>
+          account.isActive && account.accountCategory !== "cash_bank",
+      ),
     [chart.accounts],
   );
 
   const accountOptions = useMemo(
-    () =>
-      postable.map((account) => ({
-        value: account._id,
-        label: `${account.code} · ${account.name}`,
-      })),
+    () => groupedAccountOptions(postable),
     [postable],
   );
 
   const byId = chart.byId;
+
+  /*
+    THE DETIL COLUMN ONLY WHEN SOMETHING CAN BE MAPPED — CashLinesEditor's rule.
+    A column of dashes on every row of a tenant with no Detil Akun set up
+    teaches people to ignore the column.
+  */
+  const anyAccountMapped = postable.some(
+    (account) => allocationOptionsFor(account).length > 0,
+  );
 
   const totalDebit = useMemo(
     () => sumColumn(lines.map((line) => line.debit)),
@@ -279,10 +332,9 @@ export function JournalEntryCreateForm() {
   /**
    * Every rule the form owns, as a plain object — no state written.
    *
-   * ONE SOURCE FOR TWO JOBS, the same shape the stock adjustment form uses:
-   * `handleSubmit` shows these, and the save button reads the same result to
-   * decide whether it may be pressed. Written twice, the button would drift from
-   * the messages and start refusing things the form had no complaint about.
+   * ONE SOURCE FOR TWO JOBS: `handleSubmit` shows these, and the save button
+   * reads the same result to decide whether it may be pressed. Written twice,
+   * the button would drift from the messages.
    */
   function collectErrors(): Record<string, string> {
     const next: Record<string, string> = {};
@@ -291,6 +343,8 @@ export function JournalEntryCreateForm() {
     else if (date > todayValue())
       next.date = "Tanggal tidak boleh di masa depan.";
 
+    if (!branchId) next.branch = "Pilih cabang.";
+
     const trimmed = description.trim();
     if (trimmed === "") next.description = "Keterangan wajib diisi.";
     else if (trimmed.length > DESCRIPTION_MAX_LENGTH)
@@ -298,11 +352,12 @@ export function JournalEntryCreateForm() {
 
     lines.forEach((line, index) => {
       const position = `line.${line.key}`;
+      const row = index + 1;
       const debit = line.debit.trim();
       const credit = line.credit.trim();
 
       if (line.accountId === "") {
-        next[`${position}.account`] = "Pilih akun.";
+        next[`${position}.account`] = `Akun di baris ${row} belum dipilih.`;
       }
       if (debit !== "" && !isDecimal(debit)) {
         next[`${position}.debit`] = "Gunakan angka.";
@@ -315,7 +370,7 @@ export function JournalEntryCreateForm() {
           "Satu baris hanya boleh debit atau kredit, tidak keduanya.";
       }
       if (debit === "" && credit === "") {
-        next[`${position}.debit`] = "Isi debit atau kredit.";
+        next[`${position}.debit`] = `Isi debit atau kredit di baris ${row}.`;
       }
       if (debit !== "" && isDecimal(debit) && (toMinor(debit) ?? 0n) <= 0n) {
         next[`${position}.debit`] = "Harus lebih besar dari nol.";
@@ -326,8 +381,6 @@ export function JournalEntryCreateForm() {
       if (line.memo.length > MEMO_MAX_LENGTH) {
         next[`${position}.memo`] = `Maksimal ${MEMO_MAX_LENGTH} karakter.`;
       }
-      // Index is unused but keeps the callback honest about its own signature.
-      void index;
     });
 
     if (totalDebit > 0n && difference !== 0n) {
@@ -340,7 +393,7 @@ export function JournalEntryCreateForm() {
     return next;
   }
 
-  /** The first complaint, for the note under a disabled button. */
+  /** The first complaint, for the action bar's note while the button is off. */
   const blocking = Object.values(collectErrors())[0] ?? null;
 
   async function handleSubmit(event: React.FormEvent) {
@@ -360,6 +413,7 @@ export function JournalEntryCreateForm() {
     try {
       const entry = await journalEntryService.create({
         date,
+        branchId,
         description: description.trim(),
         lines: lines.map((line) => ({
           accountId: line.accountId,
@@ -375,13 +429,12 @@ export function JournalEntryCreateForm() {
         })),
       });
 
-      swalToast(`Jurnal ${entry.entryNumber} tersimpan.`);
+      swalToast(`Jurnal manual ${entry.entryNumber} tersimpan.`);
       router.push(`${ACCOUNTING_CRUMBS.journal.href}/${entry._id}`);
     } catch (error) {
       // The server's refusals here are all about the entry as a whole — it does
-      // not balance, an account is inactive or unknown — and each names the
-      // account code or the two totals. Shown verbatim: a paraphrase would drop
-      // exactly the part that says what to fix.
+      // not balance, an account is inactive or Kas & Bank, the branch is out of
+      // reach — and each names what to fix. Shown verbatim.
       setFormError(
         error instanceof ApiError
           ? error.message
@@ -403,28 +456,37 @@ export function JournalEntryCreateForm() {
     return <Alert variant="error">{chart.error}</Alert>;
   }
 
+  const gap = difference < 0n ? -difference : difference;
+
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
+      {/* The mockup's two header buttons, Batal and Simpan Jurnal. */}
+      <FormActionBar
+        submitLabel="Simpan jurnal"
+        submitting={saving}
+        disabled={blocking !== null}
+        blockedReason={blocking}
+        cancelHref={ACCOUNTING_CRUMBS.journal.href}
+      />
+
       {formError && <Alert variant="error">{formError}</Alert>}
 
-      {/* WHAT A JOURNAL ENTRY IS, before the first field rather than in a help
-          page. Somebody reaching this screen has been sent here by a correction
-          they were told to make, and the two-sided rule is the whole of what
-          they need to know to do it. */}
-      <div className="rounded-lg border border-secondary/40 bg-secondary/15 px-4 py-3 text-sm text-secondary-foreground">
-        <b>Jurnal selalu punya dua sisi yang jumlahnya sama.</b> Setiap baris
-        mengisi salah satu: <b>debit</b> (nilai masuk ke akun itu) atau{" "}
-        <b>kredit</b> (nilai keluar dari akun itu). Total debit dan total kredit
-        harus sama persis sebelum bisa disimpan — panel di bawah baris
-        menghitungnya sambil Anda mengetik.
+      {/* WHAT THIS SCREEN IS NOT FOR, before the first field — the mockup's
+          callout. The picker below already leaves Kas & Bank out; this is the
+          sentence that says why, so its absence reads as a rule rather than as
+          a missing account. */}
+      <div className="rounded-lg border border-primary/20 bg-accent/60 px-4 py-3 text-sm">
+        <b className="mb-0.5 block text-primary">
+          Untuk penyesuaian non-kas saja
+        </b>
+        Reklasifikasi, penyusutan, koreksi, dan sejenisnya. Uang yang benar-benar
+        berpindah tetap dicatat lewat <b>Tambah transaksi</b> di Kas &amp; Bank —
+        daftar akun di sini sengaja tidak menyertakan akun Kas &amp; Bank.
       </div>
 
-      <Card
-        title="Keterangan jurnal"
-        description="Tanggal dan keterangan inilah yang muncul di daftar Jurnal Umum dan di laporan."
-      >
+      <Card>
         <div className="flex flex-col gap-4">
-          <div className="sm:max-w-xs">
+          <div className="grid gap-4 sm:grid-cols-2">
             <TextField
               label="Tanggal"
               name="date"
@@ -436,27 +498,49 @@ export function JournalEntryCreateForm() {
                 setFieldErrors({});
               }}
               error={fieldErrors.date}
-              hint="Tanggal transaksinya, bukan tanggal Anda mengetik. Tidak boleh di masa depan."
               disabled={saving}
               required
             />
+
+            <FilterSelect
+              layout="form"
+              label="Cabang"
+              ariaLabel="Cabang"
+              value={branchId}
+              options={namedOptions(scope.branches)}
+              active={false}
+              placeholder={scope.loading ? "Memuat cabang…" : "Pilih cabang"}
+              required
+              disabled={saving}
+              error={fieldErrors.branch}
+              onChange={(next) => {
+                setPickedBranch(next);
+                setFieldErrors({});
+              }}
+            />
           </div>
 
-          <TextField
+          <TextareaField
             label="Keterangan"
             name="description"
             value={description}
+            rows={2}
             onChange={(event) => {
               setDescription(event.target.value);
               setFieldErrors({});
             }}
             error={fieldErrors.description}
-            hint="Tulis alasannya, bukan cuma apa yang dipindah — enam bulan lagi ini satu-satunya penjelasan yang tersisa."
-            placeholder="mis. Koreksi stok awal produk yang terlanjur masuk sebagai kerugian"
+            placeholder="cth: Penyusutan peralatan grooming bulan September"
             maxLength={DESCRIPTION_MAX_LENGTH}
             disabled={saving}
             required
           />
+
+          <p className="text-xs text-muted">
+            Cabang berlaku untuk seluruh baris. Akun yang biayanya dibagi per
+            lokasi memakai cabang ini, karena jurnal manual tidak lewat akun kas
+            atau bank mana pun.
+          </p>
 
           {/* Offered only when both accounts exist in this tenant's chart. A
               shortcut that fills in an account somebody does not have is worse
@@ -477,27 +561,16 @@ export function JournalEntryCreateForm() {
             </div>
           )}
 
-          {/* THE TWO THINGS THE ACCOUNTS ALONE DO NOT SAY, and both are wrong
-              by default rather than merely unstated:
-
-              THE AMOUNT is not a number anybody should retype from memory — it
-              is whatever the adjustment actually posted, which is its quantity
-              at the cost the ledger valued it at, not the cost typed into the
-              form. The entry that holds it is findable, so the instruction is
-              to go and read it.
-
-              THE DATE defaults to today, and today is usually the wrong answer
-              here. A correction posted in a later month leaves the earlier
-              month's profit overstated and the later month's understated —
-              both wrong, even though the year nets out. Matching the
-              adjustment's date puts the two in one period, where they cancel. */}
+          {/* The two things the accounts alone do not say: the amount comes
+              from the adjustment's own entry, and the date should match it so
+              the two land in one period and cancel. */}
           {presetApplied && (
             <div className="rounded-lg border-l-[3px] border-primary bg-accent/60 px-4 py-3 text-sm">
               <b className="mb-1 block">Dua hal sebelum menyimpan</b>
               <ul className="ml-4 list-disc space-y-1 text-muted">
                 <li>
                   <b>Nominalnya</b> ambil dari jurnal penyesuaiannya, jangan
-                  dihitung ulang. Cari di Jurnal Umum dengan keterangan{" "}
+                  dihitung ulang. Cari di Jurnal dengan keterangan{" "}
                   <b>Stock adjustment</b> — angka pada baris Kerugian Persediaan
                   itulah yang dipindah.
                 </li>
@@ -514,292 +587,280 @@ export function JournalEntryCreateForm() {
 
       <Card
         title="Baris jurnal"
-        description="Minimal dua baris. Satu baris mengisi debit atau kredit — tidak keduanya."
+        action={
+          lines.length < MAX_LINES && (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={addLine}
+              disabled={saving}
+            >
+              <Plus className="size-4" />
+              Tambah baris
+            </Button>
+          )
+        }
       >
         <div className="flex flex-col gap-4">
-          {lines.map((line, index) => {
-            const key = `line.${line.key}`;
-            const account = byId.get(line.accountId);
+          <div className="overflow-x-auto rounded-xl border border-border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="min-w-64">Akun</TableHead>
+                  {anyAccountMapped && (
+                    <TableHead className="min-w-44">Detil</TableHead>
+                  )}
+                  <TableHead className="min-w-44">Keterangan</TableHead>
+                  <TableHead className="min-w-36 text-right">Debit</TableHead>
+                  <TableHead className="min-w-36 text-right">Kredit</TableHead>
+                  <TableHead>
+                    <span className="sr-only">Hapus</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {lines.map((line, index) => {
+                  const key = `line.${line.key}`;
+                  const row = index + 1;
+                  const detilOptions = allocationOptionsFor(
+                    byId.get(line.accountId),
+                  );
+                  const debitError = fieldErrors[`${key}.debit`];
+                  const creditError = fieldErrors[`${key}.credit`];
+                  // The note under a cell — its error, or the shortcut's hint —
+                  // is tied to the input, so a screen reader hears it on focus.
+                  const debitNoteId = `${line.key}-debit-note`;
+                  const creditNoteId = `${line.key}-credit-note`;
+                  const debitNote = Boolean(debitError) || line.expects === "debit";
+                  const creditNote =
+                    Boolean(creditError) || line.expects === "credit";
 
-            return (
-              <div
-                key={line.key}
-                className="rounded-lg border border-border p-4"
-              >
-                <div className="mb-3 flex items-center justify-between">
-                  <span className="text-xs font-medium uppercase tracking-wider text-muted">
-                    Baris {index + 1}
-                  </span>
-                  {lines.length > MIN_LINES && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      onClick={() => removeLine(line.key)}
-                      disabled={saving}
-                      aria-label={`Hapus baris ${index + 1}`}
+                  return (
+                    <TableRow
+                      key={line.key}
+                      className="align-top hover:bg-transparent"
                     >
-                      <Trash2 className="size-4" />
-                      Hapus
-                    </Button>
-                  )}
-                </div>
+                      <TableCell>
+                        <FilterSelect
+                          layout="field"
+                          label=""
+                          ariaLabel={`Akun baris ${row}`}
+                          value={line.accountId}
+                          active={false}
+                          placeholder="Pilih akun"
+                          searchable
+                          disabled={saving}
+                          options={accountOptions}
+                          onChange={(value) => {
+                            // The detil is reset with the account — a rule id
+                            // belongs to one account — and pre-picked when there
+                            // is exactly one, as CashLinesEditor does.
+                            const options = allocationOptionsFor(
+                              byId.get(value),
+                            );
 
-                <div className="flex flex-col gap-4">
-                  <div>
-                    <FilterSelect
-                      layout="field"
-                      label="Akun"
-                      ariaLabel={`Akun baris ${index + 1}`}
-                      value={line.accountId}
-                      active={line.accountId !== ""}
-                      placeholder="Pilih akun"
-                      searchable
-                      options={accountOptions}
-                      onChange={(value) => {
-                        /*
-                          THE DETIL IS RESET WITH THE ACCOUNT, always: a rule id
-                          belongs to one account, and carrying it across would be
-                          a pairing the server rejects.
+                            patchLine(line.key, {
+                              accountId: value,
+                              allocationId:
+                                options.length === 1 ? options[0].value : "",
+                            });
+                          }}
+                        />
+                        {fieldErrors[`${key}.account`] && (
+                          <p
+                            role="alert"
+                            className="mt-1 text-xs font-semibold text-danger"
+                          >
+                            {fieldErrors[`${key}.account`]}
+                          </p>
+                        )}
+                      </TableCell>
 
-                          Pre-picked when there is exactly one, for the reason
-                          CashLinesEditor gives: a choice with one option is not
-                          a choice, and leaving it empty would send an unmapped
-                          cost nobody decided to leave unmapped.
-                        */
-                        const options = allocationOptionsFor(byId.get(value));
+                      {anyAccountMapped && (
+                        <TableCell>
+                          {detilOptions.length === 0 ? (
+                            <span className="mt-4 block text-sm text-muted">
+                              —
+                            </span>
+                          ) : (
+                            <FilterSelect
+                              layout="field"
+                              label=""
+                              ariaLabel={`Detil akun baris ${row}`}
+                              value={line.allocationId}
+                              active={false}
+                              placeholder="Pilih detil…"
+                              disabled={saving}
+                              options={detilOptions}
+                              onChange={(value) =>
+                                patchLine(line.key, { allocationId: value })
+                              }
+                            />
+                          )}
+                        </TableCell>
+                      )}
 
-                        patchLine(line.key, {
-                          accountId: value,
-                          allocationId:
-                            options.length === 1 ? options[0].value : "",
-                        });
-                      }}
-                    />
-                    {fieldErrors[`${key}.account`] && (
-                      <p role="alert" className="mt-1.5 text-xs text-danger">
-                        {fieldErrors[`${key}.account`]}
-                      </p>
-                    )}
-                    {account && (
-                      <p className="mt-1.5 text-xs text-muted">
-                        {ACCOUNT_TYPE_LABEL[account.accountType]} · muncul di{" "}
-                        {REPORT_OF_TYPE[account.accountType]}
-                      </p>
-                    )}
-                  </div>
+                      <TableCell>
+                        <Input
+                          aria-label={`Keterangan baris ${row}`}
+                          value={line.memo}
+                          placeholder="opsional"
+                          maxLength={MEMO_MAX_LENGTH}
+                          disabled={saving}
+                          className="mt-1.5 h-10"
+                          onChange={(event) =>
+                            patchLine(line.key, { memo: event.target.value })
+                          }
+                        />
+                      </TableCell>
 
-                  {/*
-                    THE DETIL AKUN, and only where the chosen account has one.
-                    An empty field on every line of every entry would be a
-                    control people learn to skip, and most accounts a manual
-                    entry touches (kas, utang, modal) can never carry a rule.
-                  */}
-                  {allocationOptionsFor(account).length > 0 && (
-                    <div>
-                      <FilterSelect
-                        layout="field"
-                        label="Detil akun"
-                        ariaLabel={`Detil akun baris ${index + 1}`}
-                        value={line.allocationId}
-                        active={line.allocationId !== ""}
-                        placeholder="Pilih detil"
-                        options={allocationOptionsFor(account)}
-                        onChange={(value) =>
-                          patchLine(line.key, { allocationId: value })
-                        }
-                      />
-                      <p className="mt-1.5 text-xs text-muted">
-                        Menentukan segmen mana yang menanggung baris ini di Laba
-                        Rugi. Kosongkan kalau memang belum diputuskan.
-                      </p>
-                    </div>
-                  )}
+                      <TableCell>
+                        <Input
+                          aria-label={`Debit baris ${row}`}
+                          inputMode="decimal"
+                          placeholder="0"
+                          value={line.debit}
+                          disabled={saving}
+                          aria-invalid={Boolean(debitError) || undefined}
+                          aria-describedby={debitNote ? debitNoteId : undefined}
+                          className="mt-1.5 h-10 text-right tabular-nums"
+                          // Filling one side clears the other: the API refuses a
+                          // line carrying both, so the form never assembles one.
+                          onChange={(event) =>
+                            patchLine(line.key, {
+                              debit: event.target.value,
+                              credit: "",
+                            })
+                          }
+                        />
+                        {debitError ? (
+                          <p
+                            id={debitNoteId}
+                            role="alert"
+                            className="mt-1 text-xs font-semibold text-danger"
+                          >
+                            {debitError}
+                          </p>
+                        ) : (
+                          line.expects === "debit" && (
+                            <p id={debitNoteId} className="mt-1 text-xs text-muted">
+                              Isi di sini — sama dengan baris berikutnya.
+                            </p>
+                          )
+                        )}
+                      </TableCell>
 
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <TextField
-                      label="Debit"
-                      name={`debit-${line.key}`}
-                      inputMode="decimal"
-                      value={line.debit}
-                      onChange={(event) =>
-                        // Filling one side clears the other: the API refuses a
-                        // line carrying both, so the form never assembles one.
-                        patchLine(line.key, {
-                          debit: event.target.value,
-                          credit: "",
-                        })
-                      }
-                      error={fieldErrors[`${key}.debit`]}
-                      // The shortcut knows which column this line is for. Said
-                      // ON the field rather than in the row above it, because a
-                      // note that names a column is read once and a hint under
-                      // the box is read while typing into it.
-                      hint={
-                        line.expects === "debit"
-                          ? "Isi di sini — nominalnya sama dengan baris berikutnya."
-                          : undefined
-                      }
-                      placeholder="0"
-                      className="tabular-nums"
-                      disabled={saving}
-                    />
-                    <TextField
-                      label="Kredit"
-                      name={`credit-${line.key}`}
-                      inputMode="decimal"
-                      value={line.credit}
-                      onChange={(event) =>
-                        patchLine(line.key, {
-                          credit: event.target.value,
-                          debit: "",
-                        })
-                      }
-                      error={fieldErrors[`${key}.credit`]}
-                      hint={
-                        line.expects === "credit"
-                          ? "Isi di sini — nominalnya sama dengan baris sebelumnya."
-                          : undefined
-                      }
-                      placeholder="0"
-                      className="tabular-nums"
-                      disabled={saving}
-                    />
-                  </div>
+                      <TableCell>
+                        <Input
+                          aria-label={`Kredit baris ${row}`}
+                          inputMode="decimal"
+                          placeholder="0"
+                          value={line.credit}
+                          disabled={saving}
+                          aria-invalid={Boolean(creditError) || undefined}
+                          aria-describedby={
+                            creditNote ? creditNoteId : undefined
+                          }
+                          className="mt-1.5 h-10 text-right tabular-nums"
+                          onChange={(event) =>
+                            patchLine(line.key, {
+                              credit: event.target.value,
+                              debit: "",
+                            })
+                          }
+                        />
+                        {creditError ? (
+                          <p
+                            id={creditNoteId}
+                            role="alert"
+                            className="mt-1 text-xs font-semibold text-danger"
+                          >
+                            {creditError}
+                          </p>
+                        ) : (
+                          line.expects === "credit" && (
+                            <p id={creditNoteId} className="mt-1 text-xs text-muted">
+                              Isi di sini — sama dengan baris sebelumnya.
+                            </p>
+                          )
+                        )}
+                      </TableCell>
 
-                  <TextField
-                    label="Catatan baris"
-                    name={`memo-${line.key}`}
-                    value={line.memo}
-                    onChange={(event) =>
-                      patchLine(line.key, { memo: event.target.value })
-                    }
-                    error={fieldErrors[`${key}.memo`]}
-                    hint="Opsional."
-                    maxLength={MEMO_MAX_LENGTH}
-                    disabled={saving}
-                  />
-                </div>
-              </div>
-            );
-          })}
+                      <TableCell className="text-right">
+                        {lines.length > MIN_LINES && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="mt-1.5 size-10"
+                            aria-label={`Hapus baris ${row}`}
+                            disabled={saving}
+                            onClick={() => removeLine(line.key)}
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+              {/* The totals are the table's last row, each under its own
+                  column — the mockup's tfoot, and CashLinesEditor's. */}
+              <TableFooter>
+                <TableRow className="hover:bg-transparent">
+                  <TableCell
+                    colSpan={anyAccountMapped ? 3 : 2}
+                    className="text-right text-xs font-bold tracking-wide text-muted uppercase"
+                  >
+                    Total
+                  </TableCell>
+                  <TableCell className="text-right text-base font-bold tabular-nums">
+                    {formatMoney(toDecimalString(totalDebit))}
+                  </TableCell>
+                  <TableCell className="text-right text-base font-bold tabular-nums">
+                    {formatMoney(toDecimalString(totalCredit))}
+                  </TableCell>
+                  <TableCell />
+                </TableRow>
+              </TableFooter>
+            </Table>
+          </div>
 
-          {lines.length < MAX_LINES && (
-            <div>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={addLine}
-                disabled={saving}
-              >
-                <Plus className="size-4" />
-                Tambah baris
-              </Button>
-            </div>
-          )}
-
-          {/* THE INVARIANT, LIVE. These are the same three numbers the server
-              refuses on, so this is the rule itself rather than a friendly
-              restatement of it. */}
+          {/* THE INVARIANT, LIVE — the same comparison the server refuses on,
+              said in a sentence under the totals it compares. */}
           <div
+            role="status"
             className={cn(
-              "rounded-lg px-4 py-3",
+              "rounded-lg border px-4 py-3 text-sm",
               balanced
-                ? "bg-tint-success"
-                : totalDebit === 0n && totalCredit === 0n
-                  ? "bg-accent/60"
-                  : "bg-tint-danger",
+                ? "border-success/30 bg-tint-success"
+                : "border-secondary/40 bg-secondary/15 text-secondary-foreground",
             )}
           >
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div>
-                <Label className="mb-1 block">Total debit</Label>
-                <p className="text-base font-bold tabular-nums text-foreground">
-                  {formatMoney(toDecimalString(totalDebit))}
-                </p>
-              </div>
-              <div>
-                <Label className="mb-1 block">Total kredit</Label>
-                <p className="text-base font-bold tabular-nums text-foreground">
-                  {formatMoney(toDecimalString(totalCredit))}
-                </p>
-              </div>
-              <div>
-                <Label className="mb-1 block">Selisih</Label>
-                <p
-                  className={cn(
-                    "text-base font-bold tabular-nums",
-                    balanced
-                      ? "text-success"
-                      : difference === 0n
-                        ? "text-muted"
-                        : "text-danger",
-                  )}
-                >
-                  {balanced
-                    ? "Seimbang"
-                    : formatMoney(
-                        toDecimalString(
-                          difference < 0n ? -difference : difference,
-                        ),
-                      )}
-                </p>
-              </div>
-            </div>
-
-            {!balanced && (totalDebit > 0n || totalCredit > 0n) && (
-              <p className="mt-2.5 text-sm text-danger">
-                {difference > 0n
-                  ? "Sisi kredit kurang sebesar selisih di atas."
-                  : "Sisi debit kurang sebesar selisih di atas."}
-              </p>
+            {balanced ? (
+              <>
+                <b className="mb-0.5 block text-success">✓ Seimbang</b>
+                Total debit dan kredit sudah sama,{" "}
+                {formatMoney(toDecimalString(totalDebit))}.
+              </>
+            ) : (
+              <>
+                <b className="mb-0.5 block">Belum seimbang</b>
+                Selisih {formatMoney(toDecimalString(gap))} — isi Debit dan
+                Kredit di semua baris sampai totalnya sama sebelum bisa
+                disimpan.
+              </>
             )}
           </div>
+
+          <p className="text-xs text-muted">
+            Jurnal yang sudah tersimpan <b>tidak bisa diubah atau dihapus</b>.
+            Kalau salah, koreksinya dengan jurnal pembalik — sehingga kesalahan
+            dan perbaikannya sama-sama tetap terlihat.
+          </p>
         </div>
       </Card>
-
-      <div className="flex flex-col gap-2">
-        <div className="flex gap-2">
-          <Button type="submit" disabled={saving || blocking !== null}>
-            {saving ? "Menyimpan…" : "Simpan jurnal"}
-          </Button>
-        </div>
-
-        {blocking && !saving && (
-          <p className="text-xs text-muted">
-            Belum bisa disimpan: <b>{blocking}</b>
-          </p>
-        )}
-
-        <p className="text-xs text-muted">
-          Jurnal yang sudah tersimpan <b>tidak bisa diubah atau dihapus</b>.
-          Kalau salah, koreksinya dengan membuat jurnal pembalik — sehingga
-          kesalahan dan perbaikannya sama-sama tetap terlihat di buku besar.
-        </p>
-      </div>
     </form>
   );
 }
-
-/** Plain-language names for the five classes, for the hint under a picked account. */
-const ACCOUNT_TYPE_LABEL: Record<ChartOfAccount["accountType"], string> = {
-  asset: "Aset (harta)",
-  liability: "Liabilitas (utang)",
-  equity: "Ekuitas (modal)",
-  income: "Pendapatan",
-  expense: "Beban",
-};
-
-/**
- * Which report an account lands on.
- *
- * Said out loud because it is the single fact that makes a wrong account
- * visible: picking a beban where an ekuitas belonged is what moves a correction
- * onto the laba rugi, and the class name alone does not say so.
- */
-const REPORT_OF_TYPE: Record<ChartOfAccount["accountType"], string> = {
-  asset: "Neraca",
-  liability: "Neraca",
-  equity: "Neraca",
-  income: "Laba Rugi",
-  expense: "Laba Rugi",
-};
